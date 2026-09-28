@@ -1,0 +1,92 @@
+# Publishes the NuGet packages when a version tag is pushed:
+#
+#   git tag v1.0.0-alpha.2 && git push origin v1.0.0-alpha.2
+#
+# Two packages, at the tag's version: Maquettiste.Engine (the engine the editor's functions and the CLI share) and
+# Maquettiste.Cli (the dotnet tool). Pre-release tags (v1.0.0-alpha.2) publish pre-release packages. The image
+# workflow runs on the same tags, so the image's bundled engine carries the same version as the package on nuget.org.
+#
+# It signs in with Trusted Publishing rather than a stored API key, as static-site-hosting does: the job asks
+# GitHub for a short-lived OIDC token, NuGet/login exchanges it for an hour-long API key, and the push uses that.
+# Two things must exist first:
+#
+#   * On nuget.org, under your username → Trusted Publishing, a policy for this repository: Repository Owner
+#     "mattjcowan", Repository "maquettiste", Workflow File "publish-package.yml", no environment, and a scope that
+#     allows publishing new packages as well as new versions.
+#   * A NUGET_USER repository secret holding the nuget.org profile name the policy belongs to.
+#
+# --skip-duplicate makes re-running the workflow for a version already published a no-op.
+
+name: Publish package
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'The version to publish, without the v, such as 1.0.0-alpha.2. It must match a tag.'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write # the OIDC token that Trusted Publishing exchanges for an API key
+
+concurrency:
+  group: publish-package-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish Maquettiste.Engine and Maquettiste.Cli
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/v{0}', inputs.version) || github.ref }}
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Read the version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Restore (locked)
+        run: dotnet restore --locked-mode
+
+      - name: Test the engine and the CLI
+        run: |
+          dotnet build -c Release --no-restore
+          dotnet test tests/Maquettiste.Engine.Tests -c Release --no-build
+          dotnet test tests/Maquettiste.Cli.Tests -c Release --no-build
+
+      - name: Pack
+        run: |
+          dotnet pack src/Maquettiste.Engine -c Release --no-build -p:Version=${{ steps.version.outputs.version }} -o out
+          dotnet pack src/Maquettiste.Cli -c Release --no-build -p:Version=${{ steps.version.outputs.version }} -o out
+          ls -la out
+
+      # Just before the push, since the key it returns lasts an hour.
+      - name: Sign in to nuget.org
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push to nuget.org
+        run: >-
+          dotnet nuget push "out/*.nupkg"
+          --source https://api.nuget.org/v3/index.json
+          --api-key "${{ steps.login.outputs.NUGET_API_KEY }}"
+          --skip-duplicate

@@ -1,0 +1,94 @@
+# Publishes the editor image when a version tag is pushed:
+#
+#   git tag v1.0.0-alpha.2 && git push origin v1.0.0-alpha.2
+#
+# One image for linux/amd64 and linux/arm64, pushed to GitHub's registry with the workflow's own token and, when the
+# DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets exist (a Docker Hub access token), to Docker Hub as well:
+#
+#   ghcr.io/mattjcowan/maquettiste:1.0.0-alpha.2   docker.io/mattjcowan/maquettiste:1.0.0-alpha.2
+#
+# A plain vMAJOR.MINOR.PATCH tag also moves "latest"; a pre-release tag never does. The same tags publish the NuGet
+# packages (publish-package.yml), so the image's bundled engine carries the package's version. The tag's commit is
+# built and smoke-tested offline first (docker/smoke.sh), and nothing is pushed if that fails. It can also be run by
+# hand from the Actions tab for a version that is already tagged.
+
+name: Publish image
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'The version to publish, without the v, such as 1.0.0-alpha.2. It must match a tag.'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write # push to ghcr.io
+
+concurrency:
+  group: publish-image-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: mattjcowan/maquettiste
+
+jobs:
+  publish:
+    name: Smoke test, then publish
+    runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/v{0}', inputs.version) || github.ref }}
+
+      - name: Read the version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build the image for the smoke test
+        run: docker build -f docker/Dockerfile -t "$IMAGE:release-check" .
+
+      - name: Smoke test (no network)
+        run: sh docker/smoke.sh "$IMAGE:release-check"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/login-action@v3
+        if: env.DOCKERHUB_USERNAME != ''
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # The base image and the .NET SDK both ship linux/amd64 and linux/arm64; Apple Silicon gets a native image.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push (amd64 and arm64)
+        run: |
+          set -eu
+          version="${{ steps.version.outputs.version }}"
+          tags="-t ghcr.io/$IMAGE:$version"
+          [ -n "$DOCKERHUB_USERNAME" ] && tags="$tags -t $IMAGE:$version"
+          # A prerelease tag (v1.0.0-alpha.1) never moves latest.
+          case "$version" in *-*) ;; *)
+            tags="$tags -t ghcr.io/$IMAGE:latest"
+            [ -n "$DOCKERHUB_USERNAME" ] && tags="$tags -t $IMAGE:latest" ;;
+          esac
+          # shellcheck disable=SC2086
+          docker buildx build --platform linux/amd64,linux/arm64 -f docker/Dockerfile $tags --push .

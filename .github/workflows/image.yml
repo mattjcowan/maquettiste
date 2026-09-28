@@ -6,7 +6,6 @@ name: image
 on:
   push:
     branches: [main, "phase-*"]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -90,30 +89,3 @@ jobs:
         run: |
           docker rm -f mq-before mq-after || true
           docker volume rm mq-upgrade || true
-
-  publish:
-    name: publish
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [smoke, upgrade]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      # The base image and the .NET SDK both ship linux/amd64 and linux/arm64; Apple Silicon gets a native image.
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Build and push (amd64 and arm64)
-        run: |
-          set -eu
-          version="${GITHUB_REF_NAME#v}"
-          tags="-t $IMAGE:$version"
-          # A prerelease tag (v1.0.0-alpha.1) never moves latest.
-          case "$version" in *-*) ;; *) tags="$tags -t $IMAGE:latest" ;; esac
-          # shellcheck disable=SC2086
-          docker buildx build --platform linux/amd64,linux/arm64 -f docker/Dockerfile $tags --push .

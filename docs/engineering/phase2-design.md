@@ -24,7 +24,7 @@ maquettiste/
 │   ├── compose.yaml                    # the S4 local-mode compose file
 │   └── dev-billing.sh                  # copies the billing fixture to tmp/billing and starts the editor on it
 ├── samples/reference-app/              # gate 2 (§7); isolated from the repo's build settings the same way (§7.1)
-└── .github/workflows/                  # editor.yml (SPA), functions tests join ci.yml, image.yml, gate2.yml
+└── .github/workflows/                  # editor.yml (SPA), functions tests join ci.yml, image.yml (CI smoke), publish-image.yml and publish-package.yml (version tags), gate2.yml
 ```
 
 `maquettiste.slnx` gains the functions project and its test project. `Directory.Packages.props` gains `StaticSiteHost.Abstractions` (already pinned at 0.2.0) as a used reference and, for tests only, `YamlDotNet`. The engine is referenced as a `ProjectReference` in the repo and as `#:package` in the zip (§3.1).
