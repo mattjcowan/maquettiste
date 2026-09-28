@@ -1,0 +1,318 @@
+{
+  "formatVersion": 1,
+  "passed": false,
+  "model": {
+    "seed": 42,
+    "entities": 5000,
+    "relations": 20000,
+    "fanout": 20,
+    "packs": [
+      "csharp-dapper",
+      "fanout",
+      "sql-ddl"
+    ],
+    "writeSeconds": 1.643
+  },
+  "machine": {
+    "cores": 24,
+    "jobs": 8,
+    "os": "Ubuntu 22.04.5 LTS",
+    "framework": ".NET 10.0.9",
+    "architecture": "X64",
+    "serverGc": true,
+    "gcHeapCount": 24,
+    "gcDynamicAdaptation": 0,
+    "runtimeEnvironment": [],
+    "peakWorkingSetMiB": 8283.2
+  },
+  "budgets": [
+    {
+      "name": "load-validate-resolve",
+      "limit": 3,
+      "actual": 1.667,
+      "unit": "s",
+      "atLeast": false,
+      "pass": true
+    },
+    {
+      "name": "plan",
+      "limit": 2,
+      "actual": 0.356,
+      "unit": "s",
+      "atLeast": false,
+      "pass": true
+    },
+    {
+      "name": "render",
+      "limit": 40,
+      "actual": 7.374,
+      "unit": "s",
+      "atLeast": false,
+      "pass": true
+    },
+    {
+      "name": "post-process-write",
+      "limit": 15,
+      "actual": 8.632,
+      "unit": "s",
+      "atLeast": false,
+      "pass": true
+    },
+    {
+      "name": "cold-total",
+      "limit": 60,
+      "actual": 15.204,
+      "unit": "s",
+      "atLeast": false,
+      "pass": true
+    },
+    {
+      "name": "incremental",
+      "limit": 2,
+      "actual": 6.49,
+      "unit": "s",
+      "atLeast": false,
+      "pass": false
+    },
+    {
+      "name": "files",
+      "limit": 100000,
+      "actual": 127575,
+      "unit": "files",
+      "atLeast": true,
+      "pass": true
+    }
+  ],
+  "cold": {
+    "files": 127575,
+    "unitsRendered": 122826,
+    "pipelinedTotalSeconds": 15.204,
+    "outputsMatch": true,
+    "stages": [
+      {
+        "stage": "load",
+        "wallSeconds": 0.516,
+        "busySeconds": 0.516,
+        "items": 26267
+      },
+      {
+        "stage": "validate",
+        "wallSeconds": 0.166,
+        "busySeconds": 0.166,
+        "items": 26267
+      },
+      {
+        "stage": "resolve",
+        "wallSeconds": 0.986,
+        "busySeconds": 0.986,
+        "items": 26267
+      },
+      {
+        "stage": "plan",
+        "wallSeconds": 1.586,
+        "busySeconds": 0.328,
+        "items": 122829
+      },
+      {
+        "stage": "skip",
+        "wallSeconds": 0.029,
+        "busySeconds": 0.029,
+        "items": 122826
+      },
+      {
+        "stage": "render",
+        "wallSeconds": 7.374,
+        "busySeconds": 7.374,
+        "items": 122826
+      },
+      {
+        "stage": "post-process",
+        "wallSeconds": 0.343,
+        "busySeconds": 2.677,
+        "items": 122826
+      },
+      {
+        "stage": "write",
+        "wallSeconds": 8.289,
+        "busySeconds": 8.289,
+        "items": 127575
+      }
+    ],
+    "pipelinedStages": [
+      {
+        "stage": "load",
+        "wallSeconds": 0.427,
+        "busySeconds": 0.427,
+        "items": 26267
+      },
+      {
+        "stage": "validate",
+        "wallSeconds": 0.148,
+        "busySeconds": 0.148,
+        "items": 26267
+      },
+      {
+        "stage": "resolve",
+        "wallSeconds": 0.706,
+        "busySeconds": 0.706,
+        "items": 26267
+      },
+      {
+        "stage": "plan",
+        "wallSeconds": 0.84,
+        "busySeconds": 0.08,
+        "items": 122829
+      },
+      {
+        "stage": "skip",
+        "wallSeconds": 0.02,
+        "busySeconds": 0.02,
+        "items": 122826
+      },
+      {
+        "stage": "render",
+        "wallSeconds": 12.091,
+        "busySeconds": 12.091,
+        "items": 122826
+      },
+      {
+        "stage": "post-process",
+        "wallSeconds": 12.055,
+        "busySeconds": 6.754,
+        "items": 122826
+      },
+      {
+        "stage": "write",
+        "wallSeconds": 12.403,
+        "busySeconds": 12.403,
+        "items": 127575
+      }
+    ]
+  },
+  "incremental": {
+    "totalSeconds": 6.49,
+    "unitsRendered": 93,
+    "unitsSkipped": 122733,
+    "filesWritten": 17,
+    "gcPauseSeconds": 0.323,
+    "stages": [
+      {
+        "stage": "load",
+        "wallSeconds": 0.195,
+        "busySeconds": 0.195,
+        "items": 26267
+      },
+      {
+        "stage": "validate",
+        "wallSeconds": 0.154,
+        "busySeconds": 0.154,
+        "items": 26267
+      },
+      {
+        "stage": "resolve",
+        "wallSeconds": 0.721,
+        "busySeconds": 0.721,
+        "items": 26267
+      },
+      {
+        "stage": "plan",
+        "wallSeconds": 1.217,
+        "busySeconds": 0.076,
+        "items": 122829
+      },
+      {
+        "stage": "skip",
+        "wallSeconds": 0.18,
+        "busySeconds": 0.18,
+        "items": 122826
+      },
+      {
+        "stage": "render",
+        "wallSeconds": 3.583,
+        "busySeconds": 3.583,
+        "items": 93
+      },
+      {
+        "stage": "post-process",
+        "wallSeconds": 3.505,
+        "busySeconds": 0.032,
+        "items": 93
+      },
+      {
+        "stage": "write",
+        "wallSeconds": 3.704,
+        "busySeconds": 3.704,
+        "items": 24
+      }
+    ],
+    "freshStore": {
+      "totalSeconds": 6.66,
+      "unitsRendered": 91,
+      "gcPauseSeconds": 1.284,
+      "stages": [
+        {
+          "stage": "load",
+          "wallSeconds": 0.33,
+          "busySeconds": 0.33,
+          "items": 26267
+        },
+        {
+          "stage": "validate",
+          "wallSeconds": 0.119,
+          "busySeconds": 0.119,
+          "items": 26267
+        },
+        {
+          "stage": "resolve",
+          "wallSeconds": 0.609,
+          "busySeconds": 0.609,
+          "items": 26267
+        },
+        {
+          "stage": "plan",
+          "wallSeconds": 0.992,
+          "busySeconds": 0.068,
+          "items": 122829
+        },
+        {
+          "stage": "skip",
+          "wallSeconds": 0.117,
+          "busySeconds": 0.117,
+          "items": 122826
+        },
+        {
+          "stage": "render",
+          "wallSeconds": 4.288,
+          "busySeconds": 4.288,
+          "items": 91
+        },
+        {
+          "stage": "post-process",
+          "wallSeconds": 4.232,
+          "busySeconds": 0.017,
+          "items": 91
+        },
+        {
+          "stage": "write",
+          "wallSeconds": 4.386,
+          "busySeconds": 4.386,
+          "items": 23
+        }
+      ]
+    }
+  },
+  "check": {
+    "totalSeconds": 7.655,
+    "outcome": "Succeeded",
+    "unitsRendered": 122826
+  },
+  "regressions": [],
+  "notes": [
+    "--jobs 8 caps the engine\u0027s render, post-processing, writer and loader parallelism on a 24-core machine; GC and I/O threads are not capped, so this approximates an 8-core machine.",
+    "Stage budgets come from the cold run with stage barriers; the cold total from a second cold run (fresh repo and cache) with the stages pipelined, in the same process, so it runs with a warm JIT.",
+    "The incremental run edits one attribute of one entity on disk and runs again with the same model store (the editor and watch scenario, which the 2 s budget covers); its time includes the rescan, validation, resolution, planning and skip check.",
+    "The new-store incremental run reverts that edit and runs with a new model store and generation service over the same repo and cache (a new host process\u0027s first run, but with a warm JIT); it is reported, not a budget. A one-shot CLI process also pays process start and JIT (see bench/README.md).",
+    "Peak working set is the whole process\u0027s peak over every run.",
+    "Stage times are busy times (the sum of each stage\u0027s spans), except post-processing, whose units run in parallel, which counts wall time: the engine records the plan stage twice, pack loading before resolve and unit planning after it, so plan\u0027s wall time also covers resolve."
+  ]
+}

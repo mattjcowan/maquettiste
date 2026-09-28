@@ -114,6 +114,16 @@ public sealed class BenchTests
         var again = await repo.RunAsync("bench", "--entities", "4", "--relations", "1", "--out", repo.PathOf("bench"));
         Assert.True(again.ExitCode == 2, again.ToString());
         Assert.Contains("Result: FAIL", again.Out, StringComparison.Ordinal);
+
+        // Inside a test host the CLI is not its own process, so it measures no one-shot figure (a real maquettiste runs itself).
+        Assert.Null(Commands.BenchCommand.OneShotSelf());
+        Assert.False(doc.RootElement.GetProperty("incremental").TryGetProperty("oneShot", out _));
+
+        // --no-example-packs measures the fanout pack alone, as the bench app's option does.
+        var fanoutOnly = await repo.RunAsync("bench", "--entities", "4", "--relations", "1", "--out", repo.PathOf("bench"), "--no-example-packs", "--format", "json");
+        Assert.True(fanoutOnly.ExitCode == 2, fanoutOnly.ToString());
+        using var fanoutDoc = JsonDocument.Parse(fanoutOnly.Out);
+        Assert.Equal(["fanout"], fanoutDoc.RootElement.GetProperty("model").GetProperty("packs").EnumerateArray().Select(p => p.GetString()));
     }
 
     [Fact]

@@ -113,7 +113,7 @@ internal sealed class TrackingTemplateContext : TemplateContext
             case ValueShape.Map when catalog.TryReadMap(value, out var entries):
                 return new MapView(value, entries, this);
             case ValueShape.List:
-                return new ValueList(value, [.. ((IEnumerable)value).Cast<object?>()], this);
+                return new ValueList(value, value as IList ?? ((IEnumerable)value).Cast<object?>().ToArray(), this);
             default:
                 return value;
         }

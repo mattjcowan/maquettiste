@@ -498,17 +498,21 @@ internal sealed class TrackedList : IList, IReadOnlyList<object?>
     private static NotSupportedException ReadOnly() => new("Model lists are read-only.");
 }
 
-/// <summary>A read-only list of plain values; items are wrapped for templates when read.</summary>
+/// <summary>
+/// A read-only list of plain values; items are wrapped for templates when read. The items are read through the source list itself
+/// when it is an <see cref="IList"/> (the resolved model's lists, arrays and script results are, and none of them changes during a
+/// render), so reading <c>table.foreign_keys</c> or <c>index.columns</c> no longer copies the list on every read.
+/// </summary>
 internal sealed class ValueList : IList, IReadOnlyList<object?>
 {
-    private readonly object?[] _items;
+    private readonly IList _items;
     private readonly TrackingTemplateContext _context;
 
     /// <summary>Creates a view.</summary>
     /// <param name="source">The original list (what scripts receive).</param>
-    /// <param name="items">Its items.</param>
+    /// <param name="items">Its items: the source itself when it is an <see cref="IList"/>, else a copy.</param>
     /// <param name="context">The unit's context (for wrapping).</param>
-    public ValueList(object source, object?[] items, TrackingTemplateContext context)
+    public ValueList(object source, IList items, TrackingTemplateContext context)
     {
         Source = source;
         _items = items;
@@ -519,7 +523,7 @@ internal sealed class ValueList : IList, IReadOnlyList<object?>
     public object Source { get; }
 
     /// <inheritdoc cref="IReadOnlyCollection{T}.Count"/>
-    public int Count => _items.Length;
+    public int Count => _items.Count;
 
     /// <inheritdoc/>
     public bool IsFixedSize => true;
@@ -555,7 +559,7 @@ internal sealed class ValueList : IList, IReadOnlyList<object?>
     /// <inheritdoc/>
     public int IndexOf(object? value)
     {
-        for (var i = 0; i < _items.Length; i++)
+        for (var i = 0; i < _items.Count; i++)
         {
             if (Equals(_items[i], value) || Equals(this[i], value))
                 return i;

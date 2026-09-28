@@ -20,13 +20,18 @@ internal sealed class SchemaRegistry : ISchemaRegistry
     /// <summary>The base URI of schema files.</summary>
     internal const string BaseUri = "https://maquettiste.invalid/schemas/v1/";
 
-    private readonly Lazy<State> _state = new(Build, LazyThreadSafetyMode.ExecutionAndPublication);
+    private readonly Lazy<Files> _files = new(ReadFiles, LazyThreadSafetyMode.ExecutionAndPublication);
+    private readonly Lazy<State> _state;
+
+    /// <summary>Creates the registry; nothing is read or built until first use.</summary>
+    public SchemaRegistry() => _state = new Lazy<State>(() => Build(_files.Value), LazyThreadSafetyMode.ExecutionAndPublication);
 
     /// <inheritdoc/>
-    public IReadOnlyList<string> FileNames => _state.Value.FileNames;
+    /// <remarks>Reads the embedded files only; the schemas themselves are built on the first evaluation or layout.</remarks>
+    public IReadOnlyList<string> FileNames => _files.Value.FileNames;
 
     /// <inheritdoc/>
-    public ReadOnlyMemory<byte> GetFileBytes(string fileName) => _state.Value.Bytes[fileName];
+    public ReadOnlyMemory<byte> GetFileBytes(string fileName) => _files.Value.Bytes[fileName];
 
     /// <inheritdoc/>
     public ObjectLayout GetLayout(string fileName) => _state.Value.Layouts[fileName];
@@ -113,15 +118,21 @@ internal sealed class SchemaRegistry : ISchemaRegistry
         new[] { "properties", "items", "prefixItems", "allOf", "$ref", "additionalProperties", "patternProperties", "dependentSchemas", "then", "else" }
             .ToFrozenSet(StringComparer.Ordinal);
 
+    /// <summary>The embedded schema files: names (ordinal) and bytes.</summary>
+    private sealed record Files(ImmutableArray<string> FileNames, FrozenDictionary<string, ReadOnlyMemory<byte>> Bytes);
+
     private sealed record State(
-        ImmutableArray<string> FileNames,
-        FrozenDictionary<string, ReadOnlyMemory<byte>> Bytes,
         FrozenDictionary<string, JsonSchema> Schemas,
         FrozenDictionary<string, ObjectLayout> Layouts,
         EvaluationOptions EvaluationOptions,
         SchemaPrecheck Precheck);
 
-    private static State Build()
+    /// <summary>
+    /// Reads the embedded schema files. Cheap next to <see cref="Build"/>, so what needs only the files (the index cache's schema-set
+    /// hash, <c>init</c>) does not build every schema: a one-shot process whose model files all come from a trusted index cache may
+    /// never need the evaluator.
+    /// </summary>
+    private static Files ReadFiles()
     {
         var assembly = typeof(SchemaRegistry).Assembly;
         var bytes = new SortedDictionary<string, ReadOnlyMemory<byte>>(StringComparer.Ordinal);
@@ -132,21 +143,25 @@ internal sealed class SchemaRegistry : ISchemaRegistry
             bytes[resource[ResourcePrefix.Length..]] = ReadResource(assembly, resource);
         }
 
+        return new Files([.. bytes.Keys], bytes.ToFrozenDictionary(StringComparer.Ordinal));
+    }
+
+    private static State Build(Files files)
+    {
+        var bytes = files.Bytes;
         var documents = bytes.ToDictionary(kv => kv.Key, kv => JsonDocument.Parse(kv.Value).RootElement.Clone(), StringComparer.Ordinal);
 
         var buildOptions = new BuildOptions { SchemaRegistry = new global::Json.Schema.SchemaRegistry() };
         var schemas = new Dictionary<string, JsonSchema>(StringComparer.Ordinal);
         // common.json first: other files reference its $defs.
-        foreach (var name in bytes.Keys.OrderBy(n => n == "common.json" ? 0 : 1).ThenBy(n => n, StringComparer.Ordinal))
+        foreach (var name in files.FileNames.OrderBy(n => n == "common.json" ? 0 : 1).ThenBy(n => n, StringComparer.Ordinal))
             schemas[name] = JsonSchema.Build(documents[name], buildOptions, new Uri(BaseUri + name));
 
         var layouts = new LayoutBuilder(documents);
-        var layoutByFile = bytes.Keys.ToDictionary(n => n, layouts.BuildRoot, StringComparer.Ordinal);
+        var layoutByFile = files.FileNames.ToDictionary(n => n, layouts.BuildRoot, StringComparer.Ordinal);
 
         var evaluation = new EvaluationOptions { OutputFormat = OutputFormat.List };
         return new State(
-            [.. bytes.Keys],
-            bytes.ToFrozenDictionary(StringComparer.Ordinal),
             schemas.ToFrozenDictionary(StringComparer.Ordinal),
             layoutByFile.ToFrozenDictionary(StringComparer.Ordinal),
             evaluation,

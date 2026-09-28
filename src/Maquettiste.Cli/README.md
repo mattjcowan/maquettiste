@@ -28,7 +28,20 @@ The package is a .NET tool (`PackAsTool`, command `maquettiste`). Pin it per rep
 ```
 
 then `dotnet tool restore` and `dotnet maquettiste generate` (or `dotnet tool install --global Maquettiste.Cli` for `maquettiste`).
-Build a local package with `dotnet pack src/Maquettiste.Cli -c Release -o artifacts`.
+Build local packages with `dotnet pack src/Maquettiste.Cli -c Release -o artifacts` and install from that folder
+(`dotnet tool install --tool-path <dir> --add-source artifacts Maquettiste.Cli --version 1.0.0-alpha.1`).
+
+**Packages (ReadyToRun).** `dotnet pack` writes `Maquettiste.Cli` (a small package that names one package per runtime identifier)
+and `Maquettiste.Cli.<rid>` for `linux-x64`, `linux-arm64`, `osx-x64`, `osx-arm64`, `win-x64` and `win-arm64`, each framework-dependent
+with ReadyToRun code compiled by crossgen, plus `Maquettiste.Cli.any`, the portable IL-only build that the .NET 10 SDK installs on any
+other runtime (Alpine's `linux-musl-*`, for example). All of them are needed in the feed. The runtime identifiers, ReadyToRun and a
+separate lock file (`obj/packages.pack.lock.json`) apply only while packing (the dotnet CLI sets `_IsPacking`), so `dotnet build`,
+`dotnet test` and `dotnet restore --locked-mode` are unchanged and download no runtime or crossgen packs; `dotnet pack` does
+(the runtime and app host packs of the six identifiers and crossgen, about 265 MB of packages, once per machine: the reason they are not part of every restore). `-p:MaquettistePortableTool=true` packs the
+single portable package instead. The bench reference is built without the runtime identifier (`GlobalPropertiesToRemove`): it is
+an executable project the CLI uses as a library. Measured on the benchmark repo (medians of five interleaved runs), ReadyToRun takes a one-entity
+edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run record from 0.26 to 0.25 s (`bench/README.md`,
+"One-shot CLI").
 
 ## Files
 
@@ -51,6 +64,10 @@ Build a local package with `dotnet pack src/Maquettiste.Cli -c Release -o artifa
   `$XDG_CACHE_HOME`, `~/Library/Caches` on macOS, `%LOCALAPPDATA%` on Windows) `/maquettiste/<first 16 hex of SHA-256 of the repo
   path>`), `--jobs`, `--progress auto|plain|json|none`, `--verbosity quiet|normal|detailed`, `--quiet`/`-q`, `--no-color`
   (accepted; the CLI prints no colors), `--version`, `--help`. Options may appear anywhere after the program name.
+- **Progress** (`ConsoleProgress`): stages report from several threads, often once per file; an update that changes nothing on
+  screen (its stage has started and is current, it is not the stage's last update, and no line is due) only folds its counts into
+  the stage's state without the lock, and `--quiet` (`none`) only counts the writer's files. The output is unchanged; the lock used
+  to be taken for each of the load stage's 26,267 updates from eight readers.
 - **Streams:** stdout carries results only (plan lists, diffs, JSON, SARIF, `pack new` paths, the `migrate` message); progress,
   summaries, diagnostics of `generate` and errors go to stderr.
 - **Exit codes:** 0, 1 (validation, pack, template or script errors), 2 (drift), 3 (hand edits and region conflicts), 4 (usage
@@ -77,6 +94,12 @@ Build a local package with `dotnet pack src/Maquettiste.Cli -c Release -o artifa
   changes on stdout unless quiet. The summary counts added, modified, deleted, unchanged (files the writer compared and left alone),
   units skipped and hand edits; `--verbosity detailed` adds stage timings. The JSON result leaves out the run id and timings so
   it is deterministic.
+- **generate (one-shot):** a `generate` that applies (no `--dry-run`, `--check` or `--watch`) sets the engine's
+  `GenerationService.ReuseLastRun`, so it keeps `<cache-dir>/last-run.v1.bin` and, when the model, templates, engine files and
+  outputs are all as the last apply left them and the tool is the same build (an updated or rebuilt tool runs in full once), is
+  answered from it without loading, validating, resolving or planning: the same exit code, stdout, summary and diagnostics as the
+  full run (progress shows only load and skip). See
+  `src/Maquettiste.Engine/Generation/README.md`, "Last-run record".
 - **generate --watch:** the `FileSystemWatcher` is started first (so edits saved during the initial run queue one follow-up run),
   then one incremental run; afterwards the watcher feeds the engine's `GenerationWatcher`
   (250 ms debounce, `RefreshAsync` of the changed paths, one incremental run; engine-owned paths ignored; a watcher buffer overflow
@@ -87,8 +110,11 @@ Build a local package with `dotnet pack src/Maquettiste.Cli -c Release -o artifa
 - **pack new:** `--from empty` writes a canonical `pack.json` (one `each entity` unit with output `{{ kebab entity.name }}.txt`),
   `entity.scriban` and `helpers.js`; `--from sql-ddl|csharp-dapper` copies that starter pack and renames it. Names must be
   kebab-case; an existing folder is refused (exit 4).
-- **bench:** `--out --seed --entities --relations --enums --fanout --keep --baseline --max-regression --format` and the global
-  `--jobs` (default 8) map onto `BenchmarkOptions`, with the synthetic generator's minimums (`--entities` 2, `--enums` 1,
+- **bench:** `--out --seed --entities --relations --enums --fanout --keep --baseline --max-regression --format --no-example-packs`
+  (fanout pack only, as `bench/Maquettiste.Bench --no-example-packs`) and the global
+  `--jobs` (default 8) map onto `BenchmarkOptions`, plus `OneShotCommand` = this `maquettiste` executable (its app host, or `dotnet` and
+  the CLI assembly) for the report's one-shot figure; inside another program (a test host) the CLI is not its own process and the
+  figure is skipped. The numeric options follow the synthetic generator's minimums (`--entities` 2, `--enums` 1,
   `--fanout` 1, `--relations` at most half the entity pairs); other values exit 4 with a message. The report is printed with
   `BenchmarkReportJson.ToText`/`Write`, the same text and JSON as `bench/Maquettiste.Bench`, so a CLI JSON report is a valid
   `--baseline`. Exit 0 when `BenchmarkReport.Passed`, 2 when a budget, the regression gate or the check run failed, 4 when the
@@ -103,9 +129,10 @@ SPEC Section 13 budgets; see `bench/README.md` ("Runtime settings") for the meas
 core, so a cold `generate` of the 100,050-file benchmark repo (`--jobs 8`) on 24 cores takes about 9.3 s with a peak resident set
 of about 4.9 GB, against about 14 s and 1.6 GB with workstation GC (`DOTNET_gcServer=0`); `DOTNET_GCHeapCount=8` gives about 10 s
 and 2.8 GB, at the cost of longer GC pauses in later incremental runs (why the csproj does not cap it). `--watch` keeps that
-footprint. A one-shot `generate` after one entity edit takes about 3.2 to 4.1 s (process start, JIT, index-cache load and a full resolve; the 2 s incremental budget is met by
-the long-lived `--watch` and editor processes, see `bench/README.md`). They apply to this process only; a host embedding the
-engine keeps its own settings. ReadyToRun is not enabled for the tool package (same section).
+footprint. A one-shot `generate` of the benchmark repo with nothing changed takes about 0.26 s (the engine's last-run record), and after one
+entity edit about 2.6 to 2.9 s with the ReadyToRun package (process start, index-cache load, a full resolve with a cold runtime,
+the render of the changed units and the writes; the 2 s incremental budget is met by the long-lived `--watch` and editor processes,
+see `bench/README.md`, "One-shot CLI"). They apply to this process only; a host embedding the engine keeps its own settings.
 
 ## Deviations and notes
 

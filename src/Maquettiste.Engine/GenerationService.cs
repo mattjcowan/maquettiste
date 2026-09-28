@@ -50,6 +50,14 @@ public sealed class GenerationService
     /// <summary>The model store.</summary>
     internal ModelStore Store => _store;
 
+    /// <summary>
+    /// Whether apply runs keep and use the last-run record (<see cref="LastRun"/>; Generation/README.md): a one-shot host such as the
+    /// CLI's <c>generate</c> sets it, so a process whose inputs, engine files and outputs are all as the last apply run left them
+    /// answers without loading, validating, resolving or planning. Off by default: a long-lived host keeps its model store warm and
+    /// neither reads nor writes the record, so its runs are unchanged.
+    /// </summary>
+    internal bool ReuseLastRun { get; set; }
+
     /// <summary>Runs generation in the request's mode.</summary>
     /// <param name="request">The request.</param>
     /// <param name="progress">Progress.</param>
@@ -242,6 +250,19 @@ public sealed class GenerationService
 
     private string RepoRoot => Path.GetFullPath(_options.RepoRoot);
 
+    /// <summary>The templates folder's content hash for the last-run record, or <see langword="null"/> (no record) when it cannot be read.</summary>
+    private static async Task<string?> TryHashTemplatesAsync(LastRun lastRun, CancellationToken ct)
+    {
+        try
+        {
+            return await lastRun.HashTemplatesAsync(ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
     private string NewId() => _options.EffectiveIdGenerator.NewId();
 
     private int Jobs(GenerationRequest request) => Math.Max(1, request.Jobs ?? _options.EffectiveParallelism);
@@ -285,11 +306,26 @@ public sealed class GenerationService
             IRunJournal? open = null;
             try
             {
+                // The last-run record (one-shot hosts only): answer from it when nothing changed, else drop it before this run changes
+                // what it describes, and hash the templates before the packs load, for the record this run may write.
+                var lastRun = ReuseLastRun && mode == GenerationMode.Apply && capture is null && !request.StageBarriers ? new LastRun(_services) : null;
+                string? templates = null;
+                if (lastRun is not null)
+                {
+                    if (!request.Force && _store.Current is null && await lastRun.TryReplayAsync(request, runId, run, progress: run.Progress, ct).ConfigureAwait(false) is { } replayed)
+                        return replayed;
+                    lastRun.Forget();
+                    templates = await TryHashTemplatesAsync(lastRun, ct).ConfigureAwait(false);
+                    run.CollectRenderedInputHashes();
+                }
+
                 var prepared = await run.PrepareAsync(request.Packs, mode, ct, barriers: request.StageBarriers).ConfigureAwait(false);
                 if (prepared is null)
                     return Result(runId, mode, RunOutcome.Invalid, run);
                 var skip = await run.SkipAsync(prepared, mode, request.Force, ct).ConfigureAwait(false);
                 skippedCount = skip.Skipped.Count;
+                var preparedDiagnostics = run.Diagnostics;
+                var skippedOutputs = lastRun is null ? null : LastRun.EncodeSkippedAsync(skip, prepared.OutputStats, ct);
                 if (!await run.VerifyFormattersAsync(prepared, skip.ToRender, ct).ConfigureAwait(false))
                     return Result(runId, mode, RunOutcome.Invalid, run, skippedCount);
 
@@ -337,8 +373,15 @@ public sealed class GenerationService
                     open = null;
                 }
 
+                var diagnostics = run.Diagnostics;
+                if (lastRun is not null && skippedOutputs is not null && outcome == RunOutcome.Succeeded)
+                {
+                    await lastRun.TryRecordAsync(request, _store, prepared, skip, skippedOutputs, run.RenderedInputHashes, preparedDiagnostics, templates,
+                        diagnostics, ct).ConfigureAwait(false);
+                }
+
                 return new GenerationResult(runId, mode, outcome, changes, stream.Rendered, skippedCount, stream.Summary.Written, stream.Summary.Deleted,
-                    run.Diagnostics, run.Clock.Timings());
+                    diagnostics, run.Clock.Timings());
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {

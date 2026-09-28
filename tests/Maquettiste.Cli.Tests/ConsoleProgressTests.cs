@@ -46,6 +46,37 @@ public sealed class ConsoleProgressTests
     }
 
     [Fact]
+    public void Plain_style_under_concurrent_updates_still_writes_one_start_and_one_end_line_per_stage()
+    {
+        var error = new SharedWriter();
+        var progress = new ConsoleProgress(ProgressStyle.Plain, error);
+        progress.Report(new ProgressUpdate(PipelineStage.Load, 0, 0, null, null));
+        Parallel.For(0, 20_000, new ParallelOptions { MaxDegreeOfParallelism = 8 },
+            i => progress.Report(new ProgressUpdate(PipelineStage.Load, i + 1, 20_001, null, null)));
+        progress.Report(new ProgressUpdate(PipelineStage.Load, 20_001, 20_001, null, null));
+        Parallel.For(0, 5_000, new ParallelOptions { MaxDegreeOfParallelism = 8 },
+            i => progress.Report(new ProgressUpdate(PipelineStage.Write, i + 1, 5_000, "f", null)));
+        progress.Complete();
+        var lines = Text.Lines(error.Text());
+        Assert.Equal("[1/8 load] started", lines[0]);
+        Assert.StartsWith("[1/8 load] done: 20,001 in ", lines[1], StringComparison.Ordinal);
+        Assert.Equal("[8/8 write] started", lines[2]);
+        Assert.StartsWith("[8/8 write] done: 5,000 in ", lines[3], StringComparison.Ordinal);
+        Assert.Equal(4, lines.Length);
+        Assert.Equal(5_000, progress.FilesCompared);
+    }
+
+    [Fact]
+    public void None_style_counts_files_from_concurrent_updates()
+    {
+        var progress = new ConsoleProgress(ProgressStyle.None, new SharedWriter());
+        Parallel.For(0, 10_000, new ParallelOptions { MaxDegreeOfParallelism = 8 },
+            i => progress.Report(new ProgressUpdate(PipelineStage.Write, i + 1, 10_000, null, null)));
+        Assert.Equal(10_000, progress.TakeFilesCompared());
+        Assert.Equal(0, progress.FilesCompared);
+    }
+
+    [Fact]
     public void Json_style_throttles_but_keeps_first_and_last_updates()
     {
         var error = new SharedWriter();

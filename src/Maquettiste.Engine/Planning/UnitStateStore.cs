@@ -73,7 +73,7 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
         ArgumentNullException.ThrowIfNull(pack);
         ArgumentNullException.ThrowIfNull(states);
         var file = FileOf(pack);
-        _last.TryRemove(file, out _);
+        _last.TryRemove(file, out var previous);
         if (states.Count == 0)
         {
             _files.Delete(file);
@@ -82,7 +82,12 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
 
         var indexed = new List<UnitState>(states.Count);
         var bytes = Encode(states, indexed);
-        await _files.WriteAsync(file, bytes, ct).ConfigureAwait(false);
+
+        // The same bytes as the file this store last read or wrote, still of that length on disk (a run that skipped every unit of
+        // the pack): the file is left alone, as the manifest store leaves an unchanged manifest, so its time stamp keeps saying
+        // "unchanged" (the last-run record compares it).
+        if (previous is null || !previous.Bytes.AsSpan().SequenceEqual(bytes) || !SameLength(file, bytes.Length))
+            await _files.WriteAsync(file, bytes, ct).ConfigureAwait(false);
 
         // Remembered as a load of these bytes decodes them (read keys as indexes into the written key table), so the next run
         // neither decodes the file nor hashes every key again when it saves the states of the units it skipped.
@@ -90,6 +95,21 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
         foreach (var state in indexed)
             byKey[state.Key] = state;
         _last[file] = new Decoded(bytes, new System.Collections.ObjectModel.ReadOnlyDictionary<string, UnitState>(byKey));
+    }
+
+    /// <summary>
+    /// The states this store last read or wrote for a pack, without reading the file again (the last-run record reads the states a
+    /// run's writer just saved), or <see langword="null"/> when it holds none.
+    /// </summary>
+    /// <param name="pack">The pack name.</param>
+    /// <returns>The states, or <see langword="null"/>.</returns>
+    internal IReadOnlyDictionary<string, UnitState>? Remembered(string pack) =>
+        _last.TryGetValue(FileOf(pack), out var last) ? last.States : null;
+
+    private static bool SameLength(string file, int length)
+    {
+        var info = new FileInfo(file);
+        return info.Exists && info.Length == length;
     }
 
     /// <summary>The state file of a pack. Pack names are kebab keys; any other name is replaced by a hash so it cannot form a path.</summary>

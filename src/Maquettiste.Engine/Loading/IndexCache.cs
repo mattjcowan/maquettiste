@@ -66,8 +66,9 @@ internal static class IndexCache
     /// <param name="path">The cache file.</param>
     /// <param name="schemaSetHash">The current schema set hash.</param>
     /// <param name="ct">Cancellation.</param>
+    /// <param name="parallelism">How many records are verified at once (the loader's parallelism).</param>
     /// <returns>The records by model-relative path.</returns>
-    public static async Task<FrozenDictionary<string, CacheRecord>> ReadAsync(string path, string schemaSetHash, CancellationToken ct)
+    public static async Task<IReadOnlyDictionary<string, CacheRecord>> ReadAsync(string path, string schemaSetHash, CancellationToken ct, int parallelism = 1)
     {
         byte[] bytes;
         try
@@ -91,7 +92,9 @@ internal static class IndexCache
                 return FrozenDictionary<string, CacheRecord>.Empty;
 
             var count = reader.ReadInt32();
-            var records = new Dictionary<string, CacheRecord>(StringComparer.Ordinal);
+            if (count < 0 || count > bytes.Length)
+                return FrozenDictionary<string, CacheRecord>.Empty;
+            var read = new CacheRecord[count];
             for (var i = 0; i < count; i++)
             {
                 ct.ThrowIfCancellationRequested();
@@ -104,11 +107,23 @@ internal static class IndexCache
                 var content = reader.ReadBytes(byteCount);
                 if (content.Length != byteCount)
                     return FrozenDictionary<string, CacheRecord>.Empty;
-                if (ContentHash.Of(content) == hash) // content-addressed: a record whose bytes do not match is dropped
-                    records[recordPath] = new CacheRecord(recordPath, length, ticks, hash, flags, content);
+                read[i] = new CacheRecord(recordPath, length, ticks, hash, flags, content);
             }
 
-            return records.ToFrozenDictionary(StringComparer.Ordinal);
+            // Content-addressed: a record whose bytes do not hash to its SHA-256 is dropped. The hashes are checked in parallel (one
+            // SHA-256 per model file is most of the read); the map is then filled in file order, so a repeated path keeps its last
+            // record as before.
+            var valid = new bool[count];
+            Parallel.For(0, count, new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, parallelism), CancellationToken = ct },
+                i => valid[i] = ContentHash.Of(read[i].Bytes) == read[i].Hash);
+            var records = new Dictionary<string, CacheRecord>(count, StringComparer.Ordinal);
+            for (var i = 0; i < count; i++)
+            {
+                if (valid[i])
+                    records[read[i].Path] = read[i];
+            }
+
+            return records;
         }
         catch (Exception ex) when (ex is EndOfStreamException or IOException or FormatException or ArgumentException or OverflowException)
         {

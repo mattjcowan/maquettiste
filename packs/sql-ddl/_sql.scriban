@@ -137,7 +137,7 @@ func column_def(c)
     end
     ret $s + " GENERATED ALWAYS AS (" + c.computed + ")" + (c.computed_stored ? " STORED" : " VIRTUAL")
   end
-  if sqlite_rowid($t) && c.is_primary_key
+  if c.is_primary_key && sqlite_rowid($t)
     ret $s + " INTEGER NOT NULL CONSTRAINT " + q($t.primary_key.name, $db) + " PRIMARY KEY"
   end
   $s = $s + " " + (type_of c $d)

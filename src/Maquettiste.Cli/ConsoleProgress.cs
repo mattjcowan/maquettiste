@@ -15,15 +15,23 @@ namespace Maquettiste.Cli;
 internal sealed class ConsoleProgress : IProgress<ProgressUpdate>
 {
     private static readonly TimeSpan Interval = TimeSpan.FromMilliseconds(100);
+    private static readonly int StageSlots = Enum.GetValues<PipelineStage>().Max(s => (int)s) + 1;
 
     private readonly ProgressStyle _style;
     private readonly TextWriter _error;
     private readonly Lock _gate = new();
     private readonly Stopwatch _clock = Stopwatch.StartNew();
-    private readonly Dictionary<PipelineStage, StageState> _stages = [];
-    private TimeSpan? _lastWrite;
-    private PipelineStage? _current;
+
+    /// <summary>Stage states by stage value; a slot is set once, under the lock, and read without it.</summary>
+    private readonly StageState?[] _stages = new StageState?[StageSlots];
+
+    /// <summary>When a line was last written (<see cref="TimeSpan.Ticks"/> of the clock), or -1.</summary>
+    private long _lastWrite = -1;
+
+    /// <summary>The current stage's value (plain style), or 0.</summary>
+    private int _current;
     private int _lineLength;
+    private int _filesCompared;
 
     /// <summary>Creates the reporter.</summary>
     /// <param name="style">The style.</param>
@@ -35,35 +43,42 @@ internal sealed class ConsoleProgress : IProgress<ProgressUpdate>
     }
 
     /// <summary>The largest number of files the writer reported (files compared with disk), for the summary.</summary>
-    public int FilesCompared { get; private set; }
+    public int FilesCompared => Volatile.Read(ref _filesCompared);
 
     /// <summary>Returns <see cref="FilesCompared"/> and resets it to 0, so each run of a watch session counts only its own files.</summary>
     /// <returns>The files compared since the last call.</returns>
-    public int TakeFilesCompared()
-    {
-        lock (_gate)
-        {
-            var value = FilesCompared;
-            FilesCompared = 0;
-            return value;
-        }
-    }
+    public int TakeFilesCompared() => Interlocked.Exchange(ref _filesCompared, 0);
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Stages report from several threads, often once per file. An update that changes nothing on screen (the stage already
+    /// started and is still current, it is not the stage's last update, and no line is due) only folds its counts into the stage
+    /// state, without the lock; everything else takes the lock as before, so the output is the same.
+    /// </remarks>
     public void Report(ProgressUpdate value)
     {
         ArgumentNullException.ThrowIfNull(value);
+        if (value.Stage == PipelineStage.Write)
+            Max(ref _filesCompared, value.Done);
+        if (_style == ProgressStyle.None)
+            return;
+
+        var now = _clock.Elapsed;
+        var slot = (int)value.Stage;
+        if (slot >= 0 && slot < StageSlots && Volatile.Read(ref _stages[slot]) is { } known && !known.Ended && value.Done != value.Total
+            && (_style == ProgressStyle.Plain ? Volatile.Read(ref _current) == slot : !Due(now)))
+        {
+            known.Fold(now, value.Done, value.Total);
+            return;
+        }
+
         lock (_gate)
         {
-            var now = _clock.Elapsed;
-            if (value.Stage == PipelineStage.Write)
-                FilesCompared = Math.Max(FilesCompared, value.Done);
-            var first = !_stages.TryGetValue(value.Stage, out var state);
-            if (first)
-                _stages[value.Stage] = state = new StageState(now);
-            state!.Last = now;
-            state.Done = Math.Max(state.Done, value.Done);
-            state.Total = Math.Max(state.Total, value.Total);
+            var first = slot < 0 || slot >= StageSlots || _stages[slot] is null;
+            var state = first ? new StageState(now) : _stages[slot]!;
+            if (first && slot >= 0 && slot < StageSlots)
+                Volatile.Write(ref _stages[slot], state);
+            state.Fold(now, value.Done, value.Total);
             state.Ended = false;
 
             switch (_style)
@@ -74,7 +89,7 @@ internal sealed class ConsoleProgress : IProgress<ProgressUpdate>
                 case ProgressStyle.Terminal:
                     if (Due(now) || value.Done == value.Total)
                     {
-                        _lastWrite = now;
+                        Volatile.Write(ref _lastWrite, now.Ticks);
                         var text = string.Create(CultureInfo.InvariantCulture,
                             $"[{(int)value.Stage}/8 {Name(value.Stage)}] {value.Done:N0}/{value.Total:N0} {value.CurrentPath ?? value.Pack ?? ""}");
                         var pad = Math.Max(0, _lineLength - text.Length);
@@ -86,7 +101,7 @@ internal sealed class ConsoleProgress : IProgress<ProgressUpdate>
                 case ProgressStyle.Json:
                     if (Due(now) || value.Done == value.Total || first)
                     {
-                        _lastWrite = now;
+                        Volatile.Write(ref _lastWrite, now.Ticks);
                         _error.WriteLine(Json(value));
                     }
 
@@ -102,9 +117,13 @@ internal sealed class ConsoleProgress : IProgress<ProgressUpdate>
         {
             if (_style == ProgressStyle.Plain)
             {
-                foreach (var (stage, state) in _stages.OrderBy(s => s.Key))
-                    EndLine(stage, state);
-                _current = null;
+                for (var slot = 0; slot < StageSlots; slot++)
+                {
+                    if (_stages[slot] is { } state)
+                        EndLine((PipelineStage)slot, state);
+                }
+
+                Volatile.Write(ref _current, 0);
             }
             else if (_style == ProgressStyle.Terminal && _lineLength > 0)
             {
@@ -112,7 +131,8 @@ internal sealed class ConsoleProgress : IProgress<ProgressUpdate>
                 _lineLength = 0;
             }
 
-            _stages.Clear();
+            for (var slot = 0; slot < StageSlots; slot++)
+                Volatile.Write(ref _stages[slot], null);
         }
     }
 
@@ -132,21 +152,34 @@ internal sealed class ConsoleProgress : IProgress<ProgressUpdate>
         _ => stage.ToString().ToLowerInvariant(),
     };
 
-    private bool Due(TimeSpan now) => _lastWrite is not { } last || now - last >= Interval;
+    private bool Due(TimeSpan now) => Volatile.Read(ref _lastWrite) is var last && (last < 0 || now.Ticks - last >= Interval.Ticks);
+
+    private static void Max(ref int target, int value)
+    {
+        var seen = Volatile.Read(ref target);
+        while (value > seen)
+        {
+            var found = Interlocked.CompareExchange(ref target, value, seen);
+            if (found == seen)
+                return;
+            seen = found;
+        }
+    }
 
     private void Plain(PipelineStage stage, bool first)
     {
         // Stages 1 to 5 run one after another (the pack loader reports as plan before resolve); 6 to 8 stream together, so their
         // end lines wait for the end of the run.
-        if (_current is { } current && current != stage && current < PipelineStage.Render && _stages.TryGetValue(current, out var previous))
-            EndLine(current, previous);
-        if (first || _current != stage)
+        var current = Volatile.Read(ref _current);
+        if (current != 0 && current != (int)stage && (PipelineStage)current < PipelineStage.Render && _stages[current] is { } previous)
+            EndLine((PipelineStage)current, previous);
+        if (first || current != (int)stage)
         {
             if (first || stage < PipelineStage.Render)
                 _error.WriteLine(string.Create(CultureInfo.InvariantCulture, $"[{(int)stage}/8 {Name(stage)}] started"));
         }
 
-        _current = stage;
+        Volatile.Write(ref _current, (int)stage);
     }
 
     private void EndLine(PipelineStage stage, StageState state)
@@ -178,16 +211,45 @@ internal sealed class ConsoleProgress : IProgress<ProgressUpdate>
         return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
     }
 
+    /// <summary>One stage's counts; <see cref="Fold"/> is safe without the lock (maxima only grow).</summary>
     private sealed class StageState(TimeSpan start)
     {
+        private long _last = start.Ticks;
+        private int _done;
+        private int _total;
+        private volatile bool _ended;
+
         public TimeSpan Start { get; } = start;
 
-        public TimeSpan Last { get; set; } = start;
+        public TimeSpan Last => TimeSpan.FromTicks(Volatile.Read(ref _last));
 
-        public int Done { get; set; }
+        public int Done => Volatile.Read(ref _done);
 
-        public int Total { get; set; }
+        public int Total => Volatile.Read(ref _total);
 
-        public bool Ended { get; set; }
+        public bool Ended
+        {
+            get => _ended;
+            set => _ended = value;
+        }
+
+        public void Fold(TimeSpan now, int done, int total)
+        {
+            MaxLong(ref _last, now.Ticks);
+            Max(ref _done, done);
+            Max(ref _total, total);
+        }
+
+        private static void MaxLong(ref long target, long value)
+        {
+            var seen = Volatile.Read(ref target);
+            while (value > seen)
+            {
+                var found = Interlocked.CompareExchange(ref target, value, seen);
+                if (found == seen)
+                    return;
+                seen = found;
+            }
+        }
     }
 }

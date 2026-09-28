@@ -14,6 +14,7 @@ Pipeline orchestration, the plan store, the watch hook and the composition root 
 | `Outcomes.cs` | diagnostics and file decisions → `RunOutcome` (precedence 4, 1, 3, 2) |
 | `StageClock.cs` | `StageTiming`s |
 | `GenerationWatcher.cs` | the debounced watch hook (internal; for the CLI's `--watch` and the functions' watcher) |
+| `LastRun.cs` | the last-run record of one-shot hosts (`LastRun`, `RunRecord`): replay of a run whose inputs did not change, and its recording |
 
 Tests: `tests/Maquettiste.Engine.Tests/Generation/` (a fake renderer that honors the `IRenderer` contract, real everything else).
 
@@ -53,13 +54,77 @@ Tests: `tests/Maquettiste.Engine.Tests/Generation/` (a fake renderer that honors
 7. Writer context: counts per run pack (so each pack's manifest and unit states are saved as soon as its last unit arrives),
    skipped units, hand-edit policy per pack (`Request.HandEdits` ← `packs.<name>.handEdits` ← `handEdits`; `fail` in check mode),
    `AllPacks` when no pack filter, the request's roots, diffs in dry run only, the journal in apply only.
-8. Apply only, when the outcome is `Succeeded` and `Roots` is `All`: snapshots with a non-empty diff are saved at `ToRevision`.
-   Then `Journal.EndAsync`. A cancelled or failed apply closes the journal without `end` (`DisposeAsync`), so the next run resumes.
+8. Apply only, when the outcome is `Succeeded` and `Roots` is `All`: snapshots with a non-empty diff are saved at `ToRevision`
+   (the bytes were serialized on the thread pool since the diff, see "Performance notes (WA)"). Then `Journal.EndAsync`. A cancelled or failed apply closes the journal without `end` (`DisposeAsync`), so the next run resumes.
 
 Outcome: errors other than MQ6009, MQ6010 and MQ6018 → `Invalid`; a conflict (or in check mode any hand edit) → `Conflicts`;
 in check mode an added, modified, deleted or orphaned file (an owned orphan, `OrphanedOwned`, included: an apply would drop its
 manifest line), a stale manifest entry or MQ6018 → `Drift`; else `Succeeded`.
 Cancellation returns `Cancelled`; any other exception (an I/O failure while writing) propagates, with the journal left to resume.
+
+## Last-run record (one-shot hosts; WB)
+
+`GenerationService.ReuseLastRun` (internal, off by default) is set by the CLI's one-shot `generate` (not `--watch`, not `--dry-run`
+or `--check`) and by the bench app's `one-shot-generate` mode. A long-lived host (the editor, `--watch`, the functions host) keeps
+its model store warm and neither reads nor writes the record, so its runs are unchanged.
+
+- **Replay.** An apply run (not forced, no stage barriers, not a plan's dry run) of a service whose model store has not loaded yet
+  first reads `CacheDirectory/last-run.v1.bin` under the run lock. It is answered from the record when all of these hold: the record
+  is intact (SHA-256 trailer, checked before any decoded field is used) and from this engine build (`RunRecord.CurrentBuild`, below);
+  its key matches (engine build, repo, model, journal and cache folders, and the request's packs, roots and hand-edit override);
+  there is no journal file; the enumerated model files (the loader's own enumeration) are exactly the recorded ones with the recorded
+  length and last-write time, the referenced sidecars too, and the referenced sidecars that were missing are still missing; the
+  content hash of every file under `<ModelRoot>/templates` (relative paths and bytes, dot files included) is the recorded one; the
+  files directly in the unit-state folder and the built-root manifest folder are the recorded ones with the recorded stats; the
+  content hash of the files directly in the committed manifest folder and `<ModelRoot>/snapshots` is the recorded one; and every
+  output the planned units' states record still has its recorded stat (an owned output only needs to exist). The result is the one a full run gives: `Succeeded`, no changes, 0 rendered, every planned
+  unit skipped, nothing written, the diagnostics of stages 1 to 5 (load, validate, pack load, resolve, plan) as recorded, and
+  timings for `load` (the input check) and `skip` (the output check). Nothing is written, not even the journal. Progress reports a
+  load start and end and a skip end only.
+  Checks run cheapest and most likely to fail first after the trailer: the recorded model files' stats (in parallel) before the
+  listing, the outputs decoded only once every input matched. A file that cannot be read, or a path the file system refuses (only a
+  record whose trailer was made to match could hold one), makes the replay give way to the full run instead of failing the run. A miss costs about 60 ms on the benchmark repo in a fresh
+  process, most of it the thread pool starting, which the load then does not pay.
+- **Recording.** Any other apply run with `ReuseLastRun` first deletes the record, hashes the templates folder (before the packs
+  load, so a template changed during the run shows as changed), and after the run writes a new record when the run `Succeeded`, no
+  run pack has a non-empty schema diff (saving the snapshot changes what `d:` keys hash, so the next run is not a no-op), no
+  diagnostic has rule MQ6004, MQ6005, MQ6009, MQ6010 or MQ6015 (refused paths, duplicate claims, hand edits, lost regions, regions
+  on built roots: what a next run would report again), no journal file is left, the store's last load produced the run's snapshot,
+  and every planned unit's stored state, as the writer saved it (`UnitStateStore.Remembered`), is current: a skipped unit keeps its
+  state (same input hash, same outputs); a rendered unit has a new state with the input hash it rendered with. These are exactly the
+  conditions under which a full run with the same inputs skips every unit and changes nothing, so a replay equals that run. The
+  model files' stats are the loader's (taken before each file was read); the engine folders' stats and the committed files' hash are
+  taken after the run; a skipped
+  unit's outputs are stamped with the stat the skip stage checked them with (so a file whose time stamp alone changed, found intact
+  by its bytes, does not disable the record until its unit renders again). The skipped units' outputs are encoded on the thread
+  pool while rendering and writing run; the record is written through `EnginePaths` (`WriteTarget.Cache`), atomically. On the
+  100,050-output benchmark it is about 7 MB and costs the recording run about 60 ms.
+- **Engine build.** `RunRecord.CurrentBuild` is `H(EngineVersion.Value, the engine assembly's module version id, the entry
+  assembly's module version id, the runtime version, the bytes of the application's .deps.json files)`, computed once per process.
+  `EngineVersion.Value` alone is a contract version that changes only when rendered bytes could change; a build that adds or fixes a
+  validation or resolution rule, or rewords a message, keeps it, and would otherwise replay the old build's diagnostics and outcome.
+  The module version id changes with any change to the compiled code (and is kept by ReadyToRun compilation), the runtime version
+  with a runtime roll-forward, and the deps files with a dependency's package version. It is in the record's header and in the key.
+- **Trust.** The record trusts stats (length and last-write time) only where the design already does: for model files and
+  referenced sidecars, as the index cache (§5) takes a file whose stat matches without reading it, and for outputs, as the skip
+  check (§11) takes an output whose stat matches as intact. Templates (with partials, helper scripts and pack manifests: what units'
+  static hashes are made of), committed manifests and schema snapshots, which a full run reads on every run and which a checkout or
+  a script can rewrite, are compared by content: about 0.06 MB of templates and a 3 MB manifest on the benchmark repo. Unit-state
+  files (28 MB there) and built-root manifests, under the cache and journal folders, are written only by the engine and compared by
+  stat: the engine rewrites them only in a run, which follows an input change the record sees on its own, and a rewrite with the
+  same content leaves the answer right. A tool that rewrites a model file with the same length inside the same timestamp tick is
+  not seen, as with the index cache. The record is keyed by the full repo path (a copy of the cache from another checkout does not
+  match) and carries a SHA-256 trailer (a damaged record is ignored); a missing, damaged, foreign or stale record only costs the full
+  run.
+- **Decision (design correctness rules).** A persisted resolved model (keyed by the snapshot hash, the settings hash and the engine
+  version) was considered and not built: the design's caches are either content-addressed inputs (§5 index cache) or outputs of a
+  run checked against the disk (§11 unit states), so that a stale, foreign or damaged cache "costs a re-read, never a wrong model"; a
+  serialized resolved model would be a third kind, a derived object graph of about 330,000 objects whose every member (internal
+  setters, cross references, dependency keys) would need a serializer kept in step with the resolver, where a missed member
+  silently changes rendered bytes, and whose decoding in a fresh process would cost about what resolving does (about 1.2 s cold).
+  The last-run record instead stores the *outcome* of stages 1 to 5 for the one case where it is fully determined (nothing changed),
+  which skips loading and validation as well as resolution. An edited model still resolves in full. Recorded as D45 in
+  engine-design.md.
 
 ## Plans (`PlanAsync`, `ApplyAsync`, `GetPlanAsync`, `GetPlanDiffAsync`, `PreviewAsync`)
 
@@ -158,9 +223,42 @@ look-ahead bound on a large model, and the benchmark budgets. The original list:
 - Beside resolution the run also takes the stats of the outputs the loaded unit states record (`Planning/README.md`), which the
   skip stage uses.
 
+## Performance notes (WB, one-shot CLI)
+
+- The last-run record above: a one-shot `generate` with nothing changed since the last apply takes about 0.26 s on the benchmark
+  repo instead of about 2.9 s, median of five interleaved runs of the packed tool (`bench/README.md`, "One-shot CLI").
+- `GenerationRun.CollectRenderedInputHashes` (called only when recording) collects each rendered unit's input hash as the writer
+  takes it; `GenerationRun.Progress` exposes the run's progress to the replay.
+- Review fixes (engine build in the key, trailer first, templates, committed manifests and snapshots by content): the replay reads
+  the templates and committed files on two pool tasks beside the model files' stat check, and a miss cancels and awaits them. Cost,
+  measured with the bench app's `one-shot-generate` mode (JIT) on the kept fanout benchmark repo, seven interleaved rounds at a load
+  average of 3 to 7: no-op 0.231 s before and 0.244 s after (medians); edit 3.10 s before and 3.19 s after (medians; the rounds
+  spread from 2.6 to 3.4 s, so the edit difference is inside the noise). One instrumented run of the replay: build identity about
+  5 ms (first use, JIT), trailer check about 4 ms, templates hash about 8 ms (11 files, mostly JIT), committed hash about 5 ms (a
+  3 MB manifest).
+
 ## Watching through a symbolic link (CI fix, 2026-09-28)
 
 A file-system watcher can report paths through the link-resolved form of a configured root: macOS reports a `/var/...` root
 as `/private/var/...`. `WatchPaths.ResolveLinks` resolves the configured repo and model roots once, and
 `GenerationWatcher.Normalize` maps every reported absolute path back onto the configured form before the engine-owned check
 and before the path reaches the store, so a manifest write under the real prefix no longer triggers a second run.
+## Performance notes (WA, incremental runs with the example packs)
+
+- **Schema snapshots are serialized while the run renders.** In apply mode, `SchemaDiffsAsync` diffs with
+  `SchemaDiffer.DiffAndCapture` (one capture instead of two) and, for each database whose diff is not empty, starts
+  `SnapshotStore.Prepare` on the thread pool with that capture stamped `ToRevision` (`PreparedRun.PendingSnapshots`).
+  `SaveSnapshotsAsync` awaits the prepared bytes and writes them (`SnapshotStore.WriteAsync`), under the same condition as
+  before (apply, `Succeeded`, all roots). A snapshot store or differ that is not the engine's own (a test double) takes the old
+  path, a capture and `SaveAsync` after the apply. On the benchmark the end of an incremental run follows the last file write by
+  about 0.2 s instead of 0.9 s. A run that fails, is cancelled, or covers only part of the roots leaves the prepared bytes unused
+  (the task does no I/O; its failure is observed); an apply over `--roots committed` or `built` therefore still serializes the
+  snapshot once for nothing. The prepare task gets the run's token (checked before sorting and before serializing), and the diff's
+  parallel capture and compare observe it too, so a cancelled run stops that work at the next table or step. The prepared bytes
+  are also parsed back on a separate thread-pool task for the next run's load (`Prepare(…, parse: true, …)`);
+  `SaveSnapshotsAsync` waits for the bytes only, never for that parse, so it is off the critical path even when rendering is
+  shorter than serializing plus parsing (`SchemaDiff/README.md` has why it is not deferred until after the write). At the end of
+  the schema diff the run calls `SnapshotStore.Retain` with its databases (none when no pack diffs), so the store does not hold a
+  removed or renamed database's snapshot.
+- The diff also runs its capture and unchanged-table check on `EngineOptions.EffectiveParallelism` threads (`SchemaDiff/README.md`).
+

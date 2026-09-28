@@ -250,3 +250,43 @@ Caveats and signature-change requests reported by the wave A implementers and fi
 - CAVEAT: Gap for W5: the renderer's `hints` variable (RenderRun.Hints) only reads hints from conceptual elements (RElement), so a table unit sees no hints from its table file or overlay. The planner now honours the skip hint on table files, but rename and variables on a table file still do not reach templates. W5 needs the same table-file lookup, which UnitFilter.FileOf now shows how to do.
 - CAVEAT: Decision recorded in the Planning README: a synthesized table does not inherit generation.skip from its source entity or relation, only from its own overlay file. This differs from where-filter tags and stereotypes, which combine the table file with its source.
 - CAVEAT: Low-5 fix scope: saved job records now leave out Plan.Units, Plan.Changes and ApplyResult.Result.Changes, so after its record is written a finished apply job no longer returns its per-file change list from GetAsync or ListAsync (counts remain). StaleUnits, StalePaths and diagnostics are still saved in full and could be large for a Stale apply after a pervasive model change. JobStore.ListAsync and PruneAsync still read each whole record, but records are now small.
+
+## WB (one-shot CLI) — tests 1,454 after the review fixes (engine 1,294, CLI 104, packs 27 plus 2 skipped without database containers, bench 27)
+
+- DECISION (design correctness rules for caches, recorded as D45 and in `src/Maquettiste.Engine/Generation/README.md`): no
+  persisted resolved model. The design's caches are content-addressed inputs (§5 index cache) or run outputs checked against the
+  disk (§11 unit states), so a stale or damaged cache costs a re-read, never a wrong model. A serialized resolved model would be a
+  derived graph of about 330,000 objects whose every member needs a serializer kept in step with the resolver (a missed member
+  silently changes rendered bytes), and decoding it in a fresh process costs about what resolving does. Instead a one-shot host
+  keeps a last-run record that answers a run whose inputs did not change (by stat) with the full run's result, skipping load and
+  validation too. It is written only when the next full run would provably be a no-op (every planned unit's state current, no
+  pending schema diff, no MQ6004/5/9/10/15, no journal left).
+- CAVEAT: The record trusts stats for model files and sidecars (as the index cache does), outputs (as the skip check does) and the
+  engine-only unit-state and built-root manifest files; templates, committed manifests and schema snapshots are compared by content
+  (review fix). A tool that rewrites a model file with the same length within one timestamp tick is not seen until something else
+  changes (`--force` or deleting `<cache-dir>/last-run.v1.bin` recovers), as with the index cache.
+- CAVEAT (review fixes): the record's key and header name the engine build (`RunRecord.CurrentBuild`: module version ids of the
+  engine and entry assemblies, runtime version, .deps.json bytes), not only `EngineVersion.Value`; the trailer is checked before any
+  decoded field is used, and a recorded path the file system refuses gives way to the full run. The WB working copy was forked
+  before 415d1c0, 1c461cc and f22a8b7; those three commits' changes are now in it (macOS peak working set, watcher paths through a
+  symbolic link, the 250 ms debounce test), so its files can be copied over the current tree. The bench's one-shot edit figure is
+  now timed after a one-shot run that recorded (it includes rejecting the record, as after a no-op build).
+- CAVEAT: A replayed run's progress shows only the load and skip stages (nothing else runs); stdout, the summary line, the exit code
+  and the diagnostics are the full run's (`GenerateTests.A_rerun_with_nothing_changed_is_answered_from_the_last_run_record...`).
+- CAVEAT: The CLI's one-shot `generate` is the only host that turns the record on (`GenerationService.ReuseLastRun`, internal),
+  plus the bench app's `one-shot-generate` mode. The functions host (phase 2) could turn it on for its first run after a restart.
+- CAVEAT: Shared files changed: `src/Maquettiste.Cli/Maquettiste.Cli.csproj` (scaffold-owned: pack-only ReadyToRun properties and
+  `GlobalPropertiesToRemove` on the bench reference) and `docs/engineering/engine-design.md` (§11 paragraph, D45). Engine files
+  outside Generation/: `ModelStore.cs`, `GenerationService.cs`, `Loading/ModelLoader.cs`, `Loading/IndexCache.cs`,
+  `Json/SchemaRegistry.cs`, `Model/ModelIndexer.cs` (MetadataCache), `Planning/UnitStateStore.cs` (unchanged-save skip,
+  `Remembered`), `Resolution/ResolveRun.cs` (ConcurrentBag). Each change is small and local; the Planning one touches only
+  `SaveAsync` and adds one method.
+- CAVEAT: The one-shot edit run is not under 2 s: about 2.6 to 2.9 s with the ReadyToRun tool on a quiet machine, of which the
+  cold resolve is about 1.3 s (three sequential database runs and one 0.2 s gen0 collection) and the load about 0.6 s
+  (`bench/README.md`, "One-shot CLI", lists what remains). Parallel database runs would need the resolver's cross-database
+  dependency (`FinishRelationMappings`) split out first.
+- CAVEAT: `maquettiste bench` has no `--no-example-packs`; with the example packs embedded (they are now), its model is 127,575 files
+  and the in-process incremental run measured about 5.7 s in one run here (the fanout-only run passes). That belongs to the
+  example-packs workstream; the one-shot figure is reported either way.
+- CAVEAT: Measurements in this round were taken while other workstreams ran benchmarks on the same machine (load average 5 to 15);
+  every before/after figure is from interleaved runs, and the absolute values are higher than on an idle machine.

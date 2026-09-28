@@ -60,6 +60,15 @@ public sealed record BenchmarkOptions
 
     /// <summary>The allowed regression, in percent.</summary>
     public double MaxRegressionPercent { get; init; } = 10;
+
+    /// <summary>
+    /// The command that starts a fresh <c>maquettiste</c> process (the program and its leading arguments), for the one-shot figure:
+    /// the harness appends <c>--repo &lt;repo&gt; --cache-dir &lt;cache&gt; --jobs &lt;n&gt; generate --quiet</c> and runs it over the
+    /// pipelined repo, once after the one-entity edit and once with nothing changed (<see cref="BenchmarkReport.OneShotEdit"/>,
+    /// <see cref="BenchmarkReport.OneShotNoOp"/>). <see langword="null"/> (the default) skips the figure. <c>maquettiste bench</c>
+    /// passes its own executable; the bench app passes itself in its <c>one-shot-generate</c> mode, or the <c>--cli</c> it is given.
+    /// </summary>
+    public IReadOnlyList<string>? OneShotCommand { get; init; }
 }
 
 /// <summary>One budget check.</summary>
@@ -158,6 +167,25 @@ public sealed record BenchmarkReport(
 
     /// <summary>Units the <see cref="IncrementalFreshStore"/> run rendered.</summary>
     public int IncrementalFreshStoreUnitsRendered { get; init; }
+
+    /// <summary>
+    /// The one-shot figure's command (<see cref="BenchmarkOptions.OneShotCommand"/>, space-separated), or <see langword="null"/> when
+    /// it was not measured.
+    /// </summary>
+    public string? OneShotCommand { get; init; }
+
+    /// <summary>
+    /// A fresh process's <c>generate</c> over the pipelined repo and its cache folder after the same one-entity edit (process start,
+    /// JIT, index-cache load, full resolve, the render of the changed units, the writes): what CI and build integration pay for one
+    /// changed entity. Reported, not a budget.
+    /// </summary>
+    public TimeSpan OneShotEdit { get; init; }
+
+    /// <summary>
+    /// A fresh process's <c>generate</c> right after <see cref="OneShotEdit"/>, with nothing changed: what every build pays when the
+    /// model did not change (the engine's last-run record answers it). Reported, not a budget.
+    /// </summary>
+    public TimeSpan OneShotNoOp { get; init; }
 
     /// <summary>The <c>--check</c> run's total.</summary>
     public TimeSpan CheckTotal { get; init; }

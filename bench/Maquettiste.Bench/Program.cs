@@ -16,25 +16,35 @@ public static class Program
     /// <summary>The usage text.</summary>
     public const string Usage =
         "usage: Maquettiste.Bench [--out <dir>] [--jobs 8] [--seed 42] [--entities 5000] [--relations 20000] [--enums 500] [--fanout <n>]\n" +
-        "                         [--keep] [--baseline <file>] [--max-regression 10] [--format text|json] [--report <file>] [--no-example-packs]\n";
+        "                         [--keep] [--baseline <file>] [--max-regression 10] [--format text|json] [--report <file>] [--no-example-packs]\n" +
+        "                         [--cli <maquettiste executable> | --no-one-shot]\n";
 
     /// <summary>Runs the benchmark.</summary>
     /// <param name="args">The arguments.</param>
     /// <returns>The exit code: 0 pass, 2 budget or regression failure, 4 error.</returns>
     public static async Task<int> Main(string[] args)
     {
-        if (!TryParse(args, out var options, out var format, out var reportPath, out var error))
-        {
-            await Console.Error.WriteAsync(error + "\n" + Usage).ConfigureAwait(false);
-            return 4;
-        }
-
         using var cancel = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) =>
         {
             e.Cancel = true;
             cancel.Cancel();
         };
+
+        ArgumentNullException.ThrowIfNull(args);
+        if (args.Length > 0 && args[0] == OneShotGenerate.Verb)
+            return await OneShotGenerate.RunAsync(args[1..], cancel.Token).ConfigureAwait(false);
+
+        if (!TryParse(args, out var options, out var format, out var reportPath, out var error))
+        {
+            await Console.Error.WriteAsync(error + "\n" + Usage).ConfigureAwait(false);
+            return 4;
+        }
+
+        // The one-shot figure runs this app again in its one-shot-generate mode unless --cli names a maquettiste to run instead
+        // (a packed tool, for ReadyToRun numbers) or --no-one-shot turns it off.
+        if (options.OneShotCommand is null && !args.Contains("--no-one-shot"))
+            options = options with { OneShotCommand = OneShotGenerate.SelfCommand() };
         try
         {
             var progress = new StageProgress();
@@ -107,6 +117,8 @@ public static class Program
                 case "--fanout": if (Int(1) is { } fanout) model = model with { Fanout = fanout }; else return Fail(arg, out error); break;
                 case "--keep": options = options with { Keep = true }; break;
                 case "--no-example-packs": model = model with { IncludeExamplePacks = false }; break;
+                case "--cli": options = options with { OneShotCommand = [Value() ?? ""] }; break;
+                case "--no-one-shot": options = options with { OneShotCommand = null }; break;
                 case "--baseline": options = options with { BaselinePath = Value() ?? "" }; break;
                 case "--report": reportPath = Value() ?? ""; break;
                 case "--max-regression":
@@ -127,9 +139,9 @@ public static class Program
             }
         }
 
-        if (options.OutputDirectory is "" || options.BaselinePath is "" || reportPath is "")
+        if (options.OutputDirectory is "" || options.BaselinePath is "" || reportPath is "" || options.OneShotCommand is [""])
         {
-            error = "--out, --baseline and --report need a path.";
+            error = "--out, --baseline, --report and --cli need a path.";
             return false;
         }
 

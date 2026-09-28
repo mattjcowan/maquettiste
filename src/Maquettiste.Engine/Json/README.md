@@ -29,3 +29,12 @@ Tests: `tests/Maquettiste.Engine.Tests/Json/`.
   that are not both integer literals, non-empty object or array defaults) it answers undecided and the node-based check
   (`IsCanonicalByNodes`) decides, so the verdict is always the old one; `CanonicalCheckTests` compares both on fixtures, canonical
   rewrites and random mutations. The public `IsCanonical(bytes, ...)` parses once into a `JsonDocument` and uses the same path.
+
+## Performance notes (WB, one-shot CLI)
+
+- `SchemaRegistry` keeps two lazies: the embedded files (names, ordinal, and bytes), and the built state (JsonSchema.Net schemas,
+  layouts, precheck), built from the files on the first `Evaluate`, `GetLayout` or precheck. `FileNames` and `GetFileBytes` (the
+  index cache's schema-set hash, `init`) read only the files, so a one-shot process whose model files all come from trusted index-cache
+  records no longer builds every schema before loading (about 110 to 120 ms in a fresh process; single instrumented runs, indicative,
+  see `Loading/README.md`). Same names, bytes, schemas and layouts.
+

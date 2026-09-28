@@ -21,13 +21,25 @@ internal static class BenchCommand
     /// </summary>
     public const string Marker = ".maquettiste-bench";
 
+    /// <summary>
+    /// The one-shot figure's command: this <c>maquettiste</c> executable (its app host, or <c>dotnet</c> and the CLI assembly), when
+    /// the process is the CLI; <see langword="null"/> (no figure) when the CLI runs inside another program, such as a test host.
+    /// </summary>
+    /// <returns>The command, or <see langword="null"/>.</returns>
+    internal static IReadOnlyList<string>? OneShotSelf()
+    {
+        var cli = typeof(BenchCommand).Assembly;
+        return System.Reflection.Assembly.GetEntryAssembly() == cli ? OneShotGenerate.CurrentProcessCommand(cli) : null;
+    }
+
     /// <summary>Runs the command.</summary>
     /// <param name="context">The global context.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>The exit code.</returns>
     public static async Task<int> RunAsync(GlobalContext context, CancellationToken ct)
     {
-        context.Line.Expect("bench", 1, "--out", "--seed", "--entities", "--relations", "--enums", "--fanout", "--keep", "--baseline", "--max-regression", "--format");
+        context.Line.Expect("bench", 1, "--out", "--seed", "--entities", "--relations", "--enums", "--fanout", "--keep", "--baseline", "--max-regression", "--format",
+            "--no-example-packs");
         var format = context.Line.Choice("--format", "text", "text", "json");
         var defaults = new BenchmarkOptions();
 
@@ -39,6 +51,7 @@ internal static class BenchCommand
             Relations = context.Line.Int("--relations", 0) ?? defaults.Model.Relations,
             Enums = context.Line.Int("--enums", 1) ?? defaults.Model.Enums,
             Fanout = context.Line.Int("--fanout", 1) ?? defaults.Model.Fanout,
+            IncludeExamplePacks = !context.Line.Has("--no-example-packs"),
         };
         var maxRelations = (long)model.Entities * (model.Entities - 1) / 4;
         if (model.Relations > maxRelations)
@@ -57,6 +70,7 @@ internal static class BenchCommand
             Keep = context.Line.Has("--keep"),
             BaselinePath = context.Line.Value("--baseline") is { } baseline ? Path.GetFullPath(baseline, cwd) : null,
             MaxRegressionPercent = context.Line.Number("--max-regression") ?? defaults.MaxRegressionPercent,
+            OneShotCommand = OneShotSelf(),
         };
         if (outDir is not null)
             await ClaimOutputFolderAsync(outDir, ct).ConfigureAwait(false);

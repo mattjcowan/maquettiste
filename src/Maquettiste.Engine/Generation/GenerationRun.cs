@@ -37,6 +37,12 @@ internal sealed record PreparedRun(
 {
     /// <summary>The stats of the outputs the loaded states record, taken beside resolve (<see cref="Planning.OutputStats"/>).</summary>
     public Task<Planning.OutputStats>? OutputStats { get; init; }
+
+    /// <summary>
+    /// In apply mode, the snapshot each database with a non-empty diff will save, serialized on the thread pool from the diff's own
+    /// capture while the run renders (<see cref="GenerationRun.SaveSnapshotsAsync"/> only writes the bytes); by database name.
+    /// </summary>
+    public IReadOnlyDictionary<string, Task<PreparedSnapshot>>? PendingSnapshots { get; init; }
 }
 
 /// <summary>What stages 6 to 8 produced.</summary>
@@ -60,14 +66,30 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
     /// <summary>Whether <see cref="VerifyFormattersAsync"/> checked every formatter the units to render could use.</summary>
     private bool _formattersVerified;
 
+    /// <summary>The rendered units' input hashes, when collected (<see cref="CollectRenderedInputHashes"/>); only the writer's intake adds.</summary>
+    private Dictionary<string, (string InputHash, bool Failed)>? _rendered;
+
     /// <summary>The run's timings.</summary>
     public StageClock Clock { get; } = new();
+
+    /// <summary>The run's progress.</summary>
+    public IProgress<ProgressUpdate>? Progress => progress;
 
     /// <summary>Every diagnostic so far, sorted.</summary>
     public IReadOnlyList<Diagnostic> Diagnostics => Outcomes.Sort(_diagnostics);
 
     /// <summary>Whether any diagnostic so far makes the run invalid.</summary>
     public bool Invalid => _diagnostics.Any(Outcomes.IsInvalid);
+
+    /// <summary>
+    /// The input hash (and whether it failed) of every unit rendered so far, by key: collected only after
+    /// <see cref="CollectRenderedInputHashes"/> (the last-run record needs it; other runs pay nothing).
+    /// </summary>
+    public IReadOnlyDictionary<string, (string InputHash, bool Failed)> RenderedInputHashes =>
+        _rendered ?? (IReadOnlyDictionary<string, (string, bool)>)new Dictionary<string, (string, bool)>(StringComparer.Ordinal);
+
+    /// <summary>Starts collecting <see cref="RenderedInputHashes"/>; call before <see cref="StreamAsync"/>.</summary>
+    public void CollectRenderedInputHashes() => _rendered = new Dictionary<string, (string, bool)>(StringComparer.Ordinal);
 
     /// <summary>Adds diagnostics.</summary>
     /// <param name="diagnostics">The diagnostics.</param>
@@ -162,7 +184,7 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             if (resolved.Diagnostics.Any(Outcomes.IsInvalid))
                 return null;
 
-            var diffs = await SchemaDiffsAsync(snapshot, resolved, packs, mode, ct).ConfigureAwait(false);
+            var (diffs, pendingSnapshots) = await SchemaDiffsAsync(resolved, packs, mode, ct).ConfigureAwait(false);
             if (diffs is null)
                 return null;
 
@@ -181,6 +203,7 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
                 statesLoaded)
             {
                 OutputStats = outputStats,
+                PendingSnapshots = pendingSnapshots,
             };
         }
         finally
@@ -414,7 +437,11 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
     {
         foreach (var database in run.Resolved.Databases)
         {
-            if (run.SchemaDiffs.TryGetValue(database.Name, out var diff) && !diff.IsEmpty)
+            if (!run.SchemaDiffs.TryGetValue(database.Name, out var diff) || diff.IsEmpty)
+                continue;
+            if (run.PendingSnapshots is { } pending && pending.TryGetValue(database.Name, out var prepared) && services.Snapshots is SnapshotStore store)
+                await store.WriteAsync(await prepared.ConfigureAwait(false), ct).ConfigureAwait(false);
+            else
                 await services.Snapshots.SaveAsync(services.SchemaDiffer.Capture(database, diff.ToRevision), ct).ConfigureAwait(false);
         }
     }
@@ -423,13 +450,28 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
     /// Loads each database's schema snapshot and diffs it against the model. A snapshot that cannot be read (corrupt JSON, or not a
     /// snapshot) is an MQ1001 error on that file and stops the run: generating migrations from a guessed base would be wrong.
     /// </summary>
-    /// <returns>The diffs by database name, or <see langword="null"/> when a snapshot could not be read.</returns>
-    private async Task<IReadOnlyDictionary<string, SchemaDiffResult>?> SchemaDiffsAsync(ModelSnapshot snapshot, ResolvedModel resolved, PackSet packs,
-        GenerationMode mode, CancellationToken ct)
+    /// <remarks>
+    /// In apply mode, each non-empty diff's snapshot (the capture the diff made, stamped with the new revision) is serialized on the
+    /// thread pool from here on, beside planning and rendering, so saving it after a successful apply only writes bytes. On the
+    /// benchmark model that moves about 0.8 s (a second capture and the canonical serialization of a 10,005-table snapshot) off the
+    /// end of the run. A run that fails or is cancelled leaves the task to finish on its own (no I/O; its failure is observed).
+    /// </remarks>
+    /// <returns>The diffs by database name, or <see langword="null"/> when a snapshot could not be read; and the snapshots being
+    /// prepared for saving (apply mode only).</returns>
+    private async Task<(IReadOnlyDictionary<string, SchemaDiffResult>? Diffs, IReadOnlyDictionary<string, Task<PreparedSnapshot>>? Pending)> SchemaDiffsAsync(
+        ResolvedModel resolved, PackSet packs, GenerationMode mode, CancellationToken ct)
     {
         var diffs = new SortedDictionary<string, SchemaDiffResult>(StringComparer.Ordinal);
         if (!packs.Packs.Any(p => p.Manifest.UsesSchemaDiff))
-            return diffs;
+        {
+            // Nothing is diffed: a long-lived host drops the parsed snapshots an earlier run left in the store.
+            (services.Snapshots as SnapshotStore)?.Retain([]);
+            return (diffs, null);
+        }
+
+        var store = mode == GenerationMode.Apply ? services.Snapshots as SnapshotStore : null;
+        var differ = services.SchemaDiffer as SchemaDiffer;
+        Dictionary<string, Task<PreparedSnapshot>>? pending = null;
         var paths = new ModelPaths(services.Options);
         foreach (var database in resolved.Databases)
         {
@@ -443,10 +485,24 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             {
                 Add([RuleCatalog.Create("MQ1001", ex.Message, database.Id,
                     paths.ToRepoPath("snapshots/" + SchemaDiff.SnapshotStore.Kebab(database.Name) + ".json"))]);
-                return null;
+                return (null, null);
             }
 
-            var diff = services.SchemaDiffer.Diff(previous, database);
+            SchemaDiffResult diff;
+            if (differ is not null)
+            {
+                (diff, var current) = differ.DiffAndCapture(previous, database, services.Options.EffectiveParallelism, ct);
+                if (store is not null && !diff.IsEmpty)
+                {
+                    var toSave = current with { Revision = diff.ToRevision };
+                    (pending ??= new(StringComparer.Ordinal))[database.Name] = Observed(Task.Run(() => store.Prepare(toSave, parse: true, ct), ct));
+                }
+            }
+            else
+            {
+                diff = services.SchemaDiffer.Diff(previous, database);
+            }
+
             diffs[database.Name] = diff;
             if (mode == GenerationMode.Check && !diff.IsEmpty)
             {
@@ -456,7 +512,9 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             }
         }
 
-        return diffs;
+        // Keep only this run's databases' parsed snapshots (a renamed or removed database's file is not held for the host's life).
+        (services.Snapshots as SnapshotStore)?.Retain(resolved.Databases.Select(d => d.Name));
+        return (diffs, pending);
     }
 
     /// <summary>
@@ -487,6 +545,8 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
         {
             Add(unit.Rendered.Diagnostics);
             Add(unit.Diagnostics);
+            if (_rendered is not null)
+                _rendered[unit.Rendered.Unit.Key] = (unit.Rendered.InputHash, unit.Failed || unit.Rendered.Failed);
             yield return unit;
         }
     }

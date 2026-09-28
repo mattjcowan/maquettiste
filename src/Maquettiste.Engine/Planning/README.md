@@ -123,3 +123,13 @@ Tests: `tests/Maquettiste.Engine.Tests/Planning/`; fixture packs in `tests/fixtu
   stat a moment earlier within the same run is the same as a slightly faster check.
 - **Unit planning:** units are sorted once (pack order, key ordinal, planned order as tie-break, so it is the stable order) and
   static hashes are computed for the kept units only, in parallel. Same units, order and hashes.
+
+## Performance notes (WB, one-shot CLI)
+
+- **An unchanged state file is left alone.** `UnitStateStore.SaveAsync` encodes the states and, when the bytes equal those the store
+  last read or wrote for the pack and the file still has their length, does not write (as the manifest store leaves an unchanged
+  manifest). A run that skips every unit of a pack no longer rewrites its 28 MB state file, and the file's time stamp keeps saying
+  "unchanged" to the last-run record. The remembered states are refreshed as before.
+- `UnitStateStore.Remembered(pack)`: the states the store last read or wrote for a pack, without reading the file (the last-run
+  record reads the states the writer just saved).
+

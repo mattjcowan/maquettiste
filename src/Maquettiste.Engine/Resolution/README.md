@@ -134,3 +134,18 @@ benchmark model is byte-identical before and after these changes (331,184 object
 - **Inflector carried across runs, bounded.** `ModelResolver` reuses the previous `Inflector` only while its memo holds at most
   `MaxCarriedWords(documents)` = max(16,384, 8 × element files) results; past that (names a long-lived host no longer uses) the run
   starts a fresh one. The benchmark model memoizes about one word per file (25,922 for 26,267 files), so it is always reused there.
+
+## Performance notes (WB, one-shot CLI)
+
+- The objects whose dependency sets are frozen at the end are collected in a `ConcurrentBag` (per-thread lists) instead of a
+  list behind a lock that every resolved object took once (about 330,000 on the benchmark, from the parallel phases). Freezing is
+  per object and already ran in parallel, so the order of the collection does not matter; the resolved model is unchanged (the
+  benchmark's cold output tree is byte-identical). Indicative only: an interleaved A/B of three rounds on a machine at a load average
+  of 4 to 22 gave a cold resolve median of 1.20 s with it and 1.30 s without, a difference three samples at that load cannot
+  establish; the change is kept because it removes a lock taken about 330,000 times, not for that figure. The database runs stay
+  sequential; in a fresh process they are most of what a one-shot edit run still pays (`bench/README.md`, "One-shot CLI").
+- The bag keeps its per-thread lists in thread statics of the threads that added to it, which would keep every resolved object
+  reachable after the run until the bag's finalizer ran (a long-lived host would carry the previous resolved model through one more
+  collection). `ResolveRun.Run` empties the bag when it returns or throws (`ConcurrentBag.Clear`: 4 to 8 ms for 330,000 objects,
+  median 5 ms over eleven runs of a micro-benchmark); `ResolverRetentionTests` checks that a dropped resolved model is reclaimed by the next
+  collection, sequential and parallel.

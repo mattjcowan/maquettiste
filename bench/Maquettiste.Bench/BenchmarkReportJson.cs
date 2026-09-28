@@ -81,6 +81,15 @@ public static class BenchmarkReportJson
             w.WriteNumber("gcPauseSeconds", Seconds(report.IncrementalFreshStoreGcPause));
             WriteStages(w, "stages", report.IncrementalFreshStoreStages);
             w.WriteEndObject();
+            if (report.OneShotCommand is not null)
+            {
+                w.WriteStartObject("oneShot");
+                w.WriteString("command", report.OneShotCommand);
+                w.WriteNumber("editSeconds", Seconds(report.OneShotEdit));
+                w.WriteNumber("noOpSeconds", Seconds(report.OneShotNoOp));
+                w.WriteEndObject();
+            }
+
             w.WriteEndObject();
             w.WriteStartObject("check");
             w.WriteNumber("totalSeconds", Seconds(report.CheckTotal));
@@ -185,6 +194,8 @@ public static class BenchmarkReportJson
         Line($"");
         Line($"Incremental: {report.Incremental.TotalSeconds:F3} s, {report.IncrementalUnitsRendered:N0} units rendered, {report.IncrementalUnitsSkipped:N0} skipped, {report.IncrementalFilesWritten:N0} files written; GC pauses {report.IncrementalGcPause.TotalSeconds:F3} s");
         Line($"Incremental, new store (not a budget): {report.IncrementalFreshStore.TotalSeconds:F3} s, {report.IncrementalFreshStoreUnitsRendered:N0} units rendered; GC pauses {report.IncrementalFreshStoreGcPause.TotalSeconds:F3} s");
+        if (report.OneShotCommand is not null)
+            Line($"One-shot process (not a budget): {report.OneShotEdit.TotalSeconds:F3} s after the edit, {report.OneShotNoOp.TotalSeconds:F3} s with nothing changed ({report.OneShotCommand})");
         Line($"Check: {report.CheckOutcome} in {report.CheckTotal.TotalSeconds:F3} s ({report.CheckUnitsRendered:N0} units rendered); cold outputs match: {report.OutputsMatch}");
         if (report.RegressionGateSkipped is not null)
         {

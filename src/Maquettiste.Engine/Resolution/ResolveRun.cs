@@ -18,7 +18,11 @@ internal sealed partial class ResolveRun
     private const string InflectionKey = "s:inflection";
 
     private readonly Dictionary<string, IResolvedObject> _byId;
-    private readonly List<RObject> _withDependencies;
+    /// <summary>
+    /// The objects that have a dependency set, frozen together at the end. Added to from the parallel phases once per object (about
+    /// 330,000 on the benchmark), so a bag of per-thread lists rather than a locked list; freezing is per object, so order is free.
+    /// </summary>
+    private readonly System.Collections.Concurrent.ConcurrentBag<RObject> _withDependencies;
     private readonly IProgress<ProgressUpdate>? _progress;
     private readonly int _parallelism;
     private int _done;
@@ -36,7 +40,7 @@ internal sealed partial class ResolveRun
         // growing a dictionary of a few hundred thousand entries step by step costs more than the estimate.
         var estimate = Math.Max(1024, model.Documents.Count * 16);
         _byId = new Dictionary<string, IResolvedObject>(estimate, StringComparer.Ordinal);
-        _withDependencies = new List<RObject>(estimate);
+        _withDependencies = [];
     }
 
     public ModelSnapshot Model { get; }
@@ -54,6 +58,20 @@ internal sealed partial class ResolveRun
 
     /// <summary>Runs the resolution.</summary>
     public ResolvedModel Run()
+    {
+        try
+        {
+            return RunCore();
+        }
+        finally
+        {
+            // The bag's per-thread lists live in thread statics of the pool threads that added to it: emptying them here (also after a
+            // cancelled or failed run) keeps them from holding the resolved objects until the bag's finalizer runs.
+            _withDependencies.Clear();
+        }
+    }
+
+    private ResolvedModel RunCore()
     {
         var databases = Model.All<Database>().OrderBy(d => d.Name, StringComparer.Ordinal).ThenBy(d => d.Id, StringComparer.Ordinal).ToList();
         // One progress step per conceptual element resolved and per database.
@@ -95,7 +113,7 @@ internal sealed partial class ResolveRun
     /// <summary>The dependency set of an object, created on first use.</summary>
     /// <remarks>
     /// Safe from the parallel phases: there each object's set is created and written only by the thread that owns the object, and
-    /// sets of other objects are only read once frozen; the list of objects to freeze is shared, so adding to it takes a lock.
+    /// sets of other objects are only read once frozen; the bag of objects to freeze is shared and thread-safe (no lock).
     /// </remarks>
     public DependencySet DepsOf(RObject value)
     {
@@ -103,8 +121,7 @@ internal sealed partial class ResolveRun
         {
             set = new DependencySet(Keys);
             value.PendingDependencies = set;
-            lock (_withDependencies)
-                _withDependencies.Add(value);
+            _withDependencies.Add(value);
         }
 
         return set;
@@ -180,8 +197,8 @@ internal sealed partial class ResolveRun
     private void FreezeDependencies()
     {
         // Each object's set is frozen on its own (sets share only immutable arrays), so this runs in parallel too.
-        var objects = _withDependencies;
-        ForEach(objects.Count, i =>
+        var objects = _withDependencies.ToArray();
+        ForEach(objects.Length, i =>
         {
             var obj = objects[i];
             obj.Dependencies = obj.PendingDependencies!.ToList();

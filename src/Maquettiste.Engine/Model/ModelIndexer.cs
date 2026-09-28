@@ -429,29 +429,15 @@ internal static class ModelIndexer
         return result;
     }
 
-    /// <summary>Property metadata by type, shared by the parallel walks of one build (computed once per type, under a lock).</summary>
+    /// <summary>Property metadata by type, shared by the parallel walks of one build (computed once per type; lookups take no lock).</summary>
     internal sealed class MetadataCache
     {
-        private readonly Lock _gate = new();
-        private readonly Dictionary<Type, PropertyMeta[]> _meta = [];
+        // Read once per object walked, from every walk thread: lookups take no lock (a lock here was contended by the parallel walks
+        // of a full build). Two threads that miss the same type may both compute it; the result is a pure function of the type and
+        // the first stored array is the one every caller gets.
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<Type, PropertyMeta[]> _meta = new();
 
-        public PropertyMeta[] Get(Type type)
-        {
-            lock (_gate)
-            {
-                if (_meta.TryGetValue(type, out var meta))
-                    return meta;
-            }
-
-            var computed = Compute(type);
-            lock (_gate)
-            {
-                if (_meta.TryGetValue(type, out var meta))
-                    return meta;
-                _meta[type] = computed;
-                return computed;
-            }
-        }
+        public PropertyMeta[] Get(Type type) => _meta.TryGetValue(type, out var meta) ? meta : _meta.GetOrAdd(type, Compute(type));
 
         private static PropertyMeta[] Compute(Type type)
         {

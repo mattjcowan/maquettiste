@@ -107,3 +107,27 @@ Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
   `limits.templateLoopLimit`.
 - The model is walked from the templates, not from JavaScript: `ddl_order` receives the foreign-key graph as a compact string,
   because reading thousands of model objects through the sandbox's proxies exceeds the script time limit.
+- The set of cycle-closing foreign keys that `schema` and the first migration leave out of their `CREATE TABLE`s (`cycle_skip` in
+  `_objects.scriban`, `_table.scriban`'s second argument) is an object keyed by constraint name, looked up once per foreign key.
+  It used to be a `",name,name,"` string built by concatenation and searched with `string.contains` for every foreign key, which
+  is quadratic: the benchmark's main database has 4,414 cycle-closing keys among 25,305 foreign keys, and that search was about
+  1.2 s of its 3.3 s schema script (single-threaded, before; about 2.1 s after). The output is byte-identical (the goldens, the
+  cycle tests and the benchmark's 12,021 sql-ddl outputs are unchanged). `column_def` also tests `is_primary_key` before calling
+  `sqlite_rowid` (Scriban's `&&` short-circuits), so the helper runs once per key column instead of once per column. Its
+  dependency reads are unchanged for the table, schema and first-migration units, which read the same objects through
+  `_table.scriban`'s own `sqlite_rowid` call; a later migration's `ADD COLUMN` of a non-key column no longer reads the table's
+  primary key, which its text never depended on. The goldens, the determinism tests and the benchmark's sql-ddl outputs are
+  byte-identical with the swap.
+
+## Incremental cost
+
+After an edit of one entity, the units that re-render are the edited entity's table and every table whose foreign key references
+it (they read the referenced table object), every database's `schema` and `seed` (they enumerate `database.tables`, whose
+membership keys cover every entity: an edit can move a table between databases), and the `migration` of the database whose diff
+changed (plus, on the first run after a snapshot moved, the others'). Only the edited table's script, the changed database's
+`schema.sql` and its new migration get new bytes. The `schema` unit renders every table of its database, so its cost grows with
+the database: about 2 s for the benchmark's 10,005-table database, which is the whole render stage of that incremental run (see
+`bench/README.md`). With `schemaScript` set to `include` the schema script lists client include directives for most tables and
+costs about half as much there (1.2 s instead of 2.2 s, single-threaded): the benchmark's random relations close 4,414
+foreign-key cycles, and every table holding a cycle-closing key is still written inline.
+

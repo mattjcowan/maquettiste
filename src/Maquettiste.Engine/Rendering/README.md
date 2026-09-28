@@ -118,3 +118,27 @@ golden tree).
 - `schema_diff` values cannot be passed to JavaScript helpers (W4's proxies do not cover the schema-diff records; MQ6016).
 - JavaScript `filter` registrations are the planner's `where.script` (W6); templates use JavaScript helpers, which also work as
   Scriban pipe filters.
+
+## Performance notes (WA, incremental runs with the example packs)
+
+- **Plain lists are no longer copied on every read.** `TrackingTemplateContext.Wrap` gives a `ValueList` the source list itself when
+  it is an `IList` (the resolved model's `IReadOnlyList` members, arrays, script results; none changes while a unit renders)
+  instead of copying it into an array on every read. `table.foreign_keys`, `table.uniques`, `table.indexes`, `table.checks` and the
+  column lists of keys and indexes are read several times per table by the `sql-ddl` templates (about ten copies per table, 100,000
+  per schema script of the benchmark's main database). Items are still wrapped when read; other enumerables are copied as before.
+- **Where an incremental run with the example packs spends its render time** (benchmark, one attribute of one entity edited):
+  the units that re-render are listed in `bench/README.md`. The render stage's wall time is the `sql-ddl` `schema` unit of the
+  main database: one unit that writes the `CREATE TABLE` of all 10,005 tables (9 MB), about 2 s on one thread after the pack fix
+  (`packs/sql-ddl/README.md`), about 3 s under the benchmark's garbage collection load. Measured by template variants, the cost is
+  spread over the whole per-column and per-constraint DDL (`column_def` about half, foreign keys, defaults, quoting, `type_of`
+  each 0.1 to 0.35 s): it is the interpreter's cost per template function call and member read (about 10 µs per column),
+  not one hot spot. The unit's output does change (the edited table's DDL is in it), so it cannot be skipped; making it cheaper
+  needs either sub-unit reuse (rendering the unchanged tables' fragments again from a cache), which the design does not have, or
+  `packs.sql-ddl.parameters.schemaScript = "include"`, which writes client include directives instead of inline DDL (about half the
+  cost on the benchmark model, whose foreign-key cycles keep many tables inline).
+- **Why unchanged neighbours re-render.** Any member read of a resolved object records all of that object's dependencies. A table
+  whose foreign key names the edited entity's table reads `f.referenced_table` (for its name and schema), and so depends on the
+  edited entity's file; enumerating `database.tables` records the list's membership keys, which include every conceptual
+  element's key (an entity edit can move a table in or out of any database). Those units render and their unchanged output is
+  not written. A finer granularity (per member, or placement keys for table lists) belongs to the resolver and the tracking
+  design, not to this change.

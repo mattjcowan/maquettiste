@@ -18,19 +18,36 @@ internal sealed class SchemaDiffer : ISchemaDiffer
     public PhysicalSnapshot Capture(RDatabase database, int revision) => SnapshotCapture.Capture(database, revision);
 
     /// <inheritdoc/>
-    public SchemaDiffResult Diff(PhysicalSnapshot? previous, RDatabase current)
+    public SchemaDiffResult Diff(PhysicalSnapshot? previous, RDatabase current) => DiffAndCapture(previous, current, 1, CancellationToken.None).Diff;
+
+    /// <summary>
+    /// <see cref="Diff"/>, also returning the current snapshot it captured (stamped with <paramref name="previous"/>'s revision), so
+    /// a run that saves the snapshot after applying does not capture the database a second time: the snapshot to save is
+    /// <c>Current with { Revision = Diff.ToRevision }</c>, which is what <see cref="Capture"/> would return for that revision.
+    /// </summary>
+    /// <param name="previous">The previous snapshot, or <see langword="null"/>.</param>
+    /// <param name="current">The current resolved database.</param>
+    /// <returns>The diff and the captured snapshot.</returns>
+    /// <param name="parallelism">Threads for capturing and for finding the unchanged tables (the result does not depend on it).</param>
+    /// <param name="ct">Cancellation, observed between tables of the parallel capture and compare and between the two.</param>
+    internal (SchemaDiffResult Diff, PhysicalSnapshot Current) DiffAndCapture(PhysicalSnapshot? previous, RDatabase current, int parallelism,
+        CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(current);
-        var after = Capture(current, previous?.Revision ?? 0);
-        return Compare(previous, after, current);
+        var after = SnapshotCapture.Capture(current, previous?.Revision ?? 0, parallelism, ct);
+        ct.ThrowIfCancellationRequested();
+        return (Compare(previous, after, current, parallelism, ct), after);
     }
 
     /// <summary>Diffs two snapshots. <paramref name="current"/>, when given, supplies the <see cref="RTable"/> and <see cref="RColumn"/> of each change.</summary>
     /// <param name="before">The committed snapshot, or <see langword="null"/> when there is none (everything is added).</param>
     /// <param name="after">The current snapshot.</param>
     /// <param name="current">The current resolved database, or <see langword="null"/>.</param>
+    /// <param name="parallelism">Threads for finding the unchanged tables (the result does not depend on it).</param>
+    /// <param name="ct">Cancellation, observed by the parallel unchanged-table check.</param>
     /// <returns>The diff; <see cref="SchemaDiffResult.FromRevision"/> is <paramref name="before"/>'s revision (0 without one).</returns>
-    internal static SchemaDiffResult Compare(PhysicalSnapshot? before, PhysicalSnapshot after, RDatabase? current)
+    internal static SchemaDiffResult Compare(PhysicalSnapshot? before, PhysicalSnapshot after, RDatabase? current, int parallelism = 1,
+        CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(after);
         var tablesByKey = new Dictionary<string, RTable>(StringComparer.Ordinal);
@@ -47,8 +64,24 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         var renamed = new List<TableChange>();
         var altered = new List<TableChange>();
         var dropped = new List<TableChange>();
-        foreach (var (key, table) in newTables)
+        // Which tables are unchanged is decided first (in parallel on a large database; Unchanged is pure), then the tables are
+        // walked in key order as before.
+        var pairs = newTables.ToArray();
+        var unchanged = new bool[pairs.Length];
+        var body = (int i) => unchanged[i] = oldTables.TryGetValue(pairs[i].Key, out var old) && Unchanged(old, pairs[i].Value);
+        if (parallelism > 1 && pairs.Length >= 512)
+            Parallel.For(0, pairs.Length, new ParallelOptions { MaxDegreeOfParallelism = parallelism, CancellationToken = ct }, i => body(i));
+        else
         {
+            for (var i = 0; i < pairs.Length; i++)
+                body(i);
+        }
+
+        for (var i = 0; i < pairs.Length; i++)
+        {
+            if (unchanged[i])
+                continue;
+            var (key, table) = pairs[i];
             var rTable = tablesByKey.GetValueOrDefault(key);
             if (!oldTables.TryGetValue(key, out var old))
             {
@@ -92,6 +125,8 @@ internal sealed class SchemaDiffer : ISchemaDiffer
 
     private static TableChange? CompareTable(SnapshotTable old, SnapshotTable table, RTable? rTable)
     {
+        if (Unchanged(old, table))
+            return null;
         var columnsByKey = new Dictionary<string, RColumn>(StringComparer.Ordinal);
         if (rTable is not null)
         {
@@ -118,6 +153,46 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         return new TableChange(isRenamed ? ChangeKind.Renamed : ChangeKind.Altered, table.Key, old.Name, table.Name, rTable,
             columns, primaryKey, uniques, foreignKeys, checks, indexes);
     }
+
+    /// <summary>
+    /// Whether a table is unchanged, checked pairwise in list order without building the keyed maps <see cref="CompareTable"/> uses
+    /// (almost every table of an incremental run is unchanged: 10,004 of 10,005 in the benchmark). Two tables whose names, schemas
+    /// and comments match and whose columns, keys, constraints and indexes match pairwise (same keys and names, no property
+    /// changes by the same property comparisons) are exactly the tables <see cref="CompareTable"/> finds no change in; any other
+    /// pair (a reordering included) takes the full comparison.
+    /// </summary>
+    private static bool Unchanged(SnapshotTable a, SnapshotTable b)
+    {
+        if (!string.Equals(a.Name, b.Name, StringComparison.Ordinal) || !string.Equals(a.Schema, b.Schema, StringComparison.Ordinal)
+            || !string.Equals(a.Comment, b.Comment, StringComparison.Ordinal))
+            return false;
+        if (a.PrimaryKey is null != b.PrimaryKey is null
+            || (a.PrimaryKey is not null && !SameObject(a.PrimaryKey, b.PrimaryKey!, c => c.Key, c => c.Name, ConstraintProperties)))
+            return false;
+        return SameList(a.Columns, b.Columns, c => c.Key, c => c.Name, ColumnProperties)
+            && SameList(a.Uniques, b.Uniques, c => c.Key, c => c.Name, ConstraintProperties)
+            && SameList(a.ForeignKeys, b.ForeignKeys, f => f.Key, f => f.Name, ForeignKeyProperties)
+            && SameList(a.Checks, b.Checks, c => c.Key, c => c.Name, CheckProperties)
+            && SameList(a.Indexes, b.Indexes, i => i.Key, i => i.Name, IndexProperties);
+    }
+
+    private static bool SameList<T>(IReadOnlyList<T> a, IReadOnlyList<T> b, Func<T, string> key, Func<T, string> name,
+        Func<T, T, List<PropertyChange>> properties)
+    {
+        if (a.Count != b.Count)
+            return false;
+        for (var i = 0; i < a.Count; i++)
+        {
+            if (!SameObject(a[i], b[i], key, name, properties))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool SameObject<T>(T a, T b, Func<T, string> key, Func<T, string> name, Func<T, T, List<PropertyChange>> properties) =>
+        string.Equals(key(a), key(b), StringComparison.Ordinal) && string.Equals(name(a), name(b), StringComparison.Ordinal)
+        && properties(a, b).Count == 0;
 
     /// <summary>Column changes: added (current position order), renamed and altered (current position order), then dropped (old position order).</summary>
     private static List<ColumnChange> CompareColumns(IReadOnlyList<SnapshotColumn> oldColumns, IReadOnlyList<SnapshotColumn> newColumns,

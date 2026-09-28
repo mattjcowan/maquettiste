@@ -32,10 +32,24 @@
     <RuntimeHostConfigurationOption Include="System.Runtime.TieredCompilation.CallCountingDelayMs" Value="0" />
   </ItemGroup>
 
+  <!-- ReadyToRun tool packages (dotnet pack only; bench/README.md "One-shot CLI"). dotnet pack writes a small Maquettiste.Cli package
+       that points at one package per runtime identifier, each with ReadyToRun code compiled by crossgen (restored from NuGet), so a
+       short-lived maquettiste process skips most JIT compilation; Maquettiste.Cli.any is the portable fallback for any other
+       runtime (JIT only). The runtime identifiers are set only while packing (the dotnet CLI sets _IsPacking), with the pack's own
+       lock file under obj/, so builds, tests and locked-mode restores are unchanged and download no runtime packs.
+       -p:MaquettistePortableTool=true packs the single portable package instead. -->
+  <PropertyGroup Condition="'$(_IsPacking)' == 'true' And '$(MaquettistePortableTool)' != 'true'">
+    <ToolPackageRuntimeIdentifiers>any;linux-x64;linux-arm64;osx-x64;osx-arm64;win-x64;win-arm64</ToolPackageRuntimeIdentifiers>
+    <RuntimeIdentifiers>$(ToolPackageRuntimeIdentifiers)</RuntimeIdentifiers>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <NuGetLockFilePath>$(MSBuildProjectDirectory)/obj/packages.pack.lock.json</NuGetLockFilePath>
+  </PropertyGroup>
+
 
   <ItemGroup>
     <ProjectReference Include="../Maquettiste.Engine/Maquettiste.Engine.csproj" />
-    <ProjectReference Include="../../bench/Maquettiste.Bench/Maquettiste.Bench.csproj" />
+    <!-- Built without the runtime identifier of a ReadyToRun pack: the bench is an executable the CLI uses as a library. -->
+    <ProjectReference Include="../../bench/Maquettiste.Bench/Maquettiste.Bench.csproj" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained" />
   </ItemGroup>
 
   <!-- Starter packs for maquettiste init and pack new (from option). WithCulture="false": without it MSBuild reads a file such as

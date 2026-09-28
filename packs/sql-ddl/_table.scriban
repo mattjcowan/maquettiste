@@ -1,11 +1,12 @@
 {{-
 # CREATE TABLE for the table given as the first argument, followed by its indexes and comments. Needs _sql.scriban. The optional
-# second argument is a ",name,name," set of foreign keys to leave out (cycle_skip in _objects.scriban): the caller adds them with
-# ALTER TABLE once every table exists.
+# second argument is the set of foreign keys to leave out, an object keyed by constraint name (cycle_skip in _objects.scriban):
+# the caller adds them with ALTER TABLE once every table exists. It is an object rather than a ",name,name," string because a
+# large database can have thousands of such keys, and scanning that string for every foreign key made schema scripts quadratic.
 # The text is built with string concatenation rather than arrays: Scriban counts every element an array function copies
 # against the template loop limit, and schema scripts and first migrations render thousands of tables in one unit.
 $t = $1
-$skip = $2 ?? ""
+$skip = $2
 $db = $t.database
 $d = $db.dialect
 $rowid = sqlite_rowid($t)
@@ -36,7 +37,7 @@ for u in $t.uniques
   $body = $body + ",\n    CONSTRAINT " + q(u.name, $db) + " UNIQUE (" + cols(u.columns, $db) + ")"
 end
 for f in $t.foreign_keys
-  if $skip != "" && ($skip | string.contains ("," + f.name + ","))
+  if $skip && $skip[f.name]
     continue
   end
   $body = $body + ",\n    CONSTRAINT " + q(f.name, $db) + " " + foreign_key_body(f, $db)

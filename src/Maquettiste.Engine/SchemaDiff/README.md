@@ -48,3 +48,52 @@ Deviations and notes:
   `Casing.Words` is still a stub; switch to it once it lands.
 
 Tests: `tests/Maquettiste.Engine.Tests/SchemaDiff/` (resolved objects built directly through internal setters).
+
+## Performance notes (WA, incremental runs with the example packs)
+
+On the benchmark model the `sql-ddl` pack's `usesSchemaDiff` made every run capture, diff and (after an apply with a change)
+serialize a 10,005-table snapshot, about 1.3 s of every incremental run, all of it on the run's critical path. Now:
+
+- **One capture per run.** `SchemaDiffer.DiffAndCapture` (internal) returns the snapshot the diff captured; the snapshot saved after
+  the apply is that capture with `Revision = ToRevision`, which is exactly what `Capture(database, ToRevision)` returns. `Diff`
+  (the `ISchemaDiffer` member) is unchanged.
+- **Serialized while the run renders.** `SnapshotStore.Prepare` (internal) produces the bytes `SaveAsync` writes, without I/O, and
+  `WriteAsync` writes prepared bytes (engine-write guard on the target and the temp file, identical bytes skipped, temp file moved
+  into place). `SaveAsync` is `WriteAsync(Prepare(...))`. The generation run prepares each non-empty diff's snapshot on the thread
+  pool right after diffing (apply mode only) and writes it after a successful apply (`Generation/README.md`); the canonical
+  serialization (`CanonicalJson`'s node path, about 0.7 s and a lot of allocation for 10,005 tables) no longer delays the end of
+  the run. The bytes are the same (`SnapshotReuseTests`, `SchemaSnapshotTests`).
+- **Parsed snapshots are reused.** The store keeps, per snapshot file, the last snapshot it parsed and the SHA-256 of the bytes it
+  came from; `LoadAsync` still reads the file every time but parses it only when the bytes differ. The generation run prepares
+  with `Prepare(snapshot, parse: true, ct)`: once the bytes exist, parsing them back starts as a separate thread-pool task
+  (`PreparedSnapshot.Parsed`) that nothing in the run awaits; `WriteAsync` only hands it to the store for the file it wrote. So the
+  parse is never on the run's critical path (the save waits for the bytes, not for the parse), and the next run's load of that
+  file costs a read and a hash: about 20 ms instead of 100 to 200 ms. A held parse that failed or was cancelled (it checks the
+  run's token before starting) is ignored and the file parsed instead. `SaveAsync` does not parse. A file changed by anything
+  else (a checkout, a hand edit) is parsed again.
+  The cost: a one-shot CLI process, or an apply that ends failed, stale or over part of the roots, parses a snapshot nobody loads
+  (100 to 230 ms of one thread-pool thread beside the render; the graph is garbage once the task ends). Starting the parse only
+  after the write avoided that, but was measured worse: the benchmark's same-store incremental run then followed a parse that
+  had just allocated the whole snapshot graph, and its median went from 4.17 s to 5.11 s (six interleaved runs each, render and
+  GC pauses up), so the parse stays beside the render.
+- **Held snapshots are pruned.** A load that finds the file missing drops the file's entry, and `Retain(databaseNames)` (called at
+  the end of every run's schema diff with the run's databases, and with none when no pack of the run uses the schema diff) drops
+  every other file's, so a long-lived host (watch, server, functions) does not keep a renamed or removed database's parsed
+  snapshot (tens of MB for 10,000 tables) until the store goes away. A run limited to packs that do not diff therefore drops them
+  too, and the next diffing run parses its snapshot once.
+- **Cancellation.** `DiffAndCapture`, `Compare` and `SnapshotCapture.Capture` take a token (internal parameters; `ISchemaDiffer`
+  passes `CancellationToken.None`), set it on their `Parallel.For` and check it between capture and compare, and `Prepare` checks
+  it before sorting, before serializing and before the parse starts (the canonical serializer and the JSON parse themselves
+  cannot be interrupted, so a cancel that lands during one costs at most that step).
+- **Unchanged tables are recognized cheaply.** `CompareTable` first compares the two tables pairwise in list order (names,
+  schema, comment, and every column, key, constraint and index by key, name and the same property comparisons); only a table that
+  differs, or whose lists are merely reordered, goes through the keyed maps. 10,004 of the benchmark's 10,005 tables are unchanged
+  after an entity edit.
+- **Parallel capture and compare.** With `EngineOptions.EffectiveParallelism` above 1 and at least 512 tables, tables are
+  captured, and the unchanged ones found, in parallel; each table goes to its own slot and the lists are then sorted and walked in
+  key order as before, so the snapshot, the diff and its hash do not depend on the parallelism.
+
+Measured on the benchmark's main database (10,005 tables; probe runs on the 24-core machine, `--jobs 8`, incremental runs after
+one entity edit): load 100 to 230 ms → 20 to 40 ms, capture plus compare about 300 ms → about 40 ms, the save at the end of the
+run 650 to 1,500 ms → the write of prepared bytes (the end of the run now follows the last file write by about 0.2 s instead of
+0.9 s).

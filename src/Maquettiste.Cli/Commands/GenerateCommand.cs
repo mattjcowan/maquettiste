@@ -80,6 +80,10 @@ internal static class GenerateCommand
             if (watch)
                 return await WatchAsync(context, service, request, options, ct).ConfigureAwait(false);
 
+            // A one-shot apply keeps and uses the engine's last-run record: a process whose model, templates, engine files and outputs
+            // are as the last apply left them answers without loading, validating, resolving or planning (Generation/README.md).
+            service.ReuseLastRun = true;
+
             var progress = new ConsoleProgress(context.Progress, context.Error);
             var result = await service.RunAsync(request, progress, ct).ConfigureAwait(false);
             progress.Complete();

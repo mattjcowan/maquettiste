@@ -267,6 +267,59 @@ public sealed class BenchmarkHarnessTests
     }
 
     [Fact]
+    public async Task The_one_shot_figure_runs_fresh_processes_after_the_edit_and_with_nothing_changed()
+    {
+        using var temp = new TempFolder();
+        var app = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Maquettiste.Bench.exe" : "Maquettiste.Bench");
+        var options = new BenchmarkOptions
+        {
+            OutputDirectory = temp.Path,
+            Jobs = 2,
+            Keep = true,
+            Model = BenchTestModels.Small() with { IncludeExamplePacks = false },
+            OneShotCommand = [app, OneShotGenerate.Verb],
+        };
+
+        var report = await BenchmarkHarness.RunAsync(options, null, Ct);
+
+        Assert.Equal(app + " " + OneShotGenerate.Verb, report.OneShotCommand);
+        Assert.True(report.OneShotEdit > TimeSpan.Zero && report.OneShotNoOp > TimeSpan.Zero);
+        Assert.True(File.Exists(Path.Combine(temp.Path, "pipelined", "cache", "last-run.v1.bin")), "the one-shot process keeps the last-run record");
+        // The edit run is timed after a one-shot run that recorded, so it pays for rejecting the record as after a no-op build.
+        Assert.Contains(report.Notes, n => n.StartsWith("The one-shot figures", StringComparison.Ordinal)
+            && n.Contains("left a last-run record, so the edit figure includes rejecting it", StringComparison.Ordinal));
+        using var document = JsonDocument.Parse(BenchmarkReportJson.Write(report));
+        var oneShot = document.RootElement.GetProperty("incremental").GetProperty("oneShot");
+        Assert.Equal(report.OneShotCommand, oneShot.GetProperty("command").GetString());
+        Assert.Equal(Math.Round(report.OneShotNoOp.TotalSeconds, 3), oneShot.GetProperty("noOpSeconds").GetDouble());
+        Assert.Contains("One-shot process (not a budget): ", BenchmarkReportJson.ToText(report), StringComparison.Ordinal);
+
+        // Without a command there is no figure (and no oneShot object).
+        var plain = await BenchmarkHarness.RunAsync(options with { OneShotCommand = null, Keep = false }, null, Ct);
+        Assert.Null(plain.OneShotCommand);
+        using var plainJson = JsonDocument.Parse(BenchmarkReportJson.Write(plain));
+        Assert.False(plainJson.RootElement.GetProperty("incremental").TryGetProperty("oneShot", out _));
+    }
+
+    [Fact]
+    public async Task A_failing_one_shot_process_fails_the_benchmark_with_its_error()
+    {
+        using var temp = new TempFolder();
+        var app = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Maquettiste.Bench.exe" : "Maquettiste.Bench");
+        var options = new BenchmarkOptions
+        {
+            OutputDirectory = temp.Path,
+            Jobs = 2,
+            Model = BenchTestModels.Small() with { IncludeExamplePacks = false },
+            OneShotCommand = [app, OneShotGenerate.Verb, "--bogus"],
+        };
+
+        var error = await Assert.ThrowsAsync<BenchmarkException>(() => BenchmarkHarness.RunAsync(options, null, Ct));
+        Assert.Contains("exited 4", error.Message, StringComparison.Ordinal);
+        Assert.Contains("usage", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_file_that_is_not_a_report_is_refused_as_baseline() =>
         Assert.Throws<BenchmarkException>(() => BenchmarkReportJson.ReadBudgets("{\"x\":1}"u8));
 
@@ -294,6 +347,13 @@ public sealed class BenchmarkHarnessTests
         Assert.True(Program.TryParse([], out var defaults, out var text, out _, out _));
         Assert.Equal(new BenchmarkOptions(), defaults);
         Assert.Equal("text", text);
+
+        Assert.Null(defaults.OneShotCommand); // Main fills in the bench app itself, unless --no-one-shot
+        Assert.True(Program.TryParse(["--cli", "/tools/maquettiste"], out var cli, out _, out _, out _));
+        Assert.Equal(["/tools/maquettiste"], cli.OneShotCommand);
+        Assert.True(Program.TryParse(["--cli", "x", "--no-one-shot"], out var none, out _, out _, out _));
+        Assert.Null(none.OneShotCommand);
+        Assert.False(Program.TryParse(["--cli"], out _, out _, out _, out _));
 
         Assert.False(Program.TryParse(["--jobs", "0"], out _, out _, out _, out _));
         Assert.False(Program.TryParse(["--jobs"], out _, out _, out _, out _));

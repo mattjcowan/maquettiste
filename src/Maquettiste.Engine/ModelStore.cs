@@ -59,6 +59,13 @@ public sealed class ModelStore : IAsyncDisposable
     /// <summary>The current snapshot, or <see langword="null"/> before the first load.</summary>
     public ModelSnapshot? Current => _current;
 
+    /// <summary>
+    /// The files of the store's last load with the stat each was read at (the generation run's last-run record), or
+    /// <see langword="null"/> before the first load or with a substitute loader.
+    /// </summary>
+    /// <returns>The stamps.</returns>
+    internal Loading.LoadedFileStamps? LastFileStamps() => (_services.Loader as Loading.ModelLoader)?.LastFileStamps();
+
     /// <summary>Loads the model; idempotent under concurrent callers.</summary>
     /// <param name="ct">Cancellation.</param>
     /// <returns>A task.</returns>

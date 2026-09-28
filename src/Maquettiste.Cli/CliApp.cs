@@ -142,7 +142,7 @@ public sealed class CliApp(CliEnvironment environment)
                                   --from empty|sql-ddl|csharp-dapper
           bench                 Run the synthetic benchmark
                                   --out <dir>, --seed, --entities, --relations, --enums, --fanout, --keep,
-                                  --baseline <file>, --max-regression <percent>, --format text|json
+                                  --baseline <file>, --max-regression <percent>, --format text|json, --no-example-packs
 
         Global options:
           --repo <dir>          The repo root (default: nearest ancestor holding .maquettiste/maquettiste.json, else the current directory)

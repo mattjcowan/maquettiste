@@ -46,3 +46,21 @@ The model loader (stage 1), the index cache, the file-name policy, the change pl
   (`ModelSnapshot.CreateAfter(_snapshot, ...)`), so a save that changes a few elements patches the indexes instead of walking every
   document again; the result equals a full build (`ModelIndexerPatchTests`). The delete check's reference model (with deleted
   stereotypes kept) is still a full build.
+
+## Performance notes (WB, one-shot CLI)
+
+- **Index cache read.** The records are parsed in file order, then their SHA-256 checks run in parallel (the loader's parallelism)
+  and the map is filled in file order, so a repeated path keeps its last valid record as before; the map is a plain dictionary
+  (building a frozen one for 26,267 records cost more than its lookups save in a one-shot process). The schema-set hash in the header
+  needs only the embedded schema files, which `SchemaRegistry` now reads without building JsonSchema.Net schemas (`Json/README.md`):
+  a process whose files all come from trusted records builds no schema before validation. On the benchmark repo in a fresh
+  ReadyToRun process, single instrumented runs (indicative, not medians): schema-set hash about 110 to 120 ms before and about 13 ms
+  after (the 110 ms in `Json/README.md` is another single run of the same step), cache read about 97 ms before and about 45 ms after.
+- **Dependency hashes on the readers.** An element without sidecar references has `DependencyHash = H(Hash, null)`, a function of its
+  bytes; the parallel readers compute it (`FileEntry.OwnDependencyHash`) instead of the sequential assembly (about 60 ms in a cold
+  process, one instrumented run). Documents with sidecars are hashed in the assembly as before; the hashes are the same.
+- **File stamps for the last-run record.** `ModelLoader.LastFileStamps()` returns the files of the last load with the stat each was
+  read at (settings, elements, extensions and rule scripts; existing referenced sidecars; referenced sidecars that were missing), and
+  `EnumerateModelFiles()` the files a full load would look at; `ModelStore.LastFileStamps()` forwards to the store's loader. Both are
+  computed on request, so hosts that never ask pay nothing (Generation/README.md, "Last-run record").
+

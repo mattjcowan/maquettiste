@@ -37,6 +37,29 @@ public sealed class GenerateTests
     }
 
     [Fact]
+    public async Task A_rerun_with_nothing_changed_is_answered_from_the_last_run_record_with_the_same_result()
+    {
+        using var repo = CliRepo.Billing();
+        Assert.Equal(0, (await repo.RunAsync("generate", "--quiet")).ExitCode);
+        var record = Path.Combine(repo.CacheDirectory, "last-run.v1.bin");
+        Assert.True(File.Exists(record), "a one-shot generate keeps the engine's last-run record");
+
+        var answered = await repo.RunAsync("generate", "--format", "json");
+        var answeredText = await repo.RunAsync("generate");
+        File.Delete(record);
+        var full = await repo.RunAsync("generate", "--format", "json");
+        File.Delete(record);
+        var fullText = await repo.RunAsync("generate");
+        Assert.Equal(0, answered.ExitCode);
+        Assert.Equal(full.Out, answered.Out);
+        Assert.Equal(fullText.Out, answeredText.Out);
+        string Summary(CliResult r) => Text.Lines(r.Error).Single(l => l.StartsWith("Generated: ", StringComparison.Ordinal));
+        Assert.Equal(Summary(fullText), Summary(answeredText));
+        Assert.DoesNotContain("[3/8 resolve]", answeredText.Error, StringComparison.Ordinal); // nothing was resolved
+        Assert.Contains("[3/8 resolve]", fullText.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Check_passes_on_a_generated_repo_and_exits_2_on_drift()
     {
         using var repo = CliRepo.Billing();

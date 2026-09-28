@@ -19,6 +19,23 @@ namespace Maquettiste.Engine.Loading;
 /// <param name="CacheWritten">Whether the index cache was rewritten.</param>
 internal sealed record LoadStatistics(int Files, int ReadFromDisk, int FromCache, int Reused, int Parsed, int SchemaEvaluations, bool CacheWritten);
 
+/// <summary>One file's stat as a load took it: its length and last-write time (UTC ticks) before its bytes were read.</summary>
+/// <param name="Path">The model-relative path (or, outside the loader, a path relative to the folder it was listed under).</param>
+/// <param name="Length">The length.</param>
+/// <param name="LastWriteTicks">The last-write time, UTC ticks.</param>
+internal readonly record struct FileStamp(string Path, long Length, long LastWriteTicks);
+
+/// <summary>
+/// The files a completed load read, with the stat each was read at (the generation run's last-run record, Generation/README.md):
+/// the enumerated model files, the description sidecars they reference and the referenced sidecars that did not exist.
+/// </summary>
+/// <param name="Snapshot">The snapshot the load produced.</param>
+/// <param name="Primary">Settings, element, extension and rule-script files, ordinal by path.</param>
+/// <param name="Sidecars">Referenced sidecars that exist, ordinal by path.</param>
+/// <param name="MissingSidecars">Referenced sidecars that do not exist, ordinal.</param>
+internal sealed record LoadedFileStamps(ModelSnapshot Snapshot, IReadOnlyList<FileStamp> Primary, IReadOnlyList<FileStamp> Sidecars,
+    IReadOnlyList<string> MissingSidecars);
+
 /// <summary>Stage 1: reads model files, the index cache and extensions into a snapshot (W1; engine-design.md section 5).</summary>
 /// <remarks>
 /// The loader keeps the files of its last load (bytes, stat, parse result), so a rescan re-reads only files whose length or
@@ -41,7 +58,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
     private readonly DocumentReader _reader = new(schemas, json);
     private readonly Lazy<string> _schemaSetHash = new(() => IndexCache.SchemaSetHash(schemas));
     private LoaderState _state = LoaderState.Empty;
-    private FrozenDictionary<string, CacheRecord>? _diskCache;
+    private IReadOnlyDictionary<string, CacheRecord>? _diskCache;
     private int _tempCounter;
 
     /// <summary>The statistics of the last completed load.</summary>
@@ -73,7 +90,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         ct.ThrowIfCancellationRequested();
         var previous = _state;
         var full = request.ChangedPaths is null || previous.Snapshot is null;
-        _diskCache ??= await IndexCache.ReadAsync(CachePath, _schemaSetHash.Value, ct).ConfigureAwait(false);
+        _diskCache ??= await IndexCache.ReadAsync(CachePath, _schemaSetHash.Value, ct, options.EffectiveParallelism).ConfigureAwait(false);
         var counters = new Counters();
 
         // 1. Which files to look at: every file on a full scan; the reported paths (folders expanded) otherwise.
@@ -146,6 +163,8 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
                 entries.Remove(sidecars[i]);
         }
 
+        var missingSidecars = needed.Where(p => !entries.ContainsKey(p)).ToArray();
+
         // 4. A partial load that brings an id also held by a file it did not look at re-checks that file: a rename reported only
         //    by its new path must not leave the old path behind as a duplicate.
         if (!full)
@@ -202,11 +221,34 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         }
 
         var cacheWritten = await cacheTask.ConfigureAwait(false);
-        _state = new LoaderState(entries, documents, snapshot);
+        _state = new LoaderState(entries, documents, snapshot) { MissingSidecars = missingSidecars };
 
         LastStatistics = new LoadStatistics(entries.Count, counters.Read, counters.FromCache, counters.Reused, counters.Parsed, counters.SchemaEvaluations, cacheWritten);
         return new LoadResult(snapshot, changes);
     }
+
+    /// <summary>
+    /// The files of the last completed load with the stat each was read at, or <see langword="null"/> before the first load. Computed
+    /// on request (nothing is kept for it), so a long-lived host that never asks pays nothing.
+    /// </summary>
+    /// <returns>The stamps.</returns>
+    internal LoadedFileStamps? LastFileStamps()
+    {
+        var state = _state;
+        if (state.Snapshot is null)
+            return null;
+        var primary = new List<FileStamp>();
+        var sidecars = new List<FileStamp>();
+        foreach (var entry in state.Entries.Values)
+            (entry.Kind == ModelFileKind.Sidecar ? sidecars : primary).Add(new FileStamp(entry.ModelPath, entry.Length, entry.LastWriteTicks));
+        primary.Sort((a, b) => string.CompareOrdinal(a.Path, b.Path));
+        sidecars.Sort((a, b) => string.CompareOrdinal(a.Path, b.Path));
+        return new LoadedFileStamps(state.Snapshot, primary, sidecars, [.. state.MissingSidecars.Order(StringComparer.Ordinal)]);
+    }
+
+    /// <summary>The model files a full load would look at (settings, <c>model/**</c>, extensions, rule scripts), model-relative.</summary>
+    /// <returns>The paths.</returns>
+    internal HashSet<string> EnumerateModelFiles() => Enumerate();
 
     private async Task<FileEntry?[]> CheckAllAsync(
         string[] modelPaths,
@@ -307,7 +349,11 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         Interlocked.Increment(ref counters.Parsed);
         if (parsed.SchemaEvaluated)
             Interlocked.Increment(ref counters.SchemaEvaluations);
-        return new FileEntry(modelPath, kind, length, ticks, hash, bytes, parsed);
+
+        // An element without sidecar references has a dependency hash that depends on its bytes alone: computed here, on the
+        // parallel readers, rather than in the sequential assembly.
+        var ownDependencyHash = kind == ModelFileKind.Element && parsed.SidecarReferences.IsEmpty ? HashBuilder.Of(hash, null) : null;
+        return new FileEntry(modelPath, kind, length, ticks, hash, bytes, parsed) { OwnDependencyHash = ownDependencyHash };
     }
 
     private (ModelSnapshot Snapshot, IReadOnlyDictionary<string, ElementDocument> Documents) Assemble(
@@ -417,7 +463,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
             }
         }
 
-        var dependencyHash = HashBuilder.Of(entry.Hash, sidecarHash);
+        var dependencyHash = sidecarHash is null && entry.OwnDependencyHash is { } bytesOnly ? bytesOnly : HashBuilder.Of(entry.Hash, sidecarHash);
         if (previousDocuments.TryGetValue(repoPath, out var previous) && previous.Hash == entry.Hash && previous.DependencyHash == dependencyHash)
             return previous;
         return new ElementDocument(entry.Parsed.Element!, repoPath, entry.Hash, dependencyHash, entry.Parsed.Json, sidecarText);
@@ -479,7 +525,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         var suffix = Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "-" + Interlocked.Increment(ref _tempCounter).ToString(CultureInfo.InvariantCulture);
         if (!await IndexCache.WriteAsync(CachePath, suffix, _schemaSetHash.Value, records, paths, ct).ConfigureAwait(false))
             return false;
-        _diskCache = records.ToFrozenDictionary(r => r.Path, StringComparer.Ordinal);
+        _diskCache = records.ToDictionary(r => r.Path, StringComparer.Ordinal);
         return true;
     }
 
@@ -523,6 +569,9 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
     /// <summary>One file of the last load.</summary>
     private sealed record FileEntry(string ModelPath, ModelFileKind Kind, long Length, long LastWriteTicks, string Hash, byte[] Bytes, ParsedFile Parsed)
     {
+        /// <summary><c>H(Hash, null)</c>, the dependency hash of an element without sidecar references (computed by the reader), else null.</summary>
+        public string? OwnDependencyHash { get; init; }
+
         public CacheRecordFlags Flags =>
             (Parsed.Valid ? CacheRecordFlags.Validated : CacheRecordFlags.None) | (Parsed.Canonical ? CacheRecordFlags.Canonical : CacheRecordFlags.None);
     }
@@ -532,6 +581,9 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         IReadOnlyDictionary<string, ElementDocument> Documents,
         ModelSnapshot? Snapshot)
     {
+        /// <summary>Sidecars the elements reference that did not exist at the load.</summary>
+        public IReadOnlyList<string> MissingSidecars { get; init; } = [];
+
         public static LoaderState Empty { get; } = new(
             FrozenDictionary<string, FileEntry>.Empty,
             FrozenDictionary<string, ElementDocument>.Empty,

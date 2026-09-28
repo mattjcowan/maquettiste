@@ -30,22 +30,39 @@ namespace Maquettiste.Engine.SchemaDiff;
 /// </remarks>
 internal static class SnapshotCapture
 {
+    /// <summary>Tables below this count are captured on the calling thread whatever the parallelism.</summary>
+    private const int ParallelThreshold = 512;
+
     /// <summary>Captures a database.</summary>
     /// <param name="database">The resolved database.</param>
     /// <param name="revision">The revision to stamp.</param>
+    /// <param name="parallelism">Threads for capturing tables (each table is captured independently into its own slot, so the result
+    /// is the same for any value); 1 captures on the calling thread.</param>
+    /// <param name="ct">Cancellation, observed between tables of a parallel capture.</param>
     /// <returns>The snapshot, every list sorted by key (columns by position).</returns>
     /// <exception cref="ArgumentException">The database's dialect is empty or not one of the snapshot dialects (validation
     /// requires one, so this is a broken invariant, never guessed).</exception>
-    public static PhysicalSnapshot Capture(RDatabase database, int revision)
+    public static PhysicalSnapshot Capture(RDatabase database, int revision, int parallelism = 1, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(database);
+        var dialect = ParseDialect(database);
+        var source = database.Tables;
+        var captured = new SnapshotTable[source.Count];
+        if (parallelism > 1 && captured.Length >= ParallelThreshold)
+            Parallel.For(0, captured.Length, new ParallelOptions { MaxDegreeOfParallelism = parallelism, CancellationToken = ct }, i => captured[i] = CaptureTable(source[i]));
+        else
+        {
+            for (var i = 0; i < captured.Length; i++)
+                captured[i] = CaptureTable(source[i]);
+        }
+
         return new PhysicalSnapshot
         {
             Database = database.Id,
             Name = database.Name,
-            Dialect = ParseDialect(database),
+            Dialect = dialect,
             Revision = revision,
-            Tables = [.. database.Tables.Select(CaptureTable).OrderBy(t => t.Key, StringComparer.Ordinal)],
+            Tables = [.. captured.OrderBy(t => t.Key, StringComparer.Ordinal)],
             Views = [.. database.Views.Select(v => new SnapshotView { Key = v.Id, Name = v.Name, Schema = v.Schema, Body = v.Body })
                 .OrderBy(v => v.Key, StringComparer.Ordinal)],
             Sequences = [.. database.Sequences.Select(CaptureSequence).OrderBy(s => s.Key, StringComparer.Ordinal)],

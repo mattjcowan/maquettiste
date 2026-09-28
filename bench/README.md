@@ -12,8 +12,13 @@ when every budget passes on the reference machine). Tests: `tests/Maquettiste.Be
 ```
 dotnet run -c Release --project bench/Maquettiste.Bench -- [--out <dir>] [--jobs 8] [--seed 42] [--entities 5000]
     [--relations 20000] [--enums 500] [--fanout <n>] [--keep] [--baseline bench/baseline.json] [--max-regression 10]
-    [--format text|json] [--report <file>] [--no-example-packs]
+    [--format text|json] [--report <file>] [--no-example-packs] [--cli <maquettiste executable> | --no-one-shot]
 ```
+
+`--cli` names the `maquettiste` the one-shot figure runs (a packed tool, for ReadyToRun numbers; default: this app itself in its
+`one-shot-generate` mode, see "One-shot CLI"); `--no-one-shot` skips the figure. `Maquettiste.Bench one-shot-generate --repo <dir>
+--cache-dir <dir> [--jobs <n>] generate [--quiet]` is that mode: one apply run in a fresh process, as `maquettiste generate` runs it
+(new model store, the engine's last-run record on), with the CLI's exit codes.
 
 Exit codes: 0 pass; 2 a budget, the regression gate, the `--check` run or the determinism cross-check (the two cold runs
 must write identical, non-empty manifests) failed; 4 usage error, invalid model or pack, a `--baseline` file that does not
@@ -45,6 +50,14 @@ not keep the package-local shape. `maquettiste bench` accepts `--entities 1` and
    generated, and a new `ModelStore` and `GenerationService` over the same repo and cache run once: a new host process's first
    run (index cache, unit states and manifests read from disk, full resolve), but with a warm JIT. The report's
    `incremental.freshStore` and the text line "Incremental, new store" carry it.
+7. **One-shot CLI** (reported, not a budget; after step 6): an untimed fresh process runs `generate` over the pipelined repo and
+   its cache folder (`BenchmarkOptions.OneShotCommand` plus `--repo --cache-dir --jobs generate --quiet`) with nothing changed, which
+   leaves the engine's last-run record; then the same one-entity edit again and a timed fresh process (which checks and rejects
+   that record first, as a real edit after a no-op build does), then a second timed fresh process with nothing changed. A report
+   note says whether the untimed run left a record. The report's `incremental.oneShot` (`command`, `editSeconds`,
+   `noOpSeconds`) and the text line "One-shot process" carry them; a non-zero exit fails the benchmark (exit 4) with the end of
+   its stderr. `maquettiste bench` runs itself; the bench app runs itself in `one-shot-generate` mode (JIT) unless `--cli` names
+   another executable.
 
 | Budget (SPEC section 13) | Limit | Measured as |
 | --- | --- | --- |
@@ -132,20 +145,83 @@ So the budgets need server GC; the other knobs are margin (the defaults leave ab
 incremental one). `docs/engineering/host-contracts.md` records this as an open point for the functions host.
 
 **Which incremental run the 2 s budget covers.** SPEC Section 13 places incremental runs in watch mode and the editor: a
-long-lived process whose model store, resolver and JIT are warm. That is the `incremental` budget. A one-shot CLI process pays
-more: after one entity edit, `maquettiste generate --jobs 8` on the kept benchmark repo takes about 3.2 to 4.1 s (round 3), of which process start is about 0.3 s, loading 26,267 files from the index cache about 0.9 s, a full
-resolve with a cold JIT about 1.1 to 1.4 s, the skip check 0.15 s, the renderer's first templates about 0.35 s and the manifest
-and state writes about 0.3 s. The new-store figure in the report (same process, warm JIT) is the part the engine controls. Closing
-the rest needs ReadyToRun code (below) or a persisted resolved model, neither in phase 1. ReadyToRun was evaluated for the packed tool and left off: a
-RID-agnostic tool package cannot carry ReadyToRun code, RID-specific tool packages (`ToolPackageRuntimeIdentifiers`) change the
-published package layout and need the crossgen packs at pack time, and the benchmark runs through `dotnet run`, which JIT-compiles
-anyway. The cold run's JIT share it could save is visible in the report: cold resolve about 1.3 s against about 0.7 s warm.
+long-lived process whose model store, resolver and JIT are warm. That is the `incremental` budget. A one-shot CLI process (CI and
+build integration, SPEC Section 17) pays more; the report's one-shot figure tracks it, and "One-shot CLI" below gives the numbers
+and what remains.
+
+## One-shot CLI (WB)
+
+What a fresh `maquettiste generate` process pays on the kept benchmark repo (fanout only, `--jobs 8`, 24-core WSL2), measured with
+the packed tool installed from its package folder (`dotnet pack src/Maquettiste.Cli -c Release -o <pkg>`, then
+`dotnet tool install --tool-path <dir> --add-source <pkg> Maquettiste.Cli --version 1.0.0-alpha.1`), each figure the median of
+interleaved runs (before and after alternate, an edit run then a no-op run each round):
+
+| Figure (packed tool, `--jobs 8`) | Before | After, portable package (JIT) | After, ReadyToRun package |
+| --- | --- | --- | --- |
+| `generate` with nothing changed since the last apply | 2.92 s | 0.26 s | 0.25 s |
+| `generate` after a one-entity edit (24 units render) | 3.37 s | 3.30 s | 2.86 s |
+
+Medians of five interleaved rounds at a load average of 2 to 5 from other work on the machine (an earlier series of five at a load
+of 5 to 7 gave 2.95 and 3.36 s before, 0.27 and 2.95 s after with ReadyToRun). The harness's own figure, three runs of `dotnet run
+--project bench/Maquettiste.Bench -- --jobs 8 --no-example-packs --cli <tool>/maquettiste` with the ReadyToRun tool (the bench's
+edit renders 57 units): after the edit 2.84, 2.89 and 2.93 s (median 2.89 s), with nothing changed 0.209, 0.213 and 0.223 s
+(median 0.213 s); the same runs' in-process figures passed gate 1 (load-validate-resolve median 1.92 s, incremental 1.32 s, cold
+total 6.58 s). The load-validate-resolve median is above the baseline's 1.72 s (resolve 1.02 s there, about 1.2 s in these runs);
+the machine may have been busier than when the baseline was recorded, but that is not shown (a three-round A/B at a load of 4 to
+22 cannot resolve 0.1 s, and the baseline has not been re-recorded on an idle machine), so the gap is unexplained. With the bench
+app's own `one-shot-generate` mode (JIT, one run): 3.29 s and 0.228 s. Those harness figures predate the review fix to step 7:
+their edit run had no record to reject, while the packed-tool edit row above, measured after a no-op run, includes rejecting one
+(about 0.06 s), so the two edit figures are not the same measurement. After the review fixes, three harness runs with the bench
+app's own `one-shot-generate` mode (JIT, `--no-example-packs`, load average 6 to 7; the edit run now rejects a record first):
+after the edit 3.171, 3.207 and 3.209 s (median 3.207 s), with nothing changed 0.213, 0.218 and 0.218 s (median 0.218 s);
+in-process medians load-validate-resolve 1.825 s, resolve 1.073 s, incremental 1.397 s, cold total 6.896 s, all budgets passing
+and the cold outputs of the two cold runs identical.
+
+What changed:
+
+- **Last-run record** (engine, `src/Maquettiste.Engine/Generation/README.md`): a one-shot apply run of the same engine build whose
+  model files, unit-state and built-root manifest files and outputs have the stats the last apply recorded, and whose templates,
+  committed manifests and snapshots have the same content, is answered without loading, validating, resolving or planning, with
+  the full run's result. That is the whole no-op gain. The review fixes (engine build in the key, trailer checked first, content
+  hashes) cost about 13 ms of the no-op run (0.231 to 0.244 s, medians of seven interleaved rounds of the bench app's JIT
+  `one-shot-generate` mode; the packed-tool rows above predate them). The recording run pays about 60
+  ms (the skipped units' outputs are encoded beside rendering; the rest is checking the saved states and writing about 7 MB); a
+  run whose record does not match pays about 60 ms to find out, most of it the thread pool starting, which the load would
+  otherwise pay (its index read dropped by about as much). A persisted resolved model was considered and rejected
+  (engine-design.md D45).
+- **Load** (fresh process, ReadyToRun): the index cache's schema-set hash no longer builds every JsonSchema.Net schema (about
+  120 ms to 13 ms); the cache's SHA-256 checks run in parallel (about 97 ms to 45 ms); elements' dependency hashes are computed on
+  the parallel readers (about 60 ms off the sequential assembly); the snapshot indexer's per-type metadata lookups no longer take a
+  lock from eight walking threads. The load of 26,267 files went from about 0.8 s to about 0.6 s.
+- **Resolve**: the resolver's list of objects to freeze no longer takes a lock per resolved object (about 330,000, from the parallel
+  phases). The resolved model is unchanged (the cold output tree of the benchmark is byte-identical before and after).
+- **Progress**: the CLI's reporter no longer takes its lock for updates that change nothing on screen (26,267 load updates from
+  eight readers, 100,050 skip updates).
+- **Writes**: a unit-state file whose bytes did not change is not rewritten (28 MB on every no-op run before).
+- **ReadyToRun tool packages** (`src/Maquettiste.Cli/README.md`, "Packages"): about 0.4 s of the edit run (table above); a full
+  no-op without the record measured about 0.1 s faster (single runs, before the record existed).
+- **Tiered compilation** (measured on the ReadyToRun tool, five interleaved rounds, edit run medians): the csproj settings (call
+  counting from the first call, PGO off) 2.86 s; .NET's default 100 ms call-counting delay 3.12 s; tiered compilation off 3.08 s
+  (no-op 0.235 s against 0.255 s); a call-count threshold of 5 2.95 s. The settings are kept.
+
+What remains of the edit run (about 2.6 to 2.9 s, ReadyToRun, one run instrumented; the parts are sequential): process start
+and CLI parsing about 0.05 s; the record check that fails about 0.06 s (mostly the thread pool starting); load about 0.6 s (index
+read 0.05, listing 0.05, parse of 26,267 files on eight readers 0.25, snapshot assembly and indexes 0.24); resolve about 1.3 s
+(conceptual 0.2 beside validation, then the three database runs one after another: each spends about 0.1 s building entity tables,
+0.1 s on relations and 0.1 s finishing tables, and the one gen0 collection of the run, about 0.2 s, lands in one of them; the
+process allocates about 2.2 GB); plan and skip about 0.18 s; rendering the 24 changed units with a cold renderer about 0.2 s (the template member catalog's reflection, Scriban and Jint start-up);
+closing the pack about 0.25 s (walking and saving 100,050 manifest entries, encoding and writing 28 MB of unit states); the record
+about 0.06 s; process exit about 0.1 s (unmapping about 1.7 GB). Under 2 s would need the database runs to overlap (a database run
+reads relation keys earlier runs added, `src/Maquettiste.Engine/Resolution/README.md`), or a persisted parsed snapshot, or
+incremental resolution; none is in this round. A larger gen0 budget (`DOTNET_GCgen0size`) removes the collection but not the time
+(fresh pages cost about the same).
 
 ## Deviations and caveats
 
-- The example packs (`sql-ddl`, `csharp-dapper`) are written into the synthetic repo when they are embedded, as the design
-  asks; while they are skeletons nothing is written, so today the numbers are the fanout pack's alone. Once they land, the
-  file count and every stage time grow, and the baseline has to be re-recorded. `--no-example-packs` measures fanout alone.
+- The example packs (`sql-ddl`, `csharp-dapper`) are written into the synthetic repo, as the design asks, so the default run
+  generates 127,575 files from 122,826 units and its `incremental` budget fails (about 4.3 s, see "Incremental run with the
+  example packs"). `--no-example-packs` measures fanout alone (100,050 files), which is what `bench/baseline.json` and the
+  phase 1 gate were recorded with; a baseline for the default run has to be recorded separately.
 - `--jobs` caps `GenerationRequest.Jobs` and `EngineOptions.MaxDegreeOfParallelism`; GC and I/O threads are not capped.
 - The pipelined cold run runs in the same process after the barrier run, so its JIT is warm; the barrier run is the truly
   cold one.
@@ -159,3 +235,74 @@ anyway. The cold run's JIT share it could save is visible in the report: cold re
   without being generated.
 - `BenchmarkReport` keeps its scaffolded positional members; everything else (units rendered, check result, regressions,
   machine details) is added as init-only properties.
+
+## Incremental run with the example packs (WA)
+
+The default run (with `sql-ddl` and `csharp-dapper`) re-renders 93 units after the one-attribute edit, against 57 for fanout
+alone, and 17 files change. By pack and unit (entity `DebitOffer`, 17 attributes, in package `Orders`, mapped in `main` only):
+
+| Pack / unit | Rendered | Why it renders | New bytes |
+| --- | ---: | --- | ---: |
+| `fanout` (all) | 57 | as with `--no-example-packs`: the entity's 20 units, its package index, and units of entities whose navigations read it | 12 |
+| `csharp-dapper/entity`, `repository` | 4 + 4 | the entity and the three entities related to it (their navigations read it) | 1 + 1 |
+| `csharp-dapper/registrations` | 1 | `for: model`, reads every entity (one file per package through file blocks) | 0 |
+| `sql-ddl/table` | 18 | the entity's table and the 17 tables (junction tables included) whose foreign keys reference it (reading `referenced_table` records the whole table's dependencies) | 1 |
+| `sql-ddl/schema` | 3 | one per database; enumerating `database.tables` records membership keys that cover every entity | 1 (`main`) |
+| `sql-ddl/seed` | 3 | same list enumeration | 0 |
+| `sql-ddl/migration` | 3 | `main`'s diff changed (a new `once` migration); on the first run after a snapshot moved, the other two diffs changed too (91 units from the second edit on) | 1 (added) |
+
+The time is not in the unit count but in one unit: `sql-ddl/schema` of `main` writes the `CREATE TABLE` of all 10,005 tables of
+that database (9 MB) and has to, since the edited table's DDL is in it. Measured three times each, interleaved with the unchanged
+tree on the same machine (`--jobs 8`, medians):
+
+| | Before (WA) | After (WA) |
+| --- | ---: | ---: |
+| `incremental` (same store) | 6.41 s (6.09, 6.41, 7.25) | 4.31 s (4.28, 4.31, 4.44) |
+| incremental, new store | 6.58 s (6.36, 6.58, 7.23) | 4.64 s (4.64, 4.64, 6.01) |
+| `cold-total` | 14.42 s | 12.43 s |
+| cold `render` (barriers) | 7.30 s | 6.11 s |
+
+The fanout pack alone (`--no-example-packs`) is a control, not a gain: none of the SchemaDiff or generation-run changes run without
+`usesSchemaDiff` (only the rendering `ValueList` change does), and its incremental render stage took 0.07 to 0.09 s in all six runs. Its `incremental`, `load-validate-resolve`
+and `cold-total` were 1.43 to 1.77 s, 1.91 s (median) and 6.59 to 8.44 s before, and 1.39 to 1.43 s, 1.87 s and 6.61 to 7.12 s
+after: unchanged within noise (the before median of 1.52 s includes a run with a 0.29 s GC pause).
+
+Those "After" runs were taken on the build just before the last copy of `GenerationRun.cs` into the tree (same content). Rerun
+on the final build after the review fixes (the snapshot parse no longer awaited by the save, parsed snapshots pruned,
+cancellation through the diff and the prepare, `column_def` testing `is_primary_key` first), three runs each, interleaved with
+the build before those fixes, on the same machine while other work kept the load average at 9 to 14:
+
+| | Before the review fixes | Final build |
+| --- | ---: | ---: |
+| `incremental` (same store) | 4.58 s (4.39, 4.58, 5.16) | 4.17 s (4.15, 4.17, 4.80) |
+| incremental, new store | 5.24 s (4.55, 5.24, 6.35) | 5.47 s (4.44, 5.47, 6.91) |
+| `cold-total` | 15.37 s (14.07, 15.37, 15.91) | 13.22 s (11.81, 13.22, 13.34) |
+| cold `render` (barriers) | 7.58 s (6.36, 7.58, 11.22) | 6.17 s (5.96, 6.17, 6.32) |
+
+Within noise of each other: the nine runs of the earlier build over the session give a median `incremental` of 4.35 s (4.08 to
+5.16). Every run rendered 93 units and wrote 17 files, and the final build's kept outputs (staged and pipelined repos, after the
+incremental and new-store runs: sql-ddl scripts, migrations, snapshots, manifests) are byte-identical to the earlier build's.
+The budget still fails at about 4.2 to 4.6 s against 2 s. Fanout alone on the final build under the same load (three runs):
+`incremental` 1.71 s (1.50, 1.71, 1.96), `load-validate-resolve` 2.17 s (1.88, 2.17, 2.31), `cold-total` 8.12 s (7.76, 8.12,
+8.45); every budget passed, though the load makes all three slower than the quiet-machine figures above.
+One variant was measured and dropped: parsing the snapshot only after it is written (so a run that never writes parses nothing)
+made the same-store incremental median 5.11 s against 4.17 s for the earlier build (six interleaved runs each), because the
+next run then follows a freshly allocated snapshot graph (`src/Maquettiste.Engine/SchemaDiff/README.md`).
+
+What changed: the `sql-ddl` pack's cycle-closing foreign-key set was a string searched once per foreign key (quadratic; about
+1.2 s of the schema unit, `packs/sql-ddl/README.md`); the schema snapshot of `main` was captured twice, parsed on every run and
+serialized after the last file write (about 0.9 s at the end of every incremental run, now serialized while the run renders,
+parsed once and diffed faster, `src/Maquettiste.Engine/SchemaDiff/README.md`); plain model lists were copied on every template
+read (`src/Maquettiste.Engine/Rendering/README.md`).
+
+What remains of the 4.3 s: about 1.2 s before rendering (load, validation and resolution as for fanout alone, plus about 0.1 s of
+schema diff), about 2.5 to 3 s of render wall time that is the `main` schema unit alone (about 2 s single-threaded, the rest is
+garbage collection under the benchmark's load), and about 0.2 s after the last write. The other 92 units render beside it on the
+other workers. That unit is inherent to the pack as specified (one inline schema script per database) and to the design (a unit
+renders whole; there is no reuse of unchanged parts of a unit's output); its cost grows with the database (about 0.2 ms per
+table). The 2 s budget can be met on this model only without it: fanout alone takes 1.4 s, and `schemaScript: "include"` halves
+the unit (many tables stay inline because the synthetic relations close 4,414 foreign-key cycles). The 29 units that render
+without new bytes (neighbour tables, entities and repositories, `registrations`, the other schemas and the seeds) cost CPU on the
+other workers, not wall time; rendering fewer of them needs finer dependency keys (per member read, or placement keys for table
+lists) in the resolver and the tracking context, which is outside this change.
+

@@ -32,3 +32,10 @@ Record shape and schema shape must stay in step: `tests/Maquettiste.Engine.Tests
   token (so `--jobs 1` walks one document at a time). The public `ModelSnapshot.Create` keeps its signature and walks on
   `min(cores, 8)` threads, as before. `ModelSnapshotIndexTests` checks the index is the same at any parallelism and that a
   cancelled build throws.
+
+## Performance notes (WB, one-shot CLI)
+
+- `ModelIndexer.MetadataCache` (per-type property metadata of the document walk) is a `ConcurrentDictionary`: lookups take no lock.
+  It is read once per object walked by the eight parallel walks of a full build, and the lock was contended in a fresh process.
+  A type two walks miss at once may be computed twice; the first stored array wins and the result is a pure function of the
+  type, so indexes are unchanged.
