@@ -1,0 +1,90 @@
+/*
+ * Maquettiste design tokens (SPEC Section 15, as adjusted in phase2-design.md 4.7).
+ *
+ * The only file in src/ that may hold color literals (scripts/check-hex.mjs and the ESLint rule
+ * enforce it). Light values on :root, dark on [data-theme="dark"]; src/design/theme.ts sets the
+ * attribute from the OS preference unless the viewer chose a theme (localStorage mq.theme).
+ * tests/unit/tokens.test.ts computes WCAG 2.2 contrast for every pairing the design names.
+ *
+ * Adjusted from S15 (open point 12, adopted by the owner): light status-warning #9E5400 (was
+ * #B25E00) and status-success #1B7348 (was #1E7F4F); new accent-foreground and border-input.
+ */
+:root {
+  color-scheme: light;
+  --mq-bg-app: #f4f5f7;
+  --mq-bg-surface: #ffffff;
+  --mq-bg-raised: #ffffff;
+  --mq-bg-canvas: #f8f9fb;
+  --mq-border-default: #dadde3;
+  --mq-border-strong: #b8bec8;
+  --mq-border-input: #7d8694;
+  --mq-text-primary: #1b1f24;
+  --mq-text-secondary: #5a6270;
+  --mq-accent: #0b5cd5;
+  --mq-accent-subtle: #e8f0fd;
+  --mq-accent-foreground: #ffffff;
+  --mq-status-success: #1b7348;
+  --mq-status-warning: #9e5400;
+  --mq-status-danger: #c62828;
+
+  /* categorical palette: categories and diagram groups; 3:1 or better on surface and canvas */
+  --mq-cat-1: #0f7b7b;
+  --mq-cat-2: #6e56cf;
+  --mq-cat-3: #c2570c;
+  --mq-cat-4: #b0368c;
+  --mq-cat-5: #3a7d1e;
+  --mq-cat-6: #946800;
+  --mq-cat-7: #0a72a0;
+  --mq-cat-8: #a34d3c;
+
+  /* floating layers only (menus, dialogs, popovers) */
+  --mq-shadow-float: 0 8px 24px rgb(15 17 21 / 0.16), 0 1px 3px rgb(15 17 21 / 0.12);
+
+  --mq-radius-control: 6px;
+  --mq-radius-panel: 8px;
+  --mq-motion: 150ms;
+  --mq-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --mq-row-h: 32px;
+  --mq-topbar-h: 44px;
+  --mq-rail-w: 48px;
+}
+
+[data-density="comfortable"] {
+  --mq-row-h: 40px;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --mq-bg-app: #0f1115;
+  --mq-bg-surface: #16191f;
+  --mq-bg-raised: #1c2027;
+  --mq-bg-canvas: #12151a;
+  --mq-border-default: #2a2f38;
+  --mq-border-strong: #3a414d;
+  --mq-border-input: #6b7482;
+  --mq-text-primary: #e6e8eb;
+  --mq-text-secondary: #9aa3af;
+  --mq-accent: #4c8df6;
+  --mq-accent-subtle: #16263f;
+  --mq-accent-foreground: #0f1115;
+  --mq-status-success: #3fb97b;
+  --mq-status-warning: #f0a43a;
+  --mq-status-danger: #f26464;
+
+  --mq-cat-1: #3cc4c4;
+  --mq-cat-2: #a08cf2;
+  --mq-cat-3: #f08c4a;
+  --mq-cat-4: #e26bbe;
+  --mq-cat-5: #74c257;
+  --mq-cat-6: #d9a93a;
+  --mq-cat-7: #4cb8dd;
+  --mq-cat-8: #e08a77;
+
+  --mq-shadow-float: 0 8px 24px rgb(0 0 0 / 0.5), 0 1px 3px rgb(0 0 0 / 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --mq-motion: 0ms;
+  }
+}

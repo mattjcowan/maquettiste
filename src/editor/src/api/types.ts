@@ -1,0 +1,94 @@
+// Names for the generated contract types (src/api/schema.d.ts, from docs/api/openapi.yaml).
+// Nothing here is hand-written shape: every alias points into the generated file (PD4).
+import type { components, operations, paths, webhooks } from "./schema";
+
+export type { components, operations, paths, webhooks };
+type S = components["schemas"];
+
+export type Problem = S["Problem"];
+export type ProblemCode = S["Problem"]["code"];
+export type SessionInfo = S["SessionInfo"];
+export type EditorHealth = S["EditorHealth"];
+export type ProjectInfo = S["ProjectInfo"];
+export type ProjectSettings = S["ProjectSettings"];
+export type Conventions = S["Conventions"];
+export type SettingsDocument = S["SettingsDocument"];
+export type SettingsSaveResult = S["SettingsSaveResult"];
+export type SettingsJson = S["maquettiste"];
+export type ConventionsJson = S["conventions"];
+export type PackManifest = S["PackManifest"];
+export type ExtensionSchema = S["ExtensionSchema"];
+export type ElementKind = S["ElementKind"];
+export type ElementSummary = S["ElementSummary"];
+export type ElementDocument = S["ElementDocument"];
+export type ModelDocument = S["ModelDocument"];
+export type NewModelDocument = S["NewModelDocument"];
+export type ReferenceInfo = S["ReferenceInfo"];
+export type ElementChange = S["ElementChange"];
+export type ChangeSet = S["ChangeSet"];
+export type SaveOutcome = S["SaveOutcome"];
+export type SaveResult = S["SaveResult"];
+export type BatchResult = S["BatchResult"];
+export type BatchParseResult = S["BatchParseResult"];
+export type BatchRequest = S["batch"];
+export type BatchOperationRequest = S["batch"]["operations"][number];
+export type Diagnostic = S["Diagnostic"];
+export type ValidationReport = S["ValidationReport"];
+export type ValidationScope = S["ValidationScope"];
+export type DatabaseViewResult = S["DatabaseViewResult"];
+export type DatabaseView = S["DatabaseView"];
+export type TableView = S["TableView"];
+export type ColumnView = S["ColumnView"];
+export type ForeignKeyView = S["ForeignKeyView"];
+export type GenerationRequest = S["GenerationRequest"];
+export type GenerationPlan = S["GenerationPlan"];
+export type FileChange = S["FileChange"];
+export type FileChangeKind = S["FileChangeKind"];
+export type RunOutcome = S["RunOutcome"];
+export type JobInfo = S["JobInfo"];
+export type JobState = S["JobState"];
+export type ProgressUpdate = S["ProgressUpdate"];
+export type PreviewRequest = S["PreviewRequest"];
+export type PreviewResult = S["PreviewResult"];
+export type RenderedFile = S["RenderedFile"];
+export type ApplyResult = S["ApplyResult"];
+export type PlanResult = S["PlanResult"];
+export type GenerationResult = S["GenerationResult"];
+export type PlanUnit = S["PlanUnit"];
+export type RootSelection = S["RootSelection"];
+export type JobCounts = S["JobCounts"];
+export type PresenceReport = S["PresenceReport"];
+export type PresenceEntry = S["PresenceEntry"];
+
+// Model documents (schemas/v1/<kind>.json, bundled into the contract)
+export type EntityDoc = S["entity"];
+export type AttributeDoc = S["attribute"];
+export type RelationDoc = S["relation"];
+export type RelationEndDoc = S["relation"]["ends"][number];
+export type DiagramDoc = S["diagram"];
+export type DiagramMember = NonNullable<S["diagram"]["members"]>[number];
+export type DatabaseDoc = S["database"];
+export type MappingDoc = S["mapping"];
+export type MappingAttributeDoc = NonNullable<S["mapping"]["attributes"]>[number];
+export type EnumDoc = S["enum"];
+export type ValueObjectDoc = S["value-object"];
+export type ScalarTypeDoc = S["scalar-type"];
+export type PackageDoc = S["package"];
+export type TagVocabularyDoc = S["tag-vocabulary"];
+export type CategoryTreeDoc = S["category-tree"];
+export type CategoryDoc = NonNullable<S["category-tree"]["categories"]>[number];
+export type StereotypeDoc = S["stereotype"];
+export type BuiltinType = S["builtinType"];
+export type TypeRef = S["typeRef"];
+
+// Realtime payloads (OpenAPI webhooks, PD7)
+export type RealtimeModelChanged = S["RealtimeModelChanged"];
+export type RealtimeValidationCompleted = S["RealtimeValidationCompleted"];
+export type RealtimeProjectChanged = S["RealtimeProjectChanged"];
+export type RealtimeJobProgress = S["RealtimeJobProgress"];
+export type RealtimeJobCompleted = S["RealtimeJobCompleted"];
+export type RealtimePresenceChanged = S["RealtimePresenceChanged"];
+export type RealtimeSiteDeployed = S["RealtimeSiteDeployed"];
+
+/** A model document as the editor edits it: canonical JSON of any kind. */
+export type ModelJson = ModelDocument & Record<string, unknown>;

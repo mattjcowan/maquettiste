@@ -1,0 +1,304 @@
+[
+  {
+    "id": "01J92P0V1QRN2181XM2ZWE02W4",
+    "kind": "database",
+    "name": "main",
+    "package": null,
+    "tags": [],
+    "hash": "7fccf6c4f0985534e9089ca5b34664883add3de727699fb83d825ae1d0a638f5",
+    "path": ".maquettiste/model/databases/main/database.json",
+    "category": null,
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V1S972MSFDJ8G6V6MWT",
+    "kind": "sequence",
+    "name": "invoice_number_seq",
+    "package": null,
+    "tags": [],
+    "hash": "f16685927cccf1f96a99dd454a0ca4b1dd7dcf63b4828cbec48172cc0337ee3a",
+    "path": ".maquettiste/model/databases/main/sequences/invoice-number-seq.json",
+    "category": null,
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V1T0J6RH4MY9H81NYB4",
+    "kind": "table",
+    "name": "",
+    "package": null,
+    "tags": [],
+    "hash": "ae8e25b09c4545bea2c0a6e43207c1dcc0994210ff290f46790c4abc9774ea13",
+    "path": ".maquettiste/model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json",
+    "category": null,
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V1YZ4YP352KD1A50FXS",
+    "kind": "view",
+    "name": "outstanding_invoices",
+    "package": null,
+    "tags": [],
+    "hash": "35aba475e981a066643711a0eb737a20437d3cc1ad186128c2d2e18a17745ae3",
+    "path": ".maquettiste/model/databases/main/views/outstanding-invoices.json",
+    "category": null,
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V2164SDBW687ZV6E1MV",
+    "kind": "diagram",
+    "name": "Billing overview",
+    "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+    "tags": [],
+    "hash": "a29e751129658af7503fb429afb3b382538a96bd8adee116e98b08a17152840c",
+    "path": ".maquettiste/model/diagrams/billing-overview.json",
+    "category": null,
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V0ETQKXXP951CMMNHH3",
+    "kind": "entity",
+    "name": "Customer",
+    "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+    "tags": [
+      "billing",
+      "pii"
+    ],
+    "hash": "9e5da84d083cffdcec1a6b4969a4281f1cbf2b64957bde9621616f813ea27dcf",
+    "path": ".maquettiste/model/entities/customer.json",
+    "category": "01J92P0V06TYE8P8990AV35A8K",
+    "stereotypes": [
+      "aggregate-root",
+      "audited"
+    ]
+  },
+  {
+    "id": "01J92P0V0GWFR78HZH0P8Z3GY7",
+    "kind": "entity",
+    "name": "InvoiceLine",
+    "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+    "tags": [],
+    "hash": "5e21b73617381f8ff27e372b5fcb7bd0257fde13c8b93d44dbe788a8a05cdc00",
+    "path": ".maquettiste/model/entities/invoice-line.json",
+    "category": "01J92P0V06TYE8P8990AV35A8K",
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V0FJ23CGSNKM7P1W5V7",
+    "kind": "entity",
+    "name": "Invoice",
+    "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+    "tags": [
+      "billing"
+    ],
+    "hash": "4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73",
+    "path": ".maquettiste/model/entities/invoice.json",
+    "category": "01J92P0V06TYE8P8990AV35A8K",
+    "stereotypes": [
+      "aggregate-root",
+      "audited",
+      "soft-delete"
+    ]
+  },
+  {
+    "id": "01J92P0V0HEGSC6MW92CST5KA6",
+    "kind": "entity",
+    "name": "Payment",
+    "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+    "tags": [],
+    "hash": "3fcf3563828b7a5a112b376bcb440d466ceb092c72798d2f96c3be34aac8c43d",
+    "path": ".maquettiste/model/entities/payment.json",
+    "category": "01J92P0V06TYE8P8990AV35A8K",
+    "stereotypes": [
+      "audited"
+    ]
+  },
+  {
+    "id": "01J92P0V0JR8BE8253SKT29ZG7",
+    "kind": "entity",
+    "name": "Product",
+    "package": "01J92P0V025DRFTXKMS240G2NG",
+    "tags": [],
+    "hash": "9eef879d0241ec82e861d390b167bf839de58382841584f5ddc5cd17f78db78f",
+    "path": ".maquettiste/model/entities/product.json",
+    "category": "01J92P0V07KWPZMZ6FKXDYJ3JA",
+    "stereotypes": [
+      "soft-delete"
+    ]
+  },
+  {
+    "id": "01J92P0V05WQDH2GZG539D9VG1",
+    "kind": "enum",
+    "name": "InvoiceStatus",
+    "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+    "tags": [],
+    "hash": "240ebdae171b74f662dca27e6a39feecda3a5ed11eab9d15f97e1120fef020bd",
+    "path": ".maquettiste/model/enums/invoice-status.json",
+    "category": null,
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V200XW93JQYSRCT2SE3",
+    "kind": "mapping",
+    "name": "Invoice in main",
+    "package": null,
+    "tags": [],
+    "hash": "84db9d2e788aa2a538cb1df016c3613dc7e0c886317630b3d85fb5808d9b8318",
+    "path": ".maquettiste/model/mappings/invoice-in-main.json",
+    "category": null,
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V1ZYK32MC97T5NBB5Y5",
+    "kind": "mapping",
+    "name": "settles in main",
+    "package": null,
+    "tags": [],
+    "hash": "8c48c6fb141cdf1f9fe1f2b05904923d9717a46d8bc778649eea71adb2fa1086",
+    "path": ".maquettiste/model/mappings/settles-in-main.json",
+    "category": null,
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V01KDRN8GX5PGYCNKSX",
+    "kind": "package",
+    "name": "Billing",
+    "package": null,
+    "tags": [],
+    "hash": "28aadbb9e1c11cdd89539991fa4ced5d566312d0a62c7692bb7e5789cce923b2",
+    "path": ".maquettiste/model/packages/billing.json",
+    "category": null,
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V025DRFTXKMS240G2NG",
+    "kind": "package",
+    "name": "Catalog",
+    "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+    "tags": [],
+    "hash": "bfa9e54d30b5649e70697ccb75b92f201f7e02deed855ce9de50406528a8b639",
+    "path": ".maquettiste/model/packages/catalog.json",
+    "category": null,
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V1BWHG0REWKSTR292RS",
+    "kind": "relation",
+    "name": "contains",
+    "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+    "tags": [],
+    "hash": "f9fdc699d65150052e25ef459180736b24a44f97c69cbefd09c9d12897fd36e9",
+    "path": ".maquettiste/model/relations/contains.json",
+    "category": null,
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V1ACKN3G6TK3NJDTM82",
+    "kind": "relation",
+    "name": "places",
+    "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+    "tags": [],
+    "hash": "0fe924f4bb4e9746c7b91d1c725561de6d24205348d9fb8fdf360921644dffc6",
+    "path": ".maquettiste/model/relations/places.json",
+    "category": null,
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V1CC98R0RRCAV73SGF4",
+    "kind": "relation",
+    "name": "refers to",
+    "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+    "tags": [],
+    "hash": "9394a133c8f98f739403a1633b5a7f3574d2dcca180e9866f4bff7431cf6eb63",
+    "path": ".maquettiste/model/relations/refers-to.json",
+    "category": null,
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V1DKHD5Q02DV6S5M53D",
+    "kind": "relation",
+    "name": "settles",
+    "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+    "tags": [],
+    "hash": "b994eb5e34a181ddca89341232c603c326753e35e0dcc9e20970d8b4fcafe168",
+    "path": ".maquettiste/model/relations/settles.json",
+    "category": null,
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V04TDYE2C73WMNXVDBV",
+    "kind": "scalar-type",
+    "name": "EmailAddress",
+    "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+    "tags": [],
+    "hash": "99a60a412605fd66dc47411a6cf58c2df58a7e74924feae4f57f2ff9a5fe4120",
+    "path": ".maquettiste/model/types/email-address.json",
+    "category": null,
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V0304M76KA84NE4D1TE",
+    "kind": "value-object",
+    "name": "Money",
+    "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+    "tags": [],
+    "hash": "f6a11cc7a602ba496e4e7cb034a2f8550661b4384e9dedd962963e9b6d02734e",
+    "path": ".maquettiste/model/types/money.json",
+    "category": null,
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V23WVT7FBW527GR7GX5",
+    "kind": "category-tree",
+    "name": "categories",
+    "package": null,
+    "tags": [],
+    "hash": "a5070883c603ab35bfe8560f7480f5f42e88f8132af203eb1fb6edb49af537c9",
+    "path": ".maquettiste/model/vocabularies/categories.json",
+    "category": null,
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V245JG9WK55YJE2QWWV",
+    "kind": "stereotype",
+    "name": "Aggregate root",
+    "package": null,
+    "tags": [],
+    "hash": "99280a88e64d4693bf6e67eed5a76a9a1a50892613d99d96c6a5787a961f47f2",
+    "path": ".maquettiste/model/vocabularies/stereotypes/aggregate-root.json",
+    "category": null,
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V25BX5TMQ8N9F6AJE61",
+    "kind": "stereotype",
+    "name": "Audited",
+    "package": null,
+    "tags": [],
+    "hash": "d53cebc064f008ca381bf49e9072b067b8de2b69f3c3d051faf88be06403366d",
+    "path": ".maquettiste/model/vocabularies/stereotypes/audited.json",
+    "category": null,
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V28YYY43REGJ9RXZ662",
+    "kind": "stereotype",
+    "name": "Soft delete",
+    "package": null,
+    "tags": [],
+    "hash": "6298e7c0b6324f4018558d379395421c6291cf79d370296982f3d84bac1ccd03",
+    "path": ".maquettiste/model/vocabularies/stereotypes/soft-delete.json",
+    "category": null,
+    "stereotypes": []
+  },
+  {
+    "id": "01J92P0V22Q6775D5GE10SN3RB",
+    "kind": "tag-vocabulary",
+    "name": "tags",
+    "package": null,
+    "tags": [],
+    "hash": "79a6aa0cd42dab56a8c451c8e1534c3d880f37167cd158c993cf164a1d641c5f",
+    "path": ".maquettiste/model/vocabularies/tags.json",
+    "category": null,
+    "stereotypes": []
+  }
+]

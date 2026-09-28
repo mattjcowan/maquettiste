@@ -1,0 +1,119 @@
+name: image
+
+# The editor image (phase2-design.md sections 6 and 9): build it, smoke-test it with no network over a copy of the billing fixture,
+# check that an upgraded image replaces the engine the persistent NuGet cache holds (PD24), and on v* tags publish it.
+
+on:
+  push:
+    branches: [main, "phase-*"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOCKER_BUILDKIT: "1"
+  IMAGE: mattjcowan/maquettiste
+
+jobs:
+  smoke:
+    name: build and offline smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -f docker/Dockerfile -t "$IMAGE:ci" .
+
+      # Starts the image with --network none on a fresh volume: /api/health "ok" proves the first functions build restored from the
+      # image's local feed; then /data/sites ownership, the project, the index, a save with If-Match, a 409, a plan and an apply.
+      - name: Smoke test (no network)
+        run: sh docker/smoke.sh "$IMAGE:ci"
+
+  upgrade:
+    name: upgrade replaces the cached engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the first image and start it on a named volume
+        run: |
+          set -eu
+          docker build -f docker/Dockerfile -t "$IMAGE:before" .
+          mkdir -p "$RUNNER_TEMP/model/.maquettiste"
+          cp -r tests/fixtures/models/billing/.maquettiste/. "$RUNNER_TEMP/model/.maquettiste/"
+          chmod -R a+rwX "$RUNNER_TEMP/model"
+          docker volume create mq-upgrade
+          docker run -d --name mq-before --network none -v mq-upgrade:/data \
+            -v "$RUNNER_TEMP/model/.maquettiste:/data/sites/maquettiste.localhost/data" -v "$RUNNER_TEMP/model:/repo" "$IMAGE:before"
+
+      - name: Read engineBuild from the first image
+        run: |
+          set -eu
+          for i in $(seq 1 180); do
+            if docker exec mq-before curl -fs -H 'Host: maquettiste.localhost:8080' http://127.0.0.1:8080/api/health | grep -q '"status":"ok"'; then break; fi
+            sleep 1
+          done
+          before=$(docker exec mq-before curl -fsS -H 'Host: maquettiste.localhost:8080' http://127.0.0.1:8080/api/health | jq -r .engineBuild)
+          test "$before" = "$(docker exec mq-before cat /opt/maquettiste/engine.version)"
+          echo "BEFORE=$before" >> "$GITHUB_ENV"
+          docker rm -f mq-before
+
+      - name: Change an engine source file and build the second image
+        run: |
+          echo '// upgrade check' >> src/Maquettiste.Engine/EngineVersion.cs
+          docker build -f docker/Dockerfile -t "$IMAGE:after" .
+
+      - name: Start the second image on the same volume; engineBuild must be the new engine
+        run: |
+          set -eu
+          docker run -d --name mq-after --network none -v mq-upgrade:/data \
+            -v "$RUNNER_TEMP/model/.maquettiste:/data/sites/maquettiste.localhost/data" -v "$RUNNER_TEMP/model:/repo" "$IMAGE:after"
+          expected=$(docker exec mq-after cat /opt/maquettiste/engine.version)
+          test "$expected" != "$BEFORE"
+          for i in $(seq 1 180); do
+            after=$(docker exec mq-after curl -fs -H 'Host: maquettiste.localhost:8080' http://127.0.0.1:8080/api/health | jq -r .engineBuild || true)
+            if [ "$after" = "$expected" ]; then echo "engineBuild $BEFORE -> $after"; exit 0; fi
+            sleep 1
+          done
+          docker logs mq-after | tail -60
+          echo "engineBuild is '$after', expected '$expected'"; exit 1
+
+      - name: Clean up
+        if: always()
+        run: |
+          docker rm -f mq-before mq-after || true
+          docker volume rm mq-upgrade || true
+
+  publish:
+    name: publish
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [smoke, upgrade]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # The base image and the .NET SDK both ship linux/amd64 and linux/arm64; Apple Silicon gets a native image.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push (amd64 and arm64)
+        run: |
+          set -eu
+          version="${GITHUB_REF_NAME#v}"
+          tags="-t $IMAGE:$version"
+          # A prerelease tag (v1.0.0-alpha.1) never moves latest.
+          case "$version" in *-*) ;; *) tags="$tags -t $IMAGE:latest" ;; esac
+          # shellcheck disable=SC2086
+          docker buildx build --platform linux/amd64,linux/arm64 -f docker/Dockerfile $tags --push .

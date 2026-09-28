@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The editor's C# functions (phase2-design.md section 3). The host compiles _functions/*.cs itself (the files of the site zip);
+       this project compiles the same files for IDEs, the build and the tests. Directives.cs holds the #:package lines, which a
+       normal project cannot compile (CS9298), so it is left out here (PD19). -->
+  <PropertyGroup>
+    <RootNamespace>Maquettiste.Functions</RootNamespace>
+    <AssemblyName>Maquettiste.Functions</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="_functions/*.cs" Exclude="_functions/Directives.cs" />
+    <None Include="_functions/Directives.cs" />
+    <None Include="_variables.json" />
+  </ItemGroup>
+
+  <!-- The host compiles the functions with LINQPad's default imports on top of the implicit usings (FunctionProjectGenerator.
+       DefaultUsings); build with -p:HostUsings=true to check that no type name becomes ambiguous under them (CI does both). -->
+  <ItemGroup Condition="'$(HostUsings)' == 'true'">
+    <Using Include="System.Collections" />
+    <Using Include="System.Data" />
+    <Using Include="System.Diagnostics" />
+    <Using Include="System.Linq.Expressions" />
+    <Using Include="System.Reflection" />
+    <Using Include="System.Text" />
+    <Using Include="System.Text.RegularExpressions" />
+    <Using Include="System.Transactions" />
+    <Using Include="System.Xml" />
+    <Using Include="System.Xml.Linq" />
+    <Using Include="System.Xml.XPath" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="StaticSiteHost.Abstractions" />
+    <ProjectReference Include="../Maquettiste.Engine/Maquettiste.Engine.csproj" />
+  </ItemGroup>
+</Project>

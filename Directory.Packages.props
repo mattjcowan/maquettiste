@@ -16,5 +16,7 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <!-- Phase 2, functions tests only: reads docs/api/openapi.yaml for the contract checks (phase2-design.md section 3.9). -->
+    <PackageVersion Include="YamlDotNet" Version="16.3.0" />
   </ItemGroup>
 </Project>

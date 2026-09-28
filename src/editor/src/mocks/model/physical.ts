@@ -1,0 +1,513 @@
+// The mock's physical resolution: a simplified resolver (engine-design.md 7) that turns the mock
+// model into a DatabaseView (E1) so the Database and Mappings workspaces and the DDL preview
+// follow edits without a backend. Conventions (case, plural tables, enum storage), mapping
+// overrides (storage, prefix, ignore) and designed-table native types are applied; the output is
+// plausible, not the engine's exact result, and the mocks' hashes and names are never compared
+// with real ones.
+import type { ColumnView, DatabaseView, ForeignKeyView, TableView } from "@/api/types";
+
+type Json = Record<string, unknown>;
+const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
+
+export interface PhysicalInput {
+  docs: Map<string, Json>;
+  conventions: Json;
+  databaseConventions: Record<string, Json>;
+}
+
+function words(name: string): string[] {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((w) => w.toLowerCase());
+}
+
+export function applyCase(name: string, style: string): string {
+  const w = words(name);
+  switch (style) {
+    case "pascal":
+      return w.map((x) => x[0].toUpperCase() + x.slice(1)).join("");
+    case "camel":
+      return w.map((x, i) => (i === 0 ? x : x[0].toUpperCase() + x.slice(1))).join("");
+    case "kebab":
+      return w.join("-");
+    case "upper-snake":
+      return w.join("_").toUpperCase();
+    case "preserve":
+      return name;
+    default:
+      return w.join("_");
+  }
+}
+
+export function plural(word: string): string {
+  if (/(s|x|z|ch|sh)$/i.test(word)) return word + "es";
+  if (/[^aeiou]y$/i.test(word)) return word.slice(0, -1) + "ies";
+  return word + "s";
+}
+
+const NATIVE: Record<string, Record<string, (a: { length?: number; precision?: number; scale?: number }) => string>> = {
+  postgresql: {
+    string: (a) => `varchar(${a.length ?? 255})`,
+    text: () => "text",
+    bool: () => "boolean",
+    int16: () => "smallint",
+    int32: () => "integer",
+    int64: () => "bigint",
+    decimal: (a) => `numeric(${a.precision ?? 18},${a.scale ?? 2})`,
+    float: () => "real",
+    double: () => "double precision",
+    date: () => "date",
+    time: () => "time(6)",
+    datetime: () => "timestamp(6)",
+    datetimeoffset: () => "timestamptz(6)",
+    duration: () => "interval",
+    uuid: () => "uuid",
+    ulid: () => "char(26)",
+    binary: () => "bytea",
+    json: () => "jsonb",
+  },
+  sqlserver: {
+    string: (a) => `nvarchar(${a.length ?? 255})`,
+    text: () => "nvarchar(max)",
+    bool: () => "bit",
+    int16: () => "smallint",
+    int32: () => "int",
+    int64: () => "bigint",
+    decimal: (a) => `decimal(${a.precision ?? 18},${a.scale ?? 2})`,
+    float: () => "real",
+    double: () => "float",
+    date: () => "date",
+    time: () => "time(7)",
+    datetime: () => "datetime2(7)",
+    datetimeoffset: () => "datetimeoffset(7)",
+    duration: () => "bigint",
+    uuid: () => "uniqueidentifier",
+    ulid: () => "char(26)",
+    binary: () => "varbinary(max)",
+    json: () => "nvarchar(max)",
+  },
+  sqlite: {
+    string: () => "TEXT",
+    text: () => "TEXT",
+    bool: () => "INTEGER",
+    int16: () => "INTEGER",
+    int32: () => "INTEGER",
+    int64: () => "INTEGER",
+    decimal: () => "NUMERIC",
+    float: () => "REAL",
+    double: () => "REAL",
+    date: () => "TEXT",
+    time: () => "TEXT",
+    datetime: () => "TEXT",
+    datetimeoffset: () => "TEXT",
+    duration: () => "INTEGER",
+    uuid: () => "TEXT",
+    ulid: () => "TEXT",
+    binary: () => "BLOB",
+    json: () => "TEXT",
+  },
+  mysql: {
+    string: (a) => `varchar(${a.length ?? 255})`,
+    text: () => "text",
+    bool: () => "tinyint(1)",
+    int16: () => "smallint",
+    int32: () => "int",
+    int64: () => "bigint",
+    decimal: (a) => `decimal(${a.precision ?? 18},${a.scale ?? 2})`,
+    float: () => "float",
+    double: () => "double",
+    date: () => "date",
+    time: () => "time(6)",
+    datetime: () => "datetime(6)",
+    datetimeoffset: () => "datetime(6)",
+    duration: () => "bigint",
+    uuid: () => "char(36)",
+    ulid: () => "char(26)",
+    binary: () => "longblob",
+    json: () => "json",
+  },
+  oracle: {
+    string: (a) => `varchar2(${a.length ?? 255})`,
+    text: () => "clob",
+    bool: () => "number(1)",
+    int16: () => "number(5)",
+    int32: () => "number(10)",
+    int64: () => "number(19)",
+    decimal: (a) => `number(${a.precision ?? 18},${a.scale ?? 2})`,
+    float: () => "binary_float",
+    double: () => "binary_double",
+    date: () => "date",
+    time: () => "interval day to second",
+    datetime: () => "timestamp(6)",
+    datetimeoffset: () => "timestamp(6) with time zone",
+    duration: () => "interval day to second",
+    uuid: () => "raw(16)",
+    ulid: () => "char(26)",
+    binary: () => "blob",
+    json: () => "clob",
+  },
+};
+
+export function nativeType(dialect: string, type: string, facets: { length?: number; precision?: number; scale?: number }): string {
+  const map = NATIVE[dialect] ?? NATIVE.postgresql;
+  return (map[type] ?? (() => type))(facets);
+}
+
+interface ResolvedColumn {
+  name: string;
+  type: string;
+  length: number | null;
+  precision: number | null;
+  scale: number | null;
+  nullable: boolean;
+  attributeId: string | null;
+  attributePath: string | null;
+  key: string;
+  isPrimaryKey: boolean;
+  isForeignKey: boolean;
+  unique: boolean;
+  indexed: boolean;
+  nativeOverride?: string;
+}
+
+/** Resolves one database of the mock model; null when the id is not a database. */
+export function resolveDatabase(input: PhysicalInput, databaseId: string): DatabaseView | null {
+  const db = input.docs.get(databaseId);
+  if (!db || db.kind !== "database") return null;
+  const dialect = String(db.dialect ?? "postgresql");
+  const dbName = String(db.name ?? "");
+  const conventions = { ...input.conventions, ...stripNull(input.databaseConventions[dbName] ?? {}) };
+  const tableCase = String(conventions.tableCase ?? "snake");
+  const columnCase = String(conventions.columnCase ?? "snake");
+  const pluralTables = conventions.pluralTables !== false;
+  const enumStorage = String(conventions.enumStorage ?? "int");
+  const defaultStringLength = typeof conventions.defaultStringLength === "number" ? conventions.defaultStringLength : 255;
+  const defaultSchema = typeof db.defaultSchema === "string" ? db.defaultSchema : null;
+  const packages = new Set((db.packages as string[] | undefined) ?? []);
+
+  const all = [...input.docs.values()];
+  const entities = all
+    .filter((d) => d.kind === "entity" && d.abstract !== true && (packages.size === 0 || packages.has(String(d.package))))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const entityIds = new Set(entities.map((e) => String(e.id)));
+  const stereotypes = new Map(all.filter((d) => d.kind === "stereotype").map((s) => [String(s.key), s]));
+  const mappings = all.filter((d) => d.kind === "mapping" && d.database === databaseId);
+  const overlays = all.filter((d) => d.kind === "table" && d.database === databaseId);
+  const colName = (n: string) => applyCase(n, columnCase);
+  const tableName = (entityName: string) => applyCase(pluralTables ? plural(entityName) : entityName, tableCase);
+
+  const tables: TableView[] = [];
+  const pkColumnsByEntity = new Map<string, { table: TableView; columns: ColumnView[] }>();
+
+  type Override = { storage?: string; prefix?: string };
+  const scalarColumns = (
+    attr: Json,
+    prefix: string,
+    path: string,
+    attrId: string,
+    required: boolean,
+    override: Override,
+  ): Omit<ResolvedColumn, "isPrimaryKey" | "isForeignKey">[] => {
+    const type = attr.type as string | { ref: string };
+    if (typeof type === "string") {
+      return [
+        {
+          name: colName(prefix + String(attr.name)),
+          type,
+          length: type === "string" ? ((attr.length as number | undefined) ?? defaultStringLength) : null,
+          precision: type === "decimal" ? ((attr.precision as number | undefined) ?? 18) : null,
+          scale: type === "decimal" ? ((attr.scale as number | undefined) ?? 2) : null,
+          nullable: !required,
+          attributeId: attrId,
+          attributePath: path,
+          key: path,
+          unique: attr.unique === true,
+          indexed: attr.indexed === true,
+        },
+      ];
+    }
+    const target = input.docs.get(type.ref);
+    if (!target) return [];
+    if (target.kind === "value-object") {
+      const voPrefix = override.prefix ?? `${String(attr.name)}_`;
+      return arr(target.attributes).flatMap((inner) =>
+        scalarColumns(inner, prefix + voPrefix, `${path}.${String(inner.id)}`, attrId, required && inner.required === true, {}),
+      );
+    }
+    if (target.kind === "enum") {
+      const asString = (override.storage ?? enumStorage) === "string";
+      const longest = Math.max(1, ...arr(target.members).map((m) => String(m.name).length));
+      return [
+        {
+          name: colName(prefix + String(attr.name)),
+          type: asString ? "string" : "int32",
+          length: asString ? longest : null,
+          precision: null,
+          scale: null,
+          nullable: !required,
+          attributeId: attrId,
+          attributePath: path,
+          key: path,
+          unique: attr.unique === true,
+          indexed: attr.indexed === true,
+        },
+      ];
+    }
+    if (target.kind === "scalar-type") {
+      const base = String(target.base);
+      return [
+        {
+          name: colName(prefix + String(attr.name)),
+          type: base,
+          length: base === "string" ? ((target.length as number | undefined) ?? defaultStringLength) : null,
+          precision: (target.precision as number | undefined) ?? null,
+          scale: (target.scale as number | undefined) ?? null,
+          nullable: !required,
+          attributeId: attrId,
+          attributePath: path,
+          key: path,
+          unique: attr.unique === true,
+          indexed: attr.indexed === true,
+        },
+      ];
+    }
+    return [];
+  };
+
+  const toView = (c: ResolvedColumn, position: number): ColumnView => ({
+    key: c.key,
+    name: c.name,
+    type: c.type,
+    nativeType:
+      c.nativeOverride ?? nativeType(dialect, c.type, { length: c.length ?? undefined, precision: c.precision ?? undefined, scale: c.scale ?? undefined }),
+    length: c.length,
+    precision: c.precision,
+    scale: c.scale,
+    nullable: c.nullable,
+    defaultSql: null,
+    identity: false,
+    computed: null,
+    attributeId: c.attributeId,
+    attributePath: c.attributePath,
+    isPrimaryKey: c.isPrimaryKey,
+    isForeignKey: c.isForeignKey,
+    isDiscriminator: false,
+    position,
+  });
+
+  for (const entity of entities) {
+    const id = String(entity.id);
+    const mapping = mappings.find((m) => m.entity === id);
+    if (mapping?.ignore === true) continue;
+    const overrides = new Map(arr(mapping?.attributes).map((a) => [String(a.attribute), a]));
+    const overlay = overlays.find((t) => t.entity === id);
+    const nativeByAttr = new Map(
+      arr(overlay?.columns)
+        .filter((c) => c.attribute && c.nativeType)
+        .map((c) => [String(c.attribute), String(c.nativeType)]),
+    );
+    const keyIds = new Set(((entity.key as Json | undefined)?.attributes as string[] | undefined) ?? []);
+    const identity = (entity.key as Json | undefined)?.strategy === "database-identity";
+    const attributes = [...arr(entity.attributes)];
+    for (const skey of (entity.stereotypes as string[] | undefined) ?? []) attributes.push(...arr(stereotypes.get(skey)?.attributes));
+    const columns: ResolvedColumn[] = [];
+    for (const attr of attributes) {
+      if (attr.collection === true) continue;
+      const override = overrides.get(String(attr.id));
+      if (override?.ignore === true) continue;
+      const produced = scalarColumns(attr, "", String(attr.id), String(attr.id), attr.required === true, {
+        storage: override?.storage as string | undefined,
+        prefix: override?.prefix as string | undefined,
+      });
+      for (const c of produced)
+        columns.push({ ...c, isPrimaryKey: keyIds.has(String(attr.id)), isForeignKey: false, nativeOverride: nativeByAttr.get(String(attr.id)) });
+    }
+    const name = tableName(String(entity.name));
+    const table: TableView = {
+      key: `${id}@${databaseId}`,
+      name,
+      schema: defaultSchema,
+      origin: "synthesized",
+      entityId: id,
+      relationId: null,
+      isJunction: false,
+      isLookup: false,
+      comment: null,
+      columns: [],
+      primaryKey: null,
+      uniques: [],
+      foreignKeys: [],
+      indexes: [],
+    };
+    table.columns = columns.map((c, i) => ({ ...toView(c, i + 1), identity: identity && c.isPrimaryKey }));
+    const pk = table.columns.filter((c) => c.isPrimaryKey);
+    table.primaryKey = pk.length ? { name: `pk_${name}`, columns: pk.map((c) => c.key) } : null;
+    table.uniques = columns.filter((c) => c.unique).map((c) => ({ name: `uq_${name}_${c.name}`, columns: [c.key] }));
+    table.indexes = columns
+      .filter((c) => c.indexed)
+      .map((c) => ({ name: `ix_${name}_${c.name}`, columns: [{ column: c.key, descending: false }], unique: false, where: null }));
+    if (overlay) {
+      table.origin = "designed";
+      table.key = `${id}@${databaseId}`;
+      for (const ix of arr(overlay.indexes)) {
+        const cols = arr(ix.columns).map((c) => ({ column: String(c.column), descending: c.descending === true }));
+        const names = cols.map((c) => table.columns.find((col) => col.key === c.column)?.name ?? c.column);
+        if (!table.indexes.some((x) => x.columns.length === cols.length && x.columns.every((c, i) => c.column === cols[i].column)))
+          table.indexes.push({ name: `ix_${name}_${names.join("_")}`, columns: cols, unique: false, where: null });
+        else table.indexes = table.indexes.map((x) => (x.columns.length === 1 && x.columns[0].column === cols[0]?.column ? { ...x, columns: cols } : x));
+      }
+    }
+    tables.push(table);
+    pkColumnsByEntity.set(id, { table, columns: table.columns.filter((c) => c.isPrimaryKey) });
+  }
+
+  // Relations: a foreign key on the "many" side, or a junction table for many-to-many.
+  const relations = all.filter((d) => d.kind === "relation").sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  for (const relation of relations) {
+    const ends = arr(relation.ends);
+    if (ends.length !== 2) continue;
+    const [a, b] = ends;
+    if (!entityIds.has(String(a.entity)) || !entityIds.has(String(b.entity))) continue;
+    const relationMapping = mappings.find((m) => m.relation === relation.id);
+    if (relationMapping?.ignore === true) continue;
+    const manyA = (a.max ?? "*") === "*";
+    const manyB = (b.max ?? "*") === "*";
+    const onDelete = (end: Json) => ({ cascade: "cascade", restrict: "restrict", "set-null": "set null" })[String(end.onDelete)] ?? "no action";
+    const addForeignKey = (holder: Json, referenced: Json, end: Json, nullable: boolean, ordered: boolean) => {
+      const from = pkColumnsByEntity.get(String(holder.entity));
+      const to = pkColumnsByEntity.get(String(referenced.entity));
+      if (!from || !to) return;
+      const role = String(referenced.role ?? referenced.navigation ?? "ref");
+      const fkColumns: ColumnView[] = to.columns.map((pk) => ({
+        ...pk,
+        key: `${String(referenced.id)}.${pk.key}`,
+        name: colName(`${role}_${pk.name}`),
+        nullable,
+        identity: false,
+        isPrimaryKey: false,
+        isForeignKey: true,
+        attributeId: null,
+        attributePath: null,
+        position: from.table.columns.length + 1,
+      }));
+      from.table.columns.push(...fkColumns);
+      if (ordered)
+        from.table.columns.push({
+          key: `${String(end.id)}.position`,
+          name: colName("position"),
+          type: "int32",
+          nativeType: nativeType(dialect, "int32", {}),
+          length: null,
+          precision: null,
+          scale: null,
+          nullable: false,
+          defaultSql: null,
+          identity: false,
+          computed: null,
+          attributeId: null,
+          attributePath: null,
+          isPrimaryKey: false,
+          isForeignKey: false,
+          isDiscriminator: false,
+          position: from.table.columns.length + 1,
+        });
+      const fk: ForeignKeyView = {
+        name: `fk_${from.table.name}_${fkColumns.map((c) => c.name).join("_")}`,
+        columns: fkColumns.map((c) => c.key),
+        referencedTable: to.table.key,
+        referencedColumns: to.columns.map((c) => c.key),
+        onDelete: onDelete(referenced),
+        onUpdate: "no action",
+        relationId: String(relation.id),
+        endId: String(referenced.id),
+      };
+      from.table.foreignKeys.push(fk);
+      from.table.columns.forEach((c, i) => (c.position = i + 1));
+    };
+
+    if (manyA && manyB) {
+      const left = pkColumnsByEntity.get(String(a.entity));
+      const right = pkColumnsByEntity.get(String(b.entity));
+      if (!left || !right) continue;
+      const leftName = applyCase(String(input.docs.get(String(a.entity))?.name), tableCase);
+      const rightName = applyCase(String(input.docs.get(String(b.entity))?.name), tableCase);
+      const name = `${leftName}_${rightName}`;
+      const key = `${String(relation.id)}@${databaseId}`;
+      const junction: TableView = {
+        key,
+        name,
+        schema: defaultSchema,
+        origin: "synthesized",
+        entityId: null,
+        relationId: String(relation.id),
+        isJunction: true,
+        isLookup: false,
+        comment: null,
+        columns: [],
+        primaryKey: null,
+        uniques: [],
+        foreignKeys: [],
+        indexes: [],
+      };
+      const sides = [
+        { end: a, target: left, label: leftName },
+        { end: b, target: right, label: rightName },
+      ];
+      for (const side of sides) {
+        const cols = side.target.columns.map((pk) => ({
+          ...pk,
+          key: `${String(side.end.id)}.${pk.key}`,
+          name: colName(`${side.label}_${pk.name}`),
+          nullable: false,
+          identity: false,
+          isPrimaryKey: true,
+          isForeignKey: true,
+          attributeId: null,
+          attributePath: null,
+          position: 0,
+        }));
+        junction.columns.push(...cols);
+        junction.foreignKeys.push({
+          name: `fk_${name}_${cols.map((c) => c.name).join("_")}`,
+          columns: cols.map((c) => c.key),
+          referencedTable: side.target.table.key,
+          referencedColumns: side.target.columns.map((c) => c.key),
+          onDelete: "cascade",
+          onUpdate: "no action",
+          relationId: String(relation.id),
+          endId: String(side.end.id),
+        });
+      }
+      for (const attr of arr(relation.attributes)) {
+        for (const c of scalarColumns(attr, "", String(attr.id), String(attr.id), attr.required === true, {}))
+          junction.columns.push(toView({ ...c, isPrimaryKey: false, isForeignKey: false }, 0));
+      }
+      junction.columns.forEach((c, i) => (c.position = i + 1));
+      junction.primaryKey = { name: `pk_${name}`, columns: junction.columns.filter((c) => c.isPrimaryKey).map((c) => c.key) };
+      tables.push(junction);
+    } else if (manyA && !manyB) {
+      addForeignKey(a, b, a, (b.min ?? 0) === 0, a.ordered === true);
+    } else if (manyB && !manyA) {
+      addForeignKey(b, a, b, (a.min ?? 0) === 0, b.ordered === true);
+    } else {
+      addForeignKey(b, a, b, (a.min ?? 0) === 0, false);
+    }
+  }
+
+  tables.sort((x, y) => x.name.localeCompare(y.name));
+  return {
+    id: databaseId,
+    name: dbName,
+    dialect,
+    version: typeof db.version === "string" ? db.version : null,
+    defaultSchema,
+    tables,
+  };
+}
+
+function stripNull(o: Json): Json {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null && v !== undefined));
+}

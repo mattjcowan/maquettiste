@@ -1,0 +1,43 @@
+{
+  "id": "01M3MTRNKWM8QK8B9SMJDTV349",
+  "kind": "plan",
+  "state": "succeeded",
+  "queuePosition": null,
+  "progress": {
+    "stage": "write",
+    "done": 29,
+    "total": 29,
+    "currentPath": "db/main/billing/tables/payment_invoice.sql",
+    "pack": "sql-ddl"
+  },
+  "planResult": {
+    "outcome": "succeeded",
+    "plan": {
+      "id": "01M3MTRNKWA19J391F0D2NQMJ2",
+      "request": {
+        "mode": "apply",
+        "packs": null,
+        "force": false,
+        "jobs": null,
+        "handEdits": null,
+        "includeDiffs": false,
+        "roots": "all",
+        "lock": "wait",
+        "stageBarriers": false
+      },
+      "modelVersion": 1,
+      "packs": [
+        "csharp-dapper",
+        "sql-ddl"
+      ],
+      "units": [],
+      "changes": [],
+      "diagnostics": []
+    }
+  },
+  "applyResult": null,
+  "error": null,
+  "queuedUtc": "2026-09-28T20:19:40.796123+00:00",
+  "startedUtc": "2026-09-28T20:19:40.796143+00:00",
+  "finishedUtc": "2026-09-28T20:19:40.9000056+00:00"
+}

@@ -1,0 +1,10 @@
+# Vite fingerprints everything under /assets, so it may be cached forever; the entry page and the
+# pre-paint theme script change on every deploy and are revalidated each time.
+/assets/**
+  Cache-Control: public, max-age=31536000, immutable
+
+/index.html
+  Cache-Control: no-cache
+
+/theme-init.js
+  Cache-Control: no-cache

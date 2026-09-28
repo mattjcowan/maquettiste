@@ -1,0 +1,140 @@
+{
+  "element": {
+    "kind": "diagram",
+    "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+    "members": [
+      {
+        "element": "01J92P0V0ETQKXXP951CMMNHH3",
+        "x": 40,
+        "y": 40,
+        "width": null,
+        "height": null,
+        "collapsed": false
+      },
+      {
+        "element": "01J92P0V0FJ23CGSNKM7P1W5V7",
+        "x": 320,
+        "y": 40,
+        "width": null,
+        "height": null,
+        "collapsed": false
+      },
+      {
+        "element": "01J92P0V0GWFR78HZH0P8Z3GY7",
+        "x": 600,
+        "y": 40,
+        "width": null,
+        "height": null,
+        "collapsed": false
+      },
+      {
+        "element": "01J92P0V0HEGSC6MW92CST5KA6",
+        "x": 320,
+        "y": 260,
+        "width": null,
+        "height": null,
+        "collapsed": false
+      },
+      {
+        "element": "01J92P0V0JR8BE8253SKT29ZG7",
+        "x": 600,
+        "y": 260,
+        "width": null,
+        "height": null,
+        "collapsed": true
+      },
+      {
+        "element": "01J92P0V1ACKN3G6TK3NJDTM82",
+        "x": 0,
+        "y": 0,
+        "width": null,
+        "height": null,
+        "collapsed": false
+      },
+      {
+        "element": "01J92P0V1BWHG0REWKSTR292RS",
+        "x": 0,
+        "y": 0,
+        "width": null,
+        "height": null,
+        "collapsed": false
+      },
+      {
+        "element": "01J92P0V1DKHD5Q02DV6S5M53D",
+        "x": 0,
+        "y": 0,
+        "width": null,
+        "height": null,
+        "collapsed": false
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 0.9
+    },
+    "$schema": "../../.schema/v1/diagram.json",
+    "id": "01J92P0V2164SDBW687ZV6E1MV",
+    "name": "Billing overview",
+    "displayName": null,
+    "pluralName": null,
+    "description": null,
+    "tags": [],
+    "category": null,
+    "stereotypes": [],
+    "properties": {},
+    "generation": {},
+    "source": null
+  },
+  "path": ".maquettiste/model/diagrams/billing-overview.json",
+  "hash": "a29e751129658af7503fb429afb3b382538a96bd8adee116e98b08a17152840c",
+  "dependencyHash": "a721359c5937c7c963407f917a79fb5f9dc2bdb918e7438ff7372cc59ca4df73",
+  "json": {
+    "$schema": "../../.schema/v1/diagram.json",
+    "kind": "diagram",
+    "id": "01J92P0V2164SDBW687ZV6E1MV",
+    "name": "Billing overview",
+    "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+    "members": [
+      {
+        "element": "01J92P0V0ETQKXXP951CMMNHH3",
+        "x": 40,
+        "y": 40
+      },
+      {
+        "element": "01J92P0V0FJ23CGSNKM7P1W5V7",
+        "x": 320,
+        "y": 40
+      },
+      {
+        "element": "01J92P0V0GWFR78HZH0P8Z3GY7",
+        "x": 600,
+        "y": 40
+      },
+      {
+        "element": "01J92P0V0HEGSC6MW92CST5KA6",
+        "x": 320,
+        "y": 260
+      },
+      {
+        "element": "01J92P0V0JR8BE8253SKT29ZG7",
+        "x": 600,
+        "y": 260,
+        "collapsed": true
+      },
+      {
+        "element": "01J92P0V1ACKN3G6TK3NJDTM82"
+      },
+      {
+        "element": "01J92P0V1BWHG0REWKSTR292RS"
+      },
+      {
+        "element": "01J92P0V1DKHD5Q02DV6S5M53D"
+      }
+    ],
+    "viewport": {
+      "zoom": 0.9
+    }
+  },
+  "sidecarText": null
+}

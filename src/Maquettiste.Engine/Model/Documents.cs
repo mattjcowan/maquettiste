@@ -34,7 +34,10 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// <param name="Tags">The element's tag keys.</param>
 /// <param name="Hash">The file hash (ETag).</param>
 /// <param name="Path">The repo-relative file path.</param>
-public sealed record ElementSummary(string Id, string Kind, string Name, string? Package, IReadOnlyList<string> Tags, string Hash, string Path);
+/// <param name="Category">The id of the element's category-tree node, when it has one (E4: the explorer's category filter).</param>
+/// <param name="Stereotypes">The element's stereotype keys, in application order (E4: the explorer's stereotype filter).</param>
+public sealed record ElementSummary(string Id, string Kind, string Name, string? Package, IReadOnlyList<string> Tags, string Hash, string Path,
+    string? Category, IReadOnlyList<string> Stereotypes);
 
 /// <summary>A loaded extension schema file.</summary>
 /// <param name="Schema">The extension.</param>

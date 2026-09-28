@@ -1,0 +1,14 @@
+# Build context for docker/Dockerfile: sources only.
+.git
+**/bin
+**/obj
+**/node_modules
+**/dist
+**/dist-mock
+**/test-results
+**/playwright-report
+**/.vite
+tmp
+bench/out
+bench/results
+.claude

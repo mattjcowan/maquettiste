@@ -1,0 +1,36 @@
+# Local mode (SPEC Section 4, phase2-design.md section 6.3). Run it from the repository you model, or point --project-directory at
+# it; relative paths below are relative to that folder:
+#
+#   MAQUETTISTE_IMAGE=mattjcowan/maquettiste:dev docker compose -f <maquettiste>/docker/compose.yaml --project-directory . up -d
+#
+# then open http://maquettiste.localhost:8080 (no login from this machine).
+#
+# NEVER delete or rename the site maquettiste.localhost in the host's management UI or API: its data folder is the bind-mounted
+# .maquettiste/ below, and static-site-hosting 0.2.0 deletes a site folder recursively, model included. Recovery is
+# `git checkout -- .maquettiste` (uncommitted model edits are lost).
+#
+# On Linux the container runs as UID 1654, so the two bind mounts must be writable by it without changing their owner. Grant
+# yourself default entries too, or you cannot edit or delete what the editor creates (see docker/README.md):
+#   setfacl -R -m "u:1654:rwX,d:u:1654:rwX,u:$(id -u):rwX,d:u:$(id -u):rwX" .maquettiste <output roots, such as db src/Generated>
+services:
+  maquettiste:
+    image: ${MAQUETTISTE_IMAGE:-mattjcowan/maquettiste:latest}
+    ports: ["127.0.0.1:8080:8080"]
+    volumes:
+      - maquettiste-host:/data                                      # host config, users, keys, index cache
+      - ./.maquettiste:/data/sites/maquettiste.localhost/data       # the model
+      - ./:/repo                                                    # output root
+    environment:
+      MAQUETTISTE_REPO_ROOT: /repo
+      MAQUETTISTE_EDITOR_TOKEN: ${MAQUETTISTE_EDITOR_TOKEN:-}       # optional; empty = local peers only
+      # The container's gateway is found at start; set this only where the browser's requests arrive from another address
+      # (an IP address list, never *). See docker/README.md for Docker Desktop and other setups.
+      MAQUETTISTE_LOCAL_PEERS: ${MAQUETTISTE_LOCAL_PEERS:-}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+volumes:
+  maquettiste-host:

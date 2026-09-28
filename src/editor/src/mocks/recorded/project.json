@@ -1,0 +1,292 @@
+{
+  "name": "billing",
+  "formatVersion": 1,
+  "engineVersion": "1.0.0",
+  "mode": "local",
+  "settings": {
+    "$schema": ".schema/v1/maquettiste.json",
+    "formatVersion": 1,
+    "name": "billing",
+    "outputs": {
+      "allow": [
+        {
+          "path": "db",
+          "commit": true
+        },
+        {
+          "path": "src/Generated",
+          "commit": false
+        }
+      ],
+      "deny": []
+    },
+    "handEdits": "fail",
+    "formatters": [],
+    "conventions": {
+      "tableCase": null,
+      "pluralTables": null,
+      "columnCase": null,
+      "tableName": null,
+      "keyColumn": null,
+      "foreignKeyColumn": null,
+      "junctionTable": null,
+      "childTable": null,
+      "valueObjectColumn": null,
+      "orderColumn": null,
+      "discriminatorColumn": null,
+      "primaryKeyName": null,
+      "foreignKeyName": null,
+      "uniqueName": null,
+      "indexName": null,
+      "checkName": null,
+      "sequenceName": null,
+      "defaultStringLength": null,
+      "decimalPrecision": null,
+      "decimalScale": null,
+      "datetimePrecision": null,
+      "enumStorage": null,
+      "valueObjectStorage": null,
+      "valueObjectCollectionStorage": null,
+      "relationsWithAttributes": null,
+      "inheritance": null
+    },
+    "databases": {},
+    "typeMaps": {},
+    "inflection": {
+      "plurals": {},
+      "uncountable": []
+    },
+    "packs": {
+      "csharp-dapper": {
+        "enabled": true,
+        "output": "src/Generated",
+        "parameters": {},
+        "handEdits": null
+      },
+      "sql-ddl": {
+        "enabled": true,
+        "output": "db",
+        "parameters": {},
+        "handEdits": null
+      }
+    },
+    "validation": {
+      "rules": {}
+    },
+    "limits": {
+      "scriptTimeoutMs": 2000,
+      "scriptStatements": 5000000,
+      "scriptRecursion": 256,
+      "scriptMemoryBytes": 67108864,
+      "templateLoopLimit": 1000000,
+      "templateRecursionLimit": 64
+    }
+  },
+  "settingsHash": "695f8e249265560b146d7b54f3a083a26131a540fc392959840b46a62f7ae82c",
+  "databases": [
+    {
+      "id": "01J92P0V1QRN2181XM2ZWE02W4",
+      "kind": "database",
+      "name": "main",
+      "package": null,
+      "tags": [],
+      "hash": "7fccf6c4f0985534e9089ca5b34664883add3de727699fb83d825ae1d0a638f5",
+      "path": ".maquettiste/model/databases/main/database.json",
+      "category": null,
+      "stereotypes": []
+    }
+  ],
+  "packs": [
+    {
+      "$schema": null,
+      "name": "csharp-dapper",
+      "version": "1.0.0",
+      "engine": ">=1.0 <2.0",
+      "description": "C# model and Dapper data access: entity classes as generated/hand-written pairs, enums, value objects, one repository per mapped entity and one registration file per package.",
+      "parameters": {
+        "database": "",
+        "generatedFolder": "",
+        "namespace": "App.Model",
+        "partialFolder": ""
+      },
+      "scripts": [],
+      "usesSchemaDiff": false,
+      "units": [
+        {
+          "id": "entity",
+          "template": "entity.scriban",
+          "for": "each entity",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder (package_folder entity) ((pascal entity.name) + \".g.cs\") }}",
+          "mode": "pair",
+          "formatter": null,
+          "delimiters": null,
+          "companion": {
+            "template": "entity.partial.scriban",
+            "output": "{{ join_path pack.params.partialFolder (package_folder entity) ((pascal entity.name) + \".cs\") }}"
+          },
+          "transforms": []
+        },
+        {
+          "id": "enum",
+          "template": "enum.scriban",
+          "for": "each enum",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder (package_folder enum) ((pascal enum.name) + \".g.cs\") }}",
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "value-object",
+          "template": "value-object.scriban",
+          "for": "each value object",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder (package_folder value_object) ((pascal value_object.name) + \".g.cs\") }}",
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "repository",
+          "template": "repository.scriban",
+          "for": "each entity",
+          "where": {
+            "tags": [],
+            "notTags": [],
+            "stereotypes": [],
+            "notStereotypes": [],
+            "categories": [],
+            "packages": [],
+            "notPackages": [],
+            "database": null,
+            "abstract": false,
+            "script": null
+          },
+          "output": null,
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "registrations",
+          "template": "registrations.scriban",
+          "for": "model",
+          "where": null,
+          "output": null,
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "type-handlers",
+          "template": "type-handlers.scriban",
+          "for": "model",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder \"DapperTypeHandlers.g.cs\" }}",
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        }
+      ]
+    },
+    {
+      "$schema": null,
+      "name": "sql-ddl",
+      "version": "1.0.0",
+      "engine": ">=1.0 <2.0",
+      "description": "SQL DDL for PostgreSQL, SQL Server and SQLite: one script per table, one schema script per database, once-mode migrations from the schema diff and a seed script with protected regions.",
+      "parameters": {
+        "comments": true,
+        "quoting": "",
+        "schemaScript": "inline"
+      },
+      "scripts": [],
+      "usesSchemaDiff": true,
+      "units": [
+        {
+          "id": "table",
+          "template": "table.scriban",
+          "for": "each table",
+          "where": null,
+          "output": "{{ kebab table.database.name }}/{{ if table.schema }}{{ table.schema }}/{{ end }}tables/{{ table.name }}.sql",
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "schema",
+          "template": "schema.scriban",
+          "for": "select databases",
+          "where": null,
+          "output": "{{ kebab database.name }}/schema.sql",
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "migration",
+          "template": "migration.scriban",
+          "for": "select databases",
+          "where": null,
+          "output": null,
+          "mode": "once",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "seed",
+          "template": "seed.scriban",
+          "for": "select databases",
+          "where": null,
+          "output": "{{ kebab database.name }}/seed.sql",
+          "mode": "regions",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        }
+      ]
+    }
+  ],
+  "packDiagnostics": [],
+  "extensions": [
+    {
+      "$schema": null,
+      "name": "retention",
+      "description": "How long audited records are kept.",
+      "appliesTo": {
+        "kinds": [
+          "entity"
+        ],
+        "stereotypes": [
+          "audited"
+        ]
+      },
+      "properties": {
+        "retentionDays": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": []
+    }
+  ],
+  "git": null
+}

@@ -1,0 +1,13 @@
+node_modules/
+dist/
+dist-mock/
+site.zip
+*.tsbuildinfo
+# copied from tests/fixtures by scripts/copy-fixture.mjs
+src/mocks/fixture/
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+# deploy.mjs state
+.deploy-state.json

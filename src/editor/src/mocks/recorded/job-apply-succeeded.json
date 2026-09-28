@@ -1,0 +1,66 @@
+{
+  "id": "01M3MTRNREB3SM119M84TXVHSC",
+  "kind": "apply",
+  "state": "succeeded",
+  "queuePosition": null,
+  "progress": {
+    "stage": "write",
+    "done": 29,
+    "total": 29,
+    "currentPath": "db/main/billing/tables/payments.sql",
+    "pack": "sql-ddl"
+  },
+  "planResult": null,
+  "applyResult": {
+    "outcome": "succeeded",
+    "staleUnits": [],
+    "stalePaths": [],
+    "result": {
+      "runId": "01M3MTRNRGK4HCQJYAXQTRYNPQ",
+      "mode": "apply",
+      "outcome": "succeeded",
+      "changes": [],
+      "unitsRendered": 23,
+      "unitsSkipped": 0,
+      "filesWritten": 29,
+      "filesDeleted": 0,
+      "diagnostics": [],
+      "timings": [
+        {
+          "stage": "load",
+          "wall": "00:00:00.0005714",
+          "busy": "00:00:00.0005714",
+          "items": 26
+        },
+        {
+          "stage": "validate",
+          "wall": "00:00:00.0006231",
+          "busy": "00:00:00.0006231",
+          "items": 26
+        },
+        {
+          "stage": "resolve",
+          "wall": "00:00:00.0010942",
+          "busy": "00:00:00.0010942",
+          "items": 26
+        },
+        {
+          "stage": "plan",
+          "wall": "00:00:00.0050836",
+          "busy": "00:00:00.0037045",
+          "items": 25
+        },
+        {
+          "stage": "write",
+          "wall": "00:00:00.0327912",
+          "busy": "00:00:00.0327912",
+          "items": 29
+        }
+      ]
+    }
+  },
+  "error": null,
+  "queuedUtc": "2026-09-28T20:19:40.9424879+00:00",
+  "startedUtc": "2026-09-28T20:19:40.9425879+00:00",
+  "finishedUtc": "2026-09-28T20:19:41.0223366+00:00"
+}

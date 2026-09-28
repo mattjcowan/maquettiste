@@ -1,0 +1,80 @@
+{
+  "outcome": "referenced",
+  "id": "01J92P0V0FJ23CGSNKM7P1W5V7",
+  "hash": null,
+  "current": null,
+  "diagnostics": [],
+  "referrers": [
+    {
+      "fromElementId": "01J92P0V1ACKN3G6TK3NJDTM82",
+      "fromId": "01J92P0V1F439P4NH5F6HV5QM1",
+      "jsonPointer": "/ends/1/entity",
+      "field": "entity",
+      "toId": "01J92P0V0FJ23CGSNKM7P1W5V7"
+    },
+    {
+      "fromElementId": "01J92P0V1BWHG0REWKSTR292RS",
+      "fromId": "01J92P0V1GMF7GJPA7981CH7YG",
+      "jsonPointer": "/ends/0/entity",
+      "field": "entity",
+      "toId": "01J92P0V0FJ23CGSNKM7P1W5V7"
+    },
+    {
+      "fromElementId": "01J92P0V1DKHD5Q02DV6S5M53D",
+      "fromId": "01J92P0V1N727B9EM9FXPMKH7P",
+      "jsonPointer": "/ends/1/entity",
+      "field": "entity",
+      "toId": "01J92P0V0FJ23CGSNKM7P1W5V7"
+    },
+    {
+      "fromElementId": "01J92P0V1T0J6RH4MY9H81NYB4",
+      "fromId": "01J92P0V1VQAA9FW71PKYWWHKN",
+      "jsonPointer": "/columns/0/attribute",
+      "field": "attribute",
+      "toId": "01J92P0V0R3VSP7D5238DTNZX1"
+    },
+    {
+      "fromElementId": "01J92P0V1T0J6RH4MY9H81NYB4",
+      "fromId": "01J92P0V1T0J6RH4MY9H81NYB4",
+      "jsonPointer": "/entity",
+      "field": "entity",
+      "toId": "01J92P0V0FJ23CGSNKM7P1W5V7"
+    },
+    {
+      "fromElementId": "01J92P0V1T0J6RH4MY9H81NYB4",
+      "fromId": "01J92P0V1XETXS1K25N66WP3HY",
+      "jsonPointer": "/indexes/0/columns/0/column",
+      "field": "column",
+      "toId": "01J92P0V0SNXS6PZ42VDK42HP9"
+    },
+    {
+      "fromElementId": "01J92P0V200XW93JQYSRCT2SE3",
+      "fromId": "01J92P0V200XW93JQYSRCT2SE3",
+      "jsonPointer": "/attributes/0/attribute",
+      "field": "attribute",
+      "toId": "01J92P0V0VB1Z49SWERMAGR4TV"
+    },
+    {
+      "fromElementId": "01J92P0V200XW93JQYSRCT2SE3",
+      "fromId": "01J92P0V200XW93JQYSRCT2SE3",
+      "jsonPointer": "/attributes/1/attribute",
+      "field": "attribute",
+      "toId": "01J92P0V0T6EA0XM025XQX8GBW"
+    },
+    {
+      "fromElementId": "01J92P0V200XW93JQYSRCT2SE3",
+      "fromId": "01J92P0V200XW93JQYSRCT2SE3",
+      "jsonPointer": "/entity",
+      "field": "entity",
+      "toId": "01J92P0V0FJ23CGSNKM7P1W5V7"
+    },
+    {
+      "fromElementId": "01J92P0V2164SDBW687ZV6E1MV",
+      "fromId": "01J92P0V2164SDBW687ZV6E1MV",
+      "jsonPointer": "/members/1/element",
+      "field": "element",
+      "toId": "01J92P0V0FJ23CGSNKM7P1W5V7"
+    }
+  ],
+  "changes": null
+}

@@ -1,0 +1,103 @@
+{
+  "outcome": "saved",
+  "id": "01M3MTRMYQDVZTCM82B4G277XN",
+  "hash": "42c7dd451a6eaa5545230adda2d88c9105032cd81685311d04d0a388c4df4b6a",
+  "current": {
+    "element": {
+      "kind": "entity",
+      "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+      "abstract": false,
+      "base": null,
+      "key": {
+        "attributes": [
+          "01M3P0000000000000000000A1"
+        ],
+        "strategy": "application"
+      },
+      "alternateKeys": [],
+      "attributes": [
+        {
+          "type": "uuid",
+          "required": true,
+          "default": null,
+          "defaultExpression": null,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "collection": false,
+          "unique": false,
+          "indexed": false,
+          "readOnly": false,
+          "immutable": false,
+          "derived": null,
+          "sensitive": null,
+          "validation": null,
+          "order": null,
+          "id": "01M3P0000000000000000000A1",
+          "name": "id",
+          "displayName": null,
+          "pluralName": null,
+          "description": null,
+          "tags": [],
+          "category": null,
+          "stereotypes": [],
+          "properties": {},
+          "generation": {},
+          "source": null
+        }
+      ],
+      "$schema": "../../.schema/v1/entity.json",
+      "id": "01M3MTRMYQDVZTCM82B4G277XN",
+      "name": "Refund",
+      "displayName": null,
+      "pluralName": null,
+      "description": null,
+      "tags": [],
+      "category": null,
+      "stereotypes": [],
+      "properties": {},
+      "generation": {},
+      "source": null
+    },
+    "path": ".maquettiste/model/entities/refund.json",
+    "hash": "42c7dd451a6eaa5545230adda2d88c9105032cd81685311d04d0a388c4df4b6a",
+    "dependencyHash": "e680fc6f5b8b28d59b97ec8b382faf577eb9a41539b0f0f67f9f36bce360b04d",
+    "json": {
+      "$schema": "../../.schema/v1/entity.json",
+      "kind": "entity",
+      "id": "01M3MTRMYQDVZTCM82B4G277XN",
+      "name": "Refund",
+      "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+      "key": {
+        "attributes": [
+          "01M3P0000000000000000000A1"
+        ]
+      },
+      "attributes": [
+        {
+          "id": "01M3P0000000000000000000A1",
+          "name": "id",
+          "type": "uuid",
+          "required": true
+        }
+      ]
+    },
+    "sidecarText": null
+  },
+  "diagnostics": [],
+  "referrers": [],
+  "changes": {
+    "changed": [
+      {
+        "id": "01M3MTRMYQDVZTCM82B4G277XN",
+        "kind": "entity",
+        "path": ".maquettiste/model/entities/refund.json",
+        "hash": "42c7dd451a6eaa5545230adda2d88c9105032cd81685311d04d0a388c4df4b6a"
+      }
+    ],
+    "deleted": [],
+    "source": "editor",
+    "truncated": false,
+    "isEmpty": false
+  }
+}

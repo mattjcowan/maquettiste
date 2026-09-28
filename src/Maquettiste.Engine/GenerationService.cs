@@ -248,6 +248,44 @@ public sealed class GenerationService
         return new PreviewResult(rendered.Files, Outcomes.Sort(rendered.Diagnostics));
     }
 
+    /// <summary>
+    /// The resolved physical model of one database, for the editor's Database and Mappings workspaces (E1, phase2-design.md section
+    /// 3.8): loads (the store rescans by stat), validates the whole model and resolves it, then projects the database into flat records.
+    /// Takes no run lock and writes nothing.
+    /// </summary>
+    /// <param name="databaseId">The database element's id.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The view with every validation and resolution diagnostic; <see cref="DatabaseViewResult.View"/> is <see langword="null"/>
+    /// when the model has errors (the errors come back) or no resolved database has the id (MQ6017).</returns>
+    public async Task<DatabaseViewResult> GetDatabaseViewAsync(string databaseId, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(databaseId);
+        var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var report = await _services.Validator.ValidateAsync(snapshot, new ValidationScope(), null, ct).ConfigureAwait(false);
+        if (report.HasErrors)
+            return new DatabaseViewResult(null, report.Diagnostics);
+        var resolved = await _services.Resolver.ResolveAsync(snapshot, null, ct).ConfigureAwait(false);
+        var diagnostics = Outcomes.Sort(report.Diagnostics.Concat(resolved.Diagnostics));
+        if (resolved.Diagnostics.Any(Outcomes.IsInvalid))
+            return new DatabaseViewResult(null, diagnostics);
+        var database = resolved.Databases.FirstOrDefault(d => string.Equals(d.Id, databaseId, StringComparison.Ordinal));
+        if (database is null)
+            return new DatabaseViewResult(null, [.. diagnostics, RuleCatalog.Create("MQ6017", $"No database has the id '{databaseId}'.", databaseId)]);
+        return new DatabaseViewResult(DatabaseViews.From(database), diagnostics);
+    }
+
+    /// <summary>
+    /// Every pack under <c>templates/</c>, enabled or not, with its load diagnostics (E2, phase2-design.md section 3.8). The enabled
+    /// packs are loaded exactly as a run loads them; disabled ones are only parsed and checked against <c>pack.json</c>'s schema.
+    /// </summary>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The manifests and diagnostics.</returns>
+    public async Task<PackListResult> GetPacksAsync(CancellationToken ct)
+    {
+        var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        return await PackCatalog.ListAsync(_options, _services.Schemas, _services.Packs, snapshot, ct).ConfigureAwait(false);
+    }
+
     private string RepoRoot => Path.GetFullPath(_options.RepoRoot);
 
     /// <summary>The templates folder's content hash for the last-run record, or <see langword="null"/> (no record) when it cannot be read.</summary>

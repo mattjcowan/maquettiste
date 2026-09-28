@@ -1,0 +1,31 @@
+{
+  "MAQUETTISTE_MODE": {
+    "default": "${env:MAQUETTISTE_MODE}",
+    "description": "local (also when empty) or hosted; phase 2 answers 503 model-unavailable in hosted mode."
+  },
+  "MAQUETTISTE_REPO_ROOT": {
+    "default": "${env:MAQUETTISTE_REPO_ROOT}",
+    "description": "The repository root the model and the outputs belong to (EngineOptions.RepoRoot); /repo in the image."
+  },
+  "MAQUETTISTE_EDITOR_TOKEN": {
+    "default": "${env:MAQUETTISTE_EDITOR_TOKEN}",
+    "description": "Bearer token and cookie sign-in for callers that are not the local developer; empty means local peers only.",
+    "secret": true
+  },
+  "MAQUETTISTE_CACHE_DIR": {
+    "default": "${env:MAQUETTISTE_CACHE_DIR}",
+    "description": "Root of the engine's index cache, plans and jobs, on the host volume (/data/maquettiste/cache in the image)."
+  },
+  "MAQUETTISTE_LOCAL_PEERS": {
+    "default": "${env:MAQUETTISTE_LOCAL_PEERS}",
+    "description": "Comma-separated IP addresses trusted as the local developer in local mode (the entrypoint sets the container gateway)."
+  },
+  "MAQUETTISTE_LOCAL_TRUST": {
+    "default": "${env:MAQUETTISTE_LOCAL_TRUST}",
+    "description": "on (also when empty) or off; off makes every caller present the token or the session cookie."
+  },
+  "MAQUETTISTE_LOCAL_USER": {
+    "default": "local",
+    "description": "The user name of the local developer (presence)."
+  }
+}

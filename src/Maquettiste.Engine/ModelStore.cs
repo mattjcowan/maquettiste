@@ -293,6 +293,180 @@ public sealed class ModelStore : IAsyncDisposable
         return extra.Count == 0 ? report : ValidationReport.From(report.Diagnostics.Concat(extra));
     }
 
+    /// <summary>Reads <c>maquettiste.json</c> with its hash (E3, phase2-design.md section 3.8).</summary>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The settings document; when the file changed on disk behind the index, the store refreshes it first.</returns>
+    public async Task<SettingsDocument> GetSettingsAsync(CancellationToken ct)
+    {
+        await LoadedAsync(ct).ConfigureAwait(false);
+        var paths = _paths.Value;
+        var repoPath = paths.ToRepoPath(ModelPaths.SettingsFile);
+        for (var attempt = 0; ; attempt++)
+        {
+            var disk = await ReadSettingsFileAsync(ct).ConfigureAwait(false);
+            var hash = ContentHash.Of(disk ?? []);
+            var snapshot = _current!;
+            if (string.Equals(hash, snapshot.SettingsHash, StringComparison.Ordinal) || attempt > 0)
+                return SettingsDocumentOf(snapshot.Settings, repoPath, hash, disk);
+            await RefreshAsync([repoPath], ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Saves <c>maquettiste.json</c> if it still has the expected hash (E3). Follows the element save rules: the body is checked against
+    /// the <c>maquettiste.json</c> schema and written in canonical form under the model root, the expected hash is compared with the file
+    /// on disk, the change is validated on a candidate snapshot (only errors it introduces refuse it), and the file is staged and renamed
+    /// into place under the store's write gate, then reloaded.
+    /// </summary>
+    /// <param name="json">The settings JSON.</param>
+    /// <param name="expectedHash">The hash the caller loaded (<see cref="SettingsDocument.Hash"/>).</param>
+    /// <param name="source">What caused the change.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>Saved (an unchanged file too), Conflict with the disk version, or Invalid with the diagnostics; nothing is written
+    /// unless Saved.</returns>
+    public async Task<SettingsSaveResult> SaveSettingsAsync(ReadOnlyMemory<byte> json, string expectedHash, ChangeSource source, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(expectedHash);
+        await LoadedAsync(ct).ConfigureAwait(false);
+        var paths = _paths.Value;
+        var repoPath = paths.ToRepoPath(ModelPaths.SettingsFile);
+        var reader = new DocumentReader(_services.Schemas, _services.Json);
+        if (!TryParseRequest(json, null, out var node, out var parseFailure))
+            return new SettingsSaveResult(SaveOutcome.Invalid, null, null, [.. parseFailure.Diagnostics.Select(d => d with { FilePath = repoPath })]);
+
+        var request = json.ToArray();
+        IReadOnlyList<Diagnostic> schemaErrors;
+        using (var document = JsonDocument.Parse(DocumentReader.StripBom(request), DocumentReader.ParseOptions))
+            schemaErrors = _services.Schemas.Evaluate(ModelPaths.SettingsFile, document.RootElement, repoPath);
+        if (schemaErrors.Count > 0)
+            return new SettingsSaveResult(SaveOutcome.Invalid, null, null, [.. schemaErrors.Select(d => reader.Locate(d, request)).Order(Diagnostic.Order)]);
+
+        var bytes = _services.Json.Write(node!, ModelPaths.SettingsFile, ModelPaths.SettingsFile);
+        var parsed = reader.ReadSettings(bytes, repoPath, trusted: false, trustedCanonical: false);
+        if (!parsed.Valid || parsed.Settings is null)
+            return new SettingsSaveResult(SaveOutcome.Invalid, null, null, [.. parsed.Diagnostics]);
+
+        var notifications = new List<ChangeSet>();
+        SettingsSaveResult result;
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            result = await SaveSettingsLockedAsync(bytes, parsed.Settings, expectedHash, source, notifications, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        foreach (var changeSet in notifications)
+            await NotifyAsync(changeSet, ct).ConfigureAwait(false);
+        return result;
+    }
+
+    private async Task<SettingsSaveResult> SaveSettingsLockedAsync(byte[] bytes, ProjectSettings settings, string expectedHash, ChangeSource source,
+        List<ChangeSet> notifications, CancellationToken ct)
+    {
+        var paths = _paths.Value;
+        var repoPath = paths.ToRepoPath(ModelPaths.SettingsFile);
+
+        // The file changed on disk behind the index: index it first, so the conflict is judged against what is really there.
+        var disk = await ReadSettingsFileAsync(ct).ConfigureAwait(false);
+        var diskHash = ContentHash.Of(disk ?? []);
+        if (!string.Equals(diskHash, _current!.SettingsHash, StringComparison.Ordinal))
+        {
+            var refreshed = await ReloadAsync([repoPath], false, ChangeSource.Disk, ct).ConfigureAwait(false);
+            if (!refreshed.IsEmpty)
+                notifications.Add(refreshed);
+        }
+
+        var before = _current!;
+        if (!string.Equals(expectedHash, diskHash, StringComparison.Ordinal))
+            return new SettingsSaveResult(SaveOutcome.Conflict, diskHash, SettingsDocumentOf(before.Settings, repoPath, diskHash, disk), []);
+        if (disk is not null && disk.AsSpan().SequenceEqual(bytes))
+            return new SettingsSaveResult(SaveOutcome.Saved, diskHash, SettingsDocumentOf(before.Settings, repoPath, diskHash, disk), []);
+
+        // Validate the candidate model with the new settings; only diagnostics the change introduces come back, and only errors it
+        // introduces refuse it (the element-save rule), so pre-existing errors never block an unrelated settings save.
+        var newHash = ContentHash.Of(bytes);
+        var loadDiagnostics = before.LoadDiagnostics.Where(d => !string.Equals(d.FilePath, repoPath, StringComparison.Ordinal)).ToList();
+        var candidate = ModelSnapshot.CreateAfter(before, before.Documents, settings, newHash, before.Extensions, before.RuleScripts, before.Version,
+            loadDiagnostics, _options.EffectiveParallelism, ct);
+        var baseline = await _services.Validator.ValidateAsync(before, ValidationScope.All, null, ct).ConfigureAwait(false);
+        var report = await _services.Validator.ValidateAsync(candidate, ValidationScope.All, null, ct).ConfigureAwait(false);
+        var known = baseline.Diagnostics.GroupBy(SettingsKey, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+        var introduced = new List<Diagnostic>();
+        foreach (var diagnostic in report.Diagnostics)
+        {
+            var key = SettingsKey(diagnostic);
+            if (known.TryGetValue(key, out var count) && count > 0)
+                known[key] = count - 1;
+            else
+                introduced.Add(diagnostic);
+        }
+
+        if (introduced.Any(d => d.Severity == DiagnosticSeverity.Error))
+            return new SettingsSaveResult(SaveOutcome.Invalid, null, null, Sorted(introduced));
+
+        var batchId = Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "-" + Interlocked.Increment(ref _batchCounter).ToString(CultureInfo.InvariantCulture);
+        var failure = await new AtomicFileSet(_services.EnginePaths, paths.ModelRoot)
+            .ApplyAsync([(paths.FullPath(ModelPaths.SettingsFile), bytes)], [], batchId, ct).ConfigureAwait(false);
+        if (failure is { Refused: true })
+        {
+            return new SettingsSaveResult(SaveOutcome.Invalid, null, null,
+                [RuleCatalog.Create("MQ6004", $"The model write to {failure.Path} was refused: {failure.Reason}", null, repoPath, null)]);
+        }
+
+        if (failure is not null)
+            throw new IOException($"The settings could not be written ({failure.Path}); nothing was changed. {failure.Reason}");
+
+        // The file is on disk: index it even if the caller has given up.
+        var changes = await ReloadAsync([repoPath], false, source, CancellationToken.None).ConfigureAwait(false);
+        if (!changes.IsEmpty)
+            notifications.Add(changes);
+        var saved = _current!;
+        return new SettingsSaveResult(SaveOutcome.Saved, saved.SettingsHash, SettingsDocumentOf(saved.Settings, repoPath, saved.SettingsHash, bytes), Sorted(introduced));
+    }
+
+    private static string SettingsKey(Diagnostic d) =>
+        d.Rule + "\u0000" + d.Severity.ToString() + "\u0000" + d.ElementId + "\u0000" + d.FilePath + "\u0000" + d.JsonPointer + "\u0000" + d.Message;
+
+    private async Task<byte[]?> ReadSettingsFileAsync(CancellationToken ct)
+    {
+        var full = _paths.Value.FullPath(ModelPaths.SettingsFile);
+        try
+        {
+            return File.Exists(full) ? await File.ReadAllBytesAsync(full, ct).ConfigureAwait(false) : null;
+        }
+        catch (FileNotFoundException)
+        {
+            return null;
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return null;
+        }
+    }
+
+    private SettingsDocument SettingsDocumentOf(ProjectSettings settings, string repoPath, string hash, byte[]? bytes)
+    {
+        JsonElement json;
+        try
+        {
+            if (bytes is null)
+                throw new JsonException("missing");
+            using var document = JsonDocument.Parse(DocumentReader.StripBom(bytes), DocumentReader.ParseOptions);
+            json = document.RootElement.Clone();
+        }
+        catch (JsonException)
+        {
+            // Missing or unparsable: the canonical form of the settings the snapshot uses (the defaults for a missing file).
+            using var document = JsonDocument.Parse(_services.Json.Serialize(settings, ModelPaths.SettingsFile, ModelPaths.SettingsFile));
+            json = document.RootElement.Clone();
+        }
+
+        return new SettingsDocument(settings, repoPath, hash, json);
+    }
+
     /// <summary>Subscribes to every non-empty change set.</summary>
     /// <param name="handler">The handler.</param>
     /// <returns>A handle that unsubscribes.</returns>

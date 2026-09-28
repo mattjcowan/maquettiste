@@ -336,7 +336,8 @@ public sealed record ElementDocument(Element Element, string Path, string Hash, 
 // Path ".maquettiste/model/entities/invoice.json"; Hash = SHA-256 of the file bytes (the ETag); DependencyHash = H(Hash, sidecar hash)
 public sealed record IndexEntry(string Id, string OwnerId, string Kind, string JsonPointer);   // Kind: element kind or attribute|enum-member|end|column|category|schema|key
 public sealed record ReferenceInfo(string FromElementId, string FromId, string JsonPointer, string Field, string ToId);
-public sealed record ElementSummary(string Id, string Kind, string Name, string? Package, IReadOnlyList<string> Tags, string Hash, string Path);
+public sealed record ElementSummary(string Id, string Kind, string Name, string? Package, IReadOnlyList<string> Tags, string Hash, string Path,
+    string? Category, IReadOnlyList<string> Stereotypes);  // E4 (§15): category-tree node id and stereotype keys, from the in-memory element
 public sealed record ExtensionDocument(ExtensionSchema Schema, string Path, string Hash);
 public sealed class ModelSnapshot {                        // immutable, thread-safe
     public static ModelSnapshot Create(IEnumerable<ElementDocument> documents, ProjectSettings settings, string settingsHash,
@@ -749,6 +750,8 @@ public sealed class ModelStore : IAsyncDisposable           // (6–19) W1
     public Task<ChangeSet> RescanAsync(bool verify, CancellationToken ct);
     public Task<ValidationReport> ValidateAsync(ValidationScope scope, CancellationToken ct);
     public IDisposable OnChanged(Func<ChangeSet, CancellationToken, ValueTask> handler);
+    public Task<SettingsDocument> GetSettingsAsync(CancellationToken ct);   // E3: maquettiste.json with its hash
+    public Task<SettingsSaveResult> SaveSettingsAsync(ReadOnlyMemory<byte> json, string expectedHash, ChangeSource source, CancellationToken ct);   // E3
     public ValueTask DisposeAsync(); }
 public enum SaveOutcome { Saved, Conflict, Invalid, NotFound, Referenced }
 public sealed record SaveResult(SaveOutcome Outcome, string? Id, string? Hash, ElementDocument? Current, IReadOnlyList<Diagnostic> Diagnostics,
@@ -767,7 +770,9 @@ public sealed class GenerationService                       // (29–35) W6
     public Task<ApplyResult> ApplyAsync(string planId, IProgress<ProgressUpdate>? progress, CancellationToken ct);   // uses GenerationPlan.Request
     public Task<GenerationPlan?> GetPlanAsync(string planId, CancellationToken ct);
     public Task<string?> GetPlanDiffAsync(string planId, string path, CancellationToken ct);   // (31) from stored blobs, no re-render
-    public Task<PreviewResult> PreviewAsync(string pack, string unitId, string? elementId, CancellationToken ct); }   // (35)
+    public Task<PreviewResult> PreviewAsync(string pack, string unitId, string? elementId, CancellationToken ct);   // (35)
+    public Task<DatabaseViewResult> GetDatabaseViewAsync(string databaseId, CancellationToken ct);   // E1: load, validate, resolve; no lock, no writes
+    public Task<PackListResult> GetPacksAsync(CancellationToken ct); }   // E2: every pack under templates/, enabled or not
 public enum LockMode { Wait, Fail }
 public sealed record GenerationRequest { public GenerationMode Mode { get; init; } = GenerationMode.Apply; public IReadOnlyList<string>? Packs { get; init; }
     public bool Force { get; init; } public int? Jobs { get; init; } public HandEditPolicy? HandEdits { get; init; } public bool IncludeDiffs { get; init; }
@@ -799,7 +804,27 @@ public sealed record JobRequest(JobKind Kind, GenerationRequest? Plan, string? P
 public sealed record JobInfo(string Id, JobKind Kind, JobState State, int? QueuePosition, ProgressUpdate? Progress,
     PlanResult? PlanResult, ApplyResult? ApplyResult, string? Error,
     DateTimeOffset QueuedUtc, DateTimeOffset? StartedUtc, DateTimeOffset? FinishedUtc);   // from EngineOptions.TimeProvider
+
+// Phase 2 editor additions E1–E4 (phase2-design.md §3.8); records in Editor/, public, Web-default JSON without converters
+public sealed record DatabaseViewResult(DatabaseView? View, IReadOnlyList<Diagnostic> Diagnostics);   // View null on model errors or an unknown id (MQ6017)
+public sealed record DatabaseView(string Id, string Name, string Dialect, string? Version, string? DefaultSchema, IReadOnlyList<TableView> Tables);
+public sealed record TableView(string Key, string Name, string? Schema, string Origin, string? EntityId, string? RelationId, bool IsJunction,
+    bool IsLookup, string? Comment, IReadOnlyList<ColumnView> Columns, KeyView? PrimaryKey, IReadOnlyList<KeyView> Uniques,
+    IReadOnlyList<ForeignKeyView> ForeignKeys, IReadOnlyList<IndexView> Indexes);
+public sealed record ColumnView(string Key, string Name, string Type, string NativeType, int? Length, int? Precision, int? Scale, bool Nullable,
+    string? DefaultSql, bool Identity, string? Computed, string? AttributeId, string? AttributePath, bool IsPrimaryKey, bool IsForeignKey,
+    bool IsDiscriminator, int Position);
+public sealed record KeyView(string Name, IReadOnlyList<string> Columns);              // column keys
+public sealed record ForeignKeyView(string Name, IReadOnlyList<string> Columns, string ReferencedTable, IReadOnlyList<string> ReferencedColumns,
+    string OnDelete, string OnUpdate, string? RelationId, string? EndId);
+public sealed record IndexView(string Name, IReadOnlyList<IndexColumnView> Columns, bool Unique, string? Where);
+public sealed record IndexColumnView(string Column, bool Descending);
+public sealed record PackListResult(IReadOnlyList<PackManifest> Packs, IReadOnlyList<Diagnostic> Diagnostics);
+public sealed record SettingsDocument(ProjectSettings Settings, string Path, string Hash, JsonElement Json);
+public sealed record SettingsSaveResult(SaveOutcome Outcome, string? Hash, SettingsDocument? Current, IReadOnlyList<Diagnostic> Diagnostics);
 ```
+
+**Editor additions (E1–E4).** E1 projects the resolved database into flat records (resolved objects reference each other, so R-types are never serialized); a model with validation or resolution errors returns those errors and no view, and an unknown database id is MQ6017. E2 loads enabled packs exactly as a run does and only parses and schema-checks disabled ones. E3 follows the element save rules: schema (`maquettiste.json`), canonical bytes, expected hash against disk (a disk edit behind the index is refreshed first), validation of a candidate snapshot where only errors the change introduces make it `Invalid`, atomic write under the store's write gate, then reload, with any resulting `ChangeSet` sent to `OnChanged` subscribers; an unchanged body is `Saved` without a write. E4 fills `Category` and `Stereotypes` from `ElementBase` at both indexer call sites; summaries are never persisted.
 
 A plan persists to `CacheDirectory/plans/<id>/plan.json` (through `EnginePaths`), with post-processed bytes of each added or modified file in `blobs/<ContentHash>`; the 20 newest plans are kept. The plan stores the request it was made with (`GenerationPlan.Request`: packs, roots, hand-edit policy, force, lock mode) and, per unit, every output file (`PlanUnit.Outputs`, unchanged files included, with mode, role, root and the disk hash seen at plan time), so apply needs no second render. `ApplyAsync` locks (with `Request.Lock`), reloads, validates, resolves, re-plans, recomputes each `PlanUnit.InputHash` from its read keys, and re-hashes every planned path on disk. Any input difference, any unit added or removed, or any planned path whose disk hash differs from `DiskHashAtPlan` (a hand edit, or an edit inside a protected region, since the plan's region bodies were merged at plan time) returns `Stale` with `StaleUnits` and `StalePaths` and writes nothing (30). Otherwise it feeds the writer one `ProcessedUnit` per planned unit: added and modified files from the blobs, unchanged ones as `ContentOmitted` files, skipped units as `SkippedUnit`s, with `WriteContext.PlannedPaths` = every path in `Outputs` and `Changes` so nothing outside the plan is touched (S19); then it saves unit state from the plan's read keys. Batches stage every file as `.<name>.mq-<batchId>.tmp` in the target folder and rename only after all staging succeeded; a rename failure rolls back the renamed files from copies staged beside them.
 

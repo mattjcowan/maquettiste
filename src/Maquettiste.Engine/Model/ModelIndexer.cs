@@ -159,7 +159,8 @@ internal static class ModelIndexer
             foreach (var (id, entry) in walk.Entries)
                 clean &= entries.TryAdd(id, entry);
             references.AddRange(walk.References);
-            summaries.Add(new ElementSummary(element.Id, element.KindName, element.Name, PackageOf(element), element.Tags, doc.Hash, doc.Path));
+            summaries.Add(new ElementSummary(element.Id, element.KindName, element.Name, PackageOf(element), element.Tags, doc.Hash, doc.Path,
+                element.Category, element.Stereotypes));
         }
 
         var referencesTo = Group(references, static r => r.ToId);
@@ -373,7 +374,8 @@ internal static class ModelIndexer
             if (addedSet.Contains(d))
             {
                 var element = documents[d].Element;
-                summaries.Add(new ElementSummary(element.Id, element.KindName, element.Name, PackageOf(element), element.Tags, documents[d].Hash, documents[d].Path));
+                summaries.Add(new ElementSummary(element.Id, element.KindName, element.Name, PackageOf(element), element.Tags, documents[d].Hash, documents[d].Path,
+                    element.Category, element.Stereotypes));
                 continue;
             }
 

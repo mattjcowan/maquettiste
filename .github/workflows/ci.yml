@@ -49,6 +49,47 @@ jobs:
           path: TestResults
           if-no-files-found: ignore
 
+  # The editor's functions (phase2-design.md sections 3.9 and 9): the functions also compile with the host's LINQPad default imports
+  # (the host adds them; a type name that becomes ambiguous under them would fail the site's deploy), and their tests run on both
+  # operating systems (file watcher, git status and symbolic-link handling differ on macOS).
+  functions:
+    name: functions (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore (locked)
+        run: dotnet restore tests/Maquettiste.Functions.Tests/Maquettiste.Functions.Tests.csproj --locked-mode
+
+      - name: Build the functions with the host's default imports
+        run: dotnet build src/Maquettiste.Functions/Maquettiste.Functions.csproj --configuration Release --no-restore -p:HostUsings=true -o "${{ runner.temp }}/host-usings"
+
+      - name: Build
+        run: dotnet build tests/Maquettiste.Functions.Tests/Maquettiste.Functions.Tests.csproj --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test tests/Maquettiste.Functions.Tests/Maquettiste.Functions.Tests.csproj --configuration Release --no-build --logger "trx;LogFilePrefix=functions-${{ matrix.os }}" --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: functions-test-results-${{ matrix.os }}
+          path: TestResults
+          if-no-files-found: ignore
+
   # Cross-OS determinism (engine-design.md section 17; W6 and W10): generate the billing fixture, and its three-dialect variant,
   # with both example packs on ubuntu and macos, list the SHA-256 of every output file (plus the manifests and schema
   # snapshots), and fail if the listings differ.

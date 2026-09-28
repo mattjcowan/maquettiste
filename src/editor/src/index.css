@@ -1,0 +1,153 @@
+@import "tailwindcss";
+@import "./design/tokens.css";
+@import "@xyflow/react/dist/base.css";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Tokens only: the default Tailwind palette, type scale and radii are removed, so a utility such as
+   bg-blue-500 does not exist and every color goes through tokens.css. */
+@theme {
+  --color-*: initial;
+  --text-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --font-sans: "Inter Variable", "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace;
+  --text-11: 11px;
+  --text-11--line-height: 16px;
+  --text-12: 12px;
+  --text-12--line-height: 16px;
+  --text-13: 13px;
+  --text-13--line-height: 20px;
+  --text-14: 14px;
+  --text-14--line-height: 20px;
+  --text-16: 16px;
+  --text-16--line-height: 24px;
+  --text-20: 20px;
+  --text-20--line-height: 28px;
+  --text-24: 24px;
+  --text-24--line-height: 32px;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+}
+
+@theme inline {
+  --color-app: var(--mq-bg-app);
+  --color-surface: var(--mq-bg-surface);
+  --color-raised: var(--mq-bg-raised);
+  --color-canvas: var(--mq-bg-canvas);
+  --color-default: var(--mq-border-default);
+  --color-strong: var(--mq-border-strong);
+  --color-input: var(--mq-border-input);
+  --color-primary: var(--mq-text-primary);
+  --color-secondary: var(--mq-text-secondary);
+  --color-accent: var(--mq-accent);
+  --color-accent-subtle: var(--mq-accent-subtle);
+  --color-accent-foreground: var(--mq-accent-foreground);
+  --color-success: var(--mq-status-success);
+  --color-warning: var(--mq-status-warning);
+  --color-danger: var(--mq-status-danger);
+  --color-cat-1: var(--mq-cat-1);
+  --color-cat-2: var(--mq-cat-2);
+  --color-cat-3: var(--mq-cat-3);
+  --color-cat-4: var(--mq-cat-4);
+  --color-cat-5: var(--mq-cat-5);
+  --color-cat-6: var(--mq-cat-6);
+  --color-cat-7: var(--mq-cat-7);
+  --color-cat-8: var(--mq-cat-8);
+  --radius-control: var(--mq-radius-control);
+  --radius-panel: var(--mq-radius-panel);
+  --shadow-float: var(--mq-shadow-float);
+  --spacing-row: var(--mq-row-h);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--mq-bg-app);
+    color: var(--mq-text-primary);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 20px;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  *,
+  ::before,
+  ::after {
+    border-color: var(--mq-border-default);
+  }
+  :focus-visible {
+    outline: 2px solid var(--mq-accent);
+    outline-offset: 1px;
+  }
+  ::selection {
+    background: var(--mq-accent-subtle);
+  }
+  code,
+  kbd,
+  pre {
+    font-family: var(--font-mono);
+  }
+}
+
+@layer components {
+  .mq-transition {
+    transition-duration: var(--mq-motion);
+    transition-timing-function: var(--mq-ease);
+  }
+  .mq-row {
+    min-height: var(--mq-row-h);
+  }
+}
+
+/* React Flow, restyled through tokens */
+.react-flow {
+  --xy-background-color: var(--mq-bg-canvas);
+  --xy-node-border-radius: var(--mq-radius-panel);
+  --xy-minimap-background-color: var(--mq-bg-surface);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--mq-bg-app) 70%, transparent);
+  --xy-minimap-node-background-color: var(--mq-border-strong);
+  --xy-controls-button-background-color: var(--mq-bg-surface);
+  --xy-controls-button-background-color-hover: var(--mq-accent-subtle);
+  --xy-controls-button-color: var(--mq-text-primary);
+  --xy-controls-button-border-color: var(--mq-border-default);
+  --xy-edge-stroke: var(--mq-border-strong);
+  --xy-edge-stroke-selected: var(--mq-accent);
+  --xy-connectionline-stroke: var(--mq-accent);
+  --xy-handle-background-color: var(--mq-bg-surface);
+  --xy-handle-border-color: var(--mq-border-input);
+  --xy-attribution-background-color: transparent;
+}
+.react-flow__minimap {
+  border: 1px solid var(--mq-border-default);
+  border-radius: var(--mq-radius-panel);
+}
+.react-flow__controls {
+  border: 1px solid var(--mq-border-default);
+  border-radius: var(--mq-radius-control);
+  overflow: hidden;
+}
+.react-flow__controls-button svg {
+  fill: currentColor;
+}
+.react-flow__node:focus-visible {
+  outline: 2px solid var(--mq-accent);
+  outline-offset: 2px;
+  border-radius: var(--mq-radius-panel);
+}
+/* A focused relation: an SVG path takes no outline, so the stroke widens in the accent colour. */
+.react-flow__edge:focus-visible {
+  outline: none;
+}
+.react-flow__edge:focus-visible .react-flow__edge-path,
+.react-flow__edge:focus-visible path {
+  stroke: var(--mq-accent) !important;
+  stroke-width: 3px !important;
+}

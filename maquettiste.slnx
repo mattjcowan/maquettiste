@@ -5,11 +5,13 @@
   <Folder Name="/src/">
     <Project Path="src/Maquettiste.Cli/Maquettiste.Cli.csproj" />
     <Project Path="src/Maquettiste.Engine/Maquettiste.Engine.csproj" />
+    <Project Path="src/Maquettiste.Functions/Maquettiste.Functions.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Maquettiste.Bench.Tests/Maquettiste.Bench.Tests.csproj" />
     <Project Path="tests/Maquettiste.Cli.Tests/Maquettiste.Cli.Tests.csproj" />
     <Project Path="tests/Maquettiste.Engine.Tests/Maquettiste.Engine.Tests.csproj" />
+    <Project Path="tests/Maquettiste.Functions.Tests/Maquettiste.Functions.Tests.csproj" />
     <Project Path="tests/Maquettiste.Packs.Tests/Maquettiste.Packs.Tests.csproj" />
     <Project Path="tests/Maquettiste.Testing/Maquettiste.Testing.csproj" />
   </Folder>

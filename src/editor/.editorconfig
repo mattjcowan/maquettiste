@@ -1,0 +1,3 @@
+# The SPA follows the web convention of two-space indents (the repo default is four, for C#).
+[*.{ts,tsx,js,mjs,cjs,css,html}]
+indent_size = 2

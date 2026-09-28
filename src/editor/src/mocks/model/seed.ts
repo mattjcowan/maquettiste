@@ -1,0 +1,103 @@
+// The mock model's seeds: the billing fixture (copied into src/mocks/fixture by
+// scripts/copy-fixture.mjs), an empty project, and a synthetic 200-entity model for scale checks.
+import type { Seed, SeedFile } from "./store";
+
+const fixture = import.meta.glob("../fixture/billing/**/*.{json,md}", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+const packFiles = import.meta.glob("../fixture/packs/*/pack.json", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+
+function packs(): Record<string, unknown>[] {
+  return Object.keys(packFiles)
+    .sort()
+    .map((k) => JSON.parse(packFiles[k]) as Record<string, unknown>);
+}
+
+export function billingSeed(): Seed {
+  const files: SeedFile[] = Object.keys(fixture)
+    .sort()
+    .map((key) => ({ path: key.replace("../fixture/billing/", ""), text: fixture[key] }));
+  if (files.length === 0) throw new Error("The billing fixture is missing from src/mocks/fixture; run `npm run copy-fixture`.");
+  return { files, packs: packs() };
+}
+
+export function emptySeed(): Seed {
+  const settings = { $schema: ".schema/v1/maquettiste.json", formatVersion: 1, name: "empty" };
+  return { files: [{ path: "maquettiste.json", text: JSON.stringify(settings) }], packs: packs() };
+}
+
+/** Deterministic ULID-shaped ids for generated elements: prefix plus a zero-padded counter. */
+function sid(n: number): string {
+  const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+  let s = "";
+  let v = n;
+  for (let i = 0; i < 10; i++) {
+    s = alphabet[v % 32] + s;
+    v = Math.floor(v / 32);
+  }
+  return "01M0000000000000" + s;
+}
+
+/**
+ * 200 entities in 12 packages, about 300 relations and one diagram holding every entity, all
+ * derived from counters (no randomness), for the layout and explorer scale checks.
+ */
+export function largeSeed(entityCount = 200): Seed {
+  let n = 1;
+  const files: SeedFile[] = [];
+  const add = (path: string, json: Record<string, unknown>) => files.push({ path, text: JSON.stringify(json) });
+  add("maquettiste.json", {
+    $schema: ".schema/v1/maquettiste.json",
+    formatVersion: 1,
+    name: "large",
+    outputs: { allow: [{ path: "db", commit: true }, { path: "src/Generated" }] },
+    packs: { "sql-ddl": { output: "db" }, "csharp-dapper": { output: "src/Generated" } },
+  });
+  const packageIds: string[] = [];
+  for (let p = 0; p < 12; p++) {
+    const id = sid(n++);
+    packageIds.push(id);
+    add(`model/packages/area-${p + 1}.json`, { kind: "package", id, name: `Area${p + 1}` });
+  }
+  const databaseId = sid(n++);
+  add("model/databases/main/database.json", { kind: "database", id: databaseId, name: "main", dialect: "postgresql", version: "16", defaultSchema: "app" });
+  const entities: string[] = [];
+  for (let e = 0; e < entityCount; e++) {
+    const id = sid(n++);
+    const keyId = sid(n++);
+    const attributes = [
+      { id: keyId, name: "id", type: "uuid", required: true },
+      { id: sid(n++), name: "name", type: "string", length: 120, required: true },
+      { id: sid(n++), name: "createdOn", type: "date" },
+      { id: sid(n++), name: "amount", type: "decimal", precision: 12, scale: 2 },
+    ];
+    entities.push(id);
+    add(`model/entities/thing-${e + 1}.json`, {
+      kind: "entity",
+      id,
+      name: `Thing${e + 1}`,
+      package: packageIds[e % 12],
+      key: { attributes: [keyId], strategy: "uuid-v7" },
+      attributes,
+    });
+  }
+  const members: Record<string, unknown>[] = entities.map((element) => ({ element }));
+  let r = 0;
+  for (let e = 1; e < entityCount; e++) {
+    const targets = [Math.floor((e - 1) / 2)];
+    if (e % 2 === 0 && e > 2) targets.push(e - 2);
+    for (const t of targets) {
+      const id = sid(n++);
+      add(`model/relations/link-${++r}.json`, {
+        kind: "relation",
+        id,
+        name: `link${r}`,
+        ends: [
+          { id: sid(n++), entity: entities[t], role: "parent", navigation: "parent", min: 1, max: 1, onDelete: "restrict" },
+          { id: sid(n++), entity: entities[e], role: `children${r}`, navigation: `children${r}` },
+        ],
+      });
+      members.push({ element: id });
+    }
+  }
+  add("model/diagrams/everything.json", { kind: "diagram", id: sid(n++), name: "Everything", members });
+  return { files, packs: packs() };
+}

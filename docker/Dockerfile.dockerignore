@@ -1,0 +1,16 @@
+# The build context is the repository root; BuildKit reads this file for docker/Dockerfile.
+**/bin
+**/obj
+**/node_modules
+**/dist
+**/TestResults
+**/*.trx
+.git
+.github
+.vs
+.vscode
+.idea
+tmp
+bench/out
+bench/results
+**/.maquettiste/.cache

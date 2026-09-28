@@ -1,0 +1,75 @@
+name: editor
+
+# The editor SPA (phase2-design.md sections 4 and 9): install, generated-code drift check, lint, type check,
+# Vitest (store, drafts and undo, client, mock contract suite, realtime cache patching, token contrast, shell,
+# the site scripts), the production build and site zip, and Playwright: the mock project against the mock
+# build (vite preview) and the dev smoke spec against the Vite dev server, both started by the config.
+
+on:
+  push:
+    paths:
+      - "src/editor/**"
+      - "docs/api/openapi.yaml"
+      - "schemas/**"
+      - "tests/fixtures/models/billing/**"
+      - "packs/sql-ddl/**"
+      - "packs/csharp-dapper/**"
+      - ".github/workflows/editor.yml"
+  pull_request:
+    paths:
+      - "src/editor/**"
+      - "docs/api/openapi.yaml"
+      - "schemas/**"
+      - "tests/fixtures/models/billing/**"
+      - "packs/sql-ddl/**"
+      - "packs/csharp-dapper/**"
+      - ".github/workflows/editor.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: src/editor
+
+jobs:
+  spa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/editor/package-lock.json
+      - name: Install (copies the billing fixture into src/mocks/fixture)
+        run: npm ci
+      - name: Generated client and mock contract are up to date
+        run: npm run check:generated
+      - name: Format
+        run: npm run format:check
+      - name: Lint (ESLint and the no-hex rule)
+        run: npm run lint
+      - name: Type check
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Pack the site zip (static part; _functions/ when present)
+        run: node scripts/pack-site.mjs --out "$RUNNER_TEMP/site.zip"
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Playwright (mock project on the mock build, dev smoke on the Vite dev server)
+        run: npm run e2e
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            src/editor/playwright-report
+            src/editor/test-results
+          if-no-files-found: ignore

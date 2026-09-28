@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Restores Maquettiste.Engine at the image's per-build version and its whole dependency closure into one folder, which the
+       Dockerfile copies into the image's local NuGet feed (phase2-design.md section 6.1). Never built; only restored. The folder's
+       own Directory.Build.props, Directory.Packages.props and .editorconfig keep the repository's build settings out. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EngineVersion Condition="'$(EngineVersion)' == ''">1.0.0-alpha.1</EngineVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Maquettiste.Engine" Version="$(EngineVersion)" />
+  </ItemGroup>
+</Project>
