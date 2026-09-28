@@ -114,6 +114,18 @@ job=$(api -f -X POST -H 'Content-Type: application/json' --data "{\"planId\":\"$
 wait_job "$job"
 outcome=$(api -f "http://127.0.0.1:8080/api/jobs/$job" | jqc -r .applyResult.outcome)
 [ "$outcome" = succeeded ] || fail "the apply job's outcome is $outcome"
-[ -f "$work/db/main/billing/tables/customers.sql" ] || fail "the apply did not write db/main/billing/tables/customers.sql"
-pass "apply job $job succeeded and wrote the outputs into the repository"
+written=$(api -f "http://127.0.0.1:8080/api/jobs/$job" | jqc -r '.applyResult.result.filesWritten')
+rendered=$(api -f "http://127.0.0.1:8080/api/jobs/$job" | jqc -r '.applyResult.result.unitsRendered')
+[ "${written:-0}" -gt 0 ] || fail "the apply job succeeded but reports $written files written ($rendered units rendered)"
+# The container writes through the bind mount; give a slow mount a few seconds before deciding the host cannot see the file.
+k=0
+while [ ! -f "$work/db/main/billing/tables/customers.sql" ] && [ "$k" -lt 10 ]; do k=$((k + 1)); sleep 1; done
+if [ ! -f "$work/db/main/billing/tables/customers.sql" ]; then
+  echo "smoke: the apply wrote $written files ($rendered units), but the host does not see db/main/billing/tables/customers.sql" >&2
+  echo "smoke: container view of /repo/db:" >&2; docker exec "$name" sh -c 'ls -laR /repo/db 2>&1 | head -30' >&2 || true
+  echo "smoke: host view of $work/db:" >&2; ls -laR "$work/db" 2>&1 | head -30 >&2 || true
+  echo "smoke: host user $(id) ; work dir: $(ls -ld "$work")" >&2
+  fail "the apply did not write db/main/billing/tables/customers.sql where the host can see it"
+fi
+pass "apply job $job succeeded and wrote $written files into the repository ($rendered units rendered)"
 echo "smoke: all checks passed"

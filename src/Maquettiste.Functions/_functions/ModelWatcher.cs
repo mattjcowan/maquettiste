@@ -168,7 +168,9 @@ public static class ModelWatcher
     /// <summary>Resolves every symbolic link along a directory path; the full path when the disk cannot be read.</summary>
     /// <param name="path">A directory path.</param>
     /// <returns>The link-free path, without a trailing separator.</returns>
-    public static string ResolveLinks(string path)
+    public static string ResolveLinks(string path) => ResolveLinks(path, 0);
+
+    private static string ResolveLinks(string path, int depth)
     {
         var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
         try
@@ -178,7 +180,11 @@ public static class ModelWatcher
             {
                 current = Path.Combine(current, part);
                 if (new DirectoryInfo(current) is { LinkTarget: not null } link && link.ResolveLinkTarget(returnFinalTarget: true) is { } target)
-                    current = target.FullName;
+                {
+                    // The target may itself run through a link (on macOS a link under /var resolves to a /var/... target that
+                    // still passes through /private/var), so resolve it again; the depth cap guards against cycles.
+                    current = depth < 32 ? ResolveLinks(target.FullName, depth + 1) : target.FullName;
+                }
             }
 
             return Path.TrimEndingDirectorySeparator(current);

@@ -46,6 +46,15 @@ internal sealed partial class ScriptSandbox
             _engine.Constraints.Reset();
             return body();
         }
+        catch (ScriptLimitException ex) when (ctx.CancellationToken.IsCancellationRequested || _runToken.IsCancellationRequested)
+        {
+            // A limit that trips while a cancellation is pending (a regular expression's match timeout, the statement budget)
+            // is how the script stopped, not why: the caller asked for cancellation, so that is what it gets.
+            Faulted = true;
+            throw ctx.CancellationToken.IsCancellationRequested
+                ? new OperationCanceledException("The script was cancelled.", ex, ctx.CancellationToken)
+                : new OperationCanceledException("The script was cancelled.", ex, _runToken);
+        }
         catch (Exception ex) when (ex is not OperationCanceledException and not ScriptErrorException and not ScriptLimitException)
         {
             throw Translate(ex, site, ctx.CancellationToken);

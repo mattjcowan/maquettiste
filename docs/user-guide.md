@@ -65,6 +65,7 @@ to see those situations.
 ```
 docker build -f docker/Dockerfile -t mattjcowan/maquettiste:dev .
 sh docker/dev-billing.sh          # starts the sample project from tmp/billing on 127.0.0.1:8080
+# If port 8080 is taken on your machine: MAQUETTISTE_PORT=8090 sh docker/dev-billing.sh, then use :8090 below.
 ```
 
 Open http://maquettiste.localhost:8080. There is no login in local mode: the container trusts requests from the

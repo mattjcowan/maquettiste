@@ -29,4 +29,4 @@ if [ "$(uname)" = Linux ]; then
 fi
 docker compose -f docker/compose.yaml --project-directory tmp/billing up -d
 echo "dev-billing: starting; follow with: docker compose -f docker/compose.yaml --project-directory tmp/billing logs -f"
-echo "dev-billing: then open http://maquettiste.localhost:8080"
+echo "dev-billing: then open http://maquettiste.localhost:${MAQUETTISTE_PORT:-8080}"
