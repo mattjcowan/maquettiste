@@ -46,7 +46,9 @@ public sealed class ServicesAndWatchTests
         await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic");
         await f.RunAsync();
         var results = new ConcurrentQueue<GenerationResult>();
-        var watcher = new GenerationWatcher(f.Service, new GenerationRequest(), TimeSpan.FromMilliseconds(100), (result, _) =>
+        // The CLI's real debounce (250 ms): a burst of five notifications 20 ms apart must land inside one window even on a loaded
+        // CI runner, where a 100 ms window let a late notification start a second run.
+        var watcher = new GenerationWatcher(f.Service, new GenerationRequest(), TimeSpan.FromMilliseconds(250), (result, _) =>
         {
             results.Enqueue(result);
             return ValueTask.CompletedTask;

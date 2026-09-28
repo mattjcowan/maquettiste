@@ -10,7 +10,9 @@ internal static class WatchPaths
     /// <summary>Resolves every symbolic link along a directory path; falls back to the full path when the disk cannot be read.</summary>
     /// <param name="path">A directory path.</param>
     /// <returns>The link-free full path, without a trailing separator.</returns>
-    public static string ResolveLinks(string path)
+    public static string ResolveLinks(string path) => ResolveLinks(path, 0);
+
+    private static string ResolveLinks(string path, int depth)
     {
         var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
         try
@@ -22,7 +24,11 @@ internal static class WatchPaths
                 current = Path.Combine(current, part);
                 var info = new DirectoryInfo(current);
                 if (info.LinkTarget is not null && info.ResolveLinkTarget(returnFinalTarget: true) is { } target)
-                    current = target.FullName;
+                {
+                    // The target may itself run through a link (a link under /var resolves to a /var/... target on macOS),
+                    // so resolve it again; the depth cap guards against link cycles.
+                    current = depth < 32 ? ResolveLinks(target.FullName, depth + 1) : target.FullName;
+                }
             }
 
             return Path.TrimEndingDirectorySeparator(current);
