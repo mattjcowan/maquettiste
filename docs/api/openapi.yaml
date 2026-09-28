@@ -27,9 +27,12 @@ info:
     no prefix). Responses carry it as a strong ETag (`ETag: "<hash>"`); `If-Match` accepts the quoted or bare hash.
 
     **Authentication.** One middleware (`[Middleware(Order = 0)]`) gates every request to the site, static files
-    included. It admits, in order: (1) in local mode (`MAQUETTISTE_MODE=local`, the default), a request whose remote
-    address is loopback or one of `MAQUETTISTE_LOCAL_PEERS` (the container's gateway, which is how a `127.0.0.1`
-    port binding reaches the container), signed in as the local admin with no credential; (2) `Authorization: Bearer
+    included. It admits, in order: (1) in local mode (`MAQUETTISTE_MODE=local`, the default) unless
+    `MAQUETTISTE_LOCAL_TRUST=off`, a request whose remote address, normalised from its IPv4-mapped form (Kestrel
+    listens dual-stack and reports `::ffff:172.17.0.1`), is loopback or one of `MAQUETTISTE_LOCAL_PEERS` (the
+    container's gateway, which is how a `127.0.0.1` port binding reaches the container), whose `Host` is
+    `localhost`, a `*.localhost` name, `127.0.0.1` or `[::1]`, and which carries no `Forwarded`, `X-Forwarded-For`,
+    `X-Forwarded-Host` or `X-Real-IP` header, signed in as the local admin with no credential; (2) `Authorization: Bearer
     <MAQUETTISTE_EDITOR_TOKEN>` (the CLI and scripts); (3) the `mq_session` cookie set by `POST /api/session`. Phase 2
     has one role in use, `admin`; each operation names the least role it will need once accounts land
     (`x-maquettiste-role`). A state-changing request whose `Origin` header is present and is not the site's own origin
@@ -46,7 +49,7 @@ info:
     its group and its schema.
 
     **Engine additions.** Operations and schemas marked `x-engine-addition` need an engine call that phase 1 does not
-    have (E1 to E3 in `phase2-design.md` section 3.6); their shapes are binding for that work.
+    have (E1 to E4 in `phase2-design.md` section 3.8); their shapes are binding for that work.
   license:
     name: MIT
     identifier: MIT
@@ -84,6 +87,8 @@ tags:
     description: Render one unit against one element with no writes (DDL preview).
   - name: presence
     description: Which element each open editor window has selected.
+  - name: realtime
+    description: Events pushed over the host's SignalR hub (`webhooks`); the browser listens with `site.realtime.on`.
 x-maquettiste-realtime:
   hub: /_host/realtime
   browser: site.realtime from /_host/site.js (on, off, join, leave, state, connectionId, onStateChange)
@@ -91,37 +96,11 @@ x-maquettiste-realtime:
     The browser only listens and joins; the functions publish with IRealtime. Payloads are at most 256 KB of JSON:
     model.changed and validation.completed are cut with ChangeSet.TruncateTo and ValidationReport.TruncateTo to 200 KB
     and carry `truncated: true` when cut, and the editor then refetches (`GET /api/model/index`, `POST /api/validate`).
+    job.completed is a fixed-size summary (RealtimeJobCompleted), never the JobInfo, whose stale lists and diagnostics
+    can exceed the limit; the editor reads `GET /api/jobs/{id}` for the record.
     [RealtimeConnect] admits the same callers as the middleware and returns their user name; [RealtimeJoin] admits a
-    signed-in connection to `editors` and to `job:{id}` for any existing job id.
-  events:
-    - event: model.changed
-      group: (all)
-      schema: '#/components/schemas/RealtimeModelChanged'
-      when: after every save, create, delete or batch, and after the file watcher or the periodic rescan indexes a change on disk
-    - event: validation.completed
-      group: (all)
-      schema: '#/components/schemas/RealtimeValidationCompleted'
-      when: after a whole-model validation that follows one or more model.changed events (debounced 750 ms)
-    - event: project.changed
-      group: (all)
-      schema: '#/components/schemas/RealtimeProjectChanged'
-      when: maquettiste.json, a pack or an extension schema changed (a settings save or a disk change)
-    - event: job.progress
-      group: job:{id}
-      schema: '#/components/schemas/RealtimeJobProgress'
-      when: while a job runs, at most four per second per job
-    - event: job.completed
-      group: job:{id}
-      schema: '#/components/schemas/RealtimeJobCompleted'
-      when: once, when a job succeeds, fails or is cancelled
-    - event: presence.changed
-      group: editors
-      schema: '#/components/schemas/RealtimePresenceChanged'
-      when: a window reports its selection (PUT /api/presence), or a connection of the editors group goes away
-    - event: site.deployed
-      group: (all, sent by the host)
-      schema: '#/components/schemas/RealtimeSiteDeployed'
-      when: a deploy, rollback or functions upload of the editor site went live; the editor reloads itself
+    signed-in connection to `editors` and to `job:{id}` for any job id (a ULID).
+  events: See `webhooks`. Each realtime event is described there as a webhook so client generators emit its payload type; nothing is POSTed, the hub delivers it.
 
 paths:
   /healthz:
@@ -165,6 +144,7 @@ paths:
               example:
                 status: ok
                 engineVersion: 1.0.0
+                engineBuild: 1.0.0-alpha.1.b3f9c2a1d4e5f
                 modelLoaded: true
                 elements: 26
                 worker: running
@@ -242,6 +222,8 @@ paths:
       responses:
         '204':
           description: The cookie is cleared. A loopback caller in local mode stays signed in.
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
 
   /api/project:
     get:
@@ -337,6 +319,8 @@ paths:
                       name: main
                       package: null
                       tags: []
+                      category: null
+                      stereotypes: []
                       hash: 7fccf6c4f0985534e9089ca5b34664883add3de727699fb83d825ae1d0a638f5
                       path: .maquettiste/model/databases/main/database.json
                     packs:
@@ -393,6 +377,8 @@ paths:
                       changedModelFiles: 1
         '503':
           $ref: '#/components/responses/ModelUnavailable'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
 
   /api/project/settings:
     get:
@@ -411,6 +397,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SettingsDocument'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
     put:
       tags: [project]
       operationId: saveSettings
@@ -449,6 +437,8 @@ paths:
                 $ref: '#/components/schemas/SettingsSaveResult'
         '428':
           $ref: '#/components/responses/PreconditionRequired'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
 
   /api/model/index:
     get:
@@ -476,6 +466,8 @@ paths:
                       name: Billing
                       package: null
                       tags: []
+                      category: null
+                      stereotypes: []
                       hash: 28aadbb9e1c11cdd89539991fa4ced5d566312d0a62c7692bb7e5789cce923b2
                       path: .maquettiste/model/packages/billing.json
                     - id: 01J92P0V0FJ23CGSNKM7P1W5V7
@@ -484,6 +476,11 @@ paths:
                       package: 01J92P0V01KDRN8GX5PGYCNKSX
                       tags:
                       - billing
+                      category: 01J92P0V06TYE8P8990AV35A8K
+                      stereotypes: 
+                      - aggregate-root
+                      - audited
+                      - soft-delete
                       hash: cdac722e6a2f7418b8f02fb4ab7097f297bd46bc67f46d9f61c45dfda534749d
                       path: .maquettiste/model/entities/invoice.json
                     - id: 01J92P0V1BWHG0REWKSTR292RS
@@ -491,6 +488,8 @@ paths:
                       name: contains
                       package: 01J92P0V01KDRN8GX5PGYCNKSX
                       tags: []
+                      category: null
+                      stereotypes: []
                       hash: f9fdc699d65150052e25ef459180736b24a44f97c69cbefd09c9d12897fd36e9
                       path: .maquettiste/model/relations/contains.json
                     - id: 01J92P0V1QRN2181XM2ZWE02W4
@@ -498,6 +497,8 @@ paths:
                       name: main
                       package: null
                       tags: []
+                      category: null
+                      stereotypes: []
                       hash: 7fccf6c4f0985534e9089ca5b34664883add3de727699fb83d825ae1d0a638f5
                       path: .maquettiste/model/databases/main/database.json
                     - id: 01J92P0V2164SDBW687ZV6E1MV
@@ -505,10 +506,14 @@ paths:
                       name: Billing overview
                       package: 01J92P0V01KDRN8GX5PGYCNKSX
                       tags: []
+                      category: null
+                      stereotypes: []
                       hash: a29e751129658af7503fb429afb3b382538a96bd8adee116e98b08a17152840c
                       path: .maquettiste/model/diagrams/billing-overview.json
         '503':
           $ref: '#/components/responses/ModelUnavailable'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
 
   /api/model/elements:
     post:
@@ -710,6 +715,8 @@ paths:
                     changes: null
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
 
   /api/model/elements/{id}:
     parameters:
@@ -1058,6 +1065,8 @@ paths:
           description: The element still has the hash given in `If-None-Match`.
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
     put:
       tags: [model]
       operationId: saveElement
@@ -1479,6 +1488,8 @@ paths:
           $ref: '#/components/responses/PreconditionRequired'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
     delete:
       tags: [model]
       operationId: deleteElement
@@ -1491,6 +1502,7 @@ paths:
         - name: resolution
           in: query
           required: false
+          description: 'The handler binds it as a string and maps the two values itself: the host binds enum parameters by C# member name (`RemoveReferences`), not by these JSON names.'
           schema:
             $ref: '#/components/schemas/DeleteResolution'
       responses:
@@ -1598,6 +1610,14 @@ paths:
                 $ref: '#/components/schemas/SaveResult'
         '428':
           $ref: '#/components/responses/PreconditionRequired'
+        '400':
+          description: '`resolution` is not `refuse` or `remove-references` (`bad-request`).'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
 
   /api/model/batch:
     post:
@@ -1691,6 +1711,8 @@ paths:
                       column: 22
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
 
   /api/model/references/{id}:
     parameters:
@@ -1747,6 +1769,8 @@ paths:
                       toId: 01J92P0V0FJ23CGSNKM7P1W5V7
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
 
   /api/validate:
     post:
@@ -1802,6 +1826,8 @@ paths:
                     hasErrors: false
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
 
   /api/diagrams/{id}:
     parameters:
@@ -1928,6 +1954,8 @@ paths:
                     sidecarText: null
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
     put:
       tags: [diagrams]
       operationId: saveDiagram
@@ -2000,6 +2028,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '428':
           $ref: '#/components/responses/PreconditionRequired'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
 
   /api/databases/{id}/view:
     parameters:
@@ -2024,6 +2054,8 @@ paths:
                 $ref: '#/components/schemas/DatabaseViewResult'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
 
   /api/generate/plan:
     post:
@@ -2077,6 +2109,8 @@ paths:
           $ref: '#/components/responses/QueueFull'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
 
   /api/generate/plan/{id}:
     parameters:
@@ -2188,6 +2222,8 @@ paths:
                     diagnostics: []
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
 
   /api/generate/plan/{id}/diff:
     parameters:
@@ -2234,13 +2270,15 @@ paths:
                 +);
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
 
   /api/generate/apply:
     post:
       tags: [generation]
       operationId: startApply
       summary: Apply a plan by id as a job
-      description: The job's `applyResult.outcome` is `stale` (with `staleUnits` and `stalePaths`, nothing written) when any input or planned path changed since planning, `failed` when the plan is unknown or its stored bytes are gone, `invalid` when the plan or the model now has errors.
+      description: The job's `applyResult.outcome` is `stale` (with `staleUnits` and `stalePaths`, nothing written) when any input or planned path changed since planning, `failed` when the plan is unknown or its stored bytes are gone, `invalid` when the plan or the model now has errors. Only `failed` (and `cancelled`) change the job's `state`; a `stale`, `invalid` or `conflicts` apply is a job in state `succeeded`, so check `applyResult.outcome`.
       x-maquettiste-role: maintainer
       x-maquettiste-engine: JobQueue.TryEnqueue(new JobRequest(JobKind.Apply, null, planId))
       requestBody:
@@ -2267,6 +2305,8 @@ paths:
           $ref: '#/components/responses/QueueFull'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
 
   /api/jobs:
     get:
@@ -2285,6 +2325,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/JobInfo'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
 
   /api/jobs/{id}:
     parameters:
@@ -2430,6 +2472,8 @@ paths:
                     finishedUtc: '2026-09-28T18:55:14.048592+00:00'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
     delete:
       tags: [jobs]
       operationId: cancelJob
@@ -2448,6 +2492,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/JobFinished'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
 
   /api/templates/preview:
     post:
@@ -2502,6 +2548,8 @@ paths:
                       column: 13
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
 
   /api/presence:
     put:
@@ -2526,6 +2574,130 @@ paths:
           description: Recorded.
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+
+webhooks:
+  model.changed:
+    post:
+      tags: [realtime]
+      operationId: realtimeModelChanged
+      summary: 'Realtime event `model.changed` (group: (all))'
+      description: 'Delivered over the host hub `/_host/realtime`, not as an HTTP request. Sent after every save, create, delete or batch, and after the file watcher or the periodic rescan indexes a change on disk.'
+      x-realtime-group: '(all)'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RealtimeModelChanged'
+      responses:
+        '200':
+          description: Not applicable; realtime events have no response.
+  validation.completed:
+    post:
+      tags: [realtime]
+      operationId: realtimeValidationCompleted
+      summary: 'Realtime event `validation.completed` (group: (all))'
+      description: 'Delivered over the host hub `/_host/realtime`, not as an HTTP request. Sent after a whole-model validation that follows one or more model.changed or project.changed events (debounced 750 ms).'
+      x-realtime-group: '(all)'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RealtimeValidationCompleted'
+      responses:
+        '200':
+          description: Not applicable; realtime events have no response.
+  project.changed:
+    post:
+      tags: [realtime]
+      operationId: realtimeProjectChanged
+      summary: 'Realtime event `project.changed` (group: (all))'
+      description: 'Delivered over the host hub `/_host/realtime`, not as an HTTP request. Sent when maquettiste.json, a pack or an extension schema changed (a settings save or a disk change); a validation.completed follows.'
+      x-realtime-group: '(all)'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RealtimeProjectChanged'
+      responses:
+        '200':
+          description: Not applicable; realtime events have no response.
+  job.progress:
+    post:
+      tags: [realtime]
+      operationId: realtimeJobProgress
+      summary: 'Realtime event `job.progress` (group: job:{id})'
+      description: 'Delivered over the host hub `/_host/realtime`, not as an HTTP request. Sent while a job runs, at most four per second per job.'
+      x-realtime-group: 'job:{id}'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RealtimeJobProgress'
+      responses:
+        '200':
+          description: Not applicable; realtime events have no response.
+  job.completed:
+    post:
+      tags: [realtime]
+      operationId: realtimeJobCompleted
+      summary: 'Realtime event `job.completed` (group: job:{id})'
+      description: 'Delivered over the host hub `/_host/realtime`, not as an HTTP request. Sent once, when a job finishes (state `succeeded`, `failed` or `cancelled`). A bounded summary: read `GET /api/jobs/{id}` for the record. Report the run by `outcome`, not `state`.'
+      x-realtime-group: 'job:{id}'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RealtimeJobCompleted'
+      responses:
+        '200':
+          description: Not applicable; realtime events have no response.
+  presence.changed:
+    post:
+      tags: [realtime]
+      operationId: realtimePresenceChanged
+      summary: 'Realtime event `presence.changed` (group: editors)'
+      description: 'Delivered over the host hub `/_host/realtime`, not as an HTTP request. Sent a window reports its selection (PUT /api/presence), or a connection of the editors group goes away.'
+      x-realtime-group: 'editors'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RealtimePresenceChanged'
+      responses:
+        '200':
+          description: Not applicable; realtime events have no response.
+  site.deployed:
+    post:
+      tags: [realtime]
+      operationId: realtimeSiteDeployed
+      summary: 'Realtime event `site.deployed` (group: (all, sent by the host))'
+      description: 'Delivered over the host hub `/_host/realtime`, not as an HTTP request. Sent a deploy, rollback or functions upload of the editor site went live; the editor reloads itself.'
+      x-realtime-group: '(all, sent by the host)'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RealtimeSiteDeployed'
+      responses:
+        '200':
+          description: Not applicable; realtime events have no response.
 
 components:
   securitySchemes:
@@ -2537,7 +2709,7 @@ components:
     editorToken:
       type: http
       scheme: bearer
-      description: '`Authorization: Bearer <MAQUETTISTE_EDITOR_TOKEN>`, the secret site variable. For the CLI, scripts and tests. Compared in fixed time. In local mode a loopback or `MAQUETTISTE_LOCAL_PEERS` caller needs neither scheme and is the local admin.'
+      description: '`Authorization: Bearer <MAQUETTISTE_EDITOR_TOKEN>`, the secret site variable. For the CLI, scripts and tests. Compared in fixed time. In local mode a loopback or `MAQUETTISTE_LOCAL_PEERS` caller with a local `Host` and no forwarding header needs neither scheme and is the local admin (see the authentication notes in `info`).'
 
   parameters:
     ElementId:
@@ -2587,7 +2759,7 @@ components:
 
   responses:
     BadRequest:
-      description: The body is not JSON, not the expected shape, or larger than 4 MB (`bad-request`, `unsupported-media-type`, `too-large`).
+      description: The body is not JSON or not the expected shape (`bad-request`), or is larger than 4 MB (`too-large`). The sign-in gate refuses a `POST` or `PUT` that is not `application/json` with 415 `unsupported-media-type`, and a foreign `Origin` with 403 `forbidden-origin`, before any handler runs.
       content:
         application/problem+json:
           schema:
@@ -2755,7 +2927,7 @@ components:
           enum: [local, hosted]
     EditorHealth:
       type: object
-      required: [status, engineVersion, modelLoaded, elements, worker, watcher]
+      required: [status, engineVersion, engineBuild, modelLoaded, elements, worker, watcher]
       properties:
         status:
           type: string
@@ -2763,6 +2935,10 @@ components:
           description: '`starting` until the first load finished; `degraded` when the model folder is unreadable or a background service keeps failing.'
         engineVersion:
           type: string
+          description: '`EngineVersion.Value`, the engine''s format-level version.'
+        engineBuild:
+          type: string
+          description: The loaded engine assembly's informational version without any `+` suffix; in the image, the per-build package version of `/opt/maquettiste/engine.version` (`phase2-design.md` PD24), so an upgrade check can see which engine the functions compiled against.
         modelLoaded:
           type: boolean
         elements:
@@ -3194,8 +3370,9 @@ components:
       enum: [editor, disk, cli, engine]
     ElementSummary:
       x-engine-record: Maquettiste.Engine.Model.ElementSummary
+      x-engine-addition: E4 adds `category` and `stereotypes`
       type: object
-      required: [id, kind, name, package, tags, hash, path]
+      required: [id, kind, name, package, tags, category, stereotypes, hash, path]
       properties:
         id:
           $ref: '#/components/schemas/Ulid'
@@ -3209,6 +3386,16 @@ components:
             - $ref: '#/components/schemas/Ulid'
             - type: 'null'
         tags:
+          type: array
+          items:
+            type: string
+        category:
+          description: The id of the element's category-tree node (E4).
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+        stereotypes:
+          description: The element's stereotype keys, in application order (E4).
           type: array
           items:
             type: string
@@ -3383,9 +3570,8 @@ components:
         outcome:
           $ref: '#/components/schemas/SaveOutcome'
         id:
-          oneOf:
-            - $ref: '#/components/schemas/Ulid'
-            - type: 'null'
+          description: The element's id (a ULID when `saved`). Echoes the id the request named, so an `invalid` outcome for a body id that is not a ULID (MQ1006) carries that string unchanged; `null` when the request named none.
+          type: [string, 'null']
         hash:
           description: The new hash when saved; the disk hash on conflict.
           oneOf:
@@ -3974,9 +4160,10 @@ components:
     JobState:
       type: string
       enum: [queued, running, succeeded, failed, cancelled]
+      description: Where the job is in its life, not whether the run did what was asked. `succeeded` means the run completed and produced a result, whatever its outcome (`JobQueue` maps only the `cancelled` and `failed` run outcomes to other states), so a `stale`, `invalid`, `conflicts`, `drift` or `busy` run is `succeeded` too. The run's result is `planResult.outcome` or `applyResult.outcome`.
     JobInfo:
       x-engine-record: Maquettiste.Engine.JobInfo
-      description: A finished job read back keeps no per-file or per-unit list (`planResult.plan.units` and `.changes`, `applyResult.result.changes` are empty); read the plan for them.
+      description: A finished job read back keeps no per-file or per-unit list (`planResult.plan.units` and `.changes`, `applyResult.result.changes` are empty); read the plan for them. It keeps `applyResult.staleUnits`, `.stalePaths` and every diagnostic, so it can be large; the `job.completed` event is a summary for that reason. Judge a finished job by `planResult.outcome` or `applyResult.outcome`, not by `state`.
       type: object
       required: [id, kind, state, queuePosition, progress, planResult, applyResult, error, queuedUtc, startedUtc, finishedUtc]
       properties:
@@ -3985,7 +4172,9 @@ components:
         kind:
           $ref: '#/components/schemas/JobKind'
         state:
-          $ref: '#/components/schemas/JobState'
+          description: '`succeeded` whenever the run completed, whatever its outcome (see `JobState`).'
+          allOf:
+            - $ref: '#/components/schemas/JobState'
         queuePosition:
           description: 0-based position while queued.
           type: [integer, 'null']
@@ -4081,7 +4270,7 @@ components:
 
     # ---------------------------------------------------------------- realtime payloads
     RealtimeModelChanged:
-      description: '`model.changed` to every connection: the engine''s ChangeSet (cut to 200 KB, `truncated` then true).'
+      description: '`model.changed` to every connection: the engine''s ChangeSet (cut to 200 KB, `truncated` then true). An `ElementChange` carries only id, kind, path and hash, so a change the editor did not make itself (an unknown id or a changed hash) cannot be patched into the index; the editor refetches `GET /api/model/index`.'
       allOf:
         - $ref: '#/components/schemas/ChangeSet'
       example:
@@ -4099,7 +4288,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/ValidationReport'
     RealtimeProjectChanged:
-      description: '`project.changed` to every connection: settings, packs or extension schemas changed; refetch `GET /api/project`.'
+      description: '`project.changed` to every connection: settings, packs or extension schemas changed; refetch `GET /api/project` and the settings, and drop cached database views and previews (conventions and type maps change every resolved table). A `validation.completed` follows.'
       type: object
       required: [settingsHash]
       properties:
@@ -4110,9 +4299,74 @@ components:
       allOf:
         - $ref: '#/components/schemas/JobInfo'
     RealtimeJobCompleted:
-      description: '`job.completed` to `job:{id}`: the finished JobInfo, trimmed as `GET /api/jobs/{id}` returns it.'
-      allOf:
-        - $ref: '#/components/schemas/JobInfo'
+      description: '`job.completed` to `job:{id}`: a fixed-size summary of the finished job (`JobCompletedEvent` in the functions), never the JobInfo. A finished JobInfo keeps `applyResult.staleUnits`, `.stalePaths`, `plan.request` and every diagnostic, which at S13 scale runs to megabytes, and the hub refuses payloads above 256 KB. On this event the editor reads `GET /api/jobs/{id}` and, for a plan job, `GET /api/generate/plan/{planId}`.'
+      x-maquettiste-functions-record: JobCompletedEvent
+      type: object
+      required: [id, kind, state, outcome, planId, error, counts, finishedUtc]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        kind:
+          $ref: '#/components/schemas/JobKind'
+        state:
+          description: '`succeeded` whenever the run completed, whatever its outcome (see `JobState`).'
+          allOf:
+            - $ref: '#/components/schemas/JobState'
+        outcome:
+          description: '`planResult.outcome` or `applyResult.outcome`; `null` when the job ended without a result (cancelled before it ran, or an internal failure). What the editor reports.'
+          oneOf:
+            - $ref: '#/components/schemas/RunOutcome'
+            - type: 'null'
+        planId:
+          description: The plan a plan job produced; `null` for an apply job or a plan job without a plan.
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+        error:
+          description: The error of a failed job, cut to 2,000 characters.
+          type: [string, 'null']
+          maxLength: 2000
+        counts:
+          $ref: '#/components/schemas/JobCounts'
+        finishedUtc:
+          type: [string, 'null']
+          format: date-time
+      example:
+        id: 01M3MNY0J2S7Q8C1V4E6T9R3KD
+        kind: apply
+        state: succeeded
+        outcome: stale
+        planId: null
+        error: null
+        counts:
+          changes: 0
+          staleUnits: 2
+          stalePaths: 1
+          errors: 0
+          warnings: 0
+        finishedUtc: '2026-09-28T19:02:41.3310452+00:00'
+    JobCounts:
+      description: Sizes of the lists a finished job holds, counted from the full record before the engine trims it.
+      type: object
+      required: [changes, staleUnits, stalePaths, errors, warnings]
+      properties:
+        changes:
+          description: File decisions in the plan (plan job) or the run result (apply job).
+          type: integer
+          minimum: 0
+        staleUnits:
+          type: integer
+          minimum: 0
+        stalePaths:
+          type: integer
+          minimum: 0
+        errors:
+          description: Error diagnostics of the plan or the run result.
+          type: integer
+          minimum: 0
+        warnings:
+          type: integer
+          minimum: 0
     RealtimePresenceChanged:
       description: '`presence.changed` to `editors`: every live editor connection and its selection.'
       type: object
