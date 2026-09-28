@@ -179,7 +179,8 @@ public static class BenchmarkHarness
             CheckOutcome = check.Outcome.ToString(),
             CheckUnitsRendered = check.UnitsRendered,
             OutputsMatch = outputsMatch,
-            PeakWorkingSetBytes = process.PeakWorkingSet64,
+            // PeakWorkingSet64 is not implemented on macOS (it reads as 0), so fall back to the current working set there.
+            PeakWorkingSetBytes = Math.Max(process.PeakWorkingSet64, process.WorkingSet64),
             Framework = RuntimeInformation.FrameworkDescription,
             Architecture = RuntimeInformation.ProcessArchitecture.ToString(),
             ServerGc = GCSettings.IsServerGC,

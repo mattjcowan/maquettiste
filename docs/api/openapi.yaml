@@ -1,0 +1,4140 @@
+openapi: 3.1.0
+info:
+  title: Maquettiste editor API
+  version: 0.2.0-phase2
+  summary: The JSON API the Maquettiste editor's C# functions expose on the editor's own domain (SPEC Section 16), phase 2 subset.
+  description: |
+    The editor site's `_functions/` answer this API on the editor's domain (`http://maquettiste.localhost:8080` in local
+    mode). Every handler is route parsing, the sign-in check and one call into `Maquettiste.Engine`
+    (`docs/engineering/engine-design.md` section 15, `docs/engineering/phase2-design.md` section 3). The binding
+    design is `docs/engineering/phase2-design.md`; this file is the contract the editor SPA, its generated client and its
+    MSW mocks are built from.
+
+    **Serialization.** Every body that mirrors an engine record is that record serialized by `System.Text.Json` with
+    `JsonSerializerDefaults.Web` and no custom converters (host-contracts requirement 5): camelCase names, every
+    property written, `null` included, enums as the kebab-case strings the engine declares, `TimeSpan` as
+    `[-][d.]hh:mm:ss[.fffffff]`, `DateTimeOffset` as ISO 8601 with offset, and non-ASCII and HTML-sensitive characters
+    escaped as `\uXXXX` (the default encoder). Computed public properties are serialized too (`ChangeSet.isEmpty`,
+    `ValidationReport.hasErrors`). Schemas marked `x-engine-record` name the C# record they mirror; a change to that
+    record is a change to this file in the same commit.
+
+    **Model documents.** Request bodies that carry an element, and `ElementDocument.json`, are canonical model files
+    as `schemas/v1/<kind>.json` defines them (canonical JSON omits defaults). `ElementDocument.element` is the same
+    element as the engine's typed record, with every property present (defaults and `null`s written). The editor edits
+    and sends `json`, never `element`.
+
+    **Hashes and ETags.** An element's hash is the lowercase hex SHA-256 of its canonical file bytes (64 characters,
+    no prefix). Responses carry it as a strong ETag (`ETag: "<hash>"`); `If-Match` accepts the quoted or bare hash.
+
+    **Authentication.** One middleware (`[Middleware(Order = 0)]`) gates every request to the site, static files
+    included. It admits, in order: (1) in local mode (`MAQUETTISTE_MODE=local`, the default), a request whose remote
+    address is loopback or one of `MAQUETTISTE_LOCAL_PEERS` (the container's gateway, which is how a `127.0.0.1`
+    port binding reaches the container), signed in as the local admin with no credential; (2) `Authorization: Bearer
+    <MAQUETTISTE_EDITOR_TOKEN>` (the CLI and scripts); (3) the `mq_session` cookie set by `POST /api/session`. Phase 2
+    has one role in use, `admin`; each operation names the least role it will need once accounts land
+    (`x-maquettiste-role`). A state-changing request whose `Origin` header is present and is not the site's own origin
+    is refused with 403 `forbidden-origin`, and a `POST` or `PUT` body must be `application/json` (cross-site request
+    forgery defence for the credential-less local mode).
+
+    **Errors.** Outcomes of engine calls come back as engine records (`SaveResult`, `BatchResult`, `ValidationReport`,
+    `PreviewResult`, `JobInfo`) with the status the outcome maps to. Everything else (authentication, routing, bad
+    input, a full job queue, an unexpected failure) is an RFC 9457 problem document (`Problem`) with a stable `code`.
+
+    **Realtime.** Long work runs as jobs; progress and model changes arrive over the host's SignalR hub at
+    `/_host/realtime` (`site.realtime` from `/_host/site.js` in the browser), not over this API. The event payloads
+    are the `Realtime*` schemas under `components.schemas`; `x-maquettiste-realtime` at the root lists each event,
+    its group and its schema.
+
+    **Engine additions.** Operations and schemas marked `x-engine-addition` need an engine call that phase 1 does not
+    have (E1 to E3 in `phase2-design.md` section 3.6); their shapes are binding for that work.
+  license:
+    name: MIT
+    identifier: MIT
+  contact:
+    name: Maquettiste
+    url: https://github.com/mattjcowan/maquettiste
+servers:
+  - url: http://maquettiste.localhost:8080
+    description: Local mode (the compose file of SPEC Section 4)
+  - url: /
+    description: The editor's own origin (hosted mode, later)
+security:
+  - sessionCookie: []
+  - editorToken: []
+tags:
+  - name: session
+    description: Who the caller is; token sign-in for non-loopback access.
+  - name: health
+    description: Liveness of the host and readiness of the editor functions.
+  - name: project
+    description: Project settings, databases, packs and extension schemas.
+  - name: model
+    description: Elements, the model index, references and atomic batches.
+  - name: diagrams
+    description: Canvas views (membership, positions, viewport).
+  - name: databases
+    description: The resolved physical model of a database, for table diagrams and mappings.
+  - name: validation
+    description: Whole-model or scoped validation.
+  - name: generation
+    description: Plan, per-file diff and apply, as jobs.
+  - name: jobs
+    description: The job queue (one running job at a time).
+  - name: templates
+    description: Render one unit against one element with no writes (DDL preview).
+  - name: presence
+    description: Which element each open editor window has selected.
+x-maquettiste-realtime:
+  hub: /_host/realtime
+  browser: site.realtime from /_host/site.js (on, off, join, leave, state, connectionId, onStateChange)
+  notes: |
+    The browser only listens and joins; the functions publish with IRealtime. Payloads are at most 256 KB of JSON:
+    model.changed and validation.completed are cut with ChangeSet.TruncateTo and ValidationReport.TruncateTo to 200 KB
+    and carry `truncated: true` when cut, and the editor then refetches (`GET /api/model/index`, `POST /api/validate`).
+    [RealtimeConnect] admits the same callers as the middleware and returns their user name; [RealtimeJoin] admits a
+    signed-in connection to `editors` and to `job:{id}` for any existing job id.
+  events:
+    - event: model.changed
+      group: (all)
+      schema: '#/components/schemas/RealtimeModelChanged'
+      when: after every save, create, delete or batch, and after the file watcher or the periodic rescan indexes a change on disk
+    - event: validation.completed
+      group: (all)
+      schema: '#/components/schemas/RealtimeValidationCompleted'
+      when: after a whole-model validation that follows one or more model.changed events (debounced 750 ms)
+    - event: project.changed
+      group: (all)
+      schema: '#/components/schemas/RealtimeProjectChanged'
+      when: maquettiste.json, a pack or an extension schema changed (a settings save or a disk change)
+    - event: job.progress
+      group: job:{id}
+      schema: '#/components/schemas/RealtimeJobProgress'
+      when: while a job runs, at most four per second per job
+    - event: job.completed
+      group: job:{id}
+      schema: '#/components/schemas/RealtimeJobCompleted'
+      when: once, when a job succeeds, fails or is cancelled
+    - event: presence.changed
+      group: editors
+      schema: '#/components/schemas/RealtimePresenceChanged'
+      when: a window reports its selection (PUT /api/presence), or a connection of the editors group goes away
+    - event: site.deployed
+      group: (all, sent by the host)
+      schema: '#/components/schemas/RealtimeSiteDeployed'
+      when: a deploy, rollback or functions upload of the editor site went live; the editor reloads itself
+
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      operationId: getHostHealth
+      summary: Host liveness (answered by static-site-hosting itself)
+      description: Answered by the host on any host name before any site or function runs, so it says only that the process is up. Compose health checks and the CLI's "is the editor up" check use it.
+      security: []
+      x-maquettiste-handler: host
+      responses:
+        '200':
+          description: The host is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    const: ok
+              example:
+                status: ok
+
+  /api/health:
+    get:
+      tags: [health]
+      operationId: getEditorHealth
+      summary: Editor readiness
+      description: Whether the editor functions are loaded, the model is indexed and the background services run. Admitted without credentials.
+      security: []
+      x-maquettiste-role: anonymous
+      x-maquettiste-engine: ModelStore.Current; background service state kept by the functions
+      responses:
+        '200':
+          description: Ready or starting.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EditorHealth'
+              example:
+                status: ok
+                engineVersion: 1.0.0
+                modelLoaded: true
+                elements: 26
+                worker: running
+                watcher: watching
+
+  /api/session:
+    get:
+      tags: [session]
+      operationId: getSession
+      summary: Who the caller is
+      x-maquettiste-role: viewer
+      responses:
+        '200':
+          description: Signed in (loopback, token or cookie).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionInfo'
+              example:
+                user:
+                  name: local
+                  displayName: Local developer
+                  role: admin
+                via: local
+                mode: local
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+    post:
+      tags: [session]
+      operationId: signIn
+      summary: Sign in with the editor token
+      description: |
+        Phase 2 sign-in for a non-loopback browser: the caller presents `MAQUETTISTE_EDITOR_TOKEN` once and receives the
+        host-only, `HttpOnly`, `SameSite=Strict` cookie `mq_session`, protected with the host's data-protection keys and
+        bound to a fingerprint of the token, so rotating the token ends every session. The middleware's own sign-in page
+        posts the same field as a form. Passwords and invite links arrive with accounts (phase 4).
+      security: []
+      x-maquettiste-role: anonymous
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignInRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SignInRequest'
+      responses:
+        '200':
+          description: Signed in; the cookie is set.
+          headers:
+            Set-Cookie:
+              description: '`mq_session=<protected>; Path=/; HttpOnly; SameSite=Strict` (plus `Secure` behind TLS).'
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionInfo'
+        '303':
+          description: Form post signed in; redirects to `/` (or the `returnUrl` field when it is a local path).
+          headers:
+            Location:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    delete:
+      tags: [session]
+      operationId: signOut
+      summary: Sign out
+      x-maquettiste-role: viewer
+      responses:
+        '204':
+          description: The cookie is cleared. A loopback caller in local mode stays signed in.
+
+  /api/project:
+    get:
+      tags: [project]
+      operationId: getProject
+      summary: Settings, format version, databases, installed packs and extension schemas
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: ModelStore.GetSnapshotAsync (Settings, SettingsHash, Extensions, All<Database>), GenerationService.GetPacksAsync (E2), git status
+      responses:
+        '200':
+          description: The project.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectInfo'
+              examples:
+                billing:
+                  summary: The billing fixture
+                  value:
+                    name: billing
+                    formatVersion: 1
+                    engineVersion: 1.0.0
+                    mode: local
+                    settings:
+                      $schema: .schema/v1/maquettiste.json
+                      formatVersion: 1
+                      name: billing
+                      outputs:
+                        allow:
+                        - path: db
+                          commit: true
+                        - path: src/Generated
+                          commit: false
+                        deny: []
+                      handEdits: fail
+                      formatters: []
+                      conventions:
+                        tableCase: null
+                        pluralTables: null
+                        columnCase: null
+                        tableName: null
+                        keyColumn: null
+                        foreignKeyColumn: null
+                        junctionTable: null
+                        childTable: null
+                        valueObjectColumn: null
+                        orderColumn: null
+                        discriminatorColumn: null
+                        primaryKeyName: null
+                        foreignKeyName: null
+                        uniqueName: null
+                        indexName: null
+                        checkName: null
+                        sequenceName: null
+                        defaultStringLength: null
+                        decimalPrecision: null
+                        decimalScale: null
+                        datetimePrecision: null
+                        enumStorage: null
+                        valueObjectStorage: null
+                        valueObjectCollectionStorage: null
+                        relationsWithAttributes: null
+                        inheritance: null
+                      databases: {}
+                      typeMaps: {}
+                      inflection:
+                        plurals: {}
+                        uncountable: []
+                      packs:
+                        csharp-dapper:
+                          enabled: true
+                          output: src/Generated
+                          parameters: {}
+                          handEdits: null
+                        sql-ddl:
+                          enabled: true
+                          output: db
+                          parameters: {}
+                          handEdits: null
+                      validation:
+                        rules: {}
+                      limits:
+                        scriptTimeoutMs: 2000
+                        scriptStatements: 5000000
+                        scriptRecursion: 256
+                        scriptMemoryBytes: 67108864
+                        templateLoopLimit: 1000000
+                        templateRecursionLimit: 64
+                    settingsHash: 695f8e249265560b146d7b54f3a083a26131a540fc392959840b46a62f7ae82c
+                    databases:
+                    - id: 01J92P0V1QRN2181XM2ZWE02W4
+                      kind: database
+                      name: main
+                      package: null
+                      tags: []
+                      hash: 7fccf6c4f0985534e9089ca5b34664883add3de727699fb83d825ae1d0a638f5
+                      path: .maquettiste/model/databases/main/database.json
+                    packs:
+                    - $schema: null
+                      name: sql-ddl
+                      version: 1.0.0
+                      engine: '>=1.0 <2.0'
+                      description: 'SQL DDL for PostgreSQL, SQL Server and SQLite: one script per table, one schema script per database, once-mode migrations from the schema diff and a seed script with protected regions.'
+                      parameters:
+                        comments: true
+                        quoting: ''
+                        schemaScript: inline
+                      scripts: []
+                      usesSchemaDiff: true
+                      units:
+                      - id: table
+                        template: table.scriban
+                        for: each table
+                        where: null
+                        output: '{{ kebab table.database.name }}/{{ if table.schema }}{{ table.schema }}/{{ end }}tables/{{ table.name }}.sql'
+                        mode: overwrite
+                        formatter: null
+                        delimiters: null
+                        companion: null
+                        transforms: []
+                      - id: schema
+                        template: schema.scriban
+                        for: select databases
+                        where: null
+                        output: '{{ kebab database.name }}/schema.sql'
+                        mode: overwrite
+                        formatter: null
+                        delimiters: null
+                        companion: null
+                        transforms: []
+                    packDiagnostics: []
+                    extensions:
+                    - $schema: null
+                      name: retention
+                      description: How long audited records are kept.
+                      appliesTo:
+                        kinds:
+                        - entity
+                        stereotypes:
+                        - audited
+                      properties:
+                        retentionDays:
+                          type: integer
+                          minimum: 1
+                      required: []
+                    git:
+                      branch: main
+                      head: 99b67a4
+                      changedModelFiles: 1
+        '503':
+          $ref: '#/components/responses/ModelUnavailable'
+
+  /api/project/settings:
+    get:
+      tags: [project]
+      operationId: getSettings
+      summary: The canonical maquettiste.json with its hash
+      x-maquettiste-role: viewer
+      x-engine-addition: E3 ModelStore.GetSettingsAsync
+      responses:
+        '200':
+          description: The settings document.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettingsDocument'
+    put:
+      tags: [project]
+      operationId: saveSettings
+      summary: Save maquettiste.json (conventions, type maps, outputs, packs)
+      x-maquettiste-role: admin
+      x-engine-addition: E3 ModelStore.SaveSettingsAsync
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../../schemas/v1/maquettiste.json'
+      responses:
+        '200':
+          description: Saved.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettingsSaveResult'
+        '409':
+          description: The file changed on disk since it was loaded; `current` is the disk version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettingsSaveResult'
+        '422':
+          description: The settings are invalid; nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettingsSaveResult'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+
+  /api/model/index:
+    get:
+      tags: [model]
+      operationId: getModelIndex
+      summary: Summaries of every element
+      description: One summary per top-level element (sub-elements such as attributes and relation ends are not listed). The explorer, the command palette and every canvas start from this list.
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: ModelStore.GetIndexAsync
+      responses:
+        '200':
+          description: The index.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ElementSummary'
+              examples:
+                billing:
+                  summary: Part of the billing fixture's index
+                  value:
+                    - id: 01J92P0V01KDRN8GX5PGYCNKSX
+                      kind: package
+                      name: Billing
+                      package: null
+                      tags: []
+                      hash: 28aadbb9e1c11cdd89539991fa4ced5d566312d0a62c7692bb7e5789cce923b2
+                      path: .maquettiste/model/packages/billing.json
+                    - id: 01J92P0V0FJ23CGSNKM7P1W5V7
+                      kind: entity
+                      name: Invoice
+                      package: 01J92P0V01KDRN8GX5PGYCNKSX
+                      tags:
+                      - billing
+                      hash: cdac722e6a2f7418b8f02fb4ab7097f297bd46bc67f46d9f61c45dfda534749d
+                      path: .maquettiste/model/entities/invoice.json
+                    - id: 01J92P0V1BWHG0REWKSTR292RS
+                      kind: relation
+                      name: contains
+                      package: 01J92P0V01KDRN8GX5PGYCNKSX
+                      tags: []
+                      hash: f9fdc699d65150052e25ef459180736b24a44f97c69cbefd09c9d12897fd36e9
+                      path: .maquettiste/model/relations/contains.json
+                    - id: 01J92P0V1QRN2181XM2ZWE02W4
+                      kind: database
+                      name: main
+                      package: null
+                      tags: []
+                      hash: 7fccf6c4f0985534e9089ca5b34664883add3de727699fb83d825ae1d0a638f5
+                      path: .maquettiste/model/databases/main/database.json
+                    - id: 01J92P0V2164SDBW687ZV6E1MV
+                      kind: diagram
+                      name: Billing overview
+                      package: 01J92P0V01KDRN8GX5PGYCNKSX
+                      tags: []
+                      hash: a29e751129658af7503fb429afb3b382538a96bd8adee116e98b08a17152840c
+                      path: .maquettiste/model/diagrams/billing-overview.json
+        '503':
+          $ref: '#/components/responses/ModelUnavailable'
+
+  /api/model/elements:
+    post:
+      tags: [model]
+      operationId: createElement
+      summary: Create an element
+      description: |
+        The body is a model document of any kind. A missing top-level `id` is assigned by the engine; sub-element ids
+        (attributes, relation ends, keys, columns) must be present, so the editor generates them (uppercase ULIDs). The
+        engine writes the canonical file in the kind's conventional folder.
+      x-maquettiste-role: editor
+      x-maquettiste-engine: ModelStore.CreateAsync(json, ChangeSource.Editor)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewModelDocument'
+            examples:
+              entity:
+                summary: A new entity with two attributes
+                value:
+                  kind: entity
+                  name: Refund
+                  package: 01J92P0V01KDRN8GX5PGYCNKSX
+                  key:
+                    attributes:
+                    - 01M3P0000000000000000000A1
+                  attributes:
+                  - id: 01M3P0000000000000000000A1
+                    name: id
+                    type: uuid
+                    required: true
+                  - id: 01M3P0000000000000000000A2
+                    name: amount
+                    type: decimal
+                    precision: 12
+                    scale: 2
+                    required: true
+      responses:
+        '201':
+          description: Created. `current` is the new document.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Location:
+              description: /api/model/elements/{id}
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveResult'
+              examples:
+                created:
+                  summary: The entity was written
+                  value:
+                    outcome: saved
+                    id: 01M3MNY0GJQHEAHZ3C98GZZ3Q3
+                    hash: 90df3d3dc5d29b121aff75d34dfd3abc4706049ad84a583ee9d09abafd6e2bcc
+                    current:
+                      element:
+                        kind: entity
+                        package: 01J92P0V01KDRN8GX5PGYCNKSX
+                        abstract: false
+                        base: null
+                        key:
+                          attributes:
+                          - 01M3P0000000000000000000A1
+                          strategy: application
+                        alternateKeys: []
+                        attributes:
+                        - type: uuid
+                          required: true
+                          default: null
+                          defaultExpression: null
+                          length: null
+                          precision: null
+                          scale: null
+                          collection: false
+                          unique: false
+                          indexed: false
+                          readOnly: false
+                          immutable: false
+                          derived: null
+                          sensitive: null
+                          validation: null
+                          order: null
+                          id: 01M3P0000000000000000000A1
+                          name: id
+                          displayName: null
+                          pluralName: null
+                          description: null
+                          tags: []
+                          category: null
+                          stereotypes: []
+                          properties: {}
+                          generation: {}
+                          source: null
+                        - type: decimal
+                          required: true
+                          default: null
+                          defaultExpression: null
+                          length: null
+                          precision: 12
+                          scale: 2
+                          collection: false
+                          unique: false
+                          indexed: false
+                          readOnly: false
+                          immutable: false
+                          derived: null
+                          sensitive: null
+                          validation: null
+                          order: null
+                          id: 01M3P0000000000000000000A2
+                          name: amount
+                          displayName: null
+                          pluralName: null
+                          description: null
+                          tags: []
+                          category: null
+                          stereotypes: []
+                          properties: {}
+                          generation: {}
+                          source: null
+                        $schema: ../../.schema/v1/entity.json
+                        id: 01M3MNY0GJQHEAHZ3C98GZZ3Q3
+                        name: Refund
+                        displayName: null
+                        pluralName: null
+                        description: null
+                        tags: []
+                        category: null
+                        stereotypes: []
+                        properties: {}
+                        generation: {}
+                        source: null
+                      path: .maquettiste/model/entities/refund.json
+                      hash: 90df3d3dc5d29b121aff75d34dfd3abc4706049ad84a583ee9d09abafd6e2bcc
+                      dependencyHash: 9abb16dafe7ecb690d835e0e3bc46870b3a42227e5be4dfefdaab13f8209459f
+                      json:
+                        $schema: ../../.schema/v1/entity.json
+                        kind: entity
+                        id: 01M3MNY0GJQHEAHZ3C98GZZ3Q3
+                        name: Refund
+                        package: 01J92P0V01KDRN8GX5PGYCNKSX
+                        key:
+                          attributes:
+                          - 01M3P0000000000000000000A1
+                        attributes:
+                        - id: 01M3P0000000000000000000A1
+                          name: id
+                          type: uuid
+                          required: true
+                        - id: 01M3P0000000000000000000A2
+                          name: amount
+                          type: decimal
+                          precision: 12
+                          scale: 2
+                          required: true
+                      sidecarText: null
+                    diagnostics: []
+                    referrers: []
+                    changes:
+                      changed:
+                      - id: 01M3MNY0GJQHEAHZ3C98GZZ3Q3
+                        kind: entity
+                        path: .maquettiste/model/entities/refund.json
+                        hash: 90df3d3dc5d29b121aff75d34dfd3abc4706049ad84a583ee9d09abafd6e2bcc
+                      deleted: []
+                      source: editor
+                      truncated: false
+                      isEmpty: false
+        '422':
+          description: Invalid (JSON, schema or semantic validation); nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveResult'
+              examples:
+                missingSubId:
+                  summary: An attribute without an id
+                  value:
+                    outcome: invalid
+                    id: 01M3MNY0GGD7TQPTYJFMGFFDCW
+                    hash: null
+                    current: null
+                    diagnostics:
+                    - rule: MQ1002
+                      severity: error
+                      message: '/attributes/0 required: Required properties ["id"] are not present'
+                      elementId: 01M3MNY0GGD7TQPTYJFMGFFDCW
+                      filePath: null
+                      jsonPointer: /attributes/0
+                      line: null
+                      column: null
+                    referrers: []
+                    changes: null
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/model/elements/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ElementId'
+    get:
+      tags: [model]
+      operationId: getElement
+      summary: One element, with its hash as ETag
+      description: A sub-element id (an attribute, a relation end, a column) returns the document that holds it.
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: ModelStore.GetElementAsync
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: The element.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ElementDocument'
+              examples:
+                entity:
+                  summary: Entity Invoice from the billing fixture
+                  value:
+                    element:
+                      kind: entity
+                      package: 01J92P0V01KDRN8GX5PGYCNKSX
+                      abstract: false
+                      base: null
+                      key:
+                        attributes:
+                        - 01J92P0V0Q9EK961M5HAQ3C5MY
+                        strategy: uuid-v7
+                      alternateKeys: []
+                      attributes:
+                      - type: uuid
+                        required: true
+                        default: null
+                        defaultExpression: null
+                        length: null
+                        precision: null
+                        scale: null
+                        collection: false
+                        unique: false
+                        indexed: false
+                        readOnly: false
+                        immutable: false
+                        derived: null
+                        sensitive: null
+                        validation: null
+                        order: null
+                        id: 01J92P0V0Q9EK961M5HAQ3C5MY
+                        name: id
+                        displayName: null
+                        pluralName: null
+                        description: null
+                        tags: []
+                        category: null
+                        stereotypes: []
+                        properties: {}
+                        generation: {}
+                        source: null
+                      - type: string
+                        required: true
+                        default: null
+                        defaultExpression: null
+                        length: 32
+                        precision: null
+                        scale: null
+                        collection: false
+                        unique: true
+                        indexed: false
+                        readOnly: false
+                        immutable: false
+                        derived: null
+                        sensitive: null
+                        validation: null
+                        order: null
+                        id: 01J92P0V0R3VSP7D5238DTNZX1
+                        name: number
+                        displayName: null
+                        pluralName: null
+                        description: null
+                        tags: []
+                        category: null
+                        stereotypes: []
+                        properties: {}
+                        generation: {}
+                        source: null
+                      - type: date
+                        required: true
+                        default: null
+                        defaultExpression: null
+                        length: null
+                        precision: null
+                        scale: null
+                        collection: false
+                        unique: false
+                        indexed: true
+                        readOnly: false
+                        immutable: false
+                        derived: null
+                        sensitive: null
+                        validation: null
+                        order: null
+                        id: 01J92P0V0SNXS6PZ42VDK42HP9
+                        name: issuedOn
+                        displayName: null
+                        pluralName: null
+                        description: null
+                        tags: []
+                        category: null
+                        stereotypes: []
+                        properties: {}
+                        generation: {}
+                        source: null
+                      - type:
+                          ref: 01J92P0V0304M76KA84NE4D1TE
+                        required: false
+                        default: null
+                        defaultExpression: null
+                        length: null
+                        precision: null
+                        scale: null
+                        collection: false
+                        unique: false
+                        indexed: false
+                        readOnly: false
+                        immutable: false
+                        derived: null
+                        sensitive: null
+                        validation: null
+                        order: null
+                        id: 01J92P0V0T6EA0XM025XQX8GBW
+                        name: total
+                        displayName: null
+                        pluralName: null
+                        description: null
+                        tags: []
+                        category: null
+                        stereotypes: []
+                        properties: {}
+                        generation: {}
+                        source: null
+                      - type:
+                          ref: 01J92P0V05WQDH2GZG539D9VG1
+                        required: true
+                        default: Draft
+                        defaultExpression: null
+                        length: null
+                        precision: null
+                        scale: null
+                        collection: false
+                        unique: false
+                        indexed: false
+                        readOnly: false
+                        immutable: false
+                        derived: null
+                        sensitive: null
+                        validation: null
+                        order: null
+                        id: 01J92P0V0VB1Z49SWERMAGR4TV
+                        name: status
+                        displayName: null
+                        pluralName: null
+                        description: null
+                        tags: []
+                        category: null
+                        stereotypes: []
+                        properties: {}
+                        generation: {}
+                        source: null
+                      - type: text
+                        required: false
+                        default: null
+                        defaultExpression: null
+                        length: null
+                        precision: null
+                        scale: null
+                        collection: false
+                        unique: false
+                        indexed: false
+                        readOnly: false
+                        immutable: false
+                        derived: null
+                        sensitive: null
+                        validation: null
+                        order: null
+                        id: 01J92P0V0WKRGKH7YBKA2V30NC
+                        name: notes
+                        displayName: null
+                        pluralName: null
+                        description: null
+                        tags: []
+                        category: null
+                        stereotypes: []
+                        properties: {}
+                        generation: {}
+                        source: null
+                      $schema: ../../.schema/v1/entity.json
+                      id: 01J92P0V0FJ23CGSNKM7P1W5V7
+                      name: Invoice
+                      displayName: null
+                      pluralName: null
+                      description:
+                        file: invoice.md
+                      tags:
+                      - billing
+                      category: 01J92P0V06TYE8P8990AV35A8K
+                      stereotypes:
+                      - aggregate-root
+                      - audited
+                      - soft-delete
+                      properties:
+                        retentionDays: 3650
+                      generation: {}
+                      source: null
+                    path: .maquettiste/model/entities/invoice.json
+                    hash: 4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73
+                    dependencyHash: 2bb293bd02aa400817ba26da376c49e5df22efb82909dad133922768a407a9c7
+                    json:
+                      $schema: ../../.schema/v1/entity.json
+                      kind: entity
+                      id: 01J92P0V0FJ23CGSNKM7P1W5V7
+                      name: Invoice
+                      package: 01J92P0V01KDRN8GX5PGYCNKSX
+                      description:
+                        file: invoice.md
+                      stereotypes:
+                      - aggregate-root
+                      - audited
+                      - soft-delete
+                      tags:
+                      - billing
+                      category: 01J92P0V06TYE8P8990AV35A8K
+                      key:
+                        attributes:
+                        - 01J92P0V0Q9EK961M5HAQ3C5MY
+                        strategy: uuid-v7
+                      attributes:
+                      - id: 01J92P0V0Q9EK961M5HAQ3C5MY
+                        name: id
+                        type: uuid
+                        required: true
+                      - id: 01J92P0V0R3VSP7D5238DTNZX1
+                        name: number
+                        type: string
+                        length: 32
+                        required: true
+                        unique: true
+                      - id: 01J92P0V0SNXS6PZ42VDK42HP9
+                        name: issuedOn
+                        type: date
+                        required: true
+                        indexed: true
+                      - id: 01J92P0V0T6EA0XM025XQX8GBW
+                        name: total
+                        type:
+                          ref: 01J92P0V0304M76KA84NE4D1TE
+                      - id: 01J92P0V0VB1Z49SWERMAGR4TV
+                        name: status
+                        type:
+                          ref: 01J92P0V05WQDH2GZG539D9VG1
+                        required: true
+                        default: Draft
+                      - id: 01J92P0V0WKRGKH7YBKA2V30NC
+                        name: notes
+                        type: text
+                      properties:
+                        retentionDays: 3650
+                    sidecarText: '# Invoice
+                    
+                    
+                      A bill issued to a customer. Its number is assigned when it is issued and never reused.
+                    
+                      '
+                relation:
+                  summary: Relation contains (Invoice to InvoiceLine) from the billing fixture
+                  value:
+                    element:
+                      kind: relation
+                      package: 01J92P0V01KDRN8GX5PGYCNKSX
+                      inverseName: null
+                      relationKind: composition
+                      ends:
+                      - id: 01J92P0V1GMF7GJPA7981CH7YG
+                        entity: 01J92P0V0FJ23CGSNKM7P1W5V7
+                        role: invoice
+                        navigation: invoice
+                        min: 1
+                        max: 1
+                        onDelete: cascade
+                        ordered: false
+                        description: null
+                      - id: 01J92P0V1H4D2M1HCK82ASJEWT
+                        entity: 01J92P0V0GWFR78HZH0P8Z3GY7
+                        role: lines
+                        navigation: lines
+                        min: 0
+                        max: '*'
+                        onDelete: none
+                        ordered: true
+                        description: null
+                      attributes: []
+                      allowDuplicates: false
+                      $schema: ../../.schema/v1/relation.json
+                      id: 01J92P0V1BWHG0REWKSTR292RS
+                      name: contains
+                      displayName: null
+                      pluralName: null
+                      description: null
+                      tags: []
+                      category: null
+                      stereotypes: []
+                      properties: {}
+                      generation: {}
+                      source: null
+                    path: .maquettiste/model/relations/contains.json
+                    hash: f9fdc699d65150052e25ef459180736b24a44f97c69cbefd09c9d12897fd36e9
+                    dependencyHash: a3cf0c1c7d14087687e129baf0bc2f4393b876aee3fec3dbee26a8c5a194d802
+                    json:
+                      $schema: ../../.schema/v1/relation.json
+                      kind: relation
+                      id: 01J92P0V1BWHG0REWKSTR292RS
+                      name: contains
+                      package: 01J92P0V01KDRN8GX5PGYCNKSX
+                      relationKind: composition
+                      ends:
+                      - id: 01J92P0V1GMF7GJPA7981CH7YG
+                        entity: 01J92P0V0FJ23CGSNKM7P1W5V7
+                        role: invoice
+                        navigation: invoice
+                        min: 1
+                        max: 1
+                        onDelete: cascade
+                      - id: 01J92P0V1H4D2M1HCK82ASJEWT
+                        entity: 01J92P0V0GWFR78HZH0P8Z3GY7
+                        role: lines
+                        navigation: lines
+                        ordered: true
+                    sidecarText: null
+        '304':
+          description: The element still has the hash given in `If-None-Match`.
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [model]
+      operationId: saveElement
+      summary: Save an element with If-Match
+      description: |
+        The body is the whole model document (the canonical `json` the editor loaded, edited). The id in the body must be
+        the path id. A rename moves the file in the same save. Validation runs on the candidate model; only errors the
+        save introduces make it `invalid`, and every diagnostic comes back either way.
+      x-maquettiste-role: editor
+      x-maquettiste-engine: ModelStore.SaveAsync(id, json, expectedHash, ChangeSource.Editor)
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelDocument'
+            examples:
+              entity:
+                summary: Invoice with the notes attribute renamed to remarks
+                value:
+                  $schema: ../../.schema/v1/entity.json
+                  kind: entity
+                  id: 01J92P0V0FJ23CGSNKM7P1W5V7
+                  name: Invoice
+                  package: 01J92P0V01KDRN8GX5PGYCNKSX
+                  description:
+                    file: invoice.md
+                  stereotypes:
+                  - aggregate-root
+                  - audited
+                  - soft-delete
+                  tags:
+                  - billing
+                  category: 01J92P0V06TYE8P8990AV35A8K
+                  key:
+                    attributes:
+                    - 01J92P0V0Q9EK961M5HAQ3C5MY
+                    strategy: uuid-v7
+                  attributes:
+                  - id: 01J92P0V0Q9EK961M5HAQ3C5MY
+                    name: id
+                    type: uuid
+                    required: true
+                  - id: 01J92P0V0R3VSP7D5238DTNZX1
+                    name: number
+                    type: string
+                    length: 32
+                    required: true
+                    unique: true
+                  - id: 01J92P0V0SNXS6PZ42VDK42HP9
+                    name: issuedOn
+                    type: date
+                    required: true
+                    indexed: true
+                  - id: 01J92P0V0T6EA0XM025XQX8GBW
+                    name: total
+                    type:
+                      ref: 01J92P0V0304M76KA84NE4D1TE
+                  - id: 01J92P0V0VB1Z49SWERMAGR4TV
+                    name: status
+                    type:
+                      ref: 01J92P0V05WQDH2GZG539D9VG1
+                    required: true
+                    default: Draft
+                  - id: 01J92P0V0WKRGKH7YBKA2V30NC
+                    name: remarks
+                    type: text
+                  properties:
+                    retentionDays: 3650
+              relation:
+                summary: Relation contains, unchanged
+                value:
+                  $schema: ../../.schema/v1/relation.json
+                  kind: relation
+                  id: 01J92P0V1BWHG0REWKSTR292RS
+                  name: contains
+                  package: 01J92P0V01KDRN8GX5PGYCNKSX
+                  relationKind: composition
+                  ends:
+                  - id: 01J92P0V1GMF7GJPA7981CH7YG
+                    entity: 01J92P0V0FJ23CGSNKM7P1W5V7
+                    role: invoice
+                    navigation: invoice
+                    min: 1
+                    max: 1
+                    onDelete: cascade
+                  - id: 01J92P0V1H4D2M1HCK82ASJEWT
+                    entity: 01J92P0V0GWFR78HZH0P8Z3GY7
+                    role: lines
+                    navigation: lines
+                    ordered: true
+      responses:
+        '200':
+          description: Saved (or unchanged); `current` is the new document and `changes` what changed.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveResult'
+              examples:
+                saved:
+                  summary: Saved (typed element trimmed to one attribute in this example)
+                  value:
+                    outcome: saved
+                    id: 01J92P0V0FJ23CGSNKM7P1W5V7
+                    hash: cdac722e6a2f7418b8f02fb4ab7097f297bd46bc67f46d9f61c45dfda534749d
+                    current:
+                      element:
+                        kind: entity
+                        package: 01J92P0V01KDRN8GX5PGYCNKSX
+                        abstract: false
+                        base: null
+                        key:
+                          attributes:
+                          - 01J92P0V0Q9EK961M5HAQ3C5MY
+                          strategy: uuid-v7
+                        alternateKeys: []
+                        attributes:
+                        - type: uuid
+                          required: true
+                          default: null
+                          defaultExpression: null
+                          length: null
+                          precision: null
+                          scale: null
+                          collection: false
+                          unique: false
+                          indexed: false
+                          readOnly: false
+                          immutable: false
+                          derived: null
+                          sensitive: null
+                          validation: null
+                          order: null
+                          id: 01J92P0V0Q9EK961M5HAQ3C5MY
+                          name: id
+                          displayName: null
+                          pluralName: null
+                          description: null
+                          tags: []
+                          category: null
+                          stereotypes: []
+                          properties: {}
+                          generation: {}
+                          source: null
+                        $schema: ../../.schema/v1/entity.json
+                        id: 01J92P0V0FJ23CGSNKM7P1W5V7
+                        name: Invoice
+                        displayName: null
+                        pluralName: null
+                        description:
+                          file: invoice.md
+                        tags:
+                        - billing
+                        category: 01J92P0V06TYE8P8990AV35A8K
+                        stereotypes:
+                        - aggregate-root
+                        - audited
+                        - soft-delete
+                        properties:
+                          retentionDays: 3650
+                        generation: {}
+                        source: null
+                      path: .maquettiste/model/entities/invoice.json
+                      hash: cdac722e6a2f7418b8f02fb4ab7097f297bd46bc67f46d9f61c45dfda534749d
+                      dependencyHash: e0a8fc6d75e2ab89cbe44ba45e4982bb2e8b31539edb46928d13b2169d3d52d4
+                      json:
+                        $schema: ../../.schema/v1/entity.json
+                        kind: entity
+                        id: 01J92P0V0FJ23CGSNKM7P1W5V7
+                        name: Invoice
+                        package: 01J92P0V01KDRN8GX5PGYCNKSX
+                        description:
+                          file: invoice.md
+                        stereotypes:
+                        - aggregate-root
+                        - audited
+                        - soft-delete
+                        tags:
+                        - billing
+                        category: 01J92P0V06TYE8P8990AV35A8K
+                        key:
+                          attributes:
+                          - 01J92P0V0Q9EK961M5HAQ3C5MY
+                          strategy: uuid-v7
+                        attributes:
+                        - id: 01J92P0V0Q9EK961M5HAQ3C5MY
+                          name: id
+                          type: uuid
+                          required: true
+                        - id: 01J92P0V0R3VSP7D5238DTNZX1
+                          name: number
+                          type: string
+                          length: 32
+                          required: true
+                          unique: true
+                        - id: 01J92P0V0SNXS6PZ42VDK42HP9
+                          name: issuedOn
+                          type: date
+                          required: true
+                          indexed: true
+                        - id: 01J92P0V0T6EA0XM025XQX8GBW
+                          name: total
+                          type:
+                            ref: 01J92P0V0304M76KA84NE4D1TE
+                        - id: 01J92P0V0VB1Z49SWERMAGR4TV
+                          name: status
+                          type:
+                            ref: 01J92P0V05WQDH2GZG539D9VG1
+                          required: true
+                          default: Draft
+                        - id: 01J92P0V0WKRGKH7YBKA2V30NC
+                          name: remarks
+                          type: text
+                        properties:
+                          retentionDays: 3650
+                      sidecarText: '# Invoice
+                    
+                    
+                        A bill issued to a customer. Its number is assigned when it is issued and never reused.
+                    
+                        '
+                    diagnostics: []
+                    referrers: []
+                    changes:
+                      changed:
+                      - id: 01J92P0V0FJ23CGSNKM7P1W5V7
+                        kind: entity
+                        path: .maquettiste/model/entities/invoice.json
+                        hash: cdac722e6a2f7418b8f02fb4ab7097f297bd46bc67f46d9f61c45dfda534749d
+                      deleted: []
+                      source: editor
+                      truncated: false
+                      isEmpty: false
+        '409':
+          description: The file changed on disk since the caller loaded it. `hash` and `current` are the disk version, so the editor can show both versions and retry with the new hash.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveResult'
+              examples:
+                conflict:
+                  summary: Stale If-Match (typed element trimmed to one attribute in this example)
+                  value:
+                    outcome: conflict
+                    id: 01J92P0V0FJ23CGSNKM7P1W5V7
+                    hash: 4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73
+                    current:
+                      element:
+                        kind: entity
+                        package: 01J92P0V01KDRN8GX5PGYCNKSX
+                        abstract: false
+                        base: null
+                        key:
+                          attributes:
+                          - 01J92P0V0Q9EK961M5HAQ3C5MY
+                          strategy: uuid-v7
+                        alternateKeys: []
+                        attributes:
+                        - type: uuid
+                          required: true
+                          default: null
+                          defaultExpression: null
+                          length: null
+                          precision: null
+                          scale: null
+                          collection: false
+                          unique: false
+                          indexed: false
+                          readOnly: false
+                          immutable: false
+                          derived: null
+                          sensitive: null
+                          validation: null
+                          order: null
+                          id: 01J92P0V0Q9EK961M5HAQ3C5MY
+                          name: id
+                          displayName: null
+                          pluralName: null
+                          description: null
+                          tags: []
+                          category: null
+                          stereotypes: []
+                          properties: {}
+                          generation: {}
+                          source: null
+                        $schema: ../../.schema/v1/entity.json
+                        id: 01J92P0V0FJ23CGSNKM7P1W5V7
+                        name: Invoice
+                        displayName: null
+                        pluralName: null
+                        description:
+                          file: invoice.md
+                        tags:
+                        - billing
+                        category: 01J92P0V06TYE8P8990AV35A8K
+                        stereotypes:
+                        - aggregate-root
+                        - audited
+                        - soft-delete
+                        properties:
+                          retentionDays: 3650
+                        generation: {}
+                        source: null
+                      path: .maquettiste/model/entities/invoice.json
+                      hash: 4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73
+                      dependencyHash: 2bb293bd02aa400817ba26da376c49e5df22efb82909dad133922768a407a9c7
+                      json:
+                        $schema: ../../.schema/v1/entity.json
+                        kind: entity
+                        id: 01J92P0V0FJ23CGSNKM7P1W5V7
+                        name: Invoice
+                        package: 01J92P0V01KDRN8GX5PGYCNKSX
+                        description:
+                          file: invoice.md
+                        stereotypes:
+                        - aggregate-root
+                        - audited
+                        - soft-delete
+                        tags:
+                        - billing
+                        category: 01J92P0V06TYE8P8990AV35A8K
+                        key:
+                          attributes:
+                          - 01J92P0V0Q9EK961M5HAQ3C5MY
+                          strategy: uuid-v7
+                        attributes:
+                        - id: 01J92P0V0Q9EK961M5HAQ3C5MY
+                          name: id
+                          type: uuid
+                          required: true
+                        - id: 01J92P0V0R3VSP7D5238DTNZX1
+                          name: number
+                          type: string
+                          length: 32
+                          required: true
+                          unique: true
+                        - id: 01J92P0V0SNXS6PZ42VDK42HP9
+                          name: issuedOn
+                          type: date
+                          required: true
+                          indexed: true
+                        - id: 01J92P0V0T6EA0XM025XQX8GBW
+                          name: total
+                          type:
+                            ref: 01J92P0V0304M76KA84NE4D1TE
+                        - id: 01J92P0V0VB1Z49SWERMAGR4TV
+                          name: status
+                          type:
+                            ref: 01J92P0V05WQDH2GZG539D9VG1
+                          required: true
+                          default: Draft
+                        - id: 01J92P0V0WKRGKH7YBKA2V30NC
+                          name: notes
+                          type: text
+                        properties:
+                          retentionDays: 3650
+                      sidecarText: '# Invoice
+                    
+                    
+                        A bill issued to a customer. Its number is assigned when it is issued and never reused.
+                    
+                        '
+                    diagnostics: []
+                    referrers: []
+                    changes: null
+        '422':
+          description: Invalid; nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveResult'
+              examples:
+                schema:
+                  summary: An attribute type that is not a built-in keyword or a reference
+                  value:
+                    outcome: invalid
+                    id: 01J92P0V0FJ23CGSNKM7P1W5V7
+                    hash: null
+                    current: null
+                    diagnostics:
+                    - rule: MQ1002
+                      severity: error
+                      message: '/attributes/0/type enum: Value should match one of the values specified by the enum'
+                      elementId: 01J92P0V0FJ23CGSNKM7P1W5V7
+                      filePath: .maquettiste/model/entities/invoice.json
+                      jsonPointer: /attributes/0/type
+                      line: null
+                      column: null
+                    - rule: MQ1002
+                      severity: error
+                      message: '/attributes/0/type oneOf: Expected 1 matching subschema but found 0'
+                      elementId: 01J92P0V0FJ23CGSNKM7P1W5V7
+                      filePath: .maquettiste/model/entities/invoice.json
+                      jsonPointer: /attributes/0/type
+                      line: null
+                      column: null
+                    - rule: MQ1002
+                      severity: error
+                      message: '/attributes/0/type type: Value is "string" but should be "object"'
+                      elementId: 01J92P0V0FJ23CGSNKM7P1W5V7
+                      filePath: .maquettiste/model/entities/invoice.json
+                      jsonPointer: /attributes/0/type
+                      line: null
+                      column: null
+                    referrers: []
+                    changes: null
+        '404':
+          description: No such element (`outcome` is `not-found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveResult'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    delete:
+      tags: [model]
+      operationId: deleteElement
+      summary: Delete an element
+      description: Refused while other elements reference it unless `resolution=remove-references`, which clears optional references (a required reference makes the delete `invalid`).
+      x-maquettiste-role: editor
+      x-maquettiste-engine: ModelStore.DeleteAsync(id, expectedHash, resolution, ChangeSource.Editor)
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+        - name: resolution
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/DeleteResolution'
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveResult'
+              examples:
+                deleted:
+                  summary: Deleted
+                  value:
+                    outcome: saved
+                    id: 01M3MNY0GJQHEAHZ3C98GZZ3Q3
+                    hash: null
+                    current: null
+                    diagnostics: []
+                    referrers: []
+                    changes:
+                      changed: []
+                      deleted:
+                      - 01M3MNY0GJQHEAHZ3C98GZZ3Q3
+                      source: editor
+                      truncated: false
+                      isEmpty: false
+        '409':
+          description: '`referenced` (with `referrers`) or `conflict` (with the disk version).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveResult'
+              examples:
+                referenced:
+                  summary: Invoice is still referenced by three relations
+                  value:
+                    outcome: referenced
+                    id: 01J92P0V0FJ23CGSNKM7P1W5V7
+                    hash: null
+                    current: null
+                    diagnostics: []
+                    referrers:
+                    - fromElementId: 01J92P0V1ACKN3G6TK3NJDTM82
+                      fromId: 01J92P0V1F439P4NH5F6HV5QM1
+                      jsonPointer: /ends/1/entity
+                      field: entity
+                      toId: 01J92P0V0FJ23CGSNKM7P1W5V7
+                    - fromElementId: 01J92P0V1BWHG0REWKSTR292RS
+                      fromId: 01J92P0V1GMF7GJPA7981CH7YG
+                      jsonPointer: /ends/0/entity
+                      field: entity
+                      toId: 01J92P0V0FJ23CGSNKM7P1W5V7
+                    - fromElementId: 01J92P0V1DKHD5Q02DV6S5M53D
+                      fromId: 01J92P0V1N727B9EM9FXPMKH7P
+                      jsonPointer: /ends/1/entity
+                      field: entity
+                      toId: 01J92P0V0FJ23CGSNKM7P1W5V7
+                    - fromElementId: 01J92P0V1T0J6RH4MY9H81NYB4
+                      fromId: 01J92P0V1VQAA9FW71PKYWWHKN
+                      jsonPointer: /columns/0/attribute
+                      field: attribute
+                      toId: 01J92P0V0R3VSP7D5238DTNZX1
+                    - fromElementId: 01J92P0V1T0J6RH4MY9H81NYB4
+                      fromId: 01J92P0V1T0J6RH4MY9H81NYB4
+                      jsonPointer: /entity
+                      field: entity
+                      toId: 01J92P0V0FJ23CGSNKM7P1W5V7
+                    - fromElementId: 01J92P0V1T0J6RH4MY9H81NYB4
+                      fromId: 01J92P0V1XETXS1K25N66WP3HY
+                      jsonPointer: /indexes/0/columns/0/column
+                      field: column
+                      toId: 01J92P0V0SNXS6PZ42VDK42HP9
+                    - fromElementId: 01J92P0V200XW93JQYSRCT2SE3
+                      fromId: 01J92P0V200XW93JQYSRCT2SE3
+                      jsonPointer: /attributes/0/attribute
+                      field: attribute
+                      toId: 01J92P0V0VB1Z49SWERMAGR4TV
+                    - fromElementId: 01J92P0V200XW93JQYSRCT2SE3
+                      fromId: 01J92P0V200XW93JQYSRCT2SE3
+                      jsonPointer: /attributes/1/attribute
+                      field: attribute
+                      toId: 01J92P0V0T6EA0XM025XQX8GBW
+                    - fromElementId: 01J92P0V200XW93JQYSRCT2SE3
+                      fromId: 01J92P0V200XW93JQYSRCT2SE3
+                      jsonPointer: /entity
+                      field: entity
+                      toId: 01J92P0V0FJ23CGSNKM7P1W5V7
+                    - fromElementId: 01J92P0V2164SDBW687ZV6E1MV
+                      fromId: 01J92P0V2164SDBW687ZV6E1MV
+                      jsonPointer: /members/1/element
+                      field: element
+                      toId: 01J92P0V0FJ23CGSNKM7P1W5V7
+                    changes: null
+        '422':
+          description: '`remove-references` would leave a required reference empty.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveResult'
+        '404':
+          description: No such element (`outcome` is `not-found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveResult'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+
+  /api/model/batch:
+    post:
+      tags: [model]
+      operationId: applyBatch
+      summary: Atomic multi-element change
+      description: |
+        Refactorings, bulk edits, undo and redo, and pasted or proposed changes. The body is validated against
+        `schemas/v1/batch.json` before any disk access, then the whole batch is validated in memory, each expected hash
+        is checked, and every file is staged and renamed into place; on any failure nothing is written. Failed items carry
+        their outcome; the other items report `saved` with no hash.
+      x-maquettiste-role: editor
+      x-maquettiste-engine: ModelStore.ParseBatch then ModelStore.ApplyBatchAsync(batch, ChangeSource.Editor)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../../schemas/v1/batch.json'
+            examples:
+              createEntity:
+                summary: Create one entity
+                value:
+                  operations:
+                  - op: create
+                    element:
+                      kind: entity
+                      name: Shipment
+                      package: 01J92P0V01KDRN8GX5PGYCNKSX
+      responses:
+        '200':
+          description: Every operation succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResult'
+        '409':
+          description: An expected hash was stale (`conflict`) or a delete was refused (`referenced`); nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResult'
+        '404':
+          description: An update or delete named an unknown id; nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResult'
+        '422':
+          description: The batch did not parse (`BatchParseResult`, `batch` null) or an operation is invalid (`BatchResult`); nothing was written.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/BatchResult'
+                  - $ref: '#/components/schemas/BatchParseResult'
+              examples:
+                invalidItem:
+                  summary: A created entity without a key
+                  value:
+                    outcome: invalid
+                    items:
+                    - outcome: invalid
+                      id: 01M3MNY0GZHRR68GZ2SZRGKF0D
+                      hash: null
+                      current: null
+                      diagnostics:
+                      - rule: MQ3005
+                        severity: error
+                        message: Entity 'Shipment' has no key; add 'key', or make it abstract or derived.
+                        elementId: 01M3MNY0GZHRR68GZ2SZRGKF0D
+                        filePath: .maquettiste/model/entities/shipment.json
+                        jsonPointer: ''
+                        line: 1
+                        column: 1
+                      referrers: []
+                      changes: null
+                    changes: null
+                unparsable:
+                  summary: An unknown op
+                  value:
+                    batch: null
+                    diagnostics:
+                    - rule: MQ1002
+                      severity: error
+                      message: '/operations/0/op enum: Value should match one of the values specified by the enum'
+                      elementId: null
+                      filePath: null
+                      jsonPointer: /operations/0/op
+                      line: 1
+                      column: 22
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/model/references/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ElementId'
+    get:
+      tags: [model]
+      operationId: getReferences
+      summary: Where used
+      description: Every reference to the element or one of its sub-elements from another element.
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: ModelStore.GetReferencesAsync (404 when ModelStore.GetElementAsync finds nothing)
+      responses:
+        '200':
+          description: The references.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReferenceInfo'
+              examples:
+                invoice:
+                  summary: Who references Invoice
+                  value:
+                    - fromElementId: 01J92P0V1T0J6RH4MY9H81NYB4
+                      fromId: 01J92P0V1T0J6RH4MY9H81NYB4
+                      jsonPointer: /entity
+                      field: entity
+                      toId: 01J92P0V0FJ23CGSNKM7P1W5V7
+                    - fromElementId: 01J92P0V2164SDBW687ZV6E1MV
+                      fromId: 01J92P0V2164SDBW687ZV6E1MV
+                      jsonPointer: /members/1/element
+                      field: element
+                      toId: 01J92P0V0FJ23CGSNKM7P1W5V7
+                    - fromElementId: 01J92P0V200XW93JQYSRCT2SE3
+                      fromId: 01J92P0V200XW93JQYSRCT2SE3
+                      jsonPointer: /entity
+                      field: entity
+                      toId: 01J92P0V0FJ23CGSNKM7P1W5V7
+                    - fromElementId: 01J92P0V1BWHG0REWKSTR292RS
+                      fromId: 01J92P0V1GMF7GJPA7981CH7YG
+                      jsonPointer: /ends/0/entity
+                      field: entity
+                      toId: 01J92P0V0FJ23CGSNKM7P1W5V7
+                    - fromElementId: 01J92P0V1ACKN3G6TK3NJDTM82
+                      fromId: 01J92P0V1F439P4NH5F6HV5QM1
+                      jsonPointer: /ends/1/entity
+                      field: entity
+                      toId: 01J92P0V0FJ23CGSNKM7P1W5V7
+                    - fromElementId: 01J92P0V1DKHD5Q02DV6S5M53D
+                      fromId: 01J92P0V1N727B9EM9FXPMKH7P
+                      jsonPointer: /ends/1/entity
+                      field: entity
+                      toId: 01J92P0V0FJ23CGSNKM7P1W5V7
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/validate:
+    post:
+      tags: [validation]
+      operationId: validate
+      summary: Validate the whole model or a scope
+      description: An empty body or `{}` validates everything. Load diagnostics (files that failed to parse) are included.
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: ModelStore.ValidateAsync(scope)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidationScope'
+            example:
+              elementIds: [01J92P0V0HEGSC6MW92CST5KA6]
+              includeReferrers: true
+              includeScriptRules: true
+      responses:
+        '200':
+          description: The report (never truncated over HTTP).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationReport'
+              examples:
+                error:
+                  summary: Payment with its key removed
+                  value:
+                    diagnostics:
+                    - rule: MQ3005
+                      severity: error
+                      message: Entity 'Payment' has no key; add 'key', or make it abstract or derived.
+                      elementId: 01J92P0V0HEGSC6MW92CST5KA6
+                      filePath: .maquettiste/model/entities/payment.json
+                      jsonPointer: ''
+                      line: 1
+                      column: 1
+                    errors: 1
+                    warnings: 0
+                    infos: 0
+                    truncated: false
+                    hasErrors: true
+                clean:
+                  summary: The billing fixture
+                  value:
+                    diagnostics: []
+                    errors: 0
+                    warnings: 0
+                    infos: 0
+                    truncated: false
+                    hasErrors: false
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/diagrams/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ElementId'
+    get:
+      tags: [diagrams]
+      operationId: getDiagram
+      summary: Diagram membership, positions and viewport
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: ModelStore.GetElementAsync (404 not-a-diagram unless kind is diagram)
+      responses:
+        '200':
+          description: The diagram document.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ElementDocument'
+              examples:
+                overview:
+                  summary: Billing overview
+                  value:
+                    element:
+                      kind: diagram
+                      package: 01J92P0V01KDRN8GX5PGYCNKSX
+                      members:
+                      - element: 01J92P0V0ETQKXXP951CMMNHH3
+                        x: 40
+                        y: 40
+                        width: null
+                        height: null
+                        collapsed: false
+                      - element: 01J92P0V0FJ23CGSNKM7P1W5V7
+                        x: 320
+                        y: 40
+                        width: null
+                        height: null
+                        collapsed: false
+                      - element: 01J92P0V0GWFR78HZH0P8Z3GY7
+                        x: 600
+                        y: 40
+                        width: null
+                        height: null
+                        collapsed: false
+                      - element: 01J92P0V0HEGSC6MW92CST5KA6
+                        x: 320
+                        y: 260
+                        width: null
+                        height: null
+                        collapsed: false
+                      - element: 01J92P0V0JR8BE8253SKT29ZG7
+                        x: 600
+                        y: 260
+                        width: null
+                        height: null
+                        collapsed: true
+                      - element: 01J92P0V1ACKN3G6TK3NJDTM82
+                        x: 0
+                        y: 0
+                        width: null
+                        height: null
+                        collapsed: false
+                      - element: 01J92P0V1BWHG0REWKSTR292RS
+                        x: 0
+                        y: 0
+                        width: null
+                        height: null
+                        collapsed: false
+                      - element: 01J92P0V1DKHD5Q02DV6S5M53D
+                        x: 0
+                        y: 0
+                        width: null
+                        height: null
+                        collapsed: false
+                      viewport:
+                        x: 0
+                        y: 0
+                        zoom: 0.9
+                      $schema: ../../.schema/v1/diagram.json
+                      id: 01J92P0V2164SDBW687ZV6E1MV
+                      name: Billing overview
+                      displayName: null
+                      pluralName: null
+                      description: null
+                      tags: []
+                      category: null
+                      stereotypes: []
+                      properties: {}
+                      generation: {}
+                      source: null
+                    path: .maquettiste/model/diagrams/billing-overview.json
+                    hash: a29e751129658af7503fb429afb3b382538a96bd8adee116e98b08a17152840c
+                    dependencyHash: a721359c5937c7c963407f917a79fb5f9dc2bdb918e7438ff7372cc59ca4df73
+                    json:
+                      $schema: ../../.schema/v1/diagram.json
+                      kind: diagram
+                      id: 01J92P0V2164SDBW687ZV6E1MV
+                      name: Billing overview
+                      package: 01J92P0V01KDRN8GX5PGYCNKSX
+                      members:
+                      - element: 01J92P0V0ETQKXXP951CMMNHH3
+                        x: 40
+                        y: 40
+                      - element: 01J92P0V0FJ23CGSNKM7P1W5V7
+                        x: 320
+                        y: 40
+                      - element: 01J92P0V0GWFR78HZH0P8Z3GY7
+                        x: 600
+                        y: 40
+                      - element: 01J92P0V0HEGSC6MW92CST5KA6
+                        x: 320
+                        y: 260
+                      - element: 01J92P0V0JR8BE8253SKT29ZG7
+                        x: 600
+                        y: 260
+                        collapsed: true
+                      - element: 01J92P0V1ACKN3G6TK3NJDTM82
+                      - element: 01J92P0V1BWHG0REWKSTR292RS
+                      - element: 01J92P0V1DKHD5Q02DV6S5M53D
+                      viewport:
+                        zoom: 0.9
+                    sidecarText: null
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [diagrams]
+      operationId: saveDiagram
+      summary: Save diagram membership, positions and viewport with If-Match
+      description: The same save as `PUT /api/model/elements/{id}`, restricted to diagrams. The editor debounces position changes (500 ms) and, on `409`, re-applies its positions and viewport onto the disk version and retries once.
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: ModelStore.SaveAsync(id, json, expectedHash, ChangeSource.Editor)
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../../schemas/v1/diagram.json'
+            examples:
+              overview:
+                summary: Billing overview
+                value:
+                  $schema: ../../.schema/v1/diagram.json
+                  kind: diagram
+                  id: 01J92P0V2164SDBW687ZV6E1MV
+                  name: Billing overview
+                  package: 01J92P0V01KDRN8GX5PGYCNKSX
+                  members:
+                  - element: 01J92P0V0ETQKXXP951CMMNHH3
+                    x: 40
+                    y: 40
+                  - element: 01J92P0V0FJ23CGSNKM7P1W5V7
+                    x: 320
+                    y: 40
+                  - element: 01J92P0V0GWFR78HZH0P8Z3GY7
+                    x: 600
+                    y: 40
+                  - element: 01J92P0V0HEGSC6MW92CST5KA6
+                    x: 320
+                    y: 260
+                  - element: 01J92P0V0JR8BE8253SKT29ZG7
+                    x: 600
+                    y: 260
+                    collapsed: true
+                  - element: 01J92P0V1ACKN3G6TK3NJDTM82
+                  - element: 01J92P0V1BWHG0REWKSTR292RS
+                  - element: 01J92P0V1DKHD5Q02DV6S5M53D
+                  viewport:
+                    zoom: 0.9
+      responses:
+        '200':
+          description: Saved.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveResult'
+        '409':
+          description: Changed on disk; `current` is the disk version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveResult'
+        '422':
+          description: Invalid (for example a member that names an unknown element).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveResult'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+
+  /api/databases/{id}/view:
+    parameters:
+      - $ref: '#/components/parameters/ElementId'
+    get:
+      tags: [databases]
+      operationId: getDatabaseView
+      summary: The resolved tables of one database
+      description: |
+        The physical model after conventions, mappings and table overlays are applied: every table (synthesized,
+        designed or imported), its columns with the attribute each one stores, keys, foreign keys and indexes. The
+        Database workspace draws table diagrams from it and the Mappings workspace sets it beside the entity. A model
+        with errors returns `view: null` and the diagnostics.
+      x-maquettiste-role: viewer
+      x-engine-addition: E1 GenerationService.GetDatabaseViewAsync(databaseId)
+      responses:
+        '200':
+          description: The view, or the diagnostics that prevented resolution.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatabaseViewResult'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/generate/plan:
+    post:
+      tags: [generation]
+      operationId: startPlan
+      summary: Start a dry run as a job
+      description: |
+        Queues a plan job and returns it at once. Join the realtime group `job:{id}` for `job.progress` and
+        `job.completed`, then read `GET /api/jobs/{id}` once, so an event sent before the join is not missed. The
+        functions force `includeDiffs: false`, `stageBarriers: false` and `lock: wait`; `mode` is ignored (a plan is
+        always a dry run).
+      x-maquettiste-role: maintainer
+      x-maquettiste-engine: JobQueue.TryEnqueue(new JobRequest(JobKind.Plan, request, null))
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerationRequest'
+            example:
+              packs: [sql-ddl]
+              roots: all
+      responses:
+        '202':
+          description: Queued.
+          headers:
+            Location:
+              description: /api/jobs/{id}
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobInfo'
+              examples:
+                queued:
+                  summary: A queued plan job
+                  value:
+                    id: 01M3MNY0HTVJQSH4BX78RWN8F7
+                    kind: plan
+                    state: queued
+                    queuePosition: 0
+                    progress: null
+                    planResult: null
+                    applyResult: null
+                    error: null
+                    queuedUtc: '2026-09-28T18:55:12.9542269+00:00'
+                    startedUtc: null
+                    finishedUtc: null
+        '503':
+          $ref: '#/components/responses/QueueFull'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/generate/plan/{id}:
+    parameters:
+      - $ref: '#/components/parameters/PlanId'
+    get:
+      tags: [generation]
+      operationId: getPlan
+      summary: The finished plan
+      description: Files added, changed and deleted, hand edits and conflicts (`changes`), per pack and unit. `units` (every unit's read keys and outputs) is large and empty unless `units=true`. The 20 newest plans are kept.
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: GenerationService.GetPlanAsync
+      parameters:
+        - name: units
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: The plan.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationPlan'
+              examples:
+                billing:
+                  summary: The billing fixture's first plan (units and changes trimmed in this example)
+                  value:
+                    id: 01M3MNY0HY08AVTKW927JJPSEF
+                    request:
+                      mode: apply
+                      packs: null
+                      force: false
+                      jobs: null
+                      handEdits: null
+                      includeDiffs: false
+                      roots: all
+                      lock: wait
+                      stageBarriers: false
+                    modelVersion: 4
+                    packs:
+                    - csharp-dapper
+                    - sql-ddl
+                    units:
+                    - key: csharp-dapper/entity:01J92P0V0ETQKXXP951CMMNHH3
+                      inputHash: b056516fc0ac4d0b6d5503ab07d54d31eb0e19dca22b953e3a42fc10113a3b12
+                      readKeys:
+                      - e:01J92P0V01KDRN8GX5PGYCNKSX
+                      - e:01J92P0V04TDYE2C73WMNXVDBV
+                      - e:01J92P0V0ETQKXXP951CMMNHH3
+                      - e:01J92P0V1QRN2181XM2ZWE02W4
+                      - e:01J92P0V23WVT7FBW527GR7GX5
+                      - e:01J92P0V245JG9WK55YJE2QWWV
+                      - e:01J92P0V25BX5TMQ8N9F6AJE61
+                      - k:database
+                      - r:01J92P0V0ETQKXXP951CMMNHH3
+                      - r:01J92P0V1QRN2181XM2ZWE02W4
+                      - s:conventions
+                      - s:inflection
+                      - s:typeMaps
+                      - t:csharp-dapper/_csharp.scriban
+                      - t:csharp-dapper/_dapper.scriban
+                      - t:csharp-dapper/entity.partial.scriban
+                      - t:csharp-dapper/entity.scriban
+                      - t:csharp-dapper/types/csharp.json
+                      skipped: false
+                      outputs:
+                      - path: src/Generated/Billing/Customer.g.cs
+                        contentHash: 2abfe941da822a487dc3f4b301459b8c239f525a00b18a48b31b016176fc5c82
+                        manifestHash: 2abfe941da822a487dc3f4b301459b8c239f525a00b18a48b31b016176fc5c82
+                        mode: pair
+                        role: main
+                        root:
+                          path: src/Generated
+                          commit: false
+                        diskHashAtPlan: null
+                      - path: src/Generated/Billing/Customer.cs
+                        contentHash: fcb7734055150d7dffd027ed678bd5e7ab46fafef01fcefc954fb3851076e5b3
+                        manifestHash: o:fcb7734055150d7dffd027ed678bd5e7ab46fafef01fcefc954fb3851076e5b3
+                        mode: pair
+                        role: companion
+                        root:
+                          path: src/Generated
+                          commit: false
+                        diskHashAtPlan: null
+                    changes:
+                    - path: db/main/billing/tables/customers.sql
+                      kind: added
+                      pack: sql-ddl
+                      unitKey: sql-ddl/table:01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4
+                      oldHash: null
+                      newHash: 1bfcf0a6549b3ea0559a31eb674b8d847100ba4dd072f4afd3af15cbd90fd9ea
+                      diff: null
+                    - path: db/main/billing/tables/invoice_lines.sql
+                      kind: added
+                      pack: sql-ddl
+                      unitKey: sql-ddl/table:01J92P0V0GWFR78HZH0P8Z3GY7@01J92P0V1QRN2181XM2ZWE02W4
+                      oldHash: null
+                      newHash: bf51a9563a1d9e200831cc6a0a3be9d840a8402cece8516a41c7000769fb6e17
+                      diff: null
+                    - path: db/main/billing/tables/invoices.sql
+                      kind: added
+                      pack: sql-ddl
+                      unitKey: sql-ddl/table:01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4
+                      oldHash: null
+                      newHash: 7c207b4139e1717e9826ac0c47532936c7021452380e7c29cc80b42742aa4710
+                      diff: null
+                    diagnostics: []
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/generate/plan/{id}/diff:
+    parameters:
+      - $ref: '#/components/parameters/PlanId'
+    get:
+      tags: [generation]
+      operationId: getPlanDiff
+      summary: Unified diff for one file in a plan
+      description: From the file on disk now to the planned bytes, without rendering again. Empty for a file the plan leaves unchanged or keeps; a deleted file diffs to nothing.
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: GenerationService.GetPlanDiffAsync(planId, path)
+      parameters:
+        - name: path
+          in: query
+          required: true
+          description: A repo-relative path from the plan's `changes` or `units[].outputs`.
+          schema:
+            type: string
+          example: db/main/billing/tables/customers.sql
+      responses:
+        '200':
+          description: The unified diff (`--- a/`, `+++ b/`, hunks).
+          content:
+            text/x-diff:
+              schema:
+                type: string
+              example: |
+                --- a/db/main/billing/tables/customers.sql
+                +++ b/db/main/billing/tables/customers.sql
+                @@ -0,0 +1,14 @@
+                +-- Generated by Maquettiste (sql-ddl/table). Do not edit; changes are overwritten.
+                +-- Table billing.customers of database main (PostgreSQL 16).
+                +-- Maps entity Customer.
+                +
+                +CREATE TABLE billing.customers (
+                +    id uuid NOT NULL,
+                +    name varchar(120) NOT NULL,
+                +    email varchar(254) NOT NULL,
+                +    customer_since date NULL,
+                +    created_at timestamptz(6) NOT NULL,
+                +    updated_at timestamptz(6) NULL,
+                +    CONSTRAINT pk_customers PRIMARY KEY (id),
+                +    CONSTRAINT uq_customers_email UNIQUE (email)
+                +);
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/generate/apply:
+    post:
+      tags: [generation]
+      operationId: startApply
+      summary: Apply a plan by id as a job
+      description: The job's `applyResult.outcome` is `stale` (with `staleUnits` and `stalePaths`, nothing written) when any input or planned path changed since planning, `failed` when the plan is unknown or its stored bytes are gone, `invalid` when the plan or the model now has errors.
+      x-maquettiste-role: maintainer
+      x-maquettiste-engine: JobQueue.TryEnqueue(new JobRequest(JobKind.Apply, null, planId))
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplyRequest'
+            example:
+              planId: 01M3MNY0HY08AVTKW927JJPSEF
+      responses:
+        '202':
+          description: Queued.
+          headers:
+            Location:
+              description: /api/jobs/{id}
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobInfo'
+        '503':
+          $ref: '#/components/responses/QueueFull'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/jobs:
+    get:
+      tags: [jobs]
+      operationId: listJobs
+      summary: Queued, running and recent jobs, newest first
+      description: Run history and the queue. Finished jobs keep no per-file or per-unit lists (read the plan for those).
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: JobQueue.ListAsync
+      responses:
+        '200':
+          description: The jobs.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JobInfo'
+
+  /api/jobs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    get:
+      tags: [jobs]
+      operationId: getJob
+      summary: Job state, progress, result or error
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: JobQueue.GetAsync
+      responses:
+        '200':
+          description: The job.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobInfo'
+              examples:
+                running:
+                  summary: A plan job while it validates
+                  value:
+                    id: 01M3MNY0HTVJQSH4BX78RWN8F7
+                    kind: plan
+                    state: running
+                    queuePosition: null
+                    progress:
+                      stage: validate
+                      done: 4
+                      total: 26
+                      currentPath: .maquettiste/model/diagrams/billing-overview.json
+                      pack: null
+                    planResult: null
+                    applyResult: null
+                    error: null
+                    queuedUtc: '2026-09-28T18:55:12.9542269+00:00'
+                    startedUtc: '2026-09-28T18:55:12.9558668+00:00'
+                    finishedUtc: null
+                planned:
+                  summary: A finished plan job
+                  value:
+                    id: 01M3MNY0HTVJQSH4BX78RWN8F7
+                    kind: plan
+                    state: succeeded
+                    queuePosition: null
+                    progress:
+                      stage: write
+                      done: 29
+                      total: 29
+                      currentPath: db/main/billing/tables/payment_invoice.sql
+                      pack: sql-ddl
+                    planResult:
+                      outcome: succeeded
+                      plan:
+                        id: 01M3MNY0HY08AVTKW927JJPSEF
+                        request:
+                          mode: apply
+                          packs: null
+                          force: false
+                          jobs: null
+                          handEdits: null
+                          includeDiffs: false
+                          roots: all
+                          lock: wait
+                          stageBarriers: false
+                        modelVersion: 4
+                        packs:
+                        - csharp-dapper
+                        - sql-ddl
+                        units: []
+                        changes: []
+                        diagnostics: []
+                    applyResult: null
+                    error: null
+                    queuedUtc: '2026-09-28T18:55:12.9542269+00:00'
+                    startedUtc: '2026-09-28T18:55:12.9558668+00:00'
+                    finishedUtc: '2026-09-28T18:55:13.9467742+00:00'
+                applied:
+                  summary: A finished apply job (changes trimmed in this example)
+                  value:
+                    id: 01M3MNY1HSHAN1JYSGSDHJCSET
+                    kind: apply
+                    state: succeeded
+                    queuePosition: null
+                    progress:
+                      stage: write
+                      done: 29
+                      total: 29
+                      currentPath: db/main/billing/tables/payment_invoice.sql
+                      pack: sql-ddl
+                    planResult: null
+                    applyResult:
+                      outcome: succeeded
+                      staleUnits: []
+                      stalePaths: []
+                      result:
+                        runId: 01M3MNY1HTKPMSQ6PVXNTM22Q1
+                        mode: apply
+                        outcome: succeeded
+                        changes:
+                        - path: db/main/billing/tables/customers.sql
+                          kind: added
+                          pack: sql-ddl
+                          unitKey: sql-ddl/table:01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4
+                          oldHash: null
+                          newHash: 1bfcf0a6549b3ea0559a31eb674b8d847100ba4dd072f4afd3af15cbd90fd9ea
+                          diff: null
+                        - path: db/main/billing/tables/invoice_lines.sql
+                          kind: added
+                          pack: sql-ddl
+                          unitKey: sql-ddl/table:01J92P0V0GWFR78HZH0P8Z3GY7@01J92P0V1QRN2181XM2ZWE02W4
+                          oldHash: null
+                          newHash: bf51a9563a1d9e200831cc6a0a3be9d840a8402cece8516a41c7000769fb6e17
+                          diff: null
+                        unitsRendered: 23
+                        unitsSkipped: 0
+                        filesWritten: 29
+                        filesDeleted: 0
+                        diagnostics: []
+                        timings:
+                        - stage: load
+                          wall: '00:00:00.0006634'
+                          busy: '00:00:00.0006634'
+                          items: 26
+                        - stage: validate
+                          wall: '00:00:00.0007598'
+                          busy: '00:00:00.0007598'
+                          items: 26
+                        - stage: resolve
+                          wall: '00:00:00.0015246'
+                          busy: '00:00:00.0015246'
+                          items: 26
+                        - stage: plan
+                          wall: '00:00:00.0066208'
+                          busy: '00:00:00.0046746'
+                          items: 25
+                        - stage: write
+                          wall: '00:00:00.0221097'
+                          busy: '00:00:00.0221097'
+                          items: 29
+                    error: null
+                    queuedUtc: '2026-09-28T18:55:13.9770829+00:00'
+                    startedUtc: '2026-09-28T18:55:13.9772161+00:00'
+                    finishedUtc: '2026-09-28T18:55:14.048592+00:00'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [jobs]
+      operationId: cancelJob
+      summary: Cancel a queued or running job
+      description: A queued job is removed and recorded `cancelled` at once; a running one stops within one second and its `job.completed` follows.
+      x-maquettiste-role: maintainer
+      x-maquettiste-engine: JobQueue.Cancel (then JobQueue.GetAsync for the body)
+      responses:
+        '202':
+          description: Cancellation requested.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobInfo'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/JobFinished'
+
+  /api/templates/preview:
+    post:
+      tags: [templates]
+      operationId: previewTemplate
+      summary: Render one unit against one element, with no writes
+      description: |
+        The Database workspace's DDL preview calls `sql-ddl`/`table` with a resolved table key (`<entityId>@<databaseId>`
+        for a synthesized entity table, a table file's id for a designed one) and `sql-ddl`/`schema` with a database id.
+        The unit renders even when its `where` filter would not plan it. A model with errors returns the errors and no
+        files.
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: GenerationService.PreviewAsync(pack, unit, elementId)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreviewRequest'
+            example:
+              pack: sql-ddl
+              unit: table
+              elementId: 01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4
+      responses:
+        '200':
+          description: The rendered files and diagnostics.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreviewResult'
+              examples:
+                table:
+                  summary: DDL of the customers table
+                  value:
+                    files:
+                    - path: db/main/billing/tables/customers.sql
+                      text: "-- Generated by Maquettiste (sql-ddl/table). Do not edit; changes are overwritten.\n-- Table billing.customers of database main (PostgreSQL 16).\n-- Maps entity Customer.\n\nCREATE TABLE billing.customers (\n    id uuid NOT NULL,\n    name varchar(120) NOT NULL,\n    email varchar(254) NOT NULL,\n    customer_since date NULL,\n    created_at timestamptz(6) NOT NULL,\n    updated_at timestamptz(6) NULL,\n    CONSTRAINT pk_customers PRIMARY KEY (id),\n    CONSTRAINT uq_customers_email UNIQUE (email)\n);\n"
+                      role: main
+                    diagnostics: []
+                wrongElement:
+                  summary: A table unit asked for an entity id
+                  value:
+                    files: []
+                    diagnostics:
+                    - rule: MQ6006
+                      severity: error
+                      message: The variable or function `table` was not found
+                      elementId: 01J92P0V0FJ23CGSNKM7P1W5V7
+                      filePath: .maquettiste/templates/sql-ddl/table.scriban
+                      jsonPointer: null
+                      line: 3
+                      column: 13
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/presence:
+    put:
+      tags: [presence]
+      operationId: reportPresence
+      summary: Report this window's selection
+      description: Stores the selection of one realtime connection that belongs to the caller and publishes `presence.changed` to `editors`. Idempotent; the editor sends it when the selection or workspace changes (debounced 250 ms) and after every reconnect.
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: none (functions state and IRealtime)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PresenceReport'
+            example:
+              connectionId: kP3v0lXq9Wm2Zs8TnB1c4A
+              elementId: 01J92P0V0FJ23CGSNKM7P1W5V7
+              workspace: entities
+      responses:
+        '204':
+          description: Recorded.
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: mq_session
+      description: Set by `POST /api/session`. Host-only, HttpOnly, SameSite=Strict; protected with the host's data-protection keys; carries the user name, role, issue time and a fingerprint of the editor token.
+    editorToken:
+      type: http
+      scheme: bearer
+      description: '`Authorization: Bearer <MAQUETTISTE_EDITOR_TOKEN>`, the secret site variable. For the CLI, scripts and tests. Compared in fixed time. In local mode a loopback or `MAQUETTISTE_LOCAL_PEERS` caller needs neither scheme and is the local admin.'
+
+  parameters:
+    ElementId:
+      name: id
+      in: path
+      required: true
+      description: An element or sub-element id (uppercase ULID).
+      schema:
+        $ref: '#/components/schemas/Ulid'
+      example: 01J92P0V0FJ23CGSNKM7P1W5V7
+    PlanId:
+      name: id
+      in: path
+      required: true
+      description: A plan id (the plan job's `planResult.plan.id`).
+      schema:
+        $ref: '#/components/schemas/Ulid'
+    JobId:
+      name: id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Ulid'
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: The hash the caller loaded, quoted as an ETag or bare. Missing is 428.
+      schema:
+        type: string
+        pattern: '^(W/)?"?[0-9a-f]{64}"?$'
+      example: '"4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73"'
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      required: false
+      schema:
+        type: string
+
+  headers:
+    ETag:
+      description: The element's hash as a strong ETag.
+      schema:
+        type: string
+        pattern: '^"[0-9a-f]{64}"$'
+      example: '"4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73"'
+
+  responses:
+    BadRequest:
+      description: The body is not JSON, not the expected shape, or larger than 4 MB (`bad-request`, `unsupported-media-type`, `too-large`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: The request body is not valid JSON.
+            status: 400
+            code: bad-request
+            detail: "'}' is invalid after a value. Expected either ',', '}', or ']'. LineNumber: 3 | BytePositionInLine: 2."
+    Unauthenticated:
+      description: No valid credential (`unauthenticated`), or a wrong token (`bad-token`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Sign in to use the editor.
+            status: 401
+            code: unauthenticated
+    NotFound:
+      description: No such element, diagram, plan, path in the plan, job or connection (`not-found`, `not-a-diagram`, `not-a-database`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: No element has the id 01J92P0V0FJ23CGSNKM7P1W5V9.
+            status: 404
+            code: not-found
+    PreconditionRequired:
+      description: A save or delete without `If-Match` (`precondition-required`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Send the hash you loaded in If-Match.
+            status: 428
+            code: precondition-required
+    QueueFull:
+      description: Sixteen jobs are already queued (`queue-full`). Retry after the `Retry-After` seconds.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: The job queue is full.
+            status: 503
+            code: queue-full
+    ModelUnavailable:
+      description: The model folder cannot be read (`model-unavailable`), for example a missing bind mount.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    JobFinished:
+      description: The job already finished (`job-finished`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    TooManyRequests:
+      description: Too many failed sign-ins from this address (`too-many-attempts`); five per minute.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+  schemas:
+    # ---------------------------------------------------------------- scalars
+    Ulid:
+      description: Uppercase Crockford ULID (engine-design.md D1).
+      type: string
+      pattern: '^[0-7][0-9A-HJKMNP-TV-Z]{25}$'
+    Hash:
+      description: Lowercase hex SHA-256.
+      type: string
+      pattern: '^[0-9a-f]{64}$'
+    RepoPath:
+      description: A repo-relative path with forward slashes.
+      type: string
+
+    # ---------------------------------------------------------------- errors, session, health
+    Problem:
+      description: RFC 9457 problem details (`application/problem+json`), from `Results.Problem`. `code` is stable; `title` and `detail` are for people.
+      type: object
+      required: [title, status, code]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        code:
+          type: string
+          enum:
+            - bad-request
+            - unsupported-media-type
+            - too-large
+            - unauthenticated
+            - bad-token
+            - too-many-attempts
+            - forbidden
+            - forbidden-origin
+            - not-found
+            - not-a-diagram
+            - not-a-database
+            - precondition-required
+            - queue-full
+            - job-finished
+            - model-unavailable
+            - internal
+        traceId:
+          type: string
+    SignInRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          minLength: 1
+        returnUrl:
+          type: string
+          description: Form posts only; a local path to redirect to.
+    SessionUser:
+      type: object
+      required: [name, displayName, role]
+      properties:
+        name:
+          type: string
+          description: The name realtime presence and PublishToUserAsync use.
+        displayName:
+          type: string
+        role:
+          $ref: '#/components/schemas/Role'
+    Role:
+      type: string
+      enum: [viewer, editor, maintainer, admin]
+    SessionInfo:
+      type: object
+      required: [user, via, mode]
+      properties:
+        user:
+          $ref: '#/components/schemas/SessionUser'
+        via:
+          type: string
+          enum: [local, token, cookie]
+        mode:
+          type: string
+          enum: [local, hosted]
+    EditorHealth:
+      type: object
+      required: [status, engineVersion, modelLoaded, elements, worker, watcher]
+      properties:
+        status:
+          type: string
+          enum: [ok, starting, degraded]
+          description: '`starting` until the first load finished; `degraded` when the model folder is unreadable or a background service keeps failing.'
+        engineVersion:
+          type: string
+        modelLoaded:
+          type: boolean
+        elements:
+          type: integer
+        worker:
+          type: string
+          enum: [running, stopped]
+        watcher:
+          type: string
+          enum: [watching, polling, stopped]
+          description: '`polling` when the file watcher failed and only the periodic rescan runs.'
+
+    # ---------------------------------------------------------------- project
+    ProjectInfo:
+      description: Composed by the functions from the snapshot, the pack list (E2) and git.
+      type: object
+      required: [name, formatVersion, engineVersion, mode, settings, settingsHash, databases, packs, packDiagnostics, extensions, git]
+      properties:
+        name:
+          type: string
+          description: '`settings.name`, else the repo folder name.'
+        formatVersion:
+          type: integer
+        engineVersion:
+          type: string
+        mode:
+          type: string
+          enum: [local, hosted]
+        settings:
+          $ref: '#/components/schemas/ProjectSettings'
+        settingsHash:
+          $ref: '#/components/schemas/Hash'
+        databases:
+          type: array
+          items:
+            $ref: '#/components/schemas/ElementSummary'
+        packs:
+          type: array
+          description: Every pack under `.maquettiste/templates/`, enabled or not (`settings.packs` says which run).
+          items:
+            $ref: '#/components/schemas/PackManifest'
+        packDiagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+        extensions:
+          type: array
+          description: Extension schemas; the inspector renders custom properties from them.
+          items:
+            $ref: '#/components/schemas/ExtensionSchema'
+        git:
+          description: Read-only status for the top bar; `null` when the repo is not a git checkout or git is unavailable.
+          oneOf:
+            - $ref: '#/components/schemas/GitSummary'
+            - type: 'null'
+    GitSummary:
+      type: object
+      required: [branch, head, changedModelFiles]
+      properties:
+        branch:
+          type: [string, 'null']
+          description: '`null` on a detached head.'
+        head:
+          type: [string, 'null']
+        changedModelFiles:
+          type: integer
+          description: Files under `.maquettiste/` that `git status --porcelain` lists.
+    SettingsDocument:
+      x-engine-addition: E3
+      x-engine-record: Maquettiste.Engine.SettingsDocument
+      type: object
+      required: [settings, path, hash, json]
+      properties:
+        settings:
+          $ref: '#/components/schemas/ProjectSettings'
+        path:
+          $ref: '#/components/schemas/RepoPath'
+        hash:
+          $ref: '#/components/schemas/Hash'
+        json:
+          $ref: '../../schemas/v1/maquettiste.json'
+    SettingsSaveResult:
+      x-engine-addition: E3
+      x-engine-record: Maquettiste.Engine.SettingsSaveResult
+      type: object
+      required: [outcome, hash, current, diagnostics]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/SaveOutcome'
+        hash:
+          oneOf:
+            - $ref: '#/components/schemas/Hash'
+            - type: 'null'
+        current:
+          oneOf:
+            - $ref: '#/components/schemas/SettingsDocument'
+            - type: 'null'
+        diagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+    ProjectSettings:
+      x-engine-record: Maquettiste.Engine.Model.ProjectSettings
+      type: object
+      required: [$schema, formatVersion, name, outputs, handEdits, formatters, conventions, databases, typeMaps, inflection, packs, validation, limits]
+      properties:
+        $schema:
+          type: [string, 'null']
+        formatVersion:
+          type: integer
+        name:
+          type: [string, 'null']
+        outputs:
+          type: object
+          required: [allow, deny]
+          properties:
+            allow:
+              type: array
+              items:
+                type: object
+                required: [path, commit]
+                properties:
+                  path:
+                    type: string
+                  commit:
+                    type: boolean
+            deny:
+              type: array
+              items:
+                type: string
+        handEdits:
+          $ref: '#/components/schemas/HandEditPolicy'
+        formatters:
+          type: array
+          items:
+            type: object
+            required: [name, extensions, command, args, version, versionArgs, timeoutSeconds]
+            properties:
+              name:
+                type: string
+              extensions:
+                type: array
+                items:
+                  type: string
+              command:
+                type: string
+              args:
+                type: array
+                items:
+                  type: string
+              version:
+                type: string
+              versionArgs:
+                type: array
+                items:
+                  type: string
+              timeoutSeconds:
+                type: integer
+        conventions:
+          $ref: '#/components/schemas/Conventions'
+        databases:
+          type: object
+          description: Per-database convention overrides, by database name.
+          additionalProperties:
+            $ref: '#/components/schemas/Conventions'
+        typeMaps:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: string
+        inflection:
+          type: object
+          required: [plurals, uncountable]
+          properties:
+            plurals:
+              type: object
+              additionalProperties:
+                type: string
+            uncountable:
+              type: array
+              items:
+                type: string
+        packs:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/PackSettings'
+        validation:
+          type: object
+          required: [rules]
+          properties:
+            rules:
+              type: object
+              additionalProperties:
+                type: string
+        limits:
+          type: object
+          required: [scriptTimeoutMs, scriptStatements, scriptRecursion, scriptMemoryBytes, templateLoopLimit, templateRecursionLimit]
+          properties:
+            scriptTimeoutMs:
+              type: integer
+            scriptStatements:
+              type: integer
+              format: int64
+            scriptRecursion:
+              type: integer
+            scriptMemoryBytes:
+              type: integer
+              format: int64
+            templateLoopLimit:
+              type: integer
+            templateRecursionLimit:
+              type: integer
+    PackSettings:
+      x-engine-record: Maquettiste.Engine.Model.PackSettings
+      type: object
+      required: [enabled, output, parameters, handEdits]
+      properties:
+        enabled:
+          type: boolean
+        output:
+          type: string
+        parameters:
+          type: object
+          additionalProperties: true
+        handEdits:
+          oneOf:
+            - $ref: '#/components/schemas/HandEditPolicy'
+            - type: 'null'
+    Conventions:
+      x-engine-record: Maquettiste.Engine.Model.Conventions
+      description: Every member is written; `null` means "inherit" (project defaults, then the engine's).
+      type: object
+      properties:
+        tableCase:
+          oneOf:
+            - $ref: '#/components/schemas/CaseStyle'
+            - type: 'null'
+        pluralTables:
+          type: [boolean, 'null']
+        columnCase:
+          oneOf:
+            - $ref: '#/components/schemas/CaseStyle'
+            - type: 'null'
+        tableName:
+          type: [string, 'null']
+        keyColumn:
+          type: [string, 'null']
+        foreignKeyColumn:
+          type: [string, 'null']
+        junctionTable:
+          type: [string, 'null']
+        childTable:
+          type: [string, 'null']
+        valueObjectColumn:
+          type: [string, 'null']
+        orderColumn:
+          type: [string, 'null']
+        discriminatorColumn:
+          type: [string, 'null']
+        primaryKeyName:
+          type: [string, 'null']
+        foreignKeyName:
+          type: [string, 'null']
+        uniqueName:
+          type: [string, 'null']
+        indexName:
+          type: [string, 'null']
+        checkName:
+          type: [string, 'null']
+        sequenceName:
+          type: [string, 'null']
+        defaultStringLength:
+          type: [integer, 'null']
+        decimalPrecision:
+          type: [integer, 'null']
+        decimalScale:
+          type: [integer, 'null']
+        datetimePrecision:
+          type: [integer, 'null']
+        enumStorage:
+          oneOf:
+            - $ref: '#/components/schemas/StorageKind'
+            - type: 'null'
+        valueObjectStorage:
+          oneOf:
+            - $ref: '#/components/schemas/StorageKind'
+            - type: 'null'
+        valueObjectCollectionStorage:
+          oneOf:
+            - $ref: '#/components/schemas/StorageKind'
+            - type: 'null'
+        relationsWithAttributes:
+          oneOf:
+            - $ref: '#/components/schemas/RelationShape'
+            - type: 'null'
+        inheritance:
+          oneOf:
+            - $ref: '#/components/schemas/InheritanceStrategy'
+            - type: 'null'
+    CaseStyle:
+      type: string
+      enum: [snake, pascal, camel, kebab, upper-snake, preserve]
+    StorageKind:
+      type: string
+      enum: [int, string, lookup, embedded, table, json]
+    RelationShape:
+      type: string
+      enum: [foreign-key, junction, promoted]
+    InheritanceStrategy:
+      type: string
+      enum: [tph, tpt, tpc]
+    HandEditPolicy:
+      type: string
+      enum: [fail, overwrite, skip]
+    PackManifest:
+      x-engine-record: Maquettiste.Engine.Model.PackManifest
+      type: object
+      required: [$schema, name, version, engine, description, parameters, scripts, usesSchemaDiff, units]
+      properties:
+        $schema:
+          type: [string, 'null']
+        name:
+          type: string
+        version:
+          type: string
+        engine:
+          type: string
+          description: Engine version range, such as `>=1.0 <2.0` (serialized with `>` and `<`).
+        description:
+          type: [string, 'null']
+        parameters:
+          type: object
+          additionalProperties: true
+        scripts:
+          type: array
+          items:
+            type: string
+        usesSchemaDiff:
+          type: boolean
+        units:
+          type: array
+          items:
+            $ref: '#/components/schemas/PackUnit'
+    PackUnit:
+      x-engine-record: Maquettiste.Engine.Model.PackUnit
+      type: object
+      required: [id, template, for, where, output, mode, formatter, delimiters, companion, transforms]
+      properties:
+        id:
+          type: string
+        template:
+          type: string
+        for:
+          type: string
+          description: '`each <kind>`, `select <kinds>` or `model`.'
+        where:
+          type: [object, 'null']
+          description: The unit's filter (`UnitWhere`), as in `schemas/v1/pack.json`, every member written.
+          additionalProperties: true
+        output:
+          type: [string, 'null']
+        mode:
+          $ref: '#/components/schemas/OutputMode'
+        formatter:
+          type: [string, 'null']
+        delimiters:
+          oneOf:
+            - type: object
+              required: [open, close]
+              properties:
+                open:
+                  type: string
+                close:
+                  type: string
+            - type: 'null'
+        companion:
+          oneOf:
+            - type: object
+              required: [template, output]
+              properties:
+                template:
+                  type: string
+                output:
+                  type: string
+            - type: 'null'
+        transforms:
+          type: array
+          items:
+            type: string
+    ExtensionSchema:
+      x-engine-record: Maquettiste.Engine.Model.ExtensionSchema
+      type: object
+      required: [$schema, name, description, appliesTo, properties, required]
+      properties:
+        $schema:
+          type: [string, 'null']
+        name:
+          type: string
+        description:
+          type: [string, 'null']
+        appliesTo:
+          type: object
+          required: [kinds, stereotypes]
+          properties:
+            kinds:
+              type: array
+              items:
+                type: string
+            stereotypes:
+              type: array
+              items:
+                type: string
+        properties:
+          type: object
+          description: JSON Schema property definitions for `properties.<name>` on matching elements.
+          additionalProperties: true
+        required:
+          type: array
+          items:
+            type: string
+
+    # ---------------------------------------------------------------- model
+    ElementKind:
+      type: string
+      enum: [package, entity, value-object, scalar-type, enum, relation, database, table, view, sequence, mapping, diagram, tag-vocabulary, category-tree, stereotype]
+    ChangeSource:
+      type: string
+      enum: [editor, disk, cli, engine]
+    ElementSummary:
+      x-engine-record: Maquettiste.Engine.Model.ElementSummary
+      type: object
+      required: [id, kind, name, package, tags, hash, path]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        kind:
+          $ref: '#/components/schemas/ElementKind'
+        name:
+          type: string
+          description: Empty for a table overlay without a name of its own.
+        package:
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+        tags:
+          type: array
+          items:
+            type: string
+        hash:
+          $ref: '#/components/schemas/Hash'
+        path:
+          $ref: '#/components/schemas/RepoPath'
+    ModelDocument:
+      description: A canonical model file (`schemas/v1/<kind>.json`), chosen by `kind`.
+      oneOf:
+        - $ref: '../../schemas/v1/package.json'
+        - $ref: '../../schemas/v1/entity.json'
+        - $ref: '../../schemas/v1/value-object.json'
+        - $ref: '../../schemas/v1/scalar-type.json'
+        - $ref: '../../schemas/v1/enum.json'
+        - $ref: '../../schemas/v1/relation.json'
+        - $ref: '../../schemas/v1/database.json'
+        - $ref: '../../schemas/v1/table.json'
+        - $ref: '../../schemas/v1/view.json'
+        - $ref: '../../schemas/v1/sequence.json'
+        - $ref: '../../schemas/v1/mapping.json'
+        - $ref: '../../schemas/v1/diagram.json'
+        - $ref: '../../schemas/v1/tag-vocabulary.json'
+        - $ref: '../../schemas/v1/category-tree.json'
+        - $ref: '../../schemas/v1/stereotype.json'
+    NewModelDocument:
+      description: 'A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required.'
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          $ref: '#/components/schemas/ElementKind'
+        id:
+          $ref: '#/components/schemas/Ulid'
+      additionalProperties: true
+    TypedElement:
+      x-engine-record: Maquettiste.Engine.Model.Element (runtime type, through [JsonDerivedType] without a discriminator)
+      description: |
+        The element's typed record: the same members as the model document, but every member is present, defaults and
+        `null`s included, and `kind` is written after the kind's own members. Read-only; the editor uses it to show
+        effective defaults and sends `json` back.
+      type: object
+      required: [kind, $schema, id, name, displayName, pluralName, description, tags, category, stereotypes, properties, generation, source]
+      properties:
+        kind:
+          $ref: '#/components/schemas/ElementKind'
+        $schema:
+          type: [string, 'null']
+        id:
+          $ref: '#/components/schemas/Ulid'
+        name:
+          type: string
+        displayName:
+          type: [string, 'null']
+        pluralName:
+          type: [string, 'null']
+        description:
+          description: 'Markdown text, `{ "file": "<sidecar>" }`, or `null`.'
+          oneOf:
+            - type: string
+            - type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+            - type: 'null'
+        tags:
+          type: array
+          items:
+            type: string
+        category:
+          type: [string, 'null']
+        stereotypes:
+          type: array
+          items:
+            type: string
+        properties:
+          type: object
+          additionalProperties: true
+        generation:
+          type: object
+          additionalProperties: true
+        source:
+          type: [object, 'null']
+      additionalProperties: true
+    ElementDocument:
+      x-engine-record: Maquettiste.Engine.Model.ElementDocument
+      type: object
+      required: [element, path, hash, dependencyHash, json, sidecarText]
+      properties:
+        element:
+          $ref: '#/components/schemas/TypedElement'
+        path:
+          $ref: '#/components/schemas/RepoPath'
+        hash:
+          $ref: '#/components/schemas/Hash'
+        dependencyHash:
+          description: Hash of the file and the sidecars it references.
+          allOf:
+            - $ref: '#/components/schemas/Hash'
+        json:
+          $ref: '#/components/schemas/ModelDocument'
+        sidecarText:
+          type: [string, 'null']
+          description: The element's own description sidecar (`description.file`), read as text.
+    ReferenceInfo:
+      x-engine-record: Maquettiste.Engine.Model.ReferenceInfo
+      type: object
+      required: [fromElementId, fromId, jsonPointer, field, toId]
+      properties:
+        fromElementId:
+          description: The top-level element that holds the reference.
+          allOf:
+            - $ref: '#/components/schemas/Ulid'
+        fromId:
+          description: The element or sub-element that holds it.
+          allOf:
+            - $ref: '#/components/schemas/Ulid'
+        jsonPointer:
+          type: string
+        field:
+          type: string
+        toId:
+          type: string
+          description: The referenced id (an element or a sub-element).
+    ElementChange:
+      x-engine-record: Maquettiste.Engine.ElementChange
+      type: object
+      required: [id, kind, path, hash]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        kind:
+          $ref: '#/components/schemas/ElementKind'
+        path:
+          $ref: '#/components/schemas/RepoPath'
+        hash:
+          $ref: '#/components/schemas/Hash'
+    ChangeSet:
+      x-engine-record: Maquettiste.Engine.ChangeSet
+      type: object
+      required: [changed, deleted, source, truncated, isEmpty]
+      properties:
+        changed:
+          type: array
+          items:
+            $ref: '#/components/schemas/ElementChange'
+        deleted:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ulid'
+        source:
+          $ref: '#/components/schemas/ChangeSource'
+        truncated:
+          type: boolean
+          description: Items were dropped to fit a size limit; refetch the index.
+        isEmpty:
+          type: boolean
+    SaveOutcome:
+      type: string
+      enum: [saved, conflict, invalid, not-found, referenced]
+      description: 'HTTP mapping: saved 200 (201 on create), conflict 409, invalid 422, not-found 404, referenced 409.'
+    DeleteResolution:
+      type: string
+      enum: [refuse, remove-references]
+      default: refuse
+    SaveResult:
+      x-engine-record: Maquettiste.Engine.SaveResult
+      type: object
+      required: [outcome, id, hash, current, diagnostics, referrers, changes]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/SaveOutcome'
+        id:
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+        hash:
+          description: The new hash when saved; the disk hash on conflict.
+          oneOf:
+            - $ref: '#/components/schemas/Hash'
+            - type: 'null'
+        current:
+          description: The new document when saved; the disk version on conflict.
+          oneOf:
+            - $ref: '#/components/schemas/ElementDocument'
+            - type: 'null'
+        diagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+        referrers:
+          description: The references that blocked a delete.
+          type: array
+          items:
+            $ref: '#/components/schemas/ReferenceInfo'
+        changes:
+          oneOf:
+            - $ref: '#/components/schemas/ChangeSet'
+            - type: 'null'
+    BatchOp:
+      type: string
+      enum: [create, update, delete]
+    BatchOperation:
+      x-engine-record: Maquettiste.Engine.BatchOperation
+      type: object
+      required: [op, id, expectedHash, element]
+      properties:
+        op:
+          $ref: '#/components/schemas/BatchOp'
+        id:
+          type: [string, 'null']
+        expectedHash:
+          type: [string, 'null']
+        element:
+          type: [object, 'null']
+          additionalProperties: true
+    ModelBatch:
+      x-engine-record: Maquettiste.Engine.ModelBatch
+      type: object
+      required: [operations]
+      properties:
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/BatchOperation'
+    BatchParseResult:
+      x-engine-record: Maquettiste.Engine.BatchParseResult
+      type: object
+      required: [batch, diagnostics]
+      properties:
+        batch:
+          oneOf:
+            - $ref: '#/components/schemas/ModelBatch'
+            - type: 'null'
+        diagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+    BatchResult:
+      x-engine-record: Maquettiste.Engine.BatchResult
+      type: object
+      required: [outcome, items, changes]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/SaveOutcome'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SaveResult'
+        changes:
+          oneOf:
+            - $ref: '#/components/schemas/ChangeSet'
+            - type: 'null'
+
+    # ---------------------------------------------------------------- diagnostics
+    DiagnosticSeverity:
+      type: string
+      enum: [error, warning, info]
+    Diagnostic:
+      x-engine-record: Maquettiste.Engine.Diagnostics.Diagnostic
+      type: object
+      required: [rule, severity, message, elementId, filePath, jsonPointer, line, column]
+      properties:
+        rule:
+          type: string
+          pattern: '^(MQ[1-6][0-9]{3}|x/.+)$'
+        severity:
+          $ref: '#/components/schemas/DiagnosticSeverity'
+        message:
+          type: string
+        elementId:
+          type: [string, 'null']
+        filePath:
+          type: [string, 'null']
+        jsonPointer:
+          type: [string, 'null']
+        line:
+          type: [integer, 'null']
+          minimum: 1
+        column:
+          type: [integer, 'null']
+          minimum: 1
+    ValidationScope:
+      x-engine-record: Maquettiste.Engine.Diagnostics.ValidationScope
+      type: object
+      properties:
+        elementIds:
+          description: '`null` or absent: the whole model.'
+          type: [array, 'null']
+          items:
+            $ref: '#/components/schemas/Ulid'
+        includeReferrers:
+          type: boolean
+          default: true
+        includeScriptRules:
+          type: boolean
+          default: true
+    ValidationReport:
+      x-engine-record: Maquettiste.Engine.Diagnostics.ValidationReport
+      type: object
+      required: [diagnostics, errors, warnings, infos, truncated, hasErrors]
+      properties:
+        diagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+        errors:
+          type: integer
+        warnings:
+          type: integer
+        infos:
+          type: integer
+        truncated:
+          type: boolean
+          description: Diagnostics were dropped to fit a size limit; the counts are still the full counts.
+        hasErrors:
+          type: boolean
+
+    # ---------------------------------------------------------------- databases (E1)
+    DatabaseViewResult:
+      x-engine-addition: E1
+      x-engine-record: Maquettiste.Engine.DatabaseViewResult
+      type: object
+      required: [view, diagnostics]
+      properties:
+        view:
+          oneOf:
+            - $ref: '#/components/schemas/DatabaseView'
+            - type: 'null'
+        diagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+    DatabaseView:
+      x-engine-addition: E1
+      x-engine-record: Maquettiste.Engine.DatabaseView
+      type: object
+      required: [id, name, dialect, version, defaultSchema, tables]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        name:
+          type: string
+        dialect:
+          type: string
+        version:
+          type: [string, 'null']
+        defaultSchema:
+          type: [string, 'null']
+        tables:
+          type: array
+          items:
+            $ref: '#/components/schemas/TableView'
+    TableView:
+      x-engine-addition: E1
+      x-engine-record: Maquettiste.Engine.TableView
+      type: object
+      required: [key, name, schema, origin, entityId, relationId, isJunction, isLookup, comment, columns, primaryKey, uniques, foreignKeys, indexes]
+      properties:
+        key:
+          type: string
+          description: A table file's id, or a synthesized key such as `<entityId>@<databaseId>` (engine-design.md 7.3); the `elementId` for `sql-ddl`/`table` previews.
+        name:
+          type: string
+        schema:
+          type: [string, 'null']
+        origin:
+          type: string
+          enum: [synthesized, designed, imported]
+        entityId:
+          type: [string, 'null']
+        relationId:
+          type: [string, 'null']
+        isJunction:
+          type: boolean
+        isLookup:
+          type: boolean
+        comment:
+          type: [string, 'null']
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/ColumnView'
+        primaryKey:
+          oneOf:
+            - $ref: '#/components/schemas/KeyView'
+            - type: 'null'
+        uniques:
+          type: array
+          items:
+            $ref: '#/components/schemas/KeyView'
+        foreignKeys:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForeignKeyView'
+        indexes:
+          type: array
+          items:
+            $ref: '#/components/schemas/IndexView'
+    ColumnView:
+      x-engine-addition: E1
+      x-engine-record: Maquettiste.Engine.ColumnView
+      type: object
+      required: [key, name, type, nativeType, length, precision, scale, nullable, defaultSql, identity, computed, attributeId, attributePath, isPrimaryKey, isForeignKey, isDiscriminator, position]
+      properties:
+        key:
+          type: string
+          description: An attribute path, `discriminator`, `position`, `id`, or a column id.
+        name:
+          type: string
+        type:
+          type: string
+          description: The built-in type keyword.
+        nativeType:
+          type: string
+          description: The dialect's type, such as `varchar(120)`.
+        length:
+          type: [integer, 'null']
+        precision:
+          type: [integer, 'null']
+        scale:
+          type: [integer, 'null']
+        nullable:
+          type: boolean
+        defaultSql:
+          type: [string, 'null']
+        identity:
+          type: boolean
+        computed:
+          type: [string, 'null']
+        attributeId:
+          type: [string, 'null']
+        attributePath:
+          type: [string, 'null']
+        isPrimaryKey:
+          type: boolean
+        isForeignKey:
+          type: boolean
+        isDiscriminator:
+          type: boolean
+        position:
+          type: integer
+    KeyView:
+      x-engine-addition: E1
+      x-engine-record: Maquettiste.Engine.KeyView
+      type: object
+      required: [name, columns]
+      properties:
+        name:
+          type: string
+        columns:
+          description: Column keys, in key order.
+          type: array
+          items:
+            type: string
+    ForeignKeyView:
+      x-engine-addition: E1
+      x-engine-record: Maquettiste.Engine.ForeignKeyView
+      type: object
+      required: [name, columns, referencedTable, referencedColumns, onDelete, onUpdate, relationId, endId]
+      properties:
+        name:
+          type: string
+        columns:
+          type: array
+          items:
+            type: string
+        referencedTable:
+          type: string
+          description: The referenced table's key.
+        referencedColumns:
+          type: array
+          items:
+            type: string
+        onDelete:
+          type: string
+        onUpdate:
+          type: string
+        relationId:
+          type: [string, 'null']
+        endId:
+          type: [string, 'null']
+    IndexView:
+      x-engine-addition: E1
+      x-engine-record: Maquettiste.Engine.IndexView
+      type: object
+      required: [name, columns, unique, where]
+      properties:
+        name:
+          type: string
+        columns:
+          type: array
+          items:
+            type: object
+            required: [column, descending]
+            properties:
+              column:
+                type: string
+              descending:
+                type: boolean
+        unique:
+          type: boolean
+        where:
+          type: [string, 'null']
+
+    # ---------------------------------------------------------------- generation
+    GenerationMode:
+      type: string
+      enum: [apply, dry-run, check]
+    RootSelection:
+      type: string
+      enum: [all, committed, built]
+    LockMode:
+      type: string
+      enum: [wait, fail]
+    RunOutcome:
+      type: string
+      enum: [succeeded, invalid, drift, conflicts, busy, stale, cancelled, failed]
+    PipelineStage:
+      type: string
+      enum: [load, validate, resolve, plan, skip, render, post-process, write]
+    FileRole:
+      type: string
+      enum: [main, block, companion]
+    OutputMode:
+      type: string
+      enum: [overwrite, once, regions, pair]
+    FileChangeKind:
+      type: string
+      enum: [added, modified, deleted, unchanged, hand-edited, kept, orphaned-owned, conflict]
+    GenerationRequest:
+      x-engine-record: Maquettiste.Engine.GenerationRequest
+      description: As a request body every member is optional and takes the default shown. As part of a plan, every member is written.
+      type: object
+      properties:
+        mode:
+          $ref: '#/components/schemas/GenerationMode'
+        packs:
+          description: '`null`: every enabled pack.'
+          type: [array, 'null']
+          items:
+            type: string
+        force:
+          type: boolean
+          default: false
+        jobs:
+          type: [integer, 'null']
+          minimum: 1
+        handEdits:
+          oneOf:
+            - $ref: '#/components/schemas/HandEditPolicy'
+            - type: 'null'
+        includeDiffs:
+          type: boolean
+          default: false
+        roots:
+          $ref: '#/components/schemas/RootSelection'
+        lock:
+          $ref: '#/components/schemas/LockMode'
+        stageBarriers:
+          type: boolean
+          default: false
+    ApplyRequest:
+      type: object
+      required: [planId]
+      properties:
+        planId:
+          $ref: '#/components/schemas/Ulid'
+    ProgressUpdate:
+      x-engine-record: Maquettiste.Engine.Pipeline.ProgressUpdate
+      type: object
+      required: [stage, done, total, currentPath, pack]
+      properties:
+        stage:
+          $ref: '#/components/schemas/PipelineStage'
+        done:
+          type: integer
+        total:
+          type: integer
+        currentPath:
+          type: [string, 'null']
+        pack:
+          type: [string, 'null']
+    StageTiming:
+      x-engine-record: Maquettiste.Engine.Pipeline.StageTiming
+      type: object
+      required: [stage, wall, busy, items]
+      properties:
+        stage:
+          $ref: '#/components/schemas/PipelineStage'
+        wall:
+          $ref: '#/components/schemas/TimeSpan'
+        busy:
+          $ref: '#/components/schemas/TimeSpan'
+        items:
+          type: integer
+    TimeSpan:
+      description: A .NET TimeSpan as System.Text.Json writes it ("c" format).
+      type: string
+      pattern: '^-?(\d+\.)?\d{2}:\d{2}:\d{2}(\.\d{1,7})?$'
+    FileChange:
+      x-engine-record: Maquettiste.Engine.Pipeline.FileChange
+      type: object
+      required: [path, kind, pack, unitKey, oldHash, newHash, diff]
+      properties:
+        path:
+          $ref: '#/components/schemas/RepoPath'
+        kind:
+          $ref: '#/components/schemas/FileChangeKind'
+        pack:
+          type: string
+        unitKey:
+          type: string
+          description: '`<pack>/<unit>[:<element or table key>]`.'
+        oldHash:
+          type: [string, 'null']
+        newHash:
+          type: [string, 'null']
+        diff:
+          type: [string, 'null']
+          description: Always `null` in the editor (plans are made without inline diffs; use the diff endpoint).
+    OutputRootInfo:
+      x-engine-record: Maquettiste.Engine.Pipeline.OutputRootInfo
+      type: object
+      required: [path, commit]
+      properties:
+        path:
+          type: string
+        commit:
+          type: boolean
+    PlanFile:
+      x-engine-record: Maquettiste.Engine.PlanFile
+      type: object
+      required: [path, contentHash, manifestHash, mode, role, root, diskHashAtPlan]
+      properties:
+        path:
+          $ref: '#/components/schemas/RepoPath'
+        contentHash:
+          $ref: '#/components/schemas/Hash'
+        manifestHash:
+          type: string
+          description: The manifest entry's hash, with an `r:` (regions) or `o:` (owned once or companion file) prefix where it applies.
+        mode:
+          $ref: '#/components/schemas/OutputMode'
+        role:
+          $ref: '#/components/schemas/FileRole'
+        root:
+          $ref: '#/components/schemas/OutputRootInfo'
+        diskHashAtPlan:
+          type: [string, 'null']
+    PlanUnit:
+      x-engine-record: Maquettiste.Engine.PlanUnit
+      type: object
+      required: [key, inputHash, readKeys, skipped, outputs]
+      properties:
+        key:
+          type: string
+        inputHash:
+          $ref: '#/components/schemas/Hash'
+        readKeys:
+          type: array
+          items:
+            type: string
+        skipped:
+          type: boolean
+        outputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanFile'
+    GenerationPlan:
+      x-engine-record: Maquettiste.Engine.GenerationPlan
+      type: object
+      required: [id, request, modelVersion, packs, units, changes, diagnostics]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        request:
+          $ref: '#/components/schemas/GenerationRequest'
+        modelVersion:
+          type: integer
+          format: int64
+        packs:
+          type: array
+          items:
+            type: string
+        units:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanUnit'
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/FileChange'
+        diagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+    PlanResult:
+      x-engine-record: Maquettiste.Engine.PlanResult
+      type: object
+      required: [outcome, plan]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/RunOutcome'
+        plan:
+          oneOf:
+            - $ref: '#/components/schemas/GenerationPlan'
+            - type: 'null'
+    GenerationResult:
+      x-engine-record: Maquettiste.Engine.GenerationResult
+      type: object
+      required: [runId, mode, outcome, changes, unitsRendered, unitsSkipped, filesWritten, filesDeleted, diagnostics, timings]
+      properties:
+        runId:
+          $ref: '#/components/schemas/Ulid'
+        mode:
+          $ref: '#/components/schemas/GenerationMode'
+        outcome:
+          $ref: '#/components/schemas/RunOutcome'
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/FileChange'
+        unitsRendered:
+          type: integer
+        unitsSkipped:
+          type: integer
+        filesWritten:
+          type: integer
+        filesDeleted:
+          type: integer
+        diagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+        timings:
+          type: array
+          items:
+            $ref: '#/components/schemas/StageTiming'
+    ApplyResult:
+      x-engine-record: Maquettiste.Engine.ApplyResult
+      type: object
+      required: [outcome, staleUnits, stalePaths, result]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/RunOutcome'
+        staleUnits:
+          type: array
+          items:
+            type: string
+        stalePaths:
+          type: array
+          items:
+            type: string
+        result:
+          oneOf:
+            - $ref: '#/components/schemas/GenerationResult'
+            - type: 'null'
+    JobKind:
+      type: string
+      enum: [plan, apply]
+    JobState:
+      type: string
+      enum: [queued, running, succeeded, failed, cancelled]
+    JobInfo:
+      x-engine-record: Maquettiste.Engine.JobInfo
+      description: A finished job read back keeps no per-file or per-unit list (`planResult.plan.units` and `.changes`, `applyResult.result.changes` are empty); read the plan for them.
+      type: object
+      required: [id, kind, state, queuePosition, progress, planResult, applyResult, error, queuedUtc, startedUtc, finishedUtc]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        kind:
+          $ref: '#/components/schemas/JobKind'
+        state:
+          $ref: '#/components/schemas/JobState'
+        queuePosition:
+          description: 0-based position while queued.
+          type: [integer, 'null']
+        progress:
+          oneOf:
+            - $ref: '#/components/schemas/ProgressUpdate'
+            - type: 'null'
+        planResult:
+          oneOf:
+            - $ref: '#/components/schemas/PlanResult'
+            - type: 'null'
+        applyResult:
+          oneOf:
+            - $ref: '#/components/schemas/ApplyResult'
+            - type: 'null'
+        error:
+          type: [string, 'null']
+        queuedUtc:
+          type: string
+          format: date-time
+        startedUtc:
+          type: [string, 'null']
+          format: date-time
+        finishedUtc:
+          type: [string, 'null']
+          format: date-time
+
+    # ---------------------------------------------------------------- templates
+    PreviewRequest:
+      type: object
+      required: [pack, unit]
+      properties:
+        pack:
+          type: string
+        unit:
+          type: string
+        elementId:
+          type: [string, 'null']
+          description: An element id or a resolved table key; `null` for a `model` unit.
+    RenderedFile:
+      x-engine-record: Maquettiste.Engine.Pipeline.RenderedFile
+      type: object
+      required: [path, text, role]
+      properties:
+        path:
+          $ref: '#/components/schemas/RepoPath'
+        text:
+          type: string
+        role:
+          $ref: '#/components/schemas/FileRole'
+    PreviewResult:
+      x-engine-record: Maquettiste.Engine.PreviewResult
+      type: object
+      required: [files, diagnostics]
+      properties:
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/RenderedFile'
+        diagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+
+    # ---------------------------------------------------------------- presence
+    PresenceReport:
+      type: object
+      required: [connectionId]
+      properties:
+        connectionId:
+          type: string
+          description: '`site.realtime.connectionId` of the reporting window.'
+        elementId:
+          type: [string, 'null']
+        workspace:
+          type: [string, 'null']
+          enum: [entities, database, mappings, generate, settings, null]
+    PresenceEntry:
+      type: object
+      required: [connectionId, user, elementId, workspace, updatedUtc]
+      properties:
+        connectionId:
+          type: string
+        user:
+          type: string
+        elementId:
+          type: [string, 'null']
+        workspace:
+          type: [string, 'null']
+        updatedUtc:
+          type: string
+          format: date-time
+
+    # ---------------------------------------------------------------- realtime payloads
+    RealtimeModelChanged:
+      description: '`model.changed` to every connection: the engine''s ChangeSet (cut to 200 KB, `truncated` then true).'
+      allOf:
+        - $ref: '#/components/schemas/ChangeSet'
+      example:
+        changed:
+        - id: 01J92P0V0FJ23CGSNKM7P1W5V7
+          kind: entity
+          path: .maquettiste/model/entities/invoice.json
+          hash: cdac722e6a2f7418b8f02fb4ab7097f297bd46bc67f46d9f61c45dfda534749d
+        deleted: []
+        source: editor
+        truncated: false
+        isEmpty: false
+    RealtimeValidationCompleted:
+      description: '`validation.completed` to every connection: a whole-model ValidationReport (cut to 200 KB; counts stay whole). The editor replaces its problems list with it, or refetches when `truncated`.'
+      allOf:
+        - $ref: '#/components/schemas/ValidationReport'
+    RealtimeProjectChanged:
+      description: '`project.changed` to every connection: settings, packs or extension schemas changed; refetch `GET /api/project`.'
+      type: object
+      required: [settingsHash]
+      properties:
+        settingsHash:
+          $ref: '#/components/schemas/Hash'
+    RealtimeJobProgress:
+      description: '`job.progress` to `job:{id}`: the running JobInfo with its latest `progress`, at most four per second.'
+      allOf:
+        - $ref: '#/components/schemas/JobInfo'
+    RealtimeJobCompleted:
+      description: '`job.completed` to `job:{id}`: the finished JobInfo, trimmed as `GET /api/jobs/{id}` returns it.'
+      allOf:
+        - $ref: '#/components/schemas/JobInfo'
+    RealtimePresenceChanged:
+      description: '`presence.changed` to `editors`: every live editor connection and its selection.'
+      type: object
+      required: [editors]
+      properties:
+        editors:
+          type: array
+          items:
+            $ref: '#/components/schemas/PresenceEntry'
+    RealtimeSiteDeployed:
+      description: '`site.deployed`, sent by the host to every page after a deploy, rollback or functions upload went live.'
+      type: object
+      required: [release, functions, source]
+      properties:
+        release:
+          type: string
+        functions:
+          type: [string, 'null']
+        source:
+          type: string
+          enum: [deploy, rollback, functions]
+      example:
+        release: 20260803-041429-5ab6
+        functions: 20260803-052210-9c1f
+        source: deploy
