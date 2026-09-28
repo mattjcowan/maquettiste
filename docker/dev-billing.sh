@@ -21,6 +21,7 @@ mkdir -p tmp/billing/.maquettiste/templates && cp -r packs/sql-ddl packs/csharp-
 if [ "$(uname)" = Linux ]; then
   if command -v setfacl >/dev/null 2>&1; then
     # The default entries for the invoking user keep what the container creates editable and deletable by the developer.
+    chmod -R u+rwX,go+rX tmp/billing   # the default ACL copies these base bits onto what the container creates
     setfacl -R -m "u:1654:rwX,d:u:1654:rwX,u:$(id -u):rwX,d:u:$(id -u):rwX" tmp/billing
   else
     echo "dev-billing: setfacl is missing (apt install acl); making tmp/billing world-writable instead" >&2

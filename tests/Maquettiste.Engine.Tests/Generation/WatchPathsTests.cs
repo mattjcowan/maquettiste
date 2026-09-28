@@ -1,4 +1,5 @@
 using Maquettiste.Engine.Generation;
+using Maquettiste.Engine.Pipeline;
 
 namespace Maquettiste.Engine.Tests.Generation;
 
@@ -56,5 +57,20 @@ public sealed class WatchPathsTests
         {
             Directory.Delete(dir);
         }
+    }
+
+    [Fact]
+    public async Task The_owned_folders_themselves_count_as_engine_owned()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic");
+        var watcher = new GenerationWatcher(f.Service, new GenerationRequest(), TimeSpan.FromMilliseconds(100), (_, _) => ValueTask.CompletedTask);
+        foreach (var folder in new[] { "manifest", "snapshots", ".cache", ".schema" })
+        {
+            Assert.True(watcher.IsEngineOwned(Path.Combine(f.Repo.ModelRoot, folder)), folder + " (absolute, the folder itself)");
+            Assert.True(watcher.IsEngineOwned(Path.Combine(f.Repo.ModelRoot, folder, "x.json")), folder + "/x.json");
+        }
+
+        Assert.False(watcher.IsEngineOwned(Path.Combine(f.Repo.ModelRoot, "manifests")));
+        Assert.False(watcher.IsEngineOwned(Path.Combine(f.Repo.ModelRoot, "entities", "customer.json")));
     }
 }

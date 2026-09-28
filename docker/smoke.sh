@@ -26,7 +26,10 @@ cp -r tests/fixtures/models/billing/. "$work/"
 mkdir -p "$work/.maquettiste/templates"
 cp -r packs/sql-ddl packs/csharp-dapper "$work/.maquettiste/templates/"
 if command -v setfacl >/dev/null 2>&1; then
-  setfacl -R -m u:1654:rwX -m d:u:1654:rwX "$work"
+  # The default ACL copies the folder's own base bits onto everything the container creates, so open them first (mktemp
+  # makes 0700 folders), and give the host user a default entry so files the container writes stay editable from here.
+  chmod -R u+rwX,go+rX "$work"
+  setfacl -R -m u:1654:rwX -m d:u:1654:rwX -m "u:$(id -u):rwX" -m "d:u:$(id -u):rwX" "$work"
 else
   chmod -R a+rwX "$work"
 fi

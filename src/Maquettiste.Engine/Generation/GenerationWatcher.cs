@@ -178,7 +178,10 @@ internal sealed class GenerationWatcher
         if (!full.StartsWith(_modelRoot + Path.DirectorySeparatorChar, StringComparison.Ordinal))
             return false;
         var relative = full[(_modelRoot.Length + 1)..].Replace(Path.DirectorySeparatorChar, '/');
-        return relative.StartsWith(".cache/", StringComparison.Ordinal) || relative.StartsWith(".schema/", StringComparison.Ordinal)
-            || relative.StartsWith("manifest/", StringComparison.Ordinal) || relative.StartsWith("snapshots/", StringComparison.Ordinal);
+        // The folder itself counts too: macOS reports a write inside .maquettiste/manifest as a change to that folder.
+        return IsOwnedFolder(relative, ".cache") || IsOwnedFolder(relative, ".schema") || IsOwnedFolder(relative, "manifest") || IsOwnedFolder(relative, "snapshots");
     }
+
+    private static bool IsOwnedFolder(string relative, string folder) =>
+        string.Equals(relative, folder, StringComparison.Ordinal) || relative.StartsWith(folder + "/", StringComparison.Ordinal);
 }
