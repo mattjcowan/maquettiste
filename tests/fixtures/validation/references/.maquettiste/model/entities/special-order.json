@@ -1,0 +1,8 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JENT00000000000000000002",
+  "name": "SpecialOrder",
+  "base": "01JPKG00000000000000000001",
+  "category": "01JATT00000000000000000102"
+}

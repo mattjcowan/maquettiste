@@ -1,0 +1,9 @@
+{{ banner "#" }}
+entity {{ entity.name }} in {{ entity.package.name }}
+{{- for a in entity.attributes }}
+  {{ a.name }}: {{ a.type.name }}{{ if a.required }} (required){{ end }}{{ if a.length }} length {{ a.length }}{{ end }}
+{{- end }}
+{{- if mapping }}
+stored in {{ mapping.table.name }}
+{{- end }}
+{{ pack.params.greeting }} from {{ shout entity.name }}

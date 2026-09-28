@@ -1,0 +1,11 @@
+{{!-- <% banner "" %> --}}
+<section class="<% kebab entity.name %>">
+  <h1>{{title}}</h1>
+  {{#each items}}
+  <%- for a in entity.attributes %>
+  <span data-attr="<% snake a.name %>">{{this.<% camel a.name %>}}</span>
+  <%- end %>
+  {{/each}}
+  {%{<p>raw: <% not code %> and {{ braces }}</p>}%}
+  <%# a comment with a quote ' and %> closes it anyway
+</section>

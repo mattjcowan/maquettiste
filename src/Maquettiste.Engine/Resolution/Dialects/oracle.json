@@ -1,0 +1,20 @@
+{
+  "binary": "blob",
+  "bool": "number(1)",
+  "date": "date",
+  "datetime": "timestamp({precision})",
+  "datetimeoffset": "timestamp({precision}) with time zone",
+  "decimal": "number({precision},{scale})",
+  "double": "binary_double",
+  "duration": "interval day(9) to second({precision})",
+  "float": "binary_float",
+  "int16": "number(5)",
+  "int32": "number(10)",
+  "int64": "number(19)",
+  "json": "clob",
+  "string": "varchar2({length} char)",
+  "text": "clob",
+  "time": "interval day(0) to second({precision})",
+  "ulid": "char(26)",
+  "uuid": "raw(16)"
+}

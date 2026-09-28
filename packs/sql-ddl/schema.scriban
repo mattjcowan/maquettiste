@@ -1,0 +1,59 @@
+{{-
+# One schema script per database: schemas, sequences, every table in foreign-key dependency order, then views. The
+# "schemaScript" parameter chooses between the table DDL inline ("inline", runs anywhere) and client include directives pointing
+# at the table scripts ("include": psql \ir, sqlcmd :r, sqlite3 .read).
+# Foreign keys that close a cycle cannot be created inline on PostgreSQL or SQL Server; they are left out of their CREATE TABLE
+# and added with ALTER TABLE after the last table. In include mode a table holding such a key is written inline instead, because
+# its table script declares every foreign key.
+include "_sql.scriban"
+include "_objects.scriban"
+db = database
+tables = db.tables
+spec = dependency_spec(tables)
+order = ddl_order spec
+breaks = ddl_cycle_breaks spec
+skip = cycle_skip(tables, breaks, db)
+deferred = []
+cycle_fk_statements(tables, breaks, db, deferred)
+go = db.dialect == "sqlserver" ? "\nGO" : ""
+-}}
+{{ banner "--" }}
+-- Schema of database {{ db.name }} ({{ dialect_title(db) }}): tables {{ tables.size }}, views {{ db.views.size }}, sequences {{ db.sequences.size }}.
+-- Tables are in foreign-key dependency order: every table follows the tables it references.
+{{- if breaks.size > 0 }}
+-- Foreign-key cycle: these constraints reference a table created later{{ if deferred.size > 0 }}, so they are added after the last table{{ end }}:
+{{- for b in breaks }}
+{{- pair = b | string.split ":" }}
+--   {{ tables[pair[0] | string.to_int].name }}.{{ tables[pair[0] | string.to_int].foreign_keys[pair[1] | string.to_int].name }}
+{{- end }}
+{{- end }}
+{{- if db.dialect == "sqlite" }}
+
+PRAGMA foreign_keys = ON;
+{{- end }}
+{{- for s in schemas_to_create(db) }}
+
+{{ schema_sql(s, db) }}{{ go }}
+{{- end }}
+{{- for s in db.sequences }}
+
+{{ sequence_sql(s, db) }}{{ go }}
+{{- end }}
+{{- for i in order }}
+{{- t = tables[i] }}
+
+{{ if pack.params.schemaScript == "include" && !has_skipped_fk(t, skip) -}}
+{{ include_directive(table_path(t), db) }}{{ go }}
+{{- else -}}
+-- {{ t.schema ? t.schema + "." : "" }}{{ t.name }}
+{{ include "_table.scriban" t skip }}{{ go }}
+{{- end }}
+{{- end }}
+{{- for s in deferred }}
+
+{{ s }}{{ go }}
+{{- end }}
+{{- for v in db.views }}
+
+{{ view_sql(v, db) }}{{ go }}
+{{- end }}

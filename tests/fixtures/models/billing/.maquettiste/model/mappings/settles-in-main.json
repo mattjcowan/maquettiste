@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01J92P0V1ZYK32MC97T5NBB5Y5",
+  "name": "settles in main",
+  "database": "01J92P0V1QRN2181XM2ZWE02W4",
+  "relation": "01J92P0V1DKHD5Q02DV6S5M53D",
+  "shape": "junction"
+}

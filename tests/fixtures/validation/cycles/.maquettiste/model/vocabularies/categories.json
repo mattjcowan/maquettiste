@@ -1,0 +1,23 @@
+{
+  "$schema": "../../.schema/v1/category-tree.json",
+  "kind": "category-tree",
+  "id": "01JCAT00000000000000000001",
+  "name": "categories",
+  "categories": [
+    {
+      "id": "01JCAT00000000000000000002",
+      "name": "Left",
+      "parent": "01JCAT00000000000000000003"
+    },
+    {
+      "id": "01JCAT00000000000000000003",
+      "name": "Right",
+      "parent": "01JCAT00000000000000000002"
+    },
+    {
+      "id": "01JCAT00000000000000000004",
+      "name": "Self",
+      "parent": "01JCAT00000000000000000004"
+    }
+  ]
+}

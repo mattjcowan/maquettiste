@@ -1,0 +1,84 @@
+-- Migration 0001 of database reporting (SQL Server): schema revision 0 to 1.
+-- Written once by Maquettiste (sql-ddl/migration) from the schema diff. It is yours now: review it, adjust it and commit it.
+-- Lines marked TODO need a decision the diff cannot make (data conversions, SQLite table rebuilds).
+
+SET XACT_ABORT ON;
+BEGIN TRANSACTION;
+
+CREATE TABLE dbo.customers (
+    id uniqueidentifier NOT NULL,
+    name nvarchar(120) NOT NULL,
+    email nvarchar(254) NOT NULL,
+    customer_since date NULL,
+    created_at datetimeoffset(6) NOT NULL,
+    updated_at datetimeoffset(6) NULL,
+    CONSTRAINT pk_customers PRIMARY KEY (id),
+    CONSTRAINT uq_customers_email UNIQUE (email)
+);
+
+CREATE TABLE dbo.invoices (
+    id uniqueidentifier NOT NULL,
+    number nvarchar(32) NOT NULL,
+    issued_on date NOT NULL,
+    total_amount decimal(18,2) NULL,
+    total_currency nvarchar(3) NULL,
+    status int NOT NULL CONSTRAINT df_invoices_status DEFAULT 0,
+    notes nvarchar(max) NULL,
+    created_at datetimeoffset(6) NOT NULL,
+    updated_at datetimeoffset(6) NULL,
+    deleted_at datetimeoffset(6) NULL,
+    reason nvarchar(200) NULL,
+    discriminator nvarchar(64) NOT NULL,
+    customer_id uniqueidentifier NOT NULL,
+    CONSTRAINT pk_invoices PRIMARY KEY (id),
+    CONSTRAINT uq_invoices_number UNIQUE (number),
+    CONSTRAINT fk_invoices_customer_id FOREIGN KEY (customer_id) REFERENCES dbo.customers (id)
+);
+CREATE INDEX ix_invoices_issued_on ON dbo.invoices (issued_on);
+
+CREATE TABLE dbo.payments (
+    id bigint IDENTITY(1,1) NOT NULL,
+    amount_amount decimal(18,2) NOT NULL,
+    amount_currency nvarchar(3) NOT NULL,
+    received_at datetimeoffset(6) NOT NULL,
+    reference nvarchar(64) NULL,
+    created_at datetimeoffset(6) NOT NULL,
+    updated_at datetimeoffset(6) NULL,
+    CONSTRAINT pk_payments PRIMARY KEY (id)
+);
+
+CREATE TABLE dbo.products (
+    id uniqueidentifier NOT NULL,
+    sku nvarchar(40) NOT NULL,
+    name nvarchar(200) NOT NULL,
+    list_price_amount decimal(18,2) NULL,
+    list_price_currency nvarchar(3) NULL,
+    deleted_at datetimeoffset(6) NULL,
+    CONSTRAINT pk_products PRIMARY KEY (id),
+    CONSTRAINT uq_products_sku UNIQUE (sku)
+);
+
+CREATE TABLE dbo.invoice_lines (
+    id char(26) NOT NULL,
+    quantity int NOT NULL,
+    unit_price_amount decimal(18,2) NOT NULL,
+    unit_price_currency nvarchar(3) NOT NULL,
+    description nvarchar(500) NULL,
+    invoice_id uniqueidentifier NOT NULL,
+    product_id uniqueidentifier NOT NULL,
+    CONSTRAINT pk_invoice_lines PRIMARY KEY (id),
+    CONSTRAINT fk_invoice_lines_invoice_id FOREIGN KEY (invoice_id) REFERENCES dbo.invoices (id) ON DELETE CASCADE,
+    CONSTRAINT fk_invoice_lines_product_id FOREIGN KEY (product_id) REFERENCES dbo.products (id)
+);
+
+CREATE TABLE dbo.payment_invoice (
+    payments_id bigint NOT NULL,
+    invoices_id uniqueidentifier NOT NULL,
+    allocated_amount decimal(18,2) NOT NULL,
+    allocated_currency nvarchar(3) NOT NULL,
+    CONSTRAINT pk_payment_invoice PRIMARY KEY (payments_id, invoices_id),
+    CONSTRAINT fk_payment_invoice_payments_id FOREIGN KEY (payments_id) REFERENCES dbo.payments (id) ON DELETE CASCADE,
+    CONSTRAINT fk_payment_invoice_invoices_id FOREIGN KEY (invoices_id) REFERENCES dbo.invoices (id) ON DELETE CASCADE
+);
+
+COMMIT TRANSACTION;

@@ -1,0 +1,16 @@
+{
+  "$schema": "../../.schema/v1/value-object.json",
+  "kind": "value-object",
+  "id": "01JVBJ00000000000000000003",
+  "name": "Tree",
+  "attributes": [
+    {
+      "id": "01JATT00000000000000000004",
+      "name": "children",
+      "type": {
+        "ref": "01JVBJ00000000000000000003"
+      },
+      "collection": true
+    }
+  ]
+}

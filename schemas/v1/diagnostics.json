@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Validation output",
+  "description": "The output of maquettiste validate --format json.",
+  "type": "object",
+  "x-order": ["errors", "warnings", "infos", "diagnostics"],
+  "properties": {
+    "errors": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "warnings": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "infos": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "title": "Diagnostic",
+        "type": "object",
+        "x-order": ["rule", "severity", "message", "elementId", "filePath", "jsonPointer", "line", "column"],
+        "properties": {
+          "rule": {
+            "type": "string",
+            "pattern": "^(MQ[1-6][0-9]{3}|x/.+)$"
+          },
+          "severity": {
+            "enum": ["error", "warning", "info"]
+          },
+          "message": {
+            "type": "string"
+          },
+          "elementId": {
+            "type": "string"
+          },
+          "filePath": {
+            "type": "string"
+          },
+          "jsonPointer": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "column": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": ["rule", "severity", "message"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["errors", "warnings", "infos", "diagnostics"],
+  "additionalProperties": false
+}

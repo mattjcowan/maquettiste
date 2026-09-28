@@ -1,0 +1,15 @@
+{
+  "$schema": "../../.schema/v1/tag-vocabulary.json",
+  "kind": "tag-vocabulary",
+  "id": "01JTAG00000000000000000001",
+  "name": "tags",
+  "strict": true,
+  "definitions": [
+    {
+      "key": "billing"
+    },
+    {
+      "key": "team:finance"
+    }
+  ]
+}

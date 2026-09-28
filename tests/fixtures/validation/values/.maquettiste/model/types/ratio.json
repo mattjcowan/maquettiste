@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/scalar-type.json",
+  "kind": "scalar-type",
+  "id": "01JSCA00000000000000000002",
+  "name": "Ratio",
+  "base": "decimal",
+  "precision": 4,
+  "scale": 6
+}

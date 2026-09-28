@@ -1,0 +1,102 @@
+[
+  {
+    "rule": "MQ3002",
+    "severity": "error",
+    "message": "Entity 'Animal' inherits from itself through 'base'.",
+    "elementId": "01JENT00000000000000000001",
+    "filePath": ".maquettiste/model/entities/animal.json",
+    "jsonPointer": "/base",
+    "line": 6,
+    "column": 11
+  },
+  {
+    "rule": "MQ3002",
+    "severity": "error",
+    "message": "Entity 'Mammal' inherits from itself through 'base'.",
+    "elementId": "01JENT00000000000000000002",
+    "filePath": ".maquettiste/model/entities/mammal.json",
+    "jsonPointer": "/base",
+    "line": 6,
+    "column": 11
+  },
+  {
+    "rule": "MQ3003",
+    "severity": "error",
+    "message": "Package 'Alpha' is its own ancestor through 'parent'.",
+    "elementId": "01JPKG00000000000000000001",
+    "filePath": ".maquettiste/model/packages/alpha.json",
+    "jsonPointer": "/parent",
+    "line": 6,
+    "column": 13
+  },
+  {
+    "rule": "MQ3003",
+    "severity": "error",
+    "message": "Package 'Beta' is its own ancestor through 'parent'.",
+    "elementId": "01JPKG00000000000000000002",
+    "filePath": ".maquettiste/model/packages/beta.json",
+    "jsonPointer": "/parent",
+    "line": 6,
+    "column": 13
+  },
+  {
+    "rule": "MQ3015",
+    "severity": "error",
+    "message": "Attribute 'target' contains value object 'Node', which contains 'Edge' again.",
+    "elementId": "01JATT00000000000000000003",
+    "filePath": ".maquettiste/model/types/edge.json",
+    "jsonPointer": "/attributes/0/type/ref",
+    "line": 11,
+    "column": 16
+  },
+  {
+    "rule": "MQ3015",
+    "severity": "error",
+    "message": "Attribute 'next' contains value object 'Edge', which contains 'Node' again.",
+    "elementId": "01JATT00000000000000000002",
+    "filePath": ".maquettiste/model/types/node.json",
+    "jsonPointer": "/attributes/1/type/ref",
+    "line": 16,
+    "column": 16
+  },
+  {
+    "rule": "MQ3015",
+    "severity": "error",
+    "message": "Attribute 'children' contains value object 'Tree', which contains 'Tree' again.",
+    "elementId": "01JATT00000000000000000004",
+    "filePath": ".maquettiste/model/types/tree.json",
+    "jsonPointer": "/attributes/0/type/ref",
+    "line": 11,
+    "column": 16
+  },
+  {
+    "rule": "MQ3004",
+    "severity": "error",
+    "message": "Category 'Left' is its own ancestor through 'parent'.",
+    "elementId": "01JCAT00000000000000000002",
+    "filePath": ".maquettiste/model/vocabularies/categories.json",
+    "jsonPointer": "/categories/0/parent",
+    "line": 10,
+    "column": 17
+  },
+  {
+    "rule": "MQ3004",
+    "severity": "error",
+    "message": "Category 'Right' is its own ancestor through 'parent'.",
+    "elementId": "01JCAT00000000000000000003",
+    "filePath": ".maquettiste/model/vocabularies/categories.json",
+    "jsonPointer": "/categories/1/parent",
+    "line": 15,
+    "column": 17
+  },
+  {
+    "rule": "MQ3004",
+    "severity": "error",
+    "message": "Category 'Self' is its own ancestor through 'parent'.",
+    "elementId": "01JCAT00000000000000000004",
+    "filePath": ".maquettiste/model/vocabularies/categories.json",
+    "jsonPointer": "/categories/2/parent",
+    "line": 20,
+    "column": 17
+  }
+]

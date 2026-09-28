@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/value-object.json",
+  "kind": "value-object",
+  "id": "01J92P0V0304M76KA84NE4D1TE",
+  "name": "Money",
+  "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+  "attributes": [
+    {
+      "id": "01J92P0V08P9BVJAPQ793XYNTQ",
+      "name": "amount",
+      "type": "decimal",
+      "precision": 18,
+      "scale": 2,
+      "required": true
+    },
+    {
+      "id": "01J92P0V093A7BE6Q8AS477H7D",
+      "name": "currency",
+      "type": "string",
+      "length": 3,
+      "required": true
+    }
+  ]
+}

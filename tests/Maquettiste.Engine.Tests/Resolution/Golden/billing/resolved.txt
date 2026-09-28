@@ -1,0 +1,226 @@
+package Core
+package Core.Billing
+package Core.Catalog
+entity Customer plural=Customers package=Core.Billing abstract=false base=- promoted=false stereotypes=audited
+  key id uuid-v7
+  attr 0 id: builtin uuid required
+  attr 1 name: builtin string required length=120
+  attr 2 email: scalar Email length=254
+  attr 3 billingAddress: value-object Address
+  attr 4 createdAt: builtin datetimeoffset required virtual(audited)
+  attr 5 updatedAt: builtin datetimeoffset virtual(audited)
+  nav invoices -> Invoice[] via places
+  mapping main table=customers inheritance=- discriminator=-=-
+    <Customer:id> -> customers.id
+    <Customer:name> -> customers.name
+    <Customer:email> -> customers.email
+    <Customer:billingAddress>.<Address:street> -> customers.billing_address_street
+    <Customer:billingAddress>.<Address:city> -> customers.billing_address_city
+    <Customer:billingAddress>.<Address:postalCode> -> customers.billing_address_postal_code
+    <audited:createdAt> -> customers.created_at
+    <audited:updatedAt> -> customers.updated_at
+    join invoices: customers(id) -> invoices(customer_id)
+  mapping reporting table=customers inheritance=- discriminator=-=-
+    <Customer:id> -> customers.id
+    <Customer:name> -> customers.name
+    <Customer:email> -> customers.email
+    <Customer:billingAddress>.<Address:street> -> customers.billing_address_street
+    <Customer:billingAddress>.<Address:city> -> customers.billing_address_city
+    <Customer:billingAddress>.<Address:postalCode> -> customers.billing_address_postal_code
+    <audited:createdAt> -> customers.created_at
+    <audited:updatedAt> -> customers.updated_at
+    join invoices: customers(id) -> invoices(customer_id)
+entity Invoice plural=Invoices package=Core.Billing abstract=false base=- promoted=false stereotypes=audited,soft-delete
+  key id uuid-v7
+  attr 0 id: builtin uuid required
+  attr 1 number: builtin string required length=32
+  attr 2 total: value-object Money
+  attr 3 status: enum InvoiceStatus required
+  attr 4 issuedOn: builtin date required
+  attr 5 createdAt: builtin datetimeoffset required virtual(audited)
+  attr 6 updatedAt: builtin datetimeoffset virtual(audited)
+  attr 7 deletedAt: builtin datetimeoffset virtual(soft-delete)
+  nav customer -> Customer via places
+  nav lines -> InvoiceLine[] via contains
+  mapping main table=invoices inheritance=- discriminator=-=-
+    <Invoice:id> -> invoices.id
+    <Invoice:number> -> invoices.number
+    <Invoice:total>.<Money:amount> -> invoices.total_amount
+    <Invoice:total>.<Money:currency> -> invoices.total_currency
+    <Invoice:status> -> invoices.status
+    <Invoice:issuedOn> -> invoices.issued_on
+    <audited:createdAt> -> invoices.created_at
+    <audited:updatedAt> -> invoices.updated_at
+    <soft-delete:deletedAt> -> invoices.deleted_at
+    join customer: invoices(customer_id) -> customers(id)
+    join lines: invoices(id) -> invoice_lines(invoice_id)
+  mapping reporting table=invoices inheritance=- discriminator=-=-
+    <Invoice:id> -> invoices.id
+    <Invoice:number> -> invoices.number
+    <Invoice:total> -> invoices.total
+    <Invoice:status> -> invoices.status
+    <Invoice:issuedOn> -> invoices.issued_on
+    <audited:createdAt> -> invoices.created_at
+    <audited:updatedAt> -> invoices.updated_at
+    <soft-delete:deletedAt> -> invoices.deleted_at
+    join customer: invoices(customer_id) -> customers(id)
+    join lines: invoices(id) -> invoice_lines(invoice_id)
+entity InvoiceLine plural=InvoiceLines package=Core.Billing abstract=false base=- promoted=false stereotypes=
+  key id database-identity
+  attr 0 id: builtin int64 required
+  attr 1 description: builtin string
+  attr 2 quantity: builtin int32 required
+  attr 3 unitPrice: value-object Money
+  nav invoice -> Invoice via contains
+  nav product -> Product via refers to
+  mapping main table=invoice_lines inheritance=- discriminator=-=-
+    <InvoiceLine:id> -> invoice_lines.id
+    <InvoiceLine:description> -> invoice_lines.description
+    <InvoiceLine:quantity> -> invoice_lines.quantity
+    <InvoiceLine:unitPrice>.<Money:amount> -> invoice_lines.unit_price_amount
+    <InvoiceLine:unitPrice>.<Money:currency> -> invoice_lines.unit_price_currency
+    join invoice: invoice_lines(invoice_id) -> invoices(id)
+    join product: invoice_lines(product_id) -> products(id)
+  mapping reporting table=invoice_lines inheritance=- discriminator=-=-
+    <InvoiceLine:id> -> invoice_lines.id
+    <InvoiceLine:description> -> invoice_lines.description
+    <InvoiceLine:quantity> -> invoice_lines.quantity
+    <InvoiceLine:unitPrice>.<Money:amount> -> invoice_lines.unit_price_amount
+    <InvoiceLine:unitPrice>.<Money:currency> -> invoice_lines.unit_price_currency
+    join invoice: invoice_lines(invoice_id) -> invoices(id)
+entity Category plural=Categories package=Core.Catalog abstract=false base=- promoted=false stereotypes=
+  key id sequence seq[main]=categories_seq
+  attr 0 id: builtin int32 required
+  attr 1 name: builtin string required length=80
+  nav children -> Category[] via has parent
+  nav parent -> Category via has parent
+  nav products -> Product[] via is classified in
+  mapping main table=categories inheritance=- discriminator=-=-
+    <Category:id> -> categories.id
+    <Category:name> -> categories.name
+    join children: categories(id) -> categories(parent_id)
+    join parent: categories(parent_id) -> categories(id)
+    join products: categories(id) -> product_category(category_id) via-junction ; product_category(product_id) -> products(id) via-junction
+entity Product plural=Products package=Core.Catalog abstract=false base=- promoted=false stereotypes=
+  key id application
+  attr 0 id: builtin uuid required
+  attr 1 sku: builtin string required length=40
+  attr 2 name: builtin string required length=200
+  attr 3 tags: builtin string collection length=30
+  nav categories -> Category[] via is classified in
+  mapping main table=products inheritance=- discriminator=-=-
+    <Product:id> -> products.id
+    <Product:sku> -> products.sku
+    <Product:name> -> products.name
+    <Product:tags> -> products_tags.tag
+    join categories: products(id) -> product_category(product_id) via-junction ; product_category(category_id) -> categories(id) via-junction
+relation contains one-to-many composition ends=invoice:Invoice[1..1],line:InvoiceLine[0..*]
+  mapping main foreign-key fk=fk_invoice_lines_invoice_id
+  mapping reporting foreign-key fk=fk_invoice_lines_invoice_id
+relation places one-to-many association ends=customer:Customer[1..1],invoice:Invoice[0..*]
+  mapping main foreign-key fk=fk_invoices_customer_id
+  mapping reporting foreign-key fk=fk_invoices_customer_id
+relation refers to one-to-many association ends=line:InvoiceLine[0..*],product:Product[1..1]
+  mapping main foreign-key fk=fk_invoice_lines_product_id
+relation has parent one-to-many association ends=child:Category[0..*],parent:Category[0..1]
+  mapping main foreign-key fk=fk_categories_parent_id
+relation is classified in many-to-many association ends=product:Product[0..*],category:Category[0..*]
+  mapping main junction junction=product_category
+database main postgresql default-schema=public limit=63 schemas=public
+  table public.categories key=<Category>@<main> synthesized entity=Category
+    0 id int32 native=integer not-null pk seq=categories_seq key=<Category:id>
+    1 name string(80) native=varchar(80) not-null key=<Category:name>
+    2 parent_id int32 native=integer null fk key=<end:parent>.<Category:id>
+    pk pk_categories (id)
+    fk fk_categories_parent_id (parent_id) -> categories (id) on-delete=no-action relation=has parent end=child
+  table public.customers key=<Customer>@<main> synthesized entity=Customer
+    0 id uuid native=uuid not-null pk key=<Customer:id>
+    1 name string(120) native=varchar(120) not-null key=<Customer:name>
+    2 email string(254) native=varchar(254) null key=<Customer:email>
+    3 billing_address_street string(200) native=varchar(200) null key=<Customer:billingAddress>.<Address:street>
+    4 billing_address_city string(100) native=varchar(100) null key=<Customer:billingAddress>.<Address:city>
+    5 billing_address_postal_code string(20) native=varchar(20) null key=<Customer:billingAddress>.<Address:postalCode>
+    6 created_at datetimeoffset[6,-] native=timestamptz(6) not-null key=<audited:createdAt>
+    7 updated_at datetimeoffset[6,-] native=timestamptz(6) null key=<audited:updatedAt>
+    pk pk_customers (id)
+    unique uq_customers_email (email)
+  table public.invoice_lines key=<InvoiceLine>@<main> synthesized entity=InvoiceLine
+    0 id int64 native=bigint not-null pk identity key=<InvoiceLine:id>
+    1 description string(255) native=varchar(255) null key=<InvoiceLine:description>
+    2 quantity int32 native=integer not-null key=<InvoiceLine:quantity>
+    3 unit_price_amount decimal[18,4] native=numeric(18,4) null key=<InvoiceLine:unitPrice>.<Money:amount>
+    4 unit_price_currency string(3) native=varchar(3) null key=<InvoiceLine:unitPrice>.<Money:currency>
+    5 invoice_id uuid native=uuid not-null fk key=<end:invoice>.<Invoice:id>
+    6 product_id uuid native=uuid not-null fk key=<end:product>.<Product:id>
+    pk pk_invoice_lines (id)
+    fk fk_invoice_lines_invoice_id (invoice_id) -> invoices (id) on-delete=cascade relation=contains end=line
+    fk fk_invoice_lines_product_id (product_id) -> products (id) on-delete=no-action relation=refers to end=line
+  table public.invoices key=<Invoice>@<main> synthesized entity=Invoice
+    0 id uuid native=uuid not-null pk key=<Invoice:id>
+    1 number string(32) native=varchar(32) not-null key=<Invoice:number>
+    2 total_amount decimal[18,4] native=numeric(18,4) null key=<Invoice:total>.<Money:amount>
+    3 total_currency string(3) native=varchar(3) null key=<Invoice:total>.<Money:currency>
+    4 status int32 native=integer not-null default=1 key=<Invoice:status>
+    5 issued_on date native=date not-null key=<Invoice:issuedOn>
+    6 created_at datetimeoffset[6,-] native=timestamptz(6) not-null key=<audited:createdAt>
+    7 updated_at datetimeoffset[6,-] native=timestamptz(6) null key=<audited:updatedAt>
+    8 deleted_at datetimeoffset[6,-] native=timestamptz(6) null key=<soft-delete:deletedAt>
+    9 customer_id uuid native=uuid not-null fk key=<end:customer>.<Customer:id>
+    pk pk_invoices (id)
+    fk fk_invoices_customer_id (customer_id) -> customers (id) on-delete=no-action relation=places end=invoice
+    unique uq_invoices_number (number)
+    index ix_invoices_issued_on (issued_on)
+  table public.product_category key=<is_classified_in>@<main> synthesized relation=is classified in junction
+    0 product_id uuid native=uuid not-null pk fk key=<end:product>.<Product:id>
+    1 category_id int32 native=integer not-null pk fk key=<end:category>.<Category:id>
+    pk pk_product_category (product_id,category_id)
+    fk fk_product_category_product_id (product_id) -> products (id) on-delete=cascade relation=is classified in end=product
+    fk fk_product_category_category_id (category_id) -> categories (id) on-delete=cascade relation=is classified in end=category
+  table public.products key=<Product>@<main> synthesized entity=Product
+    0 id uuid native=uuid not-null pk key=<Product:id>
+    1 sku string(40) native=varchar(40) not-null key=<Product:sku>
+    2 name string(200) native=varchar(200) not-null key=<Product:name>
+    pk pk_products (id)
+    unique uq_products_sku (sku)
+  table public.products_tags key=<Product>.<Product:tags>@<main> synthesized entity=Product
+    0 product_id uuid native=uuid not-null pk fk key=<Product:id>
+    1 position int32 native=integer not-null pk key=position
+    2 tag string(30) native=varchar(30) not-null key=<Product:tags>
+    pk pk_products_tags (product_id,position)
+    fk fk_products_tags_product_id (product_id) -> products (id) on-delete=cascade
+  sequence categories_seq int32 native=integer key=<Category>.sequence@<main>
+database reporting sqlserver default-schema=dbo limit=128 schemas=dbo
+  table dbo.customers key=<Customer>@<reporting> synthesized entity=Customer
+    0 id uuid native=uniqueidentifier not-null pk key=<Customer:id>
+    1 name string(120) native=nvarchar(120) not-null key=<Customer:name>
+    2 email string(254) native=nvarchar(254) null key=<Customer:email>
+    3 billing_address_street string(200) native=nvarchar(200) null key=<Customer:billingAddress>.<Address:street>
+    4 billing_address_city string(100) native=nvarchar(100) null key=<Customer:billingAddress>.<Address:city>
+    5 billing_address_postal_code string(20) native=nvarchar(20) null key=<Customer:billingAddress>.<Address:postalCode>
+    6 created_at datetimeoffset[6,-] native=datetimeoffset(6) not-null key=<audited:createdAt>
+    7 updated_at datetimeoffset[6,-] native=datetimeoffset(6) null key=<audited:updatedAt>
+    pk pk_customers (id)
+    unique uq_customers_email (email)
+  table dbo.invoice_lines key=<InvoiceLine>@<reporting> synthesized entity=InvoiceLine
+    0 id int64 native=bigint not-null pk identity key=<InvoiceLine:id>
+    1 description string(255) native=nvarchar(255) null key=<InvoiceLine:description>
+    2 quantity int32 native=int not-null key=<InvoiceLine:quantity>
+    3 unit_price_amount decimal[18,4] native=decimal(18,4) null key=<InvoiceLine:unitPrice>.<Money:amount>
+    4 unit_price_currency string(3) native=nvarchar(3) null key=<InvoiceLine:unitPrice>.<Money:currency>
+    5 invoice_id uuid native=uniqueidentifier not-null fk key=<end:invoice>.<Invoice:id>
+    pk pk_invoice_lines (id)
+    fk fk_invoice_lines_invoice_id (invoice_id) -> invoices (id) on-delete=cascade relation=contains end=line
+  table dbo.invoices key=<Invoice>@<reporting> synthesized entity=Invoice
+    0 id uuid native=uniqueidentifier not-null pk key=<Invoice:id>
+    1 number string(32) native=nvarchar(32) not-null key=<Invoice:number>
+    2 total json native=nvarchar(max) null key=<Invoice:total>
+    3 status string(1) native=nvarchar(1) not-null default='D' key=<Invoice:status>
+    4 issued_on date native=date not-null key=<Invoice:issuedOn>
+    5 created_at datetimeoffset[6,-] native=datetimeoffset(6) not-null key=<audited:createdAt>
+    6 updated_at datetimeoffset[6,-] native=datetimeoffset(6) null key=<audited:updatedAt>
+    7 deleted_at datetimeoffset[6,-] native=datetimeoffset(6) null key=<soft-delete:deletedAt>
+    8 customer_id uuid native=uniqueidentifier not-null fk key=<end:customer>.<Customer:id>
+    pk pk_invoices (id)
+    fk fk_invoices_customer_id (customer_id) -> customers (id) on-delete=no-action relation=places end=invoice
+    unique uq_invoices_number (number)
+    index ix_invoices_issued_on (issued_on)

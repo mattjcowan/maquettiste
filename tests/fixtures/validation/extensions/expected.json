@@ -1,0 +1,92 @@
+[
+  {
+    "rule": "MQ5004",
+    "severity": "error",
+    "message": "appliesTo names stereotype 'ghost', which is not defined.",
+    "elementId": null,
+    "filePath": ".maquettiste/extensions/broken.json",
+    "jsonPointer": "/appliesTo/stereotypes/0",
+    "line": 9,
+    "column": 7
+  },
+  {
+    "rule": "MQ5004",
+    "severity": "error",
+    "message": "The extension is not a valid JSON Schema: 'type' must be either a string or an array of strings",
+    "elementId": null,
+    "filePath": ".maquettiste/extensions/broken.json",
+    "jsonPointer": "/properties",
+    "line": 12,
+    "column": 17
+  },
+  {
+    "rule": "MQ5004",
+    "severity": "error",
+    "message": "Extension name 'entity-team' is already used by .maquettiste/extensions/duplicate.json.",
+    "elementId": null,
+    "filePath": ".maquettiste/extensions/entity-team.json",
+    "jsonPointer": "/name",
+    "line": 3,
+    "column": 11
+  },
+  {
+    "rule": "MQ5004",
+    "severity": "error",
+    "message": "'required' names 'since', which 'properties' does not define.",
+    "elementId": null,
+    "filePath": ".maquettiste/extensions/owned.json",
+    "jsonPointer": "/required/1",
+    "line": 17,
+    "column": 5
+  },
+  {
+    "rule": "MQ5001",
+    "severity": "error",
+    "message": "Extension 'column-flags': properties/pii type: Value is \"string\" but should be \"boolean\"",
+    "elementId": "01JCMN00000000000000000001",
+    "filePath": ".maquettiste/model/databases/main/tables/audit.json",
+    "jsonPointer": "/columns/0/properties/pii",
+    "line": 13,
+    "column": 16
+  },
+  {
+    "rule": "MQ5001",
+    "severity": "error",
+    "message": "Extension 'entity-team': properties/team type: Value is \"integer\" but should be \"string\"",
+    "elementId": "01JENT00000000000000000001",
+    "filePath": ".maquettiste/model/entities/customer.json",
+    "jsonPointer": "/properties/team",
+    "line": 7,
+    "column": 13
+  },
+  {
+    "rule": "MQ5001",
+    "severity": "error",
+    "message": "Extension 'attribute-ui': properties/maxWidth type: Value is \"string\" but should be \"integer\"",
+    "elementId": "01JATT00000000000000000102",
+    "filePath": ".maquettiste/model/entities/customer.json",
+    "jsonPointer": "/attributes/1/properties/maxWidth",
+    "line": 27,
+    "column": 21
+  },
+  {
+    "rule": "MQ5001",
+    "severity": "error",
+    "message": "Extension 'owned': properties required: Required properties [\"since\"] are not present",
+    "elementId": "01JENT00000000000000000002",
+    "filePath": ".maquettiste/model/entities/order.json",
+    "jsonPointer": "/properties",
+    "line": 1,
+    "column": 1
+  },
+  {
+    "rule": "MQ5001",
+    "severity": "error",
+    "message": "Extension 'owned': properties/owner type: Value is \"integer\" but should be \"string\" (the value comes from the defaultProperties of stereotype 'owned')",
+    "elementId": "01JENT00000000000000000002",
+    "filePath": ".maquettiste/model/entities/order.json",
+    "jsonPointer": "/stereotypes/0",
+    "line": 7,
+    "column": 5
+  }
+]

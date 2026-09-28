@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../.schema/v1/database.json",
+  "kind": "database",
+  "id": "01J92P0V1QRN2181XM2ZWE02W4",
+  "name": "main",
+  "dialect": "postgresql",
+  "version": "16",
+  "defaultSchema": "billing",
+  "schemas": [
+    {
+      "id": "01J92P0V1RC04SKQ5353EAKHG2",
+      "name": "billing"
+    }
+  ]
+}

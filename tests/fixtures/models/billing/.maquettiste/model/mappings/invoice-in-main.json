@@ -1,0 +1,18 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01J92P0V200XW93JQYSRCT2SE3",
+  "name": "Invoice in main",
+  "database": "01J92P0V1QRN2181XM2ZWE02W4",
+  "entity": "01J92P0V0FJ23CGSNKM7P1W5V7",
+  "attributes": [
+    {
+      "attribute": "01J92P0V0VB1Z49SWERMAGR4TV",
+      "storage": "string"
+    },
+    {
+      "attribute": "01J92P0V0T6EA0XM025XQX8GBW",
+      "prefix": "total_"
+    }
+  ]
+}

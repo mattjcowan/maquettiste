@@ -1,0 +1,14 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JENT00000000000000000006",
+  "name": "Derived",
+  "base": "01JENT00000000000000000005",
+  "attributes": [
+    {
+      "id": "01JATT00000000000000000601",
+      "name": "name",
+      "type": "string"
+    }
+  ]
+}

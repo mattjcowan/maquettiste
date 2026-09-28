@@ -1,0 +1,18 @@
+{
+  "$schema": "../../.schema/v1/diagram.json",
+  "kind": "diagram",
+  "id": "01JDGM00000000000000000001",
+  "name": "Overview",
+  "members": [
+    {
+      "element": "01JENT00000000000000000001",
+      "x": 0,
+      "y": 0
+    },
+    {
+      "element": "01JENT00000000000000000077",
+      "x": 10,
+      "y": 10
+    }
+  ]
+}

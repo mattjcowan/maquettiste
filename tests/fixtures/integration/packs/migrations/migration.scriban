@@ -1,0 +1,10 @@
+{{- d = schema_diff.main }}
+{{- if !d.is_empty }}
+{{- capture content -}}
+-- migration {{ d.from_revision }} -> {{ d.to_revision }} of {{ d.database }}
+{{- for t in d.tables }}
+-- {{ t.kind }} {{ t.key }}
+{{- end }}
+{{ end -}}
+{{- file ("migrations/" + d.to_revision + ".sql") content }}
+{{- end }}

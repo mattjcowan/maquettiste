@@ -1,0 +1,472 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Table",
+  "description": "A physical table. A synthesized table's file holds only overrides.",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "kind",
+    "id",
+    "name",
+    "displayName",
+    "pluralName",
+    "database",
+    "schema",
+    "origin",
+    "entity",
+    "attribute",
+    "relation",
+    "enum",
+    "description",
+    "stereotypes",
+    "tags",
+    "category",
+    "columns",
+    "primaryKey",
+    "uniques",
+    "foreignKeys",
+    "checks",
+    "indexes",
+    "comment",
+    "properties",
+    "generation",
+    "source"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "kind": {
+      "const": "table"
+    },
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "name": {
+      "$ref": "common.json#/$defs/label",
+      "default": ""
+    },
+    "displayName": {
+      "type": "string"
+    },
+    "pluralName": {
+      "type": "string"
+    },
+    "database": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "schema": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "origin": {
+      "enum": ["synthesized", "designed", "imported"],
+      "default": "designed"
+    },
+    "entity": {
+      "description": "Synthesized: the entity whose table (or, with attribute, child table) this file overrides.",
+      "$ref": "common.json#/$defs/id"
+    },
+    "attribute": {
+      "description": "Synthesized child table: the attribute of entity whose child table this file overrides.",
+      "$ref": "common.json#/$defs/id"
+    },
+    "relation": {
+      "description": "Synthesized junction table: the relation.",
+      "$ref": "common.json#/$defs/id"
+    },
+    "enum": {
+      "description": "Synthesized lookup table: the enum.",
+      "$ref": "common.json#/$defs/id"
+    },
+    "description": {
+      "$ref": "common.json#/$defs/description"
+    },
+    "stereotypes": {
+      "$ref": "common.json#/$defs/keyList",
+      "default": []
+    },
+    "tags": {
+      "$ref": "common.json#/$defs/tagList",
+      "default": []
+    },
+    "category": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "columns": {
+      "type": "array",
+      "items": {
+        "title": "Column",
+        "type": "object",
+        "x-order": [
+          "id",
+          "name",
+          "displayName",
+          "pluralName",
+          "attribute",
+          "type",
+          "length",
+          "precision",
+          "scale",
+          "nativeType",
+          "nullable",
+          "default",
+          "defaultSql",
+          "generated",
+          "sequence",
+          "computed",
+          "computedStored",
+          "collation",
+          "comment",
+          "description",
+          "stereotypes",
+          "tags",
+          "category",
+          "properties",
+          "generation",
+          "source"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "name": {
+            "$ref": "common.json#/$defs/label",
+            "default": ""
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluralName": {
+            "type": "string"
+          },
+          "attribute": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Overlay: the synthesized column key this column overrides."
+          },
+          "type": {
+            "$ref": "common.json#/$defs/builtinType"
+          },
+          "length": {
+            "$ref": "common.json#/$defs/length"
+          },
+          "precision": {
+            "$ref": "common.json#/$defs/precision"
+          },
+          "scale": {
+            "$ref": "common.json#/$defs/scale"
+          },
+          "nativeType": {
+            "type": "string",
+            "minLength": 1
+          },
+          "nullable": {
+            "description": "Designed or extra column: true (the default) or false. Overlay (with attribute): omitted keeps the synthesized value.",
+            "type": "boolean",
+            "default": true,
+            "x-default-unless": "attribute"
+          },
+          "default": {},
+          "defaultSql": {
+            "$ref": "common.json#/$defs/dialectMap",
+            "default": {}
+          },
+          "generated": {
+            "enum": ["identity", "sequence"]
+          },
+          "sequence": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "computed": {
+            "type": "string",
+            "minLength": 1
+          },
+          "computedStored": {
+            "type": "boolean",
+            "default": false
+          },
+          "collation": {
+            "type": "string",
+            "minLength": 1
+          },
+          "comment": {
+            "type": "string"
+          },
+          "description": {
+            "$ref": "common.json#/$defs/description"
+          },
+          "stereotypes": {
+            "$ref": "common.json#/$defs/keyList",
+            "default": []
+          },
+          "tags": {
+            "$ref": "common.json#/$defs/tagList",
+            "default": []
+          },
+          "category": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "properties": {
+            "$ref": "common.json#/$defs/properties",
+            "default": {}
+          },
+          "generation": {
+            "$ref": "common.json#/$defs/generation",
+            "default": {}
+          },
+          "source": {
+            "$ref": "common.json#/$defs/source"
+          }
+        },
+        "required": ["id"],
+        "additionalProperties": false,
+        "if": {
+          "required": ["attribute"]
+        },
+        "then": {},
+        "else": {
+          "required": ["name", "type"]
+        }
+      },
+      "default": []
+    },
+    "primaryKey": {
+      "title": "Primary key",
+      "type": "object",
+      "x-order": ["name", "columns", "clustered"],
+      "properties": {
+        "name": {
+          "$ref": "common.json#/$defs/label"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "clustered": {
+          "type": "boolean"
+        }
+      },
+      "required": ["columns"],
+      "additionalProperties": false
+    },
+    "uniques": {
+      "type": "array",
+      "items": {
+        "title": "Unique constraint",
+        "type": "object",
+        "x-order": ["id", "name", "columns"],
+        "properties": {
+          "id": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "name": {
+            "$ref": "common.json#/$defs/label"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          }
+        },
+        "required": ["id", "columns"],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "foreignKeys": {
+      "type": "array",
+      "items": {
+        "title": "Foreign key",
+        "type": "object",
+        "x-order": ["id", "name", "columns", "referencesTable", "referencesColumns", "onDelete", "onUpdate"],
+        "properties": {
+          "id": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "name": {
+            "$ref": "common.json#/$defs/label"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          },
+          "referencesTable": {
+            "type": "string",
+            "minLength": 1
+          },
+          "referencesColumns": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "default": []
+          },
+          "onDelete": {
+            "enum": ["no-action", "restrict", "cascade", "set-null", "set-default"],
+            "default": "no-action"
+          },
+          "onUpdate": {
+            "enum": ["no-action", "restrict", "cascade", "set-null", "set-default"],
+            "default": "no-action"
+          }
+        },
+        "required": ["id", "columns", "referencesTable"],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "title": "Check constraint",
+        "type": "object",
+        "x-order": ["id", "name", "expression"],
+        "properties": {
+          "id": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "name": {
+            "$ref": "common.json#/$defs/label"
+          },
+          "expression": {
+            "$ref": "common.json#/$defs/dialectMap",
+            "minProperties": 1
+          }
+        },
+        "required": ["id", "expression"],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "indexes": {
+      "type": "array",
+      "items": {
+        "title": "Index",
+        "type": "object",
+        "x-order": ["id", "name", "columns", "include", "where", "unique", "method"],
+        "properties": {
+          "id": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "name": {
+            "$ref": "common.json#/$defs/label"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "x-order": ["column", "descending"],
+              "properties": {
+                "column": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "descending": {
+                  "type": "boolean",
+                  "default": false
+                }
+              },
+              "required": ["column"],
+              "additionalProperties": false
+            },
+            "minItems": 1
+          },
+          "include": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "default": []
+          },
+          "where": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unique": {
+            "type": "boolean",
+            "default": false
+          },
+          "method": {
+            "enum": ["default", "btree", "hash", "gin", "gist", "clustered"],
+            "default": "default"
+          }
+        },
+        "required": ["id", "columns"],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "comment": {
+      "type": "string"
+    },
+    "properties": {
+      "$ref": "common.json#/$defs/properties",
+      "default": {}
+    },
+    "generation": {
+      "$ref": "common.json#/$defs/generation",
+      "default": {}
+    },
+    "source": {
+      "$ref": "common.json#/$defs/source"
+    }
+  },
+  "required": ["kind", "id", "database"],
+  "additionalProperties": false,
+  "if": {
+    "properties": {
+      "origin": {
+        "const": "synthesized"
+      }
+    },
+    "required": ["origin"]
+  },
+  "then": {
+    "oneOf": [
+      {
+        "required": ["entity"]
+      },
+      {
+        "required": ["relation"]
+      },
+      {
+        "required": ["enum"]
+      }
+    ],
+    "dependentRequired": {
+      "attribute": ["entity"]
+    }
+  },
+  "else": {
+    "required": ["name"],
+    "not": {
+      "anyOf": [
+        {
+          "required": ["entity"]
+        },
+        {
+          "required": ["attribute"]
+        },
+        {
+          "required": ["relation"]
+        },
+        {
+          "required": ["enum"]
+        }
+      ]
+    }
+  }
+}

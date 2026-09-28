@@ -1,0 +1,1 @@
+// generated half of {{ entity.name }}: {{ for a in entity.attributes }}{{ a.name }} {{ end }}

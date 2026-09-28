@@ -1,0 +1,124 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JENT00000000000000000001",
+  "name": "Account",
+  "key": {
+    "attributes": [
+      "01JATT00000000000000000101"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01JATT00000000000000000101",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01JATT00000000000000000102",
+      "name": "count",
+      "type": "int32",
+      "length": 10
+    },
+    {
+      "id": "01JATT00000000000000000103",
+      "name": "flag",
+      "type": "bool",
+      "validation": {
+        "pattern": "^y$"
+      }
+    },
+    {
+      "id": "01JATT00000000000000000104",
+      "name": "password",
+      "type": "string",
+      "default": "hunter2"
+    },
+    {
+      "id": "01JATT00000000000000000105",
+      "name": "awsKey",
+      "type": "string",
+      "default": "AKIAABCDEFGHIJKLMNOP"
+    },
+    {
+      "id": "01JATT00000000000000000106",
+      "name": "retries",
+      "type": "int32",
+      "default": "12"
+    },
+    {
+      "id": "01JATT00000000000000000107",
+      "name": "createdAt",
+      "type": "datetime",
+      "default": "now"
+    },
+    {
+      "id": "01JATT00000000000000000108",
+      "name": "birthday",
+      "type": "date",
+      "default": "2024-13-45"
+    },
+    {
+      "id": "01JATT00000000000000000109",
+      "name": "color",
+      "type": {
+        "ref": "01JENM00000000000000000001"
+      },
+      "default": "Purple"
+    },
+    {
+      "id": "01JATT00000000000000000110",
+      "name": "small",
+      "type": "int16",
+      "default": 70000
+    },
+    {
+      "id": "01JATT00000000000000000111",
+      "name": "price",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "default": 1234.5
+    },
+    {
+      "id": "01JATT00000000000000000112",
+      "name": "level",
+      "type": "int32",
+      "default": 11,
+      "validation": {
+        "min": 0,
+        "max": 10
+      }
+    },
+    {
+      "id": "01JATT00000000000000000113",
+      "name": "short",
+      "type": "string",
+      "length": 3,
+      "default": "abcd"
+    },
+    {
+      "id": "01JATT00000000000000000114",
+      "name": "tags",
+      "type": "string",
+      "collection": true,
+      "default": "a"
+    },
+    {
+      "id": "01JATT00000000000000000115",
+      "name": "ratio",
+      "type": {
+        "ref": "01JSCA00000000000000000002"
+      }
+    },
+    {
+      "id": "01JATT00000000000000000116",
+      "name": "secretNote",
+      "type": "string",
+      "sensitive": "secret",
+      "default": "x1"
+    }
+  ]
+}

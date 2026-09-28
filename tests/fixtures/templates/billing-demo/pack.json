@@ -1,0 +1,67 @@
+{
+  "name": "billing-demo",
+  "version": "1.2.0",
+  "engine": ">=1.0 <2.0",
+  "description": "W5 renderer fixture: every built-in helper, pack helpers, transforms, file blocks, partials and custom delimiters over the billing model.",
+  "parameters": {
+    "namespace": "Acme.Billing",
+    "useRecords": true,
+    "indentWidth": 4
+  },
+  "units": [
+    {
+      "id": "helpers",
+      "template": "helpers.scriban",
+      "for": "model",
+      "output": "docs/helpers.txt"
+    },
+    {
+      "id": "entity",
+      "template": "entity.scriban",
+      "for": "each entity",
+      "output": "src/{{ entity.package.name }}/{{ pascal entity.name }}.g.cs",
+      "mode": "pair",
+      "companion": {
+        "template": "entity.companion.scriban",
+        "output": "src/{{ entity.package.name }}/{{ pascal entity.name }}.cs"
+      },
+      "transforms": [
+        "summary"
+      ]
+    },
+    {
+      "id": "table",
+      "template": "table.scriban",
+      "for": "each table",
+      "where": {
+        "database": "main"
+      },
+      "output": "db/{{ table.schema }}/{{ table.name }}.sql"
+    },
+    {
+      "id": "registrations",
+      "template": "registrations.scriban",
+      "for": "model"
+    },
+    {
+      "id": "handlebars",
+      "template": "entity.hbs.scriban",
+      "for": "each entity",
+      "output": "web/templates/{{ kebab entity.name }}.hbs",
+      "delimiters": {
+        "open": "<%",
+        "close": "%>"
+      }
+    },
+    {
+      "id": "jsx",
+      "template": "card.jsx.scriban",
+      "for": "each entity",
+      "output": "web/components/{{ pascal entity.name }}Card.jsx",
+      "delimiters": {
+        "open": "[%",
+        "close": "%]"
+      }
+    }
+  ]
+}

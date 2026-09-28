@@ -1,0 +1,22 @@
+{
+  "name": "basic",
+  "version": "1.0.0",
+  "engine": ">=1.0 <2.0",
+  "parameters": {
+    "greeting": "hello"
+  },
+  "units": [
+    {
+      "id": "entity",
+      "template": "entity.tpl",
+      "for": "each entity",
+      "output": "out/entities/{{name}}.txt"
+    },
+    {
+      "id": "index",
+      "template": "index.tpl",
+      "for": "model",
+      "output": "out/index.txt"
+    }
+  ]
+}

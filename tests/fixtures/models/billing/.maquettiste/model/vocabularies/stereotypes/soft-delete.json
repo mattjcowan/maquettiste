@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../.schema/v1/stereotype.json",
+  "kind": "stereotype",
+  "id": "01J92P0V28YYY43REGJ9RXZ662",
+  "key": "soft-delete",
+  "name": "Soft delete",
+  "appliesTo": [
+    "entity"
+  ],
+  "attributes": [
+    {
+      "id": "01J92P0V29S2CSA68TATT9P1QS",
+      "name": "deletedAt",
+      "type": "datetimeoffset"
+    }
+  ]
+}

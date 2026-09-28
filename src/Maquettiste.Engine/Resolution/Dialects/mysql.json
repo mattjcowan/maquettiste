@@ -1,0 +1,20 @@
+{
+  "binary": "longblob",
+  "bool": "tinyint(1)",
+  "date": "date",
+  "datetime": "datetime({precision})",
+  "datetimeoffset": "datetime({precision})",
+  "decimal": "decimal({precision},{scale})",
+  "double": "double",
+  "duration": "bigint",
+  "float": "float",
+  "int16": "smallint",
+  "int32": "int",
+  "int64": "bigint",
+  "json": "json",
+  "string": "varchar({length})",
+  "text": "longtext",
+  "time": "time({precision})",
+  "ulid": "char(26)",
+  "uuid": "char(36)"
+}

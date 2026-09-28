@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Model batch",
+  "description": "An atomic batch of element creates, updates and deletes, from the editor, a refactoring or an AI proposal.",
+  "type": "object",
+  "x-order": ["operations"],
+  "properties": {
+    "operations": {
+      "type": "array",
+      "items": {
+        "title": "Batch operation",
+        "type": "object",
+        "x-order": ["op", "id", "expectedHash", "element"],
+        "properties": {
+          "op": {
+            "enum": ["create", "update", "delete"]
+          },
+          "id": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "expectedHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "element": {
+            "type": "object",
+            "required": ["kind"]
+          }
+        },
+        "required": ["op"],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "op": {
+                  "enum": ["update", "delete"]
+                }
+              }
+            },
+            "then": {
+              "required": ["id", "expectedHash"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "op": {
+                  "enum": ["create", "update"]
+                }
+              }
+            },
+            "then": {
+              "required": ["element"]
+            }
+          }
+        ]
+      },
+      "minItems": 1
+    }
+  },
+  "required": ["operations"],
+  "additionalProperties": false
+}

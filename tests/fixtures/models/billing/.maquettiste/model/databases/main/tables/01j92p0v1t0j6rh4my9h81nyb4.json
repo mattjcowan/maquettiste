@@ -1,0 +1,36 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01J92P0V1T0J6RH4MY9H81NYB4",
+  "database": "01J92P0V1QRN2181XM2ZWE02W4",
+  "origin": "synthesized",
+  "entity": "01J92P0V0FJ23CGSNKM7P1W5V7",
+  "columns": [
+    {
+      "id": "01J92P0V1VQAA9FW71PKYWWHKN",
+      "attribute": "01J92P0V0R3VSP7D5238DTNZX1",
+      "nativeType": "varchar(32)",
+      "comment": "Assigned on issue."
+    }
+  ],
+  "checks": [
+    {
+      "id": "01J92P0V1W3BP53NMDVMSQSRQV",
+      "name": "ck_invoice_status",
+      "expression": {
+        "*": "status in (0, 1, 2, 3)"
+      }
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01J92P0V1XETXS1K25N66WP3HY",
+      "columns": [
+        {
+          "column": "01J92P0V0SNXS6PZ42VDK42HP9",
+          "descending": true
+        }
+      ]
+    }
+  ]
+}

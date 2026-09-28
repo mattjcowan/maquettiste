@@ -1,0 +1,10 @@
+{{ banner "//" }}
+namespace {{ pack.params.namespace }}.{{ pascal entity.package.name }};
+
+/// <summary>{{ entity.display_name }} ({{ entity.attributes.size }} attributes).</summary>
+public {{ if entity.derived.size == 0 }}sealed {{ end }}partial record {{ pascal entity.name }}{{ if entity.base }} : {{ pascal entity.base.name }}{{ end }}
+{
+{{- for a in entity.own_attributes }}
+    public {{ type_of a "csharp" }} {{ pascal a.name }} { get; init; }
+{{- end }}
+}

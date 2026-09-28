@@ -1,0 +1,122 @@
+[
+  {
+    "rule": "MQ4004",
+    "severity": "error",
+    "message": "Synthesized table '01JENT00000000000000000001@01JDBS00000000000000000001' already has the overlay .maquettiste/model/databases/main/tables/customer-2.json; one overlay file per synthesized table.",
+    "elementId": "01JTAB00000000000000000005",
+    "filePath": ".maquettiste/model/databases/main/tables/customer.json",
+    "jsonPointer": "",
+    "line": 1,
+    "column": 1
+  },
+  {
+    "rule": "MQ4007",
+    "severity": "error",
+    "message": "Column key '01JATT00000000000000000777' does not name a column of the synthesized table.",
+    "elementId": "01JCMN00000000000000000010",
+    "filePath": ".maquettiste/model/databases/main/tables/customer.json",
+    "jsonPointer": "/columns/1/attribute",
+    "line": 16,
+    "column": 20
+  },
+  {
+    "rule": "MQ4008",
+    "severity": "error",
+    "message": "Unique constraint names column 'nope', which is not a column of this table.",
+    "elementId": "01JKEY00000000000000000003",
+    "filePath": ".maquettiste/model/databases/main/tables/customers.json",
+    "jsonPointer": "/uniques/0/columns/0",
+    "line": 23,
+    "column": 9
+  },
+  {
+    "rule": "MQ4001",
+    "severity": "error",
+    "message": "Table name 'a_table_name_that_is_much_longer_than_the_postgresql_limit_of_63_bytes' is 70 bytes long; database 'main' (postgresql) allows 63.",
+    "elementId": "01JTAB00000000000000000001",
+    "filePath": ".maquettiste/model/databases/main/tables/long.json",
+    "jsonPointer": "/name",
+    "line": 5,
+    "column": 11
+  },
+  {
+    "rule": "MQ4002",
+    "severity": "error",
+    "message": "Table name 'Orders' is already used in schema 'public' by .maquettiste/model/databases/main/sequences/orders-seq.json.",
+    "elementId": "01JTAB00000000000000000004",
+    "filePath": ".maquettiste/model/databases/main/tables/orders-2.json",
+    "jsonPointer": "/name",
+    "line": 5,
+    "column": 11
+  },
+  {
+    "rule": "MQ2001",
+    "severity": "error",
+    "message": "Foreign key references table '01JTAB00000000000000000098', which is neither a table file nor a synthesized table key.",
+    "elementId": "01JKEY00000000000000000004",
+    "filePath": ".maquettiste/model/databases/main/tables/orders-2.json",
+    "jsonPointer": "/foreignKeys/0/referencesTable",
+    "line": 20,
+    "column": 26
+  },
+  {
+    "rule": "MQ4002",
+    "severity": "error",
+    "message": "Table name 'orders' is already used in schema 'public' by .maquettiste/model/databases/main/sequences/orders-seq.json.",
+    "elementId": "01JTAB00000000000000000002",
+    "filePath": ".maquettiste/model/databases/main/tables/orders.json",
+    "jsonPointer": "/name",
+    "line": 5,
+    "column": 11
+  },
+  {
+    "rule": "MQ4003",
+    "severity": "error",
+    "message": "Column name 'ID' is already used at index 0.",
+    "elementId": "01JCMN00000000000000000003",
+    "filePath": ".maquettiste/model/databases/main/tables/orders.json",
+    "jsonPointer": "/columns/1/name",
+    "line": 15,
+    "column": 15
+  },
+  {
+    "rule": "MQ4006",
+    "severity": "warning",
+    "message": "Native type 'varchar2(20)' is not known to the postgresql type map.",
+    "elementId": "01JCMN00000000000000000005",
+    "filePath": ".maquettiste/model/databases/main/tables/orders.json",
+    "jsonPointer": "/columns/3/nativeType",
+    "line": 27,
+    "column": 21
+  },
+  {
+    "rule": "MQ4005",
+    "severity": "error",
+    "message": "Foreign key column 'customer_id' is int32 but references 'id', which is int64.",
+    "elementId": "01JKEY00000000000000000001",
+    "filePath": ".maquettiste/model/databases/main/tables/orders.json",
+    "jsonPointer": "/foreignKeys/0/columns/0",
+    "line": 45,
+    "column": 9
+  },
+  {
+    "rule": "MQ4008",
+    "severity": "error",
+    "message": "Index names column '01JCMN00000000000000000099', which is not a column of this table.",
+    "elementId": "01JKEY00000000000000000002",
+    "filePath": ".maquettiste/model/databases/main/tables/orders.json",
+    "jsonPointer": "/indexes/0/columns/0/column",
+    "line": 55,
+    "column": 21
+  },
+  {
+    "rule": "MQ4010",
+    "severity": "error",
+    "message": "View 'sqlserver_only' has no body for postgresql (database 'main') and no \"*\" body.",
+    "elementId": "01JVEW00000000000000000001",
+    "filePath": ".maquettiste/model/databases/main/views/sqlserver-only.json",
+    "jsonPointer": "/body",
+    "line": 7,
+    "column": 11
+  }
+]

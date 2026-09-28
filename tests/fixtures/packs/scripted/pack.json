@@ -1,0 +1,22 @@
+{
+  "name": "scripted",
+  "version": "1.0.0",
+  "engine": ">=1.0",
+  "units": [
+    {
+      "id": "audited",
+      "template": "entity.tpl",
+      "for": "select audited",
+      "output": "gen/audited/{{name}}.txt"
+    },
+    {
+      "id": "long",
+      "template": "entity.tpl",
+      "for": "each entity",
+      "where": {
+        "script": "longName"
+      },
+      "output": "gen/long/{{name}}.txt"
+    }
+  ]
+}

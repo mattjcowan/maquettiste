@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/value-object.json",
+  "kind": "value-object",
+  "id": "01JVBJ00000000000000000001",
+  "name": "Money",
+  "package": "01JPKG00000000000000000001",
+  "attributes": [
+    {
+      "id": "01JATT00000000000000008001",
+      "name": "amount",
+      "type": "decimal",
+      "precision": 18,
+      "scale": 2,
+      "required": true,
+      "default": 0.5
+    },
+    {
+      "id": "01JATT00000000000000008002",
+      "name": "currency",
+      "type": "string",
+      "length": 3,
+      "required": true,
+      "default": "EUR"
+    }
+  ]
+}

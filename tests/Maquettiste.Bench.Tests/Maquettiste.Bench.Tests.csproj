@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Owned by W11 (Bench). Tests of the synthetic model generator, the fanout pack and the benchmark harness. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Maquettiste.Bench.Tests</RootNamespace>
+    <AssemblyName>Maquettiste.Bench.Tests</AssemblyName>
+    <IsTestProject>true</IsTestProject>
+    <!-- Tests run with real culture data, like the other test projects (D44). -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Maquettiste.Engine/Maquettiste.Engine.csproj" />
+    <ProjectReference Include="../Maquettiste.Testing/Maquettiste.Testing.csproj" />
+    <ProjectReference Include="../../bench/Maquettiste.Bench/Maquettiste.Bench.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>

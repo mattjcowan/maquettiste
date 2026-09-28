@@ -1,0 +1,82 @@
+[
+  {
+    "rule": "MQ4004",
+    "severity": "error",
+    "message": "'Customer' is already mapped to this database by .maquettiste/model/mappings/customer-in-main-2.json; one mapping per element and database.",
+    "elementId": "01JMAP00000000000000000001",
+    "filePath": ".maquettiste/model/mappings/customer-in-main.json",
+    "jsonPointer": "/entity",
+    "line": 7,
+    "column": 13
+  },
+  {
+    "rule": "MQ4009",
+    "severity": "error",
+    "message": "'shape' applies to relation mappings only.",
+    "elementId": "01JMAP00000000000000000001",
+    "filePath": ".maquettiste/model/mappings/customer-in-main.json",
+    "jsonPointer": "/shape",
+    "line": 9,
+    "column": 12
+  },
+  {
+    "rule": "MQ4009",
+    "severity": "error",
+    "message": "Storage 'lookup' does not fit attribute 'name' (string); valid: none.",
+    "elementId": "01JMAP00000000000000000001",
+    "filePath": ".maquettiste/model/mappings/customer-in-main.json",
+    "jsonPointer": "/attributes/0/storage",
+    "line": 13,
+    "column": 18
+  },
+  {
+    "rule": "MQ4009",
+    "severity": "error",
+    "message": "'01JCMN00000000000000000002' is not a column of the bound table 'legacy_customers'.",
+    "elementId": "01JMAP00000000000000000001",
+    "filePath": ".maquettiste/model/mappings/customer-in-main.json",
+    "jsonPointer": "/attributes/1/column",
+    "line": 17,
+    "column": 17
+  },
+  {
+    "rule": "MQ4011",
+    "severity": "error",
+    "message": "Both ends of relation 'places' are bound to designed or imported tables in this database; name the existing foreign key with 'foreignKey'.",
+    "elementId": "01JMAP00000000000000000005",
+    "filePath": ".maquettiste/model/mappings/places-in-main.json",
+    "jsonPointer": "/relation",
+    "line": 7,
+    "column": 15
+  },
+  {
+    "rule": "MQ4011",
+    "severity": "error",
+    "message": "Junction table 'order_tags' is designed, so end 'tag' needs an 'ends' entry naming its foreign key.",
+    "elementId": "01JMAP00000000000000000006",
+    "filePath": ".maquettiste/model/mappings/tagged-in-main.json",
+    "jsonPointer": "/junctionTable",
+    "line": 8,
+    "column": 20
+  },
+  {
+    "rule": "MQ4009",
+    "severity": "error",
+    "message": "Entity 'Vip' derives from another entity; the inheritance strategy is set on the hierarchy root only.",
+    "elementId": "01JMAP00000000000000000004",
+    "filePath": ".maquettiste/model/mappings/vip-in-main.json",
+    "jsonPointer": "/inheritance",
+    "line": 8,
+    "column": 18
+  },
+  {
+    "rule": "MQ4011",
+    "severity": "error",
+    "message": "Both ends of relation 'reviews' are bound to designed or imported tables in database 'main'; add a mapping that names the existing foreign key.",
+    "elementId": "01JRXN00000000000000000002",
+    "filePath": ".maquettiste/model/relations/reviews.json",
+    "jsonPointer": "/ends",
+    "line": 6,
+    "column": 11
+  }
+]

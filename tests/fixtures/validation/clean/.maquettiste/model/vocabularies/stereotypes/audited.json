@@ -1,0 +1,22 @@
+{
+  "$schema": "../../../.schema/v1/stereotype.json",
+  "kind": "stereotype",
+  "id": "01JSTR00000000000000000001",
+  "key": "audited",
+  "name": "Audited",
+  "appliesTo": [
+    "entity"
+  ],
+  "attributes": [
+    {
+      "id": "01JATT00000000000000009001",
+      "name": "createdAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "defaultExpression": "now"
+    }
+  ],
+  "defaultProperties": {
+    "auditLevel": "basic"
+  }
+}

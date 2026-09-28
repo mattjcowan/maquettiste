@@ -1,0 +1,9 @@
+using System;
+
+namespace App.Model.Billing;
+
+// The hand-written half of InvoiceLine. Maquettiste wrote this file once and never touches it again:
+// add members, attributes and interfaces here. The generated half is InvoiceLine.g.cs.
+public partial class InvoiceLine
+{
+}

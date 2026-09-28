@@ -1,0 +1,112 @@
+[
+  {
+    "rule": "MQ2001",
+    "severity": "error",
+    "message": "'element' references '01JENT00000000000000000077', which does not exist.",
+    "elementId": "01JDGM00000000000000000001",
+    "filePath": ".maquettiste/model/diagrams/overview.json",
+    "jsonPointer": "/members/1/element",
+    "line": 13,
+    "column": 18
+  },
+  {
+    "rule": "MQ2001",
+    "severity": "error",
+    "message": "'package' references '01JPKG00000000000000000099', which does not exist.",
+    "elementId": "01JENT00000000000000000001",
+    "filePath": ".maquettiste/model/entities/order.json",
+    "jsonPointer": "/package",
+    "line": 6,
+    "column": 14
+  },
+  {
+    "rule": "MQ2004",
+    "severity": "error",
+    "message": "Stereotype 'versioned' applies to relation, not to an entity.",
+    "elementId": "01JENT00000000000000000001",
+    "filePath": ".maquettiste/model/entities/order.json",
+    "jsonPointer": "/stereotypes/0",
+    "line": 8,
+    "column": 5
+  },
+  {
+    "rule": "MQ2003",
+    "severity": "error",
+    "message": "Stereotype 'missing-one' is not defined in model/vocabularies/stereotypes.",
+    "elementId": "01JENT00000000000000000001",
+    "filePath": ".maquettiste/model/entities/order.json",
+    "jsonPointer": "/stereotypes/1",
+    "line": 9,
+    "column": 5
+  },
+  {
+    "rule": "MQ2006",
+    "severity": "error",
+    "message": "Tag 'urgent' is not declared in the tag vocabulary, which is strict.",
+    "elementId": "01JENT00000000000000000001",
+    "filePath": ".maquettiste/model/entities/order.json",
+    "jsonPointer": "/tags/1",
+    "line": 13,
+    "column": 5
+  },
+  {
+    "rule": "MQ2005",
+    "severity": "error",
+    "message": "Category '01JCAT00000000000000000099' does not exist in the category tree.",
+    "elementId": "01JENT00000000000000000001",
+    "filePath": ".maquettiste/model/entities/order.json",
+    "jsonPointer": "/category",
+    "line": 15,
+    "column": 15
+  },
+  {
+    "rule": "MQ2001",
+    "severity": "error",
+    "message": "'ref' references '01JVBJ00000000000000000099', which does not exist.",
+    "elementId": "01JATT00000000000000000102",
+    "filePath": ".maquettiste/model/entities/order.json",
+    "jsonPointer": "/attributes/1/type/ref",
+    "line": 33,
+    "column": 16
+  },
+  {
+    "rule": "MQ2007",
+    "severity": "error",
+    "message": "Validation names the rule 'no-such-rule', which no script in extensions/rules registers.",
+    "elementId": "01JATT00000000000000000103",
+    "filePath": ".maquettiste/model/entities/order.json",
+    "jsonPointer": "/attributes/2/validation/rules/0",
+    "line": 43,
+    "column": 11
+  },
+  {
+    "rule": "MQ2002",
+    "severity": "error",
+    "message": "'ref' references '01JPKG00000000000000000001', a package; expected an enum or value-object or scalar-type.",
+    "elementId": "01JATT00000000000000000104",
+    "filePath": ".maquettiste/model/entities/order.json",
+    "jsonPointer": "/attributes/3/type/ref",
+    "line": 51,
+    "column": 16
+  },
+  {
+    "rule": "MQ2002",
+    "severity": "error",
+    "message": "'base' references '01JPKG00000000000000000001', a package; expected an entity.",
+    "elementId": "01JENT00000000000000000002",
+    "filePath": ".maquettiste/model/entities/special-order.json",
+    "jsonPointer": "/base",
+    "line": 6,
+    "column": 11
+  },
+  {
+    "rule": "MQ2005",
+    "severity": "error",
+    "message": "'01JATT00000000000000000102' is an attribute, not a category.",
+    "elementId": "01JENT00000000000000000002",
+    "filePath": ".maquettiste/model/entities/special-order.json",
+    "jsonPointer": "/category",
+    "line": 7,
+    "column": 15
+  }
+]

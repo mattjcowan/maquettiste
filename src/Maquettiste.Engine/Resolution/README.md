@@ -1,0 +1,136 @@
+# Resolution
+
+**Owner:** W3 Resolver. See docs/engineering/engine-design.md section 18.
+
+The resolver (stage 3), the resolved model types (`RList<T>`, `RElement`, `REntity`, `RTable`, …), conventions and the
+`Dialects/<dialect>.json` type maps (embedded as `Maquettiste.Engine.Resolution.Dialects.<file>`).
+
+## Implemented
+
+- `ModelResolver.ResolveAsync` (complete; `NotImplementedException`s removed). One `ResolveRun` per call: the conceptual layer
+  (`ResolveRun.Conceptual.cs`), then one `DatabaseRun` per database (`DatabaseRun*.cs`), then dependency keys are frozen. Runs on
+  the thread pool, observes the token between elements and databases, reports one `ProgressUpdate` per conceptual element and
+  per database. No static mutable state; ordinal comparison everywhere; every list sorted as section 7.1 states.
+- Conceptual: packages (qualified names), scalar types, enums, value objects (with stereotype virtual attributes), entities
+  (flattened attributes per section 7.2, key from the hierarchy root, alternate keys of every level), relations (ends, cardinality),
+  navigations (on the entity opposite the end that names them; `REntity.Navigations` also lists inherited navigations, nearest
+  declaration wins), promoted entities and their two many-to-one relations `<relationId>.<endId>` (also listed in each end
+  entity's `Relations`).
+- Promoted entity key (S6 "an entity has identity and a key"; the design does not say which): with `AllowDuplicates` or an
+  ordered end, a synthesized attribute `id` (int64, strategy `database-identity`, id `<relationId>/id`) mapped to the junction's
+  surrogate `id` column; otherwise one synthesized attribute per end key attribute, named `{role}{Key}` camel-cased (`memberId`),
+  typed like the end's key attribute, strategy `application`, id `<relationId>/<endId>/<keyAttrId>`, mapped to the foreign key
+  column `<endId>.<keyAttrId>`. These attributes come first in `Attributes`/`OwnAttributes`, are `Required` and `Immutable`, and
+  appear in `REntityMapping.Columns` (their columns' `Attribute`/`AttributePath` point at them).
+- Physical, per database: scope by `Database.Packages` and `Mapping.Ignore`; entity tables with naming conventions (project ←
+  database overrides, section 2.4 patterns, plural tables: `{entity}` goes through the inflector as a whole, so whole-name
+  `inflection.plurals` entries apply, and an element's explicit `pluralName` wins for entity, child and lookup tables); TPH (root table, derived columns nullable, `discriminator` string(64),
+  values from `Mapping.DiscriminatorValue` else the entity name), TPT (own attributes, PK also FK to the base table, cascade),
+  TPC (concrete tables with every inherited attribute and inherited foreign keys, no table for abstract entities); key identity
+  (`database-identity`) and sequences (overlay-named, else synthesized `<entityId>.sequence@<databaseId>` named by
+  `sequenceName`); enum storage `int` / `string` / `lookup` (lookup table `id`, `code`, `name`, rows, unique code, FK);
+  value objects `embedded` (recursive, `valueObjectColumn`, `AttributeMapping.Prefix`), `table` (child table keyed by the owner
+  key), `json`; collections as child tables (owner FK + `position`) or `json`; derived attributes stored only when mapped
+  (an `AttributeMapping` or an overlay column) or marked `derived.stored: true`;
+  relations per SPEC Section 7's default table (one-to-one FK + unique in the dependent table, one-to-many FK on the many side,
+  many-to-many junction with composite key, relations with attributes to a junction or a promoted entity by
+  `relationsWithAttributes`, n-ary junction, surrogate `id` and `position` for duplicates and ordered ends); `Mapping.Shape`,
+  `ForeignKeyEnd`, `ForeignKey`, `JunctionTable` + `Ends`, `PromotedName`, `Table` + `AttributeMapping.Column` bindings;
+  table overlays (renames, schema, comment, column overrides including native type, nullability, defaults, generation, extra
+  columns, PK name, uniques, foreign keys, checks, indexes) merged over entity, child, junction, promoted and lookup tables;
+  designed and imported tables, views (body for the dialect, else `*`) and sequences passed through; constraint names from the
+  patterns; entity mappings (column mappings across TPT tables and child tables) and join paths per navigation; MQ4001 for every
+  identifier over `MaxIdentifierLength` (dialect default: pg 63, sqlserver 128, mysql 64, oracle 128, sqlite none), honouring
+  `validation.rules`.
+- Dialect maps for PostgreSQL, SQL Server, MySQL/MariaDB (`mysql`), SQLite and Oracle; `typeMaps.<dialect>` overrides single
+  entries; `Column.NativeType` wins; missing facets take `defaultStringLength`, `decimalPrecision`/`decimalScale`,
+  `datetimePrecision`.
+- Dependency keys (section 11, D38): `e:` of every contributing file, `s:conventions`, `s:typeMaps`, `s:inflection` when used, and
+  `r:<id>` for every entity and relation an object derives from (lookup tables: `r:<enumId>`; designed tables: `r:<tableId>`).
+  A foreign-key relation also lists what its resolved `RForeignKey`'s name and actions come from (the host table's designed or
+  overlay file, the host entity, the principal's key, `s:conventions`, `s:inflection`), since `RForeignKey` is not tracked.
+  List membership keys: `model.entities`/`relations` → `k:entity`, `k:relation`, `k:mapping`, `s:conventions` and relation mapping
+  files, plus every mapping and database file when any relation can be promoted (by a mapping's `shape` or by conventions);
+  an entity's `Relations` adds those keys when the entity has relations; database lists → every `k:` kind, the settings keys, every conceptual file and the union of their tables' keys.
+
+## Choices and deviations (see the W3 report for the full list)
+
+- `RForeignKey`, `RIndex`, `RUnique`, `RCheck`, `REntityMapping`, `RRelationMapping` are not `IResolvedObject`s in the scaffold,
+  so they carry no `Dependencies`: their keys live on the owning `RTable` (and each `RColumn`, which shares the table's list) and
+  on the owning `REntity` / `RRelation`.
+- Synthesized column ids are `<tableKey>/<columnKey>`; navigation ids are `<relationId>.<fromEndId>.<toEndId>`; a child table's
+  owner key columns keep the owner's column keys; lookup rows use the member value, else the 0-based ordinal.
+- `RStereotype.Name` is the stereotype's display name, else its name, else its key.
+- Sequence and constraint names use the column case (section 2.4 "`ColumnCase` for everything else"); child table names
+  pluralize the `{entity}` part when tables are plural (`products_tags`); an n-ary junction's `{entity2}` joins every end after
+  the first.
+- A foreign key to a TPC abstract entity gets its columns but no constraint (its rows live in several tables).
+- `RForeignKey.End` of a junction foreign key is the end it references; of a promoted table's key, the promotion relation's
+  dependent end. `RNavigation.Joins` holds the declaring entity's path; `REntityMapping.Joins` holds each entity's own path
+  (inherited navigations included). An entity without a table (TPC abstract) has no join path, and neither has a navigation
+  towards a TPC abstract dependent (its rows live in several tables); the concrete entities' mappings hold their paths.
+- `RRelationMapping.ForeignKey` is chosen after foreign keys resolve: the resolved key in the dependent's table, else another
+  resolved key of the relation, else `null` (never a half-filled key).
+- `DefaultExpression` is not translated into `DefaultSql`; templates read it from the attribute.
+- Diagnostics the resolver adds (validation rules otherwise stay with W2): MQ4001 (identifier limits); MQ4008 for every foreign
+  key that cannot be resolved (synthesized, designed or overlay: missing referenced table or columns, a referenced table without
+  a primary key, a column count mismatch), which is left out of its table (a designed or overlay key may also be reported by W2's
+  MQ4008 when that rule runs as a warning); MQ4011 when a relation's dependent end is bound to a designed table and either the
+  principal is synthesized and no `Mapping.ForeignKey` is named, or the named foreign key is not in the database (both ends bound
+  with none named stays W2's MQ4011); MQ4009 for a table overlay nothing consumes (a TPH-derived or TPC abstract entity, a bound
+  entity, or a target without a synthesized table in the database), which is then not applied.
+- A bound dependent's relation attributes get no columns (the designed table is complete as written).
+
+Tests: `tests/Maquettiste.Engine.Tests/Resolution/` (golden billing model in `Golden/billing/resolved.txt`, rewritten with
+`MAQUETTISTE_UPDATE_GOLDEN=1`).
+
+## Index overrides from table files (integration fix, 2026-09-28)
+
+An index a table file declares (an overlay or a designed table) overrides the index an attribute's `indexed` flag synthesizes on
+the same resolved columns, instead of being added beside it. `IndexSpec.FromFile` marks file-declared specs, and
+`DatabaseRun.Finish` drops a synthesized index whose column list (by column name, in order) matches a file index. Sort order,
+method, name, include list and predicate therefore come from the file. The billing fixture's `invoices.issued_on` index is the
+covered case: the attribute is `indexed` and the overlay adds the same column descending. Two file indexes on the same columns are
+still both kept, so a deliberate second index with a different name works.
+## Performance notes (WP, round 2)
+
+The resolved model is unchanged: a dump of every resolved object with its members, dependencies and list membership keys over the
+benchmark model is byte-identical before and after these changes (331,184 objects), and the golden and resolver tests pass.
+
+- **Parallel conceptual phases.** Entity shells, entity attributes and keys, relations, navigations, the finishing pass (navigation
+  lists, relation lists, derived entities, mappings) and the final dependency freeze run on the run's parallelism
+  (`EngineOptions.MaxDegreeOfParallelism`). Each item writes only objects it creates or owns; what it registers (`Find`) or adds to
+  shared lists is returned and committed afterwards in model order, so registrations (first id wins), list orders and progress
+  counts are those of the sequential loops. Keys read across items (a relation's and its end entities' keys for a navigation) are
+  frozen first. A failure rethrows the lowest index's exception, as a sequential loop would. Database runs stay sequential: a
+  database run reads relation keys that earlier database runs added (`FinishRelationMappings`), so their order is part of the result.
+- **Parallel pure steps of a database run:** freezing each table's keys, column mappings per entity, and join paths per entity are
+  computed in parallel and recorded in the original order.
+- **Dependency sets** (`DependencySet`): a set lives on its object (`RObject.PendingDependencies`) instead of a dictionary keyed by
+  object identity, and is frozen into `Dependencies` at the end. Frozen lists are `FrozenKeys` (sorted, distinct, never changed);
+  adding one to another set keeps it as a sorted run that is merged pairwise instead of re-sorted, a set that is exactly one run
+  returns it (lists are shared, not copied), and `RList` shares a frozen membership list instead of copying it. Very many runs (a
+  database's membership) are gathered in a hash set and sorted once. The result is the same ordinal, distinct list.
+- **Memos:** enum kebab names per enum type (an immutable table built once per type); rendered name patterns per database run
+  (keyed by the pattern and the values of the tokens it uses, length-prefixed); inherited navigations per entity (cleared whenever
+  promotion adds a navigation); navigation join paths are collected on the navigation (`RNavigation.PendingJoins`, internal) rather
+  than in an identity-keyed dictionary. `ModelResolver` reuses the previous run's `Inflector` when the inflection settings are the
+  same object (an incremental run whose `maquettiste.json` did not change); an inflector is a pure, thread-safe function of its
+  settings.
+- `DependencyKeyCache` is thread-safe (a concurrent dictionary); which string instance wins a race does not matter.
+- Warm resolve of the benchmark model: about 1.8 s before, about 0.7 s after (8 threads).
+
+## Review fixes (WP, round 3)
+
+- **Rendered-name memo key.** The key now length-prefixes the pattern as well as every token value (`DatabaseRun.MemoKey`), so a
+  pattern with a literal such as `|5:X` can no longer collide with another pattern whose token value contains `|`.
+- **Termination on invalid snapshots.** A pipelined run resolves beside validation (`Generation/README.md`), so the resolver must end
+  on shapes validation rejects. Two expansions did not: an embedded value object that contains itself (MQ3015) was expanded to depth
+  16 (4^16 embeddings for four self-typed members), and an inheritance cycle (MQ3002) made the placements' base links a cycle, so
+  the descendant walk of TPH never ended. `Embed` now skips a value object already on its containment path and observes
+  cancellation per call; `ComputePlacements` leaves out a base link that would close a cycle. Valid models have neither shape, so
+  their resolved model is unchanged (golden and resolver tests). `SpeculativeResolutionTests` resolves every invalid validation
+  fixture, the self-embedding and cyclic value objects, and an inheritance cycle under TPH, TPT and TPC, with a bound.
+- **Inflector carried across runs, bounded.** `ModelResolver` reuses the previous `Inflector` only while its memo holds at most
+  `MaxCarriedWords(documents)` = max(16,384, 8 × element files) results; past that (names a long-lived host no longer uses) the run
+  starts a fresh one. The benchmark model memoizes about one word per file (25,922 for 26,267 files), so it is always reused there.

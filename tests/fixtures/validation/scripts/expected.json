@@ -1,0 +1,42 @@
+[
+  {
+    "rule": "MQ5002",
+    "severity": "error",
+    "message": "Rule x/upper-case failed on this element: boom",
+    "elementId": "01JENT00000000000000000002",
+    "filePath": ".maquettiste/model/entities/boom.json",
+    "jsonPointer": "",
+    "line": 1,
+    "column": 1
+  },
+  {
+    "rule": "x/no-draft",
+    "severity": "warning",
+    "message": "Draft elements must not be generated.",
+    "elementId": "01JENT00000000000000000001",
+    "filePath": ".maquettiste/model/entities/draft-order.json",
+    "jsonPointer": "/tags",
+    "line": 6,
+    "column": 11
+  },
+  {
+    "rule": "MQ2007",
+    "severity": "error",
+    "message": "Validation names the rule 'x/missing-rule', which no script in extensions/rules registers.",
+    "elementId": "01JATT00000000000000000102",
+    "filePath": ".maquettiste/model/entities/draft-order.json",
+    "jsonPointer": "/attributes/1/validation/rules/1",
+    "line": 29,
+    "column": 11
+  },
+  {
+    "rule": "MQ5003",
+    "severity": "error",
+    "message": "Rule x/upper-case exceeded a sandbox limit on this element: Statement limit of 5000000 reached.",
+    "elementId": "01JENT00000000000000000003",
+    "filePath": ".maquettiste/model/entities/loop.json",
+    "jsonPointer": "",
+    "line": 1,
+    "column": 1
+  }
+]

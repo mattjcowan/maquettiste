@@ -1,0 +1,21 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01JRXN00000000000000000005",
+  "name": "assembly",
+  "relationKind": "composition",
+  "ends": [
+    {
+      "id": "01JEND00000000000000000010",
+      "entity": "01JENT00000000000000000003",
+      "role": "product",
+      "max": 1,
+      "min": 1
+    },
+    {
+      "id": "01JEND00000000000000000011",
+      "entity": "01JENT00000000000000000004",
+      "role": "part"
+    }
+  ]
+}

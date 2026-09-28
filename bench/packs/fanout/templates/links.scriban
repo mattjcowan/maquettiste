@@ -1,0 +1,9 @@
+{{ banner "//" }}
+namespace {{ pack.params.namespace }}.{{ pascal entity.package.name }};
+
+public sealed partial class {{ pascal entity.name }}Links
+{
+{{- for n in entity.navigations }}
+    public {{ t = pack.params.namespace + "." + (pascal n.target.package.name) + "." + (pascal n.target.name) }}{{ if n.is_collection }}IReadOnlyList<{{ t }}>{{ else }}{{ t }}?{{ end }} {{ pascal n.name }} { get; init; }
+{{- end }}
+}

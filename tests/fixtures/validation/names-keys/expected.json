@@ -1,0 +1,142 @@
+[
+  {
+    "rule": "MQ3001",
+    "severity": "error",
+    "message": "Name 'main' is already used by .maquettiste/model/databases/main-2/database.json among databases.",
+    "elementId": "01JDBS00000000000000000001",
+    "filePath": ".maquettiste/model/databases/main/database.json",
+    "jsonPointer": "/name",
+    "line": 5,
+    "column": 11
+  },
+  {
+    "rule": "MQ3001",
+    "severity": "error",
+    "message": "Schema name 's' is already used at index 0.",
+    "elementId": "01JSCH00000000000000000002",
+    "filePath": ".maquettiste/model/databases/main/database.json",
+    "jsonPointer": "/schemas/1/name",
+    "line": 14,
+    "column": 15
+  },
+  {
+    "rule": "MQ3007",
+    "severity": "error",
+    "message": "Attribute name 'name' is already used by an inherited attribute.",
+    "elementId": "01JATT00000000000000000601",
+    "filePath": ".maquettiste/model/entities/derived.json",
+    "jsonPointer": "/attributes/0",
+    "line": 8,
+    "column": 5
+  },
+  {
+    "rule": "MQ3005",
+    "severity": "error",
+    "message": "Entity 'Keyless' has no key; add 'key', or make it abstract or derived.",
+    "elementId": "01JENT00000000000000000003",
+    "filePath": ".maquettiste/model/entities/keyless.json",
+    "jsonPointer": "",
+    "line": 1,
+    "column": 1
+  },
+  {
+    "rule": "MQ3001",
+    "severity": "error",
+    "message": "Name 'Order' is already used by .maquettiste/model/entities/order-000002.json among types of the same package (entities, value objects, scalar types and enums).",
+    "elementId": "01JENT00000000000000000001",
+    "filePath": ".maquettiste/model/entities/order.json",
+    "jsonPointer": "/name",
+    "line": 5,
+    "column": 11
+  },
+  {
+    "rule": "MQ3007",
+    "severity": "error",
+    "message": "Stereotype 'stamped' adds attribute 'createdAt', which is already used by another attribute.",
+    "elementId": "01JENT00000000000000000001",
+    "filePath": ".maquettiste/model/entities/order.json",
+    "jsonPointer": "/stereotypes/0",
+    "line": 8,
+    "column": 5
+  },
+  {
+    "rule": "MQ3007",
+    "severity": "error",
+    "message": "Stereotype 'labelled' adds attribute 'label', which is already used by a virtual attribute of stereotype 'stamped'.",
+    "elementId": "01JENT00000000000000000001",
+    "filePath": ".maquettiste/model/entities/order.json",
+    "jsonPointer": "/stereotypes/1",
+    "line": 9,
+    "column": 5
+  },
+  {
+    "rule": "MQ3006",
+    "severity": "error",
+    "message": "The key of entity 'WrongKey' names '01JATT00000000000000000102', which is not one of its attributes.",
+    "elementId": "01JENT00000000000000000004",
+    "filePath": ".maquettiste/model/entities/wrong-key.json",
+    "jsonPointer": "/key/attributes/0",
+    "line": 8,
+    "column": 7
+  },
+  {
+    "rule": "MQ3001",
+    "severity": "error",
+    "message": "Alternate key name 'byCode' is already used at index 0.",
+    "elementId": "01JKEY00000000000000000002",
+    "filePath": ".maquettiste/model/entities/wrong-key.json",
+    "jsonPointer": "/alternateKeys/1/name",
+    "line": 21,
+    "column": 15
+  },
+  {
+    "rule": "MQ3006",
+    "severity": "error",
+    "message": "The alternate key 'byCode' of entity 'WrongKey' names '01JATT00000000000000000099', which is not one of its attributes.",
+    "elementId": "01JENT00000000000000000004",
+    "filePath": ".maquettiste/model/entities/wrong-key.json",
+    "jsonPointer": "/alternateKeys/1/attributes/0",
+    "line": 23,
+    "column": 9
+  },
+  {
+    "rule": "MQ3007",
+    "severity": "error",
+    "message": "Attribute name 'code' is already used by another attribute.",
+    "elementId": "01JATT00000000000000000403",
+    "filePath": ".maquettiste/model/entities/wrong-key.json",
+    "jsonPointer": "/attributes/2",
+    "line": 38,
+    "column": 5
+  },
+  {
+    "rule": "MQ3001",
+    "severity": "error",
+    "message": "Name 'Sales' is already used by .maquettiste/model/packages/sales-000002.json among root packages.",
+    "elementId": "01JPKG00000000000000000001",
+    "filePath": ".maquettiste/model/packages/sales.json",
+    "jsonPointer": "/name",
+    "line": 5,
+    "column": 11
+  },
+  {
+    "rule": "MQ3007",
+    "severity": "error",
+    "message": "Attribute name 'label' is already used by another attribute.",
+    "elementId": "01JATT00000000000000009004",
+    "filePath": ".maquettiste/model/vocabularies/stereotypes/labelled.json",
+    "jsonPointer": "/attributes/1",
+    "line": 13,
+    "column": 5
+  },
+  {
+    "rule": "MQ3001",
+    "severity": "error",
+    "message": "Key 'stamped' is already used by .maquettiste/model/vocabularies/stereotypes/stamped.json among stereotype keys.",
+    "elementId": "01JSTR00000000000000000002",
+    "filePath": ".maquettiste/model/vocabularies/stereotypes/zz-stamped.json",
+    "jsonPointer": "/key",
+    "line": 5,
+    "column": 10
+  }
+]

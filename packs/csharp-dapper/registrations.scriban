@@ -1,0 +1,47 @@
+{{-
+# One registration file per package (file blocks): the package's repository interfaces and implementations, for any
+# dependency-injection container.
+include "_csharp.scriban"
+include "_dapper.scriban"
+for p in model.packages
+  entities = []
+  for e in p.entities
+    if has_repository(e)
+      entities[entities.size] = e
+    end
+  end
+  if entities.size == 0
+    continue
+  end
+  class_name = (pascal p.name) + "Repositories"
+-}}
+{{- capture content -}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+
+namespace {{ ns(entities[0]) }};
+
+/// <summary>The Dapper repositories of package {{ p.qualified_name }}.</summary>
+/// <example><code>{{ class_name }}.Register((service, implementation) => services.AddScoped(service, implementation));</code></example>
+public static partial class {{ class_name }}
+{
+    /// <summary>Every repository of the package: the interface to register and the class that implements it.</summary>
+    public static IReadOnlyList<(Type Service, Type Implementation)> All { get; } =
+    [
+{{- for e in entities }}
+        (typeof(I{{ type_name(e) }}Repository), typeof({{ type_name(e) }}Repository)),
+{{- end }}
+    ];
+
+    /// <summary>Calls <paramref name="register"/> once per repository.</summary>
+    public static void Register(Action<Type, Type> register)
+    {
+        ArgumentNullException.ThrowIfNull(register);
+        foreach (var (service, implementation) in All)
+            register(service, implementation);
+    }
+}
+{{ end -}}
+{{- file (join_path pack.params.generatedFolder (package_folder entities[0]) (class_name + ".g.cs")) content -}}
+{{- end -}}

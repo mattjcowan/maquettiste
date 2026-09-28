@@ -1,0 +1,16 @@
+{
+  "kind": "relation",
+  "id": "01JAX4R0MEMBERSH1PRE1AT10N",
+  "name": "is member of",
+  "inverseName": "has member",
+  "relationKind": "association",
+  "ends": [
+    { "id": "01JAX4R3VSEREND0000000000A", "entity": "01JAX4E0VSERENT1TY00000001", "role": "member", "navigation": "members", "min": 0, "max": "*" },
+    { "id": "01JAX4R4TEAMEND0000000000A", "entity": "01JAX4E1TEAMENT1TY00000001", "role": "team", "navigation": "teams", "min": 0, "max": "*" }
+  ],
+  "attributes": [
+    { "id": "01JAX4R1R01EATTR1BVTE00001", "name": "role", "type": "string", "length": 40 },
+    { "id": "01JAX4R2J01NED0NATTR1BVTE1", "name": "joinedOn", "type": "date", "required": true }
+  ],
+  "allowDuplicates": false
+}

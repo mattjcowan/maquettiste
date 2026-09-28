@@ -1,0 +1,74 @@
+{
+  "name": "e2e",
+  "version": "1.0.0",
+  "engine": ">=1.0 <2.0",
+  "description": "End-to-end fixture pack (WI): one unit per output mode over the billing model, a pack type map, a JavaScript selector and helper.",
+  "parameters": {
+    "greeting": "hello"
+  },
+  "units": [
+    {
+      "id": "entity",
+      "template": "entity.scriban",
+      "for": "each entity",
+      "output": "entities/{{ kebab entity.name }}.txt"
+    },
+    {
+      "id": "table",
+      "template": "table.scriban",
+      "for": "each table",
+      "where": {
+        "database": "main"
+      },
+      "output": "tables/{{ table.name }}.sql"
+    },
+    {
+      "id": "index",
+      "template": "index.scriban",
+      "for": "model",
+      "output": "index.txt"
+    },
+    {
+      "id": "types",
+      "template": "types.scriban",
+      "for": "each entity",
+      "output": "types/{{ pascal entity.name }}.cs"
+    },
+    {
+      "id": "audited",
+      "template": "audited.scriban",
+      "for": "select audited",
+      "output": "audited/{{ kebab element.name }}.txt"
+    },
+    {
+      "id": "scaffold",
+      "template": "scaffold.scriban",
+      "for": "each entity",
+      "output": "scaffold/{{ kebab entity.name }}.txt",
+      "mode": "once"
+    },
+    {
+      "id": "pair",
+      "template": "pair.scriban",
+      "for": "each entity",
+      "output": "pair/{{ pascal entity.name }}.g.cs",
+      "mode": "pair",
+      "companion": {
+        "template": "companion.scriban",
+        "output": "pair/{{ pascal entity.name }}.cs"
+      }
+    },
+    {
+      "id": "regions",
+      "template": "regions.scriban",
+      "for": "each entity",
+      "output": "regions/{{ kebab entity.name }}.txt",
+      "mode": "regions"
+    },
+    {
+      "id": "blocks",
+      "template": "blocks.scriban",
+      "for": "model"
+    }
+  ]
+}

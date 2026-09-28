@@ -1,0 +1,6 @@
+namespace {{ pack.params.namespace }}.{{ entity.package.name }};
+
+// Hand-written half of {{ pascal entity.name }}; generated once, then owned by the team.
+public partial {{ if pack.params.useRecords }}record{{ else }}class{{ end }} {{ pascal entity.name }}
+{
+}

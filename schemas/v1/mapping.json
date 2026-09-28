@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Mapping",
+  "description": "Binds one entity or relation to one database.",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "kind",
+    "id",
+    "name",
+    "displayName",
+    "pluralName",
+    "database",
+    "entity",
+    "relation",
+    "table",
+    "description",
+    "stereotypes",
+    "tags",
+    "category",
+    "ignore",
+    "inheritance",
+    "discriminatorValue",
+    "attributes",
+    "shape",
+    "foreignKeyEnd",
+    "foreignKey",
+    "junctionTable",
+    "ends",
+    "promotedName",
+    "properties",
+    "generation",
+    "source"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "kind": {
+      "const": "mapping"
+    },
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "name": {
+      "$ref": "common.json#/$defs/label",
+      "default": ""
+    },
+    "displayName": {
+      "type": "string"
+    },
+    "pluralName": {
+      "type": "string"
+    },
+    "database": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "entity": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "relation": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "table": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "description": {
+      "$ref": "common.json#/$defs/description"
+    },
+    "stereotypes": {
+      "$ref": "common.json#/$defs/keyList",
+      "default": []
+    },
+    "tags": {
+      "$ref": "common.json#/$defs/tagList",
+      "default": []
+    },
+    "category": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "ignore": {
+      "type": "boolean",
+      "default": false
+    },
+    "inheritance": {
+      "enum": ["tph", "tpt", "tpc"]
+    },
+    "discriminatorValue": {
+      "type": ["string", "integer"]
+    },
+    "attributes": {
+      "type": "array",
+      "items": {
+        "title": "Attribute mapping",
+        "type": "object",
+        "x-order": ["attribute", "column", "storage", "prefix", "ignore"],
+        "properties": {
+          "attribute": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "column": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "storage": {
+            "enum": ["int", "string", "lookup", "embedded", "table", "json"]
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "ignore": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": ["attribute"],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "shape": {
+      "enum": ["foreign-key", "junction", "promoted"]
+    },
+    "foreignKeyEnd": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "foreignKey": {
+      "description": "For a foreign-key shape between bound tables: the id of the existing foreign key in the dependent end's table.",
+      "$ref": "common.json#/$defs/id"
+    },
+    "junctionTable": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "ends": {
+      "description": "For a designed junction table: the foreign key that realizes each relation end.",
+      "type": "array",
+      "items": {
+        "title": "Relation end mapping",
+        "type": "object",
+        "x-order": ["end", "foreignKey"],
+        "properties": {
+          "end": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "foreignKey": {
+            "$ref": "common.json#/$defs/id"
+          }
+        },
+        "required": ["end", "foreignKey"],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "promotedName": {
+      "$ref": "common.json#/$defs/identifier"
+    },
+    "properties": {
+      "$ref": "common.json#/$defs/properties",
+      "default": {}
+    },
+    "generation": {
+      "$ref": "common.json#/$defs/generation",
+      "default": {}
+    },
+    "source": {
+      "$ref": "common.json#/$defs/source"
+    }
+  },
+  "required": ["kind", "id", "name", "database"],
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "required": ["entity"]
+    },
+    {
+      "required": ["relation"]
+    }
+  ]
+}

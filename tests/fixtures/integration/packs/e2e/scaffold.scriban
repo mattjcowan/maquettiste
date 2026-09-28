@@ -1,0 +1,1 @@
+scaffold for {{ entity.name }} ({{ entity.attributes.size }} attributes)

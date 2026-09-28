@@ -1,0 +1,12 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JAX3K9V2Q7M4T8W1Z5C6B0DE",
+  "name": "Invoice",
+  "key": { "attributes": ["01JAX3KA1B2C3D4E5F6G7H8J9K"] },
+  "attributes": [
+    { "id": "01JAX3KA1B2C3D4E5F6G7H8J9K", "name": "id", "type": "uuid", "required": true },
+    { "id": "01JAX3KB2C3D4E5F6G7H8J9KAM", "name": "number", "type": "string", "length": 32 },
+    { "id": "01JAX3KC3D4E5F6G7H8J9KAMBN", "name": "total", "type": "Money" }
+  ]
+}

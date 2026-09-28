@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01JENM00000000000000000002",
+  "name": "Permissions",
+  "package": "01JPKG00000000000000000001",
+  "flags": true,
+  "members": [
+    {
+      "id": "01JMEM00000000000000000003",
+      "name": "None",
+      "value": 0
+    },
+    {
+      "id": "01JMEM00000000000000000004",
+      "name": "Read",
+      "value": 1
+    },
+    {
+      "id": "01JMEM00000000000000000005",
+      "name": "Write",
+      "value": 2
+    }
+  ]
+}

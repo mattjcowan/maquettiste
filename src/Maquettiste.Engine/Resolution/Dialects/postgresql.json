@@ -1,0 +1,20 @@
+{
+  "binary": "bytea",
+  "bool": "boolean",
+  "date": "date",
+  "datetime": "timestamp({precision})",
+  "datetimeoffset": "timestamptz({precision})",
+  "decimal": "numeric({precision},{scale})",
+  "double": "double precision",
+  "duration": "interval",
+  "float": "real",
+  "int16": "smallint",
+  "int32": "integer",
+  "int64": "bigint",
+  "json": "jsonb",
+  "string": "varchar({length})",
+  "text": "text",
+  "time": "time({precision})",
+  "ulid": "char(26)",
+  "uuid": "uuid"
+}

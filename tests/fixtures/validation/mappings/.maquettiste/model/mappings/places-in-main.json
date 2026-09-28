@@ -1,0 +1,8 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01JMAP00000000000000000005",
+  "name": "places in main",
+  "database": "01JDBS00000000000000000001",
+  "relation": "01JRXN00000000000000000001"
+}

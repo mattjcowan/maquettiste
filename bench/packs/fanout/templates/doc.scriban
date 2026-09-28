@@ -1,0 +1,9 @@
+# {{ entity.display_name }}
+
+{{ doc_summary entity }}
+
+| Attribute | Type | Required |
+| --- | --- | --- |
+{{- for a in entity.attributes }}
+| {{ a.name }} | {{ a.type.name }} | {{ if a.required }}yes{{ else }}no{{ end }} |
+{{- end }}

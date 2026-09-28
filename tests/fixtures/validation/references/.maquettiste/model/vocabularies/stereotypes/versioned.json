@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../.schema/v1/stereotype.json",
+  "kind": "stereotype",
+  "id": "01JSTR00000000000000000001",
+  "key": "versioned",
+  "name": "Versioned",
+  "appliesTo": [
+    "relation"
+  ]
+}

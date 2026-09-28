@@ -1,0 +1,14 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01JTAB00000000000000000001",
+  "name": "a_table_name_that_is_much_longer_than_the_postgresql_limit_of_63_bytes",
+  "database": "01JDBS00000000000000000001",
+  "columns": [
+    {
+      "id": "01JCMN00000000000000000001",
+      "name": "id",
+      "type": "int64"
+    }
+  ]
+}

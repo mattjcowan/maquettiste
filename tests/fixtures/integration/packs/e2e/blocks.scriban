@@ -1,0 +1,6 @@
+{{- for p in model.packages }}
+{{- capture content -}}
+package {{ p.name }}:{{ for e in p.entities }} {{ e.name }}{{ end }}
+{{ end -}}
+{{- file ("blocks/" + (kebab p.name) + ".txt") content }}
+{{- end }}

@@ -1,0 +1,23 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01JENM00000000000000000001",
+  "name": "Color",
+  "members": [
+    {
+      "id": "01JMEM00000000000000000001",
+      "name": "Red",
+      "code": "R"
+    },
+    {
+      "id": "01JMEM00000000000000000002",
+      "name": "Red",
+      "code": "G"
+    },
+    {
+      "id": "01JMEM00000000000000000003",
+      "name": "Blue",
+      "code": "R"
+    }
+  ]
+}

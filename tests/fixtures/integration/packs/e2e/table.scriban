@@ -1,0 +1,6 @@
+{{ banner "--" }}
+CREATE TABLE {{ sql_quote table }} (
+{{- for c in table.columns }}
+    {{ sql_quote c }} {{ c.native_type }}{{ if !c.nullable }} NOT NULL{{ end }}{{ if !for.last }},{{ end }}{{ if c.comment }} -- {{ c.comment }}{{ end }}
+{{- end }}
+);

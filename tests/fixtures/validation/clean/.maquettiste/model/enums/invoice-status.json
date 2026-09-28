@@ -1,0 +1,21 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01JENM00000000000000000001",
+  "name": "InvoiceStatus",
+  "package": "01JPKG00000000000000000001",
+  "members": [
+    {
+      "id": "01JMEM00000000000000000001",
+      "name": "Draft",
+      "value": 0,
+      "code": "D"
+    },
+    {
+      "id": "01JMEM00000000000000000002",
+      "name": "Issued",
+      "value": 1,
+      "code": "I"
+    }
+  ]
+}

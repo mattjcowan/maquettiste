@@ -1,0 +1,394 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Project settings",
+  "description": "maquettiste.json: output roots, formatters, conventions, packs and limits.",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "formatVersion",
+    "name",
+    "outputs",
+    "handEdits",
+    "formatters",
+    "conventions",
+    "databases",
+    "typeMaps",
+    "inflection",
+    "packs",
+    "validation",
+    "limits"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "formatVersion": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "name": {
+      "type": "string"
+    },
+    "outputs": {
+      "type": "object",
+      "x-order": ["allow", "deny"],
+      "properties": {
+        "allow": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "x-order": ["path", "commit"],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "commit": {
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "required": ["path"],
+            "additionalProperties": false
+          },
+          "default": []
+        },
+        "deny": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
+    "handEdits": {
+      "enum": ["fail", "overwrite", "skip"],
+      "default": "fail"
+    },
+    "formatters": {
+      "type": "array",
+      "items": {
+        "title": "Formatter",
+        "type": "object",
+        "x-order": ["name", "extensions", "command", "args", "version", "versionArgs", "timeoutSeconds"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "extensions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^\\.[A-Za-z0-9._-]+$"
+            },
+            "minItems": 1
+          },
+          "command": {
+            "type": "string",
+            "minLength": 1
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "versionArgs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": ["--version"]
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "default": 30,
+            "minimum": 1
+          }
+        },
+        "required": ["name", "extensions", "command", "version"],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "conventions": {
+      "$ref": "#/$defs/conventions",
+      "default": {}
+    },
+    "databases": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/conventions"
+      },
+      "default": {}
+    },
+    "typeMaps": {
+      "type": "object",
+      "propertyNames": {
+        "enum": ["postgresql", "sqlserver", "mysql", "sqlite", "oracle"]
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "default": {}
+    },
+    "inflection": {
+      "type": "object",
+      "x-order": ["plurals", "uncountable"],
+      "properties": {
+        "plurals": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        },
+        "uncountable": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
+    "packs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "x-order": ["enabled", "output", "parameters", "handEdits"],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "output": {
+            "type": "string",
+            "default": ""
+          },
+          "parameters": {
+            "type": "object",
+            "default": {}
+          },
+          "handEdits": {
+            "enum": ["fail", "overwrite", "skip"]
+          }
+        },
+        "additionalProperties": false
+      },
+      "default": {}
+    },
+    "validation": {
+      "type": "object",
+      "x-order": ["rules"],
+      "properties": {
+        "rules": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": ["error", "warning", "info", "off"]
+          },
+          "default": {}
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
+    "limits": {
+      "type": "object",
+      "x-order": [
+        "scriptTimeoutMs",
+        "scriptStatements",
+        "scriptRecursion",
+        "scriptMemoryBytes",
+        "templateLoopLimit",
+        "templateRecursionLimit"
+      ],
+      "properties": {
+        "scriptTimeoutMs": {
+          "type": "integer",
+          "default": 2000,
+          "minimum": 1
+        },
+        "scriptStatements": {
+          "type": "integer",
+          "default": 5000000,
+          "minimum": 1
+        },
+        "scriptRecursion": {
+          "type": "integer",
+          "default": 256,
+          "minimum": 1
+        },
+        "scriptMemoryBytes": {
+          "type": "integer",
+          "default": 67108864,
+          "minimum": 1
+        },
+        "templateLoopLimit": {
+          "type": "integer",
+          "default": 1000000,
+          "minimum": 1
+        },
+        "templateRecursionLimit": {
+          "type": "integer",
+          "default": 64,
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    }
+  },
+  "required": ["formatVersion"],
+  "additionalProperties": false,
+  "$defs": {
+    "conventions": {
+      "title": "Conventions",
+      "description": "Sparse naming and mapping conventions over the built-in defaults.",
+      "type": "object",
+      "x-order": [
+        "tableCase",
+        "pluralTables",
+        "columnCase",
+        "tableName",
+        "keyColumn",
+        "foreignKeyColumn",
+        "junctionTable",
+        "childTable",
+        "valueObjectColumn",
+        "orderColumn",
+        "discriminatorColumn",
+        "primaryKeyName",
+        "foreignKeyName",
+        "uniqueName",
+        "indexName",
+        "checkName",
+        "sequenceName",
+        "defaultStringLength",
+        "decimalPrecision",
+        "decimalScale",
+        "datetimePrecision",
+        "enumStorage",
+        "valueObjectStorage",
+        "valueObjectCollectionStorage",
+        "relationsWithAttributes",
+        "inheritance"
+      ],
+      "properties": {
+        "tableCase": {
+          "enum": ["snake", "pascal", "camel", "kebab", "upper-snake", "preserve"]
+        },
+        "pluralTables": {
+          "type": "boolean"
+        },
+        "columnCase": {
+          "enum": ["snake", "pascal", "camel", "kebab", "upper-snake", "preserve"]
+        },
+        "tableName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "keyColumn": {
+          "type": "string",
+          "minLength": 1
+        },
+        "foreignKeyColumn": {
+          "type": "string",
+          "minLength": 1
+        },
+        "junctionTable": {
+          "type": "string",
+          "minLength": 1
+        },
+        "childTable": {
+          "type": "string",
+          "minLength": 1
+        },
+        "valueObjectColumn": {
+          "type": "string",
+          "minLength": 1
+        },
+        "orderColumn": {
+          "type": "string",
+          "minLength": 1
+        },
+        "discriminatorColumn": {
+          "type": "string",
+          "minLength": 1
+        },
+        "primaryKeyName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "foreignKeyName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uniqueName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "indexName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checkName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequenceName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "defaultStringLength": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "decimalPrecision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "decimalScale": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "datetimePrecision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "enumStorage": {
+          "enum": ["int", "string", "lookup"]
+        },
+        "valueObjectStorage": {
+          "enum": ["embedded", "table", "json"]
+        },
+        "valueObjectCollectionStorage": {
+          "enum": ["table", "json"]
+        },
+        "relationsWithAttributes": {
+          "enum": ["junction", "promoted"]
+        },
+        "inheritance": {
+          "enum": ["tph", "tpt", "tpc"]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

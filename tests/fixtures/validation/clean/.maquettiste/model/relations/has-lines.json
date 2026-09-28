@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01JRXN00000000000000000002",
+  "name": "has lines",
+  "package": "01JPKG00000000000000000001",
+  "relationKind": "composition",
+  "ends": [
+    {
+      "id": "01JEND00000000000000000003",
+      "entity": "01JENT00000000000000000002",
+      "role": "invoice",
+      "navigation": "invoice",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01JEND00000000000000000004",
+      "entity": "01JENT00000000000000000003",
+      "role": "line",
+      "navigation": "lines",
+      "ordered": true
+    }
+  ]
+}

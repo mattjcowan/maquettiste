@@ -1,0 +1,15 @@
+{
+  "name": "migrations",
+  "version": "1.0.0",
+  "engine": ">=1.0 <2.0",
+  "description": "End-to-end fixture pack (WI): one 'once' migration per schema revision of the main database, from schema_diff.",
+  "usesSchemaDiff": true,
+  "units": [
+    {
+      "id": "migration",
+      "template": "migration.scriban",
+      "for": "model",
+      "mode": "once"
+    }
+  ]
+}

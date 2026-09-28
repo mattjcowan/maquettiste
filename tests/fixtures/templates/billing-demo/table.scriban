@@ -1,0 +1,12 @@
+{{ banner "--" }}
+CREATE TABLE {{ if table.schema }}{{ sql_quote table.schema table.database }}.{{ end }}{{ sql_quote table }} (
+{{- for c in table.columns }}
+    {{ sql_quote c }} {{ type_of c table.database.dialect }}{{ if !c.nullable }} NOT NULL{{ end }}{{ if c.default != null }} DEFAULT {{ sql_literal c.default table.database }}{{ end }}{{ if !for.last || table.primary_key }},{{ end }}
+{{- end }}
+{{- if table.primary_key }}
+    CONSTRAINT {{ sql_quote table.primary_key.name table.database }} PRIMARY KEY ({{ for c in table.primary_key.columns }}{{ sql_quote c }}{{ if !for.last }}, {{ end }}{{ end }})
+{{- end }}
+);
+{{- if table.comment }}
+COMMENT ON TABLE {{ sql_quote table }} IS {{ sql_literal table.comment table.database }};
+{{- end }}

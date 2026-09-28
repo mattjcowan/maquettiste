@@ -1,0 +1,21 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01JRXN00000000000000000004",
+  "name": "favourite",
+  "ends": [
+    {
+      "id": "01JEND00000000000000000008",
+      "entity": "01JENT00000000000000000001",
+      "role": "fan",
+      "max": 1,
+      "ordered": true
+    },
+    {
+      "id": "01JEND00000000000000000009",
+      "entity": "01JENT00000000000000000003",
+      "role": "product",
+      "navigation": "favourites"
+    }
+  ]
+}

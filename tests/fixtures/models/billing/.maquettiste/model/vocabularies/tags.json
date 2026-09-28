@@ -1,0 +1,19 @@
+{
+  "$schema": "../../.schema/v1/tag-vocabulary.json",
+  "kind": "tag-vocabulary",
+  "id": "01J92P0V22Q6775D5GE10SN3RB",
+  "name": "tags",
+  "strict": true,
+  "definitions": [
+    {
+      "key": "billing",
+      "description": "Owned by the billing team.",
+      "color": "#2f6fdf"
+    },
+    {
+      "key": "pii",
+      "description": "Holds personal data.",
+      "color": "#d33"
+    }
+  ]
+}

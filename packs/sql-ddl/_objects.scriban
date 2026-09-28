@@ -1,0 +1,140 @@
+{{-
+# CREATE statements for sequences and views, and the foreign-key graph for ddl_order. Needs _sql.scriban.
+
+# The foreign-key graph of a table list as text for the ddl_order and ddl_cycle_breaks helpers (see helpers.js).
+func dependency_spec(tables)
+  $index = {}
+  for t in tables
+    $index[t.key] = for.index
+  end
+  capture $spec
+    for t in tables
+      if !for.first
+        ";"
+      end
+      for f in t.foreign_keys
+        if !for.first
+          ","
+        end
+        $target = $index[f.referenced_table.key]
+        ($target == null || f.referenced_table.key == t.key) ? "x" : $target
+      end
+    end
+  end
+  ret "" + $spec
+end
+
+# Whether foreign keys that close a cycle are added after the CREATE TABLEs: every dialect but SQLite, which accepts forward
+# references inline.
+func defers_cycle_breaks(db)
+  ret db.dialect != "sqlite"
+end
+
+# The names of the foreign keys ddl_cycle_breaks returned for a table list, as ",name,name," for _table.scriban's second argument
+# (the constraints it leaves out). Empty when the dialect keeps them inline.
+func cycle_skip(tables, breaks, db)
+  if !defers_cycle_breaks(db)
+    ret ""
+  end
+  $skip = ","
+  for b in breaks
+    $pair = b | string.split ":"
+    $skip = $skip + tables[$pair[0] | string.to_int].foreign_keys[$pair[1] | string.to_int].name + ","
+  end
+  ret $skip == "," ? "" : $skip
+end
+
+# Whether a table has a foreign key in a cycle_skip set.
+func has_skipped_fk(t, skip)
+  if skip == ""
+    ret false
+  end
+  for f in t.foreign_keys
+    if skip | string.contains ("," + f.name + ",")
+      ret true
+    end
+  end
+  ret false
+end
+
+# ALTER TABLE ... ADD CONSTRAINT for every foreign key in a cycle_skip set, appended to out, in table order.
+func cycle_fk_statements(tables, breaks, db, out)
+  if !defers_cycle_breaks(db)
+    ret
+  end
+  for b in breaks
+    $pair = b | string.split ":"
+    $t = tables[$pair[0] | string.to_int]
+    $f = $t.foreign_keys[$pair[1] | string.to_int]
+    out[out.size] = "ALTER TABLE " + qt($t) + " ADD CONSTRAINT " + q($f.name, db) + " " + foreign_key_body($f, db) + ";"
+  end
+end
+
+func sequence_sql(s, db)
+  if db.dialect == "sqlite"
+    ret "-- SQLite has no sequences; " + s.name + " (start " + s.start + ") is not created."
+  end
+  $r = "CREATE SEQUENCE " + qn(s.schema, s.name, db) + " AS " + s.native_type + " START WITH " + s.start + " INCREMENT BY " + s.increment
+  if s.min != null
+    $r = $r + " MINVALUE " + s.min
+  end
+  if s.max != null
+    $r = $r + " MAXVALUE " + s.max
+  end
+  if s.cycle
+    $r = $r + " CYCLE"
+  end
+  if s.cache != null
+    $r = $r + " CACHE " + s.cache
+  end
+  ret $r + ";"
+end
+
+func view_sql(v, db)
+  $body = v.body | string.rstrip
+  if $body | string.ends_with ";"
+    $body = $body | string.slice 0 ($body.size - 1)
+  end
+  ret "CREATE VIEW " + qn(v.schema, v.name, db) + " AS\n" + $body + ";"
+end
+
+# Schemas the script must create: every named schema of the database except the dialect's built-in one.
+func schemas_to_create(db)
+  $result = []
+  if db.dialect == "postgresql" || db.dialect == "sqlserver"
+    for s in db.schemas
+      if !(db.dialect == "postgresql" && s.name == "public") && !(db.dialect == "sqlserver" && s.name == "dbo")
+        $result[$result.size] = s.name
+      end
+    end
+  end
+  ret $result
+end
+
+func schema_sql(name, db)
+  if db.dialect == "sqlserver"
+    ret "IF SCHEMA_ID(" + lit(name, db) + ") IS NULL EXEC(" + lit("CREATE SCHEMA " + q(name, db), db) + ");"
+  end
+  ret "CREATE SCHEMA IF NOT EXISTS " + q(name, db) + ";"
+end
+
+# The path of a table script relative to the database folder, as the table unit writes it.
+func table_path(t)
+  ret (t.schema ? t.schema + "/" : "") + "tables/" + t.name + ".sql"
+end
+
+# A client directive that runs another script: psql \ir, sqlcmd :r, sqlite3 .read (relative to the working directory for
+# sqlcmd and sqlite3, so run those from the database folder). Paths keep "/": sqlcmd accepts it on every OS, while "\" fails on
+# Linux and macOS.
+func include_directive(path, db)
+  case db.dialect
+    when "postgresql"
+      ret "\\ir " + path
+    when "sqlserver"
+      ret ":r " + path
+    when "sqlite"
+      ret ".read " + path
+  end
+  ret "-- run " + path
+end
+-}}

@@ -1,0 +1,246 @@
+using System.Security.Cryptography;
+using System.Text;
+using Maquettiste.Cli.Commands;
+using Maquettiste.Engine;
+
+namespace Maquettiste.Cli;
+
+/// <summary>How much the CLI writes to stderr.</summary>
+internal enum Verbosity
+{
+    /// <summary>Errors and diagnostics only; no progress, no summary.</summary>
+    Quiet,
+
+    /// <summary>Progress and a summary.</summary>
+    Normal,
+
+    /// <summary>Also stage timings.</summary>
+    Detailed,
+}
+
+/// <summary>The progress style (<c>--progress</c>).</summary>
+internal enum ProgressStyle
+{
+    /// <summary>No progress.</summary>
+    None,
+
+    /// <summary>A line when each stage starts and ends.</summary>
+    Plain,
+
+    /// <summary>One rewritten line on a terminal.</summary>
+    Terminal,
+
+    /// <summary>One JSON line per update.</summary>
+    Json,
+}
+
+/// <summary>The global options, resolved.</summary>
+/// <param name="Environment">The process view.</param>
+/// <param name="Line">The parsed command line.</param>
+/// <param name="Verbosity">The verbosity.</param>
+/// <param name="Progress">The progress style.</param>
+/// <param name="Jobs">The <c>--jobs</c> value.</param>
+internal sealed record GlobalContext(CliEnvironment Environment, CommandLine Line, Verbosity Verbosity, ProgressStyle Progress, int? Jobs)
+{
+    /// <summary>Results.</summary>
+    public TextWriter Out => Environment.Out;
+
+    /// <summary>Messages.</summary>
+    public TextWriter Error => Environment.Error;
+
+    /// <summary>The model folder name under the repo root.</summary>
+    public const string ModelFolder = ".maquettiste";
+
+    /// <summary>
+    /// The repo root: <c>--repo</c> when given (relative to the current directory), else the nearest ancestor of the current directory
+    /// holding <c>.maquettiste/maquettiste.json</c>, else the current directory.
+    /// </summary>
+    /// <param name="search">Whether to search ancestors (<c>init</c> does not).</param>
+    /// <returns>The absolute repo root, without a trailing separator.</returns>
+    public string RepoRoot(bool search = true)
+    {
+        if (Line.Value("--repo") is { } repo)
+            return Path.TrimEndingDirectorySeparator(Path.GetFullPath(repo, Environment.CurrentDirectory));
+        var current = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Environment.CurrentDirectory));
+        if (search)
+        {
+            for (var dir = new DirectoryInfo(current); dir is not null; dir = dir.Parent)
+            {
+                if (File.Exists(Path.Combine(dir.FullName, ModelFolder, "maquettiste.json")))
+                    return Path.TrimEndingDirectorySeparator(dir.FullName);
+            }
+        }
+
+        return current;
+    }
+
+    /// <summary>
+    /// The cache folder (D13): <c>--cache-dir</c>, else <c>$MAQUETTISTE_CACHE_DIR</c>, else the OS user cache folder
+    /// <c>…/maquettiste/&lt;first 16 hex of SHA-256 of the repo path&gt;</c>.
+    /// </summary>
+    /// <param name="repoRoot">The repo root.</param>
+    /// <returns>The absolute cache folder.</returns>
+    public string CacheDirectory(string repoRoot)
+    {
+        if (Line.Value("--cache-dir") is { } dir)
+            return Path.GetFullPath(dir, Environment.CurrentDirectory);
+        if (Environment.GetEnvironmentVariable("MAQUETTISTE_CACHE_DIR") is { Length: > 0 } fromEnv)
+            return Path.GetFullPath(fromEnv, Environment.CurrentDirectory);
+        var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(repoRoot)))[..16];
+        return Path.Combine(UserCacheRoot(), "maquettiste", hash);
+    }
+
+    /// <summary>Engine options for a repo.</summary>
+    /// <param name="repoRoot">The repo root.</param>
+    /// <returns>The options.</returns>
+    public EngineOptions EngineOptions(string repoRoot) => new()
+    {
+        RepoRoot = repoRoot,
+        CacheDirectory = CacheDirectory(repoRoot),
+        MaxDegreeOfParallelism = Jobs ?? 0,
+    };
+
+    /// <summary>Writes a line to stderr unless quiet.</summary>
+    /// <param name="message">The message.</param>
+    public void Info(string message)
+    {
+        if (Verbosity != Verbosity.Quiet)
+            Error.WriteLine(message);
+    }
+
+    private string UserCacheRoot()
+    {
+        if (OperatingSystem.IsWindows())
+            return System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData, System.Environment.SpecialFolderOption.DoNotVerify);
+        var home = Environment.GetEnvironmentVariable("HOME") is { Length: > 0 } h
+            ? h
+            : System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile, System.Environment.SpecialFolderOption.DoNotVerify);
+        if (OperatingSystem.IsMacOS())
+            return Path.Combine(home, "Library", "Caches");
+        return Environment.GetEnvironmentVariable("XDG_CACHE_HOME") is { Length: > 0 } xdg && Path.IsPathFullyQualified(xdg) ? xdg : Path.Combine(home, ".cache");
+    }
+}
+
+/// <summary>Parses the command line, resolves the global options and runs one command.</summary>
+/// <param name="environment">The process view.</param>
+public sealed class CliApp(CliEnvironment environment)
+{
+    private const string Usage = """
+        Usage: maquettiste [global options] <command> [options]
+
+        Commands:
+          init                  Create .maquettiste/, the schema files, a starter pack and .gitignore entries
+                                  --pack sql-ddl|csharp-dapper|none (default sql-ddl), --hooks
+          validate              Validate the model and packs
+                                  --format text|json|sarif, --output <file>
+          generate              Incremental generation
+                                  --pack <name> (repeatable), --force, --roots all|committed|built,
+                                  --hand-edits fail|overwrite|skip, --watch, --dry-run, --diff, --check,
+                                  --format text|json, --no-wait
+          migrate               Upgrade the model format (format 1 is current)
+          pack new <name>       Scaffold a template pack under .maquettiste/templates/<name>/
+                                  --from empty|sql-ddl|csharp-dapper
+          bench                 Run the synthetic benchmark
+                                  --out <dir>, --seed, --entities, --relations, --enums, --fanout, --keep,
+                                  --baseline <file>, --max-regression <percent>, --format text|json
+
+        Global options:
+          --repo <dir>          The repo root (default: nearest ancestor holding .maquettiste/maquettiste.json, else the current directory)
+          --cache-dir <dir>     The index and plan cache (default: $MAQUETTISTE_CACHE_DIR, else the user cache folder)
+          --jobs <n>            Parallelism (default: processor count)
+          --progress auto|plain|json|none
+          --verbosity quiet|normal|detailed, --quiet (-q)
+          --no-color, --version, --help (-h)
+
+        Exit codes: 0 success, 1 validation errors, 2 drift, 3 hand-edit conflicts, 4 internal or usage error.
+        """;
+
+    private readonly CliEnvironment _environment = environment ?? throw new ArgumentNullException(nameof(environment));
+
+    /// <summary>Runs one command.</summary>
+    /// <param name="args">The arguments.</param>
+    /// <param name="ct">Cancellation (Ctrl+C); a cancelled command exits 4, except <c>generate --watch</c>, which stops with 0.</param>
+    /// <returns>The exit code.</returns>
+    public async Task<int> RunAsync(IReadOnlyList<string> args, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        try
+        {
+            var line = CommandLine.Parse(args);
+            if (line.Has("--version"))
+            {
+                if (line.Positionals.Count > 0)
+                    throw new UsageException("--version takes no command.");
+                await _environment.Out.WriteLineAsync(EngineVersion.Value).ConfigureAwait(false);
+                return Program.ExitCodes.Success;
+            }
+
+            if (line.Has("--help") || line.Positionals.Count == 0)
+            {
+                await (line.Has("--help") ? _environment.Out : _environment.Error).WriteLineAsync(Usage.Replace("\r\n", "\n", StringComparison.Ordinal)).ConfigureAwait(false);
+                return line.Has("--help") ? Program.ExitCodes.Success : Program.ExitCodes.Internal;
+            }
+
+            var context = Resolve(line);
+            var command = line.Positionals[0];
+            return command switch
+            {
+                "init" => await InitCommand.RunAsync(context, ct).ConfigureAwait(false),
+                "validate" => await ValidateCommand.RunAsync(context, ct).ConfigureAwait(false),
+                "generate" => await GenerateCommand.RunAsync(context, ct).ConfigureAwait(false),
+                "migrate" => await MigrateCommand.RunAsync(context, ct).ConfigureAwait(false),
+                "pack" => await PackNewCommand.RunAsync(context, ct).ConfigureAwait(false),
+                "bench" => await BenchCommand.RunAsync(context, ct).ConfigureAwait(false),
+                _ => throw new UsageException($"Unknown command '{command}'. Run 'maquettiste --help'."),
+            };
+        }
+        catch (UsageException e)
+        {
+            await _environment.Error.WriteLineAsync("maquettiste: " + e.Message).ConfigureAwait(false);
+            return Program.ExitCodes.Internal;
+        }
+        catch (RefusedWriteException e)
+        {
+            await _environment.Error.WriteLineAsync("maquettiste: " + e.Message).ConfigureAwait(false);
+            return Program.ExitCodes.Internal;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            await _environment.Error.WriteLineAsync("maquettiste: cancelled.").ConfigureAwait(false);
+            return Program.ExitCodes.Internal;
+        }
+#pragma warning disable CA1031 // The CLI turns any unexpected failure into exit code 4 with a message.
+        catch (Exception e)
+#pragma warning restore CA1031
+        {
+            await _environment.Error.WriteLineAsync("maquettiste: internal error: " + e.Message).ConfigureAwait(false);
+            await _environment.Error.WriteLineAsync(e.ToString()).ConfigureAwait(false);
+            return Program.ExitCodes.Internal;
+        }
+    }
+
+    private GlobalContext Resolve(CommandLine line)
+    {
+        var verbosity = line.Has("--quiet")
+            ? Verbosity.Quiet
+            : line.Choice("--verbosity", "normal", "quiet", "normal", "detailed") switch
+            {
+                "quiet" => Verbosity.Quiet,
+                "detailed" => Verbosity.Detailed,
+                _ => Verbosity.Normal,
+            };
+        if (line.Has("--quiet") && line.Value("--verbosity") is { } v && v != "quiet")
+            throw new UsageException("--quiet contradicts --verbosity " + v + ".");
+        var progressOption = line.Choice("--progress", "auto", "auto", "plain", "json", "none");
+        var progress = progressOption switch
+        {
+            "plain" => ProgressStyle.Plain,
+            "json" => ProgressStyle.Json,
+            "none" => ProgressStyle.None,
+            _ when verbosity == Verbosity.Quiet => ProgressStyle.None,
+            _ => _environment.ErrorIsTerminal ? ProgressStyle.Terminal : ProgressStyle.Plain,
+        };
+        var jobs = line.Int("--jobs", 1);
+        return new GlobalContext(_environment, line, verbosity, progress, jobs);
+    }
+}

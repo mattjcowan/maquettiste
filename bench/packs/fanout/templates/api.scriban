@@ -1,0 +1,5 @@
+{
+  "name": "{{ entity.name }}",
+  "route": "{{ route entity }}",
+  "fields": [{{ for a in entity.attributes }}"{{ camel a.name }}"{{ if !for.last }}, {{ end }}{{ end }}]
+}

@@ -1,0 +1,38 @@
+{{-
+include "_csharp.scriban"
+name = type_name(enum)
+-}}
+{{ header() }}
+using System;
+
+namespace {{ ns(enum) }};
+
+{{ doc(enum.description, "") }}{{ if enum.flags }}[Flags]
+{{ end }}public enum {{ name }}
+{
+{{- for member in enum.members }}
+{{ doc(member.description, "    ") }}    {{ cs_ident (pascal member.name) }} = {{ member.value ?? for.index }},
+{{- end }}
+}
+
+/// <summary>The string codes of <see cref="{{ name }}"/>, used when a database stores the enum as text.</summary>
+public static partial class {{ name }}Codes
+{
+    /// <summary>Returns the code of a value.</summary>
+    public static string ToCode(this {{ name }} value) => value switch
+    {
+{{- for member in enum.members }}
+        {{ name }}.{{ cs_ident (pascal member.name) }} => {{ json (member.code ?? member.name) }},
+{{- end }}
+        _ => throw new ArgumentOutOfRangeException(nameof(value), value, "Unknown {{ name }} value."),
+    };
+
+    /// <summary>Returns the value of a code.</summary>
+    public static {{ name }} Parse(string code) => code switch
+    {
+{{- for member in enum.members }}
+        {{ json (member.code ?? member.name) }} => {{ name }}.{{ cs_ident (pascal member.name) }},
+{{- end }}
+        _ => throw new ArgumentOutOfRangeException(nameof(code), code, "Unknown {{ name }} code."),
+    };
+}

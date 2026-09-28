@@ -1,0 +1,366 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Maquettiste shared definitions",
+  "$defs": {
+    "schemaPath": {
+      "description": "Relative path to this file's schema; rewritten by the canonical writer.",
+      "type": "string"
+    },
+    "id": {
+      "description": "An uppercase Crockford ULID.",
+      "type": "string",
+      "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+    },
+    "idList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/id"
+      }
+    },
+    "identifier": {
+      "description": "A conceptual name: letters, digits and underscores, not starting with a digit.",
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "label": {
+      "description": "A non-empty name of up to 256 characters without control characters.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "tagLabel": {
+      "description": "A tag: a free-form label (SPEC section 5) of 1 to 64 characters without whitespace or control characters.",
+      "type": "string",
+      "pattern": "^[^\\s\\u0000-\\u001f\\u007f]{1,64}$"
+    },
+    "tagList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/tagLabel"
+      },
+      "uniqueItems": true
+    },
+    "key": {
+      "description": "A kebab-case key (stereotype keys).",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+    },
+    "keyList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/key"
+      },
+      "uniqueItems": true
+    },
+    "description": {
+      "description": "Markdown text, or a sidecar Markdown file beside the element's file.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "x-order": ["file"],
+          "properties": {
+            "file": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": ["file"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "properties": {
+      "description": "Custom property values, validated by extension schemas.",
+      "type": "object"
+    },
+    "generationHints": {
+      "type": "object",
+      "x-order": ["skip", "rename", "variables"],
+      "properties": {
+        "skip": {
+          "type": "boolean",
+          "default": false
+        },
+        "rename": {
+          "type": "string",
+          "minLength": 1
+        },
+        "variables": {
+          "type": "object",
+          "default": {}
+        }
+      },
+      "additionalProperties": false
+    },
+    "generation": {
+      "description": "Per-pack generation hints; the key is a pack name or \"*\".",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/generationHints"
+      }
+    },
+    "source": {
+      "description": "Provenance of an imported element.",
+      "type": "object",
+      "x-order": ["format", "name", "location", "fingerprint"],
+      "properties": {
+        "format": {
+          "enum": ["dbml", "sql", "database", "openapi"]
+        },
+        "name": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        }
+      },
+      "required": ["format"],
+      "additionalProperties": false
+    },
+    "builtinType": {
+      "description": "A built-in scalar type keyword.",
+      "enum": [
+        "string",
+        "text",
+        "bool",
+        "int16",
+        "int32",
+        "int64",
+        "decimal",
+        "float",
+        "double",
+        "date",
+        "time",
+        "datetime",
+        "datetimeoffset",
+        "duration",
+        "uuid",
+        "ulid",
+        "binary",
+        "json"
+      ]
+    },
+    "typeRef": {
+      "description": "A built-in keyword, or a reference to an enum, value object or custom scalar type.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/builtinType"
+        },
+        {
+          "type": "object",
+          "x-order": ["ref"],
+          "properties": {
+            "ref": {
+              "$ref": "#/$defs/id"
+            }
+          },
+          "required": ["ref"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "length": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "precision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "scale": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "dialectMap": {
+      "description": "Dialect name (postgresql, sqlserver, mysql, sqlite, oracle) or \"*\" to SQL text.",
+      "type": "object",
+      "propertyNames": {
+        "enum": ["postgresql", "sqlserver", "mysql", "sqlite", "oracle", "*"]
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "validation": {
+      "description": "Validation constraints.",
+      "type": "object",
+      "x-order": ["min", "max", "pattern", "allowedValues", "rules"],
+      "properties": {
+        "min": {
+          "type": ["number", "string"]
+        },
+        "max": {
+          "type": ["number", "string"]
+        },
+        "pattern": {
+          "type": "string"
+        },
+        "allowedValues": {
+          "type": "array",
+          "items": {},
+          "default": []
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
+    "derived": {
+      "type": "object",
+      "x-order": ["expression", "stored"],
+      "properties": {
+        "expression": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stored": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": ["expression"],
+      "additionalProperties": false
+    },
+    "attribute": {
+      "title": "Attribute",
+      "type": "object",
+      "x-order": [
+        "id",
+        "name",
+        "displayName",
+        "pluralName",
+        "type",
+        "length",
+        "precision",
+        "scale",
+        "required",
+        "default",
+        "defaultExpression",
+        "collection",
+        "unique",
+        "indexed",
+        "readOnly",
+        "immutable",
+        "derived",
+        "sensitive",
+        "validation",
+        "order",
+        "description",
+        "stereotypes",
+        "tags",
+        "category",
+        "properties",
+        "generation",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "$ref": "#/$defs/identifier",
+          "default": ""
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "pluralName": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/typeRef"
+        },
+        "length": {
+          "$ref": "#/$defs/length"
+        },
+        "precision": {
+          "$ref": "#/$defs/precision"
+        },
+        "scale": {
+          "$ref": "#/$defs/scale"
+        },
+        "required": {
+          "type": "boolean",
+          "default": false
+        },
+        "default": {},
+        "defaultExpression": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "collection": {
+          "type": "boolean",
+          "default": false
+        },
+        "unique": {
+          "type": "boolean",
+          "default": false
+        },
+        "indexed": {
+          "type": "boolean",
+          "default": false
+        },
+        "readOnly": {
+          "type": "boolean",
+          "default": false
+        },
+        "immutable": {
+          "type": "boolean",
+          "default": false
+        },
+        "derived": {
+          "$ref": "#/$defs/derived"
+        },
+        "sensitive": {
+          "enum": ["pii", "secret"]
+        },
+        "validation": {
+          "$ref": "#/$defs/validation"
+        },
+        "order": {
+          "type": "integer"
+        },
+        "description": {
+          "$ref": "#/$defs/description"
+        },
+        "stereotypes": {
+          "$ref": "#/$defs/keyList",
+          "default": []
+        },
+        "tags": {
+          "$ref": "#/$defs/tagList",
+          "default": []
+        },
+        "category": {
+          "$ref": "#/$defs/id"
+        },
+        "properties": {
+          "$ref": "#/$defs/properties",
+          "default": {}
+        },
+        "generation": {
+          "$ref": "#/$defs/generation",
+          "default": {}
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "required": ["id", "name", "type"],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "$schema": "../.schema/v1/extension.json",
+  "name": "entity-team",
+  "appliesTo": {
+    "kinds": [
+      "package"
+    ]
+  },
+  "properties": {}
+}

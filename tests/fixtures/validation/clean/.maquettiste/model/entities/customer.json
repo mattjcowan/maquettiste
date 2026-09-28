@@ -1,0 +1,51 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JENT00000000000000000001",
+  "name": "Customer",
+  "package": "01JPKG00000000000000000001",
+  "tags": [
+    "billing"
+  ],
+  "category": "01JCAT00000000000000000003",
+  "key": {
+    "attributes": [
+      "01JATT00000000000000000101"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01JATT00000000000000000101",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01JATT00000000000000000102",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "required": true,
+      "tags": [
+        "team:finance"
+      ]
+    },
+    {
+      "id": "01JATT00000000000000000103",
+      "name": "email",
+      "type": {
+        "ref": "01JSCA00000000000000000001"
+      },
+      "default": "billing@example.com"
+    },
+    {
+      "id": "01JATT00000000000000000104",
+      "name": "permissions",
+      "type": {
+        "ref": "01JENM00000000000000000002"
+      },
+      "default": 3
+    }
+  ]
+}

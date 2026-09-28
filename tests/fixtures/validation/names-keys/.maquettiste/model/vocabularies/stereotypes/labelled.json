@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../.schema/v1/stereotype.json",
+  "kind": "stereotype",
+  "id": "01JSTR00000000000000000003",
+  "key": "labelled",
+  "name": "Labelled",
+  "attributes": [
+    {
+      "id": "01JATT00000000000000009003",
+      "name": "label",
+      "type": "string"
+    },
+    {
+      "id": "01JATT00000000000000009004",
+      "name": "label",
+      "type": "text"
+    }
+  ]
+}

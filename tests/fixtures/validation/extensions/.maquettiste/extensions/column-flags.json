@@ -1,0 +1,14 @@
+{
+  "$schema": "../.schema/v1/extension.json",
+  "name": "column-flags",
+  "appliesTo": {
+    "kinds": [
+      "column"
+    ]
+  },
+  "properties": {
+    "pii": {
+      "type": "boolean"
+    }
+  }
+}

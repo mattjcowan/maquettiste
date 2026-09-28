@@ -1,0 +1,182 @@
+[
+  {
+    "rule": "MQ3013",
+    "severity": "error",
+    "message": "Attribute 'count': length is not valid for int32 (only string, text and binary).",
+    "elementId": "01JATT00000000000000000102",
+    "filePath": ".maquettiste/model/entities/account.json",
+    "jsonPointer": "/attributes/1/length",
+    "line": 23,
+    "column": 17
+  },
+  {
+    "rule": "MQ3013",
+    "severity": "error",
+    "message": "Attribute 'flag': validation.pattern is not valid for bool (only string and text).",
+    "elementId": "01JATT00000000000000000103",
+    "filePath": ".maquettiste/model/entities/account.json",
+    "jsonPointer": "/attributes/2/validation/pattern",
+    "line": 30,
+    "column": 20
+  },
+  {
+    "rule": "MQ3017",
+    "severity": "warning",
+    "message": "The default of attribute 'password' looks like a credential (a non-empty default on an attribute named like a secret); secrets never belong in the model.",
+    "elementId": "01JATT00000000000000000104",
+    "filePath": ".maquettiste/model/entities/account.json",
+    "jsonPointer": "/attributes/3/default",
+    "line": 37,
+    "column": 18
+  },
+  {
+    "rule": "MQ3017",
+    "severity": "warning",
+    "message": "The default of attribute 'awsKey' looks like a credential (an AWS access key id); secrets never belong in the model.",
+    "elementId": "01JATT00000000000000000105",
+    "filePath": ".maquettiste/model/entities/account.json",
+    "jsonPointer": "/attributes/4/default",
+    "line": 43,
+    "column": 18
+  },
+  {
+    "rule": "MQ3019",
+    "severity": "error",
+    "message": "The default of attribute 'retries' does not fit int32: a string on an integer type.",
+    "elementId": "01JATT00000000000000000106",
+    "filePath": ".maquettiste/model/entities/account.json",
+    "jsonPointer": "/attributes/5/default",
+    "line": 49,
+    "column": 18
+  },
+  {
+    "rule": "MQ3019",
+    "severity": "error",
+    "message": "The default of attribute 'createdAt' does not fit datetime: not an ISO 8601 datetime. 'now' is a named expression: use defaultExpression instead of default.",
+    "elementId": "01JATT00000000000000000107",
+    "filePath": ".maquettiste/model/entities/account.json",
+    "jsonPointer": "/attributes/6/default",
+    "line": 55,
+    "column": 18
+  },
+  {
+    "rule": "MQ3019",
+    "severity": "error",
+    "message": "The default of attribute 'birthday' does not fit date: not an ISO 8601 date.",
+    "elementId": "01JATT00000000000000000108",
+    "filePath": ".maquettiste/model/entities/account.json",
+    "jsonPointer": "/attributes/7/default",
+    "line": 61,
+    "column": 18
+  },
+  {
+    "rule": "MQ3019",
+    "severity": "error",
+    "message": "The default of attribute 'color' does not fit enum Color: not a member name or code of Color.",
+    "elementId": "01JATT00000000000000000109",
+    "filePath": ".maquettiste/model/entities/account.json",
+    "jsonPointer": "/attributes/8/default",
+    "line": 69,
+    "column": 18
+  },
+  {
+    "rule": "MQ3019",
+    "severity": "error",
+    "message": "The default of attribute 'small' does not fit int16: the number is out of range for int16.",
+    "elementId": "01JATT00000000000000000110",
+    "filePath": ".maquettiste/model/entities/account.json",
+    "jsonPointer": "/attributes/9/default",
+    "line": 75,
+    "column": 18
+  },
+  {
+    "rule": "MQ3019",
+    "severity": "error",
+    "message": "The default of attribute 'price' does not fit decimal: the number is out of range for decimal(5,2).",
+    "elementId": "01JATT00000000000000000111",
+    "filePath": ".maquettiste/model/entities/account.json",
+    "jsonPointer": "/attributes/10/default",
+    "line": 83,
+    "column": 18
+  },
+  {
+    "rule": "MQ3019",
+    "severity": "error",
+    "message": "The default of attribute 'level' does not fit int32: the number is above validation.max.",
+    "elementId": "01JATT00000000000000000112",
+    "filePath": ".maquettiste/model/entities/account.json",
+    "jsonPointer": "/attributes/11/default",
+    "line": 89,
+    "column": 18
+  },
+  {
+    "rule": "MQ3019",
+    "severity": "error",
+    "message": "The default of attribute 'short' does not fit string: the string is longer than length 3.",
+    "elementId": "01JATT00000000000000000113",
+    "filePath": ".maquettiste/model/entities/account.json",
+    "jsonPointer": "/attributes/12/default",
+    "line": 100,
+    "column": 18
+  },
+  {
+    "rule": "MQ3019",
+    "severity": "error",
+    "message": "The default of attribute 'tags' does not fit string (collection): a collection default must be an array.",
+    "elementId": "01JATT00000000000000000114",
+    "filePath": ".maquettiste/model/entities/account.json",
+    "jsonPointer": "/attributes/13/default",
+    "line": 107,
+    "column": 18
+  },
+  {
+    "rule": "MQ3017",
+    "severity": "warning",
+    "message": "The default of attribute 'secretNote' looks like a credential (a non-empty default on a secret attribute); secrets never belong in the model.",
+    "elementId": "01JATT00000000000000000116",
+    "filePath": ".maquettiste/model/entities/account.json",
+    "jsonPointer": "/attributes/15/default",
+    "line": 121,
+    "column": 18
+  },
+  {
+    "rule": "MQ3012",
+    "severity": "error",
+    "message": "Member 'ReadWrite' of flags enum 'Access' has value 3, which is not a power of two.",
+    "elementId": "01JMEM00000000000000000005",
+    "filePath": ".maquettiste/model/enums/access.json",
+    "jsonPointer": "/members/1/value",
+    "line": 16,
+    "column": 16
+  },
+  {
+    "rule": "MQ3012",
+    "severity": "error",
+    "message": "Member name 'Red' is already used at index 0.",
+    "elementId": "01JMEM00000000000000000002",
+    "filePath": ".maquettiste/model/enums/color.json",
+    "jsonPointer": "/members/1/name",
+    "line": 14,
+    "column": 15
+  },
+  {
+    "rule": "MQ3012",
+    "severity": "error",
+    "message": "Member code 'R' is already used at index 0.",
+    "elementId": "01JMEM00000000000000000003",
+    "filePath": ".maquettiste/model/enums/color.json",
+    "jsonPointer": "/members/2/code",
+    "line": 20,
+    "column": 15
+  },
+  {
+    "rule": "MQ3013",
+    "severity": "error",
+    "message": "Scalar type 'Ratio': scale 6 is greater than precision 4.",
+    "elementId": "01JSCA00000000000000000002",
+    "filePath": ".maquettiste/model/types/ratio.json",
+    "jsonPointer": "/scale",
+    "line": 8,
+    "column": 12
+  }
+]

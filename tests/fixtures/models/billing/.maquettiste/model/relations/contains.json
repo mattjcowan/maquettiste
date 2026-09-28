@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01J92P0V1BWHG0REWKSTR292RS",
+  "name": "contains",
+  "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+  "relationKind": "composition",
+  "ends": [
+    {
+      "id": "01J92P0V1GMF7GJPA7981CH7YG",
+      "entity": "01J92P0V0FJ23CGSNKM7P1W5V7",
+      "role": "invoice",
+      "navigation": "invoice",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01J92P0V1H4D2M1HCK82ASJEWT",
+      "entity": "01J92P0V0GWFR78HZH0P8Z3GY7",
+      "role": "lines",
+      "navigation": "lines",
+      "ordered": true
+    }
+  ]
+}

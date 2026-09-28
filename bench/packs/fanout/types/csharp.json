@@ -1,0 +1,22 @@
+{
+  "binary": "byte[]",
+  "bool": "bool",
+  "collection": "IReadOnlyList<{type}>",
+  "date": "DateOnly",
+  "datetime": "DateTime",
+  "datetimeoffset": "DateTimeOffset",
+  "decimal": "decimal",
+  "double": "double",
+  "duration": "TimeSpan",
+  "float": "float",
+  "int16": "short",
+  "int32": "int",
+  "int64": "long",
+  "json": "JsonElement",
+  "nullable": "{type}?",
+  "string": "string",
+  "text": "string",
+  "time": "TimeOnly",
+  "ulid": "Ulid",
+  "uuid": "Guid"
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01JTAB00000000000000000002",
+  "name": "legacy_orders",
+  "database": "01JDBS00000000000000000001",
+  "columns": [
+    {
+      "id": "01JCMN00000000000000000002",
+      "name": "id",
+      "type": "uuid"
+    },
+    {
+      "id": "01JCMN00000000000000000003",
+      "name": "customer_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01JCMN00000000000000000002"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01JKEY00000000000000000001",
+      "columns": [
+        "01JCMN00000000000000000003"
+      ],
+      "referencesTable": "01JTAB00000000000000000001"
+    }
+  ]
+}

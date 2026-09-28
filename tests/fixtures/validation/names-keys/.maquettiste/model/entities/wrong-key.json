@@ -1,0 +1,44 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JENT00000000000000000004",
+  "name": "WrongKey",
+  "key": {
+    "attributes": [
+      "01JATT00000000000000000102"
+    ]
+  },
+  "alternateKeys": [
+    {
+      "id": "01JKEY00000000000000000001",
+      "name": "byCode",
+      "attributes": [
+        "01JATT00000000000000000402"
+      ]
+    },
+    {
+      "id": "01JKEY00000000000000000002",
+      "name": "byCode",
+      "attributes": [
+        "01JATT00000000000000000099"
+      ]
+    }
+  ],
+  "attributes": [
+    {
+      "id": "01JATT00000000000000000401",
+      "name": "id",
+      "type": "uuid"
+    },
+    {
+      "id": "01JATT00000000000000000402",
+      "name": "code",
+      "type": "string"
+    },
+    {
+      "id": "01JATT00000000000000000403",
+      "name": "code",
+      "type": "string"
+    }
+  ]
+}

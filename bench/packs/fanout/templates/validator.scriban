@@ -1,0 +1,18 @@
+{{ banner "//" }}
+namespace {{ pack.params.namespace }}.{{ pascal entity.package.name }}.Validation;
+
+public static class {{ pascal entity.name }}Validator
+{
+    public static IEnumerable<string> Validate({{ pascal entity.name }} item)
+    {
+{{- for a in entity.attributes }}
+{{- if a.required && (a.type.kind == "value-object" || a.type.builtin == "string" || a.type.builtin == "text" || a.type.builtin == "binary") }}
+        if (item.{{ pascal a.name }} is null) yield return "{{ camel a.name }} is required";
+{{- end }}
+{{- if a.length }}
+        if (item.{{ pascal a.name }}?.Length > {{ a.length }}) yield return "{{ camel a.name }} is longer than {{ a.length }}";
+{{- end }}
+{{- end }}
+        yield break;
+    }
+}

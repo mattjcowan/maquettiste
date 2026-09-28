@@ -1,0 +1,13 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JENT00000000000000000003",
+  "name": "Keyless",
+  "attributes": [
+    {
+      "id": "01JATT00000000000000000301",
+      "name": "value",
+      "type": "string"
+    }
+  ]
+}

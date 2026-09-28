@@ -1,0 +1,252 @@
+{{-
+# Mapping and row-model functions shared by the entity, repository and registration templates. Needs _csharp.scriban.
+#
+# A repository reads and writes one table through a private row class with one property per column; the row converts to and
+# from the entity (embedded value objects, enum codes, JSON columns), so Dapper only ever maps flat rows.
+
+# The mapping the repositories use: the "database" parameter when set, else the first database (by name) that maps the entity.
+func dapper_mapping(e)
+  if pack.params.database != ""
+    ret e.mappings[pack.params.database]
+  end
+  for db in model.databases
+    $m = e.mappings[db.name]
+    if $m
+      ret $m
+    end
+  end
+  ret null
+end
+
+# Whether an entity gets a repository: concrete, mapped, with a primary key, and every column it reads in its own table
+# (table-per-type hierarchies, whose rows span tables, are left to hand-written code).
+func has_repository(e)
+  if e.is_abstract
+    ret false
+  end
+  $m = dapper_mapping(e)
+  if !$m || !$m.table.primary_key
+    ret false
+  end
+  for cm in $m.columns
+    if cm.column.table.key != $m.table.key
+      $a = attribute_by_path(e, cm.attribute_path)
+      if !$a || !$a.collection
+        ret false
+      end
+    end
+  end
+  ret true
+end
+
+func attribute_by_id(attributes, id)
+  for a in attributes
+    if a.id == id
+      ret a
+    end
+  end
+  ret null
+end
+
+# The entity attribute a column path starts with ("<attributeId>" or "<attributeId>.<memberId>...").
+func attribute_by_path(e, path)
+  ret attribute_by_id(e.attributes, (path | string.split ".")[0])
+end
+
+func row_prop(c)
+  ret cs_ident (pascal c.name)
+end
+
+# The C# type of a row property: the column's type, with JSON columns held as text.
+func row_type(c)
+  if c.type == "json"
+    ret c.nullable ? "string?" : "string"
+  end
+  ret type_of c "csharp"
+end
+
+# Columns of an entity table that no attribute maps (foreign keys, positions), exposed as entity properties. The
+# discriminator is excluded: the repository writes it.
+func storage_columns(e, m)
+  $result = []
+  if !m
+    ret $result
+  end
+  $names = []
+  for a in e.attributes
+    $names[$names.size] = prop_name(a, type_name(e))
+  end
+  for c in m.table.columns
+    if !c.attribute_path && !c.is_discriminator && !($names | array.contains row_prop(c))
+      $result[$result.size] = c
+    end
+  end
+  ret $result
+end
+
+# Row property names of the storage columns the entity's base classes already declare (table-per-hierarchy mappings share
+# the root's table, so a derived class must not declare them again).
+func inherited_storage(e)
+  $names = []
+  $b = e.base
+  while $b
+    for c in storage_columns($b, dapper_mapping($b))
+      $names[$names.size] = row_prop(c)
+    end
+    $b = $b.base
+  end
+  ret $names
+end
+
+# The C# enum name of an enum-typed attribute, without "?".
+func enum_type(a)
+  ret type_of a.type "csharp"
+end
+
+# C# expression reading one simple attribute (builtin, scalar or enum; or anything stored as JSON) from its column.
+func read_simple(a, c)
+  $src = "row." + row_prop(c)
+  $full = type_of a "csharp"
+  if c.type == "json"
+    if a.collection
+      ret $src + " is null ? [] : JsonSerializer.Deserialize<" + $full + ">(" + $src + ")!"
+    else if a.required
+      ret "JsonSerializer.Deserialize<" + $full + ">(" + $src + (c.nullable ? "!" : "") + ")!"
+    end
+    ret $src + " is null ? null : JsonSerializer.Deserialize<" + $full + ">(" + $src + ")"
+  end
+  if a.type.kind == "enum"
+    $en = enum_type(a)
+    if c.type == "string" || c.type == "text"
+      if c.nullable && !a.required
+        ret $src + " is null ? null : " + $en + "Codes.Parse(" + $src + ")"
+      end
+      ret $en + "Codes.Parse(" + $src + (c.nullable ? "!" : "") + ")"
+    end
+    if c.nullable && !a.required
+      ret "(" + $en + "?)" + $src
+    end
+    ret "(" + $en + ")" + $src + (c.nullable ? "!" : "")
+  end
+  if c.nullable && a.required
+    ret "(" + $full + ")" + $src + "!"
+  end
+  ret $src
+end
+
+# C# expression building an embedded value object from its prefixed columns (recursive for nested value objects).
+func read_embedded(a, prefix, columns)
+  $vo = a.type.value_object
+  $parts = []
+  $tests = []
+  for member in $vo.attributes
+    $path = prefix + "." + member.id
+    if member.type.kind == "value-object" && !member.collection
+      $inner = read_embedded(member, $path, columns)
+      if $inner != ""
+        $parts[$parts.size] = (prop_name(member, type_name($vo)) + " = " + $inner)
+      end
+    else
+      for c in columns
+        if c.attribute_path == $path
+          $parts[$parts.size] = (prop_name(member, type_name($vo)) + " = " + read_simple(member, c))
+          $tests[$tests.size] = ("row." + row_prop(c) + " is null")
+        end
+      end
+    end
+  end
+  if $parts.size == 0
+    ret ""
+  end
+  $created = "new " + (type_of a.type "csharp") + " { " + ($parts | array.join ", ") + " }"
+  if !a.required && $tests.size > 0
+    ret "(" + ($tests | array.join " && ") + " ? null : " + $created + ")"
+  end
+  ret $created
+end
+
+# Entity property assignments from a row, one "Name = expression" per attribute or storage column read from the table.
+func read_assignments(e, m)
+  $result = []
+  $columns = []
+  for c in m.table.columns
+    $columns[$columns.size] = c
+  end
+  for a in e.attributes
+    $name = prop_name(a, type_name(e))
+    if a.type.kind == "value-object" && !a.collection
+      $direct = null
+      for c in $columns
+        if c.attribute_path == a.id
+          $direct = c
+        end
+      end
+      if $direct
+        $result[$result.size] = ($name + " = " + read_simple(a, $direct))
+      else
+        $built = read_embedded(a, a.id, $columns)
+        if $built != ""
+          $result[$result.size] = ($name + " = " + $built)
+        end
+      end
+    else
+      for c in $columns
+        if c.attribute_path == a.id
+          $result[$result.size] = ($name + " = " + read_simple(a, c))
+        end
+      end
+    end
+  end
+  for c in storage_columns(e, m)
+    $result[$result.size] = (row_prop(c) + " = row." + row_prop(c))
+  end
+  ret $result
+end
+
+# C# expression writing one column from the entity (the reverse of read_assignments).
+func write_expression(e, m, c)
+  if c.is_discriminator
+    ret json m.discriminator_value
+  end
+  if !c.attribute_path
+    ret "entity." + row_prop(c)
+  end
+  $segments = c.attribute_path | string.split "."
+  $a = attribute_by_id(e.attributes, $segments[0])
+  if !$a
+    # A column of another entity in the same table (a sibling in a table-per-hierarchy mapping).
+    ret c.nullable ? "null" : "default!"
+  end
+  $access = "entity." + prop_name($a, type_name(e))
+  $optional = !$a.required
+  $owner = $a
+  for i in 1..<$segments.size
+    $member = attribute_by_id($owner.type.value_object.attributes, $segments[i])
+    $access = $access + ($optional ? "?." : ".") + prop_name($member, type_name($owner.type.value_object))
+    $optional = $optional || !$member.required
+    $owner = $member
+  end
+  if c.type == "json"
+    if $optional || $a.collection
+      ret $access + " is null ? null : JsonSerializer.Serialize(" + $access + ")"
+    end
+    ret "JsonSerializer.Serialize(" + $access + ")"
+  end
+  if $owner.type.kind == "enum"
+    if c.type == "string" || c.type == "text"
+      ret $access + ($optional ? "?" : "") + ".ToCode()"
+    end
+    ret "(" + row_type(c) + ")" + $access
+  end
+  ret $access
+end
+
+# Columns the database fills on insert: identity and computed columns, and a primary key taken from a sequence.
+func generated_on_insert(c)
+  ret c.identity || c.computed || (c.sequence && c.is_primary_key)
+end
+
+func key_param(c)
+  ret cs_ident (camel c.name)
+end
+-}}

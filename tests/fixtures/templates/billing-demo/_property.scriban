@@ -1,0 +1,2 @@
+{{- p = $1 -}}
+{{ indent ("public " + (type_of p "csharp") + " " + (pascal p.name) + " { get; init; }") pack.params.indentWidth }}

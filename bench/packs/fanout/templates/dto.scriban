@@ -1,0 +1,6 @@
+{{ banner "//" }}
+export interface {{ pascal entity.name }}Dto {
+{{- for field in (ts_fields entity) }}
+  {{ field }}
+{{- end }}
+}

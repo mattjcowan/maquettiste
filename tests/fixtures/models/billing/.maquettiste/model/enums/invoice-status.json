@@ -1,0 +1,33 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01J92P0V05WQDH2GZG539D9VG1",
+  "name": "InvoiceStatus",
+  "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+  "members": [
+    {
+      "id": "01J92P0V0A895FZKKJSFWJC6GV",
+      "name": "Draft",
+      "value": 0,
+      "code": "D"
+    },
+    {
+      "id": "01J92P0V0BSV8C24C0KZQPGM06",
+      "name": "Issued",
+      "value": 1,
+      "code": "I"
+    },
+    {
+      "id": "01J92P0V0C731P7ME05AVZSCT8",
+      "name": "Paid",
+      "value": 2,
+      "code": "P"
+    },
+    {
+      "id": "01J92P0V0DRVD6JADG95KRMK4W",
+      "name": "Void",
+      "value": 3,
+      "code": "V"
+    }
+  ]
+}

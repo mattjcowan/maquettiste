@@ -1,0 +1,17 @@
+{
+  "$schema": "../../.schema/v1/category-tree.json",
+  "kind": "category-tree",
+  "id": "01JCAT00000000000000000001",
+  "name": "categories",
+  "categories": [
+    {
+      "id": "01JCAT00000000000000000002",
+      "name": "Receivables"
+    },
+    {
+      "id": "01JCAT00000000000000000003",
+      "name": "Invoices",
+      "parent": "01JCAT00000000000000000002"
+    }
+  ]
+}

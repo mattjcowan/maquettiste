@@ -1,0 +1,73 @@
+{{ banner "//" }}
+pack {{ pack.name }} {{ pack.version }} unit {{ unit.id }} ({{ unit.key }})
+params {{ json pack.params }}
+
+## casing
+{{- for word in ["HTTPServer2Id", "invoice line", "customerSince", "XMLHttpRequest"] }}
+{{ word }}: pascal={{ pascal word }} camel={{ camel word }} snake={{ snake word }} kebab={{ kebab word }} upper_snake={{ upper_snake word }}
+{{- end }}
+
+## inflection
+{{- for e in model.entities }}
+{{ e.name }}: pluralize(element)={{ pluralize e }} singularize(element)={{ singularize e }} pluralize(name)={{ pluralize e.name }} singularize(plural)={{ singularize e.plural_name }}
+{{- end }}
+words: {{ pluralize "person" }} {{ pluralize "category" }} {{ singularize "statuses" }} {{ singularize "addresses" }}
+
+## type_of (pack map "csharp" and dialects)
+{{- for e in model.entities }}
+{{- for a in e.attributes }}
+{{ e.name }}.{{ a.name }}: csharp={{ type_of a "csharp" }} postgresql={{ type_of a "postgresql" }} sqlserver={{ type_of a "sqlserver" }} mysql={{ type_of a "mysql" }}
+{{- end }}
+{{- end }}
+keywords: {{ type_of "uuid" "csharp" }} {{ type_of "decimal" "oracle" }} {{ type_of "string" "sqlite" }}
+
+## sql_quote
+{{- for d in ["postgresql", "sqlserver", "mysql", "sqlite", "oracle"] }}
+{{ d }}: {{ sql_quote "invoice" d }} {{ sql_quote "order" d }} {{ sql_quote "user" d }} {{ sql_quote "Invoice Line" d }} {{ sql_quote "invoice" d "always" }} {{ sql_quote "select" d "never" }} {{ sql_quote "a\"b]c`d" d "always" }}
+{{- end }}
+{{- db = model.databases | array.first }}
+database {{ db.name }} ({{ db.dialect }}, quoting {{ db.quoting }}):
+{{- for t in db.tables }}
+  {{ sql_quote t db }}: {{ for c in t.columns }}{{ sql_quote c db }}{{ if !for.last }}, {{ end }}{{ end }}
+{{- end }}
+
+## sql_literal
+{{- for d in ["postgresql", "sqlserver", "mysql", "sqlite", "oracle"] }}
+{{ d }}: {{ sql_literal "O'Brien" d }} {{ sql_literal "back\\slash" d }} {{ sql_literal true d }} {{ sql_literal false d }} {{ sql_literal 42 d }} {{ sql_literal 3.25 d }} {{ sql_literal null d }}
+{{- end }}
+
+## indent and dedent
+{{ indent "a\nb\n\nc" 4 }}
+{{ indent "first\nsecond" "// " }}
+{{ dedent "    alpha\n      beta\n\n    gamma" }}
+
+## escaping
+md: {{ escape_md "# Title with *stars*, _underscores_ and [link](https://x.test)\n1. item\n- dash | pipe" }}
+xml: {{ escape_xml "<a href=\"x\">Tom & 'Jerry'</a>" }}
+json: {{ escape_json "quote \" backslash \\ newline \n tab \t accent é <tag> & more" }}
+
+## json
+{{ json {b: 1, a: [true, null, "x"], c: {z: 1.5, y: "é <>&"}} }}
+{{- for e in model.entities }}
+{{ e.name }} properties: {{ json e.properties }}
+{{- end }}
+
+## predicates
+{{- for e in model.entities }}
+{{ e.name }}: audited={{ has_stereotype e "audited" }} soft-delete={{ has_stereotype e "soft-delete" }} pii={{ has_tag e "pii" }} billing={{ has_tag e "billing" }} receivables={{ in_category e "Receivables" }} catalog={{ in_category e "Catalog" }}
+{{- end }}
+
+## lookup
+invoice by id: {{ (lookup "01J92P0V0FJ23CGSNKM7P1W5V7").name }}
+missing: {{ (lookup "01J92P0V0000000000000000ZZ") == null }}
+
+## pack helpers (JavaScript)
+{{ shout "hello" }} {{ "piped" | shout }}
+{{- for e in model.entities }}
+{{ e.name }}: {{ attribute_names e }}
+{{- end }}
+{{- d = describe (model.entities | array.first) }}
+describe: {{ for kv in d }}{{ kv.key }}={{ kv.value }};{{ end }} list={{ d.list | array.join "," }}
+
+## scriban builtins stay invariant
+{{ "istanbul" | string.capitalize }} {{ "ılık irmak" | string.capitalizewords }} {{ ["b", "B", "a", "İ", "i"] | array.sort | array.join "," }} {{ 1234567.891 }} {{ "Invoice" | string.starts_with "inv" }} {{ regex.match "TITLE" "title" "i" | array.join "," }} {{ regex.replace "Istanbul" "i" "_" "i" }} {{ regex.split "a1b22c" "[0-9]+" | array.join "," }} {{ regex.matches "x1y2" "([a-z])([0-9])" | array.size }}

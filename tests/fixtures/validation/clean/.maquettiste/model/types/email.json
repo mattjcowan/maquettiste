@@ -1,0 +1,12 @@
+{
+  "$schema": "../../.schema/v1/scalar-type.json",
+  "kind": "scalar-type",
+  "id": "01JSCA00000000000000000001",
+  "name": "Email",
+  "package": "01JPKG00000000000000000001",
+  "base": "string",
+  "length": 254,
+  "validation": {
+    "pattern": "^[^@]+@[^@]+$"
+  }
+}

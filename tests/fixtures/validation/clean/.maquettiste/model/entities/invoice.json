@@ -1,0 +1,80 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JENT00000000000000000002",
+  "name": "Invoice",
+  "package": "01JPKG00000000000000000001",
+  "stereotypes": [
+    "audited"
+  ],
+  "properties": {
+    "auditLevel": "full"
+  },
+  "key": {
+    "attributes": [
+      "01JATT00000000000000000201"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01JATT00000000000000000201",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01JATT00000000000000000202",
+      "name": "number",
+      "type": "string",
+      "length": 32,
+      "required": true,
+      "unique": true,
+      "default": "INV-0000"
+    },
+    {
+      "id": "01JATT00000000000000000203",
+      "name": "total",
+      "type": {
+        "ref": "01JVBJ00000000000000000001"
+      }
+    },
+    {
+      "id": "01JATT00000000000000000204",
+      "name": "status",
+      "type": {
+        "ref": "01JENM00000000000000000001"
+      },
+      "required": true,
+      "default": "Draft"
+    },
+    {
+      "id": "01JATT00000000000000000205",
+      "name": "issuedOn",
+      "type": "date",
+      "default": "2024-01-31"
+    },
+    {
+      "id": "01JATT00000000000000000206",
+      "name": "dueAt",
+      "type": "datetimeoffset",
+      "default": "2024-02-29T12:00:00+01:00"
+    },
+    {
+      "id": "01JATT00000000000000000207",
+      "name": "lineCount",
+      "type": "int32",
+      "default": 0,
+      "validation": {
+        "min": 0,
+        "max": 1000
+      }
+    },
+    {
+      "id": "01JATT00000000000000000208",
+      "name": "reference",
+      "type": "uuid",
+      "default": "0f8fad5b-d9cb-469f-a165-70867728950e"
+    }
+  ]
+}

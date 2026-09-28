@@ -1,0 +1,38 @@
+# User files
+tmp/
+
+# Build output
+bin/
+obj/
+artifacts/
+*.nupkg
+*.snupkg
+
+# IDEs
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.DotSettings.user
+
+# Test output
+TestResults/
+*.trx
+coverage*.xml
+coverage*.json
+
+# Benchmark output (bench writes its synthetic repos and reports here by default)
+bench/out/
+bench/results/
+BenchmarkDotNet.Artifacts/
+
+# Maquettiste working folders created by local runs of the CLI
+.maquettiste/.cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code local permissions
+.claude/settings.local.json

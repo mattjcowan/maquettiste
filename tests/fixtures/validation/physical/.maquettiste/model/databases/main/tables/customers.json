@@ -1,0 +1,27 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01JTAB00000000000000000003",
+  "name": "customers",
+  "database": "01JDBS00000000000000000001",
+  "columns": [
+    {
+      "id": "01JCMN00000000000000000007",
+      "name": "id",
+      "type": "int64"
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01JCMN00000000000000000007"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01JKEY00000000000000000003",
+      "columns": [
+        "nope"
+      ]
+    }
+  ]
+}

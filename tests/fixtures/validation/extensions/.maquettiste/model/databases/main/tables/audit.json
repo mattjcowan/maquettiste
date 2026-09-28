@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01JTAB00000000000000000001",
+  "name": "audit",
+  "database": "01JDBS00000000000000000001",
+  "columns": [
+    {
+      "id": "01JCMN00000000000000000001",
+      "name": "id",
+      "type": "int64",
+      "properties": {
+        "pii": "yes"
+      }
+    }
+  ]
+}

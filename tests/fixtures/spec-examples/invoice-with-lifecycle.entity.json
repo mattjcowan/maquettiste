@@ -1,0 +1,11 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JAX3K9V2Q7M4T8W1Z5C6B0DE",
+  "name": "Invoice",
+  "key": { "attributes": ["01JAX3KA1B2C3D4E5F6G7H8J9K"], "strategy": "uuid-v7" },
+  "attributes": [
+    { "id": "01JAX3KA1B2C3D4E5F6G7H8J9K", "name": "id", "type": "uuid", "required": true }
+  ],
+  "lifecycle": "01JAX3P0VAR1ANTSMVST0000A1"
+}

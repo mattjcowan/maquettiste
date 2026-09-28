@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Owned by the scaffold (engine-design.md section 18). Shared test helpers; no test framework dependency. -->
+  <PropertyGroup>
+    <RootNamespace>Maquettiste.Testing</RootNamespace>
+    <AssemblyName>Maquettiste.Testing</AssemblyName>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Maquettiste.Engine/Maquettiste.Engine.csproj" />
+  </ItemGroup>
+</Project>

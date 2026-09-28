@@ -1,0 +1,19 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01JMAP00000000000000000001",
+  "name": "Invoice in main",
+  "database": "01JDBS00000000000000000001",
+  "entity": "01JENT00000000000000000002",
+  "attributes": [
+    {
+      "attribute": "01JATT00000000000000000204",
+      "storage": "string"
+    },
+    {
+      "attribute": "01JATT00000000000000000203",
+      "storage": "embedded",
+      "prefix": "total_"
+    }
+  ]
+}

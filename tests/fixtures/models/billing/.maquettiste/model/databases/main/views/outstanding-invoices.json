@@ -1,0 +1,28 @@
+{
+  "$schema": "../../../../.schema/v1/view.json",
+  "kind": "view",
+  "id": "01J92P0V1YZ4YP352KD1A50FXS",
+  "name": "outstanding_invoices",
+  "database": "01J92P0V1QRN2181XM2ZWE02W4",
+  "schema": "01J92P0V1RC04SKQ5353EAKHG2",
+  "body": {
+    "*": "select id, number, issued_on from billing.invoices where status = 1"
+  },
+  "columns": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "name": "number",
+      "type": "string",
+      "nullable": false
+    },
+    {
+      "name": "issued_on",
+      "type": "date",
+      "nullable": false
+    }
+  ]
+}

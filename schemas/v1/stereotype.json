@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Stereotype",
+  "description": "A typed marker that adds virtual attributes and default property values.",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "kind",
+    "id",
+    "key",
+    "name",
+    "displayName",
+    "pluralName",
+    "description",
+    "stereotypes",
+    "tags",
+    "category",
+    "appliesTo",
+    "attributes",
+    "defaultProperties",
+    "icon",
+    "color",
+    "properties",
+    "generation",
+    "source"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "kind": {
+      "const": "stereotype"
+    },
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "key": {
+      "description": "The immutable kebab-case key that elements list in stereotypes.",
+      "$ref": "common.json#/$defs/key"
+    },
+    "name": {
+      "$ref": "common.json#/$defs/label",
+      "default": ""
+    },
+    "displayName": {
+      "type": "string"
+    },
+    "pluralName": {
+      "type": "string"
+    },
+    "description": {
+      "$ref": "common.json#/$defs/description"
+    },
+    "stereotypes": {
+      "$ref": "common.json#/$defs/keyList",
+      "default": []
+    },
+    "tags": {
+      "$ref": "common.json#/$defs/tagList",
+      "default": []
+    },
+    "category": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "appliesTo": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "package",
+          "entity",
+          "value-object",
+          "scalar-type",
+          "enum",
+          "relation",
+          "database",
+          "table",
+          "view",
+          "sequence",
+          "mapping",
+          "diagram",
+          "tag-vocabulary",
+          "category-tree",
+          "stereotype",
+          "attribute",
+          "enum-member",
+          "column"
+        ]
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "attributes": {
+      "type": "array",
+      "x-sort": "order",
+      "items": {
+        "$ref": "common.json#/$defs/attribute"
+      },
+      "default": []
+    },
+    "defaultProperties": {
+      "type": "object",
+      "default": {}
+    },
+    "icon": {
+      "type": "string"
+    },
+    "color": {
+      "type": "string"
+    },
+    "properties": {
+      "$ref": "common.json#/$defs/properties",
+      "default": {}
+    },
+    "generation": {
+      "$ref": "common.json#/$defs/generation",
+      "default": {}
+    },
+    "source": {
+      "$ref": "common.json#/$defs/source"
+    }
+  },
+  "required": ["kind", "id", "key", "name"],
+  "additionalProperties": false
+}

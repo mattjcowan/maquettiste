@@ -1,0 +1,10 @@
+// [% banner "" %]
+export function [% pascal entity.name %]Card({ item }) {
+  const fields = [[% for a in entity.attributes %]"[% camel a.name %]"[% if !for.last %], [% end %][% end %]];
+  return (
+    <div className="card" style={{ padding: 8 }}>
+      {fields.map((f) => <span key={f}>{item[f]}</span>)}
+      <p>{`[% entity.name %]: ${fields.length} fields`}</p>
+    </div>
+  );
+}

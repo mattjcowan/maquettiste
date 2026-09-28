@@ -1,0 +1,58 @@
+{{-
+# CREATE TABLE for the table given as the first argument, followed by its indexes and comments. Needs _sql.scriban. The optional
+# second argument is a ",name,name," set of foreign keys to leave out (cycle_skip in _objects.scriban): the caller adds them with
+# ALTER TABLE once every table exists.
+# The text is built with string concatenation rather than arrays: Scriban counts every element an array function copies
+# against the template loop limit, and schema scripts and first migrations render thousands of tables in one unit.
+$t = $1
+$skip = $2 ?? ""
+$db = $t.database
+$d = $db.dialect
+$rowid = sqlite_rowid($t)
+$body = ""
+$after = ""
+for c in $t.columns
+  $body = $body + (for.first ? "" : ",\n") + "    " + column_def(c)
+  if pack.params.comments && c.comment
+    if $d == "sqlite"
+      $body = $body + " -- " + (c.comment | string.replace "\n" " ")
+    else
+      $after = $after + "\n" + comment_sql($t, c, c.comment)
+    end
+  end
+end
+if $t.primary_key && !$rowid
+  $clustered = ""
+  if $d == "sqlserver"
+    for ix in $t.indexes
+      if ix.method == "clustered"
+        $clustered = " NONCLUSTERED"
+      end
+    end
+  end
+  $body = $body + ",\n    CONSTRAINT " + q($t.primary_key.name, $db) + " PRIMARY KEY" + $clustered + " (" + cols($t.primary_key.columns, $db) + ")"
+end
+for u in $t.uniques
+  $body = $body + ",\n    CONSTRAINT " + q(u.name, $db) + " UNIQUE (" + cols(u.columns, $db) + ")"
+end
+for f in $t.foreign_keys
+  if $skip != "" && ($skip | string.contains ("," + f.name + ","))
+    continue
+  end
+  $body = $body + ",\n    CONSTRAINT " + q(f.name, $db) + " " + foreign_key_body(f, $db)
+end
+for k in $t.checks
+  $body = $body + ",\n    CONSTRAINT " + q(k.name, $db) + " CHECK (" + k.expression + ")"
+end
+$indexes = ""
+for ix in $t.indexes
+  $indexes = $indexes + "\n" + index_sql(ix, $t)
+end
+if pack.params.comments && $t.comment && $d != "sqlite"
+  $after = "\n" + comment_sql($t, null, $t.comment) + $after
+end
+-}}
+CREATE TABLE {{ qt($t) }} (
+{{ $body }}
+);{{ $indexes }}{{ $after }}
+{{- -}}

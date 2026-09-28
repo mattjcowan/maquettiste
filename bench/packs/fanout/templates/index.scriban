@@ -1,0 +1,5 @@
+# {{ package.qualified_name }}
+
+{{ for e in package.entities -}}
+- {{ e.name }}
+{{ end -}}

@@ -1,0 +1,17 @@
+{{- for p in model.packages }}
+{{- capture content -}}
+{{ banner "//" }}
+namespace {{ pack.params.namespace }};
+
+public static class {{ pascal p.name }}Registrations
+{
+    public static readonly string[] Entities =
+    [
+{{- for e in p.entities }}
+        "{{ e.name }}",
+{{- end }}
+    ];
+}
+{{ end -}}
+{{- file ("src/" + p.name + "/Registrations.g.cs") content }}
+{{- end }}

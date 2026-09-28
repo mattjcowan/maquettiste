@@ -1,0 +1,46 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01JTAB00000000000000000001",
+  "name": "audit_log",
+  "database": "01JDBS00000000000000000001",
+  "schema": "01JSCH00000000000000000001",
+  "columns": [
+    {
+      "id": "01JCMN00000000000000000001",
+      "name": "id",
+      "type": "int64",
+      "generated": "identity"
+    },
+    {
+      "id": "01JCMN00000000000000000002",
+      "name": "message",
+      "type": "text",
+      "nativeType": "varchar(4000)"
+    },
+    {
+      "id": "01JCMN00000000000000000003",
+      "name": "level",
+      "type": "string",
+      "length": 16,
+      "default": "info"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_audit_log",
+    "columns": [
+      "01JCMN00000000000000000001"
+    ]
+  },
+  "indexes": [
+    {
+      "id": "01JKEY00000000000000000001",
+      "name": "ix_audit_log_level",
+      "columns": [
+        {
+          "column": "01JCMN00000000000000000003"
+        }
+      ]
+    }
+  ]
+}

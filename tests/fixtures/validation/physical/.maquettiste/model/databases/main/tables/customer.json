@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01JTAB00000000000000000005",
+  "database": "01JDBS00000000000000000001",
+  "origin": "synthesized",
+  "entity": "01JENT00000000000000000001",
+  "columns": [
+    {
+      "id": "01JCMN00000000000000000009",
+      "attribute": "01JATT00000000000000000102",
+      "name": "full_name"
+    },
+    {
+      "id": "01JCMN00000000000000000010",
+      "attribute": "01JATT00000000000000000777",
+      "name": "ghost"
+    }
+  ]
+}

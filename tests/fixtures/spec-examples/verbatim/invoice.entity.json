@@ -1,0 +1,19 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JAX3K9V2Q7M4T8W1Z5C6B0DE",
+  "name": "Invoice",
+  "package": "01JAX3JZ0H6N2P5R8S1T4V7W9Y",
+  "description": "A bill issued to a customer.",
+  "stereotypes": ["aggregate-root", "audited", "soft-delete"],
+  "tags": ["billing"],
+  "category": "01JAX3N0RECEIVABLESCAT0001",
+  "key": { "attributes": ["01JAX3KA1B2C3D4E5F6G7H8J9K"], "strategy": "uuid-v7" },
+  "attributes": [
+    { "id": "01JAX3KA1B2C3D4E5F6G7H8J9K", "name": "id", "type": "uuid", "required": true },
+    { "id": "01JAX3KB2C3D4E5F6G7H8J9KAM", "name": "number", "type": "string", "length": 32, "required": true, "unique": true },
+    { "id": "01JAX3KC3D4E5F6G7H8J9KAMBN", "name": "total", "type": { "ref": "01JAX3M0MONEYVALUEOBJECT01" } },
+    { "id": "01JAX3KD4E5F6G7H8J9KAMBNCP", "name": "status", "type": { "ref": "01JAX3M1INVOICESTATUSENUM1" }, "required": true }
+  ],
+  "lifecycle": "01JAX3P0INVOICELIFECYCLE001"
+}

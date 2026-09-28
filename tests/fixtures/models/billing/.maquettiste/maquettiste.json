@@ -1,0 +1,24 @@
+{
+  "$schema": ".schema/v1/maquettiste.json",
+  "formatVersion": 1,
+  "name": "billing",
+  "outputs": {
+    "allow": [
+      {
+        "path": "db",
+        "commit": true
+      },
+      {
+        "path": "src/Generated"
+      }
+    ]
+  },
+  "packs": {
+    "csharp-dapper": {
+      "output": "src/Generated"
+    },
+    "sql-ddl": {
+      "output": "db"
+    }
+  }
+}

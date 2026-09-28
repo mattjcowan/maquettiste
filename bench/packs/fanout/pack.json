@@ -1,0 +1,138 @@
+{
+  "$schema": "../../.schema/v1/pack.json",
+  "name": "fanout",
+  "version": "1.0.0",
+  "engine": ">=1.0 <2.0",
+  "description": "Benchmark-only pack: many small files per entity over the synthetic model (engine-design.md section 17).",
+  "parameters": {
+    "namespace": "Bench.Generated"
+  },
+  "units": [
+    {
+      "id": "u01",
+      "template": "templates/record.scriban",
+      "for": "each entity",
+      "output": "built/{{ entity.package.name }}/{{ entity.name }}.u01.cs"
+    },
+    {
+      "id": "u02",
+      "template": "templates/dto.scriban",
+      "for": "each entity",
+      "output": "built/{{ entity.package.name }}/{{ entity.name }}.u02.ts"
+    },
+    {
+      "id": "u03",
+      "template": "templates/validator.scriban",
+      "for": "each entity",
+      "output": "built/{{ entity.package.name }}/{{ entity.name }}.u03.cs"
+    },
+    {
+      "id": "u04",
+      "template": "templates/doc.scriban",
+      "for": "each entity",
+      "output": "built/{{ entity.package.name }}/{{ entity.name }}.u04.md"
+    },
+    {
+      "id": "u05",
+      "template": "templates/query.scriban",
+      "for": "each entity",
+      "output": "committed/{{ entity.package.name }}/{{ entity.name }}.u05.sql"
+    },
+    {
+      "id": "u06",
+      "template": "templates/links.scriban",
+      "for": "each entity",
+      "output": "built/{{ entity.package.name }}/{{ entity.name }}.u06.cs"
+    },
+    {
+      "id": "u07",
+      "template": "templates/api.scriban",
+      "for": "each entity",
+      "output": "built/{{ entity.package.name }}/{{ entity.name }}.u07.json"
+    },
+    {
+      "id": "u08",
+      "template": "templates/record.scriban",
+      "for": "each entity",
+      "output": "built/{{ entity.package.name }}/{{ entity.name }}.u08.cs"
+    },
+    {
+      "id": "u09",
+      "template": "templates/dto.scriban",
+      "for": "each entity",
+      "output": "built/{{ entity.package.name }}/{{ entity.name }}.u09.ts"
+    },
+    {
+      "id": "u10",
+      "template": "templates/validator.scriban",
+      "for": "each entity",
+      "output": "committed/{{ entity.package.name }}/{{ entity.name }}.u10.cs"
+    },
+    {
+      "id": "u11",
+      "template": "templates/doc.scriban",
+      "for": "each entity",
+      "output": "built/{{ entity.package.name }}/{{ entity.name }}.u11.md"
+    },
+    {
+      "id": "u12",
+      "template": "templates/query.scriban",
+      "for": "each entity",
+      "output": "built/{{ entity.package.name }}/{{ entity.name }}.u12.sql"
+    },
+    {
+      "id": "u13",
+      "template": "templates/links.scriban",
+      "for": "each entity",
+      "output": "built/{{ entity.package.name }}/{{ entity.name }}.u13.cs"
+    },
+    {
+      "id": "u14",
+      "template": "templates/api.scriban",
+      "for": "each entity",
+      "output": "built/{{ entity.package.name }}/{{ entity.name }}.u14.json"
+    },
+    {
+      "id": "u15",
+      "template": "templates/record.scriban",
+      "for": "each entity",
+      "output": "committed/{{ entity.package.name }}/{{ entity.name }}.u15.cs"
+    },
+    {
+      "id": "u16",
+      "template": "templates/dto.scriban",
+      "for": "each entity",
+      "output": "built/{{ entity.package.name }}/{{ entity.name }}.u16.ts"
+    },
+    {
+      "id": "u17",
+      "template": "templates/validator.scriban",
+      "for": "each entity",
+      "output": "built/{{ entity.package.name }}/{{ entity.name }}.u17.cs"
+    },
+    {
+      "id": "u18",
+      "template": "templates/doc.scriban",
+      "for": "each entity",
+      "output": "built/{{ entity.package.name }}/{{ entity.name }}.u18.md"
+    },
+    {
+      "id": "u19",
+      "template": "templates/query.scriban",
+      "for": "each entity",
+      "output": "built/{{ entity.package.name }}/{{ entity.name }}.u19.sql"
+    },
+    {
+      "id": "u20",
+      "template": "templates/links.scriban",
+      "for": "each entity",
+      "output": "committed/{{ entity.package.name }}/{{ entity.name }}.u20.cs"
+    },
+    {
+      "id": "index",
+      "template": "templates/index.scriban",
+      "for": "each package",
+      "output": "built/{{ package.name }}/index.md"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "../../.schema/v1/value-object.json",
+  "kind": "value-object",
+  "id": "01JVBJ00000000000000000001",
+  "name": "Node",
+  "attributes": [
+    {
+      "id": "01JATT00000000000000000001",
+      "name": "label",
+      "type": "string"
+    },
+    {
+      "id": "01JATT00000000000000000002",
+      "name": "next",
+      "type": {
+        "ref": "01JVBJ00000000000000000002"
+      }
+    }
+  ]
+}

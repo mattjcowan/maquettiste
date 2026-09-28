@@ -1,0 +1,5 @@
+header {{ entity.name }} ({{ entity.attributes.size }} attributes)
+// maquettiste:keep id=body
+// default body
+// maquettiste:end-keep
+footer

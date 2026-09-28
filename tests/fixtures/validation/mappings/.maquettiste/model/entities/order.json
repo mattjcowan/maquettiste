@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JENT00000000000000000002",
+  "name": "Order",
+  "key": {
+    "attributes": [
+      "01JATT00000000000000000201"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01JATT00000000000000000201",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01JATT00000000000000000202",
+      "name": "total",
+      "type": "decimal"
+    }
+  ]
+}

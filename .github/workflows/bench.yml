@@ -1,0 +1,102 @@
+name: bench
+
+# The SPEC section 13 benchmark (engine-design.md section 17): a cold full run over the synthetic model (5,000 entities,
+# 20,000 relations, 100,000+ files), an incremental run after one entity edit, and a --check run, compared with the budgets
+# and with bench/baseline.json when it is committed (fails on a regression beyond 10%; without it the run emits a warning).
+# Exit code 2 = a budget, the regression gate, the check run or the determinism cross-check failed. Owned by W11.
+#
+# The budgets assume an 8-core machine on native disk; hosted ubuntu-latest runners have fewer cores, so pick a larger or
+# self-hosted runner through the dispatch input for numbers that mean something. The baseline is only comparable on the machine
+# class that produced it (see bench/README.md): when the cores, --jobs, OS, architecture, GC mode or runtime overrides differ from
+# the baseline's, the harness skips the regression gate (the report says why) instead of failing, and this workflow warns.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Runner label"
+        required: false
+        default: "ubuntu-latest"
+      jobs:
+        description: "--jobs (engine parallelism cap)"
+        required: false
+        default: "8"
+      max-regression:
+        description: "Allowed regression against bench/baseline.json, in percent"
+        required: false
+        default: "10"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bench:
+    name: benchmark
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
+    timeout-minutes: 60
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore (locked)
+        run: dotnet restore maquettiste.slnx --locked-mode
+
+      - name: Build
+        run: dotnet build bench/Maquettiste.Bench/Maquettiste.Bench.csproj --configuration Release --no-restore
+
+      - name: Machine
+        run: |
+          uname -a
+          nproc
+          (lscpu || sysctl -a | grep machdep.cpu) 2>/dev/null | head -20 || true
+          free -m 2>/dev/null || true
+
+      # SPEC section 13's 10% regression gate needs bench/baseline.json. The harness fails (exit 4) on a --baseline path that does
+      # not exist, so the gate is only passed when the file is committed; until then the run is flagged, not silently green.
+      - name: Baseline
+        id: baseline
+        run: |
+          if [ -f bench/baseline.json ]; then
+            echo "args=--baseline bench/baseline.json" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning file=bench/baseline.json::No bench/baseline.json is committed: the 10% regression gate (SPEC section 13) does not run. Commit a reference-machine report to enable it."
+            echo "args=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Benchmark
+        run: >
+          dotnet run --project bench/Maquettiste.Bench --configuration Release --no-build --
+          --jobs ${{ inputs.jobs || '8' }}
+          ${{ steps.baseline.outputs.args }}
+          --max-regression ${{ inputs.max-regression || '10' }}
+          --out "${{ runner.temp }}/maquettiste-bench"
+          --report bench/results/report.json
+
+      - name: Regression gate
+        if: always()
+        run: |
+          if [ -f bench/results/report.json ] && grep -q '"regressionGateSkipped"' bench/results/report.json; then
+            reason=$(sed -n 's/.*"regressionGateSkipped": "\(.*\)",\{0,1\}$/\1/p' bench/results/report.json)
+            echo "::warning file=bench/baseline.json::Regression gate skipped: ${reason}"
+          fi
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-report
+          path: bench/results/report.json
+          if-no-files-found: ignore

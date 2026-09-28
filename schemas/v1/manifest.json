@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Generation manifest",
+  "description": "One [path, hash, unit] entry per generated file, sorted by path.",
+  "type": "object",
+  "x-order": ["$schema", "pack", "files"],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "pack": {
+      "$ref": "common.json#/$defs/key"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "string",
+            "minLength": 1
+          },
+          {
+            "type": "string",
+            "pattern": "^(r:|o:)?[0-9a-f]{64}$"
+          },
+          {
+            "type": "string",
+            "minLength": 1
+          }
+        ],
+        "minItems": 3,
+        "maxItems": 3
+      },
+      "default": []
+    }
+  },
+  "required": ["pack"],
+  "additionalProperties": false
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../../.schema/v1/view.json",
+  "kind": "view",
+  "id": "01JVEW00000000000000000001",
+  "name": "invoice_totals",
+  "database": "01JDBS00000000000000000001",
+  "body": {
+    "*": "select 1 as total"
+  },
+  "columns": [
+    {
+      "name": "total",
+      "type": "decimal"
+    }
+  ]
+}

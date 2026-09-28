@@ -1,0 +1,6 @@
+{{ banner "//" }}
+public sealed record {{ pascal entity.name }}(
+{{- for a in entity.attributes }}
+    {{ type_of a "csharp" }} {{ pascal a.name }}{{ if !for.last }},{{ end }}
+{{- end }}
+);

@@ -1,0 +1,4 @@
+{{ pack.params.greeting }}
+{{- for e in model.entities }}
+- {{ e.name }}
+{{- end }}

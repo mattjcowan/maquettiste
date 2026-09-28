@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Entity",
+  "description": "A business object with identity.",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "kind",
+    "id",
+    "name",
+    "displayName",
+    "pluralName",
+    "package",
+    "abstract",
+    "base",
+    "description",
+    "stereotypes",
+    "tags",
+    "category",
+    "key",
+    "alternateKeys",
+    "attributes",
+    "properties",
+    "generation",
+    "source"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "kind": {
+      "const": "entity"
+    },
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "name": {
+      "$ref": "common.json#/$defs/identifier",
+      "default": ""
+    },
+    "displayName": {
+      "type": "string"
+    },
+    "pluralName": {
+      "type": "string"
+    },
+    "package": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "abstract": {
+      "type": "boolean",
+      "default": false
+    },
+    "base": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "description": {
+      "$ref": "common.json#/$defs/description"
+    },
+    "stereotypes": {
+      "$ref": "common.json#/$defs/keyList",
+      "default": []
+    },
+    "tags": {
+      "$ref": "common.json#/$defs/tagList",
+      "default": []
+    },
+    "category": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "key": {
+      "type": "object",
+      "x-order": ["attributes", "strategy"],
+      "properties": {
+        "attributes": {
+          "$ref": "common.json#/$defs/idList",
+          "minItems": 1
+        },
+        "strategy": {
+          "enum": ["database-identity", "sequence", "uuid-v7", "ulid", "application"],
+          "default": "application"
+        }
+      },
+      "required": ["attributes"],
+      "additionalProperties": false
+    },
+    "alternateKeys": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "x-order": ["id", "name", "attributes"],
+        "properties": {
+          "id": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "name": {
+            "$ref": "common.json#/$defs/identifier"
+          },
+          "attributes": {
+            "$ref": "common.json#/$defs/idList",
+            "minItems": 1
+          }
+        },
+        "required": ["id", "name", "attributes"],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "attributes": {
+      "type": "array",
+      "x-sort": "order",
+      "items": {
+        "$ref": "common.json#/$defs/attribute"
+      },
+      "default": []
+    },
+    "properties": {
+      "$ref": "common.json#/$defs/properties",
+      "default": {}
+    },
+    "generation": {
+      "$ref": "common.json#/$defs/generation",
+      "default": {}
+    },
+    "source": {
+      "$ref": "common.json#/$defs/source"
+    }
+  },
+  "required": ["kind", "id", "name"],
+  "additionalProperties": false
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../.schema/v1/database.json",
+  "kind": "database",
+  "id": "01JDBS00000000000000000001",
+  "name": "main",
+  "dialect": "sqlite",
+  "schemas": [
+    {
+      "id": "01JSCH00000000000000000001",
+      "name": "s"
+    },
+    {
+      "id": "01JSCH00000000000000000002",
+      "name": "s"
+    }
+  ]
+}

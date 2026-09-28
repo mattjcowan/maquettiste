@@ -1,0 +1,32 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01JTAB00000000000000000002",
+  "database": "01JDBS00000000000000000001",
+  "origin": "synthesized",
+  "entity": "01JENT00000000000000000002",
+  "columns": [
+    {
+      "id": "01JCMN00000000000000000004",
+      "attribute": "01JATT00000000000000000202",
+      "name": "invoice_no",
+      "nativeType": "varchar(32)"
+    },
+    {
+      "id": "01JCMN00000000000000000005",
+      "attribute": "01JATT00000000000000000203.01JATT00000000000000008001",
+      "name": "total_amount"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01JKEY00000000000000000002",
+      "columns": [
+        {
+          "column": "01JATT00000000000000000205",
+          "descending": true
+        }
+      ]
+    }
+  ]
+}

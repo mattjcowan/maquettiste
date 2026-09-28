@@ -1,0 +1,20 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JENT00000000000000000003",
+  "name": "Product",
+  "key": {
+    "attributes": [
+      "01JATT00000000000000000301"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01JATT00000000000000000301",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    }
+  ]
+}

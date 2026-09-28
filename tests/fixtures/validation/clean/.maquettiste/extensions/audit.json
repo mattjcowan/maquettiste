@@ -1,0 +1,23 @@
+{
+  "$schema": "../.schema/v1/extension.json",
+  "name": "audit",
+  "appliesTo": {
+    "kinds": [
+      "entity"
+    ],
+    "stereotypes": [
+      "audited"
+    ]
+  },
+  "properties": {
+    "auditLevel": {
+      "enum": [
+        "basic",
+        "full"
+      ]
+    }
+  },
+  "required": [
+    "auditLevel"
+  ]
+}

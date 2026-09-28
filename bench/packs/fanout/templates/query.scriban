@@ -1,0 +1,8 @@
+{{ banner "--" }}
+{{- m = entity.mappings.main }}
+{{- if m && m.table }}
+SELECT {{ for c in m.table.columns }}{{ sql_quote c.name "postgresql" }}{{ if !for.last }}, {{ end }}{{ end }}
+FROM {{ sql_quote m.table.name "postgresql" }};
+{{- else }}
+-- {{ entity.name }} has no table in main.
+{{- end }}

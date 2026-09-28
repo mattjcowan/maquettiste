@@ -1,0 +1,7 @@
+{
+  "$schema": "../../../.schema/v1/stereotype.json",
+  "kind": "stereotype",
+  "id": "01JSTR00000000000000000002",
+  "key": "stamped",
+  "name": "Stamped again"
+}

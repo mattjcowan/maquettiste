@@ -1,0 +1,19 @@
+{
+  "$schema": "../.schema/v1/extension.json",
+  "name": "owned",
+  "appliesTo": {
+    "stereotypes": [
+      "owned"
+    ]
+  },
+  "properties": {
+    "owner": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "owner",
+    "since"
+  ]
+}

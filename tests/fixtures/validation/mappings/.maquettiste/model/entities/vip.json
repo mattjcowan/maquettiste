@@ -1,0 +1,7 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JENT00000000000000000003",
+  "name": "Vip",
+  "base": "01JENT00000000000000000001"
+}

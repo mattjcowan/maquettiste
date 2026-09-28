@@ -1,0 +1,28 @@
+{
+  "$schema": "../../../.schema/v1/stereotype.json",
+  "kind": "stereotype",
+  "id": "01J92P0V25BX5TMQ8N9F6AJE61",
+  "key": "audited",
+  "name": "Audited",
+  "appliesTo": [
+    "entity"
+  ],
+  "attributes": [
+    {
+      "id": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+      "name": "createdAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "readOnly": true
+    },
+    {
+      "id": "01J92P0V27P8NW8KPEDG0RBZ4W",
+      "name": "updatedAt",
+      "type": "datetimeoffset",
+      "readOnly": true
+    }
+  ],
+  "defaultProperties": {
+    "retentionDays": 2555
+  }
+}

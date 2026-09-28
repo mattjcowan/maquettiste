@@ -1,0 +1,17 @@
+{
+  "$schema": "../.schema/v1/extension.json",
+  "name": "broken",
+  "appliesTo": {
+    "kinds": [
+      "entity"
+    ],
+    "stereotypes": [
+      "ghost"
+    ]
+  },
+  "properties": {
+    "x": {
+      "type": 5
+    }
+  }
+}

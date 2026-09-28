@@ -1,0 +1,7 @@
+{
+  "$schema": "../../.schema/v1/package.json",
+  "kind": "package",
+  "id": "01J92P0V01KDRN8GX5PGYCNKSX",
+  "name": "Billing",
+  "description": "Invoicing, payments and receivables."
+}

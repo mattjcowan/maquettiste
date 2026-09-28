@@ -1,0 +1,14 @@
+{
+  "$schema": "../.schema/v1/extension.json",
+  "name": "attribute-ui",
+  "appliesTo": {
+    "kinds": [
+      "attribute"
+    ]
+  },
+  "properties": {
+    "maxWidth": {
+      "type": "integer"
+    }
+  }
+}

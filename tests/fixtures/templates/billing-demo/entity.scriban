@@ -1,0 +1,17 @@
+{{ banner "//" }}
+namespace {{ pack.params.namespace }}.{{ entity.package.name }};
+
+/// {{ entity.display_name }}{{ if entity.description }}: {{ entity.description | string.split "\n" | array.first }}{{ end }}
+/// Attributes: {{ data.attributeCount }}; required: {{ data.requiredNames | array.join ", " }}; prefix {{ data.prefix }}
+{{- if hints.rename }}
+/// Renamed by hint: {{ hints.rename }}
+{{- end }}
+{{- if mapping }}
+/// Stored in {{ mapping.table.name }}{{ if mapping.inheritance }} ({{ mapping.inheritance }}){{ end }}
+{{- end }}
+public partial {{ if pack.params.useRecords }}record{{ else }}class{{ end }} {{ pascal entity.name }}
+{
+{{- for a in entity.attributes }}
+{{ include "_property.scriban" a }}
+{{- end }}
+}

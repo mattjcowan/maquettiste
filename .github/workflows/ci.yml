@@ -1,0 +1,151 @@
+name: ci
+
+on:
+  push:
+    branches: [main, "phase-*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: build and test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore (locked)
+        run: dotnet restore maquettiste.slnx --locked-mode
+
+      - name: Build (warnings are errors)
+        run: dotnet build maquettiste.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test maquettiste.slnx --configuration Release --no-build --logger "trx;LogFilePrefix=${{ matrix.os }}" --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}
+          path: TestResults
+          if-no-files-found: ignore
+
+  # Cross-OS determinism (engine-design.md section 17; W6 and W10): generate the billing fixture, and its three-dialect variant,
+  # with both example packs on ubuntu and macos, list the SHA-256 of every output file (plus the manifests and schema
+  # snapshots), and fail if the listings differ.
+  determinism:
+    name: determinism listing (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build the CLI
+        run: |
+          dotnet restore src/Maquettiste.Cli/Maquettiste.Cli.csproj --locked-mode
+          dotnet build src/Maquettiste.Cli/Maquettiste.Cli.csproj --configuration Release --no-restore
+
+      - name: Generate the billing fixture with sql-ddl and csharp-dapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/determinism"
+          cli="$PWD/src/Maquettiste.Cli/bin/Release/net10.0/Maquettiste.Cli.dll"
+          rm -rf "$work"
+          mkdir -p "$work/cache"
+          : > "$work/listing-${{ matrix.os }}.txt"
+          # Two repos: the billing fixture as it is (one PostgreSQL database), and the variant the pack tests call "dialects"
+          # (PackRepo.BillingDialects): a SQL Server and a SQLite database with lookup enums next to it, and a derived entity.
+          for variant in billing dialects; do
+            repo="$work/$variant"
+            mkdir -p "$repo"
+            cp -R tests/fixtures/models/billing/.maquettiste "$repo/.maquettiste"
+            mkdir -p "$repo/.maquettiste/templates"
+            cp -R packs/sql-ddl packs/csharp-dapper "$repo/.maquettiste/templates/"
+            # The overlay fix PackRepo applies: the status column stores member codes, so compare with codes (as the goldens do).
+            perl -pi -e "s/status in \(0, 1, 2, 3\)/status in ('D', 'I', 'P', 'V')/" "$repo/.maquettiste/model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json"
+            perl -pi -e "s/where status = 1/where status = 'I'/" "$repo/.maquettiste/model/databases/main/views/outstanding-invoices.json"
+            if [ "$variant" = dialects ]; then
+              model="$repo/.maquettiste/model"
+              printf '%s\n' '{' '  "$schema": ".schema/v1/maquettiste.json",' '  "formatVersion": 1,' '  "name": "billing",' \
+                '  "outputs": { "allow": [ { "path": "db", "commit": true }, { "path": "src/Generated" } ] },' \
+                '  "databases": { "local": { "enumStorage": "lookup" } },' \
+                '  "packs": { "csharp-dapper": { "output": "src/Generated" }, "sql-ddl": { "output": "db" } }' '}' \
+                > "$repo/.maquettiste/maquettiste.json"
+              for db in "01J92P0V2A0000000000000001 reporting sqlserver" "01J92P0V2A0000000000000002 local sqlite"; do
+                set -- $db
+                mkdir -p "$model/databases/$2"
+                printf '{\n  "kind": "database",\n  "id": "%s",\n  "name": "%s",\n  "dialect": "%s"\n}\n' "$1" "$2" "$3" > "$model/databases/$2/database.json"
+              done
+              printf '%s\n' '{' '  "kind": "entity",' '  "id": "01J92P0V2C0000000000000001",' '  "name": "CreditNote",' \
+                '  "package": "01J92P0V01KDRN8GX5PGYCNKSX",' '  "base": "01J92P0V0FJ23CGSNKM7P1W5V7",' \
+                '  "attributes": [ { "id": "01J92P0V2C0000000000000002", "name": "reason", "type": "string", "length": 200, "required": true } ]' '}' \
+                > "$model/entities/credit-note.json"
+            fi
+            MAQUETTISTE_CACHE_DIR="$work/cache" dotnet "$cli" generate --repo "$repo" --jobs 4 --progress plain
+            (cd "$repo" && find db src/Generated .maquettiste/manifest .maquettiste/snapshots -type f | LC_ALL=C sort | while IFS= read -r file; do
+              shasum -a 256 "$file" | sed "s|  |  $variant/|"
+            done) >> "$work/listing-${{ matrix.os }}.txt"
+          done
+          test -s "$work/listing-${{ matrix.os }}.txt"
+          grep -q '  dialects/db/local/' "$work/listing-${{ matrix.os }}.txt"
+          cat "$work/listing-${{ matrix.os }}.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: determinism-${{ matrix.os }}
+          path: ${{ runner.temp }}/determinism/listing-${{ matrix.os }}.txt
+          if-no-files-found: error
+
+  determinism-compare:
+    name: determinism (ubuntu = macos)
+    needs: determinism
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: determinism-*
+          merge-multiple: true
+          path: listings
+
+      - name: Compare the listings
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -l listings
+          if diff -u listings/listing-ubuntu-latest.txt listings/listing-macos-latest.txt; then
+            echo "Generated output is byte-identical on ubuntu and macos ($(wc -l < listings/listing-ubuntu-latest.txt) files)."
+          else
+            echo "::error::Generated output differs between ubuntu and macos."
+            exit 1
+          fi
