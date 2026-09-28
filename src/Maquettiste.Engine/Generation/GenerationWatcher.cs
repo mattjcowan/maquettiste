@@ -20,6 +20,8 @@ internal sealed class GenerationWatcher
     private readonly Lock _gate = new();
     private readonly SemaphoreSlim _signal = new(0, 1);
     private readonly string _modelRoot;
+    private readonly string _repoRootReal;
+    private readonly string _modelRootReal;
     private readonly string _repoRoot;
     private HashSet<string> _paths = new(StringComparer.Ordinal);
     private bool _pending;
@@ -45,6 +47,8 @@ internal sealed class GenerationWatcher
         var options = generation.Services.Options;
         _repoRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(options.RepoRoot));
         _modelRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(options.EffectiveModelRoot));
+        _repoRootReal = WatchPaths.ResolveLinks(_repoRoot);
+        _modelRootReal = WatchPaths.ResolveLinks(_modelRoot);
     }
 
     /// <summary>Runs completed so far.</summary>
@@ -58,8 +62,9 @@ internal sealed class GenerationWatcher
         var any = false;
         lock (_gate)
         {
-            foreach (var path in paths)
+            foreach (var reported in paths)
             {
+                var path = Normalize(reported);
                 if (IsEngineOwned(path))
                     continue;
                 _paths.Add(path);
@@ -145,12 +150,28 @@ internal sealed class GenerationWatcher
         }
     }
 
+    /// <summary>
+    /// Maps an absolute path reported through the link-resolved form of a root (macOS reports <c>/var</c> roots as
+    /// <c>/private/var</c>) onto the configured root, so prefix comparisons and repo-relative paths keep working. Relative paths
+    /// are returned unchanged.
+    /// </summary>
+    /// <param name="path">A reported path.</param>
+    /// <returns>The path in the configured root's form.</returns>
+    internal string Normalize(string path)
+    {
+        if (!Path.IsPathRooted(path))
+            return path;
+        var full = Path.GetFullPath(path);
+        full = WatchPaths.Map(full, _modelRoot, _modelRootReal);
+        return WatchPaths.Map(full, _repoRoot, _repoRootReal);
+    }
+
     /// <summary>Whether a path is one the engine writes itself.</summary>
     /// <param name="path">An absolute or repo-relative path.</param>
     /// <returns><see langword="true"/> to ignore it.</returns>
     internal bool IsEngineOwned(string path)
     {
-        var full = Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(_repoRoot, path));
+        var full = Normalize(Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(_repoRoot, path)));
         var name = Path.GetFileName(full);
         if (name.StartsWith('.') && name.EndsWith(".tmp", StringComparison.Ordinal))
             return true;

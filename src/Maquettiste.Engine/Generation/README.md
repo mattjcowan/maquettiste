@@ -157,3 +157,10 @@ look-ahead bound on a large model, and the benchmark budgets. The original list:
   benchmark's per-stage timings) the stages run one after another as before.
 - Beside resolution the run also takes the stats of the outputs the loaded unit states record (`Planning/README.md`), which the
   skip stage uses.
+
+## Watching through a symbolic link (CI fix, 2026-09-28)
+
+A file-system watcher can report paths through the link-resolved form of a configured root: macOS reports a `/var/...` root
+as `/private/var/...`. `WatchPaths.ResolveLinks` resolves the configured repo and model roots once, and
+`GenerationWatcher.Normalize` maps every reported absolute path back onto the configured form before the engine-owned check
+and before the path reaches the store, so a manifest write under the real prefix no longer triggers a second run.
