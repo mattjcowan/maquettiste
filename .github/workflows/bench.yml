@@ -76,10 +76,13 @@ jobs:
             echo "args=" >> "$GITHUB_OUTPUT"
           fi
 
+      # Gate 1 and bench/baseline.json were recorded with --no-example-packs (bench/README.md): the example packs add the
+      # sql-ddl schema unit, one 9 MB file for the 10,005-table database, which alone costs about 3 s of the incremental run.
       - name: Benchmark
         run: >
           dotnet run --project bench/Maquettiste.Bench --configuration Release --no-build --
           --jobs ${{ inputs.jobs || '8' }}
+          --no-example-packs
           ${{ steps.baseline.outputs.args }}
           --max-regression ${{ inputs.max-regression || '10' }}
           --out "${{ runner.temp }}/maquettiste-bench"
