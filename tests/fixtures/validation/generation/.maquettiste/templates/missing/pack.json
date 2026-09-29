@@ -1,0 +1,14 @@
+{
+  "name": "missing",
+  "version": "1.0.0",
+  "engine": ">=1.0 <2.0",
+  "description": "MQ6022.",
+  "units": [
+    {
+      "id": "entity",
+      "template": "nope.scriban",
+      "for": "each entity",
+      "output": "{{ entity.name }}.txt"
+    }
+  ]
+}

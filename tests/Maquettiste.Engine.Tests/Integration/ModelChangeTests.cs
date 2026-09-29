@@ -233,8 +233,10 @@ public sealed class ModelChangeTests
 
         var result = await repo.RunAsync();
 
+        // The pattern's literal prefix is under no allowed root: MQ6019 at planning skips those units (generation-ui.md section 5.3).
+        Assert.Contains(result.Diagnostics, d => d.Rule == "MQ6019" && d.JsonPointer!.StartsWith("/units/", StringComparison.Ordinal));
+        // A unit whose pattern starts with code is only known once rendered: its paths stay MQ6004 at write.
         E2ERepo.AssertOutcome(RunOutcome.Invalid, result);
-        Assert.Contains(result.Diagnostics, d => d.Rule == "MQ6004");
         Assert.False(Directory.Exists(repo.Repo.PathOf("elsewhere")));
     }
 }

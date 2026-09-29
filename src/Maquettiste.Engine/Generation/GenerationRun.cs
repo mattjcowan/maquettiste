@@ -148,8 +148,10 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             start = Clock.Now;
             var packs = await services.Packs.LoadAsync(snapshot, packNames, progress, ct).ConfigureAwait(false);
             Clock.Record(PipelineStage.Plan, start, packs.Packs.Count);
-            Add(packs.Diagnostics);
-            if (packs.Diagnostics.Any(Outcomes.IsInvalid))
+            // MQ6003 from the loader's parse pass is left to the render stage, which fails only the units that reach the file.
+            var packDiagnostics = packs.Diagnostics.Where(d => d.Rule != "MQ6003").ToList();
+            Add(packDiagnostics);
+            if (packDiagnostics.Any(Outcomes.IsInvalid))
                 return null;
 
             // Reads that need neither the resolved model nor the plan go on beside resolve and plan: the manifests, and the unit states
@@ -192,7 +194,8 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             var plan = await services.Planner.PlanAsync(resolved, packs, services.Scripts, progress, ct).ConfigureAwait(false);
             Clock.Record(PipelineStage.Plan, start, plan.Units.Count);
             Add(plan.Diagnostics);
-            if (plan.Diagnostics.Any(Outcomes.IsInvalid))
+            // A unit-level error (MQ6019) skipped only its unit: the pack's other units still render, and the run ends invalid.
+            if (plan.Diagnostics.Any(d => Outcomes.IsInvalid(d) && !Outcomes.IsUnitLevel(d)))
                 return null;
 
             var manifests = await manifestsTask.ConfigureAwait(false);

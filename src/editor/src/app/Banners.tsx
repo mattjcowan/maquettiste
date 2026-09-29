@@ -23,7 +23,7 @@ export function Banners() {
   if (!banner) return null;
   const tone = banner.kind === "signed-out" ? "border-danger" : "border-accent";
   return (
-    <div role="alert" className={`flex items-center gap-3 border-b ${tone} bg-surface px-3 py-2 text-13`} data-testid={`banner-${banner.kind}`}>
+    <div role="alert" className={`flex items-center gap-2 border-b ${tone} bg-surface px-2 py-2 text-13`} data-testid={`banner-${banner.kind}`}>
       {banner.kind === "signed-out" ? <CircleAlert className="size-4 text-danger" aria-hidden /> : <Info className="size-4 text-accent" aria-hidden />}
       <span className="flex-1">{banner.text}</span>
       {banner.kind === "deployed" || banner.kind === "signed-out" ? (
@@ -55,7 +55,7 @@ export function Notices() {
         <div
           role={notice.level === "error" ? "alert" : "status"}
           data-testid="notice"
-          className={`pointer-events-auto max-w-sm rounded-panel border ${notice.level === "error" ? "border-danger" : "border-default"} bg-raised px-3 py-2 text-13 shadow-float`}
+          className={`pointer-events-auto max-w-sm rounded-panel border ${notice.level === "error" ? "border-danger" : "border-default"} bg-raised px-2 py-2 text-13 shadow-float`}
         >
           {notice.text}
         </div>

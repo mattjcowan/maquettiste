@@ -10,6 +10,7 @@ import type {
   RealtimeSiteDeployed,
   RealtimeValidationCompleted,
 } from "@/api/types";
+import type { components } from "@/api/schema";
 
 export interface RealtimeEventMap {
   "model.changed": RealtimeModelChanged;
@@ -19,6 +20,8 @@ export interface RealtimeEventMap {
   "job.completed": RealtimeJobCompleted;
   "presence.changed": RealtimePresenceChanged;
   "site.deployed": RealtimeSiteDeployed;
+  "templates.changed": components["schemas"]["RealtimeTemplatesChanged"];
+  "packs.changed": components["schemas"]["RealtimePacksChanged"];
 }
 
 export type RealtimeEventName = keyof RealtimeEventMap;
@@ -30,6 +33,8 @@ export const REALTIME_EVENTS: RealtimeEventName[] = [
   "job.completed",
   "presence.changed",
   "site.deployed",
+  "templates.changed",
+  "packs.changed",
 ];
 
 export type RealtimeState = "disconnected" | "connecting" | "connected" | "reconnecting";

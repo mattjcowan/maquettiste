@@ -97,7 +97,7 @@ export function TagVocabularyEditor({ scope }: Scope) {
     else edit((j) => void ((j as unknown as TagVocabularyDoc).definitions = [...definitions, { key }]));
   };
   return (
-    <section className="flex max-w-3xl flex-col gap-3" aria-label={KIND_LABELS["tag-vocabulary"]} data-testid="tag-vocabulary-editor">
+    <section className="flex max-w-3xl flex-col gap-2" aria-label={KIND_LABELS["tag-vocabulary"]} data-testid="tag-vocabulary-editor">
       {id ? (
         <CheckboxField
           id={`tags-strict-${scope ?? "global"}`}
@@ -277,7 +277,7 @@ export function CategoryTreeEditor({ scope }: Scope) {
     </ul>
   );
   return (
-    <section className="flex max-w-3xl flex-col gap-3" aria-label={KIND_LABELS["category-tree"]} data-testid="category-tree-editor">
+    <section className="flex max-w-3xl flex-col gap-2" aria-label={KIND_LABELS["category-tree"]} data-testid="category-tree-editor">
       <SectionTitle
         actions={
           <Button size="sm" onClick={addTop}>

@@ -47,6 +47,14 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
     public static string StaticHash(LoadedPack pack, PackUnit unit, IReadOnlyList<FormatterSettings> formatters, string key) =>
         new UnitHashPrefix(pack, unit, formatters).For(key);
 
+    /// <summary>The static parts of a pack unit (<see cref="PlannedUnit.StaticParts"/>).</summary>
+    /// <param name="pack">The pack.</param>
+    /// <param name="unit">The unit.</param>
+    /// <param name="formatters">The formatter settings.</param>
+    /// <returns>The parts.</returns>
+    public static string StaticParts(LoadedPack pack, PackUnit unit, IReadOnlyList<FormatterSettings> formatters) =>
+        new UnitHashPrefix(pack, unit, formatters).Parts;
+
     /// <summary>The unit key: <c>&lt;pack&gt;/&lt;unitId&gt;</c> for model scope, else <c>&lt;pack&gt;/&lt;unitId&gt;:&lt;elementId&gt;</c>.</summary>
     /// <param name="pack">The pack name.</param>
     /// <param name="unitId">The unit id.</param>
@@ -95,6 +103,18 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
                     var unit = pack.Manifest.Units[index];
                     var pointer = "/units/" + index.ToString(CultureInfo.InvariantCulture);
                     var hash = new UnitHashPrefix(pack, unit, formatters);
+
+                    // MQ6019 (generation-ui.md section 5.3): an output pattern that cannot stay under an allowed root is a unit-level
+                    // error found before any element is planned; that unit is skipped and the pack's other units run.
+                    // Without any allowed root every write is refused as MQ6004 already, so the check needs at least one.
+                    var rootProblems = !packs.CheckOutputRoots || model.Settings.Outputs.Allow.Count == 0 ? [] : UnitRules.OutputRoots(pack.Manifest with { Units = [unit] }, pack.Settings, model.Settings.Outputs.Allow, packFile);
+                    if (rootProblems.Count > 0)
+                    {
+                        diagnostics.AddRange(rootProblems.Select(d => d with { JsonPointer = pointer + d.JsonPointer!["/units/0".Length..] }));
+                        progress?.Report(new ProgressUpdate(PipelineStage.Plan, ++doneUnits, totalUnits, packFile, pack.Name));
+                        continue;
+                    }
+
                     foreach (var element in Candidates(model, pack, unit, parameters, Pool, packFile, pointer, diagnostics, ct))
                     {
                         ct.ThrowIfCancellationRequested();
@@ -141,7 +161,7 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
         Parallel.For(0, kept.Count, new ParallelOptions { MaxDegreeOfParallelism = options.EffectiveParallelism, CancellationToken = ct }, i =>
         {
             var (key, pack, unit, element, hash) = planned[kept[i]];
-            units[i] = new PlannedUnit(key, pack, unit, element, hash.For(key));
+            units[i] = new PlannedUnit(key, pack, unit, element, hash.For(key)) { StaticParts = hash.Parts };
         });
         return new UnitPlan(units, PackLoader.Sort(diagnostics));
     }
@@ -152,6 +172,99 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
     /// <returns><see langword="true"/> to drop.</returns>
     internal static bool SkippedByHints(IReadOnlyDictionary<string, GenerationHints> generation, string pack) =>
         (generation.TryGetValue("*", out var all) && all.Skip) || (generation.TryGetValue(pack, out var own) && own.Skip);
+
+    /// <summary>
+    /// Why a unit does not plan an element (generation-ui.md section 4.3), with the planner's own tests in its order: the scope (or the
+    /// selector) does not return the element, <c>generation.skip</c> hints drop it, or the unit's filter excludes it.
+    /// </summary>
+    /// <param name="model">The resolved model.</param>
+    /// <param name="pack">The loaded pack.</param>
+    /// <param name="unit">The unit.</param>
+    /// <param name="element">The element, or <see langword="null"/> for a model-scope question.</param>
+    /// <param name="scripts">The sandbox factory, for selectors and script filters.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The reason kind and sentence, or <see langword="null"/> when the unit plans the element.</returns>
+    internal static (string Kind, string Detail)? WhyNot(ResolvedModel model, LoadedPack pack, PackUnit unit, IResolvedObject? element,
+        IScriptSandboxFactory scripts, CancellationToken ct)
+    {
+        var parameters = pack.Parameters.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal);
+        IScriptSandboxPool? pool = null;
+        var diagnostics = new List<Diagnostic>();
+        IScriptSandboxPool? Pool()
+        {
+            try
+            {
+                return pool ??= scripts.CreatePool(pack.Scripts, model.Settings.Limits, 1, ct);
+            }
+            catch (Exception ex) when (ScriptDiagnostic(ex) is { } diagnostic)
+            {
+                diagnostics.Add(diagnostic);
+                return null;
+            }
+        }
+
+        try
+        {
+            var candidates = Candidates(model, pack, unit, parameters, Pool, pack.RelativePath + "/pack.json", "/units", diagnostics, ct);
+            var inScope = candidates.Any(c => element is null ? c is null : c is not null && string.Equals(c.Id, element.Id, StringComparison.Ordinal));
+            if (!inScope)
+            {
+                if (unit.For.StartsWith("select ", StringComparison.Ordinal))
+                    return ("selector", $"The selector '{unit.For["select ".Length..].Trim()}' did not return {Describe(element)}{(diagnostics.Count > 0 ? ": " + diagnostics[0].Message : "")}.");
+                return ("scope", element is null
+                    ? $"Unit '{unit.Id}' is '{unit.For}': it renders once per element, so name an element."
+                    : $"Unit '{unit.Id}' is '{unit.For}', which does not cover {Describe(element)} ({element.Kind}).");
+            }
+
+            var filter = new UnitFilter(model);
+            if (element is RElement conceptual && SkippedByHints(conceptual.Generation, pack.Name))
+                return ("skip-hint", $"{Describe(element)} has generation.skip for this pack (or for every pack).");
+            if (element is RTable table && filter.FileOf(table) is { } tableFile && SkippedByHints(tableFile.Generation, pack.Name))
+                return ("skip-hint", $"The table file of {Describe(element)} has generation.skip for this pack (or for every pack).");
+            var key = KeyOf(pack.Name, unit.Id, element?.Id);
+            if (!filter.Matches(unit.Where, element, key, pack, parameters, Pool, diagnostics, ct))
+            {
+                // Name the clause that failed ("tags: api"): each clause is tried alone, in the order pack.json documents them.
+                var failed = Clauses(unit.Where!).FirstOrDefault(c => !filter.Matches(c.Where, element, key, pack, parameters, Pool, [], ct));
+                var clause = failed.Name is null ? "" : $" (where.{failed.Name}: {failed.Value})";
+                return ("filter", $"The unit's where filter{clause} excludes {Describe(element)}{(diagnostics.Count > 0 ? ": " + diagnostics[0].Message : "")}.");
+            }
+
+            return null;
+        }
+        finally
+        {
+            pool?.Dispose();
+        }
+    }
+
+    /// <summary>Each set clause of a where filter alone, with its pack.json name and value.</summary>
+    private static IEnumerable<(string? Name, string Value, UnitWhere Where)> Clauses(UnitWhere where)
+    {
+        static string List(IReadOnlyList<string> values) => string.Join(", ", values);
+        if (where.Tags.Count > 0)
+            yield return ("tags", List(where.Tags), new UnitWhere { Tags = where.Tags });
+        if (where.NotTags.Count > 0)
+            yield return ("notTags", List(where.NotTags), new UnitWhere { NotTags = where.NotTags });
+        if (where.Stereotypes.Count > 0)
+            yield return ("stereotypes", List(where.Stereotypes), new UnitWhere { Stereotypes = where.Stereotypes });
+        if (where.NotStereotypes.Count > 0)
+            yield return ("notStereotypes", List(where.NotStereotypes), new UnitWhere { NotStereotypes = where.NotStereotypes });
+        if (where.Categories.Count > 0)
+            yield return ("categories", List(where.Categories), new UnitWhere { Categories = where.Categories });
+        if (where.Packages.Count > 0)
+            yield return ("packages", List(where.Packages), new UnitWhere { Packages = where.Packages });
+        if (where.NotPackages.Count > 0)
+            yield return ("notPackages", List(where.NotPackages), new UnitWhere { NotPackages = where.NotPackages });
+        if (where.Database is { } database)
+            yield return ("database", database, new UnitWhere { Database = database });
+        if (where.Abstract is { } isAbstract)
+            yield return ("abstract", isAbstract ? "true" : "false", new UnitWhere { Abstract = isAbstract });
+        if (where.Script is { } script)
+            yield return ("script", script, new UnitWhere { Script = script });
+    }
+
+    private static string Describe(IResolvedObject? element) => element is null ? "the model" : $"'{element.Id}'";
 
     /// <summary>Maps a sandbox exception to its diagnostic.</summary>
     /// <param name="ex">The exception.</param>
@@ -227,11 +340,16 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
         private readonly string _output;
         private readonly string _formatter;
         private readonly string _templates;
+        private readonly PackUnit _unit;
+        private readonly LoadedPack _loaded;
         private byte[]? _prefix;
+        private string? _parts;
 
         public UnitHashPrefix(LoadedPack pack, PackUnit unit, IReadOnlyList<FormatterSettings> formatters)
         {
             _pack = pack.Name;
+            _unit = unit;
+            _loaded = pack;
             _version = pack.Manifest.Version;
             _unitJson = CanonicalForm.Json(unit);
             _scriptsHash = pack.ScriptsHash;
@@ -262,6 +380,38 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
             if (prefix is null)
                 Volatile.Write(ref _prefix, prefix = Prefix());
             return ForPrefix(prefix, key);
+        }
+
+        /// <summary>The static parts, built once per pack unit (a race builds equal text).</summary>
+        public string Parts
+        {
+            get
+            {
+                var parts = Volatile.Read(ref _parts);
+                if (parts is null)
+                    Volatile.Write(ref _parts, parts = BuildParts());
+                return parts;
+            }
+        }
+
+        private string BuildParts()
+        {
+            static string Short(string? text) => text is null ? "none" : ContentHash.Of(text)[..32];
+            string Template(string path) => PackFiles.Hash(_loaded.RootPath, path) is { } h ? h[..Math.Min(32, h.Length)] : DependencyHasher.Absent;
+            var parts = new SortedDictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["formatter"] = Short(_formatter),
+                ["output-base"] = Short(_output),
+                ["pack-version"] = _version.Replace('\n', ' '),
+                ["scripts"] = Short(_scriptsHash),
+                ["unit"] = Short(_unitJson),
+                ["template:" + _unit.Template] = Template(_unit.Template),
+            };
+            if (_unit.Companion is { } companion)
+                parts["template:" + companion.Template] = Template(companion.Template);
+            foreach (var (name, value) in _loaded.Parameters)
+                parts["parameter:" + name] = Short(CanonicalForm.Json(value));
+            return string.Join('\n', parts.Select(p => p.Key.Replace('\n', ' ') + "=" + p.Value));
         }
 
         private static string ForPrefix(byte[] prefix, string key)

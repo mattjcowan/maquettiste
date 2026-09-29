@@ -132,7 +132,14 @@ public sealed record ScriptSource(string Path, string Code, string Hash);
 /// <summary>The packs of a run.</summary>
 /// <param name="Packs">Enabled packs, in ordinal name order.</param>
 /// <param name="Diagnostics">Pack loading diagnostics (MQ6001, MQ6002).</param>
-public sealed record PackSet(IReadOnlyList<LoadedPack> Packs, IReadOnlyList<Diagnostic> Diagnostics);
+public sealed record PackSet(IReadOnlyList<LoadedPack> Packs, IReadOnlyList<Diagnostic> Diagnostics)
+{
+    /// <summary>
+    /// Whether the planner skips a unit whose output pattern cannot stay under an allowed root (MQ6019). The paths operation turns it
+    /// off, because it reports MQ6019 itself and still shows where each path would go.
+    /// </summary>
+    public bool CheckOutputRoots { get; init; } = true;
+}
 
 /// <summary>One planned render unit.</summary>
 /// <param name="Key"><c>&lt;pack&gt;/&lt;unitId&gt;</c> for model scope, <c>&lt;pack&gt;/&lt;unitId&gt;:&lt;elementId&gt;</c> otherwise.</param>
@@ -140,7 +147,15 @@ public sealed record PackSet(IReadOnlyList<LoadedPack> Packs, IReadOnlyList<Diag
 /// <param name="Unit">The unit definition.</param>
 /// <param name="Element">The resolved element, or <see langword="null"/> for model scope.</param>
 /// <param name="StaticHash">The unit's static input hash (engine-design.md section 11).</param>
-public sealed record PlannedUnit(string Key, LoadedPack Pack, PackUnit Unit, IResolvedObject? Element, string StaticHash);
+public sealed record PlannedUnit(string Key, LoadedPack Pack, PackUnit Unit, IResolvedObject? Element, string StaticHash)
+{
+    /// <summary>
+    /// The parts <see cref="StaticHash"/> combines, one <c>name=value</c> line each, ordinal by name (pack version, unit definition,
+    /// each parameter, scripts, output base, formatter, templates), shared by every element of one pack unit; only for explanation
+    /// (generation-ui.md section 4.2), <see langword="null"/> when unknown.
+    /// </summary>
+    public string? StaticParts { get; init; }
+}
 
 /// <summary>The planned units of a run.</summary>
 /// <param name="Units">Units in pack order, then ordinal by key.</param>
@@ -159,7 +174,17 @@ public sealed record UnitOutput(string Path, string ManifestHash, long Length, l
 /// <param name="InputHash">The input hash.</param>
 /// <param name="ReadKeys">The recorded dependency keys, ordinal.</param>
 /// <param name="Outputs">The files the unit produced.</param>
-public sealed record UnitState(string Key, string InputHash, IReadOnlyList<string> ReadKeys, IReadOnlyList<UnitOutput> Outputs);
+public sealed record UnitState(string Key, string InputHash, IReadOnlyList<string> ReadKeys, IReadOnlyList<UnitOutput> Outputs)
+{
+    /// <summary>
+    /// Each read key's hash at render time, truncated to 16 bytes, in <see cref="ReadKeys"/> order (unit state format 3); empty when
+    /// not recorded. Only for explanation: the skip decision uses <see cref="InputHash"/>.
+    /// </summary>
+    public ReadOnlyMemory<byte> KeyHashes { get; init; }
+
+    /// <summary>The static parts at render time (<see cref="PlannedUnit.StaticParts"/>), or <see langword="null"/>.</summary>
+    public string? StaticParts { get; init; }
+}
 
 /// <summary>A unit skipped because its inputs and outputs are unchanged.</summary>
 /// <param name="Unit">The unit.</param>
@@ -190,7 +215,11 @@ public sealed record RenderedUnit(
     IReadOnlyList<string> ReadKeys,
     string InputHash,
     IReadOnlyList<Diagnostic> Diagnostics,
-    bool Failed);
+    bool Failed)
+{
+    /// <summary>Each read key's current hash, truncated to 16 bytes, in <see cref="ReadKeys"/> order (see <see cref="UnitState.KeyHashes"/>).</summary>
+    public ReadOnlyMemory<byte> KeyHashes { get; init; }
+}
 
 /// <summary>The output root that contains a file.</summary>
 /// <param name="Path">The root's repo-relative folder.</param>

@@ -1,9 +1,9 @@
-// Shell (mock project): theme and density switches, the command palette, and an axe scan of each
+// Shell (mock project): the theme switch, one dense row height (no density toggle), the command palette, and an axe scan of each
 // workspace in both themes (no serious or critical violations).
 import AxeBuilder from "@axe-core/playwright";
 import { expect, openEditor, test, workspace } from "./fixtures";
 
-test("theme, density and the command palette", async ({ page }) => {
+test("theme, one density and the command palette", async ({ page }) => {
   await openEditor(page);
   const html = page.locator("html");
   await page.getByTestId("theme-menu").click();
@@ -13,9 +13,10 @@ test("theme, density and the command palette", async ({ page }) => {
   await page.getByRole("menuitemradio", { name: "Light" }).click();
   await expect(html).toHaveAttribute("data-theme", "light");
 
-  const density = await html.getAttribute("data-density");
-  await page.getByTestId("density-toggle").click();
-  await expect(html).not.toHaveAttribute("data-density", density ?? "");
+  // One density (E23): no toggle, no preference, 24 px rows for a fine pointer.
+  await expect(page.getByTestId("density-toggle")).toHaveCount(0);
+  await expect(html).not.toHaveAttribute("data-density", /.*/);
+  expect(await html.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--mq-row-h").trim())).toBe("24px");
 
   await page.keyboard.press("Control+k");
   const palette = page.getByTestId("command-palette");

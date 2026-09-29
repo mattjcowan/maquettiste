@@ -13,14 +13,15 @@ import { ConflictDialog } from "@/inspector/ConflictDialog";
 import { Splitter } from "@/components/ui/splitter";
 import { Spinner } from "@/components/ui/misc";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { applyDensity, applyTheme, followSystemTheme } from "@/design/theme";
+import { applyTheme, followSystemTheme } from "@/design/theme";
 import { saveLayout, useEditor, type EditorState, type Workspace } from "@/state/store";
 import { Banners, Notices } from "./Banners";
 import { BottomPanel } from "./BottomPanel";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { ServicesProvider, useServices, type AppServices } from "./context";
 import { parseLocation } from "./navigation";
-import { GenerateSidebar, Rail } from "./Rail";
+import { Rail } from "./Rail";
+import { GenerateExplorer } from "@/workspaces/generate/GenerateExplorer";
 import { useGlobalShortcuts } from "./shortcuts";
 import { TopBar } from "./TopBar";
 import { SCREEN_LABELS } from "@/model/labels";
@@ -70,7 +71,7 @@ export class RegionBoundary extends Component<{ name: string; children: ReactNod
   render() {
     if (!this.state.error) return this.props.children;
     return (
-      <div role="alert" className="m-4 rounded-[8px] border border-default bg-surface p-4 text-[13px]">
+      <div role="alert" className="m-4 rounded-[8px] border border-default bg-surface p-2 text-[13px]">
         <p className="font-semibold text-danger">The {this.props.name} view failed.</p>
         <pre className="mt-2 whitespace-pre-wrap font-mono text-[12px] text-secondary">{this.state.error.message}</pre>
       </div>
@@ -92,13 +93,11 @@ function useLocationSync(): void {
   }, [location.pathname, location.search, store]);
 }
 
-/** Store → <html data-theme data-density>, following the OS while the choice is "system". */
+/** Store → <html data-theme>, following the OS while the choice is "system". */
 function useThemeSync(): void {
   const { store } = useServices();
   const theme = useEditor(store, (s) => s.theme);
-  const density = useEditor(store, (s) => s.density);
   useEffect(() => applyTheme(theme), [theme]);
-  useEffect(() => applyDensity(density), [density]);
   useEffect(() => followSystemTheme(() => store.getState().theme), [store]);
 }
 
@@ -153,7 +152,7 @@ function Shell() {
               style={{ width: second ? explorerSize * 2 : explorerSize }}
             >
               {sidebar === "generate" ? (
-                <GenerateSidebar />
+                <GenerateExplorer />
               ) : (
                 <div className="flex h-full min-h-0">
                   <Explorer key={sidebar} id={sidebar} />

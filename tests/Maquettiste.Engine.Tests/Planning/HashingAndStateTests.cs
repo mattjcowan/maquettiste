@@ -107,6 +107,58 @@ public sealed class HashingAndStateTests
     }
 
     [Fact]
+    public void Unit_state_format_3_keeps_per_key_hashes_and_static_parts_and_copies_an_unchanged_record()
+    {
+        var hashes = KeyHashes.Of(["e:1", "k:entity"], k => k == "e:1" ? new string('a', 64) : DependencyHasher.Absent);
+        const string parts = "pack-version=1.0.0\nunit=0123";
+        var states = new[]
+        {
+            new UnitState("p/b:2", "h2", ["e:1", "k:entity"], []) { KeyHashes = hashes, StaticParts = parts },
+            new UnitState("p/c:3", "h3", ["e:1", "k:entity"], []) { KeyHashes = hashes, StaticParts = parts },
+            new UnitState("p/a", "h1", ["e:1"], []),
+        };
+
+        var bytes = UnitStateStore.Encode(states);
+        var decoded = UnitStateStore.Decode(bytes)!;
+        Assert.Equal(hashes, decoded["p/b:2"].KeyHashes.ToArray());
+        Assert.Equal(parts, decoded["p/b:2"].StaticParts);
+        Assert.Same(decoded["p/b:2"].StaticParts, decoded["p/c:3"].StaticParts); // one table string for every element of a pack unit
+        Assert.True(decoded["p/a"].KeyHashes.IsEmpty);
+        Assert.Null(decoded["p/a"].StaticParts);
+        Assert.False(KeyHashes.Differs(decoded["p/b:2"].KeyHashes.Span, 0, new string('a', 64)));
+        Assert.True(KeyHashes.Differs(decoded["p/b:2"].KeyHashes.Span, 0, new string('b', 64)));
+
+        // Saving the decoded states again copies their records: the same bytes, and the copies still carry hashes and parts.
+        var indexed = new List<UnitState>();
+        Assert.Equal(bytes, UnitStateStore.Encode([.. decoded.Values], indexed));
+        Assert.Equal(hashes, indexed.Single(s => s.Key == "p/c:3").KeyHashes.ToArray());
+        Assert.Equal(parts, indexed.Single(s => s.Key == "p/c:3").StaticParts);
+    }
+
+    [Fact]
+    public async Task A_state_file_of_the_previous_format_loads_empty_as_a_reset_and_is_deleted_on_save()
+    {
+        using var repo = new TempRepo();
+        var store = new UnitStateStore(repo.Options, new OutputPathPolicy(repo.Options, null));
+        Assert.EndsWith("p.v3.bin", store.FileOf("p"), StringComparison.Ordinal);
+        Assert.Empty(await store.LoadAsync("p", Ct));
+        Assert.False(store.WasReset("p")); // no state at all: new, not reset
+
+        Directory.CreateDirectory(store.Folder);
+        await File.WriteAllBytesAsync(store.LegacyFileOf("p"), [(byte)'M', (byte)'Q', (byte)'U', (byte)'S', 2, 0, 0, 0], Ct);
+        Assert.Empty(await store.LoadAsync("p", Ct));
+        Assert.True(store.WasReset("p"));
+
+        await store.SaveAsync("p", [new UnitState("p/a", "h1", [], [])], Ct);
+        Assert.False(File.Exists(store.LegacyFileOf("p")));
+        Assert.False(store.WasReset("p"));
+
+        await File.WriteAllBytesAsync(store.FileOf("p"), [1, 2, 3], Ct); // another engine's or format's bytes
+        Assert.Empty(await store.LoadAsync("p", Ct));
+        Assert.True(store.WasReset("p"));
+    }
+
+    [Fact]
     public async Task Unit_state_store_reuses_what_it_decoded_only_for_the_same_bytes()
     {
         using var repo = new TempRepo();

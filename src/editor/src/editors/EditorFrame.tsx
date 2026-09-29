@@ -85,7 +85,7 @@ export function EditorLayout({
 
   return (
     <section aria-label={`Editor: ${name}`} className="flex h-full min-h-0 flex-col bg-surface" data-testid="element-editor" data-kind={kind} data-id={id}>
-      <header className="flex flex-col gap-2 border-b border-default px-4 py-3">
+      <header className="flex flex-col gap-2 border-b border-default px-2 py-1">
         <div className="flex items-center gap-2">
           <KindIcon kind={kind} />
           <h2 className="min-w-0 truncate text-16 font-semibold" data-testid="editor-title">
@@ -114,7 +114,7 @@ export function EditorLayout({
         ) : null}
         <HeaderFields {...ctx} />
       </header>
-      <div className="border-b border-default px-4 py-3" data-testid="editor-controls">
+      <div className="border-b border-default px-2 py-1" data-testid="editor-controls">
         {controls}
       </div>
       <Tabs value={current} onValueChange={(v) => store.getState().updateEditors((s) => setView(s, kind, v))} className="flex min-h-0 flex-1 flex-col">
@@ -126,7 +126,7 @@ export function EditorLayout({
           ))}
         </TabsList>
         {list.map((t) => (
-          <TabsContent key={t.value} value={t.value} className="min-h-0 flex-1 overflow-auto p-4">
+          <TabsContent key={t.value} value={t.value} className="min-h-0 flex-1 overflow-auto p-2">
             {t.content}
           </TabsContent>
         ))}
@@ -368,7 +368,7 @@ export function useCodeGenerationTab(ctx: EditorContext): EditorSubTab {
     value: "code-generation",
     label: EDITOR_TAB_LABELS.codeGeneration,
     content: (
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
         <GenerationHintsEditor {...ctx} />
         {extensions.length ? (
           <SchemaForm

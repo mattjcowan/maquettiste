@@ -2,11 +2,13 @@
 // functions wire the engine to IRealtime (phase2-design.md 3.6): every write publishes
 // model.changed, a settings change publishes project.changed, and after a quiet period a
 // whole-model validation.completed follows.
+import { MockPackAuthoring } from "./model/packAuthoring";
 import type { PresenceEntry } from "@/api/types";
 import { newId as randomId } from "@/lib/ids";
 import { MockRealtime } from "@/realtime/mock";
 import { MockModel } from "./model/store";
 import { MockGeneration } from "./model/generation";
+import { MockPacks } from "./model/packs";
 import { MockJobQueue, type JobClock } from "./model/jobs";
 import { MockLocalization } from "./model/localization";
 import type { Seed } from "./model/store";
@@ -34,6 +36,10 @@ export class MockBackend {
   readonly realtime: MockRealtime;
   readonly model: MockModel;
   readonly generation: MockGeneration;
+  /** Pack folders: pack.json, templates and partials with hashes (generation-ui.md section 5.1). */
+  readonly packs: MockPacks;
+  /** Unit paths, template context, explain, pack outputs and the pack settings save (generation-ui.md sections 4.3 and 5.1). */
+  readonly packAuthoring: MockPackAuthoring;
   readonly jobs: MockJobQueue;
   /** Translations, seed CSV and reference type usage; locales are declared with the `locales` scenario. */
   readonly localization: MockLocalization;
@@ -74,6 +80,8 @@ export class MockBackend {
       },
     });
     this.generation = new MockGeneration(this.model, newId);
+    this.packs = new MockPacks(this.model);
+    this.packAuthoring = new MockPackAuthoring(this.model, this.generation);
     this.localization = new MockLocalization(this.model, this.scenarios.has("locales"), newId);
     this.jobs = new MockJobQueue(
       this.generation,

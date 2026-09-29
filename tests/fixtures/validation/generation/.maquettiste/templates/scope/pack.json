@@ -1,0 +1,14 @@
+{
+  "name": "scope",
+  "version": "1.0.0",
+  "engine": ">=1.0 <2.0",
+  "description": "MQ6021.",
+  "units": [
+    {
+      "id": "entity",
+      "template": "entity.scriban",
+      "for": "each entiti",
+      "output": "{{ entity.name }}.txt"
+    }
+  ]
+}

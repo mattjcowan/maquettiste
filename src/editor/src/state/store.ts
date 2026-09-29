@@ -15,7 +15,6 @@ export type PaletteCommand = "plan" | "apply" | "new-entity";
 export type Workspace = "entities" | "reference-data" | "database" | "mappings" | "generate" | "settings";
 export const WORKSPACES: Workspace[] = ["entities", "reference-data", "database", "mappings", "generate", "settings"];
 export type ThemeChoice = "system" | "light" | "dark";
-export type Density = "compact" | "comfortable";
 export type BottomTab = "problems" | "output" | "diff" | "references";
 
 export interface Draft {
@@ -64,10 +63,22 @@ export interface DiffView {
   path: string;
 }
 
+/** The pack editor's tabs (generation-ui.md 3). */
+export type PackPane = "units" | "parameters" | "templates" | "outputs";
+
 export interface GenerationState {
   planJob: string | null;
   planId: string | null;
   applyJob: string | null;
+  /** Packs open as centre tabs of the Generate screen, in open order. */
+  packTabs: string[];
+  /** The pack tab showing; null shows the Plan screen. */
+  packTab: string | null;
+  /** The pack editor tab per open pack, and the unit row to focus when a tree row opened it. */
+  packPane: Record<string, PackPane>;
+  packFocus: { pack: string; unit?: string; parameter?: string; file?: string } | null;
+  /** The New pack dialog is open (explorer header, palette). */
+  newPack: boolean;
 }
 
 /** What the sidebar shows: one explorer (explorer-redesign.md 1.0), or Generate's packs and targets. */
@@ -122,7 +133,6 @@ export interface EditorState {
   bottomCollapsed: boolean;
   bottomTab: BottomTab;
   theme: ThemeChoice;
-  density: Density;
   paletteOpen: boolean;
   /** Quick open (Ctrl/Cmd+P, explorer-redesign.md 3.1): the ranked search without the commands. */
   quickOpen: boolean;
@@ -180,7 +190,6 @@ export interface EditorActions {
   setBottomTab(tab: BottomTab): void;
   toggle(panel: "explorer" | "inspector" | "bottom", collapsed?: boolean): void;
   setTheme(theme: ThemeChoice): void;
-  setDensity(density: Density): void;
   setPaletteOpen(open: boolean): void;
   setQuickOpen(open: boolean): void;
   noteRecent(id: string): void;
@@ -275,10 +284,6 @@ function initialRecent(): string[] {
   return Array.isArray(saved) ? saved.filter((x): x is string => typeof x === "string").slice(0, 20) : [];
 }
 
-function initialDensity(): Density {
-  return local.get("mq.density") === "comfortable" ? "comfortable" : "compact";
-}
-
 export function createEditorStore(): EditorStore {
   const layout = local.getJson<{ explorer?: number; inspector?: number; bottom?: number }>("mq.layout") ?? {};
   return createStore<EditorState & EditorActions>()((set, get) => ({
@@ -298,7 +303,6 @@ export function createEditorStore(): EditorStore {
     bottomCollapsed: false,
     bottomTab: "problems",
     theme: initialTheme(),
-    density: initialDensity(),
     paletteOpen: false,
     quickOpen: false,
     recent: initialRecent(),
@@ -318,7 +322,7 @@ export function createEditorStore(): EditorStore {
     output: [],
     diff: null,
     connection: "disconnected",
-    generation: { planJob: null, planId: null, applyJob: null },
+    generation: { planJob: null, planId: null, applyJob: null, packTabs: [], packTab: null, packPane: {}, packFocus: null, newPack: false },
 
     // Another screen shows in the centre area: the editor tabs stay open behind it.
     setWorkspace: (workspace) => set((s) => ({ workspace, editors: s.workspace === workspace ? s.editors : activate(s.editors, null) })),
@@ -386,10 +390,6 @@ export function createEditorStore(): EditorStore {
     setTheme: (theme) => {
       local.set("mq.theme", theme);
       set({ theme });
-    },
-    setDensity: (density) => {
-      local.set("mq.density", density);
-      set({ density });
     },
     setPaletteOpen: (open) => set(open ? { paletteOpen: true, quickOpen: false } : { paletteOpen: false }),
     setQuickOpen: (open) => set(open ? { quickOpen: true, paletteOpen: false } : { quickOpen: false }),

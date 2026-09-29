@@ -1,6 +1,7 @@
 // The References tab of the bottom panel (explorer-redesign.md 3.3): where an element is used, grouped by kind of the
 // referencing element, then by domain, in a virtualized list. The index answers at once (references/data.ts); the
 // server's complete list replaces it when it arrives. Clicking a row goes to that element and JSON pointer.
+import { ROW_H } from "@/design/density";
 import { useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -17,7 +18,7 @@ import { cn } from "@/lib/cn";
 import { KIND_LABELS } from "@/model/labels";
 import { groupReferences, indexReferences, referenceCount, type SubName } from "./data";
 
-const ROW = 24;
+const ROW = ROW_H;
 
 export function ReferencesPanel() {
   const { store, queryClient } = useServices();
@@ -62,7 +63,7 @@ export function ReferencesPanel() {
   const title = `${summary ? `${KIND_LABELS[summary.kind] ?? summary.kind} ${summary.name}` : target}`;
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="references-panel" data-complete={complete || undefined}>
-      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-default px-3 text-12">
+      <div className="flex h-7 shrink-0 items-center gap-2 border-b border-default px-2 text-12">
         <span className="min-w-0 flex-1 truncate" data-testid="references-title">
           {count === 1 ? "1 reference" : `${count} references`} to <span className="font-medium">{title}</span>
         </span>
@@ -91,7 +92,7 @@ export function ReferencesPanel() {
                     key={row.key}
                     role="listitem"
                     style={style}
-                    className={cn("flex items-center gap-2 px-3 text-12", row.type === "kind" ? "font-medium" : "pl-6 text-secondary")}
+                    className={cn("flex items-center gap-2 px-2 text-12", row.type === "kind" ? "font-medium" : "pl-6 text-secondary")}
                     data-testid={`references-${row.type}`}
                   >
                     <span className="truncate">{row.label}</span>

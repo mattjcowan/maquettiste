@@ -3,12 +3,14 @@
 // editor uses. They also apply the sign-in gate's request rules the SPA must satisfy (415 for a
 // POST or PUT under /api/ that is not application/json, 428 without If-Match), so the client's
 // behaviour is exercised in mock mode too.
+import type { components } from "@/api/schema";
 import { createOpenApiHttp } from "openapi-msw";
 import { delay, http as rawHttp, HttpResponse, type HttpHandler } from "msw";
 import type { paths, Problem } from "@/api/types";
 import type { MockBackend } from "./backend";
 import { baselineHandlers } from "./baseline";
 import { mentions, recordings, replayable, type Recording } from "./recorded";
+import { validPackPath } from "./model/packs";
 import { isUlid, readTag } from "./wire";
 
 type Json = Record<string, unknown>;
@@ -378,13 +380,159 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
     http.post("/api/templates/preview", async ({ request }) => {
       const body = await jsonBody(request);
       if (!body.ok) return body.response;
-      const { pack, unit, elementId } = body.value as { pack?: string; unit?: string; elementId?: string | null };
+      const { pack, unit, elementId, overlay, unitOverride } = body.value as {
+        pack?: string;
+        unit?: string;
+        elementId?: string | null;
+        overlay?: Record<string, string> | null;
+        unitOverride?: { id?: string; template?: string } | null;
+      };
       if (typeof pack !== "string" || typeof unit !== "string") return problem(400, "bad-request", "Name the pack and the unit.");
+      if (unitOverride && unitOverride.id !== unit) return problem(400, "bad-request", "unitOverride.id must equal unit.");
+      if (overlay && Object.keys(overlay).some((p) => p === "pack.json" || !validPackPath(p)))
+        return problem(400, "bad-request", "overlay paths must be pack files other than pack.json.");
+      if (overlay || unitOverride) {
+        // Unsaved text: the mock does not run Scriban; it shows the unsaved template text as the rendered file.
+        const saved = generation.preview(pack, unit, elementId ?? null);
+        if ("problem" in saved) return problem(400, "bad-request", saved.problem);
+        const template = unitOverride?.template ?? model.packs.find((p) => p.name === pack)?.units.find((u) => u.id === unit)?.template;
+        const text = template && overlay?.[template];
+        return HttpResponse.json(text === undefined || text === null ? saved : { ...saved, files: saved.files.map((f, i) => (i === 0 ? { ...f, text } : f)) });
+      }
       const rec = replayable(recorded, "previewTemplate", pristine(), (r) => mentions(r, unit) && (!elementId || mentions(r, elementId)));
       if (rec) return answer(rec) as never;
       const result = generation.preview(pack, unit, elementId ?? null);
       if ("problem" in result) return problem(400, "bad-request", result.problem);
       return HttpResponse.json(result);
+    }),
+    http.get("/api/packs", () => HttpResponse.json(backend.packs.list())),
+    http.post("/api/packs", async ({ request }) => {
+      const body = await jsonBody(request);
+      if (!body.ok) return body.response;
+      const { name, from } = body.value as { name?: string; from?: string | null };
+      if (typeof name !== "string" || !name) return problem(400, "bad-request", "name is required.");
+      const created = backend.packs.create(name, from ?? "empty");
+      if ("problem" in created) return problem(400, "bad-request", created.problem);
+      return HttpResponse.json(created.body, { status: created.status, headers: created.body.hash ? etag(created.body.hash) : {} }) as never;
+    }),
+    http.get("/api/packs/{pack}", ({ params }) => {
+      const document = backend.packs.get(params.pack);
+      if (!document) return problem(404, "not-found", `No pack has the name ${params.pack}.`);
+      return HttpResponse.json(document, { headers: etag(document.hash) });
+    }),
+    http.put("/api/packs/{pack}", async ({ params, request }) => {
+      const hash = ifMatch(request);
+      if (!hash) return problem(428, "precondition-required", "Send the hash you loaded in If-Match.");
+      const body = await jsonBody(request);
+      if (!body.ok) return body.response;
+      const saved = backend.packs.saveManifest(params.pack, body.value as Record<string, unknown>, hash);
+      // As the host does: every connection hears that the pack's files changed.
+      if (saved.status === 200) backend.realtime.publish("packs.changed", { packs: [params.pack] });
+      return HttpResponse.json(saved.body, { status: saved.status, headers: saved.status === 200 && saved.body.hash ? etag(saved.body.hash) : {} }) as never;
+    }),
+    http.get("/api/packs/{pack}/file", ({ params, request }) => {
+      const path = new URL(request.url).searchParams.get("path") ?? "";
+      if (!validPackPath(path)) return problem(400, "bad-request", `'${path}' is not a pack-relative path.`);
+      const file = backend.packs.readFile(params.pack, path);
+      if (!file) return problem(404, "not-found", `No pack file ${params.pack}/${path}.`);
+      return HttpResponse.json(file, { headers: etag(file.hash) });
+    }),
+    http.put("/api/packs/{pack}/file", async ({ params, request }) => {
+      const path = new URL(request.url).searchParams.get("path") ?? "";
+      if (!validPackPath(path) || path === "pack.json")
+        return problem(400, "bad-request", "pack.json is saved whole with PUT /api/packs/{pack}; other paths must be pack-relative.");
+      const create = (request.headers.get("If-None-Match") ?? "").trim() === "*";
+      const hash = create ? null : ifMatch(request);
+      if (!create && !hash) return problem(428, "precondition-required", "Send the hash you loaded in If-Match, or If-None-Match: * to create.");
+      const body = await jsonBody(request);
+      if (!body.ok) return body.response;
+      const { text } = body.value as { text?: string };
+      if (typeof text !== "string") return problem(400, "bad-request", "text is required.");
+      const written = backend.packs.writeFile(params.pack, path, text, hash);
+      if (written.body.outcome === "saved") {
+        backend.realtime.publish("templates.changed", { pack: params.pack, files: [{ path, hash: written.body.hash ?? null }] });
+        backend.realtime.publish("packs.changed", { packs: [params.pack] });
+      }
+      return HttpResponse.json(written.body, {
+        status: written.status,
+        headers: written.body.outcome === "saved" && written.body.hash ? etag(written.body.hash) : {},
+      }) as never;
+    }),
+    http.delete("/api/packs/{pack}/file", ({ params, request }) => {
+      const path = new URL(request.url).searchParams.get("path") ?? "";
+      if (!validPackPath(path) || path === "pack.json") return problem(400, "bad-request", `'${path}' cannot be deleted.`);
+      const hash = ifMatch(request);
+      if (!hash) return problem(428, "precondition-required", "Send the hash you loaded in If-Match.");
+      const deleted = backend.packs.deleteFile(params.pack, path, hash);
+      return HttpResponse.json(deleted.body, { status: deleted.status }) as never;
+    }),
+    http.get("/api/generate/plan/{id}/unit", ({ params, request }) => {
+      const key = new URL(request.url).searchParams.get("key") ?? "";
+      const unit = generation.getPlan(params.id, true)?.units.find((u) => u.key === key);
+      if (!unit) return problem(404, "not-found", `Plan ${params.id} has no unit ${key}.`);
+      const kinds: Record<string, string> = { e: "element", k: "kind-set", r: "referrers", s: "setting", t: "template", d: "schema-diff", l: "translation" };
+      const groups = new Map<string, string[]>();
+      for (const k of unit.readKeys) {
+        const kind = k[1] === ":" ? (kinds[k[0]] ?? "inputs") : "inputs";
+        groups.set(kind, [...(groups.get(kind) ?? []), k].sort());
+      }
+      const summary = unit.skipped
+        ? `Skipped: its ${unit.readKeys.length} recorded inputs are unchanged since its last render, and its ${unit.outputs.length} outputs are intact.`
+        : `Renders (${unit.reason ?? "reason not recorded"}): ${unit.causes[0]?.detail ?? "no recorded state to compare with"}.`;
+      return HttpResponse.json({ unit, groups: [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([kind, keys]) => ({ kind, keys })), summary });
+    }),
+    http.post("/api/templates/paths", async ({ request }) => {
+      const body = await jsonBody(request);
+      if (!body.ok) return body.response;
+      const value = body.value as components["schemas"]["PathsRequest"];
+      if (typeof value.pack !== "string" || typeof value.unit !== "string") return problem(400, "bad-request", "pack and unit are required.");
+      const paths = backend.packAuthoring.paths(value);
+      if ("problem" in paths) return problem(400, "bad-request", paths.problem);
+      return HttpResponse.json(paths);
+    }),
+    http.get("/api/templates/context", ({ request }) => {
+      const query = new URL(request.url).searchParams;
+      const pack = query.get("pack");
+      const unit = query.get("unit");
+      if (!pack || !unit) return problem(400, "bad-request", "pack and unit are required.");
+      const context = backend.packAuthoring.context(pack, unit);
+      if (!context) return problem(404, "not-found", `No unit ${pack}/${unit}.`);
+      return HttpResponse.json(context);
+    }),
+    http.post("/api/packs/{pack}/file/move", async ({ params, request }) => {
+      const hash = ifMatch(request);
+      if (!hash) return problem(428, "precondition-required", "Send the source file's hash in If-Match.");
+      const body = await jsonBody(request);
+      if (!body.ok) return body.response;
+      const move = body.value as components["schemas"]["PackFileMove"];
+      if (!validPackPath(move.from ?? "") || !validPackPath(move.to ?? "") || move.from === "pack.json" || move.to === "pack.json")
+        return problem(400, "bad-request", "from and to must be pack-relative paths other than pack.json.");
+      const moved = backend.packs.moveFile(params.pack, move, hash);
+      return HttpResponse.json(moved.body, { status: moved.status, headers: moved.status === 200 && moved.body.hash ? etag(moved.body.hash) : {} }) as never;
+    }),
+    http.get("/api/packs/{pack}/outputs", ({ params }) => {
+      const outputs = backend.packAuthoring.outputs(params.pack);
+      if (!outputs) return problem(404, "not-found", `No pack has the name ${params.pack}.`);
+      return HttpResponse.json(outputs);
+    }),
+    http.put("/api/project/settings/packs/{pack}", async ({ params, request }) => {
+      const hash = ifMatch(request);
+      if (!hash) return problem(428, "precondition-required", "Send the settings hash in If-Match.");
+      const body = await jsonBody(request);
+      if (!body.ok) return body.response;
+      if (typeof body.value !== "object" || body.value === null || Array.isArray(body.value))
+        return problem(400, "bad-request", "The body must be a JSON object: enabled, output, parameters.");
+      const { status, body: result } = backend.packAuthoring.saveSettings(params.pack, body.value as Record<string, unknown>, hash);
+      return HttpResponse.json(result, { status, headers: result.hash && status === 200 ? etag(result.hash) : {} }) as never;
+    }),
+    http.post("/api/generate/explain", async ({ request }) => {
+      const body = await jsonBody(request);
+      if (!body.ok) return body.response;
+      const value = body.value as components["schemas"]["ExplainRequest"];
+      if (typeof value.pack !== "string" || typeof value.unit !== "string") return problem(400, "bad-request", "pack and unit are required.");
+      const answer = backend.packAuthoring.explain(value);
+      if (!answer) return problem(404, "not-found", `No pack has the name ${value.pack}.`);
+      return HttpResponse.json(answer);
     }),
     http.put("/api/presence", async ({ request }) => {
       const body = await jsonBody(request);

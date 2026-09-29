@@ -2,6 +2,7 @@
 // filter, and a virtualized WAI-ARIA tree rendered from explorer/tree.ts. Expansion, filter and scroll live in the
 // store per explorer, so each keeps its own while another shows. Expanding and collapsing splice the cached rows;
 // the rows are rebuilt only when the forest, the filter or a bulk change (collapse all, reveal) asks for it.
+import { rowHeight as densityRowHeight } from "@/design/density";
 import { ContentLocaleChip } from "@/l10n/LocaleSwitcher";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { flushSync } from "react-dom";
@@ -308,7 +309,6 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   const selection = useEditor(store, (s) => s.selection);
   const drafts = useEditor(store, (s) => s.drafts);
   const presence = useEditor(store, (s) => s.presence);
-  const density = useEditor(store, (s) => s.density);
   const view = useEditor(store, (s) => s.explorer.views[id]);
   const highlight = useEditor(store, (s) => s.explorer.highlightRelated);
   const referenceFlat = useEditor(store, (s) => s.explorer.referenceFlat);
@@ -420,7 +420,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   }, [rows, version]);
   const active = activeKey !== null ? (keyIndex.get(activeKey) ?? 0) : 0;
 
-  const rowHeight = density === "compact" ? 32 : 40;
+  const rowHeight = useMemo(() => densityRowHeight(), []);
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
@@ -1079,7 +1079,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       <FilterBar id={id} filter={filter} rows={indexRows} setFilter={setFilter} inputRef={searchRef} onKeyDown={onSearchKey} />
       {forest && !cache.current.filtering ? <FavoritesStrip forest={forest} id={id} /> : null}
       {pending ? (
-        <div className="p-3">
+        <div className="p-2">
           <Spinner label="Loading the model" />
         </div>
       ) : error ? (
@@ -1222,7 +1222,7 @@ function ExplorerHeader(props: {
   const { store } = useServices();
   const others = EXPLORERS.filter((e) => e !== props.id);
   return (
-    <header className="flex h-9 shrink-0 items-center gap-2 border-b border-default px-2" data-testid="explorer-header">
+    <header className="flex h-6 shrink-0 items-center gap-2 border-b border-default px-2" data-testid="explorer-header">
       <h2 className="text-11 font-semibold uppercase tracking-wide text-secondary">{props.title}</h2>
       <ContentLocaleChip />
       <span className="min-w-0 flex-1 truncate text-11 text-secondary" data-testid="explorer-totals">

@@ -1,5 +1,5 @@
 {
-  "id": "01M3MTRNKWA19J391F0D2NQMJ2",
+  "id": "01M3PNSXJGXGSMDKF3X1C6SRB6",
   "request": {
     "mode": "apply",
     "packs": null,
@@ -96,7 +96,7 @@
       "pack": "sql-ddl",
       "unitKey": "sql-ddl/seed:01J92P0V1QRN2181XM2ZWE02W4",
       "oldHash": null,
-      "newHash": "r:b89e32fea9859d00192bce8a4d2eaf4e05672247025a06b4358be9c8f6939222",
+      "newHash": "r:11558abc7158310084fe79bf1493006cb822622aae52d5a7fe34e6d493853553",
       "diff": null
     },
     {

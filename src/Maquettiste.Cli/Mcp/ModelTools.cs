@@ -30,7 +30,7 @@ namespace Maquettiste.Cli.Mcp;
 /// <param name="generation">The generation service over <paramref name="store"/>.</param>
 /// <param name="repoRoot">The repo root, for the project name when the settings have none.</param>
 /// <param name="log">Where an internal failure is reported, one line each (standard error, never the protocol stream).</param>
-internal sealed class ModelTools(ModelStore store, GenerationService generation, string repoRoot, TextWriter log)
+internal sealed partial class ModelTools(ModelStore store, GenerationService generation, string repoRoot, TextWriter log)
 {
     private readonly TextWriter _log = log ?? throw new ArgumentNullException(nameof(log));
     private readonly ModelStore _store = store ?? throw new ArgumentNullException(nameof(store));

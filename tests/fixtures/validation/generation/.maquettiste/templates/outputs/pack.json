@@ -1,0 +1,26 @@
+{
+  "name": "outputs",
+  "version": "1.0.0",
+  "engine": ">=1.0 <2.0",
+  "description": "MQ6019, MQ6020, MQ6003 and MQ6025.",
+  "units": [
+    {
+      "id": "escape",
+      "template": "entity.scriban",
+      "for": "each entity",
+      "output": "../outside/{{ entity.name }}.txt"
+    },
+    {
+      "id": "same",
+      "template": "entity.scriban",
+      "for": "each entity",
+      "output": "same.txt"
+    },
+    {
+      "id": "broken",
+      "template": "broken.scriban",
+      "for": "model",
+      "output": "broken.txt"
+    }
+  ]
+}

@@ -97,7 +97,7 @@ public sealed class LastRunTests
         Touch(repo.Repo.PathOf(".maquettiste/.cache/manifest/billing-demo.json"));
         await AssertFullAsync(repo);
         await AssertReplayedAsync(repo);
-        File.Delete(Path.Combine(repo.Repo.CacheDirectory, "units", "e2e.v1.bin"));
+        File.Delete(Path.Combine(repo.Repo.CacheDirectory, "units", "e2e.v3.bin"));
         Assert.True((await AssertFullAsync(repo)).UnitsRendered > 0);
         await AssertReplayedAsync(repo);
         var record = await File.ReadAllBytesAsync(RecordPath(repo), Ct);

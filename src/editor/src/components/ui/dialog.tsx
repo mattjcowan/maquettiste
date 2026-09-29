@@ -27,18 +27,18 @@ export function DialogContent({
       <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-app/70" />
       <DialogPrimitive.Content
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-[min(92vw,480px)] -translate-x-1/2 -translate-y-1/2 flex-col gap-3 rounded-panel border border-default bg-raised p-4 text-primary shadow-float focus:outline-none",
+          "fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-[min(92vw,480px)] -translate-x-1/2 -translate-y-1/2 flex-col gap-2 rounded-panel border border-default bg-raised p-2 text-12 text-primary shadow-float focus:outline-none",
           wide && "w-[min(94vw,1100px)]",
           className,
         )}
         onEscapeKeyDown={hideClose ? (e) => e.preventDefault() : undefined}
         onPointerDownOutside={hideClose ? (e) => e.preventDefault() : undefined}
       >
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-2">
           <div>
-            <DialogPrimitive.Title className="text-16 font-semibold">{title}</DialogPrimitive.Title>
+            <DialogPrimitive.Title className="text-14 font-semibold">{title}</DialogPrimitive.Title>
             {description ? (
-              <DialogPrimitive.Description className="text-13 text-secondary">{description}</DialogPrimitive.Description>
+              <DialogPrimitive.Description className="text-12 text-secondary">{description}</DialogPrimitive.Description>
             ) : (
               <DialogPrimitive.Description className="sr-only">{title}</DialogPrimitive.Description>
             )}

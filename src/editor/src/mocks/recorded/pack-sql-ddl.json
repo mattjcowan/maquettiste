@@ -1,0 +1,206 @@
+{
+  "name": "sql-ddl",
+  "enabled": true,
+  "output": "db",
+  "hash": "0b77d4a015236fef4e4d7489eba6cc10e87a248df45308487296ef09a388382c",
+  "document": {
+    "name": "sql-ddl",
+    "version": "1.0.0",
+    "engine": ">=1.0 <2.0",
+    "description": "SQL DDL for PostgreSQL, SQL Server and SQLite: one script per table, one schema script per database, once-mode migrations from the schema diff, and a seed script with protected regions that reconciles reference data (lookup tables, check constraints or native types) and inserts seed rows.",
+    "parameters": {
+      "comments": true,
+      "quoting": "",
+      "referenceStrategy": "lookup-table",
+      "schemaScript": "inline",
+      "strategyMap": {
+        "check": "check",
+        "lookup-table": "lookup-table",
+        "native": "native"
+      }
+    },
+    "usesSchemaDiff": true,
+    "units": [
+      {
+        "id": "table",
+        "template": "table.scriban",
+        "for": "each table",
+        "output": "{{ kebab table.database.name }}/{{ if table.schema }}{{ table.schema }}/{{ end }}tables/{{ table.name }}.sql"
+      },
+      {
+        "id": "schema",
+        "template": "schema.scriban",
+        "for": "select databases",
+        "output": "{{ kebab database.name }}/schema.sql"
+      },
+      {
+        "id": "migration",
+        "template": "migration.scriban",
+        "for": "select databases",
+        "mode": "once"
+      },
+      {
+        "id": "seed",
+        "template": "seed.scriban",
+        "for": "select databases",
+        "output": "{{ kebab database.name }}/seed.sql",
+        "mode": "regions"
+      }
+    ]
+  },
+  "parameters": [
+    {
+      "name": "comments",
+      "default": true,
+      "value": null,
+      "schema": null,
+      "required": false
+    },
+    {
+      "name": "quoting",
+      "default": "",
+      "value": null,
+      "schema": null,
+      "required": false
+    },
+    {
+      "name": "referenceStrategy",
+      "default": "lookup-table",
+      "value": null,
+      "schema": null,
+      "required": false
+    },
+    {
+      "name": "schemaScript",
+      "default": "inline",
+      "value": null,
+      "schema": null,
+      "required": false
+    },
+    {
+      "name": "strategyMap",
+      "default": {
+        "check": "check",
+        "lookup-table": "lookup-table",
+        "native": "native"
+      },
+      "value": null,
+      "schema": null,
+      "required": false
+    }
+  ],
+  "files": [
+    {
+      "path": "README.md",
+      "size": 15146,
+      "hash": "213e8fa8110df70d4715fabc642a14877fffd5b8b671bd56b1239f30b97e3040",
+      "role": "other",
+      "usedBy": []
+    },
+    {
+      "path": "_migration.scriban",
+      "size": 13299,
+      "hash": "928aee95c4201eb1e2df1fd06cf22ac1379b1f6f00a16167dd5f7f1b596df7cc",
+      "role": "partial",
+      "usedBy": [
+        "include:migration.scriban"
+      ]
+    },
+    {
+      "path": "_objects.scriban",
+      "size": 4371,
+      "hash": "e339eed0c21399c0439e995167f85cf3de0e92c06d459c4d19f26c9028dc444c",
+      "role": "partial",
+      "usedBy": [
+        "include:migration.scriban",
+        "include:schema.scriban",
+        "include:seed.scriban"
+      ]
+    },
+    {
+      "path": "_reference.scriban",
+      "size": 25173,
+      "hash": "bedd2dd2b20b7d170d13b9053d6b8bfdbc270434943c821b2ed4bd0b668d1047",
+      "role": "partial",
+      "usedBy": [
+        "include:migration.scriban",
+        "include:schema.scriban",
+        "include:seed.scriban"
+      ]
+    },
+    {
+      "path": "_sql.scriban",
+      "size": 8196,
+      "hash": "722451ac8b8101b61aec2460ab9e2496d9b32aa6db2510366ef64d2f05e22412",
+      "role": "partial",
+      "usedBy": [
+        "include:migration.scriban",
+        "include:schema.scriban",
+        "include:seed.scriban",
+        "include:table.scriban"
+      ]
+    },
+    {
+      "path": "_table.scriban",
+      "size": 2192,
+      "hash": "c3b076451691d21c51398530d8ea505fa33a2a97233f8e1c56cc878f5c51c185",
+      "role": "partial",
+      "usedBy": [
+        "include:migration.scriban",
+        "include:schema.scriban",
+        "include:table.scriban"
+      ]
+    },
+    {
+      "path": "helpers.js",
+      "size": 3935,
+      "hash": "28d88f9c05fc700c843e01772a6dd0b3d89a17a24d64208619bd47ec454fcef4",
+      "role": "script",
+      "usedBy": []
+    },
+    {
+      "path": "migration.scriban",
+      "size": 6587,
+      "hash": "db31daa06dc7458f7ffacf18164fc8540013df27acb847e7d441e69aac5fc150",
+      "role": "template",
+      "usedBy": [
+        "unit:migration"
+      ]
+    },
+    {
+      "path": "pack.json",
+      "size": 1365,
+      "hash": "0b77d4a015236fef4e4d7489eba6cc10e87a248df45308487296ef09a388382c",
+      "role": "manifest",
+      "usedBy": []
+    },
+    {
+      "path": "schema.scriban",
+      "size": 2359,
+      "hash": "81e2a36e011ca3c2d5ca64482b2f31b30fbeb471e46a49803cdb0666aa08decf",
+      "role": "template",
+      "usedBy": [
+        "unit:schema"
+      ]
+    },
+    {
+      "path": "seed.scriban",
+      "size": 1558,
+      "hash": "18550194daf0c4693180682fa626a50105dc8140834191da388f1a0cd7a6c81a",
+      "role": "template",
+      "usedBy": [
+        "unit:seed"
+      ]
+    },
+    {
+      "path": "table.scriban",
+      "size": 563,
+      "hash": "8c15daa510450eaa7351967c5573ee7e4e48f76e7de065b420da1d4963157708",
+      "role": "template",
+      "usedBy": [
+        "unit:table"
+      ]
+    }
+  ],
+  "diagnostics": []
+}

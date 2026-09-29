@@ -20,10 +20,12 @@ namespace Maquettiste.Engine.Planning;
 /// </summary>
 /// <param name="options">The engine options.</param>
 /// <param name="schemas">The schema registry (pack.json validation).</param>
-internal sealed class PackLoader(EngineOptions options, ISchemaRegistry schemas) : IPackLoader
+internal sealed partial class PackLoader(EngineOptions options, ISchemaRegistry schemas) : IPackLoader
 {
     private const string InvalidPack = "MQ6001";
     private const string EngineMismatch = "MQ6002";
+    private const string UnknownScope = "MQ6021";
+    private const string MissingTemplate = "MQ6022";
     private static readonly UTF8Encoding StrictUtf8 = new(false, throwOnInvalidBytes: true);
 
     /// <inheritdoc/>
@@ -61,11 +63,61 @@ internal sealed class PackLoader(EngineOptions options, ISchemaRegistry schemas)
                 continue;
             var pack = await LoadOneAsync(name, loaded.Count, Path.Combine(templates, name), relative, settings, diagnostics, ct).ConfigureAwait(false);
             if (pack is not null)
+            {
                 loaded.Add(pack);
+                diagnostics.AddRange(UnitRules.Parameters(name, pack.Manifest, settings, paths.ToRepoPath("maquettiste.json")));
+                diagnostics.AddRange(await ParsePassAsync(pack, ct).ConfigureAwait(false));
+            }
         }
 
         progress?.Report(new ProgressUpdate(PipelineStage.Plan, candidates.Count, candidates.Count, null, null));
         return new PackSet(loaded, Sort(diagnostics));
+    }
+
+    /// <summary>
+    /// Loads one pack by name whether or not it is enabled (the editor's pack read and preview, generation-ui.md section 5.2), with
+    /// the same checks a run makes; <see langword="null"/> with the diagnostics when it does not load.
+    /// </summary>
+    /// <param name="model">The snapshot, for the pack settings.</param>
+    /// <param name="name">The pack name (its folder).</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The pack, or <see langword="null"/>, and the diagnostics.</returns>
+    internal async Task<(LoadedPack? Pack, IReadOnlyList<Diagnostic> Diagnostics)> LoadNamedAsync(ModelSnapshot model, string name, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        var paths = new ModelPaths(options);
+        var root = Path.Combine(paths.ModelRoot, "templates", name);
+        var relative = paths.ToRepoPath("templates/" + name);
+        var diagnostics = new List<Diagnostic>();
+        if (!File.Exists(Path.Combine(root, "pack.json")))
+        {
+            diagnostics.Add(RuleCatalog.Create(InvalidPack, $"Pack '{name}' does not exist: there is no templates/{name}/pack.json.", filePath: relative + "/pack.json"));
+            return (null, diagnostics);
+        }
+
+        var settings = model.Settings.Packs.TryGetValue(name, out var s) ? s : new PackSettings();
+        var pack = await LoadOneAsync(name, 0, root, relative, settings, diagnostics, ct).ConfigureAwait(false);
+        if (pack is not null)
+        {
+            diagnostics.AddRange(UnitRules.Parameters(name, pack.Manifest, settings, paths.ToRepoPath("maquettiste.json")));
+            diagnostics.AddRange(await ParsePassAsync(pack, ct).ConfigureAwait(false));
+        }
+
+        return (pack, Sort(diagnostics));
+    }
+
+    /// <summary>
+    /// The unit-level load pass (generation-ui.md section 5.3): every template and partial a unit reaches is parsed with that unit's
+    /// delimiters (MQ6003, reported at the unit), and a file no unit reaches that does not parse is MQ6025. A parse error does not
+    /// leave the pack out: only the units that reach the file fail, at render.
+    /// </summary>
+    /// <param name="pack">The loaded pack.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The parse diagnostics.</returns>
+    internal static async Task<IReadOnlyList<Diagnostic>> ParsePassAsync(LoadedPack pack, CancellationToken ct)
+    {
+        var files = await PackFileRoles.DescribeAsync(pack.RootPath, pack.Manifest, ct).ConfigureAwait(false);
+        return await PackFileRoles.ParseAsync(pack.RootPath, pack.RelativePath, pack.Manifest, files, ct).ConfigureAwait(false);
     }
 
     /// <summary>Sorts diagnostics as reports do: path, line, column, rule, message.</summary>
@@ -93,7 +145,14 @@ internal sealed class PackLoader(EngineOptions options, ISchemaRegistry schemas)
         {
             using var document = JsonDocument.Parse(bytes, new JsonDocumentOptions { AllowTrailingCommas = false, CommentHandling = JsonCommentHandling.Disallow });
             foreach (var failure in schemas.Evaluate("pack.json", document.RootElement, packFile))
-                Error(InvalidPack, failure.Message, failure.JsonPointer);
+            {
+                // MQ6021: an unknown scope fails the schema pattern on `for`; name the nearest scope instead of the pattern.
+                if (failure.JsonPointer is { } p && ScopePointer().IsMatch(p) && document.RootElement.TryGetProperty("units", out var units)
+                    && TryScope(units, p, out var unitId, out var scope))
+                    Error(UnknownScope, UnitRules.UnknownScope(unitId, scope), p);
+                else
+                    Error(InvalidPack, failure.Message, failure.JsonPointer);
+            }
             if (errors.Count > 0)
             {
                 diagnostics.AddRange(errors);
@@ -160,6 +219,24 @@ internal sealed class PackLoader(EngineOptions options, ISchemaRegistry schemas)
             parameters.ToImmutable(), scripts, scriptsHash.Finish(), typeMaps);
     }
 
+    [System.Text.RegularExpressions.GeneratedRegex("^/units/[0-9]+/for$", System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
+    private static partial System.Text.RegularExpressions.Regex ScopePointer();
+
+    private static bool TryScope(JsonElement units, string pointer, out string? unitId, out string scope)
+    {
+        unitId = null;
+        scope = "";
+        var index = int.Parse(pointer.Split('/')[2], System.Globalization.CultureInfo.InvariantCulture);
+        if (units.ValueKind != JsonValueKind.Array || index >= units.GetArrayLength())
+            return false;
+        var unit = units[index];
+        if (unit.ValueKind != JsonValueKind.Object || !unit.TryGetProperty("for", out var value) || value.ValueKind != JsonValueKind.String)
+            return false;
+        scope = value.GetString()!;
+        unitId = unit.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String ? id.GetString() : null;
+        return true;
+    }
+
     private static bool HasElementFilters(UnitWhere where) =>
         where.Tags.Count > 0 || where.NotTags.Count > 0 || where.Stereotypes.Count > 0 || where.NotStereotypes.Count > 0
         || where.Categories.Count > 0 || where.Packages.Count > 0 || where.NotPackages.Count > 0 || where.Abstract is not null || where.Script is not null;
@@ -170,7 +247,7 @@ internal sealed class PackLoader(EngineOptions options, ISchemaRegistry schemas)
         if (full is null)
             error(InvalidPack, $"Template path '{template}' must be a relative path inside the pack folder.", pointer);
         else if (!File.Exists(full))
-            error(InvalidPack, $"Template '{template}' does not exist in the pack folder.", pointer);
+            error(MissingTemplate, $"Template '{template}' does not exist in the pack folder.", pointer);
     }
 
     private static async Task<IReadOnlyList<ScriptSource>> LoadScriptsAsync(string root, string relative, PackManifest manifest,
@@ -179,15 +256,8 @@ internal sealed class PackLoader(EngineOptions options, ISchemaRegistry schemas)
         var files = new List<(string Relative, string Full)>();
         if (manifest.Scripts.Count == 0)
         {
-            foreach (var full in Directory.EnumerateFiles(root, "*.js", SearchOption.AllDirectories))
-            {
-                var packRelative = Path.GetRelativePath(root, full).Replace(Path.DirectorySeparatorChar, '/');
-                if (packRelative.Split('/').Any(segment => segment.StartsWith('.')))
-                    continue;
-                files.Add((packRelative, full));
-            }
-
-            files.Sort((a, b) => string.CompareOrdinal(a.Relative, b.Relative));
+            foreach (var packRelative in PackFileRoles.Scripts(PackFileRoles.EnumerateFiles(root), manifest))
+                files.Add((packRelative, Path.Combine(root, packRelative.Replace('/', Path.DirectorySeparatorChar))));
         }
         else
         {
@@ -233,12 +303,11 @@ internal sealed class PackLoader(EngineOptions options, ISchemaRegistry schemas)
         var maps = ImmutableSortedDictionary.CreateBuilder<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal);
         if (!Directory.Exists(folder))
             return maps.ToImmutable();
-        foreach (var full in Directory.EnumerateFiles(folder, "*.json").Order(StringComparer.Ordinal))
+        foreach (var typeMap in PackFileRoles.EnumerateFiles(root).Where(PackFileRoles.IsTypeMap))
         {
             ct.ThrowIfCancellationRequested();
-            var fileName = Path.GetFileName(full);
-            if (fileName.StartsWith('.'))
-                continue;
+            var fileName = typeMap["types/".Length..];
+            var full = Path.Combine(folder, fileName);
             var target = Path.GetFileNameWithoutExtension(full);
             var path = relative + "/types/" + fileName;
             var bytes = await File.ReadAllBytesAsync(full, ct).ConfigureAwait(false);

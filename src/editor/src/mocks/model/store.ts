@@ -960,6 +960,7 @@ export function packRecord(json: Json): PackManifest {
     name: String(json.name),
     version: String(json.version),
     engine: String(json.engine),
+    parameterSchema: (json.parameterSchema as Json | undefined) ?? null,
     description: (json.description as string | undefined) ?? null,
     parameters: (json.parameters as Json | undefined) ?? {},
     scripts: (json.scripts as string[] | undefined) ?? [],

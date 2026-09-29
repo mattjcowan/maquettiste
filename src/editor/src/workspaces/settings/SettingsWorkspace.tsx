@@ -47,7 +47,7 @@ export function SettingsWorkspace() {
         <TabsTrigger value="explorer">Explorer</TabsTrigger>
       </TabsList>
       {TABS.map((t) => (
-        <TabsContent key={t} value={t} className="overflow-auto p-4">
+        <TabsContent key={t} value={t} className="overflow-auto p-2">
           {t === "tags" ? (
             <TagVocabularyEditor scope={null} />
           ) : t === "categories" ? (
@@ -83,7 +83,7 @@ function StereotypesSettings() {
   const typeOptions = TYPE_KINDS.flatMap((k) => lookup.ofKind(k));
   const kinds = ["entity", "value-object", "enum", "relation", "attribute", "database", "table", "package"];
   return (
-    <section className="grid max-w-5xl grid-cols-[220px_1fr] gap-4" aria-label="Stereotypes">
+    <section className="grid max-w-5xl grid-cols-[220px_1fr] gap-2" aria-label="Stereotypes">
       <div className="flex flex-col gap-2">
         <ul className="flex flex-col gap-0.5" aria-label="Stereotype list">
           {ids.map((id) => {
@@ -126,7 +126,7 @@ function StereotypesSettings() {
         </form>
       </div>
       {s ? (
-        <div className="flex flex-col gap-3 rounded-panel border border-default bg-surface p-3">
+        <div className="flex flex-col gap-2 rounded-panel border border-default bg-surface p-2">
           <div className="grid grid-cols-2 gap-2">
             <Field label="Key" htmlFor="st-key" hint="Fixed once created (MQ3020).">
               <Input id="st-key" value={s.key} readOnly className="font-mono" />
@@ -141,7 +141,7 @@ function StereotypesSettings() {
             </Field>
           </div>
           <Field label="Applies to">
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-2">
               {kinds.map((k) => (
                 <CheckboxField
                   key={k}
@@ -321,7 +321,7 @@ function ConventionsSettings() {
   };
   if (settings.isPending || !json) return <Spinner label="Loading settings" />;
   return (
-    <section className="flex max-w-4xl flex-col gap-3" aria-label="Conventions">
+    <section className="flex max-w-4xl flex-col gap-2" aria-label="Conventions">
       <div className="flex items-center gap-2">
         <label htmlFor="conv-scope" className="text-12 text-secondary">
           Scope
@@ -351,7 +351,7 @@ function ConventionsSettings() {
           ))}
         </ul>
       ) : null}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
         {CONVENTION_FIELDS.map((f) => {
           const id = `conv-${f.key}`;
           const value = (conventions as Record<string, unknown>)[f.key];
@@ -405,7 +405,7 @@ function ReadOnlySettings() {
   const s = project.data?.settings;
   if (!s) return <Spinner />;
   return (
-    <section className="flex max-w-4xl flex-col gap-4" aria-label="Read-only settings">
+    <section className="flex max-w-4xl flex-col gap-2" aria-label="Read-only settings">
       <p className="text-12 text-secondary">Phase 2 shows these read-only; edit maquettiste.json on disk to change them.</p>
       <div>
         <SectionTitle>Output allowlist</SectionTitle>
@@ -464,7 +464,7 @@ function ExplorerPreferences() {
   const settings = useSettings();
   const team = teamScopes(settings.data?.json);
   return (
-    <div className="flex max-w-2xl flex-col gap-4" data-testid="settings-explorer">
+    <div className="flex max-w-2xl flex-col gap-2" data-testid="settings-explorer">
       <SectionTitle>Your preferences</SectionTitle>
       <CheckboxField
         id="pref-highlight-related"

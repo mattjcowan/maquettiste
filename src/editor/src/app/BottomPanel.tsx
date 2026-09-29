@@ -19,7 +19,7 @@ function OutputPanel() {
   return (
     <ol className="flex flex-col py-1 font-mono text-12" aria-label="Output" data-testid="output-list">
       {[...output].reverse().map((o) => (
-        <li key={o.id} className="flex gap-3 px-3 py-0.5">
+        <li key={o.id} className="flex gap-2 px-2 py-0.5">
           <time className="shrink-0 text-secondary">{o.time.slice(11, 19)}</time>
           <span className={cn(o.level === "success" && "text-success", o.level === "error" && "text-danger", o.level === "warning" && "text-warning")}>
             {o.text}

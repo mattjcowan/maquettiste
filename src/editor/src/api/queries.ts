@@ -30,6 +30,9 @@ export const keys = {
   plan: (id: string) => ["plan", id] as const,
   job: (id: string) => ["job", id] as const,
   jobs: ["jobs"] as const,
+  packs: ["packs"] as const,
+  pack: (name: string) => ["packs", name] as const,
+  packOutputs: (name: string) => ["packs", name, "outputs"] as const,
 };
 
 export function createQueryClient(): QueryClient {
@@ -54,6 +57,10 @@ export function createQueryClient(): QueryClient {
 export const useSession = () => useQuery({ queryKey: keys.session, queryFn: endpoints.getSession });
 export const useProject = () => useQuery({ queryKey: keys.project, queryFn: endpoints.getProject });
 export const useSettings = () => useQuery({ queryKey: keys.settings, queryFn: endpoints.getSettings });
+export const usePacks = () => useQuery({ queryKey: keys.packs, queryFn: endpoints.listPacks });
+export const usePack = (name: string | null) => useQuery({ queryKey: keys.pack(name ?? ""), queryFn: () => endpoints.getPack(name!), enabled: !!name });
+export const usePackOutputs = (name: string | null, enabled = true) =>
+  useQuery({ queryKey: keys.packOutputs(name ?? ""), queryFn: () => endpoints.getPackOutputs(name!), enabled: !!name && enabled });
 
 // The loaders are per page; tests replace them with setLoaders.
 let elementLoader: ElementLoader = createElementLoader({ read: endpoints.readElements, get: endpoints.getElement });
@@ -230,7 +237,7 @@ export const usePreview = (pack: string, unit: string, elementId: string | null,
     placeholderData: (previous) => previous,
   });
 
-export const usePlan = (id: string | null) => useQuery({ queryKey: keys.plan(id ?? ""), queryFn: () => endpoints.getPlan(id!), enabled: !!id });
+export const usePlan = (id: string | null) => useQuery({ queryKey: keys.plan(id ?? ""), queryFn: () => endpoints.getPlan(id!, true), enabled: !!id });
 
 export const useJob = (id: string | null) => useQuery({ queryKey: keys.job(id ?? ""), queryFn: () => endpoints.getJob(id!), enabled: !!id });
 

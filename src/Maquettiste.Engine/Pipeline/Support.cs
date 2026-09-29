@@ -37,6 +37,14 @@ public interface IUnitStateStore
     /// <param name="ct">Cancellation.</param>
     /// <returns>A task.</returns>
     Task SaveAsync(string pack, IReadOnlyCollection<UnitState> states, CancellationToken ct);
+
+    /// <summary>
+    /// Whether the last load of a pack found a state file it could not use (another engine version or format), so every unit renders
+    /// with the cause <c>state-reset</c> (generation-ui.md section 4.2).
+    /// </summary>
+    /// <param name="pack">The pack name.</param>
+    /// <returns><see langword="true"/> after such a load, until the pack's states are saved.</returns>
+    bool WasReset(string pack) => false;
 }
 
 /// <summary>Where an engine write that is not generated output goes.</summary>

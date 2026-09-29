@@ -44,13 +44,18 @@
   --mq-radius-panel: 8px;
   --mq-motion: 150ms;
   --mq-ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --mq-row-h: 32px;
-  --mq-topbar-h: 44px;
-  --mq-rail-w: 48px;
+  /* One density (generation-ui.md 6, E23): must agree with ROW_H in src/design/density.ts. */
+  --mq-row-h: 24px;
+  --mq-topbar-h: 32px;
+  --mq-rail-w: 36px;
+  --mq-toolbar-h: 28px;
 }
 
-[data-density="comfortable"] {
-  --mq-row-h: 40px;
+/* A coarse pointer (touch) keeps 44 px targets; a mouse gets the dense rows. */
+@media (pointer: coarse) {
+  :root {
+    --mq-row-h: 44px;
+  }
 }
 
 [data-theme="dark"] {

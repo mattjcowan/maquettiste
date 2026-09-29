@@ -256,7 +256,7 @@ function DatabaseCanvas() {
               <li key={t.key}>
                 <button
                   type="button"
-                  className={`flex w-full items-baseline gap-2 px-3 py-0.5 text-left hover:bg-accent-subtle ${selectedTable === t.key ? "bg-accent-subtle font-medium" : ""}`}
+                  className={`flex w-full items-baseline gap-2 px-2 py-0.5 text-left hover:bg-accent-subtle ${selectedTable === t.key ? "bg-accent-subtle font-medium" : ""}`}
                   aria-current={selectedTable === t.key ? "true" : undefined}
                   onClick={() => focusTable(t.key)}
                   data-testid={`database-table-${t.name}`}
@@ -267,7 +267,7 @@ function DatabaseCanvas() {
               </li>
             ))}
           </ul>
-          <p className="border-t border-default px-3 py-1 text-11 text-secondary" data-testid="database-tables-count">
+          <p className="border-t border-default px-2 py-1 text-11 text-secondary" data-testid="database-tables-count">
             {listed.more > 0
               ? `${listed.tables.length} of ${listed.total} shown; refine the filter`
               : `${listed.total} ${listed.total === 1 ? "table" : "tables"}${tableFilter ? " match" : ""}`}
@@ -304,7 +304,7 @@ function DatabaseCanvas() {
           )}
         </div>
         <aside className="flex w-[40%] min-w-80 max-w-[640px] flex-col border-l border-default bg-surface" aria-label="DDL preview" data-testid="ddl-preview">
-          <div className="flex h-9 items-center gap-2 border-b border-default px-3 text-12">
+          <div className="flex h-7 items-center gap-2 border-b border-default px-2 text-12">
             <span className="font-semibold">DDL preview</span>
             <span className="truncate text-secondary">{table ? `sql-ddl/table · ${table.name}` : "sql-ddl/schema · whole database"}</span>
             {preview.isFetching ? <Spinner label="Rendering" /> : null}
@@ -315,7 +315,7 @@ function DatabaseCanvas() {
                 Copy packs/sql-ddl into .maquettiste/templates/ and enable it in maquettiste.json.
               </EmptyState>
             ) : preview.data?.diagnostics.length && !preview.data.files.length ? (
-              <ul className="p-3 text-12 text-danger">
+              <ul className="p-2 text-12 text-danger">
                 {preview.data.diagnostics.map((d, i) => (
                   <li key={i}>
                     {d.rule} {d.message}

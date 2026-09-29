@@ -107,6 +107,16 @@
   }
 }
 
+/* One dense layout (generation-ui.md 6, E23); a coarse pointer (touch) keeps 44 px targets for the rows a finger picks. */
+@media (pointer: coarse) {
+  [role="tab"],
+  [role="menuitem"],
+  [role="menuitemradio"],
+  [role="option"] {
+    min-height: 44px;
+  }
+}
+
 /* React Flow, restyled through tokens */
 .react-flow {
   --xy-background-color: var(--mq-bg-canvas);

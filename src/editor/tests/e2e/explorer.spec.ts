@@ -41,7 +41,8 @@ test("the rail shows one explorer at a time, under a header with its totals", as
   // Generate lists its packs in the sidebar; Settings keeps the sidebar and opens its screen.
   await workspace(page, "Generate");
   await expect(side.getByTestId("explorer-generate")).toBeVisible();
-  await expect(side.getByRole("tree")).toHaveCount(0);
+  await expect(side.getByRole("tree")).toHaveCount(1);
+  await expect(side.getByRole("tree", { name: "Packs" })).toBeVisible();
   await workspace(page, "Settings");
   await expect(page.getByTestId("workspace-settings")).toBeVisible();
   await expect(page.getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");

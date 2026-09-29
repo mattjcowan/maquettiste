@@ -36,7 +36,7 @@ export function LocalesSettings() {
   const [queue, setQueue] = useState<{ locale: string; shard: string } | null>(null);
   if (settings.isPending || !settings.data) return <Spinner label="Loading settings" />;
   return (
-    <div className="flex max-w-5xl flex-col gap-6">
+    <div className="flex max-w-5xl flex-col gap-2">
       <LocalesForm key={settings.data.hash} />
       {l10n.enabled ? <Matrix onOpen={setQueue} current={queue} /> : null}
       {l10n.enabled && queue ? (
@@ -98,7 +98,7 @@ function LocalesForm() {
   const locales = draft.locales ?? [draft.defaultLocale];
   const tag = adding.trim();
   return (
-    <section className="flex flex-col gap-4" aria-label="Locales">
+    <section className="flex flex-col gap-2" aria-label="Locales">
       <SectionTitle
         actions={
           <Button onClick={() => void save()} disabled={!dirty || problems.length > 0 || saving} data-testid="save-locales">

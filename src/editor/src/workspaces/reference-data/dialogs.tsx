@@ -35,7 +35,7 @@ export function NewReferenceTypeDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent title="New reference type" description="A set of rows managed as data, with a code and a label; its rows live in a seed created with it.">
         <form
-          className="flex flex-col gap-3"
+          className="flex flex-col gap-2"
           onSubmit={async (e) => {
             e.preventDefault();
             if (!valid || busy) return;
@@ -127,7 +127,7 @@ export function ImportCsvDialog({ open, onOpenChange, seed }: { open: boolean; o
         title={`Import CSV into ${seed.name}`}
         description="Rows match by @id, else by @code; new rows get new ids. Preview first: applying is one save you can undo."
       >
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
           <Field label="CSV file" htmlFor="import-csv-file">
             <Input
               id="import-csv-file"

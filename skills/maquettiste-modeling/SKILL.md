@@ -58,6 +58,12 @@ clobber a concurrent edit or leave a dangling id.
 6. Generate: `plan` (stores a plan, touches nothing), `get_plan` / `get_plan_diff` for the files that matter, then
    `apply_plan` with the plan id. `stale` means the inputs changed since the plan: plan again. `list_packs`,
    `get_settings` and `save_settings` (with `expectedHash`) cover the packs and `maquettiste.json`.
+7. Explain and author templates: `get_plan` with `units` true gives each unit's pack, template, element, `reason` and
+   `causes`; `explain_unit` answers why a unit renders or not (a plan unit by `planId` and `key`, or any `pack`, `unit`
+   and `elementId`). Packs are files: `get_pack`, `list_pack_files`, `read_pack_file`, `write_pack_file` (with
+   `expectedHash`, `new` to create), `move_pack_file`, `delete_pack_file`, `save_pack` (pack.json), `save_pack_settings`
+   (`packs.<pack>` of the settings), `new_pack` (from `empty` or a starter), `get_template_context`, `preview_unit`
+   (with `overlay` for unsaved text; writes nothing), `unit_paths` and `get_pack_outputs`.
 
 Every model read rescans the model folder and settings reads and saves check the file on disk, so edits made outside the server are seen; the resource `maquettiste://conventions`
 and the prompt `modeling-conventions` carry this text.

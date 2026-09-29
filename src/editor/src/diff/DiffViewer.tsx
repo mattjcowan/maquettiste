@@ -52,7 +52,7 @@ export function DiffViewer({ path, text }: { path: string; text: string }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="diff-viewer">
-      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-default px-2 text-12">
+      <div className="flex h-7 shrink-0 items-center gap-2 border-b border-default px-2 text-12">
         <span className="min-w-0 flex-1 truncate font-mono" title={path}>
           {path}
         </span>

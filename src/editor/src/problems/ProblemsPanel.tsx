@@ -56,7 +56,7 @@ export function ProblemsPanel() {
     <ul className="flex flex-col py-1" aria-label="Problems by element" data-testid="problems-list">
       {groups.map((group) => (
         <li key={group.key}>
-          <div className="flex h-7 items-center gap-2 px-3 text-12 font-semibold">
+          <div className="flex h-7 items-center gap-2 px-2 text-12 font-semibold">
             <span>{group.label}</span>
             <span className="font-normal text-secondary">{group.diagnostics.length}</span>
           </div>
@@ -69,7 +69,7 @@ export function ProblemsPanel() {
                   <button
                     type="button"
                     data-testid={`problem-${d.rule}`}
-                    className="flex min-w-0 flex-1 items-start gap-2 px-6 py-1 text-left text-12 hover:bg-accent-subtle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+                    className="flex min-w-0 flex-1 items-start gap-2 px-2 py-1 text-left text-12 hover:bg-accent-subtle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
                     onClick={() => {
                       const summary = group.elementId ? lookup.byId.get(group.elementId) : undefined;
                       if (summary) reveal(summary, d.jsonPointer);

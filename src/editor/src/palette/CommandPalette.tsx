@@ -65,7 +65,6 @@ export function rankLocal(items: readonly LocalItem[], text: string): { item: Lo
 function useCommands(close: () => void): LocalItem[] {
   const { store } = useServices();
   const theme = useEditor(store, (s) => s.theme);
-  const density = useEditor(store, (s) => s.density);
   const canApply = useEditor(store, (s) => s.generation.planId !== null && s.generation.applyJob === null);
   const { openWorkspace } = useEditorNavigation();
   const { undo, redo } = useUndoRedo();
@@ -78,7 +77,6 @@ function useCommands(close: () => void): LocalItem[] {
     const s = () => store.getState();
     const list: LocalItem[] = [
       { value: "cmd:theme", label: "Toggle theme", run: run(() => s().setTheme(theme === "dark" ? "light" : "dark")) },
-      { value: "cmd:density", label: "Toggle density", run: run(() => s().setDensity(density === "compact" ? "comfortable" : "compact")) },
       { value: "cmd:undo", label: "Undo", run: run(() => void undo()) },
       { value: "cmd:redo", label: "Redo", run: run(() => void redo()) },
       {
@@ -90,6 +88,15 @@ function useCommands(close: () => void): LocalItem[] {
         }),
       },
     ];
+    list.push({
+      value: "cmd:new-pack",
+      label: "New pack…",
+      run: run(() => {
+        s().setSidebar("generate");
+        openWorkspace("generate");
+        s().setGeneration({ newPack: true });
+      }),
+    });
     if (canApply)
       list.push({
         value: "cmd:apply",
@@ -119,7 +126,7 @@ function useCommands(close: () => void): LocalItem[] {
       { value: "cmd:bottom", label: "Toggle bottom panel", run: run(() => s().toggle("bottom")) },
     );
     return list;
-  }, [store, theme, density, canApply, openWorkspace, undo, redo, close, domainNow]);
+  }, [store, theme, canApply, openWorkspace, undo, redo, close, domainNow]);
 }
 
 function SearchDialog({ mode }: { mode: Mode }) {
@@ -266,10 +273,10 @@ function SearchDialog({ mode }: { mode: Mode }) {
         onValueChange={setText}
         placeholder={mode === "palette" ? "Go to an element or run a command…" : "Go to an element, table, diagram or screen…"}
         aria-label={mode === "palette" ? "Search commands and the model" : "Search the model by name"}
-        className="h-11 w-full border-b border-default bg-transparent px-3 text-[14px] text-primary outline-none placeholder:text-secondary"
+        className="h-7 w-full border-b border-default bg-transparent px-2 text-[12px] text-primary outline-none placeholder:text-secondary"
       />
       <Command.List className="max-h-[50vh] overflow-y-auto" data-answered={waiting ? undefined : text}>
-        {!rows.length && !waiting ? <Command.Empty className="px-3 py-4 text-[13px] text-secondary">Nothing matches.</Command.Empty> : null}
+        {!rows.length && !waiting ? <Command.Empty className="px-2 py-1 text-[13px] text-secondary">Nothing matches.</Command.Empty> : null}
         {ordered ? (
           <Command.Group className={groupClass}>
             {rows.map((row) => (
@@ -289,7 +296,7 @@ function SearchDialog({ mode }: { mode: Mode }) {
           })
         )}
         {more > 0 ? (
-          <p className="px-3 py-2 text-[12px] text-secondary" data-testid="search-more">
+          <p className="px-2 py-2 text-[12px] text-secondary" data-testid="search-more">
             {more.toLocaleString("en-US")} more: narrow the search
           </p>
         ) : null}

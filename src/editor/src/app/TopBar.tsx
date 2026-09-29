@@ -1,4 +1,4 @@
-import { GitBranch, Monitor, Moon, Redo2, Rows2, Rows3, Search, Sun, Undo2 } from "lucide-react";
+import { GitBranch, Monitor, Moon, Redo2, Search, Sun, Undo2 } from "lucide-react";
 import { useProject, useSession } from "@/api/queries";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/menu";
@@ -19,7 +19,6 @@ export function TopBar() {
   const project = useProject();
   const session = useSession();
   const theme = useEditor(store, (s) => s.theme);
-  const density = useEditor(store, (s) => s.density);
   const connection = useEditor(store, (s) => s.connection);
   const canUndo = useEditor(store, (s) => s.undo.length > 0);
   const canRedo = useEditor(store, (s) => s.redo.length > 0);
@@ -29,7 +28,7 @@ export function TopBar() {
   const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
 
   return (
-    <header className="flex h-[var(--mq-topbar-h)] shrink-0 items-center gap-3 border-b border-default bg-surface px-3" data-region="topbar">
+    <header className="flex h-[var(--mq-topbar-h)] shrink-0 items-center gap-2 border-b border-default bg-surface px-2" data-region="topbar">
       <div className="flex min-w-0 items-center gap-2">
         <Tooltip content={LOGO_TOOLTIP}>
           <span
@@ -57,7 +56,7 @@ export function TopBar() {
       <button
         type="button"
         onClick={() => store.getState().setPaletteOpen(true)}
-        className="mx-auto flex h-8 w-full max-w-md items-center gap-2 rounded-control border border-input bg-app px-2 text-13 text-secondary hover:border-accent"
+        className="mx-auto flex h-6 w-full max-w-md items-center gap-2 rounded-control border border-input bg-app px-2 text-13 text-secondary hover:border-accent"
         aria-label="Open the command palette"
       >
         <Search className="size-4" aria-hidden />
@@ -76,17 +75,6 @@ export function TopBar() {
         <Tooltip content="Redo (Ctrl+Shift+Z)">
           <Button variant="ghost" size="icon" aria-label="Redo" disabled={!canRedo} onClick={() => void redo()}>
             <Redo2 />
-          </Button>
-        </Tooltip>
-        <Tooltip content={density === "compact" ? "Comfortable rows" : "Compact rows"}>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={`Density: ${density}. Switch to ${density === "compact" ? "comfortable" : "compact"}`}
-            data-testid="density-toggle"
-            onClick={() => store.getState().setDensity(density === "compact" ? "comfortable" : "compact")}
-          >
-            {density === "compact" ? <Rows3 /> : <Rows2 />}
           </Button>
         </Tooltip>
         <DropdownMenu>

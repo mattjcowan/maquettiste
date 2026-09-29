@@ -101,6 +101,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/project/settings/packs/{pack}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack: components["parameters"]["PackName"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save one pack's entry of maquettiste.json
+         * @description Replaces `packs.<pack>` (enabled, output, parameters) and nothing else in the file, with the settings ETag; an empty object removes the entry. The save is validated as `saveSettings` is (MQ6023 and MQ6024 among its diagnostics) and publishes `project.changed`.
+         */
+        put: operations["savePackSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/model/index": {
         parameters: {
             query?: never;
@@ -716,8 +738,235 @@ export interface paths {
          *     for a synthesized entity table, a table file's id for a designed one) and `sql-ddl`/`schema` with a database id.
          *     The unit renders even when its `where` filter would not plan it. A model with errors returns the errors and no
          *     files.
+         *     With `unitOverride`, `overlay` or `parameters` the unit renders with unsaved text (generation-ui.md section 5.2): the
+         *     pack loads even when disabled, the sandbox limits apply and the render has a deadline of `limits.scriptTimeoutMs` x 4
+         *     (MQ6007 when it is hit). Unsaved text is code the server runs, so such a request needs the maintainer role (403 below
+         *     it). Nothing is written.
          */
         post: operations["previewTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/templates/paths": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A unit's rendered output paths over its scope, with the count, collisions and root checks
+         * @description Plans the unit as the planner does (its scope, then `generation.skip` hints, then its filter), or keeps only
+         *     `elementIds`, and renders each planned element up to `limit` (default 200, at most 2000) to report its output paths.
+         *     `count` is the whole scope. Diagnostics carry MQ6019 (the pattern cannot stay under an allowed root), MQ6020 (two
+         *     elements of the unit render the same path), MQ6005 (paths that differ only by case), MQ6004 per refused path, and
+         *     MQ6007 when the deadline (`limits.scriptTimeoutMs` x 4) is hit. With `unitOverride`, `overlay` or `parameters` it
+         *     renders unsaved text, which needs the maintainer role (403 below it). Nothing is written.
+         */
+        post: operations["unitPaths"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/templates/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Completion data for a unit's templates
+         * @description The globals a template of the unit sees (with `pack.params.*`), the members of the model and of the scope's records in snake_case, and the built-in helpers.
+         */
+        get: operations["getTemplateContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/packs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every pack with its units and load diagnostics
+         * @description Every folder under `templates/` with a `pack.json`, enabled or not, in ordinal order. A pack whose `pack.json` does not load has `version` null, no units and its diagnostics.
+         */
+        get: operations["listPacks"];
+        put?: never;
+        /**
+         * Create a pack from empty or from a pack of this project
+         * @description `from` is `empty` (one `each entity` unit and its template) or the name of a pack of this project, whose files are copied with the new name in `pack.json`. `pack.json` is written in canonical form. 409 when the folder exists.
+         */
+        post: operations["createPack"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/packs/{pack}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack: components["parameters"]["PackName"];
+            };
+            cookie?: never;
+        };
+        /**
+         * pack.json with its ETag, parameters, files and diagnostics
+         * @description `document` is `pack.json` as written (every member, `null` when it is not JSON). `parameters` joins the defaults, the
+         *     `parameterSchema` properties and the project values of `packs.<pack>.parameters`. `files` lists the folder with sizes,
+         *     hashes (each file's ETag), roles and users. `diagnostics` holds the load diagnostics (MQ6001, MQ6002, MQ6021 to MQ6024),
+         *     MQ6019 for output paths outside every root and MQ6003 / MQ6025 for templates that do not parse.
+         */
+        get: operations["getPack"];
+        /**
+         * Save the whole pack.json document in canonical form
+         * @description Every member is kept (`version`, `description`, `engine`, `scripts`, `usesSchemaDiff`, `units`, `parameters`, `parameterSchema`). A schema failure (MQ6001, MQ6021) or a `name` that is not the folder is 422 and writes nothing; unit problems (MQ6019, MQ6022) are saved and reported in `diagnostics`.
+         */
+        put: operations["savePack"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/packs/{pack}/file": {
+        parameters: {
+            query: {
+                /** @description A pack-relative path with `/` separators (never a path segment). */
+                path: components["parameters"]["PackFilePath"];
+            };
+            header?: never;
+            path: {
+                pack: components["parameters"]["PackName"];
+            };
+            cookie?: never;
+        };
+        /** One pack file's text with its ETag */
+        get: operations["getPackFile"];
+        /**
+         * Write one pack file
+         * @description `If-Match` with the hash read, or `If-None-Match: *` to create. The text must be UTF-8 with no NUL, at most 1 MB. A template
+         *     that fails to parse is saved and its MQ6003 diagnostics returned (GU6). `path=pack.json` is 400: `pack.json` is saved whole
+         *     through `PUT /api/packs/{pack}`. A path that leaves the pack folder, lexically or through a link, is 400.
+         */
+        put: operations["putPackFile"];
+        post?: never;
+        /**
+         * Delete one pack file
+         * @description Refused (409, `referenced`) while a unit names the file or a template includes it; `diagnostics` says which.
+         */
+        delete: operations["deletePackFile"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/packs/{pack}/file/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack: components["parameters"]["PackName"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move one pack file, optionally rewriting the units that name it
+         * @description `If-Match` carries the source file's hash. The target must not exist. With `updateUnits` the unit templates, companion
+         *     templates and scripts of `pack.json` that name `from` are rewritten (canonical) in the same write, and
+         *     `expectedPackHash` (the `pack.json` hash read) is required. 409 when either hash is stale, or (`referenced`) while a
+         *     template includes `from`, or while a unit names it and `updateUnits` is not set.
+         */
+        post: operations["movePackFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/packs/{pack}/outputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack: components["parameters"]["PackName"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The files a pack's manifests record
+         * @description Every manifest entry of the pack (committed and built roots) with its unit, element, root, mode and state on disk (`intact`, `edited`, `missing`), and when a manifest was last written.
+         */
+        get: operations["getPackOutputs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generate/plan/{id}/unit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A plan id (the plan job's `planResult.plan.id`). */
+                id: components["parameters"]["PlanId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * One unit of a plan with its reason, causes and grouped read keys
+         * @description "Why not" for a skipped unit (generation-ui.md section 4.3): its recorded read keys grouped by cause kind and a one-sentence summary. The unit key travels as the `key` query parameter since it holds `/` and `:`.
+         */
+        get: operations["getPlanUnit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generate/explain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Why a unit does or does not render an element
+         * @description The first reason that applies (generation-ui.md section 4.3): `pack-invalid`, `unknown-unit`, `pack-disabled`,
+         *     `unknown-element`, `scope`, `selector`, `skip-hint`, `filter`; or, when the unit plans the element, the plan's reason
+         *     and causes, from `planId` when that plan holds the unit, else from a new dry-run plan of the pack (which is stored like
+         *     any plan and named by `planId` in the answer). Works for elements no plan contains.
+         */
+        post: operations["explainUnit"];
         delete?: never;
         options?: never;
         head?: never;
@@ -800,6 +1049,46 @@ export interface webhooks {
          * @description Delivered over the host hub `/_host/realtime`, not as an HTTP request. Sent when maquettiste.json, a pack or an extension schema changed (a settings save or a disk change); a validation.completed follows.
          */
         post: operations["realtimeProjectChanged"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "templates.changed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Realtime event `templates.changed` (group: (all))
+         * @description Delivered over the host hub `/_host/realtime`, not as an HTTP request. Sent once per pack whose files changed, beside project.changed (never instead of it), by the watcher and by the pack writes of this API; packs.changed follows.
+         */
+        post: operations["realtimeTemplatesChanged"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "packs.changed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Realtime event `packs.changed` (group: (all))
+         * @description Delivered over the host hub `/_host/realtime`, not as an HTTP request. Names the packs of the templates.changed events just sent.
+         */
+        post: operations["realtimePacksChanged"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1173,6 +1462,10 @@ export interface components {
             parameters: {
                 [key: string]: unknown;
             };
+            /** @description `properties` (JSON Schema properties) and `required` for the Parameters form and MQ6023; null when absent. */
+            parameterSchema: {
+                [key: string]: unknown;
+            } | null;
             scripts: string[];
             usesSchemaDiff: boolean;
             units: components["schemas"]["PackUnit"][];
@@ -1727,6 +2020,17 @@ export interface components {
             diskHashAtPlan: string | null;
         };
         PlanUnit: {
+            /** @description Null in a plan stored before the explanation members (generation-ui.md section 5.2), as are unit, template and reason. */
+            pack: string | null;
+            unit: string | null;
+            template: string | null;
+            /** @description Null for `model` and `each locale` units. */
+            elementId: string | null;
+            /** @enum {string|null} */
+            reason: "new" | "forced" | "check" | "inputs" | "outputs" | "unchanged" | null;
+            /** @description The first 20 causes, ordinal by kind then key. */
+            causes: components["schemas"]["PlanCause"][];
+            causeCount: number;
             key: string;
             inputHash: components["schemas"]["Hash"];
             readKeys: string[];
@@ -1796,6 +2100,16 @@ export interface components {
             unit: string;
             /** @description An element id or a resolved table key; `null` for a `model` unit. */
             elementId?: string | null;
+            /** @description The unsaved unit used instead of the saved one; its `id` must equal `unit` (else 400). Needs maintainer. */
+            unitOverride?: components["schemas"]["PackUnit"] | null;
+            /** @description Pack-relative path to unsaved text of templates, partials and scripts (not `pack.json`). Needs maintainer. */
+            overlay?: {
+                [key: string]: string;
+            } | null;
+            /** @description Effective parameter values used instead of the defaults and project values. Needs maintainer. */
+            parameters?: {
+                [key: string]: unknown;
+            } | null;
         };
         RenderedFile: {
             path: components["schemas"]["RepoPath"];
@@ -1805,6 +2119,201 @@ export interface components {
         PreviewResult: {
             files: components["schemas"]["RenderedFile"][];
             diagnostics: components["schemas"]["Diagnostic"][];
+            /** @description The keys the render read, ordinal (what a change must touch to re-render the unit). */
+            readKeys: string[];
+            elapsedMs: number;
+        };
+        PackListResponse: {
+            packs: components["schemas"]["PackSummary"][];
+        };
+        PackSummary: {
+            name: string;
+            version: string | null;
+            description: string | null;
+            enabled: boolean;
+            /** @description The pack's output base in this project (`packs.<name>.output`). */
+            output: string;
+            units: components["schemas"]["PackUnit"][];
+            fileCount: number;
+            diagnostics: components["schemas"]["Diagnostic"][];
+        };
+        NewPackRequest: {
+            name: string;
+            /** @description `empty` (the default) or the name of a pack of this project. */
+            from?: string | null;
+        };
+        PackFileInfo: {
+            /** @description Pack-relative, `/` separators. */
+            path: string;
+            size: number;
+            hash: components["schemas"]["Hash"];
+            /** @enum {string} */
+            role: "manifest" | "template" | "partial" | "script" | "type-map" | "other";
+            /** @description `unit:<id>`, `companion:<id>` and `include:<path>`, ordinal. */
+            usedBy: string[];
+        };
+        PackParameterInfo: {
+            name: string;
+            /** @description The default from `pack.json` `parameters`, or null. */
+            default: unknown;
+            /** @description The project value from `packs.<pack>.parameters`, or null (the default applies). */
+            value: unknown;
+            /** @description The `parameterSchema.properties` entry, or null. */
+            schema: {
+                [key: string]: unknown;
+            } | null;
+            required: boolean;
+        };
+        PackDocument: {
+            name: string;
+            enabled: boolean;
+            output: string;
+            hash: components["schemas"]["Hash"];
+            /** @description pack.json as written, every member kept; null when it is not JSON. */
+            document: {
+                [key: string]: unknown;
+            } | null;
+            parameters: components["schemas"]["PackParameterInfo"][];
+            files: components["schemas"]["PackFileInfo"][];
+            diagnostics: components["schemas"]["Diagnostic"][];
+        };
+        PackFileContent: {
+            path: string;
+            hash: components["schemas"]["Hash"];
+            text: string;
+        };
+        PackFileWrite: {
+            text: string;
+        };
+        PackWriteResult: {
+            outcome: components["schemas"]["SaveOutcome"];
+            /** @description The new hash when saved (null after a delete); the disk hash on conflict (null when the file is gone). */
+            hash: components["schemas"]["Hash"] | null;
+            /** @description The disk text on conflict, else null. */
+            current: string | null;
+            diagnostics: components["schemas"]["Diagnostic"][];
+            /** @description Pack-relative files written or deleted, ordinal. */
+            files: string[];
+        };
+        PlanCause: {
+            /** @enum {string} */
+            kind: "element" | "kind-set" | "referrers" | "setting" | "template" | "schema-diff" | "translation" | "localization" | "absent" | "inputs" | "output-missing" | "output-edited" | "state-reset" | "pack-version" | "unit" | "parameter" | "scripts" | "output-base" | "formatter";
+            key: string;
+            detail: string;
+            elementId: string | null;
+            path: string | null;
+        };
+        ReadKeyGroup: {
+            kind: string;
+            keys: string[];
+        };
+        PathsRequest: {
+            pack: string;
+            unit: string;
+            /** @description Only these elements; every planned element when absent. */
+            elementIds?: string[] | null;
+            /** @description How many elements to render (default 200, at most 2000). */
+            limit?: number | null;
+            /** @description The unsaved unit; its `id` must equal `unit`. Needs maintainer. */
+            unitOverride?: components["schemas"]["PackUnit"] | null;
+            /** @description Pack-relative path to unsaved text. Needs maintainer. */
+            overlay?: {
+                [key: string]: string;
+            } | null;
+            /** @description Unsaved parameter values. Needs maintainer. */
+            parameters?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        UnitPath: {
+            elementId: string | null;
+            path: string;
+            /** @enum {string} */
+            role: "main" | "companion";
+            root: string | null;
+            allowed: boolean;
+            rule: string | null;
+        };
+        UnitPathsResult: {
+            count: number;
+            rendered: number;
+            paths: components["schemas"]["UnitPath"][];
+            diagnostics: components["schemas"]["Diagnostic"][];
+            elapsedMs: number;
+        };
+        TemplateVariable: {
+            name: string;
+            detail: string;
+        };
+        TemplateMember: {
+            name: string;
+            /** @enum {string} */
+            type: "string" | "number" | "boolean" | "list" | "map" | "object";
+        };
+        TemplateContextResult: {
+            pack: string;
+            unit: string;
+            scope: string;
+            variables: components["schemas"]["TemplateVariable"][];
+            members: {
+                [key: string]: components["schemas"]["TemplateMember"][];
+            };
+            helpers: string[];
+        };
+        PackFileMove: {
+            from: string;
+            to: string;
+            updateUnits?: boolean;
+            /** @description The pack.json hash read; required with `updateUnits`. */
+            expectedPackHash?: components["schemas"]["Hash"] | null;
+        };
+        PackOutput: {
+            path: string;
+            unit: string;
+            elementId: string | null;
+            companion: boolean;
+            root: string | null;
+            commit: boolean;
+            /** @enum {string} */
+            mode: "overwrite" | "regions" | "once";
+            /** @enum {string} */
+            state: "intact" | "edited" | "missing";
+        };
+        PackOutputs: {
+            pack: string;
+            outputs: components["schemas"]["PackOutput"][];
+            lastWritten: string | null;
+        };
+        ExplainRequest: {
+            pack: string;
+            unit: string;
+            elementId?: string | null;
+            planId?: string | null;
+            /** @description The run's pack selection (as the plan request's packs); a pack outside it answers not-selected. Absent means every enabled pack. */
+            packs?: string[] | null;
+            /**
+             * @description The run's root selection; a unit whose output pattern's literal prefix is under a root of the other kind answers root-not-selected.
+             * @enum {string|null}
+             */
+            roots?: "all" | "committed" | "built" | null;
+        };
+        ExplainResult: {
+            pack: string;
+            unit: string;
+            elementId: string | null;
+            planned: boolean;
+            /** @enum {string} */
+            reason: "pack-invalid" | "unknown-unit" | "pack-disabled" | "not-selected" | "unknown-element" | "scope" | "selector" | "skip-hint" | "filter" | "root-not-selected" | "new" | "forced" | "check" | "inputs" | "outputs" | "unchanged";
+            detail: string;
+            key: string;
+            planId: string | null;
+            planUnit: components["schemas"]["PlanUnit"] | null;
+            diagnostics: components["schemas"]["Diagnostic"][];
+        };
+        PlanUnitDetail: {
+            unit: components["schemas"]["PlanUnit"];
+            groups: components["schemas"]["ReadKeyGroup"][];
+            summary: string;
         };
         PresenceReport: {
             /** @description `site.realtime.connectionId` of the reporting window. */
@@ -1854,6 +2363,20 @@ export interface components {
         /** @description `project.changed` to every connection: settings, packs or extension schemas changed; refetch `GET /api/project` and the settings, and drop cached database views and previews (conventions and type maps change every resolved table). A `validation.completed` follows. */
         RealtimeProjectChanged: {
             settingsHash: components["schemas"]["Hash"];
+        };
+        /** @description `templates.changed` to every connection: files of one pack changed on disk or through the API. Reload those files (a null hash means the file is gone); an empty `files` means reload the whole pack. */
+        RealtimeTemplatesChanged: {
+            pack: string;
+            files: {
+                /** @description Pack-relative path. */
+                path: string;
+                /** @description The file's SHA-256 now, or null when it is gone or unknown. */
+                hash: string | null;
+            }[];
+        };
+        /** @description `packs.changed` to every connection: the packs whose files changed; refetch those packs (`GET /api/packs/{pack}`). */
+        RealtimePacksChanged: {
+            packs: string[];
         };
         /** @description `job.progress` to `job:{id}`: the running JobInfo with its latest `progress`, at most four per second. */
         RealtimeJobProgress: components["schemas"]["JobInfo"];
@@ -3188,6 +3711,72 @@ export interface components {
                 value?: components["schemas"]["description"] | null;
             } & (unknown & unknown & unknown))[];
         };
+        /**
+         * Template pack
+         * @description templates/<pack>/pack.json.
+         */
+        pack: {
+            $schema?: components["schemas"]["schemaPath"];
+            name: components["schemas"]["key"];
+            version: string;
+            engine: string;
+            description?: string;
+            /** @default {} */
+            parameters?: Record<string, never>;
+            /** @description The parameters' schema: a JSON Schema properties object and the required names; defaults stay in parameters. */
+            parameterSchema?: {
+                properties?: {
+                    [key: string]: Record<string, never>;
+                };
+                required?: string[];
+            };
+            /** @default [] */
+            scripts?: string[];
+            /** @default false */
+            usesSchemaDiff?: boolean;
+            units: {
+                id: string;
+                template: string;
+                for: string;
+                /** Unit filters */
+                where?: {
+                    /** @default [] */
+                    tags?: components["schemas"]["tagList"];
+                    /** @default [] */
+                    notTags?: components["schemas"]["tagList"];
+                    /** @default [] */
+                    stereotypes?: components["schemas"]["keyList"];
+                    /** @default [] */
+                    notStereotypes?: components["schemas"]["keyList"];
+                    /** @default [] */
+                    categories?: string[];
+                    /** @default [] */
+                    packages?: string[];
+                    /** @default [] */
+                    notPackages?: string[];
+                    database?: string;
+                    abstract?: boolean;
+                    script?: components["schemas"]["identifier"];
+                };
+                output?: string;
+                /**
+                 * @default overwrite
+                 * @enum {unknown}
+                 */
+                mode?: "overwrite" | "once" | "regions" | "pair";
+                formatter?: string;
+                delimiters?: {
+                    open: string;
+                    close: string;
+                };
+                companion?: {
+                    template: string;
+                    output: string;
+                };
+                /** @default [] */
+                transforms?: components["schemas"]["identifier"][];
+            }[];
+        };
     };
     responses: {
         /** @description The body is not JSON or not the expected shape (`bad-request`), or is larger than 4 MB (`too-large`). The sign-in gate refuses a `POST` or `PUT` that is not `application/json` with 415 `unsupported-media-type`, and a foreign `Origin` with 403 `forbidden-origin`, before any handler runs. */
@@ -3306,6 +3895,9 @@ export interface components {
         };
     };
     parameters: {
+        PackName: string;
+        /** @description A pack-relative path with `/` separators (never a path segment). */
+        PackFilePath: string;
         /** @description A declared BCP 47 locale other than the default. */
         Locale: string;
         /**
@@ -3570,6 +4162,62 @@ export interface operations {
                 };
             };
             /** @description The settings are invalid; nothing was written. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsSaveResult"];
+                };
+            };
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    savePackSettings: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description The hash the caller loaded, quoted as an ETag or bare. Missing is 428.
+                 * @example "4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                pack: components["parameters"]["PackName"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Saved; the ETag is the settings hash. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsSaveResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description The settings changed since they were read. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsSaveResult"];
+                };
+            };
+            /** @description The settings would be invalid; nothing was written. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -4746,7 +5394,13 @@ export interface operations {
     previewTemplate: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description The caller's live-preview key (any opaque string, e.g. per editor tab). A newer request of this kind with the same
+                 *     value cancels one still in flight on the server (409 `superseded`); without it nothing is superseded.
+                 */
+                "X-Maquettiste-Client"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -4774,6 +5428,540 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
+            /**
+             * @description `superseded`: a newer request of this kind with the same `X-Maquettiste-Client` cancelled this one on the server
+             *     (one request of each kind is in flight per client key, generation-ui.md section 5.2).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    unitPaths: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The caller's live-preview key (any opaque string, e.g. per editor tab). A newer request of this kind with the same
+                 *     value cancels one still in flight on the server (409 `superseded`); without it nothing is superseded.
+                 */
+                "X-Maquettiste-Client"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PathsRequest"];
+            };
+        };
+        responses: {
+            /** @description The paths. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitPathsResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /**
+             * @description `superseded`: a newer request of this kind with the same `X-Maquettiste-Client` cancelled this one on the server
+             *     (one request of each kind is in flight per client key, generation-ui.md section 5.2).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getTemplateContext: {
+        parameters: {
+            query: {
+                pack: string;
+                unit: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The context. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateContextResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listPacks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The packs. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    createPack: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewPackRequest"];
+            };
+        };
+        responses: {
+            /** @description Created; `files` lists what was written and `hash` is the new `pack.json` hash. */
+            201: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description The pack folder exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+            /** @description The starter is unknown; nothing was written. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+        };
+    };
+    getPack: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack: components["parameters"]["PackName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pack. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackDocument"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    savePack: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description The hash the caller loaded, quoted as an ETag or bare. Missing is 428.
+                 * @example "4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                pack: components["parameters"]["PackName"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["pack"];
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description No such pack. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+            /** @description pack.json changed since it was read; `hash` and `current` are the disk version. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+            /** @description The document is invalid; nothing was written. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    getPackFile: {
+        parameters: {
+            query: {
+                /** @description A pack-relative path with `/` separators (never a path segment). */
+                path: components["parameters"]["PackFilePath"];
+            };
+            header?: never;
+            path: {
+                pack: components["parameters"]["PackName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackFileContent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    putPackFile: {
+        parameters: {
+            query: {
+                /** @description A pack-relative path with `/` separators (never a path segment). */
+                path: components["parameters"]["PackFilePath"];
+            };
+            header?: {
+                /** @description The hash read; required unless `If-None-Match` is `*`. */
+                "If-Match"?: string;
+                "If-None-Match"?: components["parameters"]["IfNoneMatch"];
+            };
+            path: {
+                pack: components["parameters"]["PackName"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PackFileWrite"];
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+            /** @description Created. */
+            201: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description No such pack. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+            /** @description The file changed since it was read (or exists, on create); `hash` and `current` are the disk version. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+            /** @description Not text, or larger than 1 MB; nothing was written. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    deletePackFile: {
+        parameters: {
+            query: {
+                /** @description A pack-relative path with `/` separators (never a path segment). */
+                path: components["parameters"]["PackFilePath"];
+            };
+            header: {
+                /**
+                 * @description The hash the caller loaded, quoted as an ETag or bare. Missing is 428.
+                 * @example "4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                pack: components["parameters"]["PackName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description No such file. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+            /** @description The file changed since it was read, or something uses it. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    movePackFile: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description The hash the caller loaded, quoted as an ETag or bare. Missing is 428.
+                 * @example "4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                pack: components["parameters"]["PackName"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PackFileMove"];
+            };
+        };
+        responses: {
+            /** @description Moved; the ETag is the moved file's hash. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description No such source file. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+            /** @description A hash is stale, or something includes or names the file. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+            /** @description The target exists, or `expectedPackHash` is missing with `updateUnits`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    getPackOutputs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack: components["parameters"]["PackName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The outputs. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackOutputs"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getPlanUnit: {
+        parameters: {
+            query: {
+                key: string;
+            };
+            header?: never;
+            path: {
+                /** @description A plan id (the plan job's `planResult.plan.id`). */
+                id: components["parameters"]["PlanId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The unit. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanUnitDetail"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    explainUnit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExplainRequest"];
+            };
+        };
+        responses: {
+            /** @description The answer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExplainResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
         };
     };
     reportPresence: {
@@ -4861,6 +6049,50 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["RealtimeProjectChanged"];
+            };
+        };
+        responses: {
+            /** @description Not applicable; realtime events have no response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    realtimeTemplatesChanged: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RealtimeTemplatesChanged"];
+            };
+        };
+        responses: {
+            /** @description Not applicable; realtime events have no response. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    realtimePacksChanged: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RealtimePacksChanged"];
             };
         };
         responses: {

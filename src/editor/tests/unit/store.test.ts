@@ -20,22 +20,19 @@ const entry = (label: string): UndoEntry =>
 describe("editor store", () => {
   beforeEach(() => localStorage.clear());
 
-  it("defaults to the OS theme and compact density", () => {
+  it("defaults to the OS theme and has no density preference", () => {
     const s = createEditorStore().getState();
     expect(s.theme).toBe("system");
-    expect(s.density).toBe("compact");
+    expect("density" in s).toBe(false);
     expect(s.workspace).toBe("entities");
   });
 
-  it("remembers a theme and density override in localStorage", () => {
+  it("remembers a theme override in localStorage", () => {
     const store = createEditorStore();
     store.getState().setTheme("dark");
-    store.getState().setDensity("comfortable");
     expect(localStorage.getItem("mq.theme")).toBe("dark");
-    expect(localStorage.getItem("mq.density")).toBe("comfortable");
     const again = createEditorStore().getState();
     expect(again.theme).toBe("dark");
-    expect(again.density).toBe("comfortable");
   });
 
   it("ignores a corrupt remembered theme", () => {

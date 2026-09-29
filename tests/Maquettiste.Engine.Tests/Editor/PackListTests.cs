@@ -64,7 +64,7 @@ public sealed class PackListTests
 
         Assert.Equal(["csharp-dapper", "sql-ddl"], result.Packs.Select(p => p.Name));
         var diagnostic = Assert.Single(result.Diagnostics);
-        Assert.Equal("MQ6001", diagnostic.Rule);
+        Assert.Equal("MQ6022", diagnostic.Rule);
         Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
         Assert.Contains("table.scriban", diagnostic.Message, StringComparison.Ordinal);
     }

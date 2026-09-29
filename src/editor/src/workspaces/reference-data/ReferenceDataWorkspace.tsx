@@ -101,7 +101,7 @@ export function ReferenceDataWorkspace() {
       <section aria-label="Reference type" className="flex min-w-0 flex-1 flex-col bg-surface">
         {item ? (
           <Tabs value={tab} onValueChange={(v) => setTab(v as RefTab)} className="flex min-h-0 flex-1 flex-col">
-            <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-default px-3 pb-1 pt-2">
+            <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-default px-2 pb-1 pt-2">
               <h2 className="text-15 font-semibold" data-testid="reference-type-title">
                 {item.label}
               </h2>
@@ -121,7 +121,7 @@ export function ReferenceDataWorkspace() {
                 ))}
               </TabsList>
             </header>
-            <TabsContent value="fields" className="min-h-0 flex-1 overflow-auto p-3">
+            <TabsContent value="fields" className="min-h-0 flex-1 overflow-auto p-2">
               <FieldsTab typeId={item.id} />
             </TabsContent>
             <TabsContent value="rows" className="flex min-h-0 flex-1 flex-col">
@@ -133,10 +133,10 @@ export function ReferenceDataWorkspace() {
                 onFocusSearch={() => focusTypeSearch(searchRef.current)}
               />
             </TabsContent>
-            <TabsContent value="used-by" className="min-h-0 flex-1 overflow-auto p-3">
+            <TabsContent value="used-by" className="min-h-0 flex-1 overflow-auto p-2">
               <UsedByTab usage={usage.data} loading={usage.isLoading} />
             </TabsContent>
-            <TabsContent value="storage" className="min-h-0 flex-1 overflow-auto p-3">
+            <TabsContent value="storage" className="min-h-0 flex-1 overflow-auto p-2">
               <StorageTab typeId={item.id} />
             </TabsContent>
           </Tabs>

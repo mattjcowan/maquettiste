@@ -10,7 +10,7 @@ export function PopoverContent({ className, ...props }: ComponentPropsWithoutRef
     <PopoverPrimitive.Portal>
       <PopoverPrimitive.Content
         sideOffset={6}
-        className={cn("z-50 rounded-panel border border-default bg-raised p-3 text-13 text-primary shadow-float", className)}
+        className={cn("z-50 rounded-panel border border-default bg-raised p-2 text-12 text-primary shadow-float", className)}
         {...props}
       />
     </PopoverPrimitive.Portal>

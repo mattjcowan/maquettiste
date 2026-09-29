@@ -23,7 +23,9 @@ public sealed class PackLoaderTests
 
         var set = await new PackLoader(f.Repo.Options, TestServices.Schemas).LoadAsync(snapshot, null, null, Ct);
 
-        Assert.Empty(set.Diagnostics);
+        // 'extra' is a project value the pack neither defaults nor declares: MQ6024, a warning, and still passed to the templates.
+        var undeclared = Assert.Single(set.Diagnostics);
+        Assert.Equal(("MQ6024", "/packs/basic/parameters/extra"), (undeclared.Rule, undeclared.JsonPointer));
         Assert.Equal(["basic", "scripted"], set.Packs.Select(p => p.Name));
         Assert.Equal([0, 1], set.Packs.Select(p => p.Order));
         var basic = set.Packs[0];
@@ -59,11 +61,11 @@ public sealed class PackLoaderTests
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=2.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"model\" } ] }", "MQ6002", "/engine")]
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \"banana\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"model\" } ] }", "MQ6001", "/engine")]
     [InlineData("{ \"name\": \"other\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"model\" } ] }", "MQ6001", "/name")]
-    [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"missing.tpl\", \"for\": \"model\" } ] }", "MQ6001", "/units/0/template")]
+    [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"missing.tpl\", \"for\": \"model\" } ] }", "MQ6022", "/units/0/template")]
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"../escape.tpl\", \"for\": \"model\" } ] }", "MQ6001", "/units/0/template")]
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"model\" }, { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"model\" } ] }", "MQ6001", "/units/1/id")]
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"model\", \"where\": { \"tags\": [\"x\"] } } ] }", "MQ6001", "/units/0/where")]
-    [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"each thing\" } ] }", "MQ6001", "/units/0/for")]
+    [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"each thing\" } ] }", "MQ6021", "/units/0/for")]
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"scripts\": [\"nope.js\"], \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"model\" } ] }", "MQ6001", "/scripts/0")]
     public async Task Invalid_pack_json_is_reported_and_the_pack_left_out(string json, string rule, string pointer)
     {

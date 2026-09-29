@@ -71,7 +71,7 @@ public static class ModelWatcher
                     continue;
                 }
 
-                await ApplyAsync(batch.Paths, store, events, stoppingToken).ConfigureAwait(false);
+                await ApplyAsync(batch.Paths, store, events, stoppingToken, root).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -119,7 +119,8 @@ public static class ModelWatcher
     /// <param name="events">The publisher.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>A task.</returns>
-    public static async Task ApplyAsync(IReadOnlyCollection<string> paths, ModelStore store, EditorEvents events, CancellationToken ct)
+    /// <param name="modelRoot">The model root, to hash the changed pack files for <c>templates.changed</c>; <see langword="null"/> sends no hashes.</param>
+    public static async Task ApplyAsync(IReadOnlyCollection<string> paths, ModelStore store, EditorEvents events, CancellationToken ct, string? modelRoot = null)
     {
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentNullException.ThrowIfNull(store);
@@ -137,9 +138,50 @@ public static class ModelWatcher
         if (hash is null)
             return;
         if (paths.Any(p => p.StartsWith("templates/", StringComparison.Ordinal) || p.StartsWith("extensions/", StringComparison.Ordinal)))
-            await events.OnProjectFilesChangedAsync(hash, ct).ConfigureAwait(false);
+            await events.OnProjectFilesChangedAsync(hash, ct, TemplateChanges(paths, modelRoot)).ConfigureAwait(false);
         else if (paths.Contains("maquettiste.json"))
             await events.OnSettingsChangedAsync(hash, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The pack files among model-relative paths (<c>templates/&lt;pack&gt;/…</c>), by pack, each with its SHA-256 now (<see langword="null"/>
+    /// when gone or when <paramref name="modelRoot"/> is unknown). A folder event names its pack with no files: reload the pack.
+    /// </summary>
+    /// <param name="paths">Model-relative paths.</param>
+    /// <param name="modelRoot">The model root, or <see langword="null"/>.</param>
+    /// <returns>One entry per pack, ordinal, files ordinal.</returns>
+    internal static IReadOnlyList<TemplatesChangedEvent> TemplateChanges(IEnumerable<string> paths, string? modelRoot)
+    {
+        var byPack = new SortedDictionary<string, SortedDictionary<string, string?>>(StringComparer.Ordinal);
+        foreach (var path in paths)
+        {
+            var segments = path.Split('/');
+            if (segments.Length < 2 || segments[0] != "templates" || segments[1].Length == 0)
+                continue;
+            if (!byPack.TryGetValue(segments[1], out var files))
+                byPack[segments[1]] = files = new SortedDictionary<string, string?>(StringComparer.Ordinal);
+            if (segments.Length < 3 || Path.GetExtension(path).Length == 0)
+                continue;
+            string? hash = null;
+            if (modelRoot is not null)
+            {
+                try
+                {
+                    var full = Path.Combine(modelRoot, path.Replace('/', Path.DirectorySeparatorChar));
+                    hash = File.Exists(full) ? Maquettiste.Engine.Hashing.ContentHash.Of(File.ReadAllBytes(full)) : null;
+                }
+                catch (IOException)
+                {
+                }
+                catch (UnauthorizedAccessException)
+                {
+                }
+            }
+
+            files[string.Join('/', segments[2..])] = hash;
+        }
+
+        return [.. byPack.Select(p => new TemplatesChangedEvent(p.Key, [.. p.Value.Select(f => new TemplateFileHash(f.Key, f.Value))]))];
     }
 
     /// <summary>

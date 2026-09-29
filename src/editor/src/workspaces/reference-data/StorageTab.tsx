@@ -89,7 +89,7 @@ export function StorageTab({ typeId }: { typeId: string }) {
   const describe = (e: Effective) => `${e.strategy ?? "Template-defined"}${e.source ? ` (${SOURCE_TEXT[e.source]})` : " (the packs decide)"}`;
 
   return (
-    <div className="flex max-w-3xl flex-col gap-3" data-testid="reference-storage">
+    <div className="flex max-w-3xl flex-col gap-2" data-testid="reference-storage">
       <p className="text-12 text-secondary">
         Project default: <span className="font-mono">{projectChoice ? (projectChoice.strategy ?? "Template-defined") : "Template-defined"}</span>
         {Object.keys(strategies).length ? "" : ". The project declares no storage strategies (Settings, referenceData.strategies), so the packs decide."}
@@ -112,7 +112,7 @@ export function StorageTab({ typeId }: { typeId: string }) {
             const declared = own?.strategy ? strategies[own.strategy] : undefined;
             return (
               <tr key={row.key} className="border-t border-default align-top" data-testid={`storage-${row.label}`}>
-                <td className="h-8 px-1.5 py-1">{row.label}</td>
+                <td className="h-6 px-1 py-0.5">{row.label}</td>
                 <td className="px-1.5 py-1 font-mono">{describe(effective)}</td>
                 <td className="px-1.5 py-1">
                   <Select aria-label={`Storage for ${row.label}`} className="h-7 text-12" value={value} onChange={(e) => setChoice(row.key, e.target.value)}>

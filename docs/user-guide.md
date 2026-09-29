@@ -33,7 +33,7 @@ The editor is laid out like an IDE:
 
 | Area | What it holds |
 | --- | --- |
-| Top bar | The project name (the whole model and its settings), git branch and changed-file count, the command palette (Ctrl+K or Cmd+K), theme and density |
+| Top bar | The project name (the whole model and its settings), git branch and changed-file count, the command palette (Ctrl+K or Cmd+K) and the theme |
 | Rail | The explorers: Domain model, Reference data, Databases, Diagrams and Generate; Settings and the account menu at the bottom |
 | Sidebar | The explorer the rail selected: a tree with a "Search the model" box, filterable by tag, category and stereotype |
 | Center | The current screen: the canvas, a grid or an editor |
@@ -178,9 +178,182 @@ database shows on the Database screen at once. The explorers remember which rows
   row's **code**. A seed belongs to its element: deleting the element deletes its seeds and its translations in the same
   change, and removing an attribute drops its column. A delete is refused only while other elements point at the element
   or at its rows.
-- **Generate**: Plan renders every template unit and shows what would change; pick a file to see its diff; Apply
-  writes the plan. Generation runs as a job and reports progress; the run history stays in the panel.
+- **Generate**: Plan renders every template unit and shows what would change, grouped by unit with the reason each
+  renders (see "How the plan explains itself" below); pick a file to see its diff; Apply writes the plan. Generation runs as a job and reports progress; the run history stays in the panel. The Generate
+  explorer and the pack editor (below) show and change what each pack does.
 - **Settings**: the vocabularies (Tags, Categories, Stereotypes), the naming conventions, and **Locales** (below).
+
+## Generation: how the model becomes files
+
+This chapter is for someone who has never written a template. Generation reads the model (the entities, tables,
+enums and the rest) and writes text files from it: SQL scripts, classes, documentation, anything a template describes.
+Nothing about generation is hidden: every rule is a file under `.maquettiste/templates/`, and the editor, the command
+line and git read the same files.
+
+**A template** is a text file with holes in it. Text outside `{{ }}` is copied as it is; inside, `{{ entity.name }}`
+prints a value from the model, `{{ for a in entity.attributes }} … {{ end }}` repeats a part, `{{ if … }} … {{ end }}`
+keeps a part only when a condition holds. A template that prints `CREATE TABLE {{ table.name }} (` gives
+`CREATE TABLE customers (` for the customers table.
+
+**A pack** is a folder, `.maquettiste/templates/<pack>/`, holding the templates and one `pack.json` that says what to
+run. The example packs are `sql-ddl` (database scripts) and `csharp-dapper` (classes and repositories); your own packs
+sit beside them and work the same way. A pack also has an **output base** (`packs.<pack>.output` in `maquettiste.json`),
+the folder its paths start from, and can be switched off there (`enabled: false`).
+
+**A unit** is one line of a pack's work list. It names a template, which elements the template runs for (the scope),
+and where the result goes (the output pattern). `sql-ddl` has four units: `table`, `schema`, `migration`, `seed`.
+
+**The scope** (`for` in `pack.json`) decides how many times a unit runs:
+
+| Scope | Runs | Result |
+| --- | --- | --- |
+| `each table`, `each entity`, `each enum`, … | once per element of that kind | one file per element: 40 tables give 40 scripts |
+| `model` | once, with the whole model | one file for many: a template that loops over every entity writes them all into one file |
+| `each locale` | once per declared language | one file per language (a resource file, a dictionary) |
+| `select <name>` | once per element a pack script returns | `select databases` gives one file per database |
+
+A **filter** (`where`) narrows a scope: only entities tagged `api`, only one package, not the abstract ones. An element
+can also opt out of a pack with `generation.skip`.
+
+**One file per element, or one file for many?** Pick the scope. For one file per entity, use `each entity` and an
+output pattern that contains the entity's name. For one file that lists every entity (a registry, an index, one big
+migration), use `model` and loop inside the template: `{{ for e in model.entities }} … {{ end }}`. Two elements that
+would get the same path are refused (MQ6020), so a per-element pattern must contain something that differs per element.
+
+**The output pattern** (`output`) is itself a small template that gives the file's path, relative to the output base:
+`{{ kebab table.database.name }}/tables/{{ table.name }}.sql` writes `main/tables/customers.sql`. In the editor the
+Generate explorer reads each pattern aloud (`<database>/tables/<table>.sql`), and the Units tab shows the path it gives
+for an example element and how many files the unit plans.
+
+**Parameters** are the pack's knobs: `pack.json` declares them with defaults (`comments: true`, a namespace, a folder
+name), templates read them as `pack.params.<name>`, and a project sets its own values under `packs.<pack>.parameters`
+in `maquettiste.json`. The pack editor's Parameters tab shows each one with the right control and a Reset to default.
+
+**The write mode** says what happens to a file that already exists: Overwrite (the default), Create only if missing
+(`once`), Protected regions (your code between markers survives), or Pair (a generated file plus a companion file for
+hand-written code that is created once and then left alone).
+
+### Change a template and see the result
+
+1. Choose **Generate** in the rail and open a pack in its explorer; its tab opens beside **Plan**.
+2. **Templates** (Alt+3): pick a file on the left; the middle pane is the template. The line above it says which units
+   use it.
+3. On the right, the **preview** renders a unit for one element with your unsaved text, a moment after you stop
+   typing: pick the **Unit** and the **Element**, read the output path and the text it would write, and any error is
+   marked at its line. A preview writes nothing.
+4. **Save** (Ctrl+S) writes the file under `.maquettiste/templates/<pack>/`, where git sees it.
+5. Back on **Plan**, **Plan** shows every file the change touches; **Apply plan** writes them.
+
+To add a unit, use the **Units** tab (Ctrl+Enter), give it a template, a scope and an output pattern, and save.
+
+### How the plan explains itself
+
+A plan is a dry run: it renders what needs rendering and compares it with the disk, and nothing is written until you
+apply it. Above the table, one line per pack says what it will do, for example
+`sql-ddl: 4 units, 12 files to add, 3 to modify, 1 orphan to delete` (an orphan is a file generation wrote earlier that
+no unit produces any more). The table groups the files by unit (`sql-ddl/table`, with its template and its counts);
+click a group to fold it. Each file shows its change, its path, its unit, its element and **Why** its unit renders:
+"New: no recorded state from an earlier run" the first time, "Customer (entity) changed" or "Template table.scriban
+changed" after an edit, "… was edited on disk" when a generated file was changed by hand. Filter by change, pack, unit
+or any words.
+
+Selecting a file opens its diff below and, on the right, **Why this file**: pack, unit, template, element, output path,
+the reason and every cause; **What it read** asks the engine for the inputs the unit recorded. Generation is
+incremental, so most units are skipped when little changed: **Unchanged units** lists them, and **Why not?** on one
+answers "Skipped: its 23 recorded inputs are unchanged since its last render, and its outputs are intact."
+**Explain** answers for any pack, unit and element, planned or not: the pack is disabled, not in this run, the scope
+does not cover that kind, a filter excludes it, `generation.skip` is set, or it renders and why.
+
+### Make your own pack from a starter
+
+In the editor, **+** in the Generate explorer header (or **New pack…** in the palette): a name, then Empty (one unit
+and its template) or a copy of a pack of this project. From a terminal, `maquettiste pack new <name> --from sql-ddl`
+(or `csharp-dapper`, or `empty`). Then give it an output base under an allowed root (below) in the pack editor's header
+or in `maquettiste.json`, edit its units and templates, and plan. The copy is yours: change it freely; the example
+packs are not updated under you.
+
+### outputs.allow: what generation may touch
+
+Generation writes only under the roots listed in `outputs.allow` of `maquettiste.json`, never elsewhere, whatever a
+template or an output pattern says:
+
+```json
+"outputs": {
+  "allow": [
+    { "path": "db", "commit": true },
+    { "path": "services/billing/src/Generated", "commit": false }
+  ],
+  "deny": ["**/*.user.cs"]
+}
+```
+
+In a large repository with many projects, list each generated folder as its own root; everything else (hand-written
+code, other teams' folders, `.git`, `.maquettiste`) is out of reach. A path outside every root is refused before
+anything is written (MQ6019, shown in the Units grid next to the pattern), and `deny` globs carve exceptions out of a
+root. `commit: true` marks output that belongs in git (its manifest is committed and `generate --check` guards it in
+CI); `commit: false` marks build output that `init` adds to `.gitignore`.
+
+## Packs in the editor: what generation does
+
+A **pack** is a folder of templates and one `pack.json` under `.maquettiste/templates/<pack>/`; generation runs every
+enabled pack. The editor reads and writes those files in place, so the command line, the editor and git always see the
+same pack. The words the screens use:
+
+| Word | Meaning |
+| --- | --- |
+| Unit | One line of the pack's work list: which elements, which template, which output path |
+| Scope | Which elements a unit runs for: once (`model`), once per element of a kind (`each table`), or once per element a selector returns (`select databases`) |
+| Files | The scope read as files: "Each table" writes one file per table, "Once" one file for the whole model, "Once per package" and "Once per database" one file per group |
+| Filter | Narrows the scope by tags, stereotypes, categories, packages (and their "not" lists), database, abstract, or a script filter |
+| Output path | A pattern rendered with the template's variables; the file lands under the pack's output base, inside an allowed output root |
+| Write | Overwrite, Create only if missing, Protected regions, or Pair (a generated file and a companion for hand code) |
+| Parameters | Pack settings the templates read as `pack.params`; defaults in `pack.json`, values per project in `maquettiste.json` |
+
+**The Generate explorer.** Each pack is a tree node with its unit count and the number of output roots its last run
+wrote ("off" when disabled, a warning count when it has diagnostics). Expand it for:
+
+- **Units**, one line each: `table · each table → table.scriban → <database>/[<schema>/]tables/<table>.sql`. The path
+  reads the output pattern aloud: `<table>` is a name that changes per element, `[...]` a part that appears only when
+  its condition holds. A pattern too complex to read aloud shows as written. A funnel means the unit has a filter
+  (hover it for the filter in words); the write mode shows when it is not Overwrite.
+- **Templates**: the pack's files with their role (template, partial, script, type map) and the units that use them.
+- **Parameters**: `name = value`, with "default" or "set".
+- **Outputs**: the files the pack last wrote, from the manifest, grouped by unit, with the ones that are hand-edited,
+  missing or orphaned (their unit or element is gone) counted.
+
+The **+** in the explorer header (or **New pack…** in the palette) creates a pack: a name, and Start from Empty (one
+unit and its template) or a copy of a pack of this project. The dialog says what it writes.
+
+**The pack editor.** Click a pack (or Enter on any row under it) to open it as a tab beside **Plan** in the centre. The
+header shows the version, engine range and description, the **Enabled** switch and the **Output base** (both saved to
+`packs.<pack>` in `maquettiste.json`), and the project's hand-edit policy (changed in Settings). Four tabs, Alt+1 to
+Alt+4:
+
+- **Units**: a grid of the units, edited in place: id, scope, filter, template, output path, write mode, formatter.
+  Beside each output pattern the grid shows how it reads, the path it gives for an **Example element** (chosen in the
+  toolbar), and how many files the unit plans. When two elements would get the same path the cell says MQ6020; a
+  path outside every allowed root says MQ6019. The side panel explains the focused field and the row's scope in plain
+  words. Ctrl+Enter adds a unit, Ctrl+D duplicates it, Ctrl+Delete removes it, Alt+Up and Alt+Down reorder, Ctrl+S
+  saves `pack.json` (every member the grid does not show is kept). When the file changed on disk since you opened
+  it, the grid offers **Keep mine** or **Take theirs**.
+- **Parameters**: one row per parameter with the right control (a switch, a list, a number, text, or JSON), its
+  default, and **Reset to default**. Save writes the project's values; a value that breaks the pack's parameter schema
+  is refused in the form, and a value for a parameter the pack does not declare (MQ6024) can be removed.
+- **Templates**: three panes. On the left, the pack folder's files (templates, partials, scripts such as
+  `helpers.js`, and any other text file; `pack.json` is edited on Units); a dot marks a file with unsaved changes, and
+  the tab's own dot says some file is unsaved. In the middle, the file in a code editor with Scriban colouring (the
+  `{{ }}`, `{{- -}}` and `{{~ ~}}` blocks, keywords, strings, comments, pipes and the functions after them; text outside
+  the blocks stays plain); the line above it says which units use the file, directly or through includes. On the
+  right, the **preview**: pick a **Unit** (the ones that use the file come first) and an **Element** from the unit's
+  scope ("First in scope" by default), and the preview renders that unit for that element with the text you have not
+  saved yet, about 300 ms after you stop typing. The output path it would write shows above the rendered text, and its
+  diagnostics are listed above it and marked in the editor at their line. Nothing is written by a preview.
+  **Save** (or Ctrl+S) writes the file under `.maquettiste/templates/<pack>/` with the version you opened; a template
+  that does not parse is still saved and its MQ6003 error marked. When the file changed on disk since you opened it
+  (someone else, git, or your text editor), the save is refused and a bar offers **Keep mine** (write your text over
+  it) or **Take theirs** (reload the disk text). Clicking a file under Templates in the explorer opens it here.
+- **Outputs**: every file the pack wrote, by unit or by root, filtered by state, root and path; **Diff** opens the
+  file's diff when the current plan includes it.
 
 ## Translating the model in the editor
 

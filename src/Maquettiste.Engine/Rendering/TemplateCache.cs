@@ -83,6 +83,20 @@ internal sealed class TemplateCache : ITemplateCache
     private readonly ConcurrentDictionary<(string Pack, string Path, string Hash, string? Open, string? Close), Lazy<Template>> _templates = new();
     private readonly ConcurrentDictionary<(string Text, string Source, string Pointer), Lazy<Template>> _inline = new();
     private readonly ConcurrentDictionary<Template, TemplateInfo> _info = new(ReferenceEqualityComparer.Instance);
+    private readonly IReadOnlyDictionary<(string Pack, string Path), string>? _overlay;
+
+    /// <summary>Creates a cache that reads every file from disk.</summary>
+    public TemplateCache()
+    {
+    }
+
+    /// <summary>
+    /// Creates a cache that serves unsaved text for some pack files (generation-ui.md section 5.2): an overlay entry, keyed by pack
+    /// name and pack-relative path, replaces the file's bytes; every other file is read from disk. A preview renders with it; nothing
+    /// is written.
+    /// </summary>
+    /// <param name="overlay">Pack name and pack-relative path to text.</param>
+    public TemplateCache(IReadOnlyDictionary<(string Pack, string Path), string>? overlay) => _overlay = overlay;
 
     /// <inheritdoc/>
     public Template Get(LoadedPack pack, string path, Delimiters? delimiters)
@@ -124,6 +138,13 @@ internal sealed class TemplateCache : ITemplateCache
         var repoPackPath = pack.RelativePath.TrimEnd('/');
         if (!PackPaths.TryNormalize(path, out var normalized, out var error))
             throw Refused(repoPackPath + "/" + path, $"The template path '{path}' is refused: {error}");
+        if (_overlay is not null && _overlay.TryGetValue((pack.Name, normalized), out var unsaved))
+        {
+            return _files.GetOrAdd(("overlay:" + pack.Name, normalized), k => new Lazy<SourceFile>(() => new SourceFile(k.Path,
+                repoPackPath.Length == 0 ? k.Path : repoPackPath + "/" + k.Path,
+                unsaved.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n'), ContentHash.Of(Encoding.UTF8.GetBytes(unsaved))))).Value;
+        }
+
         return _files.GetOrAdd((pack.RootPath, normalized), k => new Lazy<SourceFile>(() => Read(k.Root, k.Path, repoPackPath))).Value;
     }
 

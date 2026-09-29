@@ -74,6 +74,10 @@
       "description": "Render one unit against one element with no writes (DDL preview)."
     },
     {
+      "name": "packs",
+      "description": "Read and write template packs in place (generation-ui.md section 5.1)."
+    },
+    {
       "name": "presence",
       "description": "Which element each open editor window has selected."
     },
@@ -408,6 +412,7 @@
                             "schemaScript": "inline"
                           },
                           "scripts": [],
+                          "parameterSchema": null,
                           "usesSchemaDiff": true,
                           "units": [
                             {
@@ -564,6 +569,85 @@
           },
           "422": {
             "description": "The settings are invalid; nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsSaveResult"
+                }
+              }
+            }
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          }
+        }
+      }
+    },
+    "/api/project/settings/packs/{pack}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/PackName"
+        }
+      ],
+      "put": {
+        "tags": [
+          "project"
+        ],
+        "operationId": "savePackSettings",
+        "summary": "Save one pack's entry of maquettiste.json",
+        "description": "Replaces `packs.<pack>` (enabled, output, parameters) and nothing else in the file, with the settings ETag; an empty object removes the entry. The save is validated as `saveSettings` is (MQ6023 and MQ6024 among its diagnostics) and publishes `project.changed`.",
+        "x-maquettiste-role": "maintainer",
+        "x-maquettiste-engine": "GenerationService.SavePackSettingsAsync(pack, section, expectedHash)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved; the ETag is the settings hash.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsSaveResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "409": {
+            "description": "The settings changed since they were read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsSaveResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The settings would be invalid; nothing was written.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3638,6 +3722,13 @@
                             "t:csharp-dapper/types/csharp.json"
                           ],
                           "skipped": false,
+                          "pack": "csharp-dapper",
+                          "unit": "entity",
+                          "template": "entity.scriban",
+                          "elementId": "01J92P0V0ETQKXXP951CMMNHH3",
+                          "reason": "new",
+                          "causes": [],
+                          "causeCount": 0,
                           "outputs": [
                             {
                               "path": "src/Generated/Billing/Customer.g.cs",
@@ -4073,9 +4164,21 @@
         ],
         "operationId": "previewTemplate",
         "summary": "Render one unit against one element, with no writes",
-        "description": "The Database workspace's DDL preview calls `sql-ddl`/`table` with a resolved table key (`<entityId>@<databaseId>`\nfor a synthesized entity table, a table file's id for a designed one) and `sql-ddl`/`schema` with a database id.\nThe unit renders even when its `where` filter would not plan it. A model with errors returns the errors and no\nfiles.\n",
+        "description": "The Database workspace's DDL preview calls `sql-ddl`/`table` with a resolved table key (`<entityId>@<databaseId>`\nfor a synthesized entity table, a table file's id for a designed one) and `sql-ddl`/`schema` with a database id.\nThe unit renders even when its `where` filter would not plan it. A model with errors returns the errors and no\nfiles.\nWith `unitOverride`, `overlay` or `parameters` the unit renders with unsaved text (generation-ui.md section 5.2): the\npack loads even when disabled, the sandbox limits apply and the render has a deadline of `limits.scriptTimeoutMs` x 4\n(MQ6007 when it is hit). Unsaved text is code the server runs, so such a request needs the maintainer role (403 below\nit). Nothing is written.\n",
         "x-maquettiste-role": "viewer",
-        "x-maquettiste-engine": "GenerationService.PreviewAsync(pack, unit, elementId)",
+        "x-maquettiste-engine": "GenerationService.PreviewAsync(pack, unit, elementId, options)",
+        "parameters": [
+          {
+            "name": "X-Maquettiste-Client",
+            "in": "header",
+            "required": false,
+            "description": "The caller's live-preview key (any opaque string, e.g. per editor tab). A newer request of this kind with the same\nvalue cancels one still in flight on the server (409 `superseded`); without it nothing is superseded.\n",
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -4110,7 +4213,14 @@
                           "role": "main"
                         }
                       ],
-                      "diagnostics": []
+                      "diagnostics": [],
+                      "readKeys": [
+                        "e:01J92P0V0ETQKXXP951CMMNHH3",
+                        "s:conventions",
+                        "t:sql-ddl/_table.scriban",
+                        "t:sql-ddl/table.scriban"
+                      ],
+                      "elapsedMs": 12
                     }
                   },
                   "wrongElement": {
@@ -4128,7 +4238,9 @@
                           "line": 3,
                           "column": 13
                         }
-                      ]
+                      ],
+                      "readKeys": [],
+                      "elapsedMs": 4
                     }
                   }
                 }
@@ -4140,6 +4252,763 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
+          },
+          "409": {
+            "description": "`superseded`: a newer request of this kind with the same `X-Maquettiste-Client` cancelled this one on the server\n(one request of each kind is in flight per client key, generation-ui.md section 5.2).\n",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/templates/paths": {
+      "post": {
+        "tags": [
+          "templates"
+        ],
+        "operationId": "unitPaths",
+        "summary": "A unit's rendered output paths over its scope, with the count, collisions and root checks",
+        "description": "Plans the unit as the planner does (its scope, then `generation.skip` hints, then its filter), or keeps only\n`elementIds`, and renders each planned element up to `limit` (default 200, at most 2000) to report its output paths.\n`count` is the whole scope. Diagnostics carry MQ6019 (the pattern cannot stay under an allowed root), MQ6020 (two\nelements of the unit render the same path), MQ6005 (paths that differ only by case), MQ6004 per refused path, and\nMQ6007 when the deadline (`limits.scriptTimeoutMs` x 4) is hit. With `unitOverride`, `overlay` or `parameters` it\nrenders unsaved text, which needs the maintainer role (403 below it). Nothing is written.\n",
+        "x-maquettiste-role": "viewer",
+        "x-maquettiste-engine": "GenerationService.PathsAsync(pack, unit, elementIds, options, limit)",
+        "parameters": [
+          {
+            "name": "X-Maquettiste-Client",
+            "in": "header",
+            "required": false,
+            "description": "The caller's live-preview key (any opaque string, e.g. per editor tab). A newer request of this kind with the same\nvalue cancels one still in flight on the server (409 `superseded`); without it nothing is superseded.\n",
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PathsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The paths.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitPathsResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "409": {
+            "description": "`superseded`: a newer request of this kind with the same `X-Maquettiste-Client` cancelled this one on the server\n(one request of each kind is in flight per client key, generation-ui.md section 5.2).\n",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/templates/context": {
+      "get": {
+        "tags": [
+          "templates"
+        ],
+        "operationId": "getTemplateContext",
+        "summary": "Completion data for a unit's templates",
+        "description": "The globals a template of the unit sees (with `pack.params.*`), the members of the model and of the scope's records in snake_case, and the built-in helpers.",
+        "x-maquettiste-role": "viewer",
+        "x-maquettiste-engine": "GenerationService.GetTemplateContextAsync(pack, unit)",
+        "parameters": [
+          {
+            "name": "pack",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "unit",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The context.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateContextResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/packs": {
+      "get": {
+        "tags": [
+          "packs"
+        ],
+        "operationId": "listPacks",
+        "summary": "Every pack with its units and load diagnostics",
+        "description": "Every folder under `templates/` with a `pack.json`, enabled or not, in ordinal order. A pack whose `pack.json` does not load has `version` null, no units and its diagnostics.",
+        "x-maquettiste-role": "viewer",
+        "x-maquettiste-engine": "GenerationService.ListPacksAsync()",
+        "responses": {
+          "200": {
+            "description": "The packs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "packs"
+        ],
+        "operationId": "createPack",
+        "summary": "Create a pack from empty or from a pack of this project",
+        "description": "`from` is `empty` (one `each entity` unit and its template) or the name of a pack of this project, whose files are copied with the new name in `pack.json`. `pack.json` is written in canonical form. 409 when the folder exists.",
+        "x-maquettiste-role": "maintainer",
+        "x-maquettiste-engine": "GenerationService.CreatePackAsync(name, from)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewPackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created; `files` lists what was written and `hash` is the new `pack.json` hash.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackWriteResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "409": {
+            "description": "The pack folder exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackWriteResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The starter is unknown; nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackWriteResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/packs/{pack}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/PackName"
+        }
+      ],
+      "get": {
+        "tags": [
+          "packs"
+        ],
+        "operationId": "getPack",
+        "summary": "pack.json with its ETag, parameters, files and diagnostics",
+        "description": "`document` is `pack.json` as written (every member, `null` when it is not JSON). `parameters` joins the defaults, the\n`parameterSchema` properties and the project values of `packs.<pack>.parameters`. `files` lists the folder with sizes,\nhashes (each file's ETag), roles and users. `diagnostics` holds the load diagnostics (MQ6001, MQ6002, MQ6021 to MQ6024),\nMQ6019 for output paths outside every root and MQ6003 / MQ6025 for templates that do not parse.\n",
+        "x-maquettiste-role": "viewer",
+        "x-maquettiste-engine": "GenerationService.GetPackAsync(pack)",
+        "responses": {
+          "200": {
+            "description": "The pack.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackDocument"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "packs"
+        ],
+        "operationId": "savePack",
+        "summary": "Save the whole pack.json document in canonical form",
+        "description": "Every member is kept (`version`, `description`, `engine`, `scripts`, `usesSchemaDiff`, `units`, `parameters`, `parameterSchema`). A schema failure (MQ6001, MQ6021) or a `name` that is not the folder is 422 and writes nothing; unit problems (MQ6019, MQ6022) are saved and reported in `diagnostics`.",
+        "x-maquettiste-role": "maintainer",
+        "x-maquettiste-engine": "GenerationService.SavePackAsync(pack, document, expectedHash)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/pack"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackWriteResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "description": "No such pack.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackWriteResult"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "pack.json changed since it was read; `hash` and `current` are the disk version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackWriteResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The document is invalid; nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackWriteResult"
+                }
+              }
+            }
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          }
+        }
+      }
+    },
+    "/api/packs/{pack}/file": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/PackName"
+        },
+        {
+          "$ref": "#/components/parameters/PackFilePath"
+        }
+      ],
+      "get": {
+        "tags": [
+          "packs"
+        ],
+        "operationId": "getPackFile",
+        "summary": "One pack file's text with its ETag",
+        "x-maquettiste-role": "viewer",
+        "x-maquettiste-engine": "GenerationService.ReadPackFileAsync(pack, path)",
+        "responses": {
+          "200": {
+            "description": "The file.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackFileContent"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "packs"
+        ],
+        "operationId": "putPackFile",
+        "summary": "Write one pack file",
+        "description": "`If-Match` with the hash read, or `If-None-Match: *` to create. The text must be UTF-8 with no NUL, at most 1 MB. A template\nthat fails to parse is saved and its MQ6003 diagnostics returned (GU6). `path=pack.json` is 400: `pack.json` is saved whole\nthrough `PUT /api/packs/{pack}`. A path that leaves the pack folder, lexically or through a link, is 400.\n",
+        "x-maquettiste-role": "maintainer",
+        "x-maquettiste-engine": "GenerationService.WritePackFileAsync(pack, path, text, expectedHash)",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "description": "The hash read; required unless `If-None-Match` is `*`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackFileWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackWriteResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackWriteResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "description": "No such pack.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackWriteResult"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The file changed since it was read (or exists, on create); `hash` and `current` are the disk version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackWriteResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Not text, or larger than 1 MB; nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackWriteResult"
+                }
+              }
+            }
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "packs"
+        ],
+        "operationId": "deletePackFile",
+        "summary": "Delete one pack file",
+        "description": "Refused (409, `referenced`) while a unit names the file or a template includes it; `diagnostics` says which.",
+        "x-maquettiste-role": "maintainer",
+        "x-maquettiste-engine": "GenerationService.DeletePackFileAsync(pack, path, expectedHash)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackWriteResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "description": "No such file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackWriteResult"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The file changed since it was read, or something uses it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackWriteResult"
+                }
+              }
+            }
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          }
+        }
+      }
+    },
+    "/api/packs/{pack}/file/move": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/PackName"
+        }
+      ],
+      "post": {
+        "tags": [
+          "packs"
+        ],
+        "operationId": "movePackFile",
+        "summary": "Move one pack file, optionally rewriting the units that name it",
+        "description": "`If-Match` carries the source file's hash. The target must not exist. With `updateUnits` the unit templates, companion\ntemplates and scripts of `pack.json` that name `from` are rewritten (canonical) in the same write, and\n`expectedPackHash` (the `pack.json` hash read) is required. 409 when either hash is stale, or (`referenced`) while a\ntemplate includes `from`, or while a unit names it and `updateUnits` is not set.\n",
+        "x-maquettiste-role": "maintainer",
+        "x-maquettiste-engine": "GenerationService.MovePackFileAsync(pack, move, expectedHash)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackFileMove"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Moved; the ETag is the moved file's hash.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackWriteResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "description": "No such source file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackWriteResult"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A hash is stale, or something includes or names the file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackWriteResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The target exists, or `expectedPackHash` is missing with `updateUnits`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackWriteResult"
+                }
+              }
+            }
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          }
+        }
+      }
+    },
+    "/api/packs/{pack}/outputs": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/PackName"
+        }
+      ],
+      "get": {
+        "tags": [
+          "packs"
+        ],
+        "operationId": "getPackOutputs",
+        "summary": "The files a pack's manifests record",
+        "description": "Every manifest entry of the pack (committed and built roots) with its unit, element, root, mode and state on disk (`intact`, `edited`, `missing`), and when a manifest was last written.",
+        "x-maquettiste-role": "viewer",
+        "x-maquettiste-engine": "GenerationService.GetPackOutputsAsync(pack)",
+        "responses": {
+          "200": {
+            "description": "The outputs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackOutputs"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/generate/plan/{id}/unit": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/PlanId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "generation"
+        ],
+        "operationId": "getPlanUnit",
+        "summary": "One unit of a plan with its reason, causes and grouped read keys",
+        "description": "\"Why not\" for a skipped unit (generation-ui.md section 4.3): its recorded read keys grouped by cause kind and a one-sentence summary. The unit key travels as the `key` query parameter since it holds `/` and `:`.",
+        "x-maquettiste-role": "viewer",
+        "x-maquettiste-engine": "GenerationService.GetPlanUnitAsync(planId, key)",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The unit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanUnitDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/generate/explain": {
+      "post": {
+        "tags": [
+          "generation"
+        ],
+        "operationId": "explainUnit",
+        "summary": "Why a unit does or does not render an element",
+        "description": "The first reason that applies (generation-ui.md section 4.3): `pack-invalid`, `unknown-unit`, `pack-disabled`,\n`unknown-element`, `scope`, `selector`, `skip-hint`, `filter`; or, when the unit plans the element, the plan's reason\nand causes, from `planId` when that plan holds the unit, else from a new dry-run plan of the pack (which is stored like\nany plan and named by `planId` in the answer). Works for elements no plan contains.\n",
+        "x-maquettiste-role": "viewer",
+        "x-maquettiste-engine": "GenerationService.ExplainAsync(pack, unit, elementId, planId)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExplainRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExplainResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
         }
       }
@@ -4254,6 +5123,60 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/RealtimeProjectChanged"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Not applicable; realtime events have no response."
+          }
+        }
+      }
+    },
+    "templates.changed": {
+      "post": {
+        "tags": [
+          "realtime"
+        ],
+        "operationId": "realtimeTemplatesChanged",
+        "summary": "Realtime event `templates.changed` (group: (all))",
+        "description": "Delivered over the host hub `/_host/realtime`, not as an HTTP request. Sent once per pack whose files changed, beside project.changed (never instead of it), by the watcher and by the pack writes of this API; packs.changed follows.",
+        "x-realtime-group": "(all)",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RealtimeTemplatesChanged"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Not applicable; realtime events have no response."
+          }
+        }
+      }
+    },
+    "packs.changed": {
+      "post": {
+        "tags": [
+          "realtime"
+        ],
+        "operationId": "realtimePacksChanged",
+        "summary": "Realtime event `packs.changed` (group: (all))",
+        "description": "Delivered over the host hub `/_host/realtime`, not as an HTTP request. Names the packs of the templates.changed events just sent.",
+        "x-realtime-group": "(all)",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RealtimePacksChanged"
               }
             }
           }
@@ -4389,6 +5312,24 @@
       }
     },
     "parameters": {
+      "PackName": {
+        "name": "pack",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+        }
+      },
+      "PackFilePath": {
+        "name": "path",
+        "in": "query",
+        "required": true,
+        "description": "A pack-relative path with `/` separators (never a path segment).",
+        "schema": {
+          "type": "string"
+        }
+      },
       "Locale": {
         "name": "locale",
         "in": "path",
@@ -5715,6 +6656,7 @@
           "engine",
           "description",
           "parameters",
+          "parameterSchema",
           "scripts",
           "usesSchemaDiff",
           "units"
@@ -5744,6 +6686,14 @@
           },
           "parameters": {
             "type": "object",
+            "additionalProperties": true
+          },
+          "parameterSchema": {
+            "description": "`properties` (JSON Schema properties) and `required` for the Parameters form and MQ6023; null when absent.",
+            "type": [
+              "object",
+              "null"
+            ],
             "additionalProperties": true
           },
           "scripts": {
@@ -8012,9 +8962,67 @@
           "inputHash",
           "readKeys",
           "skipped",
-          "outputs"
+          "outputs",
+          "pack",
+          "unit",
+          "template",
+          "elementId",
+          "reason",
+          "causes",
+          "causeCount"
         ],
         "properties": {
+          "pack": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Null in a plan stored before the explanation members (generation-ui.md section 5.2), as are unit, template and reason."
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "template": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "elementId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Null for `model` and `each locale` units."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "new",
+              "forced",
+              "check",
+              "inputs",
+              "outputs",
+              "unchanged",
+              null
+            ]
+          },
+          "causes": {
+            "description": "The first 20 causes, ordinal by kind then key.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanCause"
+            }
+          },
+          "causeCount": {
+            "type": "integer"
+          },
           "key": {
             "type": "string"
           },
@@ -8336,6 +9344,35 @@
               "null"
             ],
             "description": "An element id or a resolved table key; `null` for a `model` unit."
+          },
+          "unitOverride": {
+            "description": "The unsaved unit used instead of the saved one; its `id` must equal `unit` (else 400). Needs maintainer.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PackUnit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "overlay": {
+            "description": "Pack-relative path to unsaved text of templates, partials and scripts (not `pack.json`). Needs maintainer.",
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "parameters": {
+            "description": "Effective parameter values used instead of the defaults and project values. Needs maintainer.",
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
           }
         }
       },
@@ -8364,7 +9401,9 @@
         "type": "object",
         "required": [
           "files",
-          "diagnostics"
+          "diagnostics",
+          "readKeys",
+          "elapsedMs"
         ],
         "properties": {
           "files": {
@@ -8378,6 +9417,873 @@
             "items": {
               "$ref": "#/components/schemas/Diagnostic"
             }
+          },
+          "readKeys": {
+            "description": "The keys the render read, ordinal (what a change must touch to re-render the unit).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "elapsedMs": {
+            "type": "integer"
+          }
+        }
+      },
+      "PackListResponse": {
+        "type": "object",
+        "required": [
+          "packs"
+        ],
+        "properties": {
+          "packs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackSummary"
+            }
+          }
+        }
+      },
+      "PackSummary": {
+        "x-engine-record": "Maquettiste.Engine.PackSummary",
+        "type": "object",
+        "required": [
+          "name",
+          "version",
+          "description",
+          "enabled",
+          "output",
+          "units",
+          "fileCount",
+          "diagnostics"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "string",
+            "description": "The pack's output base in this project (`packs.<name>.output`)."
+          },
+          "units": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackUnit"
+            }
+          },
+          "fileCount": {
+            "type": "integer"
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
+          }
+        }
+      },
+      "NewPackRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+          },
+          "from": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`empty` (the default) or the name of a pack of this project."
+          }
+        }
+      },
+      "PackFileInfo": {
+        "x-engine-record": "Maquettiste.Engine.PackFileInfo",
+        "type": "object",
+        "required": [
+          "path",
+          "size",
+          "hash",
+          "role",
+          "usedBy"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Pack-relative, `/` separators."
+          },
+          "size": {
+            "type": "integer"
+          },
+          "hash": {
+            "$ref": "#/components/schemas/Hash"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "manifest",
+              "template",
+              "partial",
+              "script",
+              "type-map",
+              "other"
+            ]
+          },
+          "usedBy": {
+            "type": "array",
+            "description": "`unit:<id>`, `companion:<id>` and `include:<path>`, ordinal.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PackParameterInfo": {
+        "x-engine-record": "Maquettiste.Engine.PackParameterInfo",
+        "type": "object",
+        "required": [
+          "name",
+          "default",
+          "value",
+          "schema",
+          "required"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "default": {
+            "description": "The default from `pack.json` `parameters`, or null."
+          },
+          "value": {
+            "description": "The project value from `packs.<pack>.parameters`, or null (the default applies)."
+          },
+          "schema": {
+            "description": "The `parameterSchema.properties` entry, or null.",
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "required": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PackDocument": {
+        "x-engine-record": "Maquettiste.Engine.PackDocument",
+        "type": "object",
+        "required": [
+          "name",
+          "enabled",
+          "output",
+          "hash",
+          "document",
+          "parameters",
+          "files",
+          "diagnostics"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "output": {
+            "type": "string"
+          },
+          "hash": {
+            "$ref": "#/components/schemas/Hash"
+          },
+          "document": {
+            "description": "pack.json as written, every member kept; null when it is not JSON.",
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "parameters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackParameterInfo"
+            }
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackFileInfo"
+            }
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
+          }
+        }
+      },
+      "PackFileContent": {
+        "x-engine-record": "Maquettiste.Engine.PackFileContent",
+        "type": "object",
+        "required": [
+          "path",
+          "hash",
+          "text"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "hash": {
+            "$ref": "#/components/schemas/Hash"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "PackFileWrite": {
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "PackWriteResult": {
+        "x-engine-record": "Maquettiste.Engine.PackWriteResult",
+        "type": "object",
+        "required": [
+          "outcome",
+          "hash",
+          "current",
+          "diagnostics",
+          "files"
+        ],
+        "properties": {
+          "outcome": {
+            "$ref": "#/components/schemas/SaveOutcome"
+          },
+          "hash": {
+            "description": "The new hash when saved (null after a delete); the disk hash on conflict (null when the file is gone).",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Hash"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current": {
+            "description": "The disk text on conflict, else null.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
+          },
+          "files": {
+            "type": "array",
+            "description": "Pack-relative files written or deleted, ordinal.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PlanCause": {
+        "x-engine-record": "Maquettiste.Engine.PlanCause",
+        "type": "object",
+        "required": [
+          "kind",
+          "key",
+          "detail",
+          "elementId",
+          "path"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "element",
+              "kind-set",
+              "referrers",
+              "setting",
+              "template",
+              "schema-diff",
+              "translation",
+              "localization",
+              "absent",
+              "inputs",
+              "output-missing",
+              "output-edited",
+              "state-reset",
+              "pack-version",
+              "unit",
+              "parameter",
+              "scripts",
+              "output-base",
+              "formatter"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "elementId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ReadKeyGroup": {
+        "x-engine-record": "Maquettiste.Engine.ReadKeyGroup",
+        "type": "object",
+        "required": [
+          "kind",
+          "keys"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PathsRequest": {
+        "type": "object",
+        "required": [
+          "pack",
+          "unit"
+        ],
+        "properties": {
+          "pack": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "elementIds": {
+            "description": "Only these elements; every planned element when absent.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "limit": {
+            "description": "How many elements to render (default 200, at most 2000).",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "unitOverride": {
+            "description": "The unsaved unit; its `id` must equal `unit`. Needs maintainer.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PackUnit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "overlay": {
+            "description": "Pack-relative path to unsaved text. Needs maintainer.",
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "parameters": {
+            "description": "Unsaved parameter values. Needs maintainer.",
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          }
+        }
+      },
+      "UnitPath": {
+        "x-engine-record": "Maquettiste.Engine.UnitPath",
+        "type": "object",
+        "required": [
+          "elementId",
+          "path",
+          "role",
+          "root",
+          "allowed",
+          "rule"
+        ],
+        "properties": {
+          "elementId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "main",
+              "companion"
+            ]
+          },
+          "root": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "allowed": {
+            "type": "boolean"
+          },
+          "rule": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "UnitPathsResult": {
+        "x-engine-record": "Maquettiste.Engine.UnitPathsResult",
+        "type": "object",
+        "required": [
+          "count",
+          "rendered",
+          "paths",
+          "diagnostics",
+          "elapsedMs"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "rendered": {
+            "type": "integer"
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UnitPath"
+            }
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
+          },
+          "elapsedMs": {
+            "type": "integer"
+          }
+        }
+      },
+      "TemplateVariable": {
+        "x-engine-record": "Maquettiste.Engine.TemplateVariable",
+        "type": "object",
+        "required": [
+          "name",
+          "detail"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "TemplateMember": {
+        "x-engine-record": "Maquettiste.Engine.TemplateMember",
+        "type": "object",
+        "required": [
+          "name",
+          "type"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "string",
+              "number",
+              "boolean",
+              "list",
+              "map",
+              "object"
+            ]
+          }
+        }
+      },
+      "TemplateContextResult": {
+        "x-engine-record": "Maquettiste.Engine.TemplateContextResult",
+        "type": "object",
+        "required": [
+          "pack",
+          "unit",
+          "scope",
+          "variables",
+          "members",
+          "helpers"
+        ],
+        "properties": {
+          "pack": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TemplateVariable"
+            }
+          },
+          "members": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/TemplateMember"
+              }
+            }
+          },
+          "helpers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PackFileMove": {
+        "x-engine-record": "Maquettiste.Engine.PackFileMove",
+        "type": "object",
+        "required": [
+          "from",
+          "to"
+        ],
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "updateUnits": {
+            "type": "boolean"
+          },
+          "expectedPackHash": {
+            "description": "The pack.json hash read; required with `updateUnits`.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Hash"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "PackOutput": {
+        "x-engine-record": "Maquettiste.Engine.PackOutput",
+        "type": "object",
+        "required": [
+          "path",
+          "unit",
+          "elementId",
+          "companion",
+          "root",
+          "commit",
+          "mode",
+          "state"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "elementId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "companion": {
+            "type": "boolean"
+          },
+          "root": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "commit": {
+            "type": "boolean"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "overwrite",
+              "regions",
+              "once"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "intact",
+              "edited",
+              "missing"
+            ]
+          }
+        }
+      },
+      "PackOutputs": {
+        "x-engine-record": "Maquettiste.Engine.PackOutputs",
+        "type": "object",
+        "required": [
+          "pack",
+          "outputs",
+          "lastWritten"
+        ],
+        "properties": {
+          "pack": {
+            "type": "string"
+          },
+          "outputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackOutput"
+            }
+          },
+          "lastWritten": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ExplainRequest": {
+        "type": "object",
+        "required": [
+          "pack",
+          "unit"
+        ],
+        "properties": {
+          "pack": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "elementId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "planId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "packs": {
+            "description": "The run's pack selection (as the plan request's packs); a pack outside it answers not-selected. Absent means every enabled pack.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "roots": {
+            "description": "The run's root selection; a unit whose output pattern's literal prefix is under a root of the other kind answers root-not-selected.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "all",
+              "committed",
+              "built",
+              null
+            ]
+          }
+        }
+      },
+      "ExplainResult": {
+        "x-engine-record": "Maquettiste.Engine.ExplainResult",
+        "type": "object",
+        "required": [
+          "pack",
+          "unit",
+          "elementId",
+          "planned",
+          "reason",
+          "detail",
+          "key",
+          "planId",
+          "planUnit",
+          "diagnostics"
+        ],
+        "properties": {
+          "pack": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "elementId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "planned": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "pack-invalid",
+              "unknown-unit",
+              "pack-disabled",
+              "not-selected",
+              "unknown-element",
+              "scope",
+              "selector",
+              "skip-hint",
+              "filter",
+              "root-not-selected",
+              "new",
+              "forced",
+              "check",
+              "inputs",
+              "outputs",
+              "unchanged"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "planId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "planUnit": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PlanUnit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
+          }
+        }
+      },
+      "PlanUnitDetail": {
+        "x-engine-record": "Maquettiste.Engine.PlanUnitDetail",
+        "type": "object",
+        "required": [
+          "unit",
+          "groups",
+          "summary"
+        ],
+        "properties": {
+          "unit": {
+            "$ref": "#/components/schemas/PlanUnit"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReadKeyGroup"
+            }
+          },
+          "summary": {
+            "type": "string"
           }
         }
       },
@@ -8518,6 +10424,57 @@
         "properties": {
           "settingsHash": {
             "$ref": "#/components/schemas/Hash"
+          }
+        }
+      },
+      "RealtimeTemplatesChanged": {
+        "description": "`templates.changed` to every connection: files of one pack changed on disk or through the API. Reload those files (a null hash means the file is gone); an empty `files` means reload the whole pack.",
+        "type": "object",
+        "required": [
+          "pack",
+          "files"
+        ],
+        "properties": {
+          "pack": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "path",
+                "hash"
+              ],
+              "properties": {
+                "path": {
+                  "description": "Pack-relative path.",
+                  "type": "string"
+                },
+                "hash": {
+                  "description": "The file's SHA-256 now, or null when it is gone or unknown.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "RealtimePacksChanged": {
+        "description": "`packs.changed` to every connection: the packs whose files changed; refetch those packs (`GET /api/packs/{pack}`).",
+        "type": "object",
+        "required": [
+          "packs"
+        ],
+        "properties": {
+          "packs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -13082,6 +15039,281 @@
         },
         "required": [
           "operations"
+        ],
+        "additionalProperties": false
+      },
+      "pack": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Template pack",
+        "description": "templates/<pack>/pack.json.",
+        "type": "object",
+        "x-order": [
+          "$schema",
+          "name",
+          "version",
+          "engine",
+          "description",
+          "parameters",
+          "parameterSchema",
+          "scripts",
+          "usesSchemaDiff",
+          "units"
+        ],
+        "properties": {
+          "$schema": {
+            "$ref": "#/components/schemas/schemaPath"
+          },
+          "name": {
+            "$ref": "#/components/schemas/key"
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+          },
+          "engine": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "parameters": {
+            "type": "object",
+            "default": {}
+          },
+          "parameterSchema": {
+            "description": "The parameters' schema: a JSON Schema properties object and the required names; defaults stay in parameters.",
+            "type": "object",
+            "x-order": [
+              "properties",
+              "required"
+            ],
+            "properties": {
+              "properties": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object"
+                }
+              },
+              "required": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "scripts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "default": []
+          },
+          "usesSchemaDiff": {
+            "type": "boolean",
+            "default": false
+          },
+          "units": {
+            "type": "array",
+            "items": {
+              "title": "Unit",
+              "type": "object",
+              "x-order": [
+                "id",
+                "template",
+                "for",
+                "where",
+                "output",
+                "mode",
+                "formatter",
+                "delimiters",
+                "companion",
+                "transforms"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]*$"
+                },
+                "template": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "for": {
+                  "type": "string",
+                  "pattern": "^(model|each (package|entity|relation|enum|value object|table|reference type|seed|locale)|select [A-Za-z_][A-Za-z0-9_]*)$"
+                },
+                "where": {
+                  "title": "Unit filters",
+                  "type": "object",
+                  "x-order": [
+                    "tags",
+                    "notTags",
+                    "stereotypes",
+                    "notStereotypes",
+                    "categories",
+                    "packages",
+                    "notPackages",
+                    "database",
+                    "abstract",
+                    "script"
+                  ],
+                  "properties": {
+                    "tags": {
+                      "$ref": "#/components/schemas/tagList",
+                      "default": []
+                    },
+                    "notTags": {
+                      "$ref": "#/components/schemas/tagList",
+                      "default": []
+                    },
+                    "stereotypes": {
+                      "$ref": "#/components/schemas/keyList",
+                      "default": []
+                    },
+                    "notStereotypes": {
+                      "$ref": "#/components/schemas/keyList",
+                      "default": []
+                    },
+                    "categories": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "default": []
+                    },
+                    "packages": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "default": []
+                    },
+                    "notPackages": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "default": []
+                    },
+                    "database": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "abstract": {
+                      "type": "boolean"
+                    },
+                    "script": {
+                      "$ref": "#/components/schemas/identifier"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "output": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mode": {
+                  "enum": [
+                    "overwrite",
+                    "once",
+                    "regions",
+                    "pair"
+                  ],
+                  "default": "overwrite"
+                },
+                "formatter": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "delimiters": {
+                  "type": "object",
+                  "x-order": [
+                    "open",
+                    "close"
+                  ],
+                  "properties": {
+                    "open": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "close": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "open",
+                    "close"
+                  ],
+                  "additionalProperties": false
+                },
+                "companion": {
+                  "type": "object",
+                  "x-order": [
+                    "template",
+                    "output"
+                  ],
+                  "properties": {
+                    "template": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "output": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "template",
+                    "output"
+                  ],
+                  "additionalProperties": false
+                },
+                "transforms": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/identifier"
+                  },
+                  "default": []
+                }
+              },
+              "required": [
+                "id",
+                "template",
+                "for"
+              ],
+              "additionalProperties": false,
+              "if": {
+                "properties": {
+                  "mode": {
+                    "const": "pair"
+                  }
+                },
+                "required": [
+                  "mode"
+                ]
+              },
+              "then": {
+                "required": [
+                  "companion"
+                ]
+              }
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "engine",
+          "units"
         ],
         "additionalProperties": false
       }

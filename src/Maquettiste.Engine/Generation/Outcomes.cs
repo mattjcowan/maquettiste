@@ -48,6 +48,14 @@ internal static class Outcomes
     public static bool IsInvalid(Diagnostic diagnostic) =>
         diagnostic.Severity == DiagnosticSeverity.Error && diagnostic.Rule is not (HandEdit or RegionLost or StaleSnapshot);
 
+    /// <summary>
+    /// Whether a planning error is unit-level: it skipped one unit, and the pack's other units still render (MQ6019, generation-ui.md
+    /// section 5.3). The run's outcome is still <see cref="RunOutcome.Invalid"/>.
+    /// </summary>
+    /// <param name="diagnostic">The diagnostic.</param>
+    /// <returns><see langword="true"/> for MQ6019.</returns>
+    public static bool IsUnitLevel(Diagnostic diagnostic) => diagnostic.Rule == "MQ6019";
+
     /// <summary>Sorts diagnostics: path, line, column, rule, message, element.</summary>
     /// <param name="diagnostics">The diagnostics.</param>
     /// <returns>The sorted, de-duplicated list.</returns>

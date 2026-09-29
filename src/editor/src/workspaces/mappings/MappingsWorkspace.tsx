@@ -185,7 +185,7 @@ export function MappingsWorkspace() {
       <div
         role="group"
         aria-label="Entity mapping"
-        className={cn("flex flex-wrap items-center gap-3 border-b border-default px-4 py-2 text-12", mapping && "bg-accent-subtle")}
+        className={cn("flex flex-wrap items-center gap-2 border-b border-default px-2 py-2 text-12", mapping && "bg-accent-subtle")}
         data-testid="entity-mapping"
       >
         <label htmlFor="mapping-table" className="text-secondary">
@@ -228,7 +228,7 @@ export function MappingsWorkspace() {
           <label htmlFor="mapping-ignore">Not stored in this database</label>
         </span>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 flex-1 overflow-auto p-2">
         {view.isPending ? (
           <Spinner label="Resolving tables" />
         ) : !table ? (
@@ -236,7 +236,7 @@ export function MappingsWorkspace() {
             {view.data?.view ? "The entity is abstract, ignored, or outside the database's domains." : "The model has errors."}
           </EmptyState>
         ) : (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
             <p className="text-13">
               <span className="font-semibold">{entityJson?.name}</span> maps to table{" "}
               <span className="font-mono">

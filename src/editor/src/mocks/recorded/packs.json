@@ -1,0 +1,184 @@
+{
+  "packs": [
+    {
+      "name": "csharp-dapper",
+      "version": "1.0.0",
+      "description": "C# model and Dapper data access: entity classes as generated/hand-written pairs, enums, value objects, reference types as records with a static class of rows and resource files per locale, one repository per mapped entity and one registration file per package.",
+      "enabled": true,
+      "output": "src/Generated",
+      "units": [
+        {
+          "id": "entity",
+          "template": "entity.scriban",
+          "for": "each entity",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder (package_folder entity) ((pascal entity.name) + \".g.cs\") }}",
+          "mode": "pair",
+          "formatter": null,
+          "delimiters": null,
+          "companion": {
+            "template": "entity.partial.scriban",
+            "output": "{{ join_path pack.params.partialFolder (package_folder entity) ((pascal entity.name) + \".cs\") }}"
+          },
+          "transforms": []
+        },
+        {
+          "id": "enum",
+          "template": "enum.scriban",
+          "for": "each enum",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder (package_folder enum) ((pascal enum.name) + \".g.cs\") }}",
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "value-object",
+          "template": "value-object.scriban",
+          "for": "each value object",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder (package_folder value_object) ((pascal value_object.name) + \".g.cs\") }}",
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "reference-type",
+          "template": "reference-type.scriban",
+          "for": "each reference type",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder \"ReferenceData\" ((pascal reference_type.name) + \".g.cs\") }}",
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "resources",
+          "template": "resources.scriban",
+          "for": "each locale",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder \"ReferenceData\" (locale.is_default ? \"ReferenceData.resx\" : (\"ReferenceData.\" + locale.tag + \".resx\")) }}",
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "repository",
+          "template": "repository.scriban",
+          "for": "each entity",
+          "where": {
+            "tags": [],
+            "notTags": [],
+            "stereotypes": [],
+            "notStereotypes": [],
+            "categories": [],
+            "packages": [],
+            "notPackages": [],
+            "database": null,
+            "abstract": false,
+            "script": null
+          },
+          "output": null,
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "registrations",
+          "template": "registrations.scriban",
+          "for": "model",
+          "where": null,
+          "output": null,
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "type-handlers",
+          "template": "type-handlers.scriban",
+          "for": "model",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder \"DapperTypeHandlers.g.cs\" }}",
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        }
+      ],
+      "fileCount": 15,
+      "diagnostics": []
+    },
+    {
+      "name": "sql-ddl",
+      "version": "1.0.0",
+      "description": "SQL DDL for PostgreSQL, SQL Server and SQLite: one script per table, one schema script per database, once-mode migrations from the schema diff, and a seed script with protected regions that reconciles reference data (lookup tables, check constraints or native types) and inserts seed rows.",
+      "enabled": true,
+      "output": "db",
+      "units": [
+        {
+          "id": "table",
+          "template": "table.scriban",
+          "for": "each table",
+          "where": null,
+          "output": "{{ kebab table.database.name }}/{{ if table.schema }}{{ table.schema }}/{{ end }}tables/{{ table.name }}.sql",
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "schema",
+          "template": "schema.scriban",
+          "for": "select databases",
+          "where": null,
+          "output": "{{ kebab database.name }}/schema.sql",
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "migration",
+          "template": "migration.scriban",
+          "for": "select databases",
+          "where": null,
+          "output": null,
+          "mode": "once",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "seed",
+          "template": "seed.scriban",
+          "for": "select databases",
+          "where": null,
+          "output": "{{ kebab database.name }}/seed.sql",
+          "mode": "regions",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        }
+      ],
+      "fileCount": 12,
+      "diagnostics": []
+    }
+  ]
+}

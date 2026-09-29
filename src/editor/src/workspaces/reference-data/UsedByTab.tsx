@@ -27,7 +27,7 @@ export function UsedByTab({ usage, loading }: { usage: ReferenceTypeUsage | unde
     groups.set(key, [...(groups.get(key) ?? []), u]);
   }
   return (
-    <div className="flex max-w-3xl flex-col gap-3" data-testid="reference-used-by">
+    <div className="flex max-w-3xl flex-col gap-2" data-testid="reference-used-by">
       {[...groups.entries()]
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([group, list]) => (
@@ -41,7 +41,7 @@ export function UsedByTab({ usage, loading }: { usage: ReferenceTypeUsage | unde
                   <li key={u.attribute} className="border-t border-default first:border-t-0">
                     <button
                       type="button"
-                      className="flex h-8 w-full items-center gap-2 px-2 text-left text-13 hover:bg-accent-subtle"
+                      className="flex h-6 w-full items-center gap-2 px-2 text-left text-13 hover:bg-accent-subtle"
                       onClick={() => goTo(u.owner)}
                     >
                       <span className="min-w-0 flex-1 truncate">

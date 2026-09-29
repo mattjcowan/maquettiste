@@ -1,4 +1,4 @@
-// Generate workspace (mock project): plan summary counts, the changes table and its filters, the
+// Generate workspace (mock project): the plan summary lines, the changes grouped by unit and their filters, the
 // per-file diff in the bottom panel, apply by plan id, job progress in Output, and run history.
 import { expect, test } from "./fixtures";
 
@@ -12,7 +12,7 @@ test("plan, read a diff, apply, output and history", async ({ page }) => {
   const summary = page.getByTestId("plan-summary");
   await expect(summary).toContainText("sql-ddl:");
   await expect(summary).toContainText("csharp-dapper:");
-  const rows = page.getByTestId("changes").getByRole("row");
+  const rows = page.getByTestId("changes").locator('[data-testid^="change-"]');
   const all = await rows.count();
   expect(all).toBeGreaterThan(0);
 
@@ -24,7 +24,7 @@ test("plan, read a diff, apply, output and history", async ({ page }) => {
 
   // Selecting a file shows its unified diff.
   const first = rows.first();
-  const path = (await first.getByRole("cell").nth(1).innerText()).trim();
+  const path = (await first.getByRole("gridcell").nth(1).innerText()).trim();
   await first.click();
   const diff = page.getByTestId("diff-viewer");
   await expect(diff).toContainText(path);
@@ -44,8 +44,9 @@ test("plan, read a diff, apply, output and history", async ({ page }) => {
 
   // A second plan after the apply has nothing left to write.
   await page.getByTestId("plan").click();
+  await expect(page.getByTestId("plan-summary")).toContainText("nothing to write");
   await expect(page.getByTestId("plan-summary")).toContainText("unchanged");
-  await expect(page.getByTestId("plan-summary")).not.toContainText("added");
-  await expect(page.getByTestId("plan-summary")).not.toContainText(/: \d+ changed/);
+  await expect(page.getByTestId("plan-summary")).not.toContainText("to add");
+  await expect(page.getByTestId("plan-summary")).not.toContainText("to modify");
   await expect(page.getByTestId("apply")).toBeDisabled();
 });

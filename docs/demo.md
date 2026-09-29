@@ -37,7 +37,7 @@ docker pull mattjcowan/maquettiste:0.1.0
 
 ```zsh
 maquettiste() { docker run --rm $([ -t 0 ] && echo -it) --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:0.1.0 maquettiste "$@"; }
-maquettiste --version                    # maquettiste 0.1.0 (engine contract 1.0.0, model format 1)
+maquettiste --version                    # maquettiste 0.2.0 (engine contract 1.0.0, model format 1)
 ```
 
 **3. Prepare the repository.** In the partner repository, on a branch of its own:
@@ -316,6 +316,28 @@ sed -i '' 's/^{{ end }}  {{ camel a.name }}/{{ end }}  readonly {{ camel a.name 
 Undo it with `git checkout -- .maquettiste/templates/typescript/entity.scriban` only after committing the pack, or
 reverse the `sed` (swap the two patterns), then generate again.
 
+### Or do it in the editor
+
+Every step of part 2 that touches the packs can be shown on the Generate screen instead, which answers "what does
+sql-ddl do, what templates does it run, where does it write" on screen. The files are the same ones the CLI reads.
+
+- 2.4: after copying the pack and saving `maquettiste.json`, choose **Generate** in the rail. The explorer lists
+  `sql-ddl` and `typescript` with their units, each read aloud (`entity · each entity → entity.scriban →
+  <entity>.ts`); click `typescript` to open it: **Units** shows each unit's scope, template, output path and an example
+  path, **Outputs** what it wrote. Back on **Plan**: **Plan** prints
+  `typescript: <n> units, <n> files to add` (the counts depend on the partner model) and the files grouped by unit, each with its
+  element and why it renders; **Apply plan** writes them.
+- 2.5: in the `typescript` tab, **Parameters**: set `enumStyle` to `const` and save; **Plan** then shows
+  `order-status.ts` to modify, "Parameter enumStyle changed".
+- 2.6: **Templates**, open `entity.scriban`, add `readonly ` on the attribute line: the preview on the right follows as you
+  type (pick `Order` as the element). Ctrl+S, then **Plan**: four files to modify, grouped under `typescript/entity`,
+  each "Template entity.scriban changed". **Unchanged units** lists the rest; **Why not?** on one says its inputs are
+  unchanged since the last run.
+- A new pack for the partner: **+** in the Generate explorer header, a name, Empty or a copy of `typescript`.
+
+Rehearse this path once on the Mac before showing it: the unit counts and the exact cause sentences come from the
+partner's model.
+
 ## 3. Claude Code with MCP (5 minutes)
 
 | Step | Do | Expected |
@@ -443,7 +465,7 @@ minutes when you do it by hand.
 
 | Step | Result | Time |
 | --- | --- | --- |
-| `maquettiste --version` / `init` | `maquettiste 0.1.0 (engine contract 1.0.0, model format 1)`; 4 lines | 0.5 s / 0.65 s |
+| `maquettiste --version` / `init` | `maquettiste 0.2.0 (engine contract 1.0.0, model format 1)`; 4 lines | 0.5 s / 0.65 s |
 | `compose up` to `/api/health` 200, first boot | succeeded | 4.9 s |
 | 1.1 First-run panel, New domain Shop | created, "No problems" | 0.5 s |
 | 1.2 New enum from Shop's menu, four members with codes | saved, Domain preset to Shop | 3.5 s |

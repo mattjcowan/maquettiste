@@ -702,7 +702,7 @@ export function isEmptyModel(rows: readonly { kind: string }[]): boolean {
 /** The first-run panel of an empty model: every New action, in the order a model is usually built. */
 function FirstRunPanel() {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center" data-testid="first-run">
+    <div className="flex h-full flex-col items-center justify-center gap-2 p-2 text-center" data-testid="first-run">
       <h2 className="text-15 font-semibold text-primary">Start the model</h2>
       <p className="max-w-md text-13 text-secondary">
         Create a domain first, then its entities, enums, value objects and custom types. Reference types hold rows managed as data; a database maps the model

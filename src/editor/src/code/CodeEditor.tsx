@@ -24,22 +24,78 @@ const options: monaco.editor.IStandaloneEditorConstructionOptions = {
   accessibilitySupport: "on",
 };
 
+/** A diagnostic shown inline (1-based line and column). */
+export interface CodeMarker {
+  line: number;
+  column?: number | null;
+  message: string;
+  severity: "error" | "warning" | "info";
+}
+
 export interface CodeEditorProps {
-  language: "json" | "sql" | "csharp" | "plaintext";
+  language: "json" | "sql" | "csharp" | "plaintext" | "scriban" | "javascript" | "markdown";
   value: string;
   onChange?: (value: string) => void;
   readOnly?: boolean;
   label: string;
+  /** A model per path (its own undo history), for editors that switch between files. */
+  path?: string;
+  /** Ctrl+S (Cmd+S) inside the editor. */
+  onSave?: () => void;
+  markers?: CodeMarker[];
+  /**
+   * With a revision the editor owns its text while typing (a controlled value lags fast typing and would overwrite
+   * keystrokes); `value` replaces the text only when the revision changes (reverting to the disk text, say).
+   */
+  revision?: number;
 }
 
-export default function CodeEditor({ language, value, onChange, readOnly, label }: CodeEditorProps) {
+const SEVERITY = { error: 8, warning: 4, info: 2 } as const;
+
+export default function CodeEditor({ language, value, onChange, readOnly, label, path, onSave, markers, revision }: CodeEditorProps) {
   const theme = useTheme();
+  const saveRef = useRef(onSave);
+  useEffect(() => {
+    saveRef.current = onSave;
+  }, [onSave]);
+  const [editor, setEditor] = useState<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const handleMount: OnMount = (instance) => {
+    instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveRef.current?.());
+    setEditor(instance);
+  };
+  const latest = useRef(value);
+  useEffect(() => {
+    latest.current = value;
+  }, [value]);
+  useEffect(() => {
+    const model = editor?.getModel();
+    if (revision === undefined || !model || model.getValue() === latest.current) return;
+    model.pushEditOperations([], [{ range: model.getFullModelRange(), text: latest.current }], () => null);
+  }, [editor, revision, path]);
+  useEffect(() => {
+    const model = editor?.getModel();
+    if (!model) return;
+    monaco.editor.setModelMarkers(
+      model,
+      "maquettiste",
+      (markers ?? []).map((m) => ({
+        startLineNumber: m.line,
+        startColumn: m.column ?? 1,
+        endLineNumber: m.line,
+        endColumn: m.column ? m.column + 1 : model.getLineMaxColumn(Math.min(m.line, model.getLineCount())),
+        message: m.message,
+        severity: SEVERITY[m.severity],
+      })),
+    );
+  }, [editor, markers, path, value]);
   return (
     <div className="h-full min-h-40" data-testid={`code-${language}`}>
       <Editor
         language={language}
-        value={value}
+        {...(revision === undefined ? { value } : { defaultValue: value })}
+        path={path}
         theme={theme}
+        onMount={handleMount}
         onChange={(v) => onChange?.(v ?? "")}
         options={{ ...options, readOnly, ariaLabel: label, domReadOnly: readOnly }}
       />

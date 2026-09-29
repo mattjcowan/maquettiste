@@ -1,16 +1,14 @@
 // The Generate workspace (phase2-design.md 4.8): pack and root selection, then Plan with live
-// progress and Cancel; the plan counted by FileChangeKind and pack, its changes in a virtualized
-// table filtered by kind and pack, hand edits and conflicts flagged; selecting a file opens its
+// progress and Cancel; the plan summarized per pack and its changes grouped by unit with the reason each renders
+// (PlanExplain.tsx, generation-ui.md 4), filtered by kind, pack, unit and text, hand edits and conflicts flagged; selecting a file opens its
 // diff in the bottom panel. Apply queues the plan by id; the result is the apply job's
 // applyResult.outcome, never its state. Run history lists GET /api/jobs.
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { createColumnHelper, flexRender, getCoreRowModel, getFilteredRowModel, useReactTable } from "@tanstack/react-table";
-import { CircleAlert, CircleCheck, Play, Square, TriangleAlert, Wand2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { CircleAlert, CircleCheck, Play, Square, Wand2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import * as endpoints from "@/api/endpoints";
 import { keys, useJob, useJobs, usePlan, useProject, useSettings } from "@/api/queries";
-import type { FileChange, FileChangeKind, JobInfo, RootSelection } from "@/api/types";
+import type { FileChangeKind, JobInfo, RootSelection } from "@/api/types";
 import { useEditor } from "@/state/store";
 import { useServices } from "@/app/context";
 import { isFinished, jobOutcome } from "@/realtime/jobs";
@@ -19,15 +17,11 @@ import { Badge, EmptyState, SectionTitle, Spinner, Toolbar } from "@/components/
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
-
-const KIND_TONE: Partial<Record<FileChangeKind, "success" | "danger" | "warning" | "accent" | "neutral">> = {
-  added: "success",
-  modified: "accent",
-  deleted: "danger",
-  "hand-edited": "warning",
-  conflict: "danger",
-  "orphaned-owned": "warning",
-};
+import { X } from "lucide-react";
+import { PackEditor } from "./PackEditor";
+import { ExplainForm, PlanChanges, type ExplainAsk, PlanSummary, UnchangedUnits, WhyPanel } from "./PlanExplain";
+import { closePackTab } from "./packTabs";
+import { discardDrafts, hasUnsaved } from "./drafts";
 
 /** Kinds an apply leaves alone: an unchanged file, and a companion that is kept as it is on disk. */
 const NOTHING_TO_WRITE = new Set<FileChangeKind>(["unchanged", "kept"]);
@@ -74,128 +68,12 @@ function OutcomeBadge({ job }: { job: JobInfo }) {
   );
 }
 
-const helper = createColumnHelper<FileChange>();
-
-function ChangesTable({ planId, changes }: { planId: string; changes: FileChange[] }) {
-  const { store } = useServices();
-  const diff = useEditor(store, (s) => s.diff);
-  const [kind, setKind] = useState<string>("changed");
-  const [pack, setPack] = useState<string>("");
-  const columns = useMemo(
-    () => [
-      helper.accessor("kind", {
-        header: "Change",
-        filterFn: (row, id, value: string) => (value === "changed" ? row.getValue(id) !== "unchanged" : !value || row.getValue(id) === value),
-      }),
-      helper.accessor("path", { header: "File" }),
-      helper.accessor("pack", { header: "Pack", filterFn: (row, id, value: string) => !value || row.getValue(id) === value }),
-    ],
-    [],
-  );
-  const columnFilters = useMemo(
-    () => [
-      { id: "kind", value: kind },
-      { id: "pack", value: pack },
-    ],
-    [kind, pack],
-  );
-  const table = useReactTable({
-    data: changes,
-    columns,
-    state: { columnFilters },
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-  });
-  const rows = table.getRowModel().rows;
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const virtualizer = useVirtualizer({ count: rows.length, getScrollElement: () => scrollRef.current, estimateSize: () => 30, overscan: 20 });
-  const kinds = [...new Set(changes.map((c) => c.kind))].sort();
-  const packs = [...new Set(changes.map((c) => c.pack))].sort();
-  return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <label htmlFor="filter-kind" className="text-12 text-secondary">
-          Show
-        </label>
-        <Select id="filter-kind" className="h-7 w-40 text-12" value={kind} onChange={(e) => setKind(e.target.value)}>
-          <option value="changed">All but unchanged</option>
-          <option value="">Everything</option>
-          {kinds.map((k) => (
-            <option key={k} value={k}>
-              {k}
-            </option>
-          ))}
-        </Select>
-        <label htmlFor="filter-pack" className="text-12 text-secondary">
-          Pack
-        </label>
-        <Select id="filter-pack" className="h-7 w-40 text-12" value={pack} onChange={(e) => setPack(e.target.value)}>
-          <option value="">All packs</option>
-          {packs.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </Select>
-        <span className="ml-auto text-12 text-secondary">{rows.length} files</span>
-      </div>
-      <div className="min-h-0 flex-1 overflow-hidden rounded-control border border-default">
-        <div role="table" aria-label="Planned file changes" className="flex h-full flex-col text-12">
-          <div role="rowgroup">
-            {table.getHeaderGroups().map((g) => (
-              <div role="row" key={g.id} className="grid grid-cols-[120px_1fr_120px] bg-app px-2">
-                {g.headers.map((h) => (
-                  <div role="columnheader" key={h.id} className="py-1 text-11 font-semibold text-secondary">
-                    {flexRender(h.column.columnDef.header, h.getContext())}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-          <div ref={scrollRef} role="rowgroup" className="min-h-0 flex-1 overflow-auto" data-testid="changes">
-            <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-              {virtualizer.getVirtualItems().map((item) => {
-                const row = rows[item.index];
-                const c = row.original;
-                const active = diff?.planId === planId && diff.path === c.path;
-                return (
-                  <button
-                    type="button"
-                    role="row"
-                    key={row.id}
-                    style={{ position: "absolute", top: 0, left: 0, right: 0, height: item.size, transform: `translateY(${item.start}px)` }}
-                    className={cn("grid grid-cols-[120px_1fr_120px] items-center px-2 text-left hover:bg-accent-subtle", active && "bg-accent-subtle")}
-                    onClick={() => store.getState().showDiff({ planId, path: c.path })}
-                    data-testid={`change-${c.path}`}
-                  >
-                    <span role="cell" className="flex items-center gap-1">
-                      {c.kind === "hand-edited" || c.kind === "conflict" ? (
-                        <TriangleAlert className="size-3.5 text-warning" aria-label="needs attention" />
-                      ) : null}
-                      <Badge tone={KIND_TONE[c.kind] ?? "neutral"}>{c.kind}</Badge>
-                    </span>
-                    <span role="cell" className="truncate font-mono">
-                      {c.path}
-                    </span>
-                    <span role="cell" className="text-secondary">
-                      {c.pack}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function GenerateWorkspace() {
+function PlanScreen() {
   const { store, jobs } = useServices();
   const qc = useQueryClient();
   const project = useProject();
   const settings = useSettings();
+  const [ask, setAsk] = useState<ExplainAsk | null>(null);
   const generation = useEditor(store, (s) => s.generation);
   const planJob = useJob(generation.planJob);
   const applyJob = useJob(generation.applyJob);
@@ -273,25 +151,16 @@ export function GenerateWorkspace() {
     }
   };
 
-  const counts = useMemo(() => {
-    const byKind = new Map<string, number>();
-    const byPack = new Map<string, number>();
-    for (const c of plan.data?.changes ?? []) {
-      byKind.set(c.kind, (byKind.get(c.kind) ?? 0) + 1);
-      if (!NOTHING_TO_WRITE.has(c.kind)) byPack.set(c.pack, (byPack.get(c.pack) ?? 0) + 1);
-    }
-    return { byKind, byPack };
-  }, [plan.data]);
   const applied = applyJob.data;
   const applyOutcome = applied && isFinished(applied) ? jobOutcome(applied) : null;
   const handDefault = settings.data?.settings.handEdits;
 
   return (
-    <div className="flex h-full min-h-0 flex-col" data-testid="generate-workspace">
+    <div className="flex h-full min-h-0 flex-col" data-testid="plan-screen">
       <Toolbar label="Generation">
         <Wand2 className="size-4 text-secondary" aria-hidden />
         <span className="text-13 font-semibold">Generate</span>
-        <fieldset className="ml-4 flex items-center gap-3">
+        <fieldset className="ml-4 flex items-center gap-2">
           <legend className="sr-only">Packs</legend>
           {packs.map((p) => (
             <label key={p.name} className="flex items-center gap-1.5 text-13">
@@ -331,8 +200,8 @@ export function GenerateWorkspace() {
           </Button>
         </div>
       </Toolbar>
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_320px] gap-0">
-        <div className="flex min-h-0 flex-col gap-3 overflow-hidden p-3">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_340px] gap-0">
+        <div className="flex min-h-0 flex-col gap-1.5 overflow-hidden p-2">
           {running ? <Progress job={running} /> : null}
           {planJob.data && isFinished(planJob.data) ? (
             <div className="flex items-center gap-2 text-13" data-testid="plan-result">
@@ -385,18 +254,7 @@ export function GenerateWorkspace() {
           {generation.planId && plan.data ? (
             <>
               <SectionTitle>Plan summary</SectionTitle>
-              <div className="flex flex-wrap gap-2" data-testid="plan-summary">
-                {[...counts.byKind.entries()].map(([k, n]) => (
-                  <Badge key={k} tone={KIND_TONE[k as FileChangeKind] ?? "neutral"}>
-                    {k} {n}
-                  </Badge>
-                ))}
-                {[...counts.byPack.entries()].map(([p, n]) => (
-                  <Badge key={p}>
-                    {p}: {n} changed
-                  </Badge>
-                ))}
-              </div>
+              <PlanSummary plan={plan.data} />
               {plan.data.diagnostics.length ? (
                 <ul className="text-12 text-warning">
                   {plan.data.diagnostics.slice(0, 5).map((d, i) => (
@@ -406,7 +264,7 @@ export function GenerateWorkspace() {
                   ))}
                 </ul>
               ) : null}
-              <ChangesTable planId={generation.planId} changes={plan.data.changes} />
+              <PlanChanges planId={generation.planId} plan={plan.data} onExplain={(a) => setAsk((prev) => ({ ...a, seq: (prev?.seq ?? 0) + 1 }))} />
             </>
           ) : generation.planJob && !planJob.data ? (
             <Spinner label="Starting" />
@@ -414,20 +272,127 @@ export function GenerateWorkspace() {
             <EmptyState title="No plan yet">Choose the packs and roots, then Plan. The plan is a dry run: nothing is written until you apply it.</EmptyState>
           ) : null}
         </div>
-        <aside className="flex min-h-0 flex-col border-l border-default bg-surface" aria-label="Run history">
-          <div className="flex h-9 items-center px-3 text-12 font-semibold">Run history</div>
-          <ol className="min-h-0 flex-1 overflow-auto" data-testid="history">
+        <aside className="flex min-h-0 flex-col overflow-auto border-l border-default bg-surface" aria-label="Plan explanation and run history">
+          {generation.planId && plan.data ? (
+            <>
+              <WhyPanel planId={generation.planId} plan={plan.data} />
+              <UnchangedUnits planId={generation.planId} plan={plan.data} />
+            </>
+          ) : null}
+          <ExplainForm planId={generation.planId} plan={plan.data ?? null} ask={ask} />
+          <h3 className="flex h-6 shrink-0 items-center px-2 text-12 font-semibold">Run history</h3>
+          <ol className="shrink-0" data-testid="history">
             {(history.data ?? []).map((job) => (
-              <li key={job.id} className="flex items-center gap-2 border-t border-default px-3 py-1.5 text-12">
+              <li key={job.id} className="flex h-6 items-center gap-2 border-t border-default px-2 text-12">
                 <span className="w-10 font-semibold">{job.kind}</span>
                 <OutcomeBadge job={job} />
                 <time className="ml-auto text-secondary">{job.queuedUtc.slice(11, 19)}</time>
               </li>
             ))}
-            {!history.data?.length ? <li className="px-3 text-12 text-secondary">No runs yet.</li> : null}
+            {!history.data?.length ? <li className="px-2 text-12 text-secondary">No runs yet.</li> : null}
           </ol>
         </aside>
       </div>
+    </div>
+  );
+}
+
+/** The Generate screen: the Plan tab and one centre tab per open pack (generation-ui.md 3). */
+export function GenerateWorkspace() {
+  const { store } = useServices();
+  const tabs = useEditor(store, (s) => s.generation.packTabs);
+  const active = useEditor(store, (s) => s.generation.packTab);
+  const show = (pack: string | null) => store.getState().setGeneration({ packTab: pack });
+  const strip = useRef<HTMLDivElement>(null);
+  // Unsaved edits survive tab switches (drafts.ts); a reload or a closed browser tab still loses them, so warn.
+  useEffect(() => {
+    const onUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsaved()) e.preventDefault();
+    };
+    window.addEventListener("beforeunload", onUnload);
+    return () => window.removeEventListener("beforeunload", onUnload);
+  }, []);
+  const close = (pack: string) => {
+    if (hasUnsaved(pack) && !window.confirm(`Discard the unsaved changes in ${pack}?`)) return;
+    discardDrafts(pack);
+    store.getState().setGeneration(closePackTab(store.getState().generation, pack));
+  };
+  const order: (string | null)[] = [null, ...tabs];
+  // The tab strip is one Tab stop: arrows, Home and End move between tabs; Delete closes a pack tab.
+  const onTabKey = (e: KeyboardEvent, at: number) => {
+    const to =
+      e.key === "ArrowRight"
+        ? (at + 1) % order.length
+        : e.key === "ArrowLeft"
+          ? (at - 1 + order.length) % order.length
+          : e.key === "Home"
+            ? 0
+            : e.key === "End"
+              ? order.length - 1
+              : -1;
+    if (to >= 0) {
+      e.preventDefault();
+      show(order[to]);
+      requestAnimationFrame(() => strip.current?.querySelectorAll<HTMLElement>('[role="tab"]')[to]?.focus());
+    } else if (e.key === "Delete" && order[at]) {
+      e.preventDefault();
+      close(order[at]!);
+    }
+  };
+  const tab = (selected: boolean) =>
+    cn(
+      "flex h-full items-center px-2 text-12 hover:bg-accent-subtle",
+      selected ? "bg-app font-medium text-primary shadow-[inset_0_-2px_0_var(--mq-accent)]" : "text-secondary",
+    );
+  return (
+    <div className="flex h-full min-h-0 flex-col" data-testid="generate-workspace">
+      <div
+        ref={strip}
+        role="tablist"
+        aria-label="Generate tabs"
+        className="flex h-7 shrink-0 items-stretch border-b border-default bg-surface"
+        data-testid="generate-tabs"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={active === null}
+          tabIndex={active === null ? 0 : -1}
+          className={cn(tab(active === null), "border-r border-default")}
+          onClick={() => show(null)}
+          onKeyDown={(e) => onTabKey(e, 0)}
+        >
+          Plan
+        </button>
+        {tabs.map((pack, i) => (
+          <div key={pack} className="flex items-stretch border-r border-default">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={active === pack}
+              aria-keyshortcuts="Delete"
+              tabIndex={active === pack ? 0 : -1}
+              className={tab(active === pack)}
+              onClick={() => show(pack)}
+              onKeyDown={(e) => onTabKey(e, i + 1)}
+              data-testid={`pack-tab-${pack}`}
+            >
+              {pack}
+            </button>
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label={`Close ${pack}`}
+              title="Close (Delete)"
+              className="grid size-6 place-items-center self-center rounded-[4px] text-secondary hover:bg-accent-subtle"
+              onClick={() => close(pack)}
+            >
+              <X className="size-3" />
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="min-h-0 flex-1">{active ? <PackEditor key={active} pack={active} /> : <PlanScreen />}</div>
     </div>
   );
 }

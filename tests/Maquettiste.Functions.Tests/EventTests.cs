@@ -201,6 +201,28 @@ public sealed class EventTests
     }
 
     [Fact]
+    public async Task A_pack_file_change_also_publishes_templates_changed_with_hashes_and_packs_changed()
+    {
+        await using var host = EditorHost.Create();
+        await host.Store.LoadAsync(EditorHost.Ct);
+        var table = Path.Combine(host.ModelRoot, "templates", "sql-ddl", "table.scriban");
+        File.AppendAllText(table, "\n");
+
+        await ModelWatcher.ApplyAsync(["templates/sql-ddl/table.scriban", "templates/sql-ddl/gone.scriban", "templates/csharp-dapper"], host.Store, host.Events,
+            EditorHost.Ct, host.ModelRoot);
+
+        Assert.Single(host.Published("project.changed")); // beside it, never instead of it
+        var templates = host.Published("templates.changed");
+        Assert.Equal(["csharp-dapper", "sql-ddl"], templates.Select(t => t.Payload["pack"]!.GetValue<string>()));
+        Assert.Empty(templates[0].Payload["files"]!.AsArray()); // a folder event: reload the pack
+        var files = templates[1].Payload["files"]!.AsArray();
+        Assert.Equal(["gone.scriban", "table.scriban"], files.Select(f => f!["path"]!.GetValue<string>()));
+        Assert.Null(files[0]!["hash"]);
+        Assert.Equal(Maquettiste.Engine.Hashing.ContentHash.Of(File.ReadAllBytes(table)), files[1]!["hash"]!.GetValue<string>());
+        Assert.Equal(["csharp-dapper", "sql-ddl"], Assert.Single(host.Published("packs.changed")).Payload["packs"]!.AsArray().Select(p => p!.GetValue<string>()));
+    }
+
+    [Fact]
     public void The_watcher_ignores_the_paths_the_engine_owns()
     {
         var root = Path.Combine(Path.GetTempPath(), "model");

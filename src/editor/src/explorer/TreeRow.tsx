@@ -174,7 +174,7 @@ export const TreeRow = memo(function TreeRow(props: TreeRowProps) {
       onDragOver={(e) => props.onDragOver(node.key, e)}
       onDrop={(e) => props.onDrop(node.key, e)}
       className={cn(
-        "group flex cursor-default select-none items-center gap-1.5 pr-2 text-13",
+        "group flex cursor-default select-none items-center gap-1.5 pr-2 text-12",
         folder && "text-secondary",
         props.selected ? "bg-accent-subtle text-primary" : props.related ? "bg-cat-2/10" : "hover:bg-app",
         props.active && "outline outline-1 -outline-offset-1 outline-accent",
@@ -202,7 +202,7 @@ export const TreeRow = memo(function TreeRow(props: TreeRowProps) {
       </span>
       {folder ? null : <TreeIcon name={node.icon} className={cn("size-4 shrink-0", container ? "text-accent" : "text-secondary")} />}
       {props.renaming ? (
-        <RenameInput value={node.label} onDone={(name) => props.onRename(node.key, name)} height={props.rowHeight - 8} />
+        <RenameInput value={node.label} onDone={(name) => props.onRename(node.key, name)} height={props.rowHeight - 4} />
       ) : (
         <span className={cn("min-w-0 truncate", folder && "font-medium", node.warning && "text-warning")}>
           <Highlighted label={node.label} search={props.search} />
@@ -308,7 +308,7 @@ function RenameInput({ value, onDone, height }: { value: string; onDone: (name: 
       aria-label="New name"
       defaultValue={value}
       style={{ height }}
-      className="min-w-0 flex-1 rounded-control border border-accent bg-surface px-1 text-13 outline-none"
+      className="min-w-0 flex-1 rounded-control border border-accent bg-surface px-1 text-12 outline-none"
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
         e.stopPropagation();

@@ -36,14 +36,14 @@ export function EditorTabBar({ workspace }: { workspace: Workspace }) {
     update((s) => closeTab(s, tab.key));
   };
   return (
-    <div className="flex h-8 shrink-0 items-stretch border-b border-default bg-surface" data-testid="editor-tabs">
+    <div className="flex h-7 shrink-0 items-stretch border-b border-default bg-surface" data-testid="editor-tabs">
       {/* A toolbar, not a tablist: each tab carries its own close button. */}
       <div role="toolbar" aria-label="Open editors" className="flex min-w-0 flex-1 items-stretch overflow-x-auto">
         <button
           type="button"
           aria-current={editors.active === null ? "true" : undefined}
           className={cn(
-            "flex shrink-0 items-center border-r border-default px-3 text-12",
+            "flex shrink-0 items-center border-r border-default px-2 text-12",
             editors.active === null ? "bg-canvas font-medium text-primary" : "text-secondary hover:text-primary",
           )}
           onClick={() => update((s) => activate(s, null))}

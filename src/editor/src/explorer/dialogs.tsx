@@ -56,7 +56,7 @@ export function MoveDialog({
       {ids ? (
         <DialogContent title={title}>
           <form
-            className="flex flex-col gap-3"
+            className="flex flex-col gap-2"
             onSubmit={(e) => {
               e.preventDefault();
               onMove(target || null);
@@ -145,7 +145,7 @@ export function AddRelatedDialog({
           }
         >
           <form
-            className="flex flex-col gap-3"
+            className="flex flex-col gap-2"
             onSubmit={(e) => {
               e.preventDefault();
               onAdd(Number(depth));

@@ -4,10 +4,13 @@ import * as monaco from "monaco-editor/editor/editor.api";
 import "monaco-editor/languages/features/json/register";
 import "monaco-editor/languages/definitions/sql/register";
 import "monaco-editor/languages/definitions/csharp/register";
+import "monaco-editor/languages/definitions/javascript/register";
+import "monaco-editor/languages/definitions/markdown/register";
 import EditorWorker from "monaco-editor/editor/editor.worker?worker";
 import JsonWorker from "monaco-editor/languages/features/json/json.worker?worker";
 import { loader } from "@monaco-editor/react";
 import { toLongHex } from "@/lib/color";
+import { registerScriban } from "./scriban";
 
 (self as unknown as { MonacoEnvironment: monaco.Environment }).MonacoEnvironment = {
   getWorker(_id: string, label: string) {
@@ -15,6 +18,7 @@ import { toLongHex } from "@/lib/color";
   },
 };
 loader.config({ monaco });
+registerScriban(monaco);
 
 function token(name: string): string {
   return toLongHex(getComputedStyle(document.documentElement).getPropertyValue(name));

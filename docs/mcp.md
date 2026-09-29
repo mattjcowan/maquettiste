@@ -161,12 +161,32 @@ the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.We
 | `get_settings` | getSettings | | `maquettiste.json`: typed settings, canonical `json`, `hash` |
 | `save_settings` | saveSettings | `settings` (whole document), `expectedHash` | the save result |
 | `plan` | startPlan, run to completion | `packs`, `force`, `roots` (`all`, `committed`, `built`), `handEdits` (`fail`, `overwrite`, `skip`), `jobs` | `{ outcome, plan }`, the plan without its per-unit list (as a plan job's `planResult`) |
-| `get_plan` | getPlan | `planId`, `units` | a stored plan |
+| `get_plan` | getPlan | `planId`, `units` | a stored plan; with `units` true, every unit with its pack, unit, template, element, `reason`, `causes` and `skipped` |
 | `get_plan_diff` | getPlanDiff | `planId`, `path` | the unified diff text of one planned file |
 | `apply_plan` | startApply, run to completion | `planId` | the apply result (as an apply job's `applyResult`) |
+| `get_pack` | getPack | `pack` | pack.json as a document with its `hash` (for `save_pack`), the parameters (default, project value, schema), every file with its hash, role and users, and the diagnostics |
+| `save_pack` | savePack | `pack`, `document` (the whole pack.json), `expectedHash` | the write result; written in canonical form; a schema failure (MQ6001, MQ6021) writes nothing |
+| `save_pack_settings` | savePackSettings | `pack`, `settings` (`enabled`, `output`, `parameters`), `expectedHash` (the settings hash) | the settings save result; only `packs.<pack>` of `maquettiste.json` changes |
+| `new_pack` | createPack | `name`, `from` (`empty`, a built-in starter, or a pack of this project) | the new pack's folder under `.maquettiste/templates/` |
+| `list_pack_files` | listPackFiles | `pack` | each file's path, size, hash, role and users (`unit:<id>`, `companion:<id>`, `include:<path>`) |
+| `read_pack_file` | getPackFile | `pack`, `path` | the text and hash of one template, partial, script or other file |
+| `write_pack_file` | putPackFile | `pack`, `path`, `text`, `expectedHash` (`new` creates) | the write result; a template that does not parse is saved and its MQ6003 diagnostics returned; pack.json is refused (use `save_pack`) |
+| `move_pack_file` | movePackFile | `pack`, `from`, `to`, `expectedHash`, `updateUnits`, `expectedPackHash` | the move result; `updateUnits` rewrites the units and scripts that name the file |
+| `delete_pack_file` | deletePackFile | `pack`, `path`, `expectedHash` | the delete result; refused while a unit names the file or a template includes it |
+| `get_template_context` | getTemplateContext | `pack`, `unit` | what the unit's templates can use: the globals, the members of the model and of the scope's records, the helpers |
+| `preview_unit` | previewTemplate | `pack`, `unit`, `elementId`, `overlay` (path to unsaved text), `unitOverride` | each rendered file's output path and text, the diagnostics and the keys the render read; nothing is written |
+| `unit_paths` | unitPaths | `pack`, `unit`, `elementIds`, `limit` | how many elements the unit covers and the output paths it renders, with their root and whether the writer allows them |
+| `get_pack_outputs` | getPackOutputs | `pack` | the files the pack's manifests record: path, unit, element, root, mode and state on disk (intact, edited, missing) |
+| `explain_unit` | getPlanUnit, explainUnit | `planId` and `key` (a unit of a stored plan), or `pack`, `unit`, `elementId` (any unit and element) | the reason (`new`, `forced`, `inputs`, `outputs`, `unchanged`, or why it does not run: `pack-disabled`, `not-selected`, `scope`, `filter`, `skip-hint`, `selector`, `root-not-selected`, ...), the causes and a one-sentence summary |
 | `get_schema` | (none) | `kind`: an element kind (`entity`, `value-object`, ...) or a document (`maquettiste`, `batch`, `pack`, `extension`) | `{ name, file, schema, references, extensions? }`: the JSON schema, the schema files it references (`common.json`) and, for an element kind, the project's extension schemas that apply to it (`name`, `description`, `appliesTo`, `properties`, `required`, `schemaPath`; they constrain the element's `properties`) |
 
 Documents may be passed as JSON objects or as strings holding one. Writes are recorded as `ChangeSource.Cli`.
+
+The pack tools let a client write a pack end to end, as the editor's Generate screen does: `new_pack`, add a unit with
+`save_pack`, write the template with `write_pack_file`, render it on an element with `preview_unit` (pass the unsaved text
+as `overlay` to try it before saving), fix the diagnostics, check where the files land with `unit_paths`, then `plan`,
+`get_plan` with `units` true, and `explain_unit` for the reason each unit renders or does not. The files are the ones under
+`.maquettiste/templates/<pack>/` that the command line, the editor and git all see.
 
 The reference data and localization tools are `localization_status`, `get_translations`, `set_translations`,
 `export_seed_csv`, `import_seed_csv` and `reference_type_usage`; the kinds `reference-type` and `seed` work with every

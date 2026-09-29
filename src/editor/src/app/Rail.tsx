@@ -23,7 +23,7 @@ export const RAIL: { view: SidebarView; label: string; tooltip: string; icon: Lu
   item("generate", Wand2, "generate"),
 ];
 
-const buttonClass = "grid size-9 place-items-center rounded-control text-secondary hover:bg-accent-subtle hover:text-primary";
+const buttonClass = "grid size-7 place-items-center rounded-control text-secondary hover:bg-accent-subtle hover:text-primary";
 
 export function Rail() {
   const { store } = useServices();
@@ -40,7 +40,7 @@ export function Rail() {
       aria-label={RAIL_NAME}
       data-region="rail"
       tabIndex={-1}
-      className="flex w-[var(--mq-rail-w)] shrink-0 flex-col items-center gap-1 border-r border-default bg-surface py-2"
+      className="flex w-[var(--mq-rail-w)] shrink-0 flex-col items-center gap-1 border-r border-default bg-surface py-1"
     >
       {RAIL.map(({ view, label, tooltip, icon: Icon, home }) => {
         const current = sidebar === view && workspace !== "settings";
@@ -54,7 +54,7 @@ export function Rail() {
               onClick={() => show(view, home)}
               className={cn(buttonClass, current && "bg-accent-subtle text-accent")}
             >
-              <Icon className="size-5" aria-hidden />
+              <Icon className="size-4" aria-hidden />
             </button>
           </Tooltip>
         );
@@ -93,33 +93,5 @@ export function Rail() {
         </DropdownMenuContent>
       </DropdownMenu>
     </nav>
-  );
-}
-
-/** Generate's sidebar: the project's packs and whether each is enabled (its screen is the centre). */
-export function GenerateSidebar() {
-  const project = queries.useProject();
-  const packs = project.data?.packs ?? [];
-  return (
-    <section aria-label="Generate" className="flex h-full min-h-0 flex-1 flex-col bg-surface" data-testid="explorer-generate">
-      <header className="flex h-9 shrink-0 items-center gap-2 border-b border-default px-2" data-testid="explorer-header">
-        <h2 className="text-11 font-semibold uppercase tracking-wide text-secondary">Generate</h2>
-        <span className="text-11 text-secondary" data-testid="explorer-totals">
-          {packs.length} {packs.length === 1 ? "pack" : "packs"}
-        </span>
-      </header>
-      <ul className="min-h-0 flex-1 overflow-auto p-1 text-13" aria-label="Packs">
-        {packs.map((p) => {
-          const enabled = project.data?.settings.packs[p.name]?.enabled !== false;
-          return (
-            <li key={p.name} className="flex h-8 items-center gap-2 px-2">
-              <Wand2 className="size-4 text-secondary" aria-hidden />
-              <span className="min-w-0 flex-1 truncate">{p.name}</span>
-              <span className="text-11 text-secondary">{enabled ? "enabled" : "off"}</span>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
   );
 }

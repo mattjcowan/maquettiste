@@ -9,6 +9,16 @@ namespace Maquettiste.Functions;
 /// <param name="PlanId">The plan to apply.</param>
 public sealed record ApplyRequest(string? PlanId);
 
+/// <summary>The body of <c>POST /api/generate/explain</c>.</summary>
+/// <param name="Pack">The pack.</param>
+/// <param name="Unit">The unit id.</param>
+/// <param name="ElementId">The element, absent for model scope.</param>
+/// <param name="PlanId">A plan to take the reason and causes from; a new dry-run plan of the pack otherwise.</param>
+/// <param name="Packs">The run's pack selection; a pack outside it answers <c>not-selected</c>.</param>
+/// <param name="Roots">The run's root selection; a unit writing under another root answers <c>root-not-selected</c>.</param>
+public sealed record ExplainRequest(string? Pack, string? Unit, string? ElementId, string? PlanId,
+    IReadOnlyList<string>? Packs = null, RootSelection? Roots = null);
+
 /// <summary>Plan, per-file diff and apply, as jobs (phase2-design.md section 3.7).</summary>
 public static class GenerateEndpoints
 {
@@ -51,6 +61,52 @@ public static class GenerateEndpoints
         if (plan is null)
             return Api.NotFound("plan", id);
         return Api.Json(units ? plan : plan with { Units = [] });
+    });
+
+    /// <summary>One unit of a stored plan: reason, causes and, for a skipped unit, its read keys grouped (generation-ui.md section 4.3).</summary>
+    /// <param name="context">The request.</param>
+    /// <param name="id">The plan id.</param>
+    /// <param name="key">The unit key (query, since keys hold <c>/</c> and <c>:</c>).</param>
+    /// <param name="generation">The generation service.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>200 with the unit, or 404.</returns>
+    [HttpGet("/api/generate/plan/{id}/unit")]
+    public static Task<IResult> GetPlanUnit(HttpContext context, string id, string? key, GenerationService generation, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    {
+        ArgumentNullException.ThrowIfNull(generation);
+        if (!Api.IsUlid(id) || string.IsNullOrEmpty(key))
+            return Api.NotFound("plan", id);
+        var unit = await generation.GetPlanUnitAsync(id, key, ct).ConfigureAwait(false);
+        return unit is null ? Api.Problem("not-found", $"Plan {id} has no unit {key}.", StatusCodes.Status404NotFound) : Api.Json(unit);
+    });
+
+    /// <summary>Why a unit does or does not render an element (generation-ui.md section 4.3).</summary>
+    /// <param name="context">The request.</param>
+    /// <param name="generation">The generation service.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>200, 400 or 404.</returns>
+    [HttpPost("/api/generate/explain")]
+    public static Task<IResult> Explain(HttpContext context, GenerationService generation, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(generation);
+        var (request, error) = await Api.ReadJsonAsync<ExplainRequest>(context.Request, null, ct).ConfigureAwait(false);
+        if (error is not null)
+            return error;
+        if (string.IsNullOrEmpty(request!.Pack) || string.IsNullOrEmpty(request.Unit))
+            return Api.BadRequest("pack and unit are required.");
+        if (request.PlanId is { } planId && !Api.IsUlid(planId))
+            return Api.BadRequest("planId is not a plan id.");
+        try
+        {
+            var result = await generation.ExplainAsync(request.Pack, request.Unit, request.ElementId, request.PlanId, ct,
+                request.Packs, request.Roots ?? RootSelection.All).ConfigureAwait(false);
+            return result is null ? Api.NotFound("pack", request.Pack) : Api.Json(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return Api.BadRequest(ex.Message);
+        }
     });
 
     /// <summary>The unified diff of one file of a plan, from the file on disk now to the planned bytes (<c>text/x-diff</c>).</summary>

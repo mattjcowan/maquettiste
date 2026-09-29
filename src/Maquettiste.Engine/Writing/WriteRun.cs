@@ -24,6 +24,7 @@ internal sealed class WriteRun
     private const string HandEditRule = "MQ6009";
     private const string RefusedRule = "MQ6004";
     private const string CollisionRule = "MQ6005";
+    private const string UnitCollisionRule = "MQ6020";
     private const string RegionsOnBuiltRule = "MQ6015";
 
     private readonly IOutputPathPolicy _paths;
@@ -38,6 +39,7 @@ internal sealed class WriteRun
     private readonly Channel<FileJob> _queue;
     private readonly Dictionary<string, PackRun> _packs = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _claims = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _claimedBy = new(StringComparer.Ordinal);
     private readonly HashSet<string> _produced = new(StringComparer.Ordinal);
     private readonly ConcurrentQueue<FileChange> _changes = new();
     private readonly ConcurrentQueue<Diagnostic> _diagnostics = new();
@@ -216,8 +218,18 @@ internal sealed class WriteRun
             return null;
         }
 
+        var unitKey = record.Unit.Rendered.Unit.Key;
         if (_claims.TryGetValue(path, out var first))
         {
+            // Two elements of one unit rendering the same path is a pattern that is not unique per element (generation-ui.md 5.3).
+            if (string.Equals(first, path, StringComparison.Ordinal) && _claimedBy.TryGetValue(path, out var otherKey)
+                && SameUnit(otherKey, unitKey) && !string.Equals(otherKey, unitKey, StringComparison.Ordinal))
+            {
+                var (a, b) = string.CompareOrdinal(otherKey, unitKey) < 0 ? (otherKey, unitKey) : (unitKey, otherKey);
+                Report(UnitCollisionRule, $"Unit '{UnitIdOf(unitKey)}' renders {path} for two elements, '{ElementOf(a)}' and '{ElementOf(b)}': its output pattern is not unique per element.", path);
+                return null;
+            }
+
             Report(CollisionRule, string.Equals(first, path, StringComparison.Ordinal)
                 ? $"Duplicate output path: {path} is produced more than once."
                 : $"Case-colliding output path: {path} differs from {first} only by case.", path);
@@ -225,6 +237,7 @@ internal sealed class WriteRun
         }
 
         _claims[path] = path;
+        _claimedBy[path] = unitKey;
         _produced.Add(path);
         if (file.Mode == OutputMode.Regions && !root.Commit)
         {
@@ -683,7 +696,11 @@ internal sealed class WriteRun
 
             var outputs = record.Jobs.Select(j => results[j.Path].Output!).OrderBy(o => o.Path, StringComparer.Ordinal).ToList();
             var readKeys = rendered.ReadKeys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
-            states[key] = new UnitState(key, rendered.InputHash, readKeys, outputs);
+            states[key] = new UnitState(key, rendered.InputHash, readKeys, outputs)
+            {
+                KeyHashes = rendered.KeyHashes.Length == readKeys.Count * Planning.KeyHashes.Size ? rendered.KeyHashes : default,
+                StaticParts = rendered.Unit.StaticParts,
+            };
         }
 
         var ordered = states.Values.ToList();
@@ -745,6 +762,13 @@ internal sealed class WriteRun
 
     private static string UnitName(string unitKey, string pack) =>
         unitKey.StartsWith(pack + "/", StringComparison.Ordinal) ? unitKey[(pack.Length + 1)..] : unitKey;
+
+    /// <summary>The unit part of a unit key: <c>&lt;pack&gt;/&lt;unitId&gt;</c> with the element removed.</summary>
+    private static string UnitIdOf(string unitKey) => unitKey.IndexOf(':', StringComparison.Ordinal) is var colon and >= 0 ? unitKey[..colon] : unitKey;
+
+    private static string ElementOf(string unitKey) => unitKey.IndexOf(':', StringComparison.Ordinal) is var colon and >= 0 ? unitKey[(colon + 1)..] : "(model)";
+
+    private static bool SameUnit(string a, string b) => string.Equals(UnitIdOf(a), UnitIdOf(b), StringComparison.Ordinal);
 
     private static string StripCompanion(string unit) =>
         unit.EndsWith("#companion", StringComparison.Ordinal) ? unit[..^"#companion".Length] : unit;

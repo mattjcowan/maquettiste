@@ -32,7 +32,7 @@ export function SchemaForm({
   const fields = extensions.flatMap((ext) => Object.entries(ext.properties as Record<string, Schema>).map(([name, schema]) => ({ ext, name, schema })));
   if (!fields.length) return null;
   return (
-    <div className="flex flex-col gap-3" data-testid="custom-properties">
+    <div className="flex flex-col gap-2" data-testid="custom-properties">
       {fields.map(({ ext, name, schema }) => {
         const id = `${idPrefix}-${ext.name}-${name}`;
         const value = properties[name];

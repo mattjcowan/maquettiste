@@ -59,6 +59,8 @@ export class MockGeneration {
   /** What generation last wrote (path → hash), to tell hand edits and orphans apart. */
   readonly manifest = new Map<string, { hash: string; pack: string }>();
   private readonly plans = new Map<string, StoredPlan>();
+  /** What the last apply rendered per unit key (the unit state store): its input hash and its element's hash. */
+  private readonly unitState = new Map<string, { inputHash: string; elementHash: string | null }>();
 
   constructor(
     private readonly model: MockModel,
@@ -210,7 +212,7 @@ export class MockGeneration {
     if (!manifest) return { problem: `No pack named '${pack}' is installed.` };
     if (!manifest.units.some((u) => u.id === unit)) return { problem: `Pack '${pack}' has no unit '${unit}'.` };
     const errors = this.model.validate().diagnostics.filter((d) => d.severity === "error");
-    if (errors.length) return { files: [], diagnostics: errors };
+    if (errors.length) return { files: [], diagnostics: errors, readKeys: [], elapsedMs: 0 };
     const found = this.renderUnits([pack]).find((u) => u.unit === unit && u.elementId === elementId);
     if (!found) {
       const diagnostic: Diagnostic = {
@@ -223,9 +225,11 @@ export class MockGeneration {
         line: null,
         column: null,
       };
-      return { files: [], diagnostics: [diagnostic] };
+      return { files: [], diagnostics: [diagnostic], readKeys: [], elapsedMs: 0 };
     }
-    return { files: found.files, diagnostics: [] };
+    const template = manifest.units.find((u) => u.id === unit)?.template ?? `${unit}.scriban`;
+    const readKeys = [`e:${elementId ?? "model"}`, "s:conventions", `t:${pack}/${template}`].sort();
+    return { files: found.files, diagnostics: [], readKeys, elapsedMs: 3 };
   }
 
   private planFiles(packs: string[], roots: RootSelection): { units: RenderUnit[]; files: Map<string, PlannedFile> } {
@@ -322,21 +326,65 @@ export class MockGeneration {
         line: null,
         column: null,
       }));
-    const planUnits: PlanUnit[] = units.map((u) => ({
-      key: u.unitKey,
-      inputHash: sha256Hex(u.files.map((f) => f.text).join("\u0000")),
-      readKeys: [`e:${u.elementId ?? "model"}`, "s:conventions"],
-      skipped: false,
-      outputs: u.files.map((f) => ({
-        path: f.path,
-        contentHash: sha256Hex(f.text),
-        manifestHash: (f.role === "companion" ? "o:" : "") + sha256Hex(f.text),
-        mode: f.role === "companion" || u.unit === "entity" ? "pair" : "overwrite",
-        role: f.role,
-        root: this.packOutput(u.pack),
-        diskHashAtPlan: diskAtPlan.get(f.path) ?? null,
-      })),
-    }));
+    const docs = this.model.docs();
+    const elementHash = (id: string | null) => (id && docs.has(id) ? sha256Hex(JSON.stringify(docs.get(id))) : null);
+    const planUnits: PlanUnit[] = units.map((u) => {
+      const inputHash = sha256Hex(u.files.map((f) => f.text).join("\u0000"));
+      const previous = this.unitState.get(u.unitKey);
+      const outputCauses: PlanUnit["causes"] = [];
+      for (const f of u.files) {
+        if (f.role === "companion") continue;
+        const disk = this.disk.get(f.path);
+        if (disk === undefined) outputCauses.push({ kind: "output-missing", key: f.path, detail: `${f.path} is missing`, elementId: null, path: f.path });
+        else if (this.manifest.get(f.path)?.hash !== sha256Hex(disk))
+          outputCauses.push({ kind: "output-edited", key: f.path, detail: `${f.path} was edited on disk`, elementId: null, path: f.path });
+      }
+      let reason: PlanUnit["reason"];
+      let causes: PlanUnit["causes"] = [];
+      if (request.force) reason = "forced";
+      else if (!previous) reason = "new";
+      else if (previous.inputHash !== inputHash) {
+        reason = "inputs";
+        const doc = u.elementId ? docs.get(u.elementId) : undefined;
+        causes =
+          doc && previous.elementHash !== elementHash(u.elementId)
+            ? [{ kind: "element", key: `e:${u.elementId}`, detail: `${String(doc.name)} (${String(doc.kind)}) changed`, elementId: u.elementId, path: null }]
+            : [
+                {
+                  kind: "inputs",
+                  key: `e:${u.elementId ?? "model"}`,
+                  detail: "An input it read changed (a referenced element, a setting or a parameter)",
+                  elementId: null,
+                  path: null,
+                },
+              ];
+      } else if (outputCauses.length) {
+        reason = "outputs";
+        causes = outputCauses;
+      } else reason = "unchanged";
+      return {
+        key: u.unitKey,
+        inputHash,
+        readKeys: [`e:${u.elementId ?? "model"}`, "s:conventions"],
+        skipped: reason === "unchanged",
+        pack: u.pack,
+        unit: u.unit,
+        template: this.model.packs.find((p) => p.name === u.pack)?.units.find((x) => x.id === u.unit)?.template ?? null,
+        elementId: u.elementId ?? null,
+        reason,
+        causes: causes.slice(0, 20),
+        causeCount: causes.length,
+        outputs: u.files.map((f) => ({
+          path: f.path,
+          contentHash: sha256Hex(f.text),
+          manifestHash: (f.role === "companion" ? "o:" : "") + sha256Hex(f.text),
+          mode: f.role === "companion" || u.unit === "entity" ? "pair" : "overwrite",
+          role: f.role,
+          root: this.packOutput(u.pack),
+          diskHashAtPlan: diskAtPlan.get(f.path) ?? null,
+        })),
+      };
+    });
     const plan: GenerationPlan = {
       id,
       request: { ...request, packs: request.packs },
@@ -433,6 +481,12 @@ export class MockGeneration {
         deleted++;
       }
     }
+    const docs = this.model.docs();
+    for (const u of stored.plan.units)
+      this.unitState.set(u.key, {
+        inputHash: u.inputHash,
+        elementHash: u.elementId && docs.has(u.elementId) ? sha256Hex(JSON.stringify(docs.get(u.elementId))) : null,
+      });
     return { outcome: "succeeded", staleUnits: [], stalePaths: [], result: this.result(runId, "succeeded", stored.plan.changes, written, deleted, []) };
   }
 

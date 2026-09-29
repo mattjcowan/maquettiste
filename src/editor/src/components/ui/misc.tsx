@@ -37,7 +37,7 @@ export function Spinner({ label = "Loading" }: { label?: string }) {
 
 export function EmptyState({ title, children, className }: { title: string; children?: ReactNode; className?: string }) {
   return (
-    <div className={cn("flex h-full min-h-24 flex-col items-center justify-center gap-1 p-6 text-center", className)}>
+    <div className={cn("flex h-full min-h-24 flex-col items-center justify-center gap-1 p-2 text-center", className)}>
       <p className="text-13 font-medium text-primary">{title}</p>
       {children ? <div className="max-w-md text-12 text-secondary">{children}</div> : null}
     </div>
@@ -46,7 +46,7 @@ export function EmptyState({ title, children, className }: { title: string; chil
 
 export function SectionTitle({ children, actions }: { children: ReactNode; actions?: ReactNode }) {
   return (
-    <div className="flex h-8 items-center justify-between gap-2">
+    <div className="flex h-6 items-center justify-between gap-2">
       <h3 className="text-11 font-semibold uppercase tracking-wide text-secondary">{children}</h3>
       {actions}
     </div>
@@ -58,7 +58,7 @@ export function Toolbar({ children, className, label }: { children: ReactNode; c
     <div
       role="toolbar"
       aria-label={label}
-      className={cn("flex min-h-11 shrink-0 flex-wrap items-center gap-2 border-b border-default bg-surface px-3 py-1.5 [&>*]:shrink-0", className)}
+      className={cn("flex min-h-7 shrink-0 flex-wrap items-center gap-2 border-b border-default bg-surface px-2 py-0.5 [&>*]:shrink-0", className)}
     >
       {children}
     </div>

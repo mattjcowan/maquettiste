@@ -72,7 +72,7 @@ function EntityBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<type
       ctx={ctx}
       draft={draft}
       controls={
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
           <NameAndDomain {...ctx}>
             <KeyControl {...ctx} />
             <BaseControl {...ctx} />
@@ -149,7 +149,7 @@ function KeyControl({ id, json, edit, flush }: EditorContext) {
           title={`Keys of ${entity.name}`}
           description="The primary key identifies a row; an alternate key is another unique combination of fields."
         >
-          <div className="flex max-h-[60vh] flex-col gap-4 overflow-auto" data-testid="key-dialog">
+          <div className="flex max-h-[60vh] flex-col gap-2 overflow-auto" data-testid="key-dialog">
             <section className="flex flex-col gap-1">
               <SectionTitle>Primary key</SectionTitle>
               {attributes.map((a) => (
@@ -317,7 +317,7 @@ function FieldsTab({ json, edit, flush, diagnostics }: EditorContext) {
   const inherited = chain.flatMap((b) => sources.filter((s) => s.from === b));
   const virtual = sources.filter((s) => s.from === entity.id && s.stereotype);
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-2">
       <AttributeGrid
         label={`Attributes of ${entity.name}`}
         attributes={entity.attributes ?? []}
@@ -491,7 +491,7 @@ function IndexesTab({ id, json }: EditorContext) {
   if (!declared.length && !physical.length)
     return <EmptyState title="No indexes">Mark a field Unique or Indexed on the Attributes tab, or add an index to a table this entity maps to.</EmptyState>;
   return (
-    <div className="flex flex-col gap-4" data-testid="editor-indexes">
+    <div className="flex flex-col gap-2" data-testid="editor-indexes">
       {declared.length ? (
         <section className="flex flex-col gap-1">
           <SectionTitle>On fields</SectionTitle>
@@ -531,7 +531,7 @@ function MappingTab({ id }: { id: string }) {
   const { mappings, tables } = relatedOf(index.data, id);
   const databaseOf = (r: ElementSummary) => (r.database ? (lookup.nameOf(r.database) ?? r.database) : undefined);
   return (
-    <div className="flex flex-col gap-4" data-testid="editor-mapping">
+    <div className="flex flex-col gap-2" data-testid="editor-mapping">
       <p className="text-12 text-secondary">
         Columns follow the project's conventions unless a mapping overrides them.{" "}
         <button
@@ -600,7 +600,7 @@ function InheritanceTab({ id, json }: EditorContext) {
   });
   const rootSummary = lookup.byId.get(root);
   return (
-    <div className="flex flex-col gap-4" data-testid="editor-inheritance">
+    <div className="flex flex-col gap-2" data-testid="editor-inheritance">
       <section className="flex flex-col gap-1">
         <SectionTitle>Base entity</SectionTitle>
         {entity.base && lookup.byId.get(entity.base) ? (

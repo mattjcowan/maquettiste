@@ -283,7 +283,10 @@ internal sealed class UnitRun
         var keys = Recorder.SortedKeys();
         var inputHash = Run.Context.Hasher.InputHash(Planned.StaticHash, keys);
         diagnostics.Sort(Diagnostic.Order);
-        return new RenderedUnit(Planned, failed ? [] : files, keys, inputHash, diagnostics, failed);
+        return new RenderedUnit(Planned, failed ? [] : files, keys, inputHash, diagnostics, failed)
+        {
+            KeyHashes = Planning.KeyHashes.Of(keys, Run.Context.Hasher.CurrentHash),
+        };
     }
 
     private void RenderFiles(List<RenderedFile> files, List<Diagnostic> diagnostics)

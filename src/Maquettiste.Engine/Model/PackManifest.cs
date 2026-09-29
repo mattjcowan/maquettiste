@@ -26,6 +26,12 @@ public sealed record PackManifest
     /// <summary>Parameter names with their default values.</summary>
     public IReadOnlyDictionary<string, JsonElement> Parameters { get; init; } = ImmutableDictionary<string, JsonElement>.Empty;
 
+    /// <summary>
+    /// The optional parameter schema (generation-ui.md section 3.2, E18): <c>properties</c> (a JSON Schema properties object, the subset
+    /// extension schemas accept) and <c>required</c>; the editor builds the Parameters form from it and MQ6023 checks project values.
+    /// </summary>
+    public JsonElement? ParameterSchema { get; init; }
+
     /// <summary>Pack-relative script paths; empty means every <c>*.js</c> in the pack, in ordinal path order.</summary>
     public IReadOnlyList<string> Scripts { get; init; } = [];
 

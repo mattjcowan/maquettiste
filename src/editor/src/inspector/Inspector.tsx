@@ -103,7 +103,7 @@ function ElementInspector({ id }: { id: string }) {
       className="flex h-full min-h-0 flex-col bg-surface"
       data-testid="inspector"
     >
-      <header className="flex flex-col gap-1 border-b border-default px-3 py-2">
+      <header className="flex flex-col gap-1 border-b border-default px-2 py-1">
         <div className="flex items-center gap-2">
           <KindIcon kind={kind} />
           <h2 className="min-w-0 flex-1 truncate text-14 font-semibold" data-testid="inspector-title">
@@ -137,8 +137,8 @@ function ElementInspector({ id }: { id: string }) {
           <TabsTrigger value="json">JSON</TabsTrigger>
           <TabsTrigger value="references">Where used</TabsTrigger>
         </TabsList>
-        <TabsContent value="properties" className="overflow-auto p-3">
-          <div className="flex flex-col gap-4">
+        <TabsContent value="properties" className="overflow-auto p-2">
+          <div className="flex flex-col gap-2">
             <CommonFields {...props} />
             <TranslationsSection id={id} kind={kind} />
             {kind === "entity" ? <EntityFields {...props} /> : null}
@@ -175,7 +175,7 @@ function ElementInspector({ id }: { id: string }) {
         <TabsContent value="json" className="flex min-h-0 flex-col p-0">
           <JsonTab json={json} onChange={(next) => edit(() => next)} />
         </TabsContent>
-        <TabsContent value="references" className="overflow-auto p-3">
+        <TabsContent value="references" className="overflow-auto p-2">
           <References id={id} />
         </TabsContent>
       </Tabs>
@@ -189,7 +189,7 @@ function JsonTab({ json, onChange }: { json: ModelJson; onChange: (json: ModelJs
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {error ? (
-        <p role="alert" className="border-b border-default px-3 py-1 text-12 text-danger">
+        <p role="alert" className="border-b border-default px-2 py-1 text-12 text-danger">
           {error}
         </p>
       ) : null}
@@ -341,7 +341,7 @@ function BulkInspector({ ids }: { ids: string[] }) {
   };
 
   return (
-    <section aria-label="Inspector: bulk edit" className="flex h-full flex-col gap-4 bg-surface p-3" data-testid="bulk-inspector">
+    <section aria-label="Inspector: bulk edit" className="flex h-full flex-col gap-2 bg-surface p-2" data-testid="bulk-inspector">
       <h2 className="text-14 font-semibold">{ids.length} elements selected</h2>
       <ul className="max-h-40 overflow-auto text-12 text-secondary">
         {rows.map((r) => (

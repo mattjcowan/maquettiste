@@ -2,6 +2,7 @@
 // every group ("3 of 12" while searching), or flat A to Z; the search box takes the explorer's four operators.
 // Arrow keys move the selection, Left and Right collapse and expand a group, `/` focuses the search from anywhere in
 // the screen.
+import { ROW_H } from "@/design/density";
 import { useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
@@ -9,8 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import { countLabel, listRows, type RefTypeItem } from "./listModel";
-
-const ROW_H = 28;
 
 export function TypeList({
   items,
@@ -164,7 +163,7 @@ export function TypeList({
             );
           })}
         </div>
-        {list.rows.length === 0 && items.length > 0 ? <p className="p-3 text-12 text-secondary">No type matches.</p> : null}
+        {list.rows.length === 0 && items.length > 0 ? <p className="p-2 text-12 text-secondary">No type matches.</p> : null}
       </div>
     </aside>
   );

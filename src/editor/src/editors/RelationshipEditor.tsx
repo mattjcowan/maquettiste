@@ -28,7 +28,7 @@ function RelationshipBody({ ctx, draft }: { ctx: EditorContext; draft: Parameter
       ctx={ctx}
       draft={draft}
       controls={
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
           <NameAndDomain {...ctx} />
           <RelationFields {...form} withAttributes={false} />
           <MarkChips {...ctx} />
@@ -65,7 +65,7 @@ function RelationMappingsTab({ id }: { id: string }) {
   const tables = useQueries({ queries: databases.map((d) => tablesQuery(qc, d.id)) });
   const rows = relationMappingRows(id, databases, mappings, (db) => tables[databases.findIndex((d) => d.id === db)]?.data?.tables);
   return (
-    <div className="flex flex-col gap-4" data-testid="editor-relation-mappings">
+    <div className="flex flex-col gap-2" data-testid="editor-relation-mappings">
       <p className="text-12 text-secondary">
         Each database stores the relation by its conventions unless a mapping overrides them.{" "}
         <button

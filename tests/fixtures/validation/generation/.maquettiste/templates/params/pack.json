@@ -1,0 +1,24 @@
+{
+  "name": "params",
+  "version": "1.0.0",
+  "engine": ">=1.0 <2.0",
+  "description": "MQ6023 and MQ6024.",
+  "parameters": {
+    "width": 80
+  },
+  "parameterSchema": {
+    "properties": {
+      "width": {
+        "type": "integer"
+      }
+    }
+  },
+  "units": [
+    {
+      "id": "model",
+      "template": "model.scriban",
+      "for": "model",
+      "output": "model.txt"
+    }
+  ]
+}

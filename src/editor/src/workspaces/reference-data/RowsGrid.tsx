@@ -3,6 +3,7 @@
 // spreadsheet keys (rowsModel.gridAction). Every edit goes through the seed's draft, so it saves like any element
 // and undoes; tab-separated paste writes cells and adds rows past the end; CSV import previews, then applies as one
 // save; CSV export downloads the seed.
+import { ROW_H } from "@/design/density";
 import { useCallback, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Download, Plus, Upload } from "lucide-react";
@@ -45,7 +46,6 @@ import {
   type GridRow,
 } from "./rowsModel";
 
-const ROW_H = 28;
 const WIDTH: Record<string, number> = { code: 128, label: 200 };
 const POINTER = /^\/rows\/(\d+)(?:\/values\/(\d+))?$/;
 
@@ -304,7 +304,7 @@ export function RowsTab({ typeId, seeds, onTab, onFocusSearch }: { typeId: strin
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 border-b border-default px-3 py-1">
+      <div className="flex items-center gap-2 border-b border-default px-2 py-1">
         <Button size="sm" variant="ghost" onClick={() => void insertBelow()}>
           <Plus /> Add row
         </Button>
@@ -449,12 +449,12 @@ export function RowsTab({ typeId, seeds, onTab, onFocusSearch }: { typeId: strin
               })}
             </div>
             {rows.length === 0 ? (
-              <p className="p-3 text-12 text-secondary">No rows yet. Ctrl+Enter or Add row adds one; pasting tab-separated cells adds several.</p>
+              <p className="p-2 text-12 text-secondary">No rows yet. Ctrl+Enter or Add row adds one; pasting tab-separated cells adds several.</p>
             ) : null}
           </div>
         </div>
       </div>
-      <footer className="flex items-center gap-2 border-t border-default px-3 py-1 text-11 text-secondary" data-testid="rows-status">
+      <footer className="flex items-center gap-2 border-t border-default px-2 py-1 text-11 text-secondary" data-testid="rows-status">
         <span>
           {rows.length} {rows.length === 1 ? "row" : "rows"} · {errors.size} {errors.size === 1 ? "error" : "errors"}
           {(contentLocale && l10n.locales.includes(contentLocale) ? [contentLocale] : []).map((locale) => (

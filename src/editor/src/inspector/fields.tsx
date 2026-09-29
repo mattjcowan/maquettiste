@@ -201,7 +201,7 @@ export function CommonFields({ id, json, doc, edit, flush, diagnostics, inEditor
   const description = rec.description;
   const definition = useDefinition();
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2">
       {kind === "stereotype" ? (
         <Field label="Key" htmlFor={`${id}-key`} hint="A stereotype's key cannot change once it exists (MQ3020).">
           <Input id={`${id}-key`} value={String(rec.key ?? "")} readOnly className="font-mono" />
@@ -324,7 +324,7 @@ export function EntityFields({ id, json, edit, flush, diagnostics }: FormProps) 
   const typeOptions = TYPE_KINDS.flatMap((k) => vocab.lookup.ofKind(k));
   const definition = useDefinition();
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2">
       <div className="grid grid-cols-2 gap-2">
         <Field label="Base entity" htmlFor={`${id}-base`}>
           <Select
@@ -527,7 +527,7 @@ export function RelationFields(props: FormProps & { withAttributes?: boolean }) 
   const vocab = useVocabularies("relation");
   const entities = vocab.lookup.ofKind("entity");
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2">
       <div className="grid grid-cols-2 gap-2">
         <Field label="Kind" htmlFor={`${id}-relkind`}>
           <Select

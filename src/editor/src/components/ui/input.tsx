@@ -2,7 +2,7 @@ import { forwardRef, type InputHTMLAttributes, type SelectHTMLAttributes, type T
 import { cn } from "@/lib/cn";
 
 export const controlClass =
-  "h-8 w-full min-w-0 rounded-control border border-input bg-surface px-2 text-13 text-primary placeholder:text-secondary focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-accent disabled:opacity-60 aria-[invalid=true]:border-danger";
+  "h-7 w-full min-w-0 rounded-control border border-input bg-surface px-2 text-13 text-primary placeholder:text-secondary focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-accent disabled:opacity-60 aria-[invalid=true]:border-danger";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(({ className, ...props }, ref) => (
   <input ref={ref} className={cn(controlClass, className)} {...props} />

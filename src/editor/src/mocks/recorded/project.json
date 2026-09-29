@@ -48,13 +48,19 @@
       "valueObjectStorage": null,
       "valueObjectCollectionStorage": null,
       "relationsWithAttributes": null,
-      "inheritance": null
+      "inheritance": null,
+      "referenceStorage": null
     },
     "databases": {},
     "typeMaps": {},
     "inflection": {
       "plurals": {},
       "uncountable": []
+    },
+    "localization": null,
+    "referenceData": {
+      "strategies": {},
+      "groupBy": "category"
     },
     "packs": {
       "csharp-dapper": {
@@ -80,6 +86,10 @@
       "scriptMemoryBytes": 67108864,
       "templateLoopLimit": 1000000,
       "templateRecursionLimit": 64
+    },
+    "explorer": {
+      "folders": [],
+      "scopes": []
     }
   },
   "settingsHash": "695f8e249265560b146d7b54f3a083a26131a540fc392959840b46a62f7ae82c",
@@ -102,13 +112,14 @@
       "name": "csharp-dapper",
       "version": "1.0.0",
       "engine": ">=1.0 <2.0",
-      "description": "C# model and Dapper data access: entity classes as generated/hand-written pairs, enums, value objects, one repository per mapped entity and one registration file per package.",
+      "description": "C# model and Dapper data access: entity classes as generated/hand-written pairs, enums, value objects, reference types as records with a static class of rows and resource files per locale, one repository per mapped entity and one registration file per package.",
       "parameters": {
         "database": "",
         "generatedFolder": "",
         "namespace": "App.Model",
         "partialFolder": ""
       },
+      "parameterSchema": null,
       "scripts": [],
       "usesSchemaDiff": false,
       "units": [
@@ -145,6 +156,30 @@
           "for": "each value object",
           "where": null,
           "output": "{{ join_path pack.params.generatedFolder (package_folder value_object) ((pascal value_object.name) + \".g.cs\") }}",
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "reference-type",
+          "template": "reference-type.scriban",
+          "for": "each reference type",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder \"ReferenceData\" ((pascal reference_type.name) + \".g.cs\") }}",
+          "mode": "overwrite",
+          "formatter": null,
+          "delimiters": null,
+          "companion": null,
+          "transforms": []
+        },
+        {
+          "id": "resources",
+          "template": "resources.scriban",
+          "for": "each locale",
+          "where": null,
+          "output": "{{ join_path pack.params.generatedFolder \"ReferenceData\" (locale.is_default ? \"ReferenceData.resx\" : (\"ReferenceData.\" + locale.tag + \".resx\")) }}",
           "mode": "overwrite",
           "formatter": null,
           "delimiters": null,
@@ -205,12 +240,19 @@
       "name": "sql-ddl",
       "version": "1.0.0",
       "engine": ">=1.0 <2.0",
-      "description": "SQL DDL for PostgreSQL, SQL Server and SQLite: one script per table, one schema script per database, once-mode migrations from the schema diff and a seed script with protected regions.",
+      "description": "SQL DDL for PostgreSQL, SQL Server and SQLite: one script per table, one schema script per database, once-mode migrations from the schema diff, and a seed script with protected regions that reconciles reference data (lookup tables, check constraints or native types) and inserts seed rows.",
       "parameters": {
         "comments": true,
         "quoting": "",
-        "schemaScript": "inline"
+        "referenceStrategy": "lookup-table",
+        "schemaScript": "inline",
+        "strategyMap": {
+          "check": "check",
+          "lookup-table": "lookup-table",
+          "native": "native"
+        }
       },
+      "parameterSchema": null,
       "scripts": [],
       "usesSchemaDiff": true,
       "units": [

@@ -192,6 +192,18 @@ export async function getPlan(id: string, units = false): Promise<GenerationPlan
   return must(data, response);
 }
 
+/** One unit of a plan with its reason, causes and grouped read keys: the answer to "Why not?" (generation-ui.md 4.3). */
+export async function getPlanUnit(id: string, key: string): Promise<import("./types").PlanUnitDetail> {
+  const { data, response } = await api().GET("/api/generate/plan/{id}/unit", { params: { path: { id }, query: { key } } });
+  return must(data, response);
+}
+
+/** Why a unit does or does not render for an element, planned or not (generation-ui.md 4.3). */
+export async function explainUnit(request: import("./types").ExplainRequest): Promise<import("./types").ExplainResult> {
+  const { data, response } = await api().POST("/api/generate/explain", { body: request });
+  return must(data, response);
+}
+
 export async function getPlanDiff(id: string, path: string): Promise<string> {
   const { data, response } = await api().GET("/api/generate/plan/{id}/diff", {
     params: { path: { id }, query: { path } },
@@ -220,8 +232,93 @@ export async function cancelJob(id: string): Promise<JobInfo> {
   return must(data, response);
 }
 
-export async function previewTemplate(request: PreviewRequest): Promise<PreviewResult> {
-  const { data, response } = await api().POST("/api/templates/preview", { body: request });
+/** This tab's live-preview key: the server keeps one request of each kind in flight per key (generation-ui.md 5.2). */
+export const LIVE_CLIENT = `tab-${Math.random().toString(36).slice(2, 14)}`;
+
+const clientHeader = (client?: string) => (client ? { header: { "X-Maquettiste-Client": client } } : {});
+
+export async function previewTemplate(request: PreviewRequest, signal?: AbortSignal, client?: string): Promise<PreviewResult> {
+  const { data, response } = await api().POST("/api/templates/preview", {
+    params: clientHeader(client),
+    body: request,
+    signal,
+  });
+  return must(data, response);
+}
+
+// Pack authoring (generation-ui.md 3 and 5.1): the pack's own files under .maquettiste/templates/<pack>/.
+type Schemas = import("./schema").components["schemas"];
+export type PackSummary = Schemas["PackSummary"];
+export type PackDocument = Schemas["PackDocument"];
+export type PackUnit = Schemas["PackUnit"];
+export type PackWriteResult = Schemas["PackWriteResult"];
+export type PackOutputs = Schemas["PackOutputs"];
+export type PathsRequest = Schemas["PathsRequest"];
+export type UnitPathsResult = Schemas["UnitPathsResult"];
+
+export async function listPacks(): Promise<PackSummary[]> {
+  const { data, response } = await api().GET("/api/packs");
+  return must(data, response).packs;
+}
+
+export async function getPack(pack: string): Promise<PackDocument> {
+  const { data, response } = await api().GET("/api/packs/{pack}", { params: { path: { pack } } });
+  return must(data, response);
+}
+
+/** Creates `.maquettiste/templates/<name>/`, empty or copied from a pack of this project. */
+export async function createPack(name: string, from: string): Promise<PackWriteResult> {
+  const { data, error, response } = await api().POST("/api/packs", { body: { name, from } });
+  return record<PackWriteResult>(data as PackWriteResult | undefined, error, response);
+}
+
+/** Saves the whole pack.json document (every member it loaded kept), written in canonical form. */
+export async function savePack(pack: string, document: Record<string, unknown>, hash: string): Promise<PackWriteResult> {
+  const { data, error, response } = await api().PUT("/api/packs/{pack}", {
+    params: { path: { pack }, header: { "If-Match": `"${hash}"` } },
+    body: document as never,
+  });
+  return record<PackWriteResult>(data, error, response);
+}
+
+export type PackFileContent = Schemas["PackFileContent"];
+
+/** One pack file's text and hash (the If-Match of its next save). */
+export async function getPackFile(pack: string, path: string): Promise<PackFileContent> {
+  const { data, response } = await api().GET("/api/packs/{pack}/file", { params: { path: { pack }, query: { path } } });
+  return must(data, response);
+}
+
+/** Writes one pack file with the hash read (409 `conflict` carries the disk hash and text); a template that fails to parse is saved with its MQ6003 diagnostics. */
+export async function savePackFile(pack: string, path: string, text: string, hash: string | null): Promise<PackWriteResult> {
+  const { data, error, response } = await api().PUT("/api/packs/{pack}/file", {
+    // No hash: the file is gone on disk and this write creates it again.
+    params: { path: { pack }, query: { path }, header: hash ? { "If-Match": `"${hash}"` } : { "If-None-Match": "*" } },
+    body: { text },
+  });
+  return record<PackWriteResult>(data, error, response);
+}
+
+export async function getPackOutputs(pack: string): Promise<PackOutputs> {
+  const { data, response } = await api().GET("/api/packs/{pack}/outputs", { params: { path: { pack } } });
+  return must(data, response);
+}
+
+/** Replaces `packs.<pack>` (enabled, output, parameters) in maquettiste.json with the settings hash. */
+export async function savePackSettings(pack: string, section: Record<string, unknown>, hash: string): Promise<SettingsSaveResult> {
+  const { data, error, response } = await api().PUT("/api/project/settings/packs/{pack}", {
+    params: { path: { pack }, header: { "If-Match": `"${hash}"` } },
+    body: section,
+  });
+  return record<SettingsSaveResult>(data, error, response);
+}
+
+export async function unitPaths(request: PathsRequest, signal?: AbortSignal, client?: string): Promise<UnitPathsResult> {
+  const { data, response } = await api().POST("/api/templates/paths", {
+    params: clientHeader(client),
+    body: request,
+    signal,
+  });
   return must(data, response);
 }
 

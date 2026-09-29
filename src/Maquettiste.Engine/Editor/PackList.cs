@@ -39,7 +39,8 @@ internal static class PackCatalog
 
         // The enabled packs go through the loader a run uses, so the list reports exactly what a run would stop on.
         var loaded = await loader.LoadAsync(snapshot, null, null, ct).ConfigureAwait(false);
-        var diagnostics = new List<Diagnostic>(loaded.Diagnostics);
+        // Template parse errors (MQ6003) fail units at render, not the run, so the list leaves them to the pack read.
+        var diagnostics = new List<Diagnostic>(loaded.Diagnostics.Where(d => d.Rule != "MQ6003"));
         var manifests = new List<PackManifest>();
         foreach (var name in folders)
         {

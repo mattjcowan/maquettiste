@@ -148,7 +148,7 @@ function NewElementDialog({ kind, domain, presetSource, forest }: { kind: Create
     <Dialog open onOpenChange={(open) => !open && close()}>
       <DialogContent title={label}>
         <form
-          className="flex flex-col gap-3"
+          className="flex flex-col gap-2"
           data-testid="new-element-dialog"
           data-kind={kind}
           onSubmit={(e) => {

@@ -132,7 +132,14 @@ export function connectRealtime(deps: SyncDeps): () => void {
       void qc.invalidateQueries({ queryKey: keys.settings });
       refreshResolved();
       refetchTablesSoon();
+      // packs.<name> (enabled, output, parameters) lives in maquettiste.json.
+      void qc.invalidateQueries({ queryKey: keys.packs });
     }),
+    // A pack's files changed (the editor, the CLI, git): its units, files and outputs are read again.
+    realtime.on("packs.changed", () => void qc.invalidateQueries({ queryKey: keys.packs })),
+    // A template file changed: the open file's disk query refetches, and the Templates tab reloads an unedited
+    // buffer or raises its conflict bar.
+    realtime.on("templates.changed", (e) => void qc.invalidateQueries({ queryKey: keys.pack(e.pack) })),
   );
 
   offs.push(

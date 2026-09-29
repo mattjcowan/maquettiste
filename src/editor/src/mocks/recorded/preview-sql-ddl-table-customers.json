@@ -6,5 +6,23 @@
       "role": "main"
     }
   ],
-  "diagnostics": []
+  "diagnostics": [],
+  "readKeys": [
+    "e:01J92P0V04TDYE2C73WMNXVDBV",
+    "e:01J92P0V0ETQKXXP951CMMNHH3",
+    "e:01J92P0V1QRN2181XM2ZWE02W4",
+    "e:01J92P0V23WVT7FBW527GR7GX5",
+    "e:01J92P0V245JG9WK55YJE2QWWV",
+    "e:01J92P0V25BX5TMQ8N9F6AJE61",
+    "k:database",
+    "r:01J92P0V0ETQKXXP951CMMNHH3",
+    "r:01J92P0V1QRN2181XM2ZWE02W4",
+    "s:conventions",
+    "s:inflection",
+    "s:typeMaps",
+    "t:sql-ddl/_sql.scriban",
+    "t:sql-ddl/_table.scriban",
+    "t:sql-ddl/table.scriban"
+  ],
+  "elapsedMs": 77
 }

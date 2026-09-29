@@ -1,0 +1,172 @@
+[
+  {
+    "rule": "MQ6023",
+    "severity": "error",
+    "message": "Parameter 'width' of pack 'params' must be of type integer, not string.",
+    "elementId": null,
+    "filePath": ".maquettiste/maquettiste.json",
+    "jsonPointer": "/packs/params/parameters/width",
+    "line": null,
+    "column": null
+  },
+  {
+    "rule": "MQ6024",
+    "severity": "warning",
+    "message": "Pack 'params' neither defaults nor declares the parameter 'colour'; the templates never read it.",
+    "elementId": null,
+    "filePath": ".maquettiste/maquettiste.json",
+    "jsonPointer": "/packs/params/parameters/colour",
+    "line": null,
+    "column": null
+  },
+  {
+    "rule": "MQ6022",
+    "severity": "error",
+    "message": "Template 'nope.scriban' does not exist in the pack folder.",
+    "elementId": null,
+    "filePath": ".maquettiste/templates/missing/pack.json",
+    "jsonPointer": "/units/0/template",
+    "line": 9,
+    "column": 19
+  },
+  {
+    "rule": "MQ6003",
+    "severity": "error",
+    "message": "Error while parsing if statement: Expecting <expression> instead of `}}` in: if <expression> ... end|else|else if (unit 'broken')",
+    "elementId": null,
+    "filePath": ".maquettiste/templates/outputs/broken.scriban",
+    "jsonPointer": null,
+    "line": 2,
+    "column": 7
+  },
+  {
+    "rule": "MQ6003",
+    "severity": "error",
+    "message": "Error while parsing if statement: The <end> statement was not found in: if <expression> ... end|else|else if (unit 'broken')",
+    "elementId": null,
+    "filePath": ".maquettiste/templates/outputs/broken.scriban",
+    "jsonPointer": null,
+    "line": 2,
+    "column": 9
+  },
+  {
+    "rule": "MQ6025",
+    "severity": "warning",
+    "message": "Error while parsing for statement: Expecting <expression> instead of `}}` in: for <variable> in <expression> ... end",
+    "elementId": null,
+    "filePath": ".maquettiste/templates/outputs/scratch.scriban",
+    "jsonPointer": null,
+    "line": 2,
+    "column": 13
+  },
+  {
+    "rule": "MQ6025",
+    "severity": "warning",
+    "message": "Error while parsing for statement: The <end> statement was not found in: for <variable> in <expression> ... end",
+    "elementId": null,
+    "filePath": ".maquettiste/templates/outputs/scratch.scriban",
+    "jsonPointer": null,
+    "line": 2,
+    "column": 15
+  },
+  {
+    "rule": "MQ6021",
+    "severity": "error",
+    "message": "Unit 'entity' has the unknown scope 'each entiti'; did you mean 'each entity'? Valid scopes: model, each package, each entity, each relation, each enum, each value object, each table, each reference type, each seed, each locale, or 'select <name>' for a selector the pack's scripts register.",
+    "elementId": null,
+    "filePath": ".maquettiste/templates/scope/pack.json",
+    "jsonPointer": "/units/0/for",
+    "line": 10,
+    "column": 14
+  },
+  {
+    "rule": "MQ6003",
+    "severity": "error",
+    "message": "Error while parsing if statement: Expecting <expression> instead of `}}` in: if <expression> ... end|else|else if",
+    "elementId": null,
+    "filePath": ".maquettiste/templates/outputs/broken.scriban",
+    "jsonPointer": null,
+    "line": 2,
+    "column": 7
+  },
+  {
+    "rule": "MQ6003",
+    "severity": "error",
+    "message": "Error while parsing if statement: The <end> statement was not found in: if <expression> ... end|else|else if",
+    "elementId": null,
+    "filePath": ".maquettiste/templates/outputs/broken.scriban",
+    "jsonPointer": null,
+    "line": 2,
+    "column": 9
+  },
+  {
+    "rule": "MQ6019",
+    "severity": "error",
+    "message": "Unit 'escape' cannot write under an allowed root: the output path '../outside/{{ entity.name }}.txt' has a '.' or '..' segment.",
+    "elementId": null,
+    "filePath": ".maquettiste/templates/outputs/pack.json",
+    "jsonPointer": "/units/0/output",
+    "line": null,
+    "column": null
+  },
+  {
+    "rule": "MQ6025",
+    "severity": "warning",
+    "message": "Error while parsing for statement: Expecting <expression> instead of `}}` in: for <variable> in <expression> ... end",
+    "elementId": null,
+    "filePath": ".maquettiste/templates/outputs/scratch.scriban",
+    "jsonPointer": null,
+    "line": 2,
+    "column": 13
+  },
+  {
+    "rule": "MQ6025",
+    "severity": "warning",
+    "message": "Error while parsing for statement: The <end> statement was not found in: for <variable> in <expression> ... end",
+    "elementId": null,
+    "filePath": ".maquettiste/templates/outputs/scratch.scriban",
+    "jsonPointer": null,
+    "line": 2,
+    "column": 15
+  },
+  {
+    "rule": "MQ6020",
+    "severity": "error",
+    "message": "Unit 'outputs/same' renders db/same.txt for two elements, '01J92P0V0ETQKXXP951CMMNHH3' and '01J92P0V0FJ23CGSNKM7P1W5V7': its output pattern is not unique per element.",
+    "elementId": null,
+    "filePath": "db/same.txt",
+    "jsonPointer": null,
+    "line": null,
+    "column": null
+  },
+  {
+    "rule": "MQ6020",
+    "severity": "error",
+    "message": "Unit 'outputs/same' renders db/same.txt for two elements, '01J92P0V0ETQKXXP951CMMNHH3' and '01J92P0V0GWFR78HZH0P8Z3GY7': its output pattern is not unique per element.",
+    "elementId": null,
+    "filePath": "db/same.txt",
+    "jsonPointer": null,
+    "line": null,
+    "column": null
+  },
+  {
+    "rule": "MQ6020",
+    "severity": "error",
+    "message": "Unit 'outputs/same' renders db/same.txt for two elements, '01J92P0V0ETQKXXP951CMMNHH3' and '01J92P0V0HEGSC6MW92CST5KA6': its output pattern is not unique per element.",
+    "elementId": null,
+    "filePath": "db/same.txt",
+    "jsonPointer": null,
+    "line": null,
+    "column": null
+  },
+  {
+    "rule": "MQ6020",
+    "severity": "error",
+    "message": "Unit 'outputs/same' renders db/same.txt for two elements, '01J92P0V0ETQKXXP951CMMNHH3' and '01J92P0V0JR8BE8253SKT29ZG7': its output pattern is not unique per element.",
+    "elementId": null,
+    "filePath": "db/same.txt",
+    "jsonPointer": null,
+    "line": null,
+    "column": null
+  }
+]

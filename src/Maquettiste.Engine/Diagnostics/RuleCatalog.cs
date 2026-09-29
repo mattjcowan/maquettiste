@@ -99,6 +99,13 @@ public static class RuleCatalog
         new("MQ6016", E, "Script error."),
         new("MQ6017", E, "Selector returned an unknown id."),
         new("MQ6018", E, "Stale schema snapshot."),
+        new("MQ6019", E, "A unit's output path cannot stay under an allowed output root."),
+        new("MQ6020", E, "Two elements of one unit render the same output path."),
+        new("MQ6021", E, "A unit's scope (for) is not a known scope."),
+        new("MQ6022", E, "A unit names a template or companion template that is not in the pack."),
+        new("MQ6023", E, "A project parameter value fails the pack's parameter schema."),
+        new("MQ6024", W, "A project parameter value names a parameter the pack does not declare."),
+        new("MQ6025", W, "A pack file that no unit reaches does not parse."),
 
         new("MQ7001", E, "Duplicate code in a reference type, across all its seeds."),
         new("MQ7002", W, "Two codes of one reference type differ only by case."),

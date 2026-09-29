@@ -11,7 +11,7 @@ export function DropdownMenuContent({ children, className, ...props }: Component
     <Menu.Portal>
       <Menu.Content
         sideOffset={4}
-        className={cn("z-50 min-w-44 rounded-panel border border-default bg-raised p-1 text-13 text-primary shadow-float", className)}
+        className={cn("z-50 min-w-44 rounded-panel border border-default bg-raised p-1 text-12 text-primary shadow-float", className)}
         {...props}
       >
         {children}
@@ -21,7 +21,7 @@ export function DropdownMenuContent({ children, className, ...props }: Component
 }
 
 const itemClass =
-  "relative flex h-7 cursor-default select-none items-center gap-2 rounded-control px-2 outline-none data-[highlighted]:bg-accent-subtle data-[disabled]:opacity-50 [&_svg]:size-4";
+  "relative flex h-6 cursor-default select-none items-center gap-2 rounded-control px-2 outline-none data-[highlighted]:bg-accent-subtle data-[disabled]:opacity-50 [&_svg]:size-4";
 
 export function DropdownMenuItem({ className, ...props }: ComponentPropsWithoutRef<typeof Menu.Item>) {
   return <Menu.Item className={cn(itemClass, className)} {...props} />;

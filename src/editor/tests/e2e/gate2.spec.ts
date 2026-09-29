@@ -113,11 +113,11 @@ test("gate 2: edit the reference application in the editor, plan and apply", asy
   const summary = page.getByTestId("plan-summary");
   await expect(summary).toContainText("sql-ddl:");
   await expect(summary).toContainText("csharp-dapper:");
-  const rows = page.getByTestId("changes").getByRole("row");
+  const rows = page.getByTestId("changes").locator('[data-testid^="change-"]');
   expect(await rows.count()).toBeGreaterThan(0);
   await page.locator("#filter-pack").selectOption("sql-ddl");
   const first = rows.first();
-  const path = (await first.getByRole("cell").nth(1).innerText()).trim();
+  const path = (await first.getByRole("gridcell").nth(1).innerText()).trim();
   await first.click();
   const diff = page.getByTestId("diff-viewer");
   await expect(diff).toContainText(path, slow);

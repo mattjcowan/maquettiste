@@ -28,7 +28,7 @@ function TypeBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeof
       ctx={ctx}
       draft={draft}
       controls={
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
           <NameAndDomain {...ctx} />
           <MarkChips {...ctx} />
         </div>

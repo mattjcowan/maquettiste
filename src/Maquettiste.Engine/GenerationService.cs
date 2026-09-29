@@ -16,7 +16,7 @@ namespace Maquettiste.Engine;
 /// <see cref="RunOutcome.Cancelled"/> and leaves an apply's journal unfinished, so the next run resumes it. Other exceptions (an I/O
 /// failure while writing, for example) propagate; the journal is left unfinished the same way.
 /// </remarks>
-public sealed class GenerationService
+public sealed partial class GenerationService
 {
     private readonly ModelStore _store;
     private readonly EngineOptions _options;
@@ -101,7 +101,10 @@ public sealed class GenerationService
         var prepared = capture.Prepared;
         var plan = new GenerationPlan(planId, request, prepared?.Snapshot.Version ?? _store.Current?.Version ?? 0,
             prepared is null ? [.. request.Packs ?? []] : [.. prepared.Packs.Packs.Select(p => p.Name)],
-            prepared is null ? [] : capture.Units(prepared.Plan.Units), result.Changes, result.Diagnostics);
+            prepared is null ? [] : await PlanExplainer.ExplainAsync(capture.Units(prepared.Plan.Units), prepared.Plan.Units, _services.UnitState,
+                request.Force, RepoRoot, id => prepared.Resolved.Find(id) is not null, CancellationToken.None, prepared.Hasher.CurrentHash,
+                id => PlanExplainer.LabelOf(prepared.Resolved.Find(id))).ConfigureAwait(false),
+            result.Changes, result.Diagnostics);
         var policies = prepared is null
             ? new SortedDictionary<string, HandEditPolicy>(StringComparer.Ordinal)
             : GenerationRun.Policies(prepared, request, GenerationMode.DryRun);
@@ -142,6 +145,7 @@ public sealed class GenerationService
         try
         {
             held = await _services.RunLock.AcquireAsync(request.Lock == LockMode.Wait, ct).ConfigureAwait(false);
+            held = Epoched(held);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -218,35 +222,8 @@ public sealed class GenerationService
     /// The unit renders against the element even when its <c>where</c> filters would not plan it, so a template can be previewed on
     /// any element. The model must be valid (validation errors come back as diagnostics, with no files).
     /// </remarks>
-    public async Task<PreviewResult> PreviewAsync(string pack, string unitId, string? elementId, CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(pack);
-        ArgumentNullException.ThrowIfNull(unitId);
-        var run = new GenerationRun(_services, _store, null);
-        var prepared = await run.PrepareAsync([pack], GenerationMode.DryRun, ct, locked: false).ConfigureAwait(false);
-        if (prepared is null)
-            return new PreviewResult([], [.. run.Diagnostics.Where(Outcomes.IsInvalid)]);
-        var loaded = prepared.Packs.Packs.FirstOrDefault(p => string.Equals(p.Name, pack, StringComparison.Ordinal));
-        var unit = loaded?.Manifest.Units.FirstOrDefault(u => string.Equals(u.Id, unitId, StringComparison.Ordinal));
-        if (loaded is null || unit is null)
-        {
-            return new PreviewResult([], [RuleCatalog.Create("MQ6001", loaded is null
-                ? $"Pack '{pack}' is not enabled or does not exist."
-                : $"Pack '{pack}' has no unit '{unitId}'.", filePath: loaded?.RelativePath + "/pack.json")]);
-        }
-
-        var element = elementId is null ? null : prepared.Resolved.Find(elementId);
-        if (elementId is not null && element is null)
-            return new PreviewResult([], [RuleCatalog.Create("MQ6017", $"Element '{elementId}' is not in the resolved model.", elementId)]);
-
-        var key = UnitPlanner.KeyOf(loaded.Name, unit.Id, element?.Id);
-        var planned = prepared.Plan.Units.FirstOrDefault(u => string.Equals(u.Key, key, StringComparison.Ordinal))
-            ?? new PlannedUnit(key, loaded, unit, element, UnitPlanner.StaticHash(loaded, unit, prepared.Snapshot.Settings.Formatters, key));
-        var renderer = _services.CreateRenderer();
-        var context = new RenderContext(prepared.Resolved, prepared.Packs, prepared.SchemaDiffs, _services.Scripts, prepared.Hasher, 1);
-        var rendered = await renderer.RenderOneAsync(planned, context, ct).ConfigureAwait(false);
-        return new PreviewResult(rendered.Files, Outcomes.Sort(rendered.Diagnostics));
-    }
+    public Task<PreviewResult> PreviewAsync(string pack, string unitId, string? elementId, CancellationToken ct) =>
+        PreviewAsync(pack, unitId, elementId, null, ct);
 
     /// <summary>
     /// The resolved physical model of one database, for the editor's Database and Mappings workspaces (E1, phase2-design.md section
@@ -330,6 +307,7 @@ public sealed class GenerationService
         try
         {
             held = await _services.RunLock.AcquireAsync(request.Lock == LockMode.Wait, ct).ConfigureAwait(false);
+            held = Epoched(held);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -544,7 +522,7 @@ public sealed class GenerationService
         try
         {
             var write = run.WriteContext(prepared, request, GenerationMode.Apply, runId, rendered.Select(u => current[u.Key]), skipped, journal, plannedPaths);
-            summary = await run.WriteAsync(prepared, FromPlan(plan.Id, rendered, current, ct), write, ct).ConfigureAwait(false);
+            summary = await run.WriteAsync(prepared, FromPlan(plan.Id, rendered, current, prepared.Hasher.CurrentHash, ct), write, ct).ConfigureAwait(false);
             outcome = Outcomes.Of(GenerationMode.Apply, run.Diagnostics, summary.Changes);
             if (outcome == RunOutcome.Succeeded && request.Roots == RootSelection.All)
                 await run.SaveSnapshotsAsync(prepared, ct).ConfigureAwait(false);
@@ -584,7 +562,7 @@ public sealed class GenerationService
 
     /// <summary>The processed units of a plan's rendered units, reading each blob only when the writer asks for its unit.</summary>
     private async IAsyncEnumerable<ProcessedUnit> FromPlan(string planId, IReadOnlyList<PlanUnit> units, IReadOnlyDictionary<string, PlannedUnit> current,
-        [EnumeratorCancellation] CancellationToken ct)
+        Func<string, string> currentHash, [EnumeratorCancellation] CancellationToken ct)
     {
         foreach (var unit in units)
         {
@@ -599,7 +577,10 @@ public sealed class GenerationService
                     ContentOmitted: bytes is null));
             }
 
-            var rendered = new RenderedUnit(current[unit.Key], [], unit.ReadKeys, unit.InputHash, [], false);
+            var rendered = new RenderedUnit(current[unit.Key], [], unit.ReadKeys, unit.InputHash, [], false)
+            {
+                KeyHashes = Planning.KeyHashes.Of(unit.ReadKeys, currentHash), // the plan's inputs are current (checked above)
+            };
             yield return new ProcessedUnit(rendered, files, [], false);
         }
     }
@@ -705,7 +686,38 @@ public sealed record GenerationResult(
 /// <param name="ReadKeys">The read keys, ordinal.</param>
 /// <param name="Skipped">Whether the unit was skipped at plan time (its <paramref name="Outputs"/> come from its stored state).</param>
 /// <param name="Outputs">Every file the unit produces, unchanged ones included, so apply can feed the writer without rendering again.</param>
-public sealed record PlanUnit(string Key, string InputHash, IReadOnlyList<string> ReadKeys, bool Skipped, IReadOnlyList<PlanFile> Outputs);
+public sealed record PlanUnit(string Key, string InputHash, IReadOnlyList<string> ReadKeys, bool Skipped, IReadOnlyList<PlanFile> Outputs)
+{
+    /// <summary>The pack (generation-ui.md section 5.2); <see langword="null"/> in a plan stored before the explanation members.</summary>
+    public string? Pack { get; init; }
+
+    /// <summary>The unit id.</summary>
+    public string? Unit { get; init; }
+
+    /// <summary>The unit's template, pack-relative.</summary>
+    public string? Template { get; init; }
+
+    /// <summary>The element; <see langword="null"/> for <c>model</c> and <c>each locale</c> units.</summary>
+    public string? ElementId { get; init; }
+
+    /// <summary><c>new</c>, <c>forced</c>, <c>check</c>, <c>inputs</c>, <c>outputs</c> or <c>unchanged</c> (section 4.2).</summary>
+    public string? Reason { get; init; }
+
+    /// <summary>The first <see cref="Generation.PlanExplainer.MaxCauses"/> causes, ordinal by kind then key.</summary>
+    public IReadOnlyList<PlanCause> Causes { get; init; } = [];
+
+    /// <summary>Every cause, counted.</summary>
+    public int CauseCount { get; init; }
+}
+
+/// <summary>Why a unit renders (generation-ui.md section 4.2).</summary>
+/// <param name="Kind">The cause kind: <c>element</c>, <c>kind-set</c>, <c>referrers</c>, <c>setting</c>, <c>template</c>, <c>schema-diff</c>,
+/// <c>translation</c>, <c>localization</c>, <c>absent</c>, <c>inputs</c>, <c>output-missing</c>, <c>output-edited</c>.</param>
+/// <param name="Key">The read key, or the output path; empty for a cause with no single key.</param>
+/// <param name="Detail">One sentence.</param>
+/// <param name="ElementId">The element it names, when one.</param>
+/// <param name="Path">The output path it names, when one.</param>
+public sealed record PlanCause(string Kind, string Key, string Detail, string? ElementId, string? Path);
 
 /// <summary>One output file of a planned unit.</summary>
 /// <param name="Path">The repo-relative path.</param>
@@ -749,4 +761,11 @@ public sealed record ApplyResult(RunOutcome Outcome, IReadOnlyList<string> Stale
 /// <summary>The result of a preview.</summary>
 /// <param name="Files">The rendered files.</param>
 /// <param name="Diagnostics">Diagnostics.</param>
-public sealed record PreviewResult(IReadOnlyList<RenderedFile> Files, IReadOnlyList<Diagnostic> Diagnostics);
+public sealed record PreviewResult(IReadOnlyList<RenderedFile> Files, IReadOnlyList<Diagnostic> Diagnostics)
+{
+    /// <summary>The keys the render read, ordinal: what a change must touch to re-render this unit (generation-ui.md section 3.3).</summary>
+    public IReadOnlyList<string> ReadKeys { get; init; } = [];
+
+    /// <summary>Milliseconds the preview took.</summary>
+    public long ElapsedMs { get; init; }
+}

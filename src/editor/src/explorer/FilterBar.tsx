@@ -313,7 +313,7 @@ function SaveScopeDialog({ open, filter, onClose }: { open: boolean; filter: Exp
       {open ? (
         <DialogContent title="Save the filters as a scope" description="A scope keeps the chips, not the search text.">
           <form
-            className="flex flex-col gap-3"
+            className="flex flex-col gap-2"
             onSubmit={(e) => {
               e.preventDefault();
               void save();

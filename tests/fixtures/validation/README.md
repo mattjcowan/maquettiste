@@ -31,3 +31,18 @@ load-time rule: a file that sets it is not schema-valid and cannot be a fixture 
 
 `ValidationFixtureTests` compares each report with `expected.json`; run the tests with `MAQUETTISTE_UPDATE_GOLDEN=1` to rewrite
 them, then review the diff. The tests also pin the set of rule ids per family, so a rewrite cannot silently drop a rule.
+
+The generation rules MQ6003 and MQ6019 to MQ6025 are pack and plan rules, not model rules. Their fixture, `generation`, holds only
+packs (`.maquettiste/templates/<pack>/`) and `packs.json`, the project's `packs` settings; `GenerationFixtureTests` copies them onto
+the billing model and compares what `maquettiste validate` reports (the pack load with its parse pass) followed by a dry-run plan of
+`outputs` with `expected.json`:
+
+| Pack | Rules |
+| --- | --- |
+| `outputs` | MQ6019 (unit `escape`), MQ6020 (unit `same`), MQ6003 (unit `broken`, at load and at render), MQ6025 (`scratch.scriban`, which no unit reaches) |
+| `scope` | MQ6021 |
+| `missing` | MQ6022 |
+| `params` | MQ6023, MQ6024 (on `maquettiste.json`) |
+
+The rules are also tested where they are raised: MQ6019 at planning in `Editor/PlanCauseTests`, MQ6020 at plan and in `paths` in
+`Editor/PackAuthoringMoreTests`, MQ6021 to MQ6024 in `Editor/PackAuthoringTests` and `PackLoaderTests`.

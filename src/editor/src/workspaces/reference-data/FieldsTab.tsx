@@ -41,7 +41,7 @@ export function FieldsTab({ typeId }: { typeId: string }) {
 
   const cell = "h-[var(--mq-row-h)] px-1.5 align-middle";
   return (
-    <div className="flex max-w-4xl flex-col gap-3" data-testid="reference-fields">
+    <div className="flex max-w-4xl flex-col gap-2" data-testid="reference-fields">
       <SectionTitle>Built-in fields</SectionTitle>
       <table className="w-full border-collapse rounded-control border border-default text-12" aria-label="Built-in fields">
         <thead>

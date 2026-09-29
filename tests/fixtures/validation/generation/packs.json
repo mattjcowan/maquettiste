@@ -1,0 +1,18 @@
+{
+  "missing": {
+    "output": "db"
+  },
+  "outputs": {
+    "output": "db"
+  },
+  "params": {
+    "output": "db",
+    "parameters": {
+      "colour": "red",
+      "width": "wide"
+    }
+  },
+  "scope": {
+    "output": "db"
+  }
+}

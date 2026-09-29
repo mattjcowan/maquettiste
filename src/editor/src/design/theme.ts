@@ -1,7 +1,7 @@
-// Theme and density: the OS preference by default, with a manual override remembered per browser
-// (localStorage mq.theme, mq.density). The resolved theme is written to <html data-theme>, which
-// tokens.css keys on.
-import type { Density, ThemeChoice } from "@/state/store";
+// Theme: the OS preference by default, with a manual override remembered per browser (localStorage
+// mq.theme). The resolved theme is written to <html data-theme>, which tokens.css keys on. There is one
+// density (src/design/density.ts).
+import type { ThemeChoice } from "@/state/store";
 
 export function systemPrefersDark(): boolean {
   return typeof window !== "undefined" && !!window.matchMedia?.("(prefers-color-scheme: dark)").matches;
@@ -13,10 +13,6 @@ export function resolveTheme(choice: ThemeChoice): "light" | "dark" {
 
 export function applyTheme(choice: ThemeChoice): void {
   document.documentElement.dataset.theme = resolveTheme(choice);
-}
-
-export function applyDensity(density: Density): void {
-  document.documentElement.dataset.density = density;
 }
 
 /** Follows OS changes while the choice is "system"; returns the unsubscribe function. */

@@ -302,7 +302,7 @@ export function TypeMenu({
             title={`Convert ${pending.item.name} to an enum`}
             description="Each row becomes a member named after its code, with its label as display name; the fields that use the type use the enum; the type and its seeds are deleted. Undo reverses it."
           >
-            <div className="flex flex-col gap-3" data-testid="convert-to-enum-dialog">
+            <div className="flex flex-col gap-2" data-testid="convert-to-enum-dialog">
               {pending.problem ? (
                 <p role="alert" className="text-13 text-danger">
                   {pending.problem}
@@ -325,7 +325,7 @@ export function TypeMenu({
       {pending?.action === "delete" ? (
         <Dialog open onOpenChange={(open) => !open && setPending(null)}>
           <DialogContent title={pending.items.length === 1 ? `Delete ${pending.items[0].name}` : `Delete ${pending.items.length} reference types`}>
-            <div className="flex flex-col gap-3" data-testid="delete-type-dialog">
+            <div className="flex flex-col gap-2" data-testid="delete-type-dialog">
               {pending.usages === null ? (
                 <p className="text-13 text-secondary">Looking for fields that use {pending.items.length === 1 ? "it" : "them"}…</p>
               ) : pending.usages.length ? (
@@ -370,7 +370,7 @@ function RenameDialog({ item, taken, onClose, onRename }: { item: RefTypeItem; t
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent title={`Rename ${item.name}`} description="The seed named after the type follows the new name.">
         <form
-          className="flex flex-col gap-3"
+          className="flex flex-col gap-2"
           onSubmit={(e) => {
             e.preventDefault();
             if (!problem && name !== item.name) onRename(name);
@@ -409,7 +409,7 @@ function CategoryDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent title={items.length === 1 ? `Move ${items[0].name} to a category` : `Move ${items.length} types to a category`}>
         <form
-          className="flex flex-col gap-3"
+          className="flex flex-col gap-2"
           onSubmit={(e) => {
             e.preventDefault();
             onMove(category || null);

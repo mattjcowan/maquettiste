@@ -140,7 +140,7 @@ export function TypePicker({ value, collection, required, options, label, onPick
                 ))}
                 {items.length === 0 ? <p className="px-2 py-1 text-secondary">No type matches.</p> : null}
               </div>
-              <div className="flex items-center gap-3 border-t border-default px-2 py-1">
+              <div className="flex items-center gap-2 border-t border-default px-2 py-1">
                 <Toggle label="Many" hint="Alt+M" pressed={many} onToggle={() => setMany((v) => !v)} />
                 <Toggle label="Required" hint="Alt+R" pressed={req} onToggle={() => setReq((v) => !v)} />
               </div>

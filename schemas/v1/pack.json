@@ -3,7 +3,18 @@
   "title": "Template pack",
   "description": "templates/<pack>/pack.json.",
   "type": "object",
-  "x-order": ["$schema", "name", "version", "engine", "description", "parameters", "scripts", "usesSchemaDiff", "units"],
+  "x-order": [
+    "$schema",
+    "name",
+    "version",
+    "engine",
+    "description",
+    "parameters",
+    "parameterSchema",
+    "scripts",
+    "usesSchemaDiff",
+    "units"
+  ],
   "properties": {
     "$schema": {
       "$ref": "common.json#/$defs/schemaPath"
@@ -26,6 +37,29 @@
       "type": "object",
       "default": {}
     },
+    "parameterSchema": {
+      "description": "The parameters' schema: a JSON Schema properties object and the required names; defaults stay in parameters.",
+      "type": "object",
+      "x-order": [
+        "properties",
+        "required"
+      ],
+      "properties": {
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object"
+          }
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "scripts": {
       "type": "array",
       "items": {
@@ -43,7 +77,18 @@
       "items": {
         "title": "Unit",
         "type": "object",
-        "x-order": ["id", "template", "for", "where", "output", "mode", "formatter", "delimiters", "companion", "transforms"],
+        "x-order": [
+          "id",
+          "template",
+          "for",
+          "where",
+          "output",
+          "mode",
+          "formatter",
+          "delimiters",
+          "companion",
+          "transforms"
+        ],
         "properties": {
           "id": {
             "type": "string",
@@ -131,7 +176,12 @@
             "minLength": 1
           },
           "mode": {
-            "enum": ["overwrite", "once", "regions", "pair"],
+            "enum": [
+              "overwrite",
+              "once",
+              "regions",
+              "pair"
+            ],
             "default": "overwrite"
           },
           "formatter": {
@@ -140,7 +190,10 @@
           },
           "delimiters": {
             "type": "object",
-            "x-order": ["open", "close"],
+            "x-order": [
+              "open",
+              "close"
+            ],
             "properties": {
               "open": {
                 "type": "string",
@@ -151,12 +204,18 @@
                 "minLength": 1
               }
             },
-            "required": ["open", "close"],
+            "required": [
+              "open",
+              "close"
+            ],
             "additionalProperties": false
           },
           "companion": {
             "type": "object",
-            "x-order": ["template", "output"],
+            "x-order": [
+              "template",
+              "output"
+            ],
             "properties": {
               "template": {
                 "type": "string",
@@ -167,7 +226,10 @@
                 "minLength": 1
               }
             },
-            "required": ["template", "output"],
+            "required": [
+              "template",
+              "output"
+            ],
             "additionalProperties": false
           },
           "transforms": {
@@ -178,7 +240,11 @@
             "default": []
           }
         },
-        "required": ["id", "template", "for"],
+        "required": [
+          "id",
+          "template",
+          "for"
+        ],
         "additionalProperties": false,
         "if": {
           "properties": {
@@ -186,15 +252,24 @@
               "const": "pair"
             }
           },
-          "required": ["mode"]
+          "required": [
+            "mode"
+          ]
         },
         "then": {
-          "required": ["companion"]
+          "required": [
+            "companion"
+          ]
         }
       },
       "minItems": 1
     }
   },
-  "required": ["name", "version", "engine", "units"],
+  "required": [
+    "name",
+    "version",
+    "engine",
+    "units"
+  ],
   "additionalProperties": false
 }

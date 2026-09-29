@@ -129,13 +129,35 @@ public sealed class EditorEvents
     /// <param name="settingsHash">The settings hash now.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>A task.</returns>
-    public async Task OnProjectFilesChangedAsync(string settingsHash, CancellationToken ct)
+    /// <param name="templates">The pack files that changed, by pack; <c>templates.changed</c> and <c>packs.changed</c> follow when any.</param>
+    public async Task OnProjectFilesChangedAsync(string settingsHash, CancellationToken ct, IReadOnlyList<TemplatesChangedEvent>? templates = null)
     {
         ArgumentNullException.ThrowIfNull(settingsHash);
         lock (_gate)
             _lastSettingsHash = settingsHash;
         await _realtime.PublishAsync("project.changed", new ProjectChangedEvent(settingsHash), Api.JsonOptions, ct).ConfigureAwait(false);
+        if (templates is { Count: > 0 })
+            await OnPackFilesChangedAsync(templates, ct).ConfigureAwait(false);
         SignalValidation();
+    }
+
+    /// <summary>
+    /// Publishes <c>templates.changed</c> once per pack, then <c>packs.changed</c> naming them (generation-ui.md section 5.1), so the
+    /// editor reloads one file or one pack. Sent beside <c>project.changed</c>, never instead of it: the watcher sends both, and the
+    /// functions' own pack writes send these two (the watcher's <c>project.changed</c> follows their disk change).
+    /// </summary>
+    /// <param name="templates">The changed files by pack.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>A task.</returns>
+    public async Task OnPackFilesChangedAsync(IReadOnlyList<TemplatesChangedEvent> templates, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(templates);
+        if (templates.Count == 0)
+            return;
+        foreach (var change in templates.OrderBy(t => t.Pack, StringComparer.Ordinal))
+            await _realtime.PublishAsync("templates.changed", change, Api.JsonOptions, ct).ConfigureAwait(false);
+        var packs = templates.Select(t => t.Pack).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        await _realtime.PublishAsync("packs.changed", new PacksChangedEvent(packs), Api.JsonOptions, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -230,6 +252,20 @@ public sealed class EditorEvents
         }
     }
 }
+
+/// <summary>The <c>templates.changed</c> payload: the files of one pack that changed.</summary>
+/// <param name="Pack">The pack.</param>
+/// <param name="Files">Pack-relative paths with their SHA-256 now, <see langword="null"/> when deleted; empty means "reload the pack".</param>
+public sealed record TemplatesChangedEvent(string Pack, IReadOnlyList<TemplateFileHash> Files);
+
+/// <summary>One changed pack file.</summary>
+/// <param name="Path">The pack-relative path.</param>
+/// <param name="Hash">The file's SHA-256 now, or <see langword="null"/> when it is gone.</param>
+public sealed record TemplateFileHash(string Path, string? Hash);
+
+/// <summary>The <c>packs.changed</c> payload.</summary>
+/// <param name="Packs">The packs whose files changed, ordinal.</param>
+public sealed record PacksChangedEvent(IReadOnlyList<string> Packs);
 
 /// <summary>The <c>project.changed</c> payload.</summary>
 /// <param name="SettingsHash">The hash of <c>maquettiste.json</c> now.</param>

@@ -27,7 +27,7 @@ export function NewEntityDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent title="New entity" description="Creates the entity with a uuid key and adds it to this diagram, in one batch.">
         <form
-          className="flex flex-col gap-3"
+          className="flex flex-col gap-2"
           onSubmit={async (e) => {
             e.preventDefault();
             if (!valid) return;
@@ -121,7 +121,7 @@ export function NewRelationDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent title={`New relation: ${sourceName} → ${targetName}`} description="Creates the relation and adds it to this diagram, in one batch.">
         <form
-          className="flex flex-col gap-3"
+          className="flex flex-col gap-2"
           onSubmit={async (e) => {
             e.preventDefault();
             if (!valid) return;
