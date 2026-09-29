@@ -25,7 +25,7 @@ public static class RuleCatalog
     [
         new("MQ1001", E, "Invalid JSON."),
         new("MQ1002", E, "Schema violation."),
-        new("MQ1003", W, "File is not in canonical form."),
+        new("MQ1003", W, "File is not in canonical form; run maquettiste format to rewrite it."),
         new("MQ1004", E, "Duplicate id."),
         new("MQ1005", W, "File is in the wrong folder or its name does not match the element."),
         new("MQ1006", E, "Invalid ULID."),

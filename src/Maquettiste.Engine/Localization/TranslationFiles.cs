@@ -9,7 +9,11 @@ namespace Maquettiste.Engine.Localization;
 /// <param name="Id">The node id.</param>
 /// <param name="Field">displayName, pluralName, label or description.</param>
 /// <param name="Value">The translated text.</param>
-public sealed record TranslationUnit(string Id, string Field, string Value);
+/// <param name="State">
+/// The unit's state as the file states it (XLIFF: the segment's <c>state</c>, such as <c>initial</c>, <c>translated</c>, <c>reviewed</c> or
+/// <c>final</c>; CSV: the <c>state</c> column), or <see langword="null"/> when the file has none.
+/// </param>
+public sealed record TranslationUnit(string Id, string Field, string Value, string? State = null);
 
 /// <summary>
 /// RFC 4180 CSV (reference-types-seeds-localization.md section 2.3): UTF-8, fields quoted only when they hold a comma, a quote or a line
@@ -215,7 +219,8 @@ public static class TranslationFiles
             var targets = unit.Descendants(ns + "target").ToList();
             if (targets.Count == 0)
                 continue;
-            units.Add(new TranslationUnit(key[..slash], key[(slash + 1)..], string.Concat(targets.Select(t => t.Value))));
+            var state = (string?)unit.Descendants(ns + "segment").FirstOrDefault()?.Attribute("state");
+            units.Add(new TranslationUnit(key[..slash], key[(slash + 1)..], string.Concat(targets.Select(t => t.Value)), state));
         }
 
         return units;
@@ -248,7 +253,8 @@ public static class TranslationFiles
             return [];
         var header = rows[0];
         int Column(string name) => header.ToList().IndexOf(name) is var at and >= 0 ? at : throw new FormatException($"The CSV has no '{name}' column.");
-        int id = Column("id"), field = Column("field"), translation = Column("translation");
-        return [.. rows.Skip(1).Where(r => r.Count > Math.Max(id, field)).Select(r => new TranslationUnit(r[id], r[field], translation < r.Count ? r[translation] : ""))];
+        int id = Column("id"), field = Column("field"), translation = Column("translation"), state = header.ToList().IndexOf("state");
+        return [.. rows.Skip(1).Where(r => r.Count > Math.Max(id, field)).Select(r => new TranslationUnit(r[id], r[field], translation < r.Count ? r[translation] : "",
+            state >= 0 && state < r.Count && r[state].Length > 0 ? r[state] : null))];
     }
 }

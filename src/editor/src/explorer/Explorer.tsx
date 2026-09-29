@@ -781,6 +781,13 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
 
   const run = (action: MenuActionId, keys: string[]) => {
     if (!forest) return;
+    if (action.startsWith("type:")) {
+      const ids = keys.map(idOf).filter((x): x is string => !!x);
+      select(ids.slice(0, 1));
+      if (store.getState().workspace !== "reference-data") openWorkspace("reference-data");
+      store.getState().requestTypeAction({ action: action.slice(5), ids });
+      return;
+    }
     if (action.startsWith("new:")) {
       store.getState().requestNew({ kind: action.slice(4) as CreateKind, domain: domainOfKey(forest, keys[0]) });
       return;

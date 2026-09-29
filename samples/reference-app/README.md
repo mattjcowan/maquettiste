@@ -113,3 +113,15 @@ The editor listens on 127.0.0.1:8097 (`MAQUETTISTE_PORT`); the walk edits the mo
 - Alternate keys, indexed and unique attributes, overlays with native types, checks, filtered and descending indexes,
   sequence defaults, a sequence-keyed entity (`JournalEntry`), the designed `integration_outbox` table and the
   `open_sales_orders` view.
+
+## Known gaps
+
+- **One language.** `maquettiste.json` declares no `localization` block, so the model has no translation shards:
+  `maquettiste l10n status` answers "not declared" here, and the editor's locale switcher and Translations sections stay
+  hidden. The localization paths are exercised by the engine's tests and the `write-model --locales 4` bench model instead.
+- **Two reference types.** `ProductStatus` and `ShipmentStatus` (seeds `product-status` and `shipment-status`), stored as
+  lookup tables keyed by code; the other reference-data strategies are covered by the `sql-ddl` pack's goldens, not by
+  this application. `$CLI seed export ProductStatus` prints the rows as CSV (`@id,@code,@label,@description`), and
+  `seed import` previews a CSV against them.
+- **PostgreSQL only.** `db-apply.sh` applies the DDL to PostgreSQL; the reference-data realizations have not been run
+  against SQL Server.

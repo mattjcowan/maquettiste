@@ -52,7 +52,9 @@ clobber a concurrent edit or leave a dangling id.
 5. Reference data and translations: `reference_type_usage` lists the attributes that use a reference type and its storage
    per database; `export_seed_csv` / `import_seed_csv` (a dry run unless `apply` is true, then `expectedHash`) move rows as
    CSV; `localization_status`, `get_translations` and `set_translations` (with the `shardHash` values you read as
-   `expected`) read and write translations, which never go in element files.
+   `expected`) read and write translations, which never go in element files. From a terminal, `maquettiste l10n status`,
+   `l10n export|import <locale>`, `l10n prune`, `l10n set-default <locale>` and `maquettiste seed export|import <seed>` do
+   the same; import, prune, set-default and seed import only preview until given `--apply`.
 6. Generate: `plan` (stores a plan, touches nothing), `get_plan` / `get_plan_diff` for the files that matter, then
    `apply_plan` with the plan id. `stale` means the inputs changed since the plan: plan again. `list_packs`,
    `get_settings` and `save_settings` (with `expectedHash`) cover the packs and `maquettiste.json`.

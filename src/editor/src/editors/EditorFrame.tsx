@@ -32,6 +32,10 @@ export interface EditorSubTab {
   value: string;
   label: string;
   content: ReactNode;
+  /** Shown but not selectable (the entity editor's Inheritance tab outside a hierarchy); the frame falls back to the first tab. */
+  disabled?: boolean;
+  /** The trigger's tooltip, such as why the tab is disabled. */
+  title?: string;
 }
 
 /** The DOM id prefix of an editor's fields: distinct from the inspector's when both show one element. */
@@ -76,7 +80,7 @@ export function EditorLayout({
   const { id, kind, name } = ctx;
   const view = useEditor(store, (s) => s.editors.view[kind]);
   const list = tabs.filter((t): t is EditorSubTab => !!t);
-  const current = list.some((t) => t.value === view) ? view! : list[0]?.value;
+  const current = list.some((t) => t.value === view && !t.disabled) ? view! : list[0]?.value;
   const diagnostics = draft?.status === "invalid" ? ctx.diagnostics : [];
 
   return (
@@ -116,7 +120,7 @@ export function EditorLayout({
       <Tabs value={current} onValueChange={(v) => store.getState().updateEditors((s) => setView(s, kind, v))} className="flex min-h-0 flex-1 flex-col">
         <TabsList aria-label={`${KIND_LABELS[kind]} editor views`}>
           {list.map((t) => (
-            <TabsTrigger key={t.value} value={t.value}>
+            <TabsTrigger key={t.value} value={t.value} disabled={t.disabled} title={t.title}>
               {t.label}
             </TabsTrigger>
           ))}

@@ -75,7 +75,8 @@ opened last.
 The keyboard walks the tree: the arrows move and expand, Enter opens, F2 renames, Delete deletes, and Shift or Ctrl with a
 click or an arrow selects several rows of one kind. Every row has a right-click menu (also Shift+F10) with the actions
 that fit it, such as **Where used**, **Show on canvas**, **Add to diagram**, **Move to domain…**, **Go to table** or
-**Open mappings**. F12 on a reference goes to its definition and Shift+F12 lists where the element is used.
+**Open mappings**. **Move to domain…** warns before a tag or category declared by a domain would fall out of scope in
+the new place. F12 on a reference goes to its definition and Shift+F12 lists where the element is used.
 
 ### Element editors and General mode
 
@@ -84,10 +85,17 @@ tab in the centre, beside the screen. A single click opens it in the **preview**
 click replaces; editing it, a double click or Enter keeps it open. Each editor has top controls (name, domain, and for an
 entity its key, **Base entity**, **Is abstract**, stereotypes, tags and category as chips) over tabs:
 
-- **Entity**: Attributes, Relationships, Indexes, Mappings, Seed data, References, Code generation.
-- **Relationship**: its ends at the top, then Attributes, Code generation, References.
+- **Entity**: Attributes, Relationships, Indexes, Mappings, Inheritance, Seed data, References, Code generation. Under
+  the attribute grid, **Inherited** lists the base entities' fields and **Virtual** the fields the entity's stereotypes
+  add, both read-only. Relationships has **New relationship…**, which starts the New relationship dialog from this
+  entity. **Inheritance** (available once the entity has a base entity or another entity derives from it) shows the base
+  entity, the derived entities and, per database, the strategy (tph, tpt or tpc) with where it comes from: the root
+  entity's mapping, else the database's or the project's conventions.
+- **Relationship**: its ends at the top, then Attributes, Mappings (per database: the customised mapping's shape, or
+  "By convention", and the junction table), Code generation, References.
 - **Enum**: Members; **value object**: Attributes; **custom type**: Definition; each with Code generation and References.
-- **Domain**: General, Tags and Categories.
+- **Domain**: General, Tags and Categories. The display name, plural name and description are edited in the editor's
+  header only, not again on General.
 
 **Follow selection** on the tab bar turns the shown editor into **General mode**: it follows the selection in the
 explorer and on the canvas and keeps its tab, so you can walk twenty entities on the Mappings tab without reopening
@@ -109,7 +117,9 @@ New database, New diagram), and so does an empty explorer. Every New dialog star
 domain: the row you right-clicked, else the selected element's domain, else the open diagram's home. The new element
 opens in its editor (a diagram on the canvas, a database on the Database screen, a reference type on the Reference
 data screen), and Undo removes it. An empty model shows a first-run panel with the same actions. Right-click a diagram
-for **Duplicate**. The explorers remember which rows you expanded across a reload.
+for **Duplicate**. In the New relationship dialog, **On delete of the <source>** follows the **Kind** until you pick one yourself: a
+composition starts on cascade (the whole owns its parts), every other kind on restrict. A database made with New
+database shows on the Database screen at once. The explorers remember which rows you expanded across a reload.
 
 - **Domain model**: the domains, each with one folder per kind (Entities, Relationships, Enums, Value objects, Custom
   types, Seed data), and elements not in a domain listed first under "Not in a domain". Its screen is the canvas.
@@ -120,7 +130,12 @@ for **Duplicate**. The explorers remember which rows you expanded across a reloa
 - **Reference data**: the reference types and their rows. The Reference data explorer is the screen's list: the types
   nested by category with a count on every group, and the explorer's search operators (`*` contains, `^` starts with,
   `~` like with `%`, `=` equals); its **…** menu has **Types A to Z (no categories)** for one flat list. Clicking a
-  type there opens it here. When the explorer is collapsed or shows another
+  type there opens it here. Right-click a type (also Shift+F10) for **Duplicate**, **Rename** (the seed named after the
+  type follows), **Move to category…**, **Set storage…** (opens the Storage tab), **Export CSV**, **Convert to enum…** (when the type has no
+  fields of its own and its codes are identifiers: rows become members and the fields that used the type use the enum)
+  and **Delete…**, which is refused while a field uses the type and otherwise deletes the type with its seeds; each is one
+  change that undo reverses. The Reference data explorer's row menu offers the same actions except Export CSV (the
+  Rows tab has it), plus **Add to favorites**. When the explorer is collapsed or shows another
   view, the screen shows the same list on its left (with a flat **A to Z** option). Ctrl+1 to Ctrl+4 pick a tab and `/`
   focuses the type search. For the selected type, four tabs; the tab you pick stays when you select another type:
   - **Fields**: the built-in `code` and `label` (names fixed; code's type, length and pattern editable), then your own
@@ -228,17 +243,25 @@ SPEC.md Section 4 describes.
 ## The command line
 
 `maquettiste` is the same engine without the editor: it creates the project, checks it and generates the code, which is
-what a CI job and a terminal need. `maquettiste --help` lists every option; exit codes are 0 success, 1 validation errors,
-2 drift, 3 hand-edit conflicts, 4 an internal or usage error.
+what a CI job and a terminal need. `maquettiste --help` lists every option; exit codes are 0 success, 1 validation or read errors,
+2 drift (or a `--check` preview that would change something), 3 hand-edit conflicts (or, for the `l10n` and `seed` verbs, a file
+that changed while the command ran), 4 an internal or usage error (a refused write, or an argument that names no locale or seed).
 
 | Command | What it does |
 | --- | --- |
-| `maquettiste init` | Creates `.maquettiste/` (`maquettiste.json`, the JSON schemas for editor completion, the `sql-ddl` starter pack) and a `.gitignore` block. `--pack csharp-dapper` or `--pack none` picks another starter; `--mcp`, `--skill` and `--agent-setup` register the agent server (docs/mcp.md). Running it again keeps what is there. |
+| `maquettiste init` | Creates `.maquettiste/` (`maquettiste.json`, the JSON schemas for editor completion, the `sql-ddl` starter pack) and a `.gitignore` block. `--pack csharp-dapper` or `--pack none` picks another starter; `--mcp`, `--skill` and `--agent-setup` register the agent server (docs/mcp.md). The project is named by `--name <name>`, else the `name` of `package.json`, else the git remote's repository name, else the folder name (so a repository mounted at `/repo` in the image keeps its real name). Running it again keeps what is there. |
 | `maquettiste validate` | Validates the model and the packs; `--format sarif` for code-scanning tools. |
 | `maquettiste generate` | Renders the packs into the output roots of `maquettiste.json`, incrementally: only units whose inputs changed re-render. Prints one line per file (`A` added, `M` modified, `D` deleted, `K` kept). A generated file edited by hand stops the run (exit 3); `--hand-edits overwrite` replaces it. |
 | `maquettiste generate --check` | Renders without writing and exits 2 when the committed output differs from the model: the CI gate. |
 | `maquettiste generate --watch` | Regenerates on every change under `.maquettiste/` (a save in the editor, a template edit) until Ctrl+C. |
 | `maquettiste format` | Rewrites every model file (`maquettiste.json`, `model/**`) in canonical form, the form the editor writes, and prints the count; hand-written files then stop reporting MQ1003. A file that does not pass its schema is left as it is and named. `--check` writes nothing and exits 2 (drift, as `generate --check` does) when a file would change. |
+| `maquettiste l10n status` | The default locale, the declared locales and, per translated locale and shard, how many texts are translated, missing and stale (`--format json` for scripts). |
+| `maquettiste l10n export fr` | The French texts as XLIFF 2.1 for translators (`--format csv` for a spreadsheet), on stdout or into `--out <file>`. |
+| `maquettiste l10n import fr <file>` | Previews what an XLIFF or CSV file adds, changes and confirms (a stale text the translator marked `translated`, `reviewed` or `final` without changing it), and names the units that match nothing; `--apply` plans again and writes it as one save, refused (exit 3) when a shard changes while the command runs; it prints what it wrote, which can differ from an earlier preview if the files changed in between. `--check` exits 2 when the file would change something. |
+| `maquettiste l10n prune` | Lists the orphan translations (MQ7203: an entry whose element is gone, or a field its element does not have); `--apply` removes them in one save, as the other `l10n` and `seed` verbs write only with `--apply`. `--check` exits 2 when there are orphans. |
+| `maquettiste l10n set-default fr` | Previews making French the default language: each French text moves into the element files and the text it replaces becomes an English translation; `--apply` writes it all in one change to review in git. Other locales' translations turn stale where their source text changed. Sidecar descriptions and orphans are not moved: they stay in the new default's locale folder, which is no longer loaded (MQ7202), and a sidecar-described element keeps its old-language description; the command lists them as skipped. Move or delete them by hand, or run `l10n prune` before switching. |
+| `maquettiste seed export <seed>` | A seed's rows as CSV (the seed's id or name, or the id or name of the element it seeds); `--locale fr` adds the French label and description columns, `--out <file>` writes a file. |
+| `maquettiste seed import <seed> <file>` | Previews a CSV import (rows match by `@id`, else by `@code`): added, changed, removed and blocked rows; `--mode replace` also removes the rows the file leaves out, except rows still referenced; `--apply` plans again and writes it, refused (exit 3) when the seed file changes while the command runs; it prints what it wrote, which can differ from an earlier preview if the seed changed in between. |
 | `maquettiste pack new <name>` | Scaffolds a pack under `.maquettiste/templates/<name>/` (`--from empty`, `sql-ddl` or `csharp-dapper`). Give it an `output` under an allowed root in `maquettiste.json` before the next `generate` (packs/README.md). |
 
 Progress (`--progress plain`, the default when stderr is not a terminal) prints each stage once, in order, with a start
@@ -279,7 +302,7 @@ the folder does not exist yet, Docker creates it empty (owned by root on Linux) 
 
 ## Translations, seed CSV and reference data over the API
 
-The editor's API (and the matching MCP tools, see docs/mcp.md) serves the translations of the standard fields and the seed
+The `l10n` and `seed` commands above do the same from a terminal. The editor's API (and the matching MCP tools, see docs/mcp.md) serves the translations of the standard fields and the seed
 rows as files people outside the model can work with (reference-types-seeds-localization.md sections 2.3 and 3.9):
 
 - `GET /api/localization`: the default locale, the declared locales and, for each translated locale, its fallback chain and

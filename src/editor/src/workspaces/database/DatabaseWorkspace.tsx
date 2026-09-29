@@ -8,7 +8,7 @@ import { Background, Controls, MiniMap, ReactFlow, ReactFlowProvider, useNodesIn
 import { Download, LayoutGrid } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/menu";
 import { exportCanvas } from "@/canvas/export";
-import { useDatabaseTables, useDatabaseView, usePreview, useProject } from "@/api/queries";
+import { useDatabaseTables, useDatabaseView, useIndex, usePreview, useProject } from "@/api/queries";
 import type { DatabaseDoc } from "@/api/types";
 import { useEditor } from "@/state/store";
 import { useServices } from "@/app/context";
@@ -16,7 +16,7 @@ import { useEditorNavigation } from "@/app/navigation";
 import { Toolbar, EmptyState, Spinner } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
-import { filterTables } from "./tableList";
+import { databaseList, filterTables } from "./tableList";
 import { CodeView } from "@/code";
 import { TableNode, type TableFlowNode } from "@/canvas/TableNode";
 import { ForeignKeyEdge, type ForeignKeyFlowEdge } from "@/canvas/ForeignKeyEdge";
@@ -44,7 +44,9 @@ function DatabaseCanvas() {
   const { openDatabase, select } = useEditorNavigation();
   const flow = useReactFlow<TableFlowNode, ForeignKeyFlowEdge>();
   const initialized = useNodesInitialized();
-  const databases = useMemo(() => project.data?.databases ?? [], [project.data]);
+  const index = useIndex();
+  // The index's rows: a database created a moment ago shows at once, before the project is read again.
+  const databases = useMemo(() => databaseList(project.data?.databases, index.data), [project.data, index.data]);
   const rootRef = useRef<HTMLDivElement>(null);
   const databaseName = databases.find((d) => d.id === activeDatabase)?.name ?? "database";
 

@@ -15,3 +15,14 @@ export function filterTables(tables: readonly TableSummary[], filter: string, ca
     .sort((a, b) => a.name.localeCompare(b.name) || (a.schema ?? "").localeCompare(b.schema ?? ""));
   return { tables: matching.slice(0, cap), total: matching.length, more: Math.max(0, matching.length - cap) };
 }
+
+/**
+ * The databases the Database screen offers: the index's database rows (fresh after a create, a rename or a delete),
+ * in the project's order, new ones by name after it; the project's list alone until the index has loaded.
+ */
+export function databaseList<T extends { id: string; kind: string; name: string }>(project: readonly T[] | undefined, index: readonly T[] | undefined): T[] {
+  if (!index) return [...(project ?? [])];
+  const order = new Map((project ?? []).map((d, i) => [d.id, i]));
+  const at = (id: string) => order.get(id) ?? Number.MAX_SAFE_INTEGER;
+  return index.filter((r) => r.kind === "database").sort((a, b) => at(a.id) - at(b.id) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+}

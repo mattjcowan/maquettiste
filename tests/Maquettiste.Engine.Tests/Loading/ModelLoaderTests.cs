@@ -232,6 +232,21 @@ public sealed class ModelLoaderTests
     }
 
     [Fact]
+    public async Task A_hand_edited_settings_file_is_MQ1003_pointing_at_the_format_command()
+    {
+        using var h = new LoaderHarness();
+        h.Write("maquettiste.json", """
+            {   "formatVersion": 1 }
+            """);
+
+        var model = (await LoadAsync(h.NewLoader())).Snapshot;
+
+        var mq1003 = Assert.Single(model.LoadDiagnostics, d => d.Rule == "MQ1003");
+        Assert.Contains("maquettiste format", mq1003.Message, StringComparison.Ordinal);
+        Assert.Contains("maquettiste format", RuleCatalog.Get("MQ1003").Description, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Explorer_scopes_load_from_the_project_settings()
     {
         using var h = new LoaderHarness();

@@ -45,10 +45,18 @@ export function NewElementHost() {
   const request = useEditor(store, (s) => s.newElement);
   const { forest } = useForest();
   if (!request || !forest) return null;
-  return <NewElementDialog key={`${request.kind}:${request.domain ?? ""}`} kind={request.kind} domain={request.domain} forest={forest} />;
+  return (
+    <NewElementDialog
+      key={`${request.kind}:${request.domain ?? ""}:${request.source ?? ""}`}
+      kind={request.kind}
+      domain={request.domain}
+      presetSource={request.source}
+      forest={forest}
+    />
+  );
 }
 
-function NewElementDialog({ kind, domain, forest }: { kind: CreateKind; domain: string | null; forest: Forest }) {
+function NewElementDialog({ kind, domain, presetSource, forest }: { kind: CreateKind; domain: string | null; presetSource?: string; forest: Forest }) {
   const services = useServices();
   const { store } = services;
   const queryClient = useQueryClient();
@@ -59,7 +67,7 @@ function NewElementDialog({ kind, domain, forest }: { kind: CreateKind; domain: 
   const [dialect, setDialect] = useState<string>("postgresql");
   const entities = [...forest.byId.values()].filter((r) => r.kind === "entity").sort((a, b) => a.name.localeCompare(b.name));
   const inDomain = (id: string) => !home || forest.byId.get(id)?.package === home;
-  const firstEntity = entities.find((e) => inDomain(e.id)) ?? entities[0];
+  const firstEntity = entities.find((e) => e.id === presetSource) ?? entities.find((e) => inDomain(e.id)) ?? entities[0];
   const [source, setSource] = useState(firstEntity?.id ?? "");
   // The second end starts on another entity so the default is not a self-relation with two identical roles.
   const secondEntity = entities.find((e) => e.id !== firstEntity?.id && inDomain(e.id)) ?? entities.find((e) => e.id !== firstEntity?.id) ?? firstEntity;

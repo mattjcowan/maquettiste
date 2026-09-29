@@ -188,6 +188,7 @@ export const EDITOR_TAB_LABELS = {
   relationships: "Relationships",
   indexes: GROUP_LABELS.indexes,
   mappings: GROUP_LABELS.mappings,
+  inheritance: "Inheritance",
   seedData: "Seed data",
   codeGeneration: "Code generation",
   references: "References",

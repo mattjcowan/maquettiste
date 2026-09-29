@@ -23,6 +23,7 @@ import { RowsTab } from "./RowsGrid";
 import { UsedByTab } from "./UsedByTab";
 import { StorageTab } from "./StorageTab";
 import { NewReferenceTypeDialog } from "./dialogs";
+import { TypeMenu, type TypeMenuAt } from "./TypeMenu";
 
 export const TABS = ["fields", "rows", "used-by", "storage"] as const;
 export type RefTab = (typeof TABS)[number];
@@ -57,6 +58,7 @@ export function ReferenceDataWorkspace() {
   const item = items.find((i) => i.id === typeId) ?? null;
   const [tab, setTab] = useState<RefTab>("rows");
   const [creating, setCreating] = useState(false);
+  const [menu, setMenu] = useState<TypeMenuAt | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const usage = useQuery({
     queryKey: ["reference-usage", typeId ?? ""],
@@ -87,7 +89,14 @@ export function ReferenceDataWorkspace() {
   return (
     <div className="flex h-full min-h-0" data-testid="reference-data" onKeyDown={onScreenKey}>
       {explorerShown ? null : (
-        <TypeList items={items} selected={typeId} searchRef={searchRef} onSelect={(id) => select([id])} onNew={() => setCreating(true)} />
+        <TypeList
+          items={items}
+          selected={typeId}
+          searchRef={searchRef}
+          onSelect={(id) => select([id])}
+          onNew={() => setCreating(true)}
+          onMenu={(id, x, y) => setMenu({ ids: [id], x, y })}
+        />
       )}
       <section aria-label="Reference type" className="flex min-w-0 flex-1 flex-col bg-surface">
         {item ? (
@@ -150,6 +159,14 @@ export function ReferenceDataWorkspace() {
           </EmptyState>
         )}
       </section>
+      <TypeMenu
+        items={items}
+        categories={vocab.categories}
+        menu={menu}
+        onClose={() => setMenu(null)}
+        onSelect={(id) => select([id])}
+        onStorage={() => setTab("storage")}
+      />
       <NewReferenceTypeDialog
         open={creating}
         onOpenChange={setCreating}

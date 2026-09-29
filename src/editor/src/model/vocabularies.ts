@@ -50,23 +50,60 @@ export function domainChain(domain: string | null | undefined, byId: ReadonlyMap
   return out;
 }
 
-const byIdOf = (rows: readonly Row[]) => new Map(rows.map((r) => [r.id, r] as const));
+// Per index array (the rows are replaced, never mutated): the id map, the vocabulary rows by (kind, scope) sorted by id,
+// and each chain asked for. An element editor mounts these hooks afresh on every selection in General mode, and the
+// explorer's filter bar re-renders with it: without the cache each of them walked every index row (EX 4.5 walk).
+interface VocabularyIndex {
+  byId: Map<string, Row>;
+  byScope: Map<string, Row[]>;
+  chains: Map<string, ScopedVocabulary[]>;
+}
+const vocabularyIndexes = new WeakMap<readonly Row[], VocabularyIndex>();
+const scopeKey = (kind: string, scope: string | null) => `${kind}\u0000${scope ?? ""}`;
+
+function vocabularyIndex(rows: readonly Row[]): VocabularyIndex {
+  let index = vocabularyIndexes.get(rows);
+  if (!index) {
+    const byId = new Map<string, Row>();
+    const byScope = new Map<string, Row[]>();
+    for (const r of rows) {
+      byId.set(r.id, r);
+      if (r.kind !== "tag-vocabulary" && r.kind !== "category-tree") continue;
+      const key = scopeKey(r.kind, r.package ?? null);
+      const list = byScope.get(key);
+      if (list) list.push(r);
+      else byScope.set(key, [r]);
+    }
+    for (const list of byScope.values()) list.sort((a, b) => a.id.localeCompare(b.id));
+    index = { byId, byScope, chains: new Map() };
+    vocabularyIndexes.set(rows, index);
+  }
+  return index;
+}
+
+const byIdOf = (rows: readonly Row[]): ReadonlyMap<string, Row> => vocabularyIndex(rows).byId;
 
 /** The vocabulary a scope declares itself (null: the global one), if any. */
 export function ownVocabulary(kind: VocabularyKind, scope: string | null, rows: readonly Row[]): Row | undefined {
-  return rows.filter((r) => r.kind === kind && (r.package ?? null) === scope).sort((a, b) => a.id.localeCompare(b.id))[0];
+  return vocabularyIndex(rows).byScope.get(scopeKey(kind, scope))?.[0];
 }
 
-/** The vocabularies of a kind an element in `domain` sees: its domain's, each enclosing domain's, then the global ones. */
+/**
+ * The vocabularies of a kind an element in `domain` sees: its domain's, each enclosing domain's, then the global ones.
+ * The same rows, kind and domain give the same array (callers must not mutate it).
+ */
 export function vocabulariesOnChain(kind: VocabularyKind, domain: string | null | undefined, rows: readonly Row[]): ScopedVocabulary[] {
-  const byId = byIdOf(rows);
+  const index = vocabularyIndex(rows);
+  const key = scopeKey(kind, domain ?? null);
+  const known = index.chains.get(key);
+  if (known) return known;
   const out: ScopedVocabulary[] = [];
-  for (const d of domainChain(domain, byId)) {
+  for (const d of domainChain(domain, index.byId)) {
     const own = ownVocabulary(kind, d, rows);
-    if (own) out.push({ id: own.id, kind, scope: d, domain: byId.get(d)?.name ?? d });
+    if (own) out.push({ id: own.id, kind, scope: d, domain: index.byId.get(d)?.name ?? d });
   }
-  for (const r of rows.filter((x) => x.kind === kind && !x.package).sort((a, b) => a.id.localeCompare(b.id)))
-    out.push({ id: r.id, kind, scope: null, domain: null });
+  for (const r of index.byScope.get(scopeKey(kind, null)) ?? []) out.push({ id: r.id, kind, scope: null, domain: null });
+  index.chains.set(key, out);
   return out;
 }
 
@@ -163,4 +200,36 @@ export function commonDomain(domains: readonly (string | null | undefined)[], ro
   const byId = byIdOf(rows);
   const chains = domains.map((d) => domainChain(d, byId));
   return chains[0].find((d) => chains.every((c) => c.includes(d))) ?? null;
+}
+
+/** An element's marks that would leave scope on a move: declared only by domain vocabularies off the new chain. */
+export interface MarksLeavingScope {
+  name: string;
+  tags: string[];
+  category: string | null;
+}
+
+/**
+ * The tags and categories of the moved elements that a domain vocabulary declares and the target domain's chain does
+ * not offer (explorer-redesign.md 1.11: Move to domain… warns before they fall out of scope). A mark no vocabulary
+ * declares, or one the target's chain offers, is not reported.
+ */
+export function marksLeavingScope(
+  elements: readonly { name: string; tags?: readonly string[] | null; category?: string | null }[],
+  target: string | null,
+  rows: readonly Row[],
+  docs: Docs,
+): MarksLeavingScope[] {
+  const scoped = (kind: VocabularyKind) => rows.filter((r) => r.kind === kind && r.package).map((r) => ({ id: r.id, kind, scope: r.package!, domain: null }));
+  const scopedTags = new Set(tagOptions(scoped("tag-vocabulary"), docs).options.map((o) => o.value));
+  const scopedCategories = new Set(categoryOptions(scoped("category-tree"), docs).map((o) => o.value));
+  const offeredTags = new Set(tagOptions(vocabulariesOnChain("tag-vocabulary", target, rows), docs).options.map((o) => o.value));
+  const offeredCategories = new Set(categoryOptions(vocabulariesOnChain("category-tree", target, rows), docs).map((o) => o.value));
+  const out: MarksLeavingScope[] = [];
+  for (const e of elements) {
+    const tags = (e.tags ?? []).filter((t) => scopedTags.has(t) && !offeredTags.has(t));
+    const category = e.category && scopedCategories.has(e.category) && !offeredCategories.has(e.category) ? e.category : null;
+    if (tags.length || category) out.push({ name: e.name, tags, category });
+  }
+  return out;
 }

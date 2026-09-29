@@ -66,6 +66,10 @@ test("the Databases and Diagrams explorers create from their New button", async 
   await page.getByRole("menuitem", { name: "New database" }).click();
   await create(page, "reporting");
   await expect(explorer(page).getByText("reporting").first()).toBeVisible();
+  // The Database screen shows the new database at once, not "No databases" until the project is read again.
+  await expect(page.getByTestId("database-workspace")).toBeVisible();
+  await expect(page.locator("#database-picker option:checked")).toHaveText("reporting");
+  await expect(page.getByText("No databases")).toHaveCount(0);
 
   await workspace(page, "Diagrams");
   await explorer(page).getByTestId("explorer-create-diagram").click();

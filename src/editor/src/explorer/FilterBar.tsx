@@ -71,13 +71,15 @@ export function FilterBar({
   const categoryVocabularies = useMemo(() => filterVocabularies("category-tree", filter.domain, rows ?? []), [rows, filter.domain]);
   const vocabularyDocs = useElements(useMemo(() => [...tagVocabularies, ...categoryVocabularies].map((v) => v.id), [tagVocabularies, categoryVocabularies]));
   const categories = useMemo(() => categoryOptions(categoryVocabularies, (v) => vocabularyDocs.byId.get(v)?.json), [categoryVocabularies, vocabularyDocs]);
+  // Every tag in use, once per index (the documents below change on every selection; the rows do not).
+  const usedTags = useMemo(() => [...new Set((rows ?? []).flatMap((r) => r.tags))].sort(), [rows]);
   const tags = useMemo(() => {
     const declared = tagOptions(tagVocabularies, (v) => vocabularyDocs.byId.get(v)?.json).options;
     const known = new Set(declared.map((t) => t.value));
     // A tag in use but declared nowhere on the chain is still offered, bare.
-    const undeclared = [...new Set((rows ?? []).flatMap((r) => r.tags))].filter((t) => !known.has(t)).sort();
+    const undeclared = usedTags.filter((t) => !known.has(t));
     return [...declared, ...undeclared.map((t) => ({ value: t, label: t }))];
-  }, [tagVocabularies, vocabularyDocs, rows]);
+  }, [tagVocabularies, vocabularyDocs, usedTags]);
   const stereotypes = useMemo(() => [...new Set((rows ?? []).flatMap((r) => r.stereotypes))].sort(), [rows]);
   const byId = useMemo(() => new Map((rows ?? []).map((r) => [r.id, r])), [rows]);
   // The kinds this explorer lists (tables are summaries, not index rows).

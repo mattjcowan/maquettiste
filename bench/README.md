@@ -322,8 +322,9 @@ written model is loaded once, and every localizable node of the default locale g
 with the `src` fingerprint of its source text. The texts draw from their own random stream and nodes are visited in id order, so
 the same options give the same bytes; with 0 the model is byte-identical to one written without the option.
 
-`dotnet run -c Release --project bench/Maquettiste.Bench -- time-load --model <dir> [--rounds 3]` times a cold load (a new model
-store over an empty cache folder), the localizable-node index and the completeness pass. It only reads the model.
+`dotnet run -c Release --project bench/Maquettiste.Bench -- time-load --model <dir> [--rounds 3] [--warm-cache]` times a cold load (a
+new model store over an empty cache folder), the localizable-node index and the completeness pass. It only reads the model. With
+`--warm-cache` every round uses one cache folder, filled by an untimed round 0, so each round is a restart over the cache volume.
 
 Measured at the write-model defaults (26,616 element files, 146,753 localizable nodes and 199,395 fields per locale, 41 shards and
 about 26 MB per locale; 24 cores, WSL2), rounds 2 to 5 (the first is a cold process):
@@ -332,6 +333,9 @@ about 26 MB per locale; 24 cores, WSL2), rounds 2 to 5 (the first is a cold proc
 | --- | --- | --- | --- | --- |
 | No locales | 410-540 ms | - | 0 ms | 410-540 ms |
 | `--locales 4` | 1,010-1,300 ms | 230-430 ms | 280-390 ms | 1,720-1,960 ms |
+| `--locales 4`, after the 2026-09-29 pass | 841-1,556 ms | 106-120 ms | 27-39 ms | 974-1,715 ms |
+| `--locales 4 --warm-cache`, after the pass | 664-1,210 ms | 93-146 ms | 27-38 ms | 795-1,337 ms |
+| No locales, `--warm-cache` | 436-520 ms | - | 0 ms | 436-520 ms |
 
 Four complete locales add about 1.2 to 1.4 s to the cold load, against the ≤ 400 ms target of
 reference-types-seeds-localization.md section 5: the target is **not met** (see that section for the breakdown and next steps).

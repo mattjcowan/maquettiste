@@ -81,6 +81,14 @@ export interface NewRelationInput {
   onDelete: "none" | "cascade" | "restrict" | "set-null";
 }
 
+/**
+ * The On delete a new relationship starts with (SPEC 6): a composition owns its parts' lifetime, so deleting the
+ * whole cascades to them; any other kind restricts the delete while parts exist.
+ */
+export function defaultOnDelete(kind: NewRelationInput["kind"]): NewRelationInput["onDelete"] {
+  return kind === "composition" ? "cascade" : "restrict";
+}
+
 export function NewRelationDialog({
   open,
   onOpenChange,
@@ -102,8 +110,10 @@ export function NewRelationDialog({
     sourceMax: 1,
     targetMin: 0,
     targetMax: "*",
-    onDelete: "restrict",
+    onDelete: defaultOnDelete("association"),
   });
+  // Until the user picks On delete, it follows the kind.
+  const [onDeleteChosen, setOnDeleteChosen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = <K extends keyof NewRelationInput>(key: K, value: NewRelationInput[K]) => setInput((i) => ({ ...i, [key]: value }));
   const valid = input.name.trim() !== "" && IDENTIFIER.test(input.sourceRole) && IDENTIFIER.test(input.targetRole);
@@ -124,7 +134,14 @@ export function NewRelationDialog({
               <Input id="rel-name" autoFocus value={input.name} onChange={(e) => set("name", e.target.value)} />
             </Field>
             <Field label="Kind" htmlFor="rel-kind">
-              <Select id="rel-kind" value={input.kind} onChange={(e) => set("kind", e.target.value as NewRelationInput["kind"])}>
+              <Select
+                id="rel-kind"
+                value={input.kind}
+                onChange={(e) => {
+                  const kind = e.target.value as NewRelationInput["kind"];
+                  setInput((i) => ({ ...i, kind, onDelete: onDeleteChosen ? i.onDelete : defaultOnDelete(kind) }));
+                }}
+              >
                 <option value="association">association</option>
                 <option value="aggregation">aggregation</option>
                 <option value="composition">composition</option>
@@ -168,7 +185,14 @@ export function NewRelationDialog({
             </Field>
           </fieldset>
           <Field label={`On delete of the ${sourceName}`} htmlFor="rel-ondelete">
-            <Select id="rel-ondelete" value={input.onDelete} onChange={(e) => set("onDelete", e.target.value as NewRelationInput["onDelete"])}>
+            <Select
+              id="rel-ondelete"
+              value={input.onDelete}
+              onChange={(e) => {
+                setOnDeleteChosen(true);
+                set("onDelete", e.target.value as NewRelationInput["onDelete"]);
+              }}
+            >
               {["none", "cascade", "restrict", "set-null"].map((v) => (
                 <option key={v} value={v}>
                   {v}

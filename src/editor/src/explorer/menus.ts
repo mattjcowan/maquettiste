@@ -4,6 +4,7 @@
 import { placementOf } from "@/model/labels";
 import type { ExplorerId, NodeType } from "./tree";
 import { CREATE_LABELS, DOMAIN_CREATE, EXPLORER_CREATE, folderCreate, type CreateKind } from "./create";
+import { TYPE_MENU, type TypeActionId } from "@/workspaces/reference-data/typeMenu";
 
 export type MenuActionId =
   | "open"
@@ -24,7 +25,8 @@ export type MenuActionId =
   | "favorite"
   | "move"
   | "rename"
-  | "delete";
+  | "delete"
+  | `type:${TypeActionId}`;
 
 export interface MenuItem {
   id: MenuActionId;
@@ -87,6 +89,13 @@ function single(t: MenuTarget): MenuItem[] {
   if (t.type === "table") return [item("open", "Open"), ...(t.linked ? [item("go-to-entity", "Go to entity")] : [])];
   if (!t.element) return [item("open", "Open")];
   const out: MenuItem[] = [item("open", "Open")];
+  // A reference type's actions run in the Reference data screen (TypeMenu.tsx); Delete there checks its usages.
+  if (t.kind === "reference-type")
+    return [
+      ...out,
+      ...TYPE_MENU.filter((i) => i.id !== "export-csv").map((i) => item(`type:${i.id}`, i.label, i.multi, i.danger)),
+      item("favorite", t.favorite ? "Remove from favorites" : "Add to favorites"),
+    ].sort((a, b) => Number(!!a.danger) - Number(!!b.danger));
   if (t.kind === "entity") {
     out.push(item("add-to-diagram", "Add to diagram", true), item("add-with-related", "Add with related…", true), item("show-on-canvas", "Show on canvas"));
     out.push(item("where-used", "Where used"));

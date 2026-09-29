@@ -135,14 +135,18 @@ mount folder itself.
 ```zsh
 cd $REPO
 maquettiste init                         # writes .maquettiste/, the sql-ddl pack and a .gitignore block
-sed -i '' 's/"name": "repo"/"name": "partner-service"/' .maquettiste/maquettiste.json   # see below
 maquettiste validate                     # Validation passed: 0 errors, 0 warnings, 0 infos.
 ```
 
 `init` prints `created .maquettiste/maquettiste.json`, `wrote .maquettiste/.schema/v1/ (26 schemas)`, `wrote
-.maquettiste/templates/sql-ddl/ (12 files)`, `updated .gitignore (maquettiste block)`. It names the project after the
-folder it runs in, which inside the container is `/repo`, hence the `sed` (use the partner repository's name): the name
-is what the editor's top bar shows. The model is empty; part 1 builds it in the editor. If the editor misbehaves, the
+.maquettiste/templates/sql-ddl/ (12 files)`, `updated .gitignore (maquettiste block)`. It names the project (the name the
+editor's top bar shows) from `--name <name>`, else the `name` of the repository's `package.json` (an `@scope/` prefix
+dropped), else the repository name of the git remote `origin`, else the folder, which inside the container is `/repo`.
+A partner repository cloned from a remote, or with a named `package.json`, gets its own name, so the earlier `sed`
+that renamed `repo` is no longer needed; if the top bar still
+says `repo`, run `maquettiste init --name partner-service` on a fresh `.maquettiste/` (the name is written only when
+`maquettiste.json` is created). **Re-check on the Mac** with an image built after this change: the rehearsed image
+predates it. The model is empty; part 1 builds it in the editor. If the editor misbehaves, the
 [fallback](#fallback-the-model-without-the-editor) writes the same model without it.
 
 Start the editor with a token (Docker Desktop's port forwarding makes the browser a remote peer, so expect the sign-in
@@ -185,7 +189,7 @@ current domain (the row you right-clicked, else the selected element's domain), 
 | 1.5 (1.25 min) | Click the Customer card, **Shift+click** Order, **New relation** (canvas toolbar). In "New relation: Customer → Order": Name `places`; Customer end Min 1, Max 1; Order end Role `orders` (Min 0, Max `*` are the defaults); On delete of the Customer: restrict (the default); **Create relation**. Then Order + OrderLine: `contains`, Kind **composition**, Order end 1..1, OrderLine end Role `lines`, On delete: **cascade**. Then Product + OrderLine: `refersTo`, Product end 1..1. **Auto-layout**. | Edges labelled places, contains and refersTo with `1` and `*` at the ends; Shop › Relationships lists the three. (Right-click Shop › **New relationship** also works, with From entity and To entity pickers but no cardinality: set that in its editor.) |
 | 1.6 (1 min) | Click the **Databases** rail icon (third): the empty explorer offers **New database**. Name `main`, Dialect `postgresql`, **Create**. In the inspector set **Default schema** to `shop`, Tab. Right-click **main** › **Expand all**, then double-click table **orders**. | "main · 4 tables · 4 entities mapped", then main › shop › Tables (customers, order_lines, orders, products). The Database screen: a Tables list, the table diagram, and the **DDL preview** of `shop.orders` with `customer_id uuid NOT NULL` and `CONSTRAINT fk_orders_customer_id FOREIGN KEY (customer_id) REFERENCES shop.customers (id) ON DELETE RESTRICT`. |
 
-If the Database screen says "No databases" right after 1.6's **Create**, click **main** in the explorer (known issue 2).
+If the Database screen says "No databases" right after 1.6's **Create** (an image older than the fix of known issue 2), click **main** in the explorer.
 Optional if time allows: select the Order card and open the inspector's **JSON** tab (the file path
 `.maquettiste/model/entities/order.json`, ids everywhere, `status` as `{ "ref": ... }`).
 
@@ -314,7 +318,7 @@ nothing is written. Without the editor at all, Claude Code over MCP (part 3) can
 
 | Step | Command | Expected |
 | --- | --- | --- |
-| 2.1 (45 s) | `maquettiste init` then `git status --short` | Now prints `kept .maquettiste/maquettiste.json`, `kept .maquettiste/.schema/v1/ (26 schemas, current)`, `kept .maquettiste/templates/sql-ddl/ (12 files, 12 kept)`, `kept .gitignore (maquettiste block)`. Explain what the first run wrote: `maquettiste.json` (output roots `db` committed and `src/Generated` built, the `sql-ddl` pack writing to `db`), the JSON schemas for editor completion, the pack's templates as plain files, and a `.gitignore` block. `git status` shows ` M .gitignore` and `?? .maquettiste/`. |
+| 2.1 (45 s) | `maquettiste init` then `git status --short` | Now prints `kept .maquettiste/maquettiste.json`, `kept .maquettiste/.schema/v1/ (26 schemas, current)`, `kept .maquettiste/templates/sql-ddl/ (12 files, 12 kept)`, `kept .gitignore (maquettiste block)`. Explain what the first run wrote: `maquettiste.json` (output roots `db` committed and `src/Generated` built, the `sql-ddl` pack writing to `db`), the JSON schemas for editor completion, the pack's templates as plain files, and a `.gitignore` block; the project's name came from the repository (`--name`, else `package.json`'s `name`, else the git remote, else the folder), which is what the editor's top bar shows (re-check on the Mac). `git status` shows ` M .gitignore` and `?? .maquettiste/`. |
 | 2.2 (45 s) | `ls .maquettiste/model/*/` then `cat .maquettiste/model/entities/order.json` | One folder per kind (databases, diagrams, entities, enums, packages, relations, ...), one file per element; the entity with ULID ids, and `status` typed `{ "ref": "<the enum's id>" }` (references are ids, never names). |
 | 2.3 (1 min) | `maquettiste validate && maquettiste generate --progress none` then `cat db/main/shop/tables/orders.sql` | `Validation passed`; `A db/main/migrations/0001.sql`, `A db/main/schema.sql`, `A db/main/seed.sql`, `A db/main/shop/tables/<4 tables>.sql`, "Outcome: Succeeded" (validate 0.8 s, generate 1.3 s from the image). The `shop` folder is 1.6's Default schema. The DDL has `customer_id uuid NOT NULL` and `fk_orders_customer_id ... ON DELETE RESTRICT`. |
 | 2.4 (1.5 min) | Install the custom pack, then register it (below). `maquettiste generate --progress none`, `cat src/generated/order.ts src/generated/order.schema.ts`, `npx tsc --noEmit` | `A src/generated/customer.ts` ... `A src/generated/index.ts`, `order-status.ts`, four `*.schema.ts` (1.35 s); `K db/main/migrations/0001.sql` means the migration is kept (written once, yours). `order.ts` has `status: OrderStatus`, `customerId: string`, `customer?: Customer`, `lines?: OrderLine[]`. `tsc` prints nothing (0.8 s). |
@@ -323,7 +327,7 @@ nothing is written. Without the editor at all, Claude Code over MCP (part 3) can
 | 2.7 (1 min) | `maquettiste generate --check --progress none; echo $?` then, in the editor, change Customer `name` Len 120 to 150 (Ctrl+P, `Customer`, Enter; double-click the Len cell of `name`, `150`, Enter), and run the check again | First `Outcome: Succeeded`, `0`. Then `Drift: committed output does not match the model; run maquettiste generate and commit the result (exit 2).` with `A db/main/migrations/0002.sql`, `M db/main/schema.sql`, `M db/main/shop/tables/customers.sql`, `M src/generated/customer.schema.ts`, an `error MQ6018` line (the schema snapshot of database 'main' is stale: the next `generate` writes it), and `2`. This is the CI gate. (A hand edit of a generated file gives `MQ6009 Hand edit` and exit 3.) |
 | 2.8 (1 min) | Second tab: `maquettiste generate --watch --progress none`. In the editor, on Customer's Attributes tab, **Add attribute** `phone` (string, Len 40). Ctrl+C when done. | `[watch] initial run: ...` with the pending drift applied, then after the edit `M src/generated/customer.ts`, `M src/generated/customer.schema.ts`, `A db/main/migrations/0003.sql`, `M db/...` within half a second of the save (0.36 s measured). |
 
-Commands for 2.4 (copy the pack, then replace `.maquettiste/maquettiste.json`; `name` is the one you set in B5):
+Commands for 2.4 (copy the pack, then replace `.maquettiste/maquettiste.json`; `name` is the one `init` gave in B5):
 
 ```zsh
 cp -R $MQ/samples/typescript-pack .maquettiste/templates/typescript
@@ -443,8 +447,8 @@ and if it is empty, set a new one and recreate the container (`... up -d` with t
 **An element landed in "Not in a domain".** It was created with nothing selected: set **Domain** in its editor, or
 right-click it › **Move to domain…**. Right-click **Shop** for New actions and the picker starts on Shop.
 
-**The top bar says `repo`.** `init` ran in the container, where the folder is `/repo`: set `"name"` in
-`.maquettiste/maquettiste.json` (B5) and reload the page.
+**The top bar says `repo`.** `init` found no `package.json` name and no git remote and fell back to the container's
+folder `/repo`: set `"name"` in `.maquettiste/maquettiste.json` (then `maquettiste format`) and reload the page.
 
 **Generated files owned by someone else.** On the Mac, files should belong to you (B3). If `ls -ln` shows UID 1654,
 remove them through a container: `docker run --rm --user 0 -v "$PWD:/w" --entrypoint rm mattjcowan/maquettiste:demo -rf /w/<path>`.
@@ -564,16 +568,18 @@ Playwright walk of the same editor over the demo model ran instead (above). Noth
 
 ### Known issues
 
-Routed around above; nothing in the product was changed.
+Routed around above. Issues 1, 2 and 4 are fixed in the source since the rehearsal, not yet in the rehearsed image.
 
-1. **The CLI from the image names a new project `repo`**, the folder name inside the container, and the editor's top
-   bar shows it. Workaround: the `sed` after `init` in B5 (2.4 rewrites the file anyway).
-2. **Right after New database, the Database screen says "No databases"** ("Add a database element to the model to design
+1. **The CLI from the image named a new project `repo`**, the folder name inside the container. Fixed in the source
+   after the rehearsal: `init` now takes `--name`, else `package.json`'s name, else the git remote's repository name
+   (B5). Re-check on the Mac with a rebuilt image.
+2. **Right after New database, the Database screen said "No databases"** (fixed in the source after the rehearsal: the
+   screen lists the index's databases at once; re-check on the Mac) ("Add a database element to the model to design
    its tables.") while the explorer already lists `main`. Workaround: click `main` in the explorer.
 3. **A hand edit of `maquettiste.json` or a model file gets MQ1003** ("The file is not in canonical form") in `generate`
    and in Problems. Workaround: `maquettiste format` (2.5).
-4. **The domain editor shows Display name, Plural name and Description twice** (above the tabs and again on General).
-   Cosmetic; do not linger on the domain tab in 1.1.
+4. **The domain editor showed Display name, Plural name and Description twice** (above the tabs and again on General).
+   Fixed in the source after the rehearsal: General leaves them to the header. Re-check on the Mac.
 5. **Packing the CLI needs `bench/`** (`BenchCommand.cs` references `BenchmarkReport`): a partial checkout without it
    fails with CS0246. Only the .NET tool fallback of B2 packs it; a full clone is fine.
 

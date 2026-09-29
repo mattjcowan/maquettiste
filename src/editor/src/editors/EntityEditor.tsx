@@ -3,7 +3,7 @@
 // extension schema applies). Every edit goes through the element's draft (state/drafts.ts).
 import { useState } from "react";
 import { KeyRound, Plus, Trash2 } from "lucide-react";
-import { useElements, useIndex } from "@/api/queries";
+import { useElements, useIndex, useSettings } from "@/api/queries";
 import type { AttributeDoc, components, ElementSummary, EntityDoc, RelationDoc, RelationEndDoc } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { CheckboxField } from "@/components/ui/checkbox";
@@ -11,6 +11,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { EmptyState, SectionTitle } from "@/components/ui/misc";
 import { KindIcon } from "@/app/icons";
+import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
 import { indexLookup } from "@/model/index";
 import { displayName, TYPE_KINDS, typeLabel } from "@/model/model";
@@ -22,6 +23,7 @@ import { References } from "@/inspector/Inspector";
 import { setOptional, useVocabularies } from "@/inspector/fields";
 import { domIdOf, EditorLayout, MarkChips, NameAndDomain, useCodeGenerationTab, useEditorContext, type EditorContext } from "./EditorFrame";
 import { baseChain, relatedOf } from "./related";
+import { fieldSources, inHierarchy, inheritanceRows, SOURCE_LABELS, STRATEGY_LABELS, type InheritanceStrategy } from "./inheritance";
 
 type Rec = Record<string, unknown>;
 type TableDoc = components["schemas"]["table"];
@@ -63,6 +65,8 @@ export function EntityEditor({ id }: { id: string }) {
 
 function EntityBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeof EditorLayout>[0]["draft"] }) {
   const codeGeneration = useCodeGenerationTab(ctx);
+  const index = useIndex();
+  const hierarchy = inHierarchy((ctx.json as EntityDoc).base, relatedOf(index.data, ctx.id).derived.length);
   return (
     <EditorLayout
       ctx={ctx}
@@ -87,9 +91,20 @@ function EntityBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<type
       }
       tabs={[
         { value: "attributes", label: EDITOR_TAB_LABELS.attributes, content: <FieldsTab {...ctx} /> },
-        { value: "relationships", label: EDITOR_TAB_LABELS.relationships, content: <RelationshipsTab id={ctx.id} /> },
+        {
+          value: "relationships",
+          label: EDITOR_TAB_LABELS.relationships,
+          content: <RelationshipsTab id={ctx.id} domain={(ctx.json as EntityDoc).package ?? null} />,
+        },
         { value: "indexes", label: EDITOR_TAB_LABELS.indexes, content: <IndexesTab {...ctx} /> },
         { value: "mappings", label: EDITOR_TAB_LABELS.mappings, content: <MappingTab id={ctx.id} /> },
+        {
+          value: "inheritance",
+          label: EDITOR_TAB_LABELS.inheritance,
+          content: <InheritanceTab {...ctx} />,
+          disabled: !hierarchy,
+          title: hierarchy ? undefined : "This entity has no base entity and no entity derives from it.",
+        },
         { value: "seed-data", label: EDITOR_TAB_LABELS.seedData, content: <SeedDataTab id={ctx.id} /> },
         { value: "references", label: EDITOR_TAB_LABELS.references, content: <References id={ctx.id} /> },
         codeGeneration,
@@ -288,7 +303,19 @@ function FieldsTab({ json, edit, flush, diagnostics }: EditorContext) {
   const definition = useDefinition();
   const chain = baseChain(vocab.lookup.byId, entity.base);
   const bases = useElements(chain);
-  const inherited = chain.flatMap((b) => ((bases.byId.get(b)?.json as EntityDoc | undefined)?.attributes ?? []).map((a) => ({ from: b, attribute: a })));
+  // Root first, as the resolver flattens them: each base's own attributes and its stereotypes' attributes, then this
+  // entity's stereotypes' attributes; an attribute id seen at a higher level is not repeated.
+  const levels = [
+    ...[...chain].reverse().map((b) => {
+      const doc = bases.byId.get(b)?.json as EntityDoc | undefined;
+      return { id: b, attributes: doc?.attributes, stereotypes: doc?.stereotypes };
+    }),
+    { id: entity.id, attributes: entity.attributes, stereotypes: entity.stereotypes },
+  ];
+  const sources = fieldSources(levels, vocab.allStereotypes);
+  // Nearest base first, as before.
+  const inherited = chain.flatMap((b) => sources.filter((s) => s.from === b));
+  const virtual = sources.filter((s) => s.from === entity.id && s.stereotype);
   return (
     <div className="flex flex-col gap-4">
       <AttributeGrid
@@ -330,11 +357,14 @@ function FieldsTab({ json, edit, flush, diagnostics }: EditorContext) {
                 </tr>
               </thead>
               <tbody>
-                {inherited.map(({ from, attribute }) => (
-                  <tr key={`${from}:${attribute.id}`} className="text-secondary">
-                    <td className="font-mono">{attribute.name}</td>
+                {inherited.map(({ from, stereotype, attribute }) => (
+                  <tr key={`${from}:${attribute.id}`} className="text-secondary" data-testid={stereotype ? "inherited-virtual-row" : undefined}>
+                    <td className="font-mono">
+                      {attribute.name}
+                      {stereotype ? <span className="ml-1 rounded-[4px] bg-app px-1 font-sans text-11">virtual</span> : null}
+                    </td>
                     <td>{typeLabel(attribute, vocab.lookup.nameOf)}</td>
-                    <td>{vocab.lookup.nameOf(from) ?? from}</td>
+                    <td>{stereotype ? `«${stereotype}» on ${vocab.lookup.nameOf(from) ?? from}` : (vocab.lookup.nameOf(from) ?? from)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -342,6 +372,32 @@ function FieldsTab({ json, edit, flush, diagnostics }: EditorContext) {
           ) : (
             <p className="text-12 text-secondary">{bases.byId.size < chain.length ? "Loading the base entities…" : "The base entities have no fields."}</p>
           )}
+        </section>
+      ) : null}
+      {virtual.length ? (
+        <section className="flex flex-col gap-1" data-testid="editor-virtual">
+          <SectionTitle>Virtual</SectionTitle>
+          <p className="text-12 text-secondary">Added by the entity's stereotypes; edit them on the stereotype in Settings.</p>
+          <table className="w-full text-13" aria-label={`Fields ${entity.name}'s stereotypes add`}>
+            <thead className="text-left text-11 text-secondary">
+              <tr>
+                <th className="font-medium">Name</th>
+                <th className="font-medium">Type</th>
+                <th className="font-medium">From</th>
+              </tr>
+            </thead>
+            <tbody>
+              {virtual.map(({ stereotype, attribute }) => (
+                <tr key={`${stereotype}:${attribute.id}`} className="text-secondary" data-testid="virtual-row" title="Read-only: added by a stereotype">
+                  <td className="font-mono">
+                    {attribute.name} <span className="rounded-[4px] bg-app px-1 font-sans text-11">virtual</span>
+                  </td>
+                  <td>{typeLabel(attribute, vocab.lookup.nameOf)}</td>
+                  <td>«{stereotype}»</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </section>
       ) : null}
     </div>
@@ -368,33 +424,48 @@ export function cardinalityOf(end: Pick<RelationEndDoc, "min" | "max">): string 
   return `${end.min ?? 0}..${end.max ?? "*"}`;
 }
 
-function RelationshipsTab({ id }: { id: string }) {
+function RelationshipsTab({ id, domain }: { id: string; domain: string | null }) {
   const index = useIndex();
+  const { store } = useServices();
   const lookup = indexLookup(index.data);
   const { relations } = relatedOf(index.data, id);
   // The relation documents (one batched read) carry each end's cardinality and the relation's attributes.
   const docs = useElements(relations.map((r) => r.id));
-  if (!relations.length) return <EmptyState title="No relationships">No relationship has this entity at an end.</EmptyState>;
+  const newRelationship = (
+    <Button size="sm" onClick={() => store.getState().requestNew({ kind: "relation", domain, source: id })} data-testid="editor-new-relationship">
+      <Plus /> New relationship…
+    </Button>
+  );
+  if (!relations.length)
+    return (
+      <EmptyState title="No relationships">
+        <p>No relationship has this entity at an end.</p>
+        <div className="mt-2">{newRelationship}</div>
+      </EmptyState>
+    );
   return (
-    <ul className="flex flex-col gap-0.5" aria-label="Relationships of this entity" data-testid="editor-relationships">
-      {relations.map((r) => {
-        const doc = docs.byId.get(r.id)?.json as RelationDoc | undefined;
-        const ends = doc?.ends ?? r.ends ?? [];
-        const endText = ends
-          .map((e) => {
-            const cardinality = doc ? ` ${cardinalityOf(e as RelationEndDoc)}` : "";
-            return `${lookup.nameOf(e.entity) ?? e.entity}${e.role ? ` (${e.role})` : ""}${cardinality}`;
-          })
-          .join(" – ");
-        const count = doc?.attributes?.length ?? 0;
-        const attributes = doc ? ` · ${count} attribute${count === 1 ? "" : "s"}` : "";
-        return (
-          <li key={r.id}>
-            <ElementLink summary={r} secondary={endText + attributes} />
-          </li>
-        );
-      })}
-    </ul>
+    <div className="flex flex-col gap-2">
+      <div>{newRelationship}</div>
+      <ul className="flex flex-col gap-0.5" aria-label="Relationships of this entity" data-testid="editor-relationships">
+        {relations.map((r) => {
+          const doc = docs.byId.get(r.id)?.json as RelationDoc | undefined;
+          const ends = doc?.ends ?? r.ends ?? [];
+          const endText = ends
+            .map((e) => {
+              const cardinality = doc ? ` ${cardinalityOf(e as RelationEndDoc)}` : "";
+              return `${lookup.nameOf(e.entity) ?? e.entity}${e.role ? ` (${e.role})` : ""}${cardinality}`;
+            })
+            .join(" – ");
+          const count = doc?.attributes?.length ?? 0;
+          const attributes = doc ? ` · ${count} attribute${count === 1 ? "" : "s"}` : "";
+          return (
+            <li key={r.id}>
+              <ElementLink summary={r} secondary={endText + attributes} />
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
@@ -500,6 +571,88 @@ function MappingTab({ id }: { id: string }) {
           </ul>
         </section>
       ) : null}
+    </div>
+  );
+}
+
+function InheritanceTab({ id, json }: EditorContext) {
+  const entity = json as EntityDoc;
+  const index = useIndex();
+  const settings = useSettings();
+  const lookup = indexLookup(index.data);
+  const chain = baseChain(lookup.byId, entity.base);
+  const root = chain[chain.length - 1] ?? id;
+  const { derived } = relatedOf(index.data, id);
+  const rootMappings = relatedOf(index.data, root).mappings;
+  const ownMappings = root === id ? [] : relatedOf(index.data, id).mappings;
+  const docs = useElements([...rootMappings, ...ownMappings].map((m) => m.id));
+  type MappingJson = { database?: string; inheritance?: InheritanceStrategy; discriminatorValue?: string | number };
+  const mappingJson = (list: ElementSummary[]) =>
+    list.map((m) => (docs.byId.get(m.id)?.json as MappingJson | undefined) ?? { database: m.database ?? undefined });
+  const project = settings.data?.json as
+    { conventions?: { inheritance?: InheritanceStrategy }; databases?: Record<string, { inheritance?: InheritanceStrategy }> } | undefined;
+  const rows = inheritanceRows({
+    databases: lookup.ofKind("database").map((d) => ({ id: d.id, name: d.name })),
+    rootMappings: mappingJson(rootMappings),
+    ownMappings: mappingJson(ownMappings),
+    conventions: project?.conventions,
+    perDatabase: project?.databases,
+  });
+  const rootSummary = lookup.byId.get(root);
+  return (
+    <div className="flex flex-col gap-4" data-testid="editor-inheritance">
+      <section className="flex flex-col gap-1">
+        <SectionTitle>Base entity</SectionTitle>
+        {entity.base && lookup.byId.get(entity.base) ? (
+          <ElementLink summary={lookup.byId.get(entity.base)!} secondary={chain.length > 1 ? `root ${rootSummary?.name ?? root}` : "root of the hierarchy"} />
+        ) : (
+          <p className="text-12 text-secondary">None: {entity.name} is the root of its hierarchy.</p>
+        )}
+      </section>
+      <section className="flex flex-col gap-1">
+        <SectionTitle>Derived entities</SectionTitle>
+        {derived.length ? (
+          <ul aria-label={`Entities derived from ${entity.name}`} data-testid="editor-derived">
+            {derived.map((d) => (
+              <li key={d.id}>
+                <ElementLink summary={d} />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-12 text-secondary">No entity derives from {entity.name}.</p>
+        )}
+      </section>
+      <section className="flex flex-col gap-1">
+        <SectionTitle>Mapping strategy</SectionTitle>
+        <p className="text-12 text-secondary">
+          Read from the mapping of {rootSummary?.name ?? "the root"}, else the conventions; change it on that mapping or in Settings.
+        </p>
+        {rows.length ? (
+          <table className="w-full text-13" aria-label="Inheritance strategy per database" data-testid="editor-inheritance-strategies">
+            <thead className="text-left text-11 text-secondary">
+              <tr>
+                <th className="font-medium">Database</th>
+                <th className="font-medium">Strategy</th>
+                <th className="font-medium">From</th>
+                <th className="font-medium">Discriminator value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.database}>
+                  <td>{r.databaseName}</td>
+                  <td>{STRATEGY_LABELS[r.strategy]}</td>
+                  <td className="text-secondary">{SOURCE_LABELS[r.source]}</td>
+                  <td className="font-mono">{r.discriminatorValue ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="text-12 text-secondary">No database yet: the strategy applies once a database maps the hierarchy.</p>
+        )}
+      </section>
     </div>
   );
 }

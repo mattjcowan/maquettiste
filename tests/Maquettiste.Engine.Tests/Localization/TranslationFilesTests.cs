@@ -56,7 +56,7 @@ public sealed class TranslationFilesTests
         Assert.Contains("Gram &amp; &lt;co&gt;", text, StringComparison.Ordinal);
         Assert.Equal(2, text.Split("<file ").Length - 1);
         Assert.Equal(
-            [new TranslationUnit("01JBS3C4DWA7N36096Q14DR9GP", "label", "Kilogramme"), new TranslationUnit("01JBM9S346Q3D25VT4F5V37E3S", "displayName", "Unité")],
+            [new TranslationUnit("01JBS3C4DWA7N36096Q14DR9GP", "label", "Kilogramme", "translated"), new TranslationUnit("01JBM9S346Q3D25VT4F5V37E3S", "displayName", "Unité", "initial")],
             units);
         Assert.Equal(text, TranslationFiles.WriteXliff("en", "fr", items));
     }
@@ -77,7 +77,7 @@ public sealed class TranslationFilesTests
         var text = TranslationFiles.WriteCsv(items);
 
         Assert.StartsWith("id,field,source,translation,state,shard\n", text, StringComparison.Ordinal);
-        Assert.Equal([new TranslationUnit("01JBS3C4DWA7N36096Q14DR9GP", "label", "Kilo, gramme")], TranslationFiles.ReadCsv(text));
+        Assert.Equal([new TranslationUnit("01JBS3C4DWA7N36096Q14DR9GP", "label", "Kilo, gramme", "translated")], TranslationFiles.ReadCsv(text));
         Assert.Throws<FormatException>(() => TranslationFiles.ReadCsv("id,field\nA,label\n"));
     }
 }

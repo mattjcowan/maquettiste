@@ -41,7 +41,9 @@ internal static class InitCommand
     /// <returns>The exit code.</returns>
     public static async Task<int> RunAsync(GlobalContext context, CancellationToken ct)
     {
-        context.Line.Expect("init", 1, "--pack", "--hooks", "--mcp", "--skill", "--agent-setup");
+        context.Line.Expect("init", 1, "--pack", "--hooks", "--mcp", "--skill", "--agent-setup", "--name");
+        if (context.Line.Value("--name") is { } given && string.IsNullOrWhiteSpace(given))
+            throw new UsageException("--name needs a project name.");
         var pack = context.Line.Choice("--pack", "sql-ddl", "sql-ddl", "csharp-dapper", "none");
         var repo = context.RepoRoot(search: false);
         if (!Directory.Exists(repo))
@@ -65,7 +67,7 @@ internal static class InitCommand
         var schemas = new SchemaRegistry();
         var json = new CanonicalJson(schemas);
         var settingsPath = Path.Combine(modelRoot, "maquettiste.json");
-        var settingsOutcome = await files.WriteAsync(WriteTarget.Model, settingsPath, Settings(json, repo, pack), overwrite: false, ct).ConfigureAwait(false);
+        var settingsOutcome = await files.WriteAsync(WriteTarget.Model, settingsPath, Settings(json, ProjectName(repo, context.Line.Value("--name")), pack), overwrite: false, ct).ConfigureAwait(false);
         if (settingsOutcome == WriteOutcome.Kept && pack != "none")
             settingsOutcome = await AddPackOutputAsync(files, json, settingsPath, pack, report, ct).ConfigureAwait(false);
         report.Add(Describe(settingsOutcome, ".maquettiste/maquettiste.json"));
@@ -271,12 +273,112 @@ internal static class InitCommand
         return outcome;
     }
 
-    private static byte[] Settings(CanonicalJson json, string repo, string pack)
+    /// <summary>
+    /// The project name of a new model: <c>--name</c>; else the <c>name</c> of <c>package.json</c> (without its <c>@scope/</c>); else the
+    /// repository name of the git remote (<c>origin</c>, else the first); else the folder name; else <c>model</c>.
+    /// </summary>
+    /// <param name="repo">The repo root.</param>
+    /// <param name="given">The <c>--name</c> value.</param>
+    /// <returns>The name.</returns>
+    internal static string ProjectName(string repo, string? given)
+    {
+        if (given?.Trim() is { Length: > 0 } name)
+            return name;
+        if (PackageName(Path.Combine(repo, "package.json")) is { } package)
+            return package;
+        if (GitRemoteName(repo) is { } remote)
+            return remote;
+        return Path.GetFileName(repo) is { Length: > 0 } folder ? folder : "model";
+    }
+
+    private static string? PackageName(string path)
+    {
+        try
+        {
+            if (!File.Exists(path) || JsonNode.Parse(File.ReadAllText(path)) is not JsonObject package || package["name"] is not JsonValue value
+                || !value.TryGetValue<string>(out var name))
+                return null;
+            name = name.Trim();
+            var slash = name.LastIndexOf('/');
+            name = name.StartsWith('@') && slash > 0 ? name[(slash + 1)..] : name;
+            return name.Length > 0 ? name : null;
+        }
+        catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    private static string? GitRemoteName(string repo)
+    {
+        try
+        {
+            var git = Path.Combine(repo, ".git");
+            if (File.Exists(git))
+            {
+                // A worktree or submodule: ".git" names the git folder; a worktree shares the config of its common folder.
+                var pointer = File.ReadAllText(git).Trim();
+                if (!pointer.StartsWith("gitdir:", StringComparison.Ordinal))
+                    return null;
+                git = Path.GetFullPath(pointer[7..].Trim(), repo);
+                var common = Path.Combine(git, "commondir");
+                if (File.Exists(common))
+                    git = Path.GetFullPath(File.ReadAllText(common).Trim(), git);
+            }
+
+            var config = Path.Combine(git, "config");
+            if (!File.Exists(config))
+                return null;
+            string? section = null, first = null, origin = null;
+            foreach (var raw in File.ReadLines(config))
+            {
+                var line = raw.Trim();
+                if (line.StartsWith('['))
+                {
+                    section = line;
+                    continue;
+                }
+
+                if (section is null || !section.StartsWith("[remote ", StringComparison.Ordinal) || !line.StartsWith("url", StringComparison.Ordinal))
+                    continue;
+                var equals = line.IndexOf('=', StringComparison.Ordinal);
+                if (equals < 0 || line[..equals].Trim() != "url")
+                    continue;
+                var url = line[(equals + 1)..].Trim();
+                first ??= url;
+                if (section == "[remote \"origin\"]")
+                    origin ??= url;
+            }
+
+            return RepositoryName(origin ?? first);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The repository name of a remote URL: its last path segment without <c>.git</c>.</summary>
+    /// <param name="url">The URL (<c>https://host/owner/name.git</c>, <c>git@host:owner/name.git</c>, a path).</param>
+    /// <returns>The name, or <see langword="null"/>.</returns>
+    internal static string? RepositoryName(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return null;
+        var trimmed = url.Trim().TrimEnd('/', '\\');
+        var cut = trimmed.LastIndexOfAny(['/', '\\', ':']);
+        var name = cut >= 0 ? trimmed[(cut + 1)..] : trimmed;
+        if (name.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
+            name = name[..^4];
+        return name.Length > 0 ? name : null;
+    }
+
+    private static byte[] Settings(CanonicalJson json, string name, string pack)
     {
         var settings = new JsonObject
         {
             ["formatVersion"] = EngineVersion.FormatVersion,
-            ["name"] = Path.GetFileName(repo) is { Length: > 0 } name ? name : "model",
+            ["name"] = name,
             ["outputs"] = new JsonObject
             {
                 ["allow"] = new JsonArray(

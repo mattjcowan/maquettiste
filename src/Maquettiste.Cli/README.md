@@ -90,6 +90,25 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
   when the local tool manifest lists the command), `--skill` writes the embedded modeling skill to
   `.claude/skills/maquettiste-modeling/SKILL.md` (refreshed on each run), `--agent-setup` does both (`Commands/AgentSetup.cs`,
   docs/mcp.md). Both are `WriteTarget.Setup` writes; the engine's setup allow-list names the two paths.
+- **init name:** `--name <name>`, else `package.json` `name` (an `@scope/` prefix dropped), else the repository name of the git
+  remote `origin` (else the first remote; `.git` may be a worktree file), else the folder name (`InitCommand.ProjectName`). It is
+  written only when `maquettiste.json` is created.
+- **l10n** (`Commands/L10nCommand.cs`, `SetDefaultCommand.cs`; reference-types-seeds-localization.md section 3.9): `status`
+  (text, or `--format json`: the `LocalizationStatus` record), `export <locale> [--format xliff|csv] [--out <file>]`, `import
+  <locale> <file>` (XLIFF unless the file ends in `.csv` or does not start with `<`; a preview unless `--apply`; the plan is made in
+  the CLI from `GetTranslationsAsync`, so it can count stale confirmations: an unchanged text of a stale entry whose unit state is
+  `translated`, `reviewed` or `final` becomes a `confirm` edit; the save passes the shard hashes read with the plan), `prune`
+  (`ModelStore.PruneTranslationsAsync`, one save; `--dry-run`/`--check` report) and `set-default <locale>`
+  (`ModelStore.ChangeDefaultLocaleAsync`: preview, `--apply` writes element files, shards and settings in one atomic set; sidecar
+  descriptions and orphans are reported as skipped, not moved). `--out` writes the named file directly (an exchange file, not a
+  generated output, so it is not held to `outputs.allow`), but never inside `.maquettiste/`.
+- **seed** (`Commands/SeedCommand.cs`): `export <seed> [--locale <tag>]... [--out <file>]` and `import <seed> <file> [--mode
+  merge|replace]`; the seed is found by id, name (exact, then ignoring case), then the id or name of its target, and an ambiguous
+  name lists the ids (exit 1). An import previews with `ImportSeedCsvAsync(dryRun: true)`; `--apply` repeats it with the hash the
+  index held, so a seed changed in between is a conflict (exit 1, nothing written).
+- **Preview verbs** (`l10n import|prune|set-default`, `seed import`): `--check` exits 2 when the preview would change something;
+  `--apply` with `--dry-run` or `--check` is a usage error (4); an unknown locale, a missing or unreadable file, a conflict or an
+  invalid change exit 1. Results go to stdout, the summary line to stderr.
 - **validate:** model diagnostics (`ModelStore.ValidateAsync`, load diagnostics included) plus pack-load diagnostics, sorted;
   `--format text` (one `path(line,col): severity rule: message` line per diagnostic), `json` (`schemas/v1/diagnostics.json`) or
   `sarif` (`SarifWriter`). `--output <file>` writes through the project's output path policy, so the file must lie under an

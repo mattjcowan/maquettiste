@@ -232,6 +232,14 @@ public sealed partial class ModelStore
 
         if (diagnostics.Count > 0)
             return new TranslationSaveResult(SaveOutcome.Invalid, new Dictionary<string, string>(), diagnostics, null);
+        return await CommitShardsLockedAsync(shards, diskHashes, expected, source, notifications, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Writes planned shards (a shard left without entries is deleted) in one atomic set, after checking the ETags the caller read.</summary>
+    private async Task<TranslationSaveResult> CommitShardsLockedAsync(SortedDictionary<string, JsonObject> shards, Dictionary<string, string> diskHashes,
+        IReadOnlyDictionary<string, string> expected, ChangeSource source, List<ChangeSet> notifications, CancellationToken ct)
+    {
+        var paths = _paths.Value;
 
         // ETags: every shard the caller names must still have the hash it loaded.
         var conflicts = new SortedDictionary<string, string>(StringComparer.Ordinal);

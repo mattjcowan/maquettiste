@@ -52,7 +52,9 @@ internal static class LocaleShardReader
             if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
                 return false;
             string? schema = null, kind = null, locale = null, scope = null;
-            var entries = ImmutableSortedDictionary.CreateBuilder<string, TranslationEntry>(StringComparer.Ordinal);
+            // A plain map in file order, as the full read deserializes it (a canonical shard is ordinal by id already); a sorted
+            // immutable tree per shard and per entry was most of the read's allocations.
+            var entries = new Dictionary<string, TranslationEntry>(StringComparer.Ordinal);
             while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
             {
                 var name = reader.GetString();
@@ -84,7 +86,7 @@ internal static class LocaleShardReader
 
             if (kind != "locale-shard" || locale is null || scope is null)
                 return false;
-            shard = new LocaleShard { SchemaPath = schema, Kind = kind, Locale = locale, Scope = scope, Entries = entries.ToImmutable() };
+            shard = new LocaleShard { SchemaPath = schema, Kind = kind, Locale = locale, Scope = scope, Entries = entries };
             return true;
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
@@ -99,7 +101,7 @@ internal static class LocaleShardReader
             return null;
         string? display = null, plural = null, label = null;
         Description? description = null;
-        var src = ImmutableSortedDictionary.CreateBuilder<string, string>(StringComparer.Ordinal);
+        Dictionary<string, string>? src = null;
         while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
         {
             var name = reader.GetString();
@@ -140,6 +142,7 @@ internal static class LocaleShardReader
                 case "src":
                     if (reader.TokenType != JsonTokenType.StartObject)
                         return null;
+                    src ??= new Dictionary<string, string>(4, StringComparer.Ordinal);
                     while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
                     {
                         var field = reader.GetString()!;
@@ -154,7 +157,7 @@ internal static class LocaleShardReader
             }
         }
 
-        return new TranslationEntry { DisplayName = display, PluralName = plural, Label = label, Description = description, Src = src.ToImmutable() };
+        return new TranslationEntry { DisplayName = display, PluralName = plural, Label = label, Description = description, Src = src ?? (IReadOnlyDictionary<string, string>)ImmutableDictionary<string, string>.Empty };
     }
 
     /// <summary>The description sidecars a shard references, as (pointer, file).</summary>

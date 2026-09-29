@@ -131,7 +131,8 @@ public sealed class CliApp(CliEnvironment environment)
         Commands:
           init                  Create .maquettiste/, the schema files, a starter pack and .gitignore entries
                                   --pack sql-ddl|csharp-dapper|none (default sql-ddl), --hooks,
-                                  --mcp (.mcp.json), --skill (.claude/skills), --agent-setup (both)
+                                  --mcp (.mcp.json), --skill (.claude/skills), --agent-setup (both),
+                                  --name <project name> (default: package.json name, git remote, folder)
           validate              Validate the model and packs
                                   --format text|json|sarif, --output <file>
           generate              Incremental generation
@@ -146,6 +147,18 @@ public sealed class CliApp(CliEnvironment environment)
           bench                 Run the synthetic benchmark
                                   --out <dir>, --seed, --entities, --relations, --enums, --fanout, --keep,
                                   --baseline <file>, --max-regression <percent>, --format text|json, --no-example-packs
+          l10n status           Default locale, declared locales, completeness per locale and shard (--format text|json)
+          l10n export <locale>  Translations as XLIFF 2.1 or CSV: --format xliff|csv, --out <file>
+          l10n import <locale> <file>
+                                Preview an XLIFF or CSV import (added, changed, stale confirmed); --apply writes it,
+                                  --check exits 2 when it would change something, --format text|json
+          l10n prune            List orphan translations (MQ7203); --apply removes them
+          l10n set-default <locale>
+                                Preview making a locale the default (texts swap between files and shards); --apply
+          seed export <seed>    A seed's rows as CSV (seed id or name, or the id or name of the element it seeds)
+                                  --locale <tag> (repeatable: its label and description columns), --out <file>
+          seed import <seed> <file>
+                                Preview a CSV import: --mode merge|replace; --apply writes it, --check, --format text|json
           mcp                   Serve the model to agents over the Model Context Protocol (stdio; see docs/mcp.md)
 
         Global options:
@@ -156,7 +169,7 @@ public sealed class CliApp(CliEnvironment environment)
           --verbosity quiet|normal|detailed, --quiet (-q)
           --no-color, --version, --help (-h)
 
-        Exit codes: 0 success, 1 validation errors, 2 drift, 3 hand-edit conflicts, 4 internal or usage error.
+        Exit codes: 0 success, 1 validation or read errors, 2 drift (or a --check preview that would change something), 3 hand-edit conflicts (or a file changed while a write ran), 4 internal or usage error (a refused write too).
         """;
 
     private readonly CliEnvironment _environment = environment ?? throw new ArgumentNullException(nameof(environment));
@@ -196,6 +209,8 @@ public sealed class CliApp(CliEnvironment environment)
                 "format" => await FormatCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "pack" => await PackNewCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "bench" => await BenchCommand.RunAsync(context, ct).ConfigureAwait(false),
+                "l10n" => await L10nCommand.RunAsync(context, ct).ConfigureAwait(false),
+                "seed" => await SeedCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "mcp" => await McpCommand.RunAsync(context, ct).ConfigureAwait(false),
                 _ => throw new UsageException($"Unknown command '{command}'. Run 'maquettiste --help'."),
             };

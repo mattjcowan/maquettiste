@@ -16,6 +16,7 @@ import {
   type EdgeChange,
 } from "@xyflow/react";
 import { Download, LayoutGrid, Link2, Plus, Share2 } from "lucide-react";
+import { activeTab } from "@/editors/tabs";
 import { applySaveResult, keys, loadElement, useElement, useElements, useIndex, useValidation } from "@/api/queries";
 import * as endpoints from "@/api/endpoints";
 import type { CategoryTreeDoc, DiagramDoc, EntityDoc, ModelJson, RelationDoc } from "@/api/types";
@@ -94,6 +95,12 @@ function EntitiesCanvas() {
   const validation = useValidation();
   const activeDiagram = useEditor(store, (s) => s.activeDiagram);
   const selection = useEditor(store, (s) => s.selection);
+  // While an element editor covers the canvas (General mode walks the tree), the cards keep the selection they showed:
+  // re-rendering every card and edge on each step is work no one sees (EX 4.5 walk). Uncovered, they catch up.
+  const covered = useEditor(store, (s) => activeTab(s.editors) !== null);
+  const shownSelection = useRef(selection);
+  if (!covered) shownSelection.current = selection;
+  const canvasSelection = shownSelection.current;
   const draftsState = useEditor(store, (s) => s.drafts);
   const { openDiagram, select } = useEditorNavigation();
   const flow = useReactFlow<EntityFlowNode, RelationFlowEdge>();
@@ -189,7 +196,7 @@ function EntitiesCanvas() {
             type: "entity" as const,
             position,
             measured: measured[id],
-            selected: selection.includes(id),
+            selected: canvasSelection.includes(id),
             ariaLabel: `Entity ${json.name}`,
             data: {
               entity: json,
@@ -212,7 +219,7 @@ function EntitiesCanvas() {
       pkgPositions,
       dragging,
       measured,
-      selection,
+      canvasSelection,
       categoryIds,
       errorCounts,
       display.mode,
@@ -235,13 +242,13 @@ function EntitiesCanvas() {
             id: rid,
             type: "relation" as const,
             ...ends,
-            selected: selection.includes(rid),
+            selected: canvasSelection.includes(rid),
             ariaLabel: `${KIND_LABELS.relation} ${relation.name}`,
             data: { relation, notation: display.notation },
           };
         })
         .filter((e): e is NonNullable<typeof e> => e !== null),
-    [relationIds, docs.byId, draftsState, positionOf, selection, display.notation],
+    [relationIds, docs.byId, draftsState, positionOf, canvasSelection, display.notation],
   );
 
   const commitPositions = useCallback(

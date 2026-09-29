@@ -4,8 +4,9 @@
 // them. Where there is no Worker (unit tests), the same handler runs in-process, answering on a later task.
 import { useEffect, useLayoutEffect, useSyncExternalStore } from "react";
 import type { ElementSummary, TableSummary } from "@/api/types";
-import { perfStart } from "@/lib/perf";
+import { perfRecord, perfStart } from "@/lib/perf";
 import { patchesBetween } from "@/api/indexPatch";
+import { takeIndexText } from "@/api/indexText";
 import {
   createSearchHandler,
   encodeRows,
@@ -25,7 +26,10 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 type Pending = { resolve(answer: FromWorker): void };
 
 export class SearchClient {
-  private readonly send: (msg: ToWorker) => void;
+  private readonly post: (msg: ToWorker) => void;
+  /** Messages sent while the index text is still going over in slices; posted after the last slice, in order. */
+  private queued: ToWorker[] | null = null;
+  private slicing: ReturnType<typeof setTimeout> | null = null;
   private seq = 0;
   private readonly pending = new Map<number, Pending>();
   private rows: readonly ElementSummary[] | null = null;
@@ -43,15 +47,56 @@ export class SearchClient {
   constructor(worker?: Worker | null) {
     if (worker) {
       worker.onmessage = (e: MessageEvent<FromWorker>) => this.receive(e.data);
-      this.send = (msg) => worker.postMessage(msg);
+      this.post = (msg) => worker.postMessage(msg);
     } else {
       const handle = createSearchHandler();
-      this.send = (msg) =>
+      this.post = (msg) =>
         setTimeout(() => {
           const answer = handle(msg);
           if (answer) this.receive(answer);
         }, 0);
     }
+  }
+
+  private send(msg: ToWorker) {
+    if (this.queued) this.queued.push(msg);
+    else this.post(msg);
+  }
+
+  /**
+   * Hands the index's JSON text over in slices of about 1 MB, one per task, so no single main-thread task copies the
+   * whole 10 MB (explorer-redesign.md 4.5, search worker handoff). The perf entry's ms is the longest slice; the total is
+   * in its detail. Anything sent meanwhile waits for the last slice.
+   */
+  private sendText(version: number, json: string, end: (detail?: Record<string, unknown>) => unknown, rows: number) {
+    if (this.slicing) clearTimeout(this.slicing);
+    this.queued ??= [];
+    const size = 1 << 20;
+    let at = 0;
+    let longest = 0;
+    let total = 0;
+    let slices = 0;
+    const next = () => {
+      const start = performance.now();
+      const part = json.slice(at, at + size);
+      at += size;
+      const more = at < json.length;
+      this.post({ type: "rows", version, json: part, first: slices === 0, more });
+      const ms = performance.now() - start;
+      longest = Math.max(longest, ms);
+      total += ms;
+      slices++;
+      if (more) {
+        this.slicing = setTimeout(next, 0);
+        return;
+      }
+      this.slicing = null;
+      const queued = this.queued ?? [];
+      this.queued = null;
+      for (const msg of queued) this.post(msg);
+      end({ rows, raw: true, slices, longestMs: Math.round(longest * 10) / 10, totalMs: Math.round(total * 10) / 10, ms: longest });
+    };
+    next();
   }
 
   private receive(answer: FromWorker) {
@@ -113,9 +158,16 @@ export class SearchClient {
     this.rows = rows;
     this.ready = false;
     this.readyEnd = perfStart("search:ready");
-    const handoff = perfStart("search:handoff");
-    this.send({ type: "rows", version: this.version + 1, data: encodeRows(rows) });
-    handoff({ rows: rows.length });
+    // The index's own JSON text when the rows were parsed from it (the worker parses and encodes it), in slices; else the
+    // encoded rows in one message.
+    const json = takeIndexText(rows);
+    if (json !== undefined) {
+      this.sendText(this.version + 1, json, (detail) => perfRecord("search:handoff", Number(detail?.ms ?? 0), detail), rows.length);
+    } else {
+      const handoff = perfStart("search:handoff");
+      this.send({ type: "rows", version: this.version + 1, data: encodeRows(rows) });
+      handoff({ rows: rows.length, raw: false });
+    }
     this.bump();
   }
 

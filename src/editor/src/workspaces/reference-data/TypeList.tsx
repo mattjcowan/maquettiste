@@ -18,12 +18,15 @@ export function TypeList({
   searchRef,
   onSelect,
   onNew,
+  onMenu,
 }: {
   items: RefTypeItem[];
   selected: string | null;
   searchRef: RefObject<HTMLInputElement | null>;
   onSelect(id: string): void;
   onNew(): void;
+  /** A right click or Shift+F10 on a type: its menu at a point (TypeMenu.tsx). */
+  onMenu?(id: string, x: number, y: number): void;
 }) {
   const [query, setQuery] = useState("");
   const [flat, setFlat] = useState(false);
@@ -43,6 +46,12 @@ export function TypeList({
     });
 
   const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
+    if (onMenu && selected && (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10"))) {
+      e.preventDefault();
+      const box = e.currentTarget.getBoundingClientRect();
+      onMenu(selected, box.left + 24, box.top + 24 + Math.max(0, at) * ROW_H - (scrollRef.current?.scrollTop ?? 0));
+      return;
+    }
     const types = list.rows.map((r, i) => (r.kind === "type" ? i : -1)).filter((i) => i >= 0);
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
@@ -142,6 +151,12 @@ export function TypeList({
                   item.id === selected && "bg-accent-subtle text-accent",
                 )}
                 onClick={() => onSelect(item.id)}
+                onContextMenu={(e) => {
+                  if (!onMenu) return;
+                  e.preventDefault();
+                  onSelect(item.id);
+                  onMenu(item.id, e.clientX, e.clientY);
+                }}
               >
                 <span className="min-w-0 flex-1 truncate">{item.label}</span>
                 <span className="text-11 text-secondary">{item.rows}</span>

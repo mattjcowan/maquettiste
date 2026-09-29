@@ -188,7 +188,11 @@ export function useVocabularies(kind: string, domain: string | null = null) {
   }, [vocabularyDocs, tagChain, categoryChain, stereotypeDocs, stereotypeIds, lookup, kind]);
 }
 
-export function CommonFields({ id, json, doc, edit, flush, diagnostics }: FormProps) {
+/**
+ * The fields every element has. `inEditorHeader`: the element editor's header already shows Display name, Plural name
+ * and Description (EditorFrame's HeaderFields), so a form inside an editor tab leaves them out.
+ */
+export function CommonFields({ id, json, doc, edit, flush, diagnostics, inEditorHeader = false }: FormProps & { inEditorHeader?: boolean }) {
   const rec = json as Rec;
   const kind = String(rec.kind);
   const vocab = useVocabularies(kind, markDomainOf(rec));
@@ -211,22 +215,24 @@ export function CommonFields({ id, json, doc, edit, flush, diagnostics }: FormPr
         onChange={(v) => edit((j) => void ((j as Rec).name = v))}
         onBlur={flush}
       />
-      <div className="grid grid-cols-2 gap-2">
-        <TextField
-          id={`${id}-display`}
-          label="Display name"
-          value={String(rec.displayName ?? "")}
-          onChange={(v) => edit((j) => setOptional(j as Rec, "displayName", v))}
-          onBlur={flush}
-        />
-        <TextField
-          id={`${id}-plural`}
-          label="Plural name"
-          value={String(rec.pluralName ?? "")}
-          onChange={(v) => edit((j) => setOptional(j as Rec, "pluralName", v))}
-          onBlur={flush}
-        />
-      </div>
+      {inEditorHeader ? null : (
+        <div className="grid grid-cols-2 gap-2">
+          <TextField
+            id={`${id}-display`}
+            label="Display name"
+            value={String(rec.displayName ?? "")}
+            onChange={(v) => edit((j) => setOptional(j as Rec, "displayName", v))}
+            onBlur={flush}
+          />
+          <TextField
+            id={`${id}-plural`}
+            label="Plural name"
+            value={String(rec.pluralName ?? "")}
+            onChange={(v) => edit((j) => setOptional(j as Rec, "pluralName", v))}
+            onBlur={flush}
+          />
+        </div>
+      )}
       {hasPackage || kind === "package" ? (
         <Field label={kind === "package" ? `Parent ${KIND_LABELS.package.toLowerCase()}` : KIND_LABELS.package} htmlFor={`${id}-package`}>
           <Select
@@ -250,7 +256,7 @@ export function CommonFields({ id, json, doc, edit, flush, diagnostics }: FormPr
           </Select>
         </Field>
       ) : null}
-      {typeof description === "object" && description !== null ? (
+      {inEditorHeader ? null : typeof description === "object" && description !== null ? (
         <Field label="Description" hint={`Kept in ${(description as { file: string }).file} next to the model file; edit that file on disk.`}>
           <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-control border border-default bg-app p-2 text-12">{doc?.sidecarText ?? ""}</pre>
         </Field>

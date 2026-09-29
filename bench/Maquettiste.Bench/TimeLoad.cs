@@ -15,7 +15,7 @@ public static class TimeLoad
     public const string Verb = "time-load";
 
     /// <summary>The usage text.</summary>
-    public const string Usage = "usage: Maquettiste.Bench time-load --model <dir> [--rounds 3]\n";
+    public const string Usage = "usage: Maquettiste.Bench time-load --model <dir> [--rounds 3] [--warm-cache]\n";
 
     /// <summary>Runs the verb.</summary>
     /// <param name="args">The arguments after <see cref="Verb"/>.</param>
@@ -30,12 +30,14 @@ public static class TimeLoad
         ArgumentNullException.ThrowIfNull(error);
         string? model = null;
         var rounds = 3;
+        var warm = false;
         for (var i = 0; i < args.Count; i++)
         {
             var value = i + 1 < args.Count ? args[i + 1] : null;
             switch (args[i])
             {
                 case "--model": model = value; i++; break;
+                case "--warm-cache": warm = true; break;
                 case "--rounds" when int.TryParse(value, CultureInfo.InvariantCulture, out var r) && r > 0: rounds = r; i++; break;
                 default:
                     await error.WriteAsync($"unknown or invalid option '{args[i]}'.\n{Usage}").ConfigureAwait(false);
@@ -50,9 +52,12 @@ public static class TimeLoad
         }
 
         var root = Path.GetFullPath(model);
-        for (var round = 1; round <= rounds; round++)
+        // --warm-cache: one cache folder for every round, filled by an untimed round 0, so each round is a restart of the host
+        // over its cache volume (a new model store, nothing in memory) rather than a first open.
+        var shared = warm ? Path.Combine(Path.GetTempPath(), "maquettiste-time-load-" + Guid.NewGuid().ToString("N")) : null;
+        for (var round = warm ? 0 : 1; round <= rounds; round++)
         {
-            var cache = Path.Combine(Path.GetTempPath(), "maquettiste-time-load-" + Guid.NewGuid().ToString("N"));
+            var cache = shared ?? Path.Combine(Path.GetTempPath(), "maquettiste-time-load-" + Guid.NewGuid().ToString("N"));
             try
             {
                 var store = new ModelStore(new EngineOptions { RepoRoot = root, CacheDirectory = cache });
@@ -70,13 +75,13 @@ public static class TimeLoad
                     var shards = snapshot.Localization.Shards.Count;
                     var missing = completeness.Sum(c => c.Missing);
                     await output.WriteLineAsync(string.Create(CultureInfo.InvariantCulture,
-                        $"round {round}: {snapshot.Documents.Count} elements, {snapshot.Localization.Locales.Count} locales, {shards} shards; load {load.TotalMilliseconds:F0} ms, localizable nodes {index.TotalMilliseconds:F0} ms ({nodes}), completeness {pass.TotalMilliseconds:F0} ms ({missing} missing), total {(load + index + pass).TotalMilliseconds:F0} ms"))
+                        $"round {(round == 0 ? "0 (fills the cache)" : round)}{(warm && round > 0 ? " warm cache" : "")}: {snapshot.Documents.Count} elements, {snapshot.Localization.Locales.Count} locales, {shards} shards; load {load.TotalMilliseconds:F0} ms, localizable nodes {index.TotalMilliseconds:F0} ms ({nodes}), completeness {pass.TotalMilliseconds:F0} ms ({missing} missing), total {(load + index + pass).TotalMilliseconds:F0} ms"))
                         .ConfigureAwait(false);
                 }
             }
             finally
             {
-                if (Directory.Exists(cache))
+                if ((!warm || round == rounds) && Directory.Exists(cache))
                     Directory.Delete(cache, recursive: true);
             }
         }

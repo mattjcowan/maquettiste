@@ -1,6 +1,9 @@
 // The explorer's dialogs (explorer-redesign.md 1.8): Move to domain… (a domain's Open is the domain editor,
 // editors/DomainEditor), the delete confirmation and Add with related… (canvas in step, step 10).
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useElements } from "@/api/queries";
+import type { ElementSummary } from "@/api/types";
+import { marksLeavingScope } from "@/model/vocabularies";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/input";
@@ -31,6 +34,21 @@ export function MoveDialog({
 }) {
   const [target, setTarget] = useState("");
   const exclude = new Set((ids ?? []).filter((id) => forest.byId.get(id)?.kind === "package"));
+  const rows = useMemo(() => [...forest.byId.values()] as unknown as ElementSummary[], [forest]);
+  const vocabularies = useElements(ids ? rows.filter((r) => r.kind === "tag-vocabulary" || r.kind === "category-tree").map((r) => r.id) : []);
+  const leaving = ids
+    ? marksLeavingScope(
+        ids.map((id) => forest.byId.get(id)).filter((r): r is NonNullable<typeof r> => !!r),
+        target || null,
+        rows,
+        (id) => vocabularies.byId.get(id)?.json,
+      )
+    : [];
+  const categoryName = (id: string) =>
+    rows
+      .filter((r) => r.kind === "category-tree")
+      .flatMap((r) => (vocabularies.byId.get(r.id)?.json as { categories?: { id: string; name: string }[] } | undefined)?.categories ?? [])
+      .find((c) => c.id === id)?.name ?? id;
   const choices = ids ? domainChoices(forest, exclude) : [];
   const title = ids?.length === 1 ? `Move ${forest.byId.get(ids[0])?.name ?? "element"} to a domain` : `Move ${ids?.length ?? 0} elements to a domain`;
   return (
@@ -54,11 +72,23 @@ export function MoveDialog({
                 ))}
               </Select>
             </Field>
+            {leaving.length ? (
+              <div role="alert" className="flex flex-col gap-1 rounded-control border border-default bg-app p-2 text-12" data-testid="move-scope-warning">
+                <p className="font-medium">These marks are declared by a domain the new place is not in; they will be reported until you change them:</p>
+                <ul className="list-disc pl-4">
+                  {leaving.map((l) => (
+                    <li key={l.name}>
+                      {l.name}: {[...l.tags.map((t) => `tag ${t}`), ...(l.category ? [`category ${categoryName(l.category)}`] : [])].join(", ")}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit">Move</Button>
+              <Button type="submit">{leaving.length ? "Move anyway" : "Move"}</Button>
             </div>
           </form>
         </DialogContent>

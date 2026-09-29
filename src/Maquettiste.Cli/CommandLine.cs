@@ -17,14 +17,14 @@ internal sealed class CommandLine
     private static readonly HashSet<string> ValueOptions = new(StringComparer.Ordinal)
     {
         "--repo", "--cache-dir", "--jobs", "--progress", "--verbosity", "--format", "--output", "--pack", "--roots", "--hand-edits",
-        "--from", "--out", "--seed", "--entities", "--relations", "--enums", "--fanout", "--baseline", "--max-regression",
+        "--from", "--out", "--locale", "--mode", "--name", "--seed", "--entities", "--relations", "--enums", "--fanout", "--baseline", "--max-regression",
     };
 
     /// <summary>Options that are flags.</summary>
     private static readonly HashSet<string> FlagOptions = new(StringComparer.Ordinal)
     {
         "--version", "--help", "--quiet", "--no-color", "--hooks", "--force", "--watch", "--dry-run", "--diff", "--check", "--keep", "--no-wait",
-        "--no-example-packs", "--mcp", "--skill", "--agent-setup",
+        "--no-example-packs", "--mcp", "--skill", "--agent-setup", "--apply",
     };
 
     /// <summary>Short aliases.</summary>

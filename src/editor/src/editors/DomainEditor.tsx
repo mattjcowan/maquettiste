@@ -17,7 +17,7 @@ export function DomainEditor({ id }: { id: string }) {
       draft={draft}
       controls={<p className="text-12 text-secondary">Tags and categories declared here apply to this domain and the domains nested under it.</p>}
       tabs={[
-        { value: "general", label: DOMAIN_EDITOR_TABS.general, content: <CommonFields {...form} /> },
+        { value: "general", label: DOMAIN_EDITOR_TABS.general, content: <CommonFields {...form} inEditorHeader /> },
         { value: "tags", label: DOMAIN_EDITOR_TABS.tags, content: <TagVocabularyEditor scope={ctx.id} /> },
         { value: "categories", label: DOMAIN_EDITOR_TABS.categories, content: <CategoryTreeEditor scope={ctx.id} /> },
       ]}

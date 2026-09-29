@@ -11,6 +11,7 @@
 import type { ElementSummary } from "./types";
 import type { IndexAnswer } from "./endpoints";
 import { perfStart } from "@/lib/perf";
+import { rememberIndexText } from "./indexText";
 
 export interface IndexSnapshot {
   etag: string | null;
@@ -76,6 +77,7 @@ function parse(text: string, source: string): ElementSummary[] {
   const end = perfStart("index:parse");
   const rows = JSON.parse(text) as ElementSummary[];
   end({ bytes: text.length, rows: rows.length, source });
+  rememberIndexText(rows, text);
   return rows;
 }
 

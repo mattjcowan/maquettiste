@@ -128,19 +128,30 @@ export function summaryFromDocument(doc: ElementDocument): ElementSummary {
     stereotypes: json.stereotypes ?? [],
     hash: doc.hash,
     path: doc.path,
-    ...referenceDataMembers(json),
+    ...indexMembers(json),
   };
 }
 
-/** The index members of seed and reference type rows (RT 2.1), so a saved row keeps its place in the Reference data screen. */
-function referenceDataMembers(json: Record<string, unknown>): Partial<ElementSummary> {
+/**
+ * The E5 members of an index row (explorer-redesign.md 4.1), as the engine's index writes them, so a saved row keeps
+ * its display name, its base entity, a relation's ends, a mapping's or table's entity and database, and the seed and
+ * reference type counts (RT 2.1) until the next index read.
+ */
+function indexMembers(json: Record<string, unknown>): Partial<ElementSummary> {
   const out: Partial<ElementSummary> = {};
-  if (json.kind !== "seed" && json.kind !== "reference-type") return out;
+  const kind = json.kind;
   if (typeof json.displayName === "string") out.displayName = json.displayName;
-  if (json.kind === "seed") {
+  if ((kind === "table" || kind === "view" || kind === "sequence" || kind === "mapping") && typeof json.database === "string") out.database = json.database;
+  if ((kind === "table" || kind === "mapping") && typeof json.entity === "string") out.entity = json.entity;
+  if (kind === "entity" && typeof json.base === "string") out.base = json.base;
+  if (kind === "seed") {
     if (typeof json.target === "string") out.target = json.target;
     out.rowCount = Array.isArray(json.rows) ? json.rows.length : 0;
-  } else out.fieldCount = Array.isArray(json.attributes) ? json.attributes.length : 0;
+  }
+  if (kind === "reference-type") out.fieldCount = Array.isArray(json.attributes) ? json.attributes.length : 0;
+  if (kind === "diagram") out.memberCount = Array.isArray(json.members) ? json.members.length : 0;
+  if (kind === "relation" && Array.isArray(json.ends))
+    out.ends = (json.ends as Record<string, unknown>[]).map((end) => ({ entity: String(end.entity ?? ""), role: String(end.role ?? "") }));
   return out;
 }
 

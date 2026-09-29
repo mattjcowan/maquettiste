@@ -162,6 +162,11 @@ public sealed class LocalizationIndex
     private readonly ConcurrentDictionary<(string, string), string> _ownerHashes = new();
     private readonly ConcurrentDictionary<(string Id, string Field), string> _sourceHashes = new();
 
+    // Set by BuildNodes before the node map is published: the nodes in map order and each node's source fingerprints (by field
+    // index in Fields, null where the field has no source), computed in parallel once per snapshot.
+    private LocalizableNode[] _nodeList = [];
+    private string?[][] _nodeHashes = [];
+
     internal LocalizationIndex(ModelSnapshot model, IReadOnlyList<LocaleShardDocument> shards)
     {
         _model = model;
@@ -172,10 +177,12 @@ public sealed class LocalizationIndex
         _packageFiles = new Lazy<Dictionary<string, string>>(BuildPackageFiles, LazyThreadSafetyMode.ExecutionAndPublication);
         if (Settings is null)
             return;
-        foreach (var locale in Locales.Skip(1))
-            _byLocale[locale] = new Dictionary<string, (TranslationEntry, LocaleShardDocument)>(StringComparer.Ordinal);
-        foreach (var shard in Shards)
+        // Which shards feed which locale's map, in path order; each locale's map is then filled on its own thread (a map only
+        // ever holds one locale's ids, so the maps and the duplicates found are those of one pass in path order).
+        var feeds = Locales.Skip(1).ToDictionary(l => l, _ => new List<int>(), StringComparer.Ordinal);
+        for (var i = 0; i < Shards.Count; i++)
         {
+            var shard = Shards[i];
             var folder = shard.FolderLocale;
             if (folder.Length > 0 && !IsTranslated(folder))
             {
@@ -185,16 +192,38 @@ public sealed class LocalizationIndex
                 continue;
             }
 
-            if (!_byLocale.TryGetValue(shard.Shard.Locale, out var map))
-                continue; // an undeclared declared locale: MQ7210 reports the mismatch with the folder
-            foreach (var (id, entry) in shard.Shard.Entries)
-            {
-                if (map.TryGetValue(id, out var kept))
-                    _duplicates.Add((shard.Shard.Locale, id, kept.Shard, shard));
-                else
-                    map[id] = (entry, shard);
-            }
+            if (feeds.TryGetValue(shard.Shard.Locale, out var feed))
+                feed.Add(i); // an undeclared declared locale is skipped: MQ7210 reports the mismatch with the folder
         }
+
+        var locales = feeds.Keys.ToArray();
+        var maps = new Dictionary<string, (TranslationEntry, LocaleShardDocument)>[locales.Length];
+        var duplicates = new List<(int Shard, int Entry, (string, string, LocaleShardDocument, LocaleShardDocument) Duplicate)>[locales.Length];
+        Parallel.For(0, locales.Length, k =>
+        {
+            var feed = feeds[locales[k]];
+            var map = new Dictionary<string, (TranslationEntry, LocaleShardDocument)>(feed.Sum(i => Shards[i].Shard.Entries.Count), StringComparer.Ordinal);
+            var found = new List<(int, int, (string, string, LocaleShardDocument, LocaleShardDocument))>();
+            foreach (var i in feed)
+            {
+                var shard = Shards[i];
+                var e = 0;
+                foreach (var (id, entry) in shard.Shard.Entries)
+                {
+                    if (map.TryGetValue(id, out var kept))
+                        found.Add((i, e, (shard.Shard.Locale, id, kept.Item2, shard)));
+                    else
+                        map[id] = (entry, shard);
+                    e++;
+                }
+            }
+
+            maps[k] = map;
+            duplicates[k] = found;
+        });
+        for (var k = 0; k < locales.Length; k++)
+            _byLocale[locales[k]] = maps[k];
+        _duplicates.AddRange(duplicates.SelectMany(d => d).OrderBy(d => d.Shard).ThenBy(d => d.Entry).Select(d => d.Duplicate));
     }
 
     /// <summary>The settings, or <see langword="null"/> when the project declares no localization.</summary>
@@ -306,15 +335,31 @@ public sealed class LocalizationIndex
     public static string SourceHash(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
-        var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal);
-        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(normalized)))[..8];
+        var normalized = text.Contains('\r', StringComparison.Ordinal) ? text.Replace("\r\n", "\n", StringComparison.Ordinal) : text;
+        var length = Encoding.UTF8.GetMaxByteCount(normalized.Length);
+        var rented = length > 1024 ? System.Buffers.ArrayPool<byte>.Shared.Rent(length) : null;
+        try
+        {
+            Span<byte> bytes = rented ?? stackalloc byte[1024];
+            var written = Encoding.UTF8.GetBytes(normalized, bytes);
+            Span<byte> digest = stackalloc byte[SHA256.HashSizeInBytes];
+            SHA256.HashData(bytes[..written], digest);
+            return Convert.ToHexStringLower(digest[..4]);
+        }
+        finally
+        {
+            if (rented is not null)
+                System.Buffers.ArrayPool<byte>.Shared.Return(rented);
+        }
     }
 
     /// <summary>The source fingerprint of a node's field, computed once per snapshot (every locale compares against the same one).</summary>
-    private string SourceHashOf(LocalizableNode node, string field, string source) =>
-        _nodes.IsValueCreated && _nodes.Value.TryGetValue(node.Id, out var known) && ReferenceEquals(known, node)
-            ? _sourceHashes.GetOrAdd((node.Id, field), static (_, text) => SourceHash(text), source)
-            : SourceHash(source);
+    private string SourceHashOf(LocalizableNode node, string field, string source)
+    {
+        if (!_nodes.IsValueCreated || !_nodes.Value.TryGetValue(node.Id, out var known) || !ReferenceEquals(known, node))
+            return SourceHash(source);
+        return _sourceHashes.GetOrAdd((node.Id, field), static (_, text) => SourceHash(text), source);
+    }
 
     /// <summary>Completeness per (locale, shard) for the <c>require</c> kinds, locales in unit order, shards ordinal by path.</summary>
     /// <param name="locale">One locale, or <see langword="null"/> for every translated locale.</param>
@@ -325,38 +370,77 @@ public sealed class LocalizationIndex
             return [];
         var require = settings.Require.Count == 0 ? null : settings.Require.ToHashSet(StringComparer.Ordinal);
         var locales = Locales.Skip(1).Where(l => locale is null || string.Equals(l, locale, StringComparison.Ordinal)).ToList();
-        var perLocale = new List<ShardCompleteness>[locales.Count];
-        Parallel.For(0, locales.Count, i => perLocale[i] = CompletenessOf(locales[i], require));
-        return [.. perLocale.SelectMany(r => r)];
+        var nodes = Nodes.Count == 0 ? [] : _nodeList;
+        // Slices of the node list per locale, counted in parallel and summed per shard (sums, so the result does not depend on
+        // the order the slices finish in).
+        var slices = Math.Max(1, Math.Min(Environment.ProcessorCount * 2 / Math.Max(1, locales.Count), (nodes.Length + 4095) / 4096));
+        var partial = new Dictionary<string, Counts>[locales.Count * slices];
+        Parallel.For(0, partial.Length, k =>
+        {
+            var (i, slice) = (k / slices, k % slices);
+            var size = (nodes.Length + slices - 1) / slices;
+            partial[k] = CountSlice(locales[i], require, nodes, slice * size, Math.Min(nodes.Length, (slice + 1) * size));
+        });
+        var result = new List<ShardCompleteness>();
+        for (var i = 0; i < locales.Count; i++)
+        {
+            var counts = new SortedDictionary<string, Counts>(StringComparer.Ordinal);
+            for (var slice = 0; slice < slices; slice++)
+            {
+                foreach (var (path, c) in partial[i * slices + slice])
+                    counts[path] = counts.TryGetValue(path, out var known) ? known.Add(c) : c;
+            }
+
+            result.AddRange(counts.Where(p => p.Value.Expected > 0)
+                .Select(p => new ShardCompleteness(locales[i], p.Value.Scope, p.Key, p.Value.Expected, p.Value.Translated, p.Value.Missing, p.Value.Stale)));
+        }
+
+        return result;
     }
 
-    private List<ShardCompleteness> CompletenessOf(string l, HashSet<string>? require)
+    private readonly record struct Counts(string Scope, int Expected, int Translated, int Missing, int Stale)
     {
-        var counts = new SortedDictionary<string, (string Scope, int Expected, int Translated, int Missing, int Stale)>(StringComparer.Ordinal);
+        public Counts Add(Counts other) =>
+            this with { Expected = Expected + other.Expected, Translated = Translated + other.Translated, Missing = Missing + other.Missing, Stale = Stale + other.Stale };
+    }
+
+    /// <summary>The counts of one slice of the node list in one locale: the states of <see cref="StateOf"/>, with one entry lookup per node.</summary>
+    private Dictionary<string, Counts> CountSlice(string l, HashSet<string>? require, LocalizableNode[] nodes, int from, int to)
+    {
+        var counts = new Dictionary<string, Counts>(StringComparer.Ordinal);
         var paths = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var node in Nodes.Values)
+        _byLocale.TryGetValue(l, out var map);
+        for (var n = from; n < to; n++)
         {
+            var node = nodes[n];
             if (require is not null && !require.Contains(node.Kind))
                 continue;
             if (!paths.TryGetValue(node.Scope, out var path))
                 paths[node.Scope] = path = ShardPath(l, node.Scope);
-            var c = counts.TryGetValue(path, out var known) ? known : (Scope: node.Scope, Expected: 0, Translated: 0, Missing: 0, Stale: 0);
-            foreach (var field in node.ExpectedFields())
+            var c = counts.TryGetValue(path, out var known) ? known : new Counts(node.Scope, 0, 0, 0, 0);
+            TranslationEntry? entry = map is not null && map.TryGetValue(node.Id, out var found) ? found.Entry : null;
+            var hashes = _nodeHashes[n];
+            for (var f = 0; f < Fields.Count; f++)
             {
-                c.Expected++;
-                switch (StateOf(l, node, field))
-                {
-                    case TranslationState.Missing: c.Missing++; break;
-                    case TranslationState.Stale: c.Stale++; break;
-                    default: c.Translated++; break;
-                }
+                var source = f switch { 0 => node.DisplayName, 1 => node.HasPluralField ? node.PluralName ?? "" : null, 2 => node.Label, _ => node.Description };
+                if (source is null)
+                    continue; // not an expected field (ExpectedFields)
+                var field = Fields[f];
+                var (expected, translated, missing, stale) = (c.Expected + 1, c.Translated, c.Missing, c.Stale);
+                if (entry is null || !Has(entry, field))
+                    missing++;
+                else if (entry.Src.TryGetValue(field, out var src) && node.Source(field) is { } text
+                    && !string.Equals(src, hashes[f] ?? SourceHash(text), StringComparison.Ordinal))
+                    stale++;
+                else
+                    translated++;
+                c = c with { Expected = expected, Translated = translated, Missing = missing, Stale = stale };
             }
 
             counts[path] = c;
         }
 
-        return [.. counts.Where(p => p.Value.Expected > 0)
-            .Select(p => new ShardCompleteness(l, p.Value.Scope, p.Key, p.Value.Expected, p.Value.Translated, p.Value.Missing, p.Value.Stale))];
+        return counts;
     }
 
     /// <summary>
@@ -498,61 +582,93 @@ public sealed class LocalizationIndex
         var nodes = new Dictionary<string, LocalizableNode>(StringComparer.Ordinal);
         if (Settings is null)
             return nodes;
-        var scopes = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var document in _model.Documents)
+
+        // The element nodes, then the sub-element nodes, each computed in parallel into a slot per input and inserted in input
+        // order, so the map (and its enumeration order) is the one a sequential pass builds.
+        var documents = _model.Documents;
+        var elementNodes = new LocalizableNode?[documents.Count];
+        Parallel.For(0, documents.Count, i =>
         {
+            var document = documents[i];
             var element = document.Element;
             if (!LocaleChains.ElementKinds.Contains(element.Kind))
-                continue;
-            var scope = ScopeOf(element);
-            scopes[element.Id] = scope;
+                return;
             var display = element.DisplayName ?? element.Name;
             var description = element.Description is { } d ? d.Text ?? document.SidecarText ?? "file:" + d.File : null;
-            nodes[element.Id] = new LocalizableNode(element.Id, element.Id, element.KindName, scope, display, element.PluralName ?? display, null,
+            elementNodes[i] = new LocalizableNode(element.Id, element.Id, element.KindName, ScopeOf(element), display, element.PluralName ?? display, null,
                 description, true, false);
-        }
-
-        var seeds = new Dictionary<string, (Seed Seed, int Label, int Description, Dictionary<string, SeedRow> Rows)?>(StringComparer.Ordinal);
-        foreach (var entry in _model.Index.Entries.Values)
+        });
+        var scopes = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var node in elementNodes)
         {
-            if (entry.OwnerId == entry.Id || !scopes.TryGetValue(entry.OwnerId, out var scope))
+            if (node is null)
                 continue;
-            var document = _model.GetDocument(entry.OwnerId);
-            if (document is null)
-                continue;
-            if (entry.Kind == "row")
-            {
-                if (!seeds.TryGetValue(entry.OwnerId, out var seed))
-                    seeds[entry.OwnerId] = seed = document.Element is Seed s && _model.Get<ReferenceType>(s.Target) is not null
-                        ? (s, IndexOf(s.Columns, "label"), IndexOf(s.Columns, "description"), s.Rows.ToDictionary(r => r.Id, StringComparer.Ordinal))
-                        : null;
-                if (seed is not { } rowSeed || !rowSeed.Rows.TryGetValue(entry.Id, out var row))
-                    continue;
-                nodes[entry.Id] = new LocalizableNode(entry.Id, entry.OwnerId, "reference-row", scope, null, null,
-                    Cell(row, rowSeed.Label), Cell(row, rowSeed.Description), false, false);
-                continue;
-            }
-
-            if (entry.Kind is not ("attribute" or "end" or "enum-member" or "reference-field" or "category"))
-                continue;
-            if (!Json.JsonPointer.TryGet(document.Json, entry.JsonPointer, out var node) || node.ValueKind != JsonValueKind.Object)
-                continue;
-            var name = String(node, "name") ?? String(node, "role");
-            var display = String(node, "displayName") ?? name ?? (entry.Kind == "reference-field" ? DefaultFieldName(entry.JsonPointer) : null);
-            var plural = String(node, "pluralName");
-            var description = node.TryGetProperty("description", out var d) ? d.ValueKind switch
-            {
-                JsonValueKind.String => d.GetString(),
-                JsonValueKind.Object when d.TryGetProperty("file", out var f) && f.ValueKind == JsonValueKind.String => "file:" + f.GetString(),
-                _ => null,
-            } : null;
-            var toMany = entry.Kind != "end" || !node.TryGetProperty("max", out var max) || max.ValueKind != JsonValueKind.Number;
-            var hasPlural = entry.Kind == "category" || (entry.Kind == "end" && toMany);
-            nodes[entry.Id] = new LocalizableNode(entry.Id, entry.OwnerId, entry.Kind, scope, display, hasPlural ? plural ?? display : null, null,
-                description, hasPlural, entry.Kind == "end" && !toMany && plural is not null);
+            scopes[node.Id] = node.Scope;
+            nodes[node.Id] = node;
         }
 
+        var entries = _model.Index.Entries.Values.ToArray();
+        var subNodes = new LocalizableNode?[entries.Length];
+        var seeds = new ConcurrentDictionary<string, (Seed Seed, int Label, int Description, Dictionary<string, SeedRow> Rows)?>(StringComparer.Ordinal);
+        Parallel.For(0, entries.Length, i => subNodes[i] = SubNode(entries[i], scopes, seeds));
+        foreach (var node in subNodes)
+        {
+            if (node is not null)
+                nodes[node.Id] = node;
+        }
+
+        // The source fingerprints every locale compares against, once per node and field.
+        var list = nodes.Values.ToArray();
+        var hashes = new string?[list.Length][];
+        Parallel.For(0, list.Length, i =>
+        {
+            var node = list[i];
+            var row = new string?[Fields.Count];
+            for (var f = 0; f < Fields.Count; f++)
+                row[f] = node.Source(Fields[f]) is { } text ? SourceHash(text) : null;
+            hashes[i] = row;
+        });
+        _nodeList = list;
+        _nodeHashes = hashes;
         return nodes;
+    }
+
+    private LocalizableNode? SubNode(IndexEntry entry, Dictionary<string, string> scopes,
+        ConcurrentDictionary<string, (Seed Seed, int Label, int Description, Dictionary<string, SeedRow> Rows)?> seeds)
+    {
+        if (entry.OwnerId == entry.Id || !scopes.TryGetValue(entry.OwnerId, out var scope))
+            return null;
+        var document = _model.GetDocument(entry.OwnerId);
+        if (document is null)
+            return null;
+        if (entry.Kind == "row")
+        {
+            var seed = seeds.GetOrAdd(entry.OwnerId, _ => document.Element is Seed s && _model.Get<ReferenceType>(s.Target) is not null
+                ? (s, IndexOf(s.Columns, "label"), IndexOf(s.Columns, "description"), s.Rows.ToDictionary(r => r.Id, StringComparer.Ordinal))
+                : null);
+            if (seed is not { } rowSeed || !rowSeed.Rows.TryGetValue(entry.Id, out var row))
+                return null;
+            return new LocalizableNode(entry.Id, entry.OwnerId, "reference-row", scope, null, null,
+                Cell(row, rowSeed.Label), Cell(row, rowSeed.Description), false, false);
+        }
+
+        if (entry.Kind is not ("attribute" or "end" or "enum-member" or "reference-field" or "category"))
+            return null;
+        if (!Json.JsonPointer.TryGet(document.Json, entry.JsonPointer, out var node) || node.ValueKind != JsonValueKind.Object)
+            return null;
+        var name = String(node, "name") ?? String(node, "role");
+        var display = String(node, "displayName") ?? name ?? (entry.Kind == "reference-field" ? DefaultFieldName(entry.JsonPointer) : null);
+        var plural = String(node, "pluralName");
+        var description = node.TryGetProperty("description", out var d) ? d.ValueKind switch
+        {
+            JsonValueKind.String => d.GetString(),
+            JsonValueKind.Object when d.TryGetProperty("file", out var f) && f.ValueKind == JsonValueKind.String => "file:" + f.GetString(),
+            _ => null,
+        } : null;
+        var toMany = entry.Kind != "end" || !node.TryGetProperty("max", out var max) || max.ValueKind != JsonValueKind.Number;
+        var hasPlural = entry.Kind == "category" || (entry.Kind == "end" && toMany);
+        return new LocalizableNode(entry.Id, entry.OwnerId, entry.Kind, scope, display, hasPlural ? plural ?? display : null, null,
+            description, hasPlural, entry.Kind == "end" && !toMany && plural is not null);
     }
 
     private static string DefaultFieldName(string pointer) => pointer.EndsWith("/label", StringComparison.Ordinal) ? "Label" : "Code";

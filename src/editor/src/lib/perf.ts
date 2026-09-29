@@ -42,6 +42,15 @@ function mark(name: string): void {
   }
 }
 
+/** Records a stage measured elsewhere (a stage split over several tasks records its longest task, say). */
+export function perfRecord(stage: string, ms: number, detail?: Record<string, unknown>, at = now() - ms): PerfEntry {
+  const entry: PerfEntry = { name: stage, at, ms, ...(detail ? { detail } : {}) };
+  const perf = editorPerf();
+  perf.entries.push(entry);
+  if (perf.entries.length > MAX_ENTRIES) perf.entries.splice(0, perf.entries.length - MAX_ENTRIES);
+  return entry;
+}
+
 /** Starts a stage; call the returned function when it ends. */
 export function perfStart(stage: string): (detail?: Record<string, unknown>) => PerfEntry {
   const at = now();

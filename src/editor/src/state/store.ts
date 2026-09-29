@@ -132,8 +132,12 @@ export interface EditorState {
   /** A command the palette asked a workspace to run once it is showing (4.8). */
   command: { name: PaletteCommand; nonce: number } | null;
   /** The open New element dialog (explorer menus, the explorer's New button, the first-run panel, the palette): the kind
-   * and the domain its picker starts on. */
-  newElement: { kind: CreateKind; domain: string | null } | null;
+   * and the domain its picker starts on; `source` presets a relationship's first end (the entity editor's New
+   * relationship…). */
+  /** The New dialog's request; `source` presets a relationship's first end (the entity editor's New relationship…). */
+  newElement: { kind: CreateKind; domain: string | null; source?: string } | null;
+  /** A reference type action the explorer's menu asked the Reference data screen to run (RT 4.2's type menu). */
+  typeAction: { action: string; ids: string[]; nonce: number } | null;
   /** Back and forward through selections (explorer-redesign.md 3.3). */
   history: NavHistory;
   /** The element the References tab lists the uses of (Where used, Shift+F12; 3.3). */
@@ -182,7 +186,8 @@ export interface EditorActions {
   noteRecent(id: string): void;
   requestCommand(name: PaletteCommand | null): void;
   /** Opens the New element dialog for a kind, its domain picker on `domain`; null closes it. */
-  requestNew(request: { kind: CreateKind; domain: string | null } | null): void;
+  requestNew(request: { kind: CreateKind; domain: string | null; source?: string } | null): void;
+  requestTypeAction(request: { action: string; ids: string[] } | null): void;
   /** Moves back or forward through the selection history; returns the selection it moved to, or null. */
   travel(direction: "back" | "forward"): string[] | null;
   /** Opens the References tab on an element. */
@@ -299,6 +304,7 @@ export function createEditorStore(): EditorStore {
     recent: initialRecent(),
     command: null,
     newElement: null,
+    typeAction: null,
     history: emptyHistory,
     references: null,
     centerRequest: null,
@@ -398,6 +404,7 @@ export function createEditorStore(): EditorStore {
     // A go-to (a definition, a where-used row, a breadcrumb, back and forward) opens the element: it is a recent one.
     requestCenter: (id) => set({ centerRequest: { id, nonce: (get().centerRequest?.nonce ?? 0) + 1 }, recent: withRecent(get().recent, id) }),
     requestNew: (request) => set({ newElement: request }),
+    requestTypeAction: (request) => set({ typeAction: request ? { ...request, nonce: (get().typeAction?.nonce ?? 0) + 1 } : null }),
     requestCommand: (name) => set({ command: name ? { name, nonce: (get().command?.nonce ?? 0) + 1 } : null }),
     updateEditors: (update) => {
       const before = get().editors;

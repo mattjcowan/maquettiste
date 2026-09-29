@@ -285,8 +285,18 @@ test.describe("explorer at scale (?mock=large)", () => {
     within(info, record(info, { name: "search worker ready after the index", ms, mockMs: 0, targetMs: 500, detail: { ready, handoff } }));
     within(
       info,
-      record(info, { name: "search worker handoff (main thread)", ms: handoff.ms, mockMs: 0, targetMs: 5, detail: handoff.detail }),
-      "the rows are encoded as one string on the main thread before the post; the worker could fetch them itself",
+      // The index's JSON text goes over in slices of 1 MB, one per task: the measure is the longest main-thread task of the
+      // handoff (the detail has the slice count and the total).
+      record(info, { name: "search worker handoff (main thread, longest task)", ms: handoff.ms, mockMs: 0, targetMs: 5, detail: handoff.detail }),
+      "each 1 MB slice of the index text is one structured-clone copy on the main thread; a transferable buffer would avoid it",
+    );
+    // The whole main-thread cost of the handoff, every slice summed, keeps the handoff's original 5 ms target: slicing moved
+    // the cost off any one task but did not remove it (section 4.5: the worker fetches the index, or takes a transferable).
+    const totalMs = Number(handoff.detail?.totalMs ?? handoff.ms);
+    within(
+      info,
+      record(info, { name: "search worker handoff (main thread, all slices)", ms: totalMs, mockMs: 0, targetMs: 5, detail: handoff.detail }),
+      "the slices together still copy the whole index text through structured clone; the worker fetching the index, or a transferable buffer, is not built",
     );
   });
 
@@ -599,7 +609,7 @@ test.describe("explorer at scale (?mock=large)", () => {
     within(
       info,
       m,
-      "About 155 ms a step when first measured; not profiled yet (the editor frame, the Mappings tab and the inspector all re-render on each selection).",
+      "About 155 to 178 ms a step when first measured; profiled 2026-09-29: the vocabulary lookups and the filter bar's tag list are cached per index and the covered canvas no longer re-renders; what remains is the editor remounting per entity (its DOM rebuilt, one forced style recalculation in the tabs' presence check) and the explorer's selection commit.",
     );
   });
 
