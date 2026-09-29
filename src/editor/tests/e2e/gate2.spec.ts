@@ -64,13 +64,14 @@ test("gate 2: edit the reference application in the editor, plan and apply", asy
   expect(before).toBeGreaterThan(3);
   await page.getByRole("button", { name: "Add attribute" }).click();
   await expect(names).toHaveCount(before + 1);
-  // The new row arrives as attribute<n>, selected; against the live editor it is not always already in edit mode, so
-  // enter it the way a user would.
-  const added = names.nth(before);
-  await expect(added).toHaveText(/^attribute\d+$/);
-  const editor = grid.getByRole("textbox");
-  if (!(await editor.isVisible())) await added.dblclick();
-  await editor.fill("receivingHours");
+  // The new row opens in edit mode: its name editor has focus with the generated attribute<n> selected, so typing
+  // replaces it.
+  const editor = names.nth(before).getByRole("textbox");
+  await expect(editor).toBeVisible();
+  await expect(editor).toBeFocused();
+  await expect(editor).toHaveValue(/^attribute\d+$/);
+  await page.keyboard.type("receivingHours");
+  await expect(editor).toHaveValue("receivingHours");
   await editor.press("Enter");
   await expect(names).toHaveCount(before + 1);
   await expect(names.nth(before)).toHaveText("receivingHours");

@@ -2,7 +2,7 @@
 
 Status: proposal for the owner's review. Stages S1 (the contract additions E5 to E5e, §4.1) and S2 (the large mock dataset and the Playwright `scale` project, §5) are built; the explorer, search, editors and screens described here are not. Scope: the editor's left-hand explorer, the words the editor uses, search and navigation, the element editors the explorer opens, the Reference data screen, and the data all of these need. The model side of reference types, seeds and localization is designed in `reference-types-seeds-localization.md` (the binding design for those features); this document covers only how the explorer and the editor present them. It builds on SPEC.md §1 (5,000 entities, 20,000 relations, 300 nodes at 60 fps), §5 (layers), §10, §13 ("Editor at scale"), §14 and §18, and on phase2-design.md §4.8 and §4.9. File-format names (`kind: "package"`, the `package` field, `model/packages/`, `schemas/v1/package.json`, `ElementSummary.package`) do not change.
 
-**Revision of 2026-09-28.** The owner answered the first round and pointed at LLBLGen Pro's Project Explorer, Catalog Explorer and Entity Editor as the bar. This revision: makes the tree nested and self-describing after LLBLGen (a Project node, a **Domain model** root with domains as nested packages and one folder per kind, a **Databases** root shaped like the Catalog Explorer, **Diagrams** outside the domains); drops the Auto option that flattened small domains and the separate Mappings section; adds LLBLGen's search operators, related-element highlighting, context menus with multi-selection, and entity editors with a General mode; takes reference types out of the tree into a **Reference data** screen while keeping them in search; keeps enums a kind; places seed data and localized labels in the explorer (their model design is in `reference-types-seeds-localization.md`); brings the performance plan, the mock dataset and the migration up to date with what is built; and lists the patterns taken from, and refused from, other tools (§8.1, §8.2). Later the same day the owner settled the shell and the vocabularies: a rail of icons, each selecting one explorer for the sidebar, with Settings at its foot (§1.0, replacing the Project node and the Settings root), and tags and categories both global and per domain (§1.11). Sections that changed carry a "Revised 2026-09-28" note.
+**Revision of 2026-09-28.** The owner answered the first round and asked for a nested, self-describing tree, a databases explorer, an entity editor that keeps its tab across elements, and search across every kind. This revision: makes the tree nested and self-describing (a Project node, a **Domain model** root with domains as nested packages and one folder per kind, a **Databases** root nested database › schema › object, **Diagrams** outside the domains); drops the Auto option that flattened small domains and the separate Mappings section; adds search operators (contains, starts with, like, equals), related-element highlighting, context menus with multi-selection, and entity editors with a General mode; takes reference types out of the tree into a **Reference data** screen while keeping them in search; keeps enums a kind; places seed data and localized labels in the explorer (their model design is in `reference-types-seeds-localization.md`); brings the performance plan, the mock dataset and the migration up to date with what is built; and lists the prior art and the patterns refused (§8.1, §8.2). Later the same day the owner settled the shell and the vocabularies: a rail of icons, each selecting one explorer for the sidebar, with Settings at its foot (§1.0, replacing the Project node and the Settings root), and tags and categories both global and per domain (§1.11). Sections that changed carry a "Revised 2026-09-28" note.
 
 **Two principles this document follows** (the owner's):
 
@@ -22,30 +22,30 @@ Status: proposal for the owner's review. Stages S1 (the contract additions E5 to
 
 ## 1. Information architecture
 
-*Revised 2026-09-28: rebuilt on LLBLGen Pro's Project Explorer and Catalog Explorer; then a rail of explorers (§1.0) in place of the Project node and the Settings root, and domain-scoped vocabularies (§1.11).*
+*Revised 2026-09-28: rebuilt as nested, self-describing trees for the domain model and the databases; then a rail of explorers (§1.0) in place of the Project node and the Settings root, and domain-scoped vocabularies (§1.11).*
 
 ### 1.0 The shell: a rail of explorers
 
-*New 2026-09-28 (the owner's decision).* The shell follows VS Code's activity bar, which SPEC §14 calls the workspace switcher:
+*New 2026-09-28 (the owner's decision).* The shell is a rail of explorers, which SPEC §14 calls the workspace switcher:
 
-- **Rail.** A narrow strip of icons. From the top: **Domain model**, **Reference data**, **Catalog** (the databases), **Diagrams**, **Generate**. At the bottom: **Settings** (a gear, the project's settings, §1.6) and the account menu with sign out.
-- **Sidebar: one explorer.** The sidebar shows the one explorer the selected icon names, under a header that says which, with its totals ("Domain model · 40 domains · 5,000 entities"), so the tree always says what it is browsing. Each explorer keeps its own expansion, scroll and filter. Generate's sidebar lists packs and targets; its screen is outside this document. Below, "the Domain model root", "the Databases root" and "the Diagrams root" mean the tops of the Domain model, Catalog and Diagrams explorers.
-- **A second explorer** pinned beside the first (LLBLGen's Project Explorer and Catalog Explorer side by side) is a per-user preference, off by default.
+- **Rail.** A narrow strip of icons. From the top: **Domain model**, **Reference data**, **Databases**, **Diagrams**, **Generate**. At the bottom: **Settings** (a gear, the project's settings, §1.6) and the account menu with sign out.
+- **Sidebar: one explorer.** The sidebar shows the one explorer the selected icon names, under a header that says which, with its totals ("Domain model · 40 domains · 5,000 entities"), so the tree always says what it is browsing. Each explorer keeps its own expansion, scroll and filter. Generate's sidebar lists packs and targets; its screen is outside this document. Below, "the Domain model root", "the Databases root" and "the Diagrams root" mean the tops of the Domain model, Databases and Diagrams explorers.
+- **A second explorer** pinned beside the first (for example Domain model and Databases side by side) is a per-user preference, off by default.
 - **Centre and bottom.** The centre holds editor tabs opened from any explorer (element editors §3.6, diagrams, the Database screen, a reference type, Settings); they stay open when the rail changes. The bottom panel (Problems, Output, diffs, References) is shared by every explorer.
-- **Selection follows the active tab** and outlives rail switches, so highlighting (§1.9) and "mapped by" (§1.3) show in whichever explorer is visible: select the `invoices` table in Catalog, switch to Domain model, and Invoice is tinted.
+- **Selection follows the active tab** and outlives rail switches, so highlighting (§1.9) and "mapped by" (§1.3) show in whichever explorer is visible: select the `invoices` table in Databases, switch to Domain model, and Invoice is tinted.
 
 ### 1.1 The tree, and the rule that you always know what you are browsing
 
 Each explorer is one virtualized tree (§1.0). There is no Project node: the project's name is in the top bar, and Settings and Generate are rail icons. The explorers, each named after what it holds:
 
-| Explorer | LLBLGen counterpart | Spec layer | Holds |
-| --- | --- | --- | --- |
-| **Domain model** | Entity Model (its groups, which are one level deep; the nesting follows Enterprise Architect's package browser and PowerDesigner packages) | Conceptual | Domains nested as packages; in each, one folder per kind (§1.2) |
-| **Reference data** | none | Conceptual | The reference types by category; a type opens as a centre tab (§1.7) |
-| **Catalog** | Relational Model Data, a node inside LLBLGen's Entity Model root, shaped like the Catalog Explorer | Physical | Database › schema › Tables, Views, Sequences › columns and constraints (§1.3) |
-| **Diagrams** | Model View definitions, which LLBLGen keeps inside the Entity Model root but outside its groups, because they span them | View | Every saved diagram (§1.5) |
+| Explorer | Spec layer | Holds |
+| --- | --- | --- |
+| **Domain model** | Conceptual | Domains nested as packages, at any depth; in each, one folder per kind (§1.2) |
+| **Reference data** | Conceptual | The reference types by category; a type opens as a centre tab (§1.7) |
+| **Databases** | Physical | Database › schema › Tables, Views, Sequences › columns and constraints (§1.3) |
+| **Diagrams** | View | Every saved diagram, kept outside the domains because a diagram spans them (§1.5) |
 
-Settings is not a tree: the gear opens the Settings screen (§1.6), as LLBLGen opens a Project Settings dialog. LLBLGen keeps Relational Model Data and Model View definitions under its Entity Model root. Maquettiste gives them explorers of their own on purpose: SPEC §5 separates the conceptual, physical and view layers, and an explorer per layer keeps that separation visible.
+Settings is not a tree: the gear opens the Settings screen (§1.6). The tables and the diagrams could have been nodes under the domain model; Maquettiste gives them explorers of their own on purpose: SPEC §5 separates the conceptual, physical and view layers, and an explorer per layer keeps that separation visible.
 
 Two more top-level rows of the Domain model explorer appear only when they have members, last: **People and access** (actors and permissions: conceptual, but SPEC §5 gives them no package, so they are never in a domain and never orphans), then **Other elements** (kinds with no package that this editor version does not know).
 
@@ -59,7 +59,7 @@ Two more top-level rows of the Domain model explorer appear only when they have 
 
 ```
 DOMAIN MODEL                                 40 domains · 5,000 entities   (the explorer's header)
-  ▸ Not in a domain                          3             (only when non-empty; first, as LLBLGen's unnamed group)
+  ▸ Not in a domain                          3             (only when non-empty; always first)
   ▾ ◇ Billing                                1 sub-domain · 4 entities   (Enter opens General, Tags, Categories, §1.11)
     ▸ ◇ Catalog                              1 entity
     ▸ Entities                               4
@@ -75,7 +75,7 @@ DOMAIN MODEL                                 40 domains · 5,000 entities   (the
     ▸ Agents                                 3             (a project-defined folder, §1.6)
   ▸ ◇ Sales                                  3 sub-domains · 212 entities
   ▸ People and access                        Actors 4 · Permissions 30   (only when non-empty)
-CATALOG                                      3 databases · 1,184 tables
+DATABASES                                    3 databases · 1,184 tables
   ▾ ▣ main   PostgreSQL 16                   712 tables · 12 views · 3 sequences · 20 customised mappings
     ▾ ▤ public                               700 tables
       ▸ Tables                               700
@@ -91,11 +91,11 @@ The counts on collapsed Databases rows come from the index (databases, views, se
 ### 1.2 Domain model: nested domains, one folder per kind
 
 - **Nesting.** The Domain model root's children are the top-level domains (packages with `package: null` in the index, as the fixture's Billing). A domain's children are its sub-domains (packages whose `parent` is this package), sorted by name, then its kind folders. The tree is built from `ElementSummary.package`, which for a package already holds its parent (`ModelIndexer.PackageOf`). No contract change is needed for nesting. Sub-domains are listed directly rather than in a "Sub-domains" folder: they are the same kind of node as their parent, their icon and count phrase say so, and a folder would add a level at every depth (question 2 in §8.8).
-- **Not in a domain** is the first child of Domain model, as LLBLGen lists its unnamed group first, and appears only when it has members: conceptual elements whose kind belongs in a domain but that have no package. A broken `parent` chain (a cycle, or a parent that does not exist) is shown there too with a warning icon; validation already reports it, and the tree must not loop. Elements of other layers are never here, because each has its own explorer.
+- **Not in a domain** is the first child of Domain model, before any domain, and appears only when it has members: conceptual elements whose kind belongs in a domain but that have no package. A broken `parent` chain (a cycle, or a parent that does not exist) is shown there too with a warning icon; validation already reports it, and the tree must not loop. Elements of other layers are never here, because each has its own explorer.
 - **Counts.** A domain's count phrase rolls up everything beneath it ("3 sub-domains · 212 entities"); a folder's count covers only its direct members. Rolled-up counts are computed once per index version, bottom-up.
 - **Kind folders are data, not code.** One table in `model/labels.ts` maps each kind to its folder label, tooltip, icon, order and placement rule. Order: Entities, Relationships, Enums, Value objects, Custom types, Seed data (seeds are elements, `kind: "seed"`, several per target; a seed of an entity or a relation is placed in its target's domain; seeds of reference types appear only in the Reference data screen), then the later SPEC §5 and §10 kinds as they land (Processes, Operations, Business events, Queries, Projections), then the project-defined folders (§1.6). A folder with no members is hidden; the domain's context menu still offers "New entity", "New enum" and the rest, so an empty folder is never needed as a drop target. A kind the table does not know goes in an **Other** folder in its domain when it has a `package`, and otherwise in the Other elements root.
 - **Enums stay a kind** with their own folder (the owner's decision). An enum is a closed set whose members are part of the code; a reference type (§8.3) is a set of rows managed as data, with fields of its own. Reference types are not in this root.
-- **Element children.** An entity row expands into folders of its own, as LLBLGen's entity nodes do:
+- **Element children.** An entity row expands into folders of its own, one per kind of child:
   - **Attributes (n)**: each with its type in the secondary text. Needs the entity's document; expanding loads it through the batched read, and hovering the row for 300 ms prefetches it (§4.2).
   - **Relationships (n)**: every relation with this entity at one of its ends, including relations from other domains (each shows its domain path in the secondary text). From the index `ends`; no load.
   - **Seed data (n seeds · m rows)**: the seeds whose `target` is this entity (§8.4), from the index `target` and `rowCount`. Opens the seed grid. Like Relationships, this is a navigation view: each seed's place is the Seed data folder.
@@ -103,25 +103,25 @@ The counts on collapsed Databases rows come from the index (databases, views, se
 - A relationship row expands into **Ends** (the entities, with role and cardinality, from the index) and **Attributes (n)** when it has any. A relation attribute can be typed with a reference type, single or multi-value, required or not (the owner's example: `contains` with `quantity` and `unitOfMeasure`, where Unit of measure is a reference type); its row names the type, "reference data" and the cardinality (`1`, `0..1`, `many`, `0..many`, as the Used by tab's badges show it), and Go to definition opens the Reference data screen on that type. Relation ends stay entities.
 - An enum row expands into its **Members**; a value object into its **Attributes**.
 
-### 1.3 Databases: shaped like the Catalog Explorer
+### 1.3 Databases: database, schema, object
 
-- **Shape.** Catalog › database › schema › **Tables**, **Views**, **Sequences** › each object › **Columns**, **Primary key**, **Foreign keys**, **Unique constraints**, **Indexes** (and a view's **Columns**). This is the Catalog Explorer's Catalog › Schema › Table › Field, Foreign Key Constraint, Unique Constraint, with the catalog level dropped: a Maquettiste database is one catalog. A schema node always shows the schema's own name when it has one (`public`, even when it is the database's only schema, from `DatabaseView.defaultSchema` or the table's `schema`). A **Default schema** node appears only when the dialect has no schemas (SQLite) or a table's schema is null, as LLBLGen shows Default only for an unnamed catalog or schema, so the depth is the same everywhere.
+- **Shape.** Databases › database › schema › **Tables**, **Views**, **Sequences** › each object › **Columns**, **Primary key**, **Foreign keys**, **Unique constraints**, **Indexes** (and a view's **Columns**). There is no level between a database and its schemas: a Maquettiste database is one namespace of schemas. A schema node always shows the schema's own name when it has one (`public`, even when it is the database's only schema, from `DatabaseView.defaultSchema` or the table's `schema`). A **Default schema** node appears only when the dialect has no schemas (SQLite) or a table's schema is null, so the depth is the same everywhere.
 - **Where the rows come from.** A database node shows its dialect and version. The list of tables comes from the table summaries (E5c, built): `key`, `name`, `schema`, `origin`, `entityId`, `relationId`, `isJunction`, `isLookup`, `columnCount`. Tables resolved from SPEC §10's conventions have no file, or a file holding only overrides (`origin`); designed and imported tables are files. The Databases root never shows tables for reference types, seed data or translations: their physical form belongs to the templates (principle 1), and the generated DDL is seen in the Generate screen and the DDL preview. The children of a table (columns, keys, constraints, indexes) need one table's detail, which today only `GET /api/databases/{id}/view` returns, with every table of the database; §4.1 proposes E5f, one table's `TableView`.
-- **Order inside Tables.** Sorted by name, flat, as the Catalog Explorer and database IDEs list them. Two scales matter: the owner's databases of about 700 tables, and the 10,005-table `main` of the bench model and `?mock=large` that CI exercises. At 700 tables a virtualized list with type-ahead and the search box is quicker than folders; at 10,005 the flat list still works (virtualized rows, type-ahead over a sorted array) but is long enough that Group by domain may be the better default (§8.8 question 4). A view option, **Group by domain**, puts tables in folders named after the domain of the entity that owns them (`entityId`, then that entity's `package`), with junction tables under the relation's domain, enum lookup tables (`isLookup`) under the enum's domain (from `enumId`, an E5c addendum proposed in §4.1), and a **Not linked to an entity** folder reserved for designed and imported tables with no owning entity, relation or enum. With the option off, those tables carry a small "unlinked" marker instead; lookup tables carry a "lookup" marker instead. Against a server without `enumId`, lookup tables fall back to Not linked, still marked "lookup".
-- **Mapped by.** Selecting a table highlights, in the Domain model root, the entity, relation or enum mapped onto it (from `entityId`, `relationId` and `enumId`); selecting a column highlights the attribute (`ColumnView.attributeId`). The reverse also holds: selecting an entity highlights its tables. With one explorer visible, the tint shows after a rail switch, since the selection persists (§1.0); with a pinned second explorer, at once. This is LLBLGen's "project elements mapped onto the selected catalog element are highlighted in the Project Explorer", and it follows the highlighting preference (§1.9). Collapsed folders that hold a highlighted row show a "2 related" badge instead of expanding.
-- **Context actions**, after the Catalog Explorer's: on a table, "Go to entity", "Create entity from table" (the reverse-engineering path; for a designed or imported table with no entity), "Copy SELECT" and "Copy DDL"; on a schema or Tables folder with several tables selected, "Create entities from tables…", one batch.
+- **Order inside Tables.** Sorted by name, flat, as database tools commonly list them. Two scales matter: the owner's databases of about 700 tables, and the 10,005-table `main` of the bench model and `?mock=large` that CI exercises. At 700 tables a virtualized list with type-ahead and the search box is quicker than folders; at 10,005 the flat list still works (virtualized rows, type-ahead over a sorted array) but is long enough that Group by domain may be the better default (§8.8 question 4). A view option, **Group by domain**, puts tables in folders named after the domain of the entity that owns them (`entityId`, then that entity's `package`), with junction tables under the relation's domain, enum lookup tables (`isLookup`) under the enum's domain (from `enumId`, an E5c addendum proposed in §4.1), and a **Not linked to an entity** folder reserved for designed and imported tables with no owning entity, relation or enum. With the option off, those tables carry a small "unlinked" marker instead; lookup tables carry a "lookup" marker instead. Against a server without `enumId`, lookup tables fall back to Not linked, still marked "lookup".
+- **Mapped by.** Selecting a table highlights, in the Domain model root, the entity, relation or enum mapped onto it (from `entityId`, `relationId` and `enumId`); selecting a column highlights the attribute (`ColumnView.attributeId`). The reverse also holds: selecting an entity highlights its tables. With one explorer visible, the tint shows after a rail switch, since the selection persists (§1.0); with a pinned second explorer, at once. It follows the highlighting preference (§1.9). Collapsed folders that hold a highlighted row show a "2 related" badge instead of expanding.
+- **Context actions**: on a table, "Go to entity", "Create entity from table" (the reverse-engineering path; for a designed or imported table with no entity), "Copy SELECT" and "Copy DDL"; on a schema or Tables folder with several tables selected, "Create entities from tables…", one batch.
 - **Opening a table** opens the Database screen scoped, never on the whole database: the table and its foreign-key neighbours to depth 1, widened to the rest of that table's domain while the total stays at 300 tables or fewer (SPEC §1's node budget; SPEC §13: diagrams are subject areas, never the whole model). The table is focused and its DDL shown. The screen's own "whole database" choice is offered only for databases of 300 tables or fewer; above that it shows a virtualized list with DDL instead of a canvas.
 - **Customised mappings** is a folder under each database listing the mapping files for that database (from the index `database` on mapping rows), grouped by domain when the option is on, each labelled "Invoice → invoices". It replaces the first proposal's Mappings section (§1.4).
 
 ### 1.4 Mappings
 
-*Revised 2026-09-28: no longer a root.* LLBLGen puts an entity's mapping on the entity (its Field Mappings tab), not in a tree root, and a Mappings root duplicated what the Databases root shows. So: the coverage line moves onto the database row ("712 tables · 20 customised mappings"; with the table summaries loaded, also "5,000 entities mapped · 3 left out", where "left out" is an entity in one of this database's packages that has no table because it is ignored); customised mappings are the **Customised mappings** folder under each database (§1.3); an entity's mappings are its **Mappings** child (§1.2) and its editor's Mappings tab (§3.6). The Mappings screen (SPEC §14) stays as the side-by-side view.
+*Revised 2026-09-28: no longer a root.* An entity's mapping belongs on the entity (its editor's Mappings tab), not in a tree root, and a Mappings root duplicated what the Databases root shows. So: the coverage line moves onto the database row ("712 tables · 20 customised mappings"; with the table summaries loaded, also "5,000 entities mapped · 3 left out", where "left out" is an entity in one of this database's packages that has no table because it is ignored); customised mappings are the **Customised mappings** folder under each database (§1.3); an entity's mappings are its **Mappings** child (§1.2) and its editor's Mappings tab (§3.6). The Mappings screen (SPEC §14) stays as the side-by-side view.
 
 ### 1.5 Diagrams outside the domains
 
 *Revised 2026-09-28.*
 
-- **Where they live.** The Diagrams root sits beside Domain model, not inside it, because a diagram spans domains; LLBLGen places Model View definitions outside its groups for the same reason (though still inside its Entity Model root; the separate root follows SPEC §5's view layer, §1.1). A diagram whose file names a `package` (its home domain) is listed in a folder named after that domain (domain icon, tooltip "Diagrams whose home is Billing"); diagrams without one are listed directly under Diagrams. Each diagram row shows its member count from `memberCount` on the index row (E5, built); the tree never GETs a diagram to label it.
+- **Where they live.** The Diagrams root sits beside Domain model, not inside it, because a diagram spans domains; it is a root of its own because SPEC §5 keeps the view layer apart (§1.1). A diagram whose file names a `package` (its home domain) is listed in a folder named after that domain (domain icon, tooltip "Diagrams whose home is Billing"); diagrams without one are listed directly under Diagrams. Each diagram row shows its member count from `memberCount` on the index row (E5, built); the tree never GETs a diagram to label it.
 - **Domain view.** The virtual "Package: X" view becomes **All of Billing** in the diagram picker, offered only when the domain has 300 entities or fewer. Above that, the picker offers "New diagram from Billing…", which opens the add-elements dialog scoped to that domain. A domain's context menu has "Diagrams of this domain", which switches the rail to Diagrams, filtered.
 - **Membership in the tree.** Each tree row shows a small dot when its element is on the active diagram. The members come from the diagram document, which is already loaded.
 - **From the tree to the canvas** (row context menu, plus drag and drop onto the canvas): **Add to diagram** (multi-select, one batch); **Add with related…** (neighbours to depth N, §14 "add related"; the dialog previews the node count and warns past 300); **Show on canvas** (centres the element on the active diagram, or lists the diagrams that contain it, "In 3 diagrams", from the references endpoint; `ReferenceWalker` must be confirmed to count diagram membership as the mock's `refs.ts` does); **New diagram from selection** (in the selection's domain); **Where used** (§3.3).
@@ -139,14 +139,14 @@ The counts on collapsed Databases rows come from the index (databases, views, se
 *New 2026-09-28.* The owner's decision: "a single place to manage all reference data with a list of the reference data types, and then the ability to manage them and add fields if they need them." The screen is designed in `reference-types-seeds-localization.md` §4; what matters to the explorer:
 
 - *Revised 2026-09-28.* **Reference types appear only there.** The Domain model tree lists none. The rail's **Reference data** icon (second, §1.0) shows the screen's list as its explorer ("812 types · 16,240 rows" in the header); a selected type opens as a centre tab.
-- **The list is nested the same way**: a virtualized tree of category paths with counts (reference types have no package; categories group them), a flat A–Z toggle, and a search box that accepts the operators of §3.1. Tabs Fields, Rows, Used by and Storage keep their choice when another type is selected, as LLBLGen's General Entity Editor keeps its sub-tab (§3.6).
+- **The list is nested the same way**: a virtualized tree of category paths with counts (reference types have no package; categories group them), a flat A–Z toggle, and a search box that accepts the operators of §3.1. Tabs Fields, Rows, Used by and Storage keep their choice when another type is selected, as an element editor in General mode keeps its tab (§3.6).
 - **Search across all kinds** finds reference types: the tree filter's footer ("Also 4 reference types match") and quick open list them with the path `Reference data › Measurement › Unit of measure` (§3.1), and opening one goes to the screen.
 - **Highlighting**: selecting a reference type in the screen highlights, in the explorer, the owners of the attributes it types (entities, relations, value objects), as §1.9 does for selections in the tree. The index does not carry attribute types, so this needs the type's references (the Used by tab's request) and appears once they are loaded.
 - **Go to definition** on a reference-typed attribute (an entity's, or a relation's such as `contains.unitOfMeasure`) opens the screen on that type; "New reference type…" is offered in every attribute type picker.
 
 ### 1.8 Context menus and multi-selection
 
-*New 2026-09-28.* Every row has a context menu (right click, the context-menu key or Shift+F10), as in LLBLGen. Multi-selection (Ctrl or Cmd+click, Shift+click, Shift+arrows, Space) is limited to rows of one kind, as LLBLGen limits it: a Ctrl+click on a row of another kind starts a new selection. Menus then stay predictable, and SPEC §14's bulk edits ("apply a stereotype to 50 entities") are per kind anyway. The menu for a selection offers only the actions valid for every selected row.
+*New 2026-09-28.* Every row has a context menu (right click, the context-menu key or Shift+F10). Multi-selection (Ctrl or Cmd+click, Shift+click, Shift+arrows, Space) is limited to rows of one kind: a Ctrl+click on a row of another kind starts a new selection. Menus then stay predictable, and SPEC §14's bulk edits ("apply a stereotype to 50 entities") are per kind anyway. The menu for a selection offers only the actions valid for every selected row.
 
 | Row | Menu (multi-selection support marked ✱) |
 | --- | --- |
@@ -162,7 +162,7 @@ The counts on collapsed Databases rows come from the index (databases, views, se
 
 ### 1.9 Related-element highlighting
 
-*New 2026-09-28.* LLBLGen highlights, when a node is selected, the related elements (relationships, foreign-key fields, derived elements), and lets the user turn it off. Here, selecting a row tints the rows related to it:
+*New 2026-09-28.* Selecting a row tints the rows related to it:
 
 - an entity: the relationships it is an end of, the entities at their other ends, its base and derived entities (from `base` on entity rows, E5h, proposed in §4.1; against a server without it, only once the entity's document is loaded), the tables mapped from it, and its seed data;
 - a relationship: its end entities and the table or foreign key that realizes it;
@@ -199,7 +199,7 @@ The rule: the user-facing words follow how the owner and non-experts talk. Code 
 | "Package: Billing" virtual view | **All of Billing** | `workspaces/entities/EntitiesWorkspace.tsx` (diagram picker, view title) |
 | Workspace / Workspaces | **Screen** / "Go to screen" for a centre tab; the rail's icons name **explorers** (*revised 2026-09-28*, §1.0) | `app/Rail.tsx` aria-label, command palette heading (`palette/CommandPalette.tsx`), SPEC §14 and phase2-design §4.8 wording. The `Workspace` type and the URL segments stay in code |
 | Entities (screen) | **Domain model** (rail icon, explorer and screen) | Rail label and tooltip, command palette. The URL segment `/entities` stays |
-| Database (screen) | **Catalog** for the rail icon and explorer (LLBLGen's word, tooltip "Databases, schemas and tables"); **Databases** for the screen (*revised 2026-09-28*) | Rail, command palette |
+| Database (screen) | **Databases** for the rail icon, the explorer and the screen (the owner's choice, 2026-09-28, as the word most people understand; tooltip "Databases, schemas and tables") | Rail, command palette |
 | Model explorer | **Explorer** (visible label); the aria-label "Model explorer" stays | `explorer/Explorer.tsx` |
 | "Filter elements" | **Search the model** (placeholder) | `explorer/Explorer.tsx` |
 | Tag vocabulary, Category tree | **Tags**, **Categories** | `KIND_LABELS`, Settings tabs, domain editor tabs (§1.11) |
@@ -216,28 +216,28 @@ The rule: the user-facing words follow how the owner and non-experts talk. Code 
 
 **Why "Screen" rather than "View".** "View" already means two things in the spec: a SQL view (a physical element kind) and a diagram (the View layer in §5). A third meaning would bring back the confusion this redesign removes.
 
-**"Domain" beside the spec, and beside PowerDesigner.** Spec §5 says a package "drives folders and namespaces in output"; the domain tooltip says so: "Domain (package in model files): groups elements; also sets the output folder and namespace." PowerDesigner and ERwin use "domain" for a reusable attribute type; users who come from them will find that idea under Custom types and Reference data, and the glossary says so.
+**"Domain" beside the spec, and beside its other meaning.** Spec §5 says a package "drives folders and namespaces in output"; the domain tooltip says so: "Domain (package in model files): groups elements; also sets the output folder and namespace." Some data-modeling tools use "domain" for a reusable attribute type; users who know that meaning will find that idea under Custom types and Reference data, and the glossary says so.
 
 **Glossary** (added to SPEC §14 in step 6, and shown as tooltips):
 
-- **Domain**: a business area such as Billing or Sales; stored as a `package` in the model files. A domain inside another is a **sub-domain**. (Not PowerDesigner's "domain", which is a Custom type here.)
+- **Domain**: a business area such as Billing or Sales; stored as a `package` in the model files. A domain inside another is a **sub-domain**. (Not "domain" in the sense of a reusable attribute type, which is a Custom type here.)
 - **Domain model**: the tree root and the screen for drawing and editing a domain's entities and relationships (URL `/entities`).
 - **Reference type**: a set of rows managed as data (units of measure, countries), each with a code and a label and any fields the project adds, usable as the type of an attribute or a relationship attribute. Managed in the Reference data screen.
 - **Enum**: a closed set of named values that belongs to the code.
 - **Seed data**: rows an element starts with (an entity's initial rows, a reference type's rows).
 - **Business event**: SPEC §5's Event kind, a thing that happened, raised by an operation or a process. The folder is called "Business events" so it is not read as a kind of domain.
-- **Explorer**: the sidebar tree a rail icon selects (Domain model, Reference data, Catalog, Diagrams, Generate). **Screen**: a document in the centre (an element editor, the Database screen, Settings…).
+- **Explorer**: the sidebar tree a rail icon selects (Domain model, Reference data, Databases, Diagrams, Generate). **Screen**: a document in the centre (an element editor, the Database screen, Settings…).
 - **Mapped automatically / customised**: a table that follows the naming conventions needs no mapping file; a customised one has a mapping override.
 
 ## 3. Navigation at scale
 
 ### 3.1 Search: the tree filter and quick open
 
-*Revised 2026-09-28: LLBLGen's operators, hidden non-matches, and search across all kinds beside the tree.*
+*Revised 2026-09-28: search operators, hidden non-matches, and search across all kinds beside the tree.*
 
 The owner wants both: a nested tree that tells you where you are, and search across every kind. There are two entry points over one index.
 
-**The explorer's search box filters the tree**, as LLBLGen's Project Explorer and Catalog Explorer search boxes do:
+**The explorer's search box filters the tree**, with four operators:
 
 | Operator | Meaning | Example |
 | --- | --- | --- |
@@ -249,10 +249,10 @@ The owner wants both: a nested tree that tells you where you are, and search acr
 - Matching is case-insensitive, against the name, the display name (default locale and the content locale in use, §8.5) and, for tables and columns, the physical name. Qualifiers narrow it: `kind:enum`, `in:Billing` (a domain and its sub-domains), `tag:`, `st:`, `cat:`; each qualifier also shows as a filter chip (§3.2).
 - **Non-matching rows are hidden.** A folder or container stays when anything beneath it matches, with its count showing "3 of 41". A matching domain, database or schema keeps its whole subtree, collapsed, so `=Billing` shows the Billing domain. Ancestors of matches are expanded while the filter is active; clearing it restores the user's expansion state.
 - Matched text is highlighted in each row. Enter on the box moves to the first match; Down moves into the tree.
-- **Kinds that are not in the tree still answer.** Below the filtered tree, a footer says "Also 4 reference types match" (and "12 tables in Catalog", "2 settings"; *revised 2026-09-28*: other explorers' matches too); clicking switches the rail or opens them where they live. That is how reference types stay out of the tree yet stay findable.
+- **Kinds that are not in the tree still answer.** Below the filtered tree, a footer says "Also 4 reference types match" (and "12 tables in Databases", "2 settings"; *revised 2026-09-28*: other explorers' matches too); clicking switches the rail or opens them where they live. That is how reference types stay out of the tree yet stay findable.
 - Table and column names come from the table summaries and from the tables whose detail is loaded; until the summaries arrive, a footer line says "table names still loading" and the filter re-runs when they land.
 
-**Quick open (Ctrl/Cmd+P) and the command palette (Ctrl/Cmd+K)** search across every kind as a ranked flat list, as VS Code's quick open and JetBrains' Search Everywhere do: elements, reference types, tables, views, diagrams, settings tabs and screens, and in the palette also commands. Prefixes pick a scope: `>` commands, `@` the members of the open element (VS Code's outline jump), `#` attributes across the model once attribute names are indexed (§4.1, E5g). Each result shows its kind icon and path.
+**Quick open (Ctrl/Cmd+P) and the command palette (Ctrl/Cmd+K)** search across every kind as a ranked flat list: elements, reference types, tables, views, diagrams, settings tabs and screens, and in the palette also commands. Prefixes pick a scope: `>` commands, `@` the members of the open element (attributes, members, columns), `#` attributes across the model once attribute names are indexed (§4.1, E5g). Each result shows its kind icon and path.
 
 - **Ranking**, best first: exact match; prefix match; word-start match across camel, snake and space boundaries (`invli` finds `InvoiceLine`, `inv_li` finds `invoice_lines`); substring match; fuzzy match on a subsequence. Typing one of the four operators switches from ranking to the operator's plain match, so the two boxes share one syntax.
 - **Tie-breakers.** Kind weight (entity, then reference type, table, relationship, enum, value object, custom type, diagram, other). Then the element is in or near the domain of the current selection. Then it was opened recently in this session. Then the shorter name, then alphabetical order. Candidate library: uFuzzy (MIT, built for about 100k short strings, with ranking hooks); the fallback is a small in-house prefix and trigram index. `search/rank.ts` holds the ranking as a pure function, whichever library is used.
@@ -275,17 +275,17 @@ Chips below the search box, which combine with the search text:
 - **Has errors**: from validation. **Missing translations** for a chosen locale (§8.5).
 - **On this diagram.**
 
-Active filters show a count on the filter button, and counts in the tree reflect them ("12 of 212"). **Scopes** (JetBrains): a set of chips can be saved under a name, per user or, through project settings, for the team ("Billing core", "Everything tagged pii"), and chosen from a drop-down beside the box. **Pinned filter** (DataGrip): a pin keeps the filter across screen changes and reloads (per user, in `localStorage`), shown as a pinned chip until it is unpinned.
+Active filters show a count on the filter button, and counts in the tree reflect them ("12 of 212"). **Scopes**: a set of chips can be saved under a name, per user or, through project settings, for the team ("Billing core", "Everything tagged pii"), and chosen from a drop-down beside the box. **Pinned filter**: a pin keeps the filter across screen changes and reloads (per user, in `localStorage`), shown as a pinned chip until it is unpinned.
 
 ### 3.3 Go to definition, where used, breadcrumbs
 
 *Revised 2026-09-28: reference types as targets, generated files, favorites and recents.*
 
 - **Go to definition** (F12, or Ctrl/Cmd+click on a reference in the inspector, an editor or a grid). It follows an attribute's type to its enum, value object, custom type or reference type (the last opens the Reference data screen), a relation end to its entity, a mapping to its entity or table, and a table or column to its entity or attribute. It then selects the target, reveals it in the tree and centres it on the canvas when the target is on the active diagram.
-- **Where used** (Shift+F12). A **References** tab in the bottom panel lists the results of `GET /api/model/references/{id}` in a virtualized list, grouped by kind of the referencing element, then by domain, with the JSON pointer field shown ("InvoiceLine · attribute amount → type"). A diagram membership shows as "on diagram Billing overview". Clicking a row goes to that element and pointer. Later, following PowerDesigner's impact analysis, the tab adds a **Generated files** group from the last plan (the template units that read the element).
-- **Breadcrumbs.** Above the canvas and the editors: `Domain model › Sales › Orders › Entities › Order`. Each segment opens a menu of its siblings, as in VS Code. The same path appears under each search result.
+- **Where used** (Shift+F12). A **References** tab in the bottom panel lists the results of `GET /api/model/references/{id}` in a virtualized list, grouped by kind of the referencing element, then by domain, with the JSON pointer field shown ("InvoiceLine · attribute amount → type"). A diagram membership shows as "on diagram Billing overview". Clicking a row goes to that element and pointer. Later, as an impact analysis, the tab adds a **Generated files** group from the last plan (the template units that read the element).
+- **Breadcrumbs.** Above the canvas and the editors: `Domain model › Sales › Orders › Entities › Order`. Each segment opens a menu of its siblings. The same path appears under each search result.
 - **History.** Alt+Left and Alt+Right move back and forward through selections.
-- **Favorites and recents** (DataGrip, JetBrains): a star on any row adds it to a **Favorites** list, and a **Recent** list holds the last 20 opened elements; both sit in a collapsible strip above the tree, per user.
+- **Favorites and recents**: a star on any row adds it to a **Favorites** list, and a **Recent** list holds the last 20 opened elements; both sit in a collapsible strip above the tree, per user.
 
 ### 3.4 Keyboard navigation of a virtualized tree
 
@@ -312,17 +312,17 @@ Active filters show a count on the filter button, and counts in the tree reflect
 
 ### 3.6 Element editors
 
-*New 2026-09-28.* Enter or a double click on an entity row opens its **entity editor** as a document tab in the centre area, beside the canvas; a single click opens it in a preview tab that the next single click replaces (VS Code's preview tabs); editing or a double click pins it. The inspector stays the compact property view for canvas work. The layout follows LLBLGen's Entity Editor:
+*New 2026-09-28.* Enter or a double click on an entity row opens its **entity editor** as a document tab in the centre area, beside the canvas; a single click opens it in a preview tab that the next single click replaces; editing or a double click pins it. The inspector stays the compact property view for canvas work. The layout is a band of top controls over tabs:
 
-- **Top controls:** name; domain (a picker); key ("id", with **Edit…** for a composite or alternate keys); base entity (LLBLGen's subtype setting, SPEC §6's inheritance); **Is abstract**; stereotypes, tags and category as chips (the pickers offer the vocabularies of the entity's domain chain, §1.11). Display names and the description are in the header; other locales appear only when the project declares two or more, in a collapsed **Translations** section (§8.5), so localization does not crowd the editor.
+- **Top controls:** name; domain (a picker); key ("id", with **Edit…** for a composite or alternate keys); base entity (SPEC §6's inheritance); **Is abstract**; stereotypes, tags and category as chips (the pickers offer the vocabularies of the entity's domain chain, §1.11). Display names and the description are in the header; other locales appear only when the project declares two or more, in a collapsed **Translations** section (§8.5), so localization does not crowd the editor.
 - **Tabs:**
   - **Attributes**: the attribute grid (`inspector/AttributeGrid.tsx`), then alternate keys and unique attributes, then **Inherited** (read-only rows from the base entity) and **Virtual** (attributes added by the entity's stereotypes, SPEC §6, read-only here).
   - **Relationships**: the relations with this entity at an end, with role, cardinality and their attributes; "New relationship…".
-  - **Mappings**: one section per database: table, column mapping grid with conventions muted and overrides highlighted (SPEC §14's Mappings screen, scoped to this entity); LLBLGen's Field Mappings tab.
-  - **Inheritance**: strategy and discriminator; disabled when the entity is in no hierarchy, as LLBLGen disables its Inheritance Info tab.
+  - **Mappings**: one section per database: table, column mapping grid with conventions muted and overrides highlighted (SPEC §14's Mappings screen, scoped to this entity).
+  - **Inheritance**: strategy and discriminator; disabled when the entity is in no hierarchy.
   - **Seed data**: the entity's rows in a grid (§8.4).
-  - **Code generation**: per-pack `generation{}` hints and the custom properties from extension schemas (`inspector/SchemaForm.tsx`); LLBLGen's Code Generation Info tab.
-- **General mode.** A **Follow selection** toggle on the tab bar turns an editor tab into the **Entity editor (general)** ("pin" keeps its VS Code sense of making a preview tab permanent): it follows the selection in the tree or on the canvas and keeps the current sub-tab, so a user can walk twenty entities on the Mappings tab without reopening anything. This is LLBLGen's General Entity Editor. Unsaved drafts are kept per element (`state/drafts.ts`), so moving on never loses an edit.
+  - **Code generation**: per-pack `generation{}` hints and the custom properties from extension schemas (`inspector/SchemaForm.tsx`).
+- **General mode.** A **Follow selection** toggle on the tab bar turns an editor tab into the **Entity editor (general)** ("pin" keeps its sense of making a preview tab permanent): it follows the selection in the tree or on the canvas and keeps the current sub-tab, so a user can walk twenty entities on the Mappings tab without reopening anything. Unsaved drafts are kept per element (`state/drafts.ts`), so moving on never loses an edit.
 - **Other kinds** use the same frame: the **relationship editor** (top controls: name, domain, ends with entity, role, cardinality and delete behaviour; tabs Attributes, Mappings, Code generation), and the **enum**, **value object** and **custom type** editors (members or attributes, Code generation). A reference type opens in the Reference data screen (§1.7). *Revised 2026-09-28:* the **domain editor** has tabs General (name, parent domain, description), Tags and Categories (§1.11).
 
 ## 4. Performance plan
@@ -465,8 +465,8 @@ The order keeps the explorer working after every step: every index row is reacha
 | 1 | Large dataset and perf harness | **Built (S2)**, §5. Left: the editor's `performance.mark` pairs (`lib/perf.ts`, `window.__mqPerf`), and COOP and COEP headers on the preview for the memory target | 0.5 day left |
 | 2 | Contract E5 to E5e | **Built (S1)**, §4.1. Left: the phase2-design §4.3 amendment (it still says the index is sent `no-store`; it is now `no-cache` with an ETag) | 0.25 day left |
 | 3 | Wire the built contract into the editor | `api/queries.ts`: `useElements` over `readElements` in chunks of 200 (falling back to chunked GETs with 16 in flight against an older server), the index query with `If-None-Match` and `structuralSharing: false`, `["tables", dbId]` over `getDatabaseTables` (background load after first paint, last-good fallback and stale badge, invalidation by kind); `canvas/model.ts` (`viewElements` from `ends`, "All of X" capped at 300) | 2 days |
-| 4 | Tree model | New `explorer/tree.ts` (one tree per explorer, domain nesting, Not in a domain first, kind folders, element children the index answers, the Catalog shape with Default schema and Customised mappings, Diagrams, People and access, Other elements, project-defined folders, rolled-up counts, parent map, related maps, reveal path, patch) and `model/labels.ts` (the kind → folder table); `explorer.folders` in `schemas/v1/maquettiste.json` and `ProjectSettings` (**contract**, small). `explorer/filter.ts` is **not** touched: `Explorer.tsx` still calls `explorerRows` | 3 days (0.5 contract) |
-| 5 | Tree rendering, keyboard, context menus, multi-selection | `explorer/Explorer.tsx` split into `Explorer.tsx`, `TreeRow.tsx`, `useTreeKeyboard.ts`, `RowMenu.tsx` (§1.8), switched to `tree.ts`; `explorerRows` deleted in the same change and `explorer/filter.ts` reduced to filter predicates; `state/store.ts` (`explorer` slice: expanded, followSelection, highlightRelated, selection); `app/navigation.ts` (`reveal` expands ancestors); `app/Rail.tsx` and `app/App.tsx` (*revised 2026-09-28*: the icons select the sidebar's explorer in §1.0's order, Settings gear and account menu at the foot, the pinned second explorer as a preference, selection following the active tab). Ships the Settings gear and the interim Catalog from the index, so no row loses its place when "Project" goes | 3.5 days |
+| 4 | Tree model | New `explorer/tree.ts` (one tree per explorer, domain nesting, Not in a domain first, kind folders, element children the index answers, the Databases shape with Default schema and Customised mappings, Diagrams, People and access, Other elements, project-defined folders, rolled-up counts, parent map, related maps, reveal path, patch) and `model/labels.ts` (the kind → folder table); `explorer.folders` in `schemas/v1/maquettiste.json` and `ProjectSettings` (**contract**, small). `explorer/filter.ts` is **not** touched: `Explorer.tsx` still calls `explorerRows` | 3 days (0.5 contract) |
+| 5 | Tree rendering, keyboard, context menus, multi-selection | `explorer/Explorer.tsx` split into `Explorer.tsx`, `TreeRow.tsx`, `useTreeKeyboard.ts`, `RowMenu.tsx` (§1.8), switched to `tree.ts`; `explorerRows` deleted in the same change and `explorer/filter.ts` reduced to filter predicates; `state/store.ts` (`explorer` slice: expanded, followSelection, highlightRelated, selection); `app/navigation.ts` (`reveal` expands ancestors); `app/Rail.tsx` and `app/App.tsx` (*revised 2026-09-28*: the icons select the sidebar's explorer in §1.0's order, Settings gear and account menu at the foot, the pinned second explorer as a preference, selection following the active tab). Ships the Settings gear and the interim Databases explorer from the index, so no row loses its place when "Project" goes | 3.5 days |
 | 6 | Naming pass, **after the owner answers question 7 (§8.8)** | `model/labels.ts`, `model/model.ts`, `app/Rail.tsx`, `palette/CommandPalette.tsx`, `workspaces/entities/EntitiesWorkspace.tsx`, `workspaces/entities/dialogs.tsx`, `inspector/*` (package field label), `workspaces/settings/SettingsWorkspace.tsx`, e2e selectors; in the same change SPEC.md §14 wording and glossary (the owner's call) and phase2-design §4.8. Until then steps 4 and 5 use the current words from `labels.ts` | 1 day |
 | 7 | Search worker: tree filter and quick open | New `search/worker.ts`, `search/query.ts` (operators and qualifiers, §3.1), `search/rank.ts`, `search/client.ts`; `explorer/Explorer.tsx` (filter mode, hidden non-matches, "also matches" footer); `palette/CommandPalette.tsx` and a quick-open dialog on the same client | 3 days |
 | 8 | Filters, scopes, pinned filter, favorites and recents | `explorer/filter.ts` (kind, domain scope, category subtree, has errors, on diagram), filter bar, scope picker; `explorer.scopes` in `maquettiste.json` (**contract**, small) | 1.5 days |
@@ -479,7 +479,7 @@ The order keeps the explorer working after every step: every index row is reacha
 | 15 | Docs | This file marked as done; the remaining phase2-design notes | 0.5 day |
 | 16 | Domain-scoped tags and categories (*new 2026-09-28*, §1.11) | E5i (**contract** and engine): optional `package` in `schemas/v1/tag-vocabulary.json` and `category-tree.json` and in `Model/Vocabularies.cs`; one vocabulary of each kind per scope in `KindInfo`, `ModelSnapshot` and MQ1009; `ModelIndexer.PackageOf`; MQ2005 and MQ2006 along the domain chain; MQ2008 and MQ3021 in `RuleCatalog` and `BuiltinRules`; the mock's `model/modelIndex.ts`. Editor: the Settings Tags and Categories tabs, the domain editor, the pickers and chips | 3 days (2 contract and engine) |
 
-Remaining for the explorer: about 32.5–36.5 working days, of which about 6.5 are contract and engine work (the first proposal's 22–27 days did not include the editors, highlighting, table detail or the Catalog-shaped Databases root; the 5–7 days of steps 1 and 2 are spent).
+Remaining for the explorer: about 32.5–36.5 working days, of which about 6.5 are contract and engine work (the first proposal's 22–27 days did not include the editors, highlighting, table detail or the Databases explorer; the 5–7 days of steps 1 and 2 are spent).
 
 **Reference types, seeds and localization** are one separate workstream, sized and ordered in `reference-types-seeds-localization.md` §5 (nine steps, about 26–29 working days, contract first). Its editor steps touch the explorer in three places, all of which this plan leaves room for: the Reference data leaf row in `explorer/tree.ts` (its step 7), the Seed data kind folder and entity child (the index `target` and `rowCount`), and labels and search in the content locale (`?locale=` on the index, its step 5). The explorer's steps do not wait for it.
 
@@ -515,9 +515,9 @@ Steps 3 to 5 and 7 come first (the tree and search); steps 8 to 14 and 16 can ru
   - Mock contract suite extended to E5f.
 - **Component tests:** the tree's ARIA attributes (`aria-level`, `aria-setsize`, `aria-posinset`, `aria-multiselectable`) on rendered rows after scrolling; every key in §3.4; multi-selection refuses a second kind; each row menu of §1.8 offers only valid actions for a multi-selection; the entity editor's Inheritance tab is disabled outside a hierarchy; General mode keeps the current tab when the selection moves; presence avatars on element rows and the "n people here" roll-up on a collapsed domain and folder.
 - **Playwright on the mock billing model** (every push):
-  - The rail lists Domain model, Reference data, Catalog, Diagrams, Generate, then Settings and the account menu at its foot; the gear opens Settings with its eight tabs.
+  - The rail lists Domain model, Reference data, Databases, Diagrams, Generate, then Settings and the account menu at its foot; the gear opens Settings with its eight tabs.
   - The Domain model explorer shows Billing › Catalog, and Billing › Entities › Invoice.
-  - Catalog › main › billing (the fixture's `defaultSchema`, shown by name) › Tables lists the invoice table; selecting it, then switching the rail to Domain model, shows Invoice highlighted.
+  - Databases › main › billing (the fixture's `defaultSchema`, shown by name) › Tables lists the invoice table; selecting it, then switching the rail to Domain model, shows Invoice highlighted.
   - Keyboard-only walk: expand Billing, open Invoice, F12 on a relation end, Shift+F12.
   - Tree filter `^inv` hides Product; quick open "invli" puts InvoiceLine first.
   - Drag Product onto the diagram.
@@ -541,7 +541,7 @@ Steps 3 to 5 and 7 come first (the tree and search); steps 8 to 14 and 16 can ru
 *Revised 2026-09-28.* The first round's questions and where they stand; the questions that remain are listed at the end of the document (§8.8), after the decisions they follow from.
 
 1. **Domain hierarchy** (depth and shape): still open, §8.8 question 1.
-2. **Tables** (under the database, under domains, or both): answered by the LLBLGen direction. Tables live under their database, shaped like the Catalog Explorer; "Group by domain" is a view option; "mapped by" highlighting links the two roots (§1.3).
+2. **Tables** (under the database, under domains, or both): answered by the owner's direction. Tables live under their database, then their schema; "Group by domain" is a view option; "mapped by" highlighting links the two roots (§1.3).
 3. **Names in search** (business name, table name, code): still open, §8.8 question 6.
 4. **Diagrams** (one domain each, or cross-domain folders): answered. Diagrams sit outside the domains in their own root; a diagram's home domain, when it has one, groups it (§1.5).
 5. **Words**: partly answered ("Enums" stays, from the owner's own words); the rest is §8.8 question 7.
@@ -551,9 +551,9 @@ Steps 3 to 5 and 7 come first (the tree and search); steps 8 to 14 and 16 can ru
 
 *Revised 2026-09-28: rewritten. The first version of this section (borrowed patterns, reference data inside a domain as stereotyped entities, agents as entities, localization, the editor API) is replaced: reference data leaves the tree for its own screen and its own kind, reserved stereotype names are gone, and packs, not the engine, decide every physical form. The first version's §8.2 (reference data inside a domain) and §8.4 (localization) are superseded by `reference-types-seeds-localization.md`, which is the binding design for reference types, seeds and localization; §8.3 to §8.5 below only summarize it and say what it means for the explorer.*
 
-### 8.1 Patterns taken on purpose
+### 8.1 Prior art (context for the reader; none of these names are product vocabulary)
 
-| Source | Pattern | Where it lands |
+| Tool | Pattern | What Maquettiste does |
 | --- | --- | --- |
 | LLBLGen Pro, Project Explorer | A Project node; an Entity Model root; groups, one level deep (an unnamed one first, then named ones), holding one folder per definition kind | Domain model root, kind folders in each domain, Not in a domain first (§1.1, §1.2); the Project node gave way to the rail (§1.0) |
 | Enterprise Architect, PowerDesigner | A package browser with nested packages | Domains nested as packages (§1.2); LLBLGen's groups do not nest |
@@ -576,21 +576,25 @@ Steps 3 to 5 and 7 come first (the tree and search); steps 8 to 14 and 16 can ru
 | VS Code, *2026-09-28* | Activity bar: a strip of icons, one sidebar view at a time, Manage and Accounts at the foot | The rail (§1.0); LLBLGen's side-by-side explorers only as a preference |
 | JetBrains IDEs | Structure view; scopes; go to definition; find usages; Search Everywhere | Element children and editor tabs; scopes (§3.2); F12 and Shift+F12 (§3.3); quick open across all kinds (§3.1) |
 | VS Code | Outline; breadcrumbs with sibling menus; quick open with prefixes; preview tabs | `@` in quick open; breadcrumbs (§3.3); `>`, `@`, `#` (§3.1); preview and pinned editor tabs (§3.6) |
+| LLBLGen Pro | Target Framework node; Relational Model Data Storage node; Derived Models root with Typed List and Typed View folders | Refused (§8.2) |
+| PowerDesigner, ERwin | A logical model between conceptual and physical; a physical model generated as a one-shot copy; one diagram switching logical and physical display | Refused (§8.2) |
+| Enterprise Architect | Diagrams inside packages; a free-form package tree | Refused (§8.2) |
+| DataGrip, JetBrains IDEs, VS Code | Live introspection of a connected database in the tree; Project, Packages and Scopes views; multi-root workspaces | Refused (§8.2) |
 
 ### 8.2 Patterns considered and refused
 
-- **LLBLGen's Target Framework node**: generation targets are template packs chosen in the Generate screen, not a property of the model, so the tree has no place for them.
-- **LLBLGen's Relational Model Data Storage node**: a Maquettiste database is a model with no connection or storage container, so there is nothing to show.
-- **LLBLGen's Derived Models root, Typed List and Typed View folders**: SPEC §10's projections and queries cover these and belong in their domain's kind folders next to the entities they shape.
-- **A logical model between the conceptual and physical ones (PowerDesigner, ERwin)**: SPEC §10's conventions and the mapping layer do that job without a third copy of the model to keep in step.
-- **Generating a physical model as a one-shot copy (PowerDesigner)**: tables here are designed or resolved live from conventions, and for the features in this document the physical form is the templates' choice (principle 1); a copy would drift.
-- **One diagram switching between logical and physical display (ERwin)**: entity diagrams and table diagrams stay on separate screens, so a user always knows which layer an edit changes.
-- **Diagrams inside packages (Enterprise Architect's project browser)**: diagrams span domains, so they sit in their own root; LLBLGen likewise keeps Model Views outside its groups (§1.5).
-- **A free-form package tree where any element can go anywhere (Enterprise Architect)**: it breaks the kind-folder rule of §1.1.
-- **Live introspection of a connected database in the tree (DataGrip)**: the Databases root is the model; reading a live database is SPEC §18's later importer, not a way of browsing.
-- **Several alternative project views (JetBrains' Project, Packages and Scopes views)**: one explorer per layer with scopes and search covers them, and a second view of the same layer would weaken "you always know what you are browsing".
+- **A target-framework node in the tree**: generation targets are template packs chosen in the Generate screen, not a property of the model, so the tree has no place for them.
+- **A storage node under the relational model**: a Maquettiste database is a model with no connection or storage container, so there is nothing to show.
+- **A derived-models root with typed-list and typed-view folders**: SPEC §10's projections and queries cover these and belong in their domain's kind folders next to the entities they shape.
+- **A logical model between the conceptual and physical ones**: SPEC §10's conventions and the mapping layer do that job without a third copy of the model to keep in step.
+- **Generating a physical model as a one-shot copy**: tables here are designed or resolved live from conventions, and for the features in this document the physical form is the templates' choice (principle 1); a copy would drift.
+- **One diagram switching between logical and physical display**: entity diagrams and table diagrams stay on separate screens, so a user always knows which layer an edit changes.
+- **Diagrams inside packages**: diagrams span domains, so they sit in their own root (§1.5).
+- **A free-form package tree where any element can go anywhere**: it breaks the kind-folder rule of §1.1.
+- **Live introspection of a connected database in the tree**: the Databases root is the model; reading a live database is SPEC §18's later importer, not a way of browsing.
+- **Several alternative views of the same project (by project, by package, by scope)**: one explorer per layer with scopes and search covers them, and a second view of the same layer would weaken "you always know what you are browsing".
 - **Part, port and connection usages as tree nodes (SysML v2)**: not a data-model concern; only the definition and usage split is kept.
-- **Multi-root workspaces (VS Code)**: an editor session serves one project (SPEC §14).
+- **Multi-root workspaces**: an editor session serves one project (SPEC §14).
 
 ### 8.3 Reference data
 
@@ -631,8 +635,8 @@ Questions about reference types, seeds and localization themselves (enum lookup 
 1. **Domain hierarchy.** How deep does it go, and what shape: about 40 flat domains, or about 8 areas of 5 domains with some sub-domains? Does a domain with sub-domains also hold entities directly? This sets the generator's defaults and question 2.
 2. **Sub-domains.** Listed directly under their parent domain, before its kind folders (proposed, §1.2), or inside a "Sub-domains" folder, which is stricter about "you always know what you are browsing" but adds a level at every depth?
 3. **Project-defined folders.** Is an Explorer folders setting (§1.6), where the project names a stereotype, tag, category or property condition and the matching elements get a folder of their own in each domain, the right way to give your agent definitions and similar sets a place, or should such marks only show as icons and filters?
-4. **Tables grouping default.** Flat and sorted by name under each schema (proposed, like the Catalog Explorer), or grouped by owning domain by default? Flat reads well at your roughly 700 tables per database; at the 10,005 tables of the scale model's `main`, grouping by domain gives folders of a few hundred, which may be the better default for databases above a threshold (for example 2,000 tables).
-5. **Where editors open.** As tabs in the centre beside the canvas, with LLBLGen's General mode as a tab that follows the selection (proposed, §3.6), or in place of the inspector?
+4. **Tables grouping default.** Flat and sorted by name under each schema (proposed), or grouped by owning domain by default? Flat reads well at your roughly 700 tables per database; at the 10,005 tables of the scale model's `main`, grouping by domain gives folders of a few hundred, which may be the better default for databases above a threshold (for example 2,000 tables).
+5. **Where editors open.** As tabs in the centre beside the canvas, with a General mode tab that follows the selection (proposed, §3.6), or in place of the inspector?
 6. **Names in search.** Do you look things up by business name ("Invoice line"), table name (`ar_inv_line`) or a code? This sets the ranking, and whether elements need an "aliases" property.
-7. **Words.** Are "Domain", "Sub-domain", "Domain model", "Catalog", "Explorer", "Screen", "Relationships", "Value objects", "Custom types", "Reference data", "Seed data", "Customised mappings" and "Mapped automatically" the words you would use? Should "Domain" also replace "package" in the CLI's help and generated docs, or only in the editor? The naming step waits for this.
+7. **Words.** Are "Domain", "Sub-domain", "Domain model", "Explorer", "Screen", "Relationships", "Value objects", "Custom types", "Reference data", "Seed data", "Customised mappings" and "Mapped automatically" the words you would use? ("Databases" is settled: the owner chose it on 2026-09-28.) Should "Domain" also replace "package" in the CLI's help and generated docs, or only in the editor? The naming step waits for this.
 8. **Your real shape.** Could you share an anonymized export of one large project (element counts per domain, a DBML or DDL dump with renamed identifiers, the number of reference types and rows)? It would let the generator match your distribution rather than a guess.

@@ -2,7 +2,7 @@
 // for the columns; arrow keys move, Enter or F2 edits (Enter again commits and saves), Escape
 // cancels, Tab moves right, Ctrl+Enter adds a row, Ctrl+Delete removes one. Edits go through the
 // element's draft, so the canvas card changes as you type.
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { KeyRound, Plus, Trash2 } from "lucide-react";
 import type { AttributeDoc, ElementSummary, EntityDoc, ModelJson } from "@/api/types";
@@ -94,15 +94,29 @@ export function AttributeGrid({
     getRowId: (row) => row.id,
   });
   const [active, setActive] = useState<{ row: number; col: number }>({ row: 0, col: withKey ? 1 : 0 });
-  const [editing, setEditing] = useState<{ value: string } | null>(null);
+  // `select` selects the editor's text when it opens (a new row's generated name is replaced by typing).
+  const [editing, setEditing] = useState<{ value: string; select?: boolean } | null>(null);
   const gridRef = useRef<HTMLTableElement>(null);
+  // Focus follows the grid state after React renders it: the active cell, or its editor while editing. The request
+  // stays pending until the target exists, so a row added through the draft is focused once it is rendered.
+  const pendingFocus = useRef(false);
+
+  useEffect(() => {
+    if (!pendingFocus.current) return;
+    const cell = gridRef.current?.querySelector<HTMLElement>(`[data-cell="${active.row}:${active.col}"]`);
+    const target = editing ? cell?.querySelector<HTMLInputElement | HTMLSelectElement>("input, select") : cell;
+    if (!target) return;
+    pendingFocus.current = false;
+    target.focus();
+    if (editing?.select && target instanceof HTMLInputElement) target.select();
+  });
 
   const invalidAt = (row: number, key: ColumnKey) =>
     diagnostics.some((d) => d.jsonPointer === `${pointerBase}/${row}/${key}` || (key === "name" && d.jsonPointer === `${pointerBase}/${row}`));
 
   const focusCell = (row: number, col: number) => {
     setActive({ row, col });
-    requestAnimationFrame(() => gridRef.current?.querySelector<HTMLElement>(`[data-cell="${row}:${col}"]`)?.focus());
+    pendingFocus.current = true;
   };
 
   const apply = (row: number, key: ColumnKey, raw: string | boolean, commit: boolean) => {
@@ -153,7 +167,7 @@ export function AttributeGrid({
       record.attributes = [...(record.attributes ?? []), { id, name: `attribute${n}`, type: "string" }];
     }, false);
     focusCell(attributes.length, withKey ? 1 : 0);
-    setEditing({ value: `attribute${n}` });
+    setEditing({ value: `attribute${n}`, select: true });
   };
 
   const removeRow = (row: number) => {
@@ -183,9 +197,11 @@ export function AttributeGrid({
       return;
     }
     setEditing({ value: initial ?? (column.kind === "type" ? typeValue(a) : display(a, column.key, typeOptions)) });
+    pendingFocus.current = true;
   };
 
-  const commit = (move: "down" | "right" | "left" | "none") => {
+  // "blur" commits without taking focus back: focus already moved somewhere else.
+  const commit = (move: "down" | "right" | "left" | "none" | "blur") => {
     if (!editing) return;
     const column = columns[active.col];
     apply(active.row, column.key, editing.value, true);
@@ -193,7 +209,7 @@ export function AttributeGrid({
     if (move === "down") focusCell(Math.min(attributes.length - 1, active.row + 1), active.col);
     else if (move === "right") focusCell(active.row, Math.min(columns.length - 1, active.col + 1));
     else if (move === "left") focusCell(active.row, Math.max(0, active.col - 1));
-    else focusCell(active.row, active.col);
+    else if (move === "none") focusCell(active.row, active.col);
   };
 
   const onCellKeyDown = (e: KeyboardEvent<HTMLElement>, row: number, col: number) => {
@@ -301,13 +317,12 @@ export function AttributeGrid({
                         {isEditing ? (
                           column.kind === "type" ? (
                             <select
-                              autoFocus
                               aria-label={`Type of ${a.name}`}
                               className="h-6 w-full rounded-[4px] border border-input bg-surface font-mono text-12"
                               value={editing.value}
                               onChange={(e) => setEditing({ value: e.target.value })}
                               onKeyDown={onEditorKeyDown}
-                              onBlur={() => commit("none")}
+                              onBlur={() => commit("blur")}
                             >
                               {BUILTIN_TYPES.map((t) => (
                                 <option key={t} value={t}>
@@ -322,13 +337,12 @@ export function AttributeGrid({
                             </select>
                           ) : (
                             <input
-                              autoFocus
                               aria-label={`${column.label} of ${a.name}`}
                               className="h-6 w-full rounded-[4px] border border-input bg-surface px-1 text-12"
                               value={editing.value}
                               onChange={(e) => setEditing({ value: e.target.value })}
                               onKeyDown={onEditorKeyDown}
-                              onBlur={() => commit("none")}
+                              onBlur={() => commit("blur")}
                             />
                           )
                         ) : column.kind === "key" ? (
