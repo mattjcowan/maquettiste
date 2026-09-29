@@ -74,7 +74,8 @@ jobs:
       - name: Pack
         run: |
           dotnet pack src/Maquettiste.Engine -c Release --no-build -p:Version=${{ steps.version.outputs.version }} -o out
-          dotnet pack src/Maquettiste.Cli -c Release --no-build -p:Version=${{ steps.version.outputs.version }} -o out
+          # The CLI is a tool package with one payload per runtime identifier, so pack builds those itself (no --no-build).
+          dotnet pack src/Maquettiste.Cli -c Release -p:Version=${{ steps.version.outputs.version }} -o out
           ls -la out
 
       # Just before the push, since the key it returns lasts an hour.
