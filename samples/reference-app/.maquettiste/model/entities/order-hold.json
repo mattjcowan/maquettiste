@@ -1,0 +1,50 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1GGGF7MKSKSSN9E4MQGWNG4",
+  "name": "OrderHold",
+  "displayName": "Order hold",
+  "pluralName": "Order holds",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "A hold that blocks an order from shipping until released, such as a credit hold.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M20ZE4NSCZ9Z85DCA7HV73D0"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M20ZE4NSCZ9Z85DCA7HV73D0",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the order hold."
+    },
+    {
+      "id": "01M2X96ZWYPKR7VVBGVFRX26KT",
+      "name": "placedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the hold was placed."
+    },
+    {
+      "id": "01M200K4WRPDP9CEFVN059WCG8",
+      "name": "releasedAt",
+      "type": "datetimeoffset",
+      "description": "When it was released."
+    },
+    {
+      "id": "01M1T2AQ45TRP3QQD9YQBW8AA5",
+      "name": "comment",
+      "type": "string",
+      "length": 500,
+      "description": "Explanation."
+    }
+  ]
+}

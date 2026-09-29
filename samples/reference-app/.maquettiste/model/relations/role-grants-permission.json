@@ -1,0 +1,23 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M34KE653F8CFW9VYB8CF31HE",
+  "name": "role grants permission",
+  "package": "01M1F99DBQ9B1T1RVMQRR1GS7V",
+  "description": "Permissions included in a role.",
+  "category": "01M38C3WQ4HSCF45E03KGN6AF5",
+  "ends": [
+    {
+      "id": "01M2R5Z5GRMNN8PXHM0Y8WR769",
+      "entity": "01M1EHSJCMNFP23CXQBWYXVG5H",
+      "role": "roles",
+      "navigation": "roles"
+    },
+    {
+      "id": "01M2WH2227ZAHAGGQTDTJZPZ8C",
+      "entity": "01M35A9JR8WQHEXW9H4SS5WB55",
+      "role": "permissions",
+      "navigation": "permissions"
+    }
+  ]
+}

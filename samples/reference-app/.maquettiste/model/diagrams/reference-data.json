@@ -1,0 +1,53 @@
+{
+  "$schema": "../../.schema/v1/diagram.json",
+  "kind": "diagram",
+  "id": "01M1ZBM8ZBVNAE8ZWA87SVS6K8",
+  "name": "Reference data",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "The shared ISO and UN/CEFACT code lists and how they relate.",
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "members": [
+    {
+      "element": "01M2RAXZ22RVANB50R7WSE5D6R",
+      "x": 40,
+      "y": 40
+    },
+    {
+      "element": "01M2027CBB2N9VHJ0DAGKYJZT5",
+      "x": 360,
+      "y": 40
+    },
+    {
+      "element": "01M32FRDS6GBKX8Q2GRAAJB5YM",
+      "x": 680,
+      "y": 40
+    },
+    {
+      "element": "01M1V6VP1AXYNH3ABJ0SAQH2D1",
+      "x": 40,
+      "y": 280
+    },
+    {
+      "element": "01M1DQ616MEK35RH2FF7YJF9G8",
+      "x": 360,
+      "y": 280
+    },
+    {
+      "element": "01M1JN1E7DZ4F3N86DGE4GPWNQ",
+      "x": 680,
+      "y": 280
+    },
+    {
+      "element": "01M2KHHD4312PSSNWEAKNG9APW"
+    },
+    {
+      "element": "01M1FMEG7MAGK7BR5ENCJFRNKV"
+    },
+    {
+      "element": "01M31K5YGJMF9WMPW2ZYPV88GH"
+    }
+  ],
+  "viewport": {
+    "zoom": 0.8
+  }
+}

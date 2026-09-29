@@ -1,0 +1,58 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1EHSJCMNFP23CXQBWYXVG5H",
+  "name": "Role",
+  "displayName": "Role",
+  "pluralName": "Roles",
+  "package": "01M1F99DBQ9B1T1RVMQRR1GS7V",
+  "description": "A named set of permissions granted to user accounts, such as Order desk or Warehouse lead.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "security",
+    "configuration"
+  ],
+  "category": "01M38C3WQ4HSCF45E03KGN6AF5",
+  "key": {
+    "attributes": [
+      "01M1PZRA1T1VJM8ZF7SR0H1K42"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M1PZRA1T1VJM8ZF7SR0H1K42",
+      "name": "id",
+      "type": "int32",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the role."
+    },
+    {
+      "id": "01M1RKJSC411CAWJC3V3EZRTH5",
+      "name": "name",
+      "type": "string",
+      "length": 80,
+      "required": true,
+      "unique": true,
+      "description": "Role name."
+    },
+    {
+      "id": "01M1SKBBJY24PWZVKC54JXJXJX",
+      "name": "description",
+      "type": "string",
+      "length": 500,
+      "description": "What the role is for."
+    },
+    {
+      "id": "01M2MTKZHZ924Z0FD3S8PRWX4Q",
+      "name": "isSystem",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Built-in role that cannot be deleted."
+    }
+  ]
+}

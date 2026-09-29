@@ -1,0 +1,48 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1GQZCC9ETG8BYN5KXEHR5K0",
+  "name": "PriceTier",
+  "displayName": "Price tier",
+  "pluralName": "Price tiers",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "A quantity break of a price list entry, such as 5 percent off from 100 cases.",
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "key": {
+    "attributes": [
+      "01M23NET8FAE718WYE6MQJGR72"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M23NET8FAE718WYE6MQJGR72",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the price tier."
+    },
+    {
+      "id": "01M28GDD7041K2Z0BM05GMR63A",
+      "name": "fromQuantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity from which the tier applies."
+    },
+    {
+      "id": "01M2Y2BGXKY1KRQA52XPGMNT6T",
+      "name": "unitPrice",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Price per unit in the tier."
+    }
+  ]
+}

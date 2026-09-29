@@ -1,0 +1,73 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2RBMWVBV5KBHJGHCTYTQKVW",
+  "name": "StockAdjustment",
+  "displayName": "Stock adjustment",
+  "pluralName": "Stock adjustments",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "A correction of on-hand stock after a count, damage or theft, approved above a value threshold.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M30G1MA2MPNK9P37J7W46BKQ"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M30G1MA2MPNK9P37J7W46BKQ",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the stock adjustment."
+    },
+    {
+      "id": "01M33ZWD8KXTH6QXX8ZFQYNRP3",
+      "name": "adjustmentNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Adjustment number."
+    },
+    {
+      "id": "01M1JCA7FXWDV720MYJQAM7J2X",
+      "name": "adjustedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the adjustment was booked."
+    },
+    {
+      "id": "01M1WSV3TG5BG9YQJVVKGMHYT0",
+      "name": "quantityDelta",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "required": true,
+      "description": "Change in quantity."
+    },
+    {
+      "id": "01M2SYGYYMMJ7W86EXGAD2KYQ3",
+      "name": "valueDelta",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Change in inventory value."
+    },
+    {
+      "id": "01M3719J5R2N0R51PMDRPGHX9K",
+      "name": "notes",
+      "type": "string",
+      "length": 500,
+      "description": "Explanation."
+    }
+  ]
+}

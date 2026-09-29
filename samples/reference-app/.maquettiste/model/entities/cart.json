@@ -1,0 +1,55 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1G2XC8VHF50WCS54G3Y5R96",
+  "name": "Cart",
+  "displayName": "Cart",
+  "pluralName": "Carts",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "A customer portal shopping cart that becomes a sales order at checkout.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M1NPFH5Y9R3RXC9HZKC34GBB"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1NPFH5Y9R3RXC9HZKC34GBB",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the cart."
+    },
+    {
+      "id": "01M1XQW73HRS9VM938GDAZT6SP",
+      "name": "cartToken",
+      "type": "string",
+      "length": 64,
+      "required": true,
+      "unique": true,
+      "description": "Opaque token held by the browser."
+    },
+    {
+      "id": "01M2AYCHQDQMYFYD5SMKVM6CPZ",
+      "name": "lastActivityAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "Last change to the cart."
+    },
+    {
+      "id": "01M2C514CPWT28Z6P0K509M6D8",
+      "name": "isAbandoned",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Flagged by the abandoned-cart job."
+    }
+  ]
+}

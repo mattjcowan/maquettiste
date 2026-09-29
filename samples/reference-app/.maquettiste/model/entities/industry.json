@@ -1,0 +1,40 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M25DP2M0C04S4KCENQTV1KWB",
+  "name": "Industry",
+  "displayName": "Industry",
+  "pluralName": "Industries",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "Industry classification of a customer or lead, based on NAICS sectors.",
+  "stereotypes": [
+    "lookup"
+  ],
+  "tags": [
+    "configuration"
+  ],
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "key": {
+    "attributes": [
+      "01M2NNTP4ZF4P6A49J5M15JFA8"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M2NNTP4ZF4P6A49J5M15JFA8",
+      "name": "id",
+      "type": "int32",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the industry."
+    },
+    {
+      "id": "01M37CCZ6D756MHKZARPTW4Y7Z",
+      "name": "naicsCode",
+      "type": "string",
+      "length": 6,
+      "description": "NAICS code of the sector."
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M1EK4PSF4ASHKXJ37SX90FND",
+  "name": "WeightUnit",
+  "displayName": "Weight unit",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "Unit of a weight measure.",
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "members": [
+    {
+      "id": "01M1WX1TTK5ZA75HCM4B4TQKHN",
+      "name": "Gram",
+      "value": 0,
+      "code": "GRM",
+      "description": "Gram."
+    },
+    {
+      "id": "01M1G1NXT56HB9TAXJRS91ASJ4",
+      "name": "Kilogram",
+      "value": 1,
+      "code": "KGM",
+      "description": "Kilogram."
+    },
+    {
+      "id": "01M1PZZGRE77JZ3KCVT6TFR442",
+      "name": "Ounce",
+      "value": 2,
+      "code": "ONZ",
+      "description": "Avoirdupois ounce."
+    },
+    {
+      "id": "01M1JMZ0E32XKVQ54X0YP8BZCP",
+      "name": "Pound",
+      "value": 3,
+      "code": "LBR",
+      "description": "Avoirdupois pound."
+    }
+  ]
+}

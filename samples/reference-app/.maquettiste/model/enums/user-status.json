@@ -1,0 +1,47 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M1Z50K53EYAMWSSKFQGQQXKQ",
+  "name": "UserStatus",
+  "displayName": "User status",
+  "package": "01M1F99DBQ9B1T1RVMQRR1GS7V",
+  "description": "Lifecycle of a user account.",
+  "category": "01M38C3WQ4HSCF45E03KGN6AF5",
+  "members": [
+    {
+      "id": "01M2KEQBZ4893ZN43ENM6R7FYA",
+      "name": "Invited",
+      "value": 0,
+      "code": "INV",
+      "description": "An invitation was sent and not yet accepted."
+    },
+    {
+      "id": "01M1PJYHM08QRSWVYDB3S9QW56",
+      "name": "Active",
+      "value": 1,
+      "code": "ACT",
+      "description": "The user can sign in."
+    },
+    {
+      "id": "01M1DVXX7GJFYBTGSQZ02SFY2P",
+      "name": "Locked",
+      "value": 2,
+      "code": "LCK",
+      "description": "Sign-in is blocked after too many failed attempts."
+    },
+    {
+      "id": "01M2N2XFYY2FQRXBA93B1N8V7S",
+      "name": "Suspended",
+      "value": 3,
+      "code": "SUS",
+      "description": "An administrator blocked the account."
+    },
+    {
+      "id": "01M1E399EKFZVJA6QWME97SCDY",
+      "name": "Deactivated",
+      "value": 4,
+      "code": "DEA",
+      "description": "The account is closed and kept for audit."
+    }
+  ]
+}

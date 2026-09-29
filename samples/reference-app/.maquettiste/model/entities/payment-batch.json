@@ -1,0 +1,85 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2F3G3F8HA53RQPAHHJCVARH",
+  "name": "PaymentBatch",
+  "displayName": "Payment batch",
+  "pluralName": "Payment batches",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "A group of payments deposited together, such as a lockbox file or a card settlement.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "financial",
+    "integration"
+  ],
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "key": {
+    "attributes": [
+      "01M21NFKPAFDSMR4AN93W8GJCZ"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M21NFKPAFDSMR4AN93W8GJCZ",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the payment batch."
+    },
+    {
+      "id": "01M2NW0C9H0HTWAVJEEG0ESDMN",
+      "name": "batchNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Batch number."
+    },
+    {
+      "id": "01M1QHABA987EQ6M8RHAB3S1K6",
+      "name": "batchDate",
+      "type": "date",
+      "required": true,
+      "description": "Deposit date."
+    },
+    {
+      "id": "01M2CWP3H27FED42NFQ5VG5ZEY",
+      "name": "source",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "lockbox, ach-file or card-settlement."
+    },
+    {
+      "id": "01M2SR7BBJVGXZMC7YRH21CMGW",
+      "name": "itemCount",
+      "type": "int32",
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Payments in the batch."
+    },
+    {
+      "id": "01M26N64DSXFWNNTPDMY12ESZZ",
+      "name": "totalAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Batch total."
+    },
+    {
+      "id": "01M2BEA7MY99KXKRT2FKP818SS",
+      "name": "isPosted",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether it was posted to the ledger."
+    }
+  ]
+}

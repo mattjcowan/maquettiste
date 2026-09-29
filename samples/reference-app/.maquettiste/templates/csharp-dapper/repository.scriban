@@ -1,0 +1,202 @@
+{{-
+# A Dapper repository per mapped entity, written as a file block so entities without a usable mapping produce no file.
+include "_csharp.scriban"
+include "_dapper.scriban"
+if has_repository(entity)
+  name = type_name(entity)
+  m = dapper_mapping(entity)
+  t = m.table
+  db = m.database
+  d = db.dialect
+  table_sql = (t.schema && d != "sqlite") ? (sql_quote t.schema db) + "." + (sql_quote t) : (sql_quote t)
+  select_parts = []
+  for c in t.columns
+    select_parts[select_parts.size] = ((sql_quote c) + " AS " + (sql_quote (pascal c.name) db))
+  end
+  key_where = []
+  key_params = []
+  key_args = []
+  for c in t.primary_key.columns
+    key_where[key_where.size] = ((sql_quote c) + " = @" + (pascal c.name))
+    key_params[key_params.size] = ((type_of c "csharp") + " " + key_param(c))
+    key_args[key_args.size] = ((pascal c.name) + " = " + key_param(c))
+  end
+  filter = ""
+  if m.discriminator_column
+    filter = (sql_quote m.discriminator_column) + " = " + (sql_literal m.discriminator_value db)
+  end
+  where_key = (key_where | array.join " AND ") + (filter != "" ? " AND " + filter : "")
+  insert_cols = []
+  insert_vals = []
+  returning = null
+  for c in t.columns
+    if generated_on_insert(c)
+      if c.is_primary_key && t.primary_key.columns.size == 1
+        returning = c
+      end
+    else
+      insert_cols[insert_cols.size] = (sql_quote c)
+      insert_vals[insert_vals.size] = ("@" + (pascal c.name))
+    end
+  end
+  set_parts = []
+  for c in t.columns
+    if !c.is_primary_key && !generated_on_insert(c) && !c.is_discriminator && !(c.attribute && c.attribute.immutable)
+      set_parts[set_parts.size] = ((sql_quote c) + " = @" + (pascal c.name))
+    end
+  end
+  order_by = []
+  for c in t.primary_key.columns
+    order_by[order_by.size] = (sql_quote c)
+  end
+  paging = d == "sqlserver" ? "OFFSET @Skip ROWS FETCH NEXT @Take ROWS ONLY" : "LIMIT @Take OFFSET @Skip"
+  uses = []
+  for a in entity.attributes
+    uses[uses.size] = a
+  end
+  usings = namespaces_used(entity, uses)
+  key_strategy = entity.key ? entity.key.strategy : ""
+  key_attr = (entity.key && entity.key.attributes.size == 1) ? entity.key.attributes[0] : null
+-}}
+{{- capture content -}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Linq;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Dapper;
+{{- for u in usings }}
+using {{ u }};
+{{- end }}
+
+namespace {{ ns(entity) }};
+
+/// <summary>Reads and writes <see cref="{{ name }}"/> rows in {{ t.schema ? t.schema + "." : "" }}{{ t.name }} (database {{ db.name }}, {{ d }}).</summary>
+public partial interface I{{ name }}Repository
+{
+    /// <summary>Returns the entity with the given key, or null.</summary>
+    Task<{{ name }}?> GetAsync({{ key_params | array.join ", " }}, CancellationToken cancellationToken = default);
+
+    /// <summary>Returns a page of entities in key order.</summary>
+    Task<IReadOnlyList<{{ name }}>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default);
+
+    /// <summary>Inserts the entity{{ if returning }} and sets its database-generated key{{ end }}.</summary>
+    Task InsertAsync({{ name }} entity, CancellationToken cancellationToken = default);
+
+    /// <summary>Updates the entity; returns false when no row has its key.</summary>
+    Task<bool> UpdateAsync({{ name }} entity, CancellationToken cancellationToken = default);
+
+    /// <summary>Deletes the entity with the given key; returns false when there was none.</summary>
+    Task<bool> DeleteAsync({{ key_params | array.join ", " }}, CancellationToken cancellationToken = default);
+}
+
+/// <summary>The Dapper implementation of <see cref="I{{ name }}Repository"/> over an open or closed <see cref="IDbConnection"/>.</summary>
+public partial class {{ name }}Repository(IDbConnection connection, IDbTransaction? transaction = null) : I{{ name }}Repository
+{
+    private const string Columns = """
+        {{ select_parts | array.join ",\n" }}
+        """;
+
+    private const string SelectSql = "SELECT " + Columns + " FROM {{ table_sql }} WHERE {{ where_key }}";
+
+    private const string ListSql = "SELECT " + Columns + " FROM {{ table_sql }}{{ if filter != "" }} WHERE {{ filter }}{{ end }} ORDER BY {{ order_by | array.join ", " }} {{ paging }}";
+
+    private const string InsertSql = """
+        INSERT INTO {{ table_sql }} ({{ insert_cols | array.join ", " }})
+{{- if returning && d == "sqlserver" }}
+        OUTPUT INSERTED.{{ sql_quote returning }}
+{{- end }}
+        VALUES ({{ insert_vals | array.join ", " }})
+{{- if returning && d != "sqlserver" }}
+        RETURNING {{ sql_quote returning }}
+{{- end }}
+        """;
+
+    private const string UpdateSql = """
+{{- if set_parts.size > 0 }}
+        UPDATE {{ table_sql }} SET {{ set_parts | array.join ", " }}
+        WHERE {{ where_key }}
+{{- else }}
+        SELECT COUNT(*) FROM {{ table_sql }} WHERE {{ where_key }}
+{{- end }}
+        """;
+
+    private const string DeleteSql = "DELETE FROM {{ table_sql }} WHERE {{ where_key }}";
+
+    /// <inheritdoc/>
+    public async Task<{{ name }}?> GetAsync({{ key_params | array.join ", " }}, CancellationToken cancellationToken = default)
+    {
+        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { {{ key_args | array.join ", " }} }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        return row is null ? null : Row.ToEntity(row);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<{{ name }}>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default)
+    {
+        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { Skip = skip, Take = take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        return rows.Select(Row.ToEntity).ToList();
+    }
+
+    /// <inheritdoc/>
+    public async Task InsertAsync({{ name }} entity, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+{{- if key_attr && key_strategy == "uuid-v7" && key_attr.type.builtin == "uuid" }}
+        if (entity.{{ prop_name(key_attr, name) }} == Guid.Empty)
+            entity.{{ prop_name(key_attr, name) }} = Guid.CreateVersion7();
+{{- else if key_attr && key_strategy == "ulid" && (key_attr.type.builtin == "ulid" || key_attr.type.builtin == "string") }}
+        if (string.IsNullOrEmpty(entity.{{ prop_name(key_attr, name) }}))
+            entity.{{ prop_name(key_attr, name) }} = UlidGenerator.NewUlid();
+{{- end }}
+{{- if returning }}
+        entity.{{ returning.attribute ? prop_name(returning.attribute, name) : row_prop(returning) }} = await connection.ExecuteScalarAsync<{{ type_of returning "csharp" }}>(new CommandDefinition(InsertSql, Row.From(entity), transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+{{- else }}
+        await connection.ExecuteAsync(new CommandDefinition(InsertSql, Row.From(entity), transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+{{- end }}
+    }
+
+    /// <inheritdoc/>
+    public async Task<bool> UpdateAsync({{ name }} entity, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+{{- if set_parts.size > 0 }}
+        return await connection.ExecuteAsync(new CommandDefinition(UpdateSql, Row.From(entity), transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+{{- else }}
+        return await connection.ExecuteScalarAsync<long>(new CommandDefinition(UpdateSql, Row.From(entity), transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+{{- end }}
+    }
+
+    /// <inheritdoc/>
+    public async Task<bool> DeleteAsync({{ key_params | array.join ", " }}, CancellationToken cancellationToken = default)
+    {
+        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { {{ key_args | array.join ", " }} }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+    }
+
+    /// <summary>One row of {{ t.name }}, column by column, as Dapper reads and writes it.</summary>
+    private sealed class Row
+    {
+{{- for c in t.columns }}
+        public {{ row_type(c) }} {{ row_prop(c) }} { get; set; }{{ if !c.nullable && !(cs_value_type row_type(c)) }} = default!;{{ end }}
+{{- end }}
+
+        public static {{ name }} ToEntity(Row row) => new()
+        {
+{{- for line in read_assignments(entity, m) }}
+            {{ line }},
+{{- end }}
+        };
+
+        public static Row From({{ name }} entity) => new()
+        {
+{{- for c in t.columns }}
+            {{ row_prop(c) }} = {{ write_expression(entity, m, c) }},
+{{- end }}
+        };
+    }
+}
+{{ end -}}
+{{- file (join_path pack.params.generatedFolder (package_folder entity) (name + "Repository.g.cs")) content -}}
+{{- end -}}

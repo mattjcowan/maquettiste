@@ -1,0 +1,65 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2SBZEWJ8DAVPGH51GMTD8YD",
+  "name": "Coupon",
+  "displayName": "Coupon",
+  "pluralName": "Coupons",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "A code customers enter to redeem a promotion.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "key": {
+    "attributes": [
+      "01M37KKWKSASBF87F9Y9FW8ZGX"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M37KKWKSASBF87F9Y9FW8ZGX",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the coupon."
+    },
+    {
+      "id": "01M2NWTJSKF8STR8HPRZ40W9W7",
+      "name": "code",
+      "type": "string",
+      "length": 40,
+      "required": true,
+      "unique": true,
+      "description": "Coupon code."
+    },
+    {
+      "id": "01M31ZPYE2HRJBH85N93YSQ0GE",
+      "name": "maxUses",
+      "type": "int32",
+      "validation": {
+        "min": 1
+      },
+      "description": "Maximum redemptions of the code."
+    },
+    {
+      "id": "01M32GXH0ZHWKGZV8KYQYK3160",
+      "name": "usedCount",
+      "type": "int32",
+      "required": true,
+      "default": 0,
+      "validation": {
+        "min": 0
+      },
+      "description": "Redemptions so far."
+    },
+    {
+      "id": "01M321BNFYHR2N63CVWFTY44JQ",
+      "name": "expiresOn",
+      "type": "date",
+      "description": "Last day the code works."
+    }
+  ]
+}

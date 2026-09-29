@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The data layer of the Northwind Operations reference application.
+    Generated/ is the csharp-dapper pack's built root (gitignored): run
+    `maquettiste generate` before building. Custom/ holds the hand-written
+    halves of generated partial types. The isolation files next to
+    samples/reference-app (Directory.Build.props, Directory.Packages.props,
+    .editorconfig) keep the repository's build settings away from this project.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ReferenceApp.Data</RootNamespace>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.66" />
+    <PackageReference Include="Npgsql" Version="9.0.3" />
+  </ItemGroup>
+
+</Project>

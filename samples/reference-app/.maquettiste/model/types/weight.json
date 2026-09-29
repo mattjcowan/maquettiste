@@ -1,0 +1,33 @@
+{
+  "$schema": "../../.schema/v1/value-object.json",
+  "kind": "value-object",
+  "id": "01M36PE7EQVEDETJ5QMAXH25ZX",
+  "name": "Weight",
+  "displayName": "Weight",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "A weight with its unit.",
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "attributes": [
+    {
+      "id": "01M2HWNXGYJRZDD7KPMXMDE14X",
+      "name": "value",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "The weight."
+    },
+    {
+      "id": "01M2RYDCVQQ6H7P7ZQF61MX9EM",
+      "name": "unit",
+      "type": {
+        "ref": "01M1EK4PSF4ASHKXJ37SX90FND"
+      },
+      "required": true,
+      "description": "Unit of the weight."
+    }
+  ]
+}

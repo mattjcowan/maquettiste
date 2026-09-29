@@ -1,0 +1,58 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M20WKPA5534RWHK392W0BWNH",
+  "name": "SalesTerritory",
+  "displayName": "Sales territory",
+  "pluralName": "Sales territories",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "A geographic sales territory, nested into regions (US > West > Pacific Northwest).",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "configuration"
+  ],
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "key": {
+    "attributes": [
+      "01M304A8F7AY9DV0KD2PG3G37A"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M304A8F7AY9DV0KD2PG3G37A",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the sales territory."
+    },
+    {
+      "id": "01M2M68PA6ZB1ASX17VH6B0XYT",
+      "name": "code",
+      "type": "string",
+      "length": 12,
+      "required": true,
+      "unique": true,
+      "description": "Territory code."
+    },
+    {
+      "id": "01M2EKX7MTE51F9756RJ97QKPQ",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "required": true,
+      "description": "Territory name."
+    },
+    {
+      "id": "01M2Z300RVH6F623DB8FE5QBYP",
+      "name": "annualQuota",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Revenue target for the fiscal year."
+    }
+  ]
+}

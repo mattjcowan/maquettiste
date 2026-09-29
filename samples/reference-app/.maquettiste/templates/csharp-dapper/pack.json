@@ -1,0 +1,56 @@
+{
+  "name": "csharp-dapper",
+  "version": "1.0.0",
+  "engine": ">=1.0 <2.0",
+  "description": "C# model and Dapper data access: entity classes as generated/hand-written pairs, enums, value objects, one repository per mapped entity and one registration file per package.",
+  "parameters": {
+    "database": "",
+    "generatedFolder": "",
+    "namespace": "App.Model",
+    "partialFolder": ""
+  },
+  "units": [
+    {
+      "id": "entity",
+      "template": "entity.scriban",
+      "for": "each entity",
+      "output": "{{ join_path pack.params.generatedFolder (package_folder entity) ((pascal entity.name) + \".g.cs\") }}",
+      "mode": "pair",
+      "companion": {
+        "template": "entity.partial.scriban",
+        "output": "{{ join_path pack.params.partialFolder (package_folder entity) ((pascal entity.name) + \".cs\") }}"
+      }
+    },
+    {
+      "id": "enum",
+      "template": "enum.scriban",
+      "for": "each enum",
+      "output": "{{ join_path pack.params.generatedFolder (package_folder enum) ((pascal enum.name) + \".g.cs\") }}"
+    },
+    {
+      "id": "value-object",
+      "template": "value-object.scriban",
+      "for": "each value object",
+      "output": "{{ join_path pack.params.generatedFolder (package_folder value_object) ((pascal value_object.name) + \".g.cs\") }}"
+    },
+    {
+      "id": "repository",
+      "template": "repository.scriban",
+      "for": "each entity",
+      "where": {
+        "abstract": false
+      }
+    },
+    {
+      "id": "registrations",
+      "template": "registrations.scriban",
+      "for": "model"
+    },
+    {
+      "id": "type-handlers",
+      "template": "type-handlers.scriban",
+      "for": "model",
+      "output": "{{ join_path pack.params.generatedFolder \"DapperTypeHandlers.g.cs\" }}"
+    }
+  ]
+}

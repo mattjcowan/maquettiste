@@ -1,0 +1,15 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M259NVP25CG72TFHS1BWSAF5",
+  "name": "Contact in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "entity": "01M2SNDY2SEQ9745HMSG6ZTDRC",
+  "description": "Additional phone numbers are stored as a JSON array rather than a child table.",
+  "attributes": [
+    {
+      "attribute": "01M24HTK79WKR3K253PCQQ070K",
+      "storage": "json"
+    }
+  ]
+}

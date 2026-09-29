@@ -1,0 +1,45 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M24F5G7KR5ZKQVE1B4HKMP65",
+  "name": "ProductAttributeOption",
+  "displayName": "Product attribute option",
+  "pluralName": "Product attribute options",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "An allowed value of an option attribute, such as Large for Glove size.",
+  "tags": [
+    "configuration"
+  ],
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M2XRKSS3JN9STSG05C9X09VE"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M2XRKSS3JN9STSG05C9X09VE",
+      "name": "id",
+      "type": "int32",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the product attribute option."
+    },
+    {
+      "id": "01M2V95XVYFFK501KSWG4SHMEZ",
+      "name": "value",
+      "type": "string",
+      "length": 100,
+      "required": true,
+      "description": "Option value."
+    },
+    {
+      "id": "01M1EWKXX85ZFTDA8R2P59FY1X",
+      "name": "label",
+      "type": "string",
+      "length": 100,
+      "description": "Display label when it differs from the value."
+    }
+  ]
+}

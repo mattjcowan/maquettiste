@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2B8GNK1TH1R1DPB5H40CC0B",
+  "name": "warranty claim customer",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "Claiming customer.",
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "ends": [
+    {
+      "id": "01M2X8CFPDE1E9DNH931DQD74Q",
+      "entity": "01M1ECZKYNSKVNCWW2XM34E20X",
+      "role": "customer",
+      "navigation": "customer",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M2EYBENDDQ02JB7VMTTSAEVN",
+      "entity": "01M36YFEAJKTX0GEAR37WGKBNY",
+      "role": "warrantyClaims"
+    }
+  ]
+}

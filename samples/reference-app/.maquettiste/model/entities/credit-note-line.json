@@ -1,0 +1,62 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2PP8AVP0AZH2E3EFKJS3Y7B",
+  "name": "CreditNoteLine",
+  "displayName": "Credit note line",
+  "pluralName": "Credit note lines",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "A credited item of a credit note.",
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "key": {
+    "attributes": [
+      "01M35P5954KGCVN5R6Q578W4G6"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M35P5954KGCVN5R6Q578W4G6",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the credit note line."
+    },
+    {
+      "id": "01M1FH843GEC6PYZV7501C3RNE",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "required": true,
+      "description": "Line text."
+    },
+    {
+      "id": "01M1KNTR87BCR8F86CWGXVTWZ4",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "description": "Quantity credited."
+    },
+    {
+      "id": "01M1MGDGWTJJ0TS4E13JVCTX6T",
+      "name": "unitPrice",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Price per unit."
+    },
+    {
+      "id": "01M2G4XC7CJFNSM2PPKZV5YSTX",
+      "name": "lineTotal",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Line total."
+    }
+  ]
+}

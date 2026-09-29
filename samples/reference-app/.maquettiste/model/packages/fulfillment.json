@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/package.json",
+  "kind": "package",
+  "id": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "name": "Fulfillment",
+  "displayName": "Fulfillment and shipping",
+  "description": "Getting orders out the door - pick waves and pick lists, shipments and packages, carriers' services and rates, tracking, own-fleet delivery routes and freight claims.",
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY"
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1NTGFVBFG14QBWJM45T4WD4",
+  "name": "customer account manager",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "Sales rep who owns the account.",
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "ends": [
+    {
+      "id": "01M283BK7GXXYMVQDNBPK5B32K",
+      "entity": "01M1RJC20E0YQ2SZNHD9NJW74W",
+      "role": "accountManager",
+      "navigation": "accountManager",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1NBW1CS27NE563G8AYXG322",
+      "entity": "01M1ECZKYNSKVNCWW2XM34E20X",
+      "role": "customers"
+    }
+  ]
+}

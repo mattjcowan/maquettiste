@@ -1,0 +1,273 @@
+package: Fulfillment
+displayName: Fulfillment and shipping
+description: Getting orders out the door - pick waves and pick lists, shipments and packages, carriers' services and rates, tracking, own-fleet delivery routes and freight claims.
+
+enums:
+  ShipmentStatus:
+    description: Lifecycle of a shipment.
+    members:
+      Planned: PLAN | Created from an order, not yet picked.
+      Picking: PICK | Being picked.
+      Packed: PACK | Packed and labeled.
+      Shipped: SHIP | Handed to the carrier or loaded on a route.
+      InTransit: TRANSIT | Moving, per carrier tracking.
+      Delivered: DLVD | Delivered to the customer.
+      DeliveryException: EXCEPT | Delayed, damaged or refused.
+      Cancelled: CANCEL | Cancelled before shipping.
+  FreightTerms:
+    description: Incoterms 2020 rule agreed for a shipment, deciding who pays freight and carries the risk.
+    members:
+      ExWorks: EXW | Buyer collects at the warehouse.
+      FreeCarrier: FCA | Seller hands the goods to the buyer's carrier.
+      FreeOnBoard: FOB | Seller loads the goods on the vessel.
+      CarriagePaidTo: CPT | Seller pays carriage to the named place.
+      DeliveredAtPlace: DAP | Seller delivers to the named place, unloaded by the buyer.
+      DeliveredDutyPaid: DDP | Seller delivers cleared for import, duties paid.
+
+entities:
+  Shipment:
+    description: Goods leaving a warehouse for one destination, on a carrier or an own-fleet route.
+    stereotypes: [aggregate-root, audited]
+    tags: [transactional, integration]
+    attributes:
+      shipmentNumber: string(20)! unique | Shipment number printed on the packing slip.
+      status: ShipmentStatus! default=Planned | Lifecycle state.
+      shipToAddress: Address! | Delivery address.
+      freightTerms: FreightTerms | Incoterm of the shipment.
+      trackingNumber: string(60) indexed | Master tracking or PRO number.
+      estimatedDeliveryOn: date | Carrier's estimate.
+      shippedAt: datetimeoffset | When it left the dock.
+      deliveredAt: datetimeoffset | When it was delivered.
+      freightCost: Money | Freight charged by the carrier.
+      declaredValue: Money | Value declared for insurance.
+      totalWeight: Weight | Gross weight of all packages.
+    refs:
+      salesOrder: SalesOrder back=shipments | Order shipped; null for transfers and replacements.
+      warehouse: Warehouse! | Shipping warehouse.
+      carrier: Carrier | Carrier; null for own-fleet deliveries.
+      carrierService: CarrierService | Service level booked.
+      deliveryRoute: DeliveryRoute | Own-fleet route.
+    children:
+      lines: ShipmentLine | Order lines shipped.
+      packages: ShipmentPackage ordered | Cartons and pallets.
+    mapping:
+      description: Shipment status goes through a lookup table; the delivery address columns get a ship_to_ prefix.
+      storage:
+        status: lookup
+      prefix:
+        shipToAddress: ship_to_
+
+  ShipmentLine:
+    description: The quantity of an order line included in a shipment.
+    tags: [high-volume]
+    attributes:
+      quantity: decimal(12,3)! min=0 | Quantity shipped.
+    refs:
+      salesOrderLine: SalesOrderLine! | Order line shipped.
+      product: Product! | Product shipped.
+      lot: StockLot | Lot shipped.
+
+  ShipmentPackage:
+    description: A carton or pallet of a shipment with its own tracking number.
+    attributes:
+      packageNumber: int32! min=1 | Package number within the shipment.
+      packageType: string(20)! | carton, pallet or envelope.
+      trackingNumber: string(60) | Carrier tracking number.
+      dimensions: Dimensions | Outer dimensions.
+      weight: Weight | Gross weight.
+    children:
+      contents: PackageContent | What is inside.
+
+  PackageContent:
+    description: A quantity of a shipment line packed in a package.
+    attributes:
+      quantity: decimal(12,3)! min=0 | Quantity packed.
+    refs:
+      shipmentLine: ShipmentLine! cascade | Line packed.
+      serialNumber: SerialNumber | Serialized unit packed.
+
+  PickList:
+    description: A list of picks assigned to one picker, generated when a wave is released.
+    stereotypes: [aggregate-root, audited]
+    tags: [transactional]
+    attributes:
+      pickListNumber: string(20)! unique | Pick list number.
+      status: string(20)! default=open | open, picking, done or short.
+      releasedAt: datetimeoffset | When it was released to the floor.
+      completedAt: datetimeoffset | When the last pick was confirmed.
+    refs:
+      warehouse: Warehouse! | Warehouse picked in.
+      wave: PickWave back=pickLists | Wave the list belongs to.
+      picker: Employee | Assigned picker.
+    children:
+      lines: PickListLine ordered | Picks in walking order.
+
+  PickListLine:
+    description: One pick - a product, a bin and a quantity for an order line.
+    tags: [high-volume]
+    attributes:
+      quantityToPick: decimal(12,3)! min=0 | Quantity to pick.
+      quantityPicked: decimal(12,3) min=0 | Quantity confirmed.
+      pickedAt: datetimeoffset | When it was confirmed.
+    refs:
+      product: Product! | Product to pick.
+      bin: BinLocation! | Bin to pick from.
+      salesOrderLine: SalesOrderLine! | Line the pick is for.
+      lot: StockLot | Lot to pick.
+
+  PickWave:
+    description: A batch of orders released to the warehouse floor together, such as the 10:00 parcel wave.
+    stereotypes: [audited]
+    attributes:
+      waveNumber: string(20)! unique | Wave number.
+      status: string(20)! default=planned | planned, released or complete.
+      plannedStartAt: datetimeoffset | Planned release time.
+      releasedAt: datetimeoffset | Actual release time.
+    refs:
+      warehouse: Warehouse! | Warehouse of the wave.
+
+  CarrierService:
+    description: A service a carrier offers, such as Ground, 2-day air or LTL standard.
+    stereotypes: [audited]
+    tags: [configuration, integration]
+    attributes:
+      code: string(20)! | Carrier's service code.
+      name: string(100)! | Service name.
+      serviceLevel: string(20)! | ground, express, overnight, ltl or ftl.
+      transitDays: int16 min=0 | Typical business days in transit.
+      isActive: bool! default=true | Whether it can be booked.
+    refs:
+      carrier: Carrier! cascade back=services | Carrier offering it.
+
+  FreightRate:
+    description: A contracted rate of a carrier service for a zone and weight band.
+    stereotypes: [audited]
+    tags: [financial]
+    attributes:
+      weightFromKg: decimal(10,3)! min=0 | Lower bound of the weight band.
+      weightToKg: decimal(10,3) min=0 | Upper bound; null for no limit.
+      rate: Money! | Rate for the band.
+      validity: DateRange! | Contract period.
+    refs:
+      carrierService: CarrierService! cascade back=rates | Service rated.
+      shippingZone: ShippingZone! | Destination zone.
+
+  TrackingEvent:
+    description: A scan event reported by a carrier for a shipment.
+    tags: [high-volume, integration]
+    key: identity
+    attributes:
+      occurredAt: datetimeoffset! | When the scan happened.
+      eventCode: string(10)! | Carrier event code.
+      description: string(200) | Event text.
+      city: string(80) | Scan location.
+      countryCode: CountryCode | Scan country.
+    refs:
+      shipment: Shipment! cascade back=trackingEvents | Shipment tracked.
+
+  DeliveryRoute:
+    description: A day's delivery run of an own-fleet truck, visiting stops in order.
+    stereotypes: [aggregate-root, audited]
+    tags: [transactional]
+    attributes:
+      routeCode: string(20)! | Route code, such as DEN-NORTH-2.
+      routeDate: date! indexed | Delivery date.
+      status: string(20)! default=planned | planned, loading, on-road or complete.
+      plannedDistanceKm: decimal(8,1) min=0 | Planned distance.
+    refs:
+      warehouse: Warehouse! | Depot.
+      vehicle: Vehicle | Truck.
+      driver: Driver | Driver.
+    children:
+      stops: RouteStop ordered | Stops in driving order.
+
+  RouteStop:
+    description: A stop on a delivery route.
+    attributes:
+      stopNumber: int16! min=1 | Position on the route.
+      address: Address! | Stop address.
+      location: GeoCoordinate | Geocoded position.
+      plannedArrivalAt: datetimeoffset | Planned arrival.
+      actualArrivalAt: datetimeoffset | Actual arrival.
+    refs:
+      shipment: Shipment | Shipment delivered at the stop.
+
+  Vehicle:
+    description: A truck or van of the own delivery fleet.
+    stereotypes: [audited]
+    attributes:
+      registrationNumber: string(20)! unique | License plate.
+      vehicleType: string(20)! | box-truck, van or tractor.
+      capacityWeight: Weight | Payload capacity.
+      capacityVolumeM3: decimal(8,2) min=0 | Cargo volume.
+      isRefrigerated: bool! default=false | Whether it can carry chilled goods.
+      isActive: bool! default=true | Whether it is in service.
+    refs:
+      homeWarehouse: Warehouse | Depot the vehicle is based at.
+
+  Driver:
+    description: An employee licensed to drive the own fleet.
+    stereotypes: [audited]
+    tags: [pii]
+    attributes:
+      licenseNumber: string(30)! unique pii | Driving license number.
+      licenseClass: string(10) | License class, such as CDL-B.
+      licenseExpiresOn: date! | License expiry.
+      mobilePhone: PhoneNumber pii | Phone carried on routes.
+    refs:
+      employee: Employee! one back=driverProfile | Employee who drives.
+
+  ProofOfDelivery:
+    description: Evidence that a shipment was delivered - who signed, where and when.
+    tags: [pii]
+    pluralName: Proofs of delivery
+    attributes:
+      deliveredAt: datetimeoffset! | Delivery time.
+      receivedByName: string(120) pii | Name of the person who signed.
+      signatureImageUrl: string(400) | Signature capture.
+      photoUrl: string(400) | Photo of the delivered goods.
+      location: GeoCoordinate | Where it was captured.
+      notes: string(500) | Driver's remarks.
+    refs:
+      shipment: Shipment! cascade one back=proofOfDelivery | Shipment delivered.
+
+  ShippingLabel:
+    description: A carrier label generated for a package.
+    attributes:
+      format: string(10)! | ZPL or PDF.
+      storageKey: string(400)! | Object storage key of the label file.
+      generatedAt: datetimeoffset! | When the label was generated.
+    refs:
+      shipmentPackage: ShipmentPackage! cascade one back=label | Labeled package.
+
+  FreightClaim:
+    description: A claim against a carrier for lost, damaged or delayed freight.
+    stereotypes: [aggregate-root, audited]
+    tags: [financial]
+    attributes:
+      claimNumber: string(20)! unique | Claim number.
+      filedOn: date! | Filing date.
+      claimType: string(20)! | loss, damage or delay.
+      claimedAmount: Money! | Amount claimed.
+      settledAmount: Money | Amount the carrier paid.
+      status: string(20)! default=filed | filed, under-review, settled or denied.
+      notes: text | Claim narrative.
+    refs:
+      shipment: Shipment! | Shipment concerned.
+      carrier: Carrier! | Carrier claimed against.
+
+  ShippingZone:
+    description: A destination zone used to rate freight, such as zone 5 from Denver.
+    tags: [configuration]
+    attributes:
+      code: string(20)! unique | Zone code.
+      name: string(100)! | Zone name.
+      description: string(300) | Postal code ranges in the zone.
+    refs:
+      country: Country | Country of the zone.
+      originWarehouse: Warehouse | Warehouse the zone is measured from.
+
+diagram:
+  name: Fulfillment and shipping
+  description: Picking, packing, shipping and delivery.
+  columns: 5

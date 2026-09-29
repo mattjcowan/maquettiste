@@ -1,0 +1,86 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2DF9XGX67C72G614BCTGVMB",
+  "name": "InventoryItem",
+  "displayName": "Inventory item",
+  "pluralName": "Inventory items",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Stock of one product in one warehouse, with on-hand, allocated and on-order quantities.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "high-volume"
+  ],
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M2C5ZBWCBM8X28HKXGJBPRK5"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2C5ZBWCBM8X28HKXGJBPRK5",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the inventory item."
+    },
+    {
+      "id": "01M2TRSG4EB6QR0BJPXKK2KA2D",
+      "name": "quantityOnHand",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "required": true,
+      "default": 0,
+      "description": "Physical quantity in the warehouse."
+    },
+    {
+      "id": "01M2T8H7F7DDK4N119YNCEYEZZ",
+      "name": "quantityAllocated",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "required": true,
+      "default": 0,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity reserved for open orders."
+    },
+    {
+      "id": "01M1R40A9VCM3EB4WKGGVG4R9C",
+      "name": "quantityOnOrder",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "required": true,
+      "default": 0,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity on open purchase orders."
+    },
+    {
+      "id": "01M1E821RS08Z2KZFZ7J823V7C",
+      "name": "reorderPoint",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity that triggers replenishment."
+    },
+    {
+      "id": "01M2VSCY2J3STG65QC299A6FGB",
+      "name": "lastCountedOn",
+      "type": "date",
+      "description": "Date of the last cycle count."
+    }
+  ]
+}

@@ -1,0 +1,113 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2JSECEQ3FD3TKWAQR961TJ0",
+  "name": "SalesOrderLine",
+  "displayName": "Sales order line",
+  "pluralName": "Sales order lines",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "One product ordered on a sales order, with its quantity, price and fulfillment state.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "transactional",
+    "high-volume"
+  ],
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M2P7JZ3EC056KSQ3XN0K8C61"
+    ],
+    "strategy": "ulid"
+  },
+  "attributes": [
+    {
+      "id": "01M2P7JZ3EC056KSQ3XN0K8C61",
+      "name": "id",
+      "type": "ulid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the sales order line."
+    },
+    {
+      "id": "01M2RHECM7J1M1VF8CRJ5EGFWW",
+      "name": "lineNumber",
+      "type": "int32",
+      "required": true,
+      "validation": {
+        "min": 1
+      },
+      "description": "Line number printed on documents."
+    },
+    {
+      "id": "01M328GFFRFJENF733S4SAT0JD",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "description": "Line text, defaulting to the product name."
+    },
+    {
+      "id": "01M22KBCXDVN3E8C0ZJDZXT4Q3",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity ordered, in the line's unit."
+    },
+    {
+      "id": "01M1X9JA3KZ3KMC51JCVSAX5QT",
+      "name": "unitPrice",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Price per unit after contract pricing."
+    },
+    {
+      "id": "01M2F6Q3368TVCVSMJ6NN56480",
+      "name": "discount",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "description": "Line discount."
+    },
+    {
+      "id": "01M2E2TNKHHXZBQM9T0390JQ50",
+      "name": "taxRate",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "description": "Sales tax rate applied."
+    },
+    {
+      "id": "01M1G64VX679N4ZP1WTKHKWSNY",
+      "name": "lineTotal",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Quantity times price, less discount."
+    },
+    {
+      "id": "01M2TNPAR5AG0F4DVMDQQR8D60",
+      "name": "status",
+      "type": {
+        "ref": "01M2XZVHW6YAGQS5JE873BVVXA"
+      },
+      "required": true,
+      "default": "Open",
+      "description": "Fulfillment state."
+    },
+    {
+      "id": "01M2EBAQYBEMNY5857FXH1CT6H",
+      "name": "requestedOn",
+      "type": "date",
+      "description": "Requested delivery date, when it differs from the order's."
+    }
+  ]
+}

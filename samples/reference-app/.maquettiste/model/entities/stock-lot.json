@@ -1,0 +1,59 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1KXX9R3RW3ATAD1NCYF0QP0",
+  "name": "StockLot",
+  "displayName": "Stock lot",
+  "pluralName": "Stock lots",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "A production lot or batch of a lot-controlled product, with its expiry date.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M2VENS4VYM0377AAM3BX5E25"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2VENS4VYM0377AAM3BX5E25",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the stock lot."
+    },
+    {
+      "id": "01M270W5KNFS14APDA8YAV04C6",
+      "name": "lotNumber",
+      "type": "string",
+      "length": 40,
+      "required": true,
+      "indexed": true,
+      "description": "Lot number."
+    },
+    {
+      "id": "01M1DDX5WV262EYTFAA3YK1QSK",
+      "name": "supplierLotNumber",
+      "type": "string",
+      "length": 40,
+      "description": "Lot number on the supplier's label."
+    },
+    {
+      "id": "01M1KMZVP37D5FNZDC7ZDTD29Q",
+      "name": "manufacturedOn",
+      "type": "date",
+      "description": "Production date."
+    },
+    {
+      "id": "01M2TY5F5JHY6VC0SMSQH02XAC",
+      "name": "expiresOn",
+      "type": "date",
+      "indexed": true,
+      "description": "Expiry date, for first-expired-first-out picking."
+    }
+  ]
+}

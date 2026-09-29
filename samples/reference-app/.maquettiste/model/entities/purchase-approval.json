@@ -1,0 +1,62 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M20VDNES01WS4DZ5NXHEAFX7",
+  "name": "PurchaseApproval",
+  "displayName": "Purchase approval",
+  "pluralName": "Purchase approvals",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "One approval step of a purchase order, by amount threshold.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "key": {
+    "attributes": [
+      "01M1G2WP30X8MV4RTJG1F4QCWG"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1G2WP30X8MV4RTJG1F4QCWG",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the purchase approval."
+    },
+    {
+      "id": "01M1MFPH74BSB4NAQ9HK8V89ZY",
+      "name": "approvalLevel",
+      "type": "int16",
+      "required": true,
+      "validation": {
+        "min": 1
+      },
+      "description": "Step number."
+    },
+    {
+      "id": "01M2EDQBWCM5FZKBPRHCH8242J",
+      "name": "decision",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "pending",
+      "description": "pending, approved or rejected."
+    },
+    {
+      "id": "01M1SCJACHDFD29AN2TSY30MZZ",
+      "name": "decidedAt",
+      "type": "datetimeoffset",
+      "description": "When the approver decided."
+    },
+    {
+      "id": "01M2YE6FNSTMN7FR6Y8N95XYEE",
+      "name": "comment",
+      "type": "string",
+      "length": 500,
+      "description": "Approver's comment."
+    }
+  ]
+}

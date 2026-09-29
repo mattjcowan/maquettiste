@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1WQ54T9AFFR6TSAZP41HQNX",
+  "name": "communication preference contact",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "Contact the preference belongs to.",
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "ends": [
+    {
+      "id": "01M2BPN2ZJ24D4HT3HZRBBF7HA",
+      "entity": "01M2SNDY2SEQ9745HMSG6ZTDRC",
+      "role": "contact",
+      "navigation": "contact",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M28ASES44TW67FTRNEAFJWNW",
+      "entity": "01M1QZREBJR1KJB4CRM7DVFX2M",
+      "role": "communicationPreferences",
+      "navigation": "communicationPreferences"
+    }
+  ]
+}

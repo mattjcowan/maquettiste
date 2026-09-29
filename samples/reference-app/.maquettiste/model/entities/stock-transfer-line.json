@@ -1,0 +1,50 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1XGAKD7QF42QNGG4SGXZZVH",
+  "name": "StockTransferLine",
+  "displayName": "Stock transfer line",
+  "pluralName": "Stock transfer lines",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "A product and quantity on a stock transfer.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M211ED9VXX9ZJWGKJE9R41A1"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M211ED9VXX9ZJWGKJE9R41A1",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the stock transfer line."
+    },
+    {
+      "id": "01M24AQ5KP8X1NWDGJHZPG60K8",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity shipped."
+    },
+    {
+      "id": "01M1PES482PQFJRW538KMNMGQB",
+      "name": "receivedQuantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity received."
+    }
+  ]
+}

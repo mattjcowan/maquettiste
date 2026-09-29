@@ -1,0 +1,77 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1ZA51HW43QA941A634JYM8M",
+  "name": "PriceList",
+  "displayName": "Price list",
+  "pluralName": "Price lists",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "A list of prices in one currency, such as the US wholesale list or the Canada distributor list.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "master-data",
+    "financial"
+  ],
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "key": {
+    "attributes": [
+      "01M2Q2D01J6A9GAW0F8XJQXVH5"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2Q2D01J6A9GAW0F8XJQXVH5",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the price list."
+    },
+    {
+      "id": "01M2HAJWF3FG6JQEBNQ2APJ5A1",
+      "name": "code",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Price list code."
+    },
+    {
+      "id": "01M1K3J0TB5DZ0VVTTF18FTF6N",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "required": true,
+      "description": "Price list name."
+    },
+    {
+      "id": "01M1SYVXYNXGRXJ3EDQ64XBGE5",
+      "name": "validity",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "required": true,
+      "description": "Period the list is in force."
+    },
+    {
+      "id": "01M1S5DY1DXY4QPRFE1B1TBP7Z",
+      "name": "isDefault",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "List used when a customer has no other list."
+    },
+    {
+      "id": "01M33NZ29ZC6M4GPHV8W2NTYWK",
+      "name": "pricesIncludeTax",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether prices are tax-inclusive."
+    }
+  ]
+}

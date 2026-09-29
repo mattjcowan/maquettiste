@@ -1,0 +1,64 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M294FEGERKZCJTBBXWJ6E302",
+  "name": "SalesQuoteLine",
+  "displayName": "Sales quote line",
+  "pluralName": "Sales quote lines",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "A quoted product and price.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M2R9XHHPVPYSW25APHD3122E"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2R9XHHPVPYSW25APHD3122E",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the sales quote line."
+    },
+    {
+      "id": "01M304Z1NB2JHVV8ST7QP1W3AC",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity quoted."
+    },
+    {
+      "id": "01M36B0M9V8ZYV1VK2ABBES0AG",
+      "name": "unitPrice",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Quoted price per unit."
+    },
+    {
+      "id": "01M1XZZMH93NWMWC116SVXDWV4",
+      "name": "discount",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "description": "Quoted discount."
+    },
+    {
+      "id": "01M1W5WH5AJMWVN5Z6WCCRNVMQ",
+      "name": "lineTotal",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Line total."
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+{
+  "$schema": "../../.schema/v1/diagram.json",
+  "kind": "diagram",
+  "id": "01M2ZQE7DVBP7Y0FPHX2BPNXPT",
+  "name": "Pricing and promotions",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "Price lists, agreements, discounts, promotions and rebates.",
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "members": [
+    {
+      "element": "01M1ZA51HW43QA941A634JYM8M",
+      "x": 40,
+      "y": 40
+    },
+    {
+      "element": "01M2FXB60N1J83XJX22PWX3817",
+      "x": 360,
+      "y": 40
+    },
+    {
+      "element": "01M1GQZCC9ETG8BYN5KXEHR5K0",
+      "x": 680,
+      "y": 40
+    },
+    {
+      "element": "01M2Q6WMJ0KQXMQV0R0QFGYX21",
+      "x": 1000,
+      "y": 40
+    },
+    {
+      "element": "01M23MARQX94BHXK3Y4EB4Q77C",
+      "x": 40,
+      "y": 280
+    },
+    {
+      "element": "01M2X08EBKVXX365CYBGG2CHDN",
+      "x": 360,
+      "y": 280
+    },
+    {
+      "element": "01M2EPFHYBDKM3VHP8XR1NNKGZ",
+      "x": 680,
+      "y": 280
+    },
+    {
+      "element": "01M2XJ4QVS1491ZHZHNN64AZH2",
+      "x": 1000,
+      "y": 280
+    },
+    {
+      "element": "01M1WDD9XYAXK20K6QA157GVFK",
+      "x": 40,
+      "y": 520
+    },
+    {
+      "element": "01M2SBZEWJ8DAVPGH51GMTD8YD",
+      "x": 360,
+      "y": 520
+    },
+    {
+      "element": "01M1X5DK1KBDWND1CQEPZ6GNYD",
+      "x": 680,
+      "y": 520
+    },
+    {
+      "element": "01M1MQMRJC9DXDNBTZ62V1NVBQ",
+      "x": 1000,
+      "y": 520
+    },
+    {
+      "element": "01M2JEP6SPY9HB6JD7RSDP7RX6",
+      "x": 40,
+      "y": 760
+    },
+    {
+      "element": "01M1M5T9RM1VHV29AM44RVNYQ9",
+      "x": 360,
+      "y": 760
+    },
+    {
+      "element": "01M2ZJSYWGGAKNSMD065A5WGJ5",
+      "x": 680,
+      "y": 760
+    },
+    {
+      "element": "01M31YXX3N12VR7R73KM2FD95H",
+      "x": 1000,
+      "y": 760
+    },
+    {
+      "element": "01M1ZY31CP2MR2Y3VKJ8YYK332"
+    },
+    {
+      "element": "01M1EJWZ5TE84WJHYZMFAHPX38"
+    },
+    {
+      "element": "01M22AP2CHZVZNBBH2F1D37R8F"
+    },
+    {
+      "element": "01M2R5YXZGHDBETM0BCRQEWZMN"
+    },
+    {
+      "element": "01M28CEGCJNMRM9YF20Z7BKD2Y"
+    },
+    {
+      "element": "01M2TST7KV1ZXC62XS9PQ12SC6"
+    },
+    {
+      "element": "01M23EERDSJCKMFYSHPDES9AM1"
+    },
+    {
+      "element": "01M1GXAVB31ZXZJS88GS88T5QN"
+    },
+    {
+      "element": "01M2QRPAMYZ9NY23FXY2V6Z9FT"
+    }
+  ],
+  "viewport": {
+    "zoom": 0.8
+  }
+}

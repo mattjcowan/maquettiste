@@ -1,0 +1,66 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M21V515DVPMR66FJSA2K51DN",
+  "name": "Driver",
+  "displayName": "Driver",
+  "pluralName": "Drivers",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "An employee licensed to drive the own fleet.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "pii"
+  ],
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "key": {
+    "attributes": [
+      "01M36TGMZ84AM0W9TWDAABJ5AC"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M36TGMZ84AM0W9TWDAABJ5AC",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the driver."
+    },
+    {
+      "id": "01M1KNMR66ZNJZE5E9SVGTEGG2",
+      "name": "licenseNumber",
+      "type": "string",
+      "length": 30,
+      "required": true,
+      "unique": true,
+      "sensitive": "pii",
+      "description": "Driving license number."
+    },
+    {
+      "id": "01M1GX5BQMY5VX7YE0WPX0KM4B",
+      "name": "licenseClass",
+      "type": "string",
+      "length": 10,
+      "description": "License class, such as CDL-B."
+    },
+    {
+      "id": "01M1VZ8M3M9P65X2R1AM8KE0E6",
+      "name": "licenseExpiresOn",
+      "type": "date",
+      "required": true,
+      "description": "License expiry."
+    },
+    {
+      "id": "01M2MXJWN1Z33YPTXB4VZTX0QC",
+      "name": "mobilePhone",
+      "type": {
+        "ref": "01M30MZJ6XA7K0NQK6ACTMB0VD"
+      },
+      "sensitive": "pii",
+      "description": "Phone carried on routes."
+    }
+  ]
+}

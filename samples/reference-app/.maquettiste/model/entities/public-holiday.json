@@ -1,0 +1,54 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1JN1E7DZ4F3N86DGE4GPWNQ",
+  "name": "PublicHoliday",
+  "displayName": "Public holiday",
+  "pluralName": "Public holidays",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "A non-working day in a country, used for delivery date promises and payment due dates.",
+  "stereotypes": [
+    "reference-data"
+  ],
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "key": {
+    "attributes": [
+      "01M320EJZPEQ96TMHBN78D3YJJ"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M320EJZPEQ96TMHBN78D3YJJ",
+      "name": "id",
+      "type": "int32",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the public holiday."
+    },
+    {
+      "id": "01M2HH2GT6Y246B3TT46PMAYZV",
+      "name": "observedOn",
+      "type": "date",
+      "required": true,
+      "indexed": true,
+      "description": "Date the holiday is observed."
+    },
+    {
+      "id": "01M2Z9C85GXR0CR6WV1EK59NV5",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "required": true,
+      "description": "Name of the holiday."
+    },
+    {
+      "id": "01M1G8T62CDWD419Z6RCH7QTH9",
+      "name": "isNationwide",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether it applies to the whole country rather than some regions."
+    }
+  ]
+}

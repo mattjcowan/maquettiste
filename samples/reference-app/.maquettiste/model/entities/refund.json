@@ -1,0 +1,82 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1MNW48RMMQ7NV6ZC5F8QER5",
+  "name": "Refund",
+  "displayName": "Refund",
+  "pluralName": "Refunds",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "Money returned to a customer, from an overpayment or a credit note.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "key": {
+    "attributes": [
+      "01M29A9G00Y1PZYTT60QC0N0ET"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M29A9G00Y1PZYTT60QC0N0ET",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the refund."
+    },
+    {
+      "id": "01M1EPF6PA1WQVJA0FFG6TCYN5",
+      "name": "refundNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Refund number."
+    },
+    {
+      "id": "01M3555YF7RX8ZASZEB2HAYJ71",
+      "name": "refundedAt",
+      "type": "datetimeoffset",
+      "description": "When it was paid out."
+    },
+    {
+      "id": "01M1NJD8V59HFWN47TAVP5A14G",
+      "name": "amount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Amount refunded."
+    },
+    {
+      "id": "01M27N78BV4XFP9T9JETGW7HEJ",
+      "name": "method",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "card, ach or check."
+    },
+    {
+      "id": "01M2P3PTD1149YGNVJ66R25TES",
+      "name": "status",
+      "type": {
+        "ref": "01M2VSQF570CS69G1GC9FRG9EZ"
+      },
+      "required": true,
+      "default": "Pending",
+      "description": "Processing state."
+    },
+    {
+      "id": "01M1GE17MPGG2C7VJJJR5MNE41",
+      "name": "reference",
+      "type": "string",
+      "length": 64,
+      "description": "Processor or bank reference."
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2JSJ9P18GDTRZZ4MS9MEPAC",
+  "name": "SerialNumber",
+  "displayName": "Serial number",
+  "pluralName": "Serial numbers",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "A serialized unit of a product, tracked from receipt to the customer.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M2S4HTASPSGA10BP59Q4PXE0"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2S4HTASPSGA10BP59Q4PXE0",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the serial number."
+    },
+    {
+      "id": "01M37ZMV7MBM6NK90VQ8QTMMTB",
+      "name": "serial",
+      "type": "string",
+      "length": 60,
+      "required": true,
+      "unique": true,
+      "description": "Serial number."
+    },
+    {
+      "id": "01M2SM27KVH6TBMH2H6YHV8340",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "in-stock",
+      "description": "in-stock, shipped, returned or scrapped."
+    },
+    {
+      "id": "01M1MV89QYHYMED9A5JG3CW9Z6",
+      "name": "receivedAt",
+      "type": "datetimeoffset",
+      "description": "When it was received."
+    }
+  ]
+}

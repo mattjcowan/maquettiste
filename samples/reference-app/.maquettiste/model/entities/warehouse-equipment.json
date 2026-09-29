@@ -1,0 +1,75 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M33BJAGN8XXFG5SMV24ARN8W",
+  "name": "WarehouseEquipment",
+  "displayName": "Warehouse equipment",
+  "pluralName": "Warehouse equipment",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Material handling equipment of a warehouse, such as a forklift or a reach truck.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M1KXHNS60DSKANES8DR64VH5"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1KXHNS60DSKANES8DR64VH5",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the warehouse equipment."
+    },
+    {
+      "id": "01M1YBBDH96AQHFRCWFKQNC6D4",
+      "name": "assetTag",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Asset tag."
+    },
+    {
+      "id": "01M379856B98AE19WWV9TXZ7NJ",
+      "name": "equipmentType",
+      "type": "string",
+      "length": 40,
+      "required": true,
+      "description": "Kind, such as forklift or pallet jack."
+    },
+    {
+      "id": "01M1YX109F4VWRT9713099878Y",
+      "name": "manufacturerName",
+      "type": "string",
+      "length": 80,
+      "description": "Maker."
+    },
+    {
+      "id": "01M26N0TDRRK59XW1RVH61677V",
+      "name": "modelName",
+      "type": "string",
+      "length": 80,
+      "description": "Model."
+    },
+    {
+      "id": "01M2X70CTEWWPDJF04SK4P9SA3",
+      "name": "lastInspectedOn",
+      "type": "date",
+      "description": "Last safety inspection."
+    },
+    {
+      "id": "01M274PXDAVKW6DJCYM86ENSKB",
+      "name": "isOperational",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether it can be used."
+    }
+  ]
+}

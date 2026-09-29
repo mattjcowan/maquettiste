@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M380ECHKTW9MXNWEB3099VG9",
+  "name": "warehouse shift warehouse",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Warehouse of the shift.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M24TT8A39GTJ89J5N4Y5Q4ER",
+      "entity": "01M1PN7QBBJ001FSBR7DTP2QS6",
+      "role": "warehouse",
+      "navigation": "warehouse",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M20ESSMXT3J4KK61CHK766CX",
+      "entity": "01M2WNBHAKV7D0A1DREE1M7648",
+      "role": "shifts",
+      "navigation": "shifts"
+    }
+  ]
+}

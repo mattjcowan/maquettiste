@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2K5ER96GCWF304NAAXWHPT5",
+  "name": "standing order line unit",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "Unit of the quantity.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "ends": [
+    {
+      "id": "01M24F1R95J2GGX5CT97H5KCPT",
+      "entity": "01M1DQ616MEK35RH2FF7YJF9G8",
+      "role": "unit",
+      "navigation": "unit",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M28CXDTQT9EPQVGSEAB52YX2",
+      "entity": "01M1Z07H8911C6G8XMGB68QRV0",
+      "role": "standingOrderLines"
+    }
+  ]
+}

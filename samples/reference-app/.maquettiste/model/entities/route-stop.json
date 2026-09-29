@@ -1,0 +1,66 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M31X5XV10W9BZRF7DTE73C5Q",
+  "name": "RouteStop",
+  "displayName": "Route stop",
+  "pluralName": "Route stops",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "A stop on a delivery route.",
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "key": {
+    "attributes": [
+      "01M1FDGHZ8DNVFJYGYGGP4RYJF"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1FDGHZ8DNVFJYGYGGP4RYJF",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the route stop."
+    },
+    {
+      "id": "01M1TPV4PQFSZH071RAXZJSSZ5",
+      "name": "stopNumber",
+      "type": "int16",
+      "required": true,
+      "validation": {
+        "min": 1
+      },
+      "description": "Position on the route."
+    },
+    {
+      "id": "01M2ZP3X2KZJGCZAX4KA4PEQ09",
+      "name": "address",
+      "type": {
+        "ref": "01M2WPKGPNR6R40TDZ1WGNN874"
+      },
+      "required": true,
+      "description": "Stop address."
+    },
+    {
+      "id": "01M2Y1VBVNNFA5EA8RBNAYZ7HZ",
+      "name": "location",
+      "type": {
+        "ref": "01M2D3J3CAF7MGQ91CWJFVMSQ4"
+      },
+      "description": "Geocoded position."
+    },
+    {
+      "id": "01M20M1SBSJQEFJQ6121293A1P",
+      "name": "plannedArrivalAt",
+      "type": "datetimeoffset",
+      "description": "Planned arrival."
+    },
+    {
+      "id": "01M37D6SX4ENEHEJBVK02NADG4",
+      "name": "actualArrivalAt",
+      "type": "datetimeoffset",
+      "description": "Actual arrival."
+    }
+  ]
+}

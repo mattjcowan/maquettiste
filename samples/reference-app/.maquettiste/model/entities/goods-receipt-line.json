@@ -1,0 +1,62 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2GBMZTV29WK7A5V2BAQSNCF",
+  "name": "GoodsReceiptLine",
+  "displayName": "Goods receipt line",
+  "pluralName": "Goods receipt lines",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "A product and quantity received, with rejects.",
+  "tags": [
+    "transactional"
+  ],
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "key": {
+    "attributes": [
+      "01M1V16WV1ZJHV5GA5CPQEB44A"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1V16WV1ZJHV5GA5CPQEB44A",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the goods receipt line."
+    },
+    {
+      "id": "01M29CBT04P8TKB11A56PYRT09",
+      "name": "quantityReceived",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity accepted."
+    },
+    {
+      "id": "01M25GWM0NDJV12W0PNME82X89",
+      "name": "quantityRejected",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "default": 0,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity refused."
+    },
+    {
+      "id": "01M27P0CF3G2MC5GGS8906S7TD",
+      "name": "rejectionReason",
+      "type": "string",
+      "length": 200,
+      "description": "Why goods were refused."
+    }
+  ]
+}

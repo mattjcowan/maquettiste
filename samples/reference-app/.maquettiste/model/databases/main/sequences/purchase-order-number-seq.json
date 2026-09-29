@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../../.schema/v1/sequence.json",
+  "kind": "sequence",
+  "id": "01M2G5MZBJ9GDXXHJNQRZAXT3R",
+  "name": "purchase_order_number_seq",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "description": "Numbers purchase orders; formatted as PO-000000 by the application.",
+  "start": 500000
+}

@@ -1,0 +1,62 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1DM9WKXNHCGJDYBWDP5R6J7",
+  "name": "Brand",
+  "displayName": "Brand",
+  "pluralName": "Brands",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "A brand products are marketed under, which may differ from the manufacturer.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "master-data"
+  ],
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M33HD577ETA8D88HSM8MA2JP"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M33HD577ETA8D88HSM8MA2JP",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the brand."
+    },
+    {
+      "id": "01M1W7FZQBB3QRY3XGT26HK60N",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "required": true,
+      "unique": true,
+      "description": "Brand name."
+    },
+    {
+      "id": "01M1FF6K4R30M5QR9XH8P74MVF",
+      "name": "description",
+      "type": "text",
+      "description": "Brand story."
+    },
+    {
+      "id": "01M1J1CJ15SB22NJJE6KCZH4XP",
+      "name": "logoUrl",
+      "type": "string",
+      "length": 400,
+      "description": "Logo image URL."
+    },
+    {
+      "id": "01M2H39P8E4377KS1Z0WHYB721",
+      "name": "website",
+      "type": "string",
+      "length": 200,
+      "description": "Brand website."
+    }
+  ]
+}

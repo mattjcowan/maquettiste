@@ -1,0 +1,21 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M2Q6W70PCXE311J3965E8PFY",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "origin": "synthesized",
+  "entity": "01M1W2WMX2WKTS2Y5S4W94NB7Y",
+  "description": "Movements are read newest first.",
+  "indexes": [
+    {
+      "id": "01M34SREVAZ2RMTNYNSY17VTYY",
+      "name": "ix_stock_movements_occurred_at",
+      "columns": [
+        {
+          "column": "01M1H4KAYGYDHZSRW19MVTGX8K",
+          "descending": true
+        }
+      ]
+    }
+  ]
+}

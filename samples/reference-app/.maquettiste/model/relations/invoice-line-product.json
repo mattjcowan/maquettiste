@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2RCSSHTW34NH2NNQPKZYPBX",
+  "name": "invoice line product",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "Product invoiced.",
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "ends": [
+    {
+      "id": "01M205JDSMCQSBJQ7EX00D4RAB",
+      "entity": "01M20RAEF2QZ5W8HV57RBX5PQV",
+      "role": "product",
+      "navigation": "product",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1GSYPPHCPJRKJF84NX1TBX3",
+      "entity": "01M1G0CXN70ZE3GA6793X6HE47",
+      "role": "invoiceLines"
+    }
+  ]
+}

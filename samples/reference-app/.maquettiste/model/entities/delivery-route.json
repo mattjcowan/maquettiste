@@ -1,0 +1,70 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1G1YA8XBHD4SB7WBY35MHBT",
+  "name": "DeliveryRoute",
+  "displayName": "Delivery route",
+  "pluralName": "Delivery routes",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "A day's delivery run of an own-fleet truck, visiting stops in order.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "transactional"
+  ],
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "key": {
+    "attributes": [
+      "01M1N59YQAHP9FRR4DMQMMBF12"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1N59YQAHP9FRR4DMQMMBF12",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the delivery route."
+    },
+    {
+      "id": "01M2DRAAD7SNM7YYXKK276YAT0",
+      "name": "routeCode",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "Route code, such as DEN-NORTH-2."
+    },
+    {
+      "id": "01M34D2DQFNBYKJMSSH3DV09KD",
+      "name": "routeDate",
+      "type": "date",
+      "required": true,
+      "indexed": true,
+      "description": "Delivery date."
+    },
+    {
+      "id": "01M1K01KYBMHCHT86CVK1C18DD",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "planned",
+      "description": "planned, loading, on-road or complete."
+    },
+    {
+      "id": "01M2MVSKYGF7WT3JGBAMHDKNZG",
+      "name": "plannedDistanceKm",
+      "type": "decimal",
+      "precision": 8,
+      "scale": 1,
+      "validation": {
+        "min": 0
+      },
+      "description": "Planned distance."
+    }
+  ]
+}

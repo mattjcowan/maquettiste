@@ -1,0 +1,30 @@
+{
+  "$schema": ".schema/v1/maquettiste.json",
+  "formatVersion": 1,
+  "name": "reference-app",
+  "outputs": {
+    "allow": [
+      {
+        "path": "db",
+        "commit": true
+      },
+      {
+        "path": "src/ReferenceApp.Data/Generated"
+      }
+    ]
+  },
+  "conventions": {
+    "enumStorage": "string"
+  },
+  "packs": {
+    "csharp-dapper": {
+      "output": "src/ReferenceApp.Data/Generated",
+      "parameters": {
+        "namespace": "ReferenceApp.Data"
+      }
+    },
+    "sql-ddl": {
+      "output": "db"
+    }
+  }
+}

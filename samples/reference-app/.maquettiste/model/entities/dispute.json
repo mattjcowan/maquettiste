@@ -1,0 +1,87 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M25NP2BER8C9A1P470N4809J",
+  "name": "Dispute",
+  "displayName": "Dispute",
+  "pluralName": "Disputes",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "A chargeback or dispute raised by a cardholder's bank against a card payment.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "key": {
+    "attributes": [
+      "01M2BD809P41MZYAHRJJ8GDPT8"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2BD809P41MZYAHRJJ8GDPT8",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the dispute."
+    },
+    {
+      "id": "01M2S3PG6TCFFDVWM11ZB1J2P8",
+      "name": "disputeNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Dispute number from the processor."
+    },
+    {
+      "id": "01M1K1DYXPYKSSRFJZ1288XZZF",
+      "name": "openedOn",
+      "type": "date",
+      "required": true,
+      "description": "Date opened."
+    },
+    {
+      "id": "01M2A93061RSJ39KVX67D15E9K",
+      "name": "reasonCode",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "Network reason code."
+    },
+    {
+      "id": "01M1TF9MHSTQY1ESGHX3C58AN2",
+      "name": "amount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Disputed amount."
+    },
+    {
+      "id": "01M1H19BTR2TA1Y1NDW6PT8R7P",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "open",
+      "description": "open, evidence-submitted, won or lost."
+    },
+    {
+      "id": "01M2PPX3T8G1PV2X7WH38X2T9X",
+      "name": "resolvedOn",
+      "type": "date",
+      "description": "Date resolved."
+    },
+    {
+      "id": "01M2B3AJ4X3KCZQN8VEADTXJTR",
+      "name": "resolution",
+      "type": "text",
+      "description": "Outcome notes."
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2ED9JXTW2FCN7D38SHAXQDA",
+  "name": "ProductAttribute",
+  "displayName": "Product attribute",
+  "pluralName": "Product attributes",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "Definition of a filterable product characteristic, such as Glove size or Voltage.",
+  "tags": [
+    "configuration"
+  ],
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M1H6KQ6YV51YEFF43YV09QZS"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M1H6KQ6YV51YEFF43YV09QZS",
+      "name": "id",
+      "type": "int32",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the product attribute."
+    },
+    {
+      "id": "01M2S6TE49BACF2XHVNT3Q89M6",
+      "name": "code",
+      "type": "string",
+      "length": 60,
+      "required": true,
+      "unique": true,
+      "description": "Attribute code used in feeds."
+    },
+    {
+      "id": "01M1F9942N25WC3QTJGZJ34B6R",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "required": true,
+      "description": "Display name."
+    },
+    {
+      "id": "01M1Z153QM1YF8MDRTRSSW6PPK",
+      "name": "dataType",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "Value type - text, number, boolean or option."
+    },
+    {
+      "id": "01M1XY98CFV3BBKC3R9CKB6K80",
+      "name": "unit",
+      "type": "string",
+      "length": 10,
+      "description": "Unit of numeric values, such as mm."
+    },
+    {
+      "id": "01M30KYEAHYKNSQ6FGYFSCPP4Z",
+      "name": "isFilterable",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether the storefront offers it as a filter."
+    }
+  ]
+}

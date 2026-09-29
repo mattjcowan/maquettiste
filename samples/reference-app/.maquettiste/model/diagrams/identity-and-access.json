@@ -1,0 +1,113 @@
+{
+  "$schema": "../../.schema/v1/diagram.json",
+  "kind": "diagram",
+  "id": "01M2X0VZQ5QWKF2MTRPMC4G3ZF",
+  "name": "Identity and access",
+  "package": "01M1F99DBQ9B1T1RVMQRR1GS7V",
+  "description": "Who works here, who can sign in, and what they are allowed to do.",
+  "category": "01M38C3WQ4HSCF45E03KGN6AF5",
+  "members": [
+    {
+      "element": "01M2CMF5JR3GW828G267AZ0M1E",
+      "x": 40,
+      "y": 40
+    },
+    {
+      "element": "01M1EHSJCMNFP23CXQBWYXVG5H",
+      "x": 360,
+      "y": 40
+    },
+    {
+      "element": "01M35A9JR8WQHEXW9H4SS5WB55",
+      "x": 680,
+      "y": 40
+    },
+    {
+      "element": "01M1EHMN1RBE1CNJGE8VNWVR0Y",
+      "x": 1000,
+      "y": 40
+    },
+    {
+      "element": "01M1RJC20E0YQ2SZNHD9NJW74W",
+      "x": 40,
+      "y": 280
+    },
+    {
+      "element": "01M1DBA4TXCMJHKDV0EMM0ZD24",
+      "x": 360,
+      "y": 280
+    },
+    {
+      "element": "01M33169ZNHEKKZGWZBFWA2FWS",
+      "x": 680,
+      "y": 280
+    },
+    {
+      "element": "01M1NR7VGEMHMC1238QBWCKF9K",
+      "x": 1000,
+      "y": 280
+    },
+    {
+      "element": "01M28GY099TBPTE27DRD8DDTVH",
+      "x": 40,
+      "y": 520
+    },
+    {
+      "element": "01M245ZGAQNMAKQMCEM2NPCD22",
+      "x": 360,
+      "y": 520
+    },
+    {
+      "element": "01M1JSJ1JJT34KWF4CT356GYXS",
+      "x": 680,
+      "y": 520
+    },
+    {
+      "element": "01M32D0ZFS59TK463QBGQ7TWG0",
+      "x": 1000,
+      "y": 520
+    },
+    {
+      "element": "01M2ME210PBJM5X3FGSYQWMJE1"
+    },
+    {
+      "element": "01M2VVN3RR1RXH90VJZQ1SJAS9"
+    },
+    {
+      "element": "01M2HKQ9DQJSVTJFWRYYDA52KP"
+    },
+    {
+      "element": "01M1ZG11C96RHWCKNFT9QJ3BW8"
+    },
+    {
+      "element": "01M28RD4YTKWHQ4K6QAAHAP0TF"
+    },
+    {
+      "element": "01M2TGJBD5EQ0AVWCPVZFCM316"
+    },
+    {
+      "element": "01M2H1HCBSPEHPSE0W47DDS64F"
+    },
+    {
+      "element": "01M2Y6VDJNHQAGEKHR9JSPZQ7K"
+    },
+    {
+      "element": "01M2GN4D7S1V0RD23VSZX880P4"
+    },
+    {
+      "element": "01M2DECA25GDZDY5NVRYV3X3TF"
+    },
+    {
+      "element": "01M32KK88ZB9Q7Q739WN1CP2JX"
+    },
+    {
+      "element": "01M34KE653F8CFW9VYB8CF31HE"
+    },
+    {
+      "element": "01M2FGZABF4E9KBAP72JVG64VB"
+    }
+  ],
+  "viewport": {
+    "zoom": 0.8
+  }
+}

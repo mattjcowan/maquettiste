@@ -1,0 +1,78 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M36YFEAJKTX0GEAR37WGKBNY",
+  "name": "WarrantyClaim",
+  "displayName": "Warranty claim",
+  "pluralName": "Warranty claims",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "A claim that a product failed within its warranty, passed on to the manufacturer.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "key": {
+    "attributes": [
+      "01M34DXCKAYHNFX9H732X31N8Q"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M34DXCKAYHNFX9H732X31N8Q",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the warranty claim."
+    },
+    {
+      "id": "01M1TXK3C4CXA4DRP1D9D798ET",
+      "name": "claimNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Claim number."
+    },
+    {
+      "id": "01M1R7A51D912AAE6Q9WE9TBWS",
+      "name": "filedOn",
+      "type": "date",
+      "required": true,
+      "description": "Filing date."
+    },
+    {
+      "id": "01M2TJ9VQ4Y9B39SPN04WG5A1M",
+      "name": "failureDescription",
+      "type": "text",
+      "required": true,
+      "description": "What failed."
+    },
+    {
+      "id": "01M2RS0SJZXYQFBWHQZAB7RDP9",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "filed",
+      "description": "filed, approved, denied or reimbursed."
+    },
+    {
+      "id": "01M1R405ZXWCY9HZDDWFHPDVT3",
+      "name": "claimAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Amount claimed from the manufacturer."
+    },
+    {
+      "id": "01M1ES4X665EHVJQTSHF4671Y4",
+      "name": "resolution",
+      "type": "string",
+      "length": 500,
+      "description": "Outcome."
+    }
+  ]
+}

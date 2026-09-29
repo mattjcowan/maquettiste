@@ -1,0 +1,28 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1EJWZ5TE84WJHYZMFAHPX38",
+  "name": "price list entry tiers",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "relationKind": "composition",
+  "description": "Quantity breaks.",
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "ends": [
+    {
+      "id": "01M1MVKYHXYY0H6QT5KJEEJRYD",
+      "entity": "01M2FXB60N1J83XJX22PWX3817",
+      "role": "priceListEntry",
+      "navigation": "priceListEntry",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M34Y36HKS4CRFWA6BE3MBWNM",
+      "entity": "01M1GQZCC9ETG8BYN5KXEHR5K0",
+      "role": "tiers",
+      "navigation": "tiers",
+      "ordered": true
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1W2WMX2WKTS2Y5S4W94NB7Y",
+  "name": "StockMovement",
+  "displayName": "Stock movement",
+  "pluralName": "Stock movements",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "An immutable record of stock moving into, out of or within a warehouse; balances are derived from these.",
+  "tags": [
+    "high-volume",
+    "financial"
+  ],
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M1F2FPRNHGBGCQCA4T0YX3GY"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M1F2FPRNHGBGCQCA4T0YX3GY",
+      "name": "id",
+      "type": "int64",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the stock movement."
+    },
+    {
+      "id": "01M24T6J3C651ES4HDK6T36XZ3",
+      "name": "movementType",
+      "type": {
+        "ref": "01M2VGK040JVBRYQA2T0D1QY1F"
+      },
+      "required": true,
+      "description": "Kind of movement."
+    },
+    {
+      "id": "01M2PDHH5A8W2GK5P9YQFEN6PD",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "required": true,
+      "description": "Quantity moved, in the base unit; negative for issues."
+    },
+    {
+      "id": "01M1H4KAYGYDHZSRW19MVTGX8K",
+      "name": "occurredAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the movement happened."
+    },
+    {
+      "id": "01M1NA3QXSFCFPK2TVJMTJCDGQ",
+      "name": "referenceDocument",
+      "type": "string",
+      "length": 40,
+      "description": "Source document number."
+    },
+    {
+      "id": "01M28RF630TE3AN9VESG31BGYA",
+      "name": "unitCost",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Cost per unit for valuation."
+    }
+  ]
+}

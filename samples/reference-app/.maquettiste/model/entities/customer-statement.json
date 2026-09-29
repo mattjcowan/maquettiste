@@ -1,0 +1,68 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1DTX8A39PC2ZS8A1W03R2K0",
+  "name": "CustomerStatement",
+  "displayName": "Customer statement",
+  "pluralName": "Customer statements",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "A periodic statement of a customer's open items and balance.",
+  "tags": [
+    "financial"
+  ],
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "key": {
+    "attributes": [
+      "01M1MZD4GJZGECSN5S781DFV4J"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1MZD4GJZGECSN5S781DFV4J",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the customer statement."
+    },
+    {
+      "id": "01M1KGXZ1Y9W28WQCKJ2ZGHSGH",
+      "name": "statementDate",
+      "type": "date",
+      "required": true,
+      "description": "Statement date."
+    },
+    {
+      "id": "01M30MM5QH4N5K05CDNT7H16CS",
+      "name": "openingBalance",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Balance at the start of the period."
+    },
+    {
+      "id": "01M30PAPZTDVSN4G2ND85EAA1N",
+      "name": "closingBalance",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Balance at the statement date."
+    },
+    {
+      "id": "01M340PEV0HDE1QJFBE22J2EZG",
+      "name": "sentAt",
+      "type": "datetimeoffset",
+      "description": "When it was sent."
+    },
+    {
+      "id": "01M2QHKG0ZKQVNE7PC1RCDJE6M",
+      "name": "documentUrl",
+      "type": "string",
+      "length": 400,
+      "description": "Rendered PDF."
+    }
+  ]
+}

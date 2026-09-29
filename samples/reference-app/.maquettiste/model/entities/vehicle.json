@@ -1,0 +1,82 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M21W7JGT4XY095YE5JG45FGC",
+  "name": "Vehicle",
+  "displayName": "Vehicle",
+  "pluralName": "Vehicles",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "A truck or van of the own delivery fleet.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "key": {
+    "attributes": [
+      "01M2DB1RKR8F0P2T3CVFAXZ748"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2DB1RKR8F0P2T3CVFAXZ748",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the vehicle."
+    },
+    {
+      "id": "01M34QCHKPE1CCRQ0BGMG2VA83",
+      "name": "registrationNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "License plate."
+    },
+    {
+      "id": "01M2NXYGJ2AM6478TDQCHS3NRX",
+      "name": "vehicleType",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "box-truck, van or tractor."
+    },
+    {
+      "id": "01M2G2KWAC4EP0BM6EY2NE4Z0C",
+      "name": "capacityWeight",
+      "type": {
+        "ref": "01M36PE7EQVEDETJ5QMAXH25ZX"
+      },
+      "description": "Payload capacity."
+    },
+    {
+      "id": "01M206XFM99XZ7J4ZQDHRX0YDD",
+      "name": "capacityVolumeM3",
+      "type": "decimal",
+      "precision": 8,
+      "scale": 2,
+      "validation": {
+        "min": 0
+      },
+      "description": "Cargo volume."
+    },
+    {
+      "id": "01M1HE602KKGHZV3XGZ0JQTNYD",
+      "name": "isRefrigerated",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether it can carry chilled goods."
+    },
+    {
+      "id": "01M2SV33YBRESMXC11GWZQ4WF6",
+      "name": "isActive",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether it is in service."
+    }
+  ]
+}

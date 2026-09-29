@@ -1,0 +1,259 @@
+# Northwind Operations: a B2B wholesale distributor (phase2-design.md section 7). This file holds what is shared across the
+# twelve subject areas: project settings, vocabularies, value objects, scalar types and the main database. Each other file in
+# this folder describes one package. The grammar is in README.md; tools/build-model.mjs turns the folder into .maquettiste/.
+project:
+  name: reference-app
+  title: Northwind Operations
+  typesPackage: ReferenceData
+
+settings:
+  formatVersion: 1
+  name: reference-app
+  outputs:
+    allow:
+      - path: db
+        commit: true
+      - path: src/ReferenceApp.Data/Generated
+  conventions:
+    enumStorage: string
+  packs:
+    csharp-dapper:
+      output: src/ReferenceApp.Data/Generated
+      parameters:
+        namespace: ReferenceApp.Data
+    sql-ddl:
+      output: db
+
+tags:
+  pii:
+    description: Holds personal data about a natural person; subject to access and erasure requests.
+    color: "#d33c3c"
+  financial:
+    description: Feeds the general ledger or a financial report; changes are audited.
+    color: "#2f6fdf"
+  master-data:
+    description: Slowly changing data that many transactions reference.
+    color: "#7b4fd1"
+  transactional:
+    description: High-churn business documents created by day-to-day operations.
+    color: "#1f9d6b"
+  high-volume:
+    description: Expected to exceed ten million rows; partitioning and archiving candidates.
+    color: "#e08a1e"
+  integration:
+    description: Exchanged with an external system (carrier, bank, EDI partner or marketplace).
+    color: "#11a3b8"
+  configuration:
+    description: Maintained by administrators to configure how the business runs.
+    color: "#6d7a88"
+  security:
+    description: Governs authentication or authorization.
+    color: "#b3261e"
+
+categories:
+  Commercial:
+    description: Selling to customers, from first contact to the order.
+    packages: [Crm, Catalog, Pricing, Sales]
+  Supply chain:
+    description: Buying, storing and moving goods.
+    packages: [Purchasing, Inventory, Fulfillment, Returns]
+  Finance:
+    description: Money owed, received and accounted for.
+    packages: [Billing, Finance]
+  Platform:
+    description: People, access and shared reference data.
+    packages: [Identity, ReferenceData]
+
+stereotypes:
+  aggregate-root:
+    name: Aggregate root
+    description: The entry point of a consistency boundary; its children are loaded and saved through it.
+  audited:
+    name: Audited
+    description: Records who created and last changed each row, and when.
+    attributes:
+      createdAt: datetimeoffset! readonly | When the row was created.
+      createdBy: string(64) readonly | User name of the creator.
+      updatedAt: datetimeoffset readonly | When the row was last changed.
+      updatedBy: string(64) readonly | User name of the last editor.
+  soft-delete:
+    name: Soft delete
+    description: Rows are never physically deleted; a deletion stamps deletedAt and queries filter it out.
+    attributes:
+      deletedAt: datetimeoffset | When the row was marked deleted; null while it is live.
+  reference-data:
+    name: Reference data
+    description: Global, rarely changing data seeded from an external standard (ISO, UN/CEFACT) and shared by every package.
+  lookup:
+    name: Lookup
+    description: An extensible code list maintained by administrators; each row has a code, a display name, an order and an active flag.
+    attributes:
+      code: string(32)! unique | Short stable code used in integrations and imports.
+      name: string(100)! | Display name shown in pick lists.
+      sortOrder: int32! default=0 | Position in pick lists.
+      isActive: bool! default=true | Whether the value can be chosen for new records.
+
+scalarTypes:
+  EmailAddress:
+    description: An email address (RFC 5321 length limit).
+    base: string
+    length: 254
+    pattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+  CurrencyCode:
+    description: An ISO 4217 alphabetic currency code, such as USD or EUR.
+    base: string
+    length: 3
+    pattern: "^[A-Z]{3}$"
+  CountryCode:
+    description: An ISO 3166-1 alpha-2 country code, such as US or DE.
+    base: string
+    length: 2
+    pattern: "^[A-Z]{2}$"
+  Percentage:
+    description: A percentage between 0 and 100 with two decimals, such as 12.50.
+    base: decimal
+    precision: 5
+    scale: 2
+    min: 0
+    max: 100
+  Sku:
+    description: A stock keeping unit code, unique per product variant.
+    base: string
+    length: 40
+    pattern: "^[A-Z0-9][A-Z0-9-]*$"
+
+valueObjects:
+  Money:
+    description: An amount in a currency. Amounts carry four decimals so unit prices of cheap items survive rounding.
+    attributes:
+      amount: decimal(19,4)! | The amount in the currency's major unit.
+      currency: CurrencyCode! | The ISO 4217 currency of the amount.
+  Address:
+    description: A postal address.
+    attributes:
+      line1: string(120)! | Street and number, or PO box.
+      line2: string(120) | Suite, floor or building.
+      city: string(80)! | City or locality.
+      region: string(80) | State, province or county.
+      postalCode: string(20) | Postal or ZIP code.
+      countryCode: CountryCode! | ISO country code.
+  PhoneNumber:
+    description: A telephone number in E.164 form with an optional extension.
+    attributes:
+      number: string(20)! pattern=^\+[1-9][0-9]{6,14}$ | Number in E.164 form, such as +14155550100.
+      extension: string(10) | Internal extension.
+  Dimensions:
+    description: Length, width and height of an item or a package.
+    attributes:
+      length: decimal(10,3)! min=0 | Longest side.
+      width: decimal(10,3)! min=0 | Second side.
+      height: decimal(10,3)! min=0 | Vertical side.
+      unit: LengthUnit! | Unit of the three measures.
+  Weight:
+    description: A weight with its unit.
+    attributes:
+      value: decimal(12,3)! min=0 | The weight.
+      unit: WeightUnit! | Unit of the weight.
+  DateRange:
+    description: An inclusive range of calendar dates; an open end means no limit.
+    attributes:
+      startsOn: date! | First day of the range.
+      endsOn: date | Last day of the range; null when open-ended.
+  GeoCoordinate:
+    description: A WGS 84 latitude and longitude.
+    attributes:
+      latitude: decimal(9,6)! min=-90 max=90 | Degrees north of the equator.
+      longitude: decimal(9,6)! min=-180 max=180 | Degrees east of Greenwich.
+  PersonName:
+    description: The name of a natural person.
+    attributes:
+      givenName: string(80)! | First or given name.
+      familyName: string(80)! | Last or family name.
+      title: string(20) | Salutation, such as Dr. or Ms.
+
+database:
+  name: main
+  displayName: Northwind Operations
+  dialect: postgresql
+  version: "16"
+  schema: northwind
+  description: The operational PostgreSQL 16 database that holds every package.
+  schemaDescription: All operational tables of Northwind Operations.
+  sequences:
+    sales_order_number_seq:
+      description: Numbers sales orders; formatted as SO-000000 by the application.
+      start: 100000
+    purchase_order_number_seq:
+      description: Numbers purchase orders; formatted as PO-000000 by the application.
+      start: 500000
+    journal_entry_seq:
+      description: Keys journal entries; gapless numbering is enforced by the posting service.
+      start: 1
+      cache: 1
+  views:
+    open_sales_orders:
+      description: Sales orders still being worked - submitted, confirmed, on hold or partially shipped - for the order desk dashboard.
+      comment: Excludes soft-deleted orders.
+      body: |
+        SELECT id, order_number, ordered_at, status, promised_delivery_on, grand_total_amount, grand_total_currency
+        FROM northwind.sales_orders
+        WHERE status IN ('SUBMIT', 'CONFIRM', 'HOLD', 'PARTSHIP') AND deleted_at IS NULL
+      columns:
+        id: uuid not-null
+        order_number: string not-null
+        ordered_at: datetimeoffset not-null
+        status: string not-null
+        promised_delivery_on: date
+        grand_total_amount: decimal not-null
+        grand_total_currency: string not-null
+  tables:
+    integration_outbox:
+      description: Transactional outbox. Rows are written in the same transaction as the business change and relayed to the message broker.
+      comment: Written by the application, drained by the outbox relay.
+      tags: [integration]
+      columns:
+        id:
+          type: int64
+          nullable: false
+          generated: identity
+          comment: Relay order.
+        aggregate_type:
+          type: string
+          length: 100
+          nullable: false
+          comment: Entity name of the aggregate that changed.
+        aggregate_id:
+          type: string
+          length: 64
+          nullable: false
+          comment: Key of the aggregate that changed.
+        event_type:
+          type: string
+          length: 100
+          nullable: false
+          comment: Event name, such as SalesOrderSubmitted.
+        payload:
+          type: json
+          nullable: false
+          comment: Event body.
+        occurred_at:
+          type: datetimeoffset
+          nullable: false
+          defaultSql:
+            "*": "CURRENT_TIMESTAMP"
+          comment: When the change was committed.
+        relayed_at:
+          type: datetimeoffset
+          comment: When the relay published the event; null while pending.
+        attempts:
+          type: int32
+          nullable: false
+          default: 0
+          comment: Publish attempts so far.
+      primaryKey:
+        name: pk_integration_outbox
+        columns: [id]
+      indexes:
+        - name: ix_integration_outbox_pending
+          columns: [occurred_at]
+          where: relayed_at IS NULL

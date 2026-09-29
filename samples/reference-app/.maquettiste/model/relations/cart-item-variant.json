@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M240J8P4EG5NWN9V0YT4AFJQ",
+  "name": "cart item variant",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "Variant in the cart.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "ends": [
+    {
+      "id": "01M21PYT17EBY6Y7HCCD7GE9D4",
+      "entity": "01M1KG55EGGS6MGV2175NWVN2N",
+      "role": "variant",
+      "navigation": "variant",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M26CWKSQQC4G7D8NZNA5Z64H",
+      "entity": "01M2F67H1NJPNCPERPZKKZ4Y2R",
+      "role": "cartItems"
+    }
+  ]
+}

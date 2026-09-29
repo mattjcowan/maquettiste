@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/package.json",
+  "kind": "package",
+  "id": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "name": "ReferenceData",
+  "displayName": "Reference data",
+  "description": "Global code lists seeded from international standards and shared by every package, plus the shared value objects and scalar types.",
+  "category": "01M2NP61380Z4QBPZW486DGXYD"
+}

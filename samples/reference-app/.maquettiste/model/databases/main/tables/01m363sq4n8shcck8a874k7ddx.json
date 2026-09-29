@@ -1,0 +1,31 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M363SQ4N8SHCCK8A874K7DDX",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "origin": "synthesized",
+  "entity": "01M32D0ZFS59TK463QBGQ7TWG0",
+  "description": "Details are stored as jsonb so auditors can query inside them.",
+  "columns": [
+    {
+      "id": "01M1WPASMQA834D5F5X2Y579DS",
+      "attribute": "01M1G0P9J3536W9H9B3M5HA2RS",
+      "nativeType": "jsonb",
+      "comment": "Before and after values, queried with jsonb operators."
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M1Q1YXTTXH48MWXYSG5S4WVE",
+      "name": "ix_audit_events_entity",
+      "columns": [
+        {
+          "column": "01M2WFAJV8DQMC2EKN8244EYN1"
+        },
+        {
+          "column": "01M23V2RXAHDW7VQFDR57HF6Y8"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2KD517ZZ59J4YX8GEZXMG4T",
+  "name": "purchase order line product",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "Product ordered.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "ends": [
+    {
+      "id": "01M2TNPTY1TW3B3W4SDMXNW2A2",
+      "entity": "01M20RAEF2QZ5W8HV57RBX5PQV",
+      "role": "product",
+      "navigation": "product",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M2QT7AB66XD0TXPYNJKA3R6R",
+      "entity": "01M1TQ7YZ23DXXYR1CF7BFFWFS",
+      "role": "purchaseOrderLines"
+    }
+  ]
+}

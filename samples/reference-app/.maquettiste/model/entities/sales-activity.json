@@ -1,0 +1,68 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M22CJ6P4AJ7S66B6ND6GTZF9",
+  "name": "SalesActivity",
+  "displayName": "Sales activity",
+  "pluralName": "Sales activities",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "A call, email, meeting, visit or task logged against a party.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "transactional"
+  ],
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "key": {
+    "attributes": [
+      "01M2G2TGKRNF31X5W8ZEYT49NV"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2G2TGKRNF31X5W8ZEYT49NV",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the sales activity."
+    },
+    {
+      "id": "01M2CRZGXW7XHDEP4Q7H0QQ4XE",
+      "name": "activityType",
+      "type": {
+        "ref": "01M31GDDDB5XZG88XWED2KE84K"
+      },
+      "required": true,
+      "description": "Kind of activity."
+    },
+    {
+      "id": "01M25NEXW8J1X6D9ECYCMZTZAD",
+      "name": "subject",
+      "type": "string",
+      "length": 200,
+      "required": true,
+      "description": "One-line summary."
+    },
+    {
+      "id": "01M1ZZQRTNSPNHW7BAMH56N2YM",
+      "name": "dueAt",
+      "type": "datetimeoffset",
+      "description": "When the activity is scheduled or due."
+    },
+    {
+      "id": "01M212DZWED2E5CD536N299MT5",
+      "name": "completedAt",
+      "type": "datetimeoffset",
+      "description": "When it was done."
+    },
+    {
+      "id": "01M2H3APMPEZ5Y1PCY1WDCG0D0",
+      "name": "notes",
+      "type": "text",
+      "description": "Outcome and details."
+    }
+  ]
+}

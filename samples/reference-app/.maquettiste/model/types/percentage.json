@@ -1,0 +1,17 @@
+{
+  "$schema": "../../.schema/v1/scalar-type.json",
+  "kind": "scalar-type",
+  "id": "01M2HEDHV9D9FQRYSK91X0T52W",
+  "name": "Percentage",
+  "displayName": "Percentage",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "A percentage between 0 and 100 with two decimals, such as 12.50.",
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "base": "decimal",
+  "precision": 5,
+  "scale": 2,
+  "validation": {
+    "min": 0,
+    "max": 100
+  }
+}

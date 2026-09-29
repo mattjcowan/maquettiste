@@ -1,0 +1,54 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2XJ4QVS1491ZHZHNN64AZH2",
+  "name": "PromotionCondition",
+  "displayName": "Promotion condition",
+  "pluralName": "Promotion conditions",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "A condition an order must meet for a promotion to apply.",
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "key": {
+    "attributes": [
+      "01M1ZWHBC1D35X5WMM4H4HDBXD"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1ZWHBC1D35X5WMM4H4HDBXD",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the promotion condition."
+    },
+    {
+      "id": "01M2FD8NCDC3MGMV4VYGMS00KS",
+      "name": "conditionType",
+      "type": "string",
+      "length": 40,
+      "required": true,
+      "description": "Kind of condition - product-quantity, category-amount or order-amount."
+    },
+    {
+      "id": "01M2VNXP29J6A1QPT1MC9286W5",
+      "name": "thresholdQuantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "validation": {
+        "min": 0
+      },
+      "description": "Minimum quantity."
+    },
+    {
+      "id": "01M2923TEGG1SA0AAB6X6H2TMR",
+      "name": "thresholdAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Minimum amount."
+    }
+  ]
+}

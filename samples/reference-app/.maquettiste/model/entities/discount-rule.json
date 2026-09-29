@@ -1,0 +1,86 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2X08EBKVXX365CYBGG2CHDN",
+  "name": "DiscountRule",
+  "displayName": "Discount rule",
+  "pluralName": "Discount rules",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "An automatic discount, such as 3 percent off janitorial supplies for buying group A.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "configuration"
+  ],
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "key": {
+    "attributes": [
+      "01M25EFER1XF9XE03M5MA08AG3"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M25EFER1XF9XE03M5MA08AG3",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the discount rule."
+    },
+    {
+      "id": "01M2EWZ04Y664P1KHAYMBH6FTY",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "required": true,
+      "description": "Rule name."
+    },
+    {
+      "id": "01M1D4CJM0DF6T4P6F3DXNAN99",
+      "name": "discountType",
+      "type": {
+        "ref": "01M2GY5JW2EF7880VD84VY7WDD"
+      },
+      "required": true,
+      "description": "How the discount is computed."
+    },
+    {
+      "id": "01M25MX8MZ0V6Q7CGVHAH6WA3K",
+      "name": "value",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 4,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Percentage or amount, depending on the type."
+    },
+    {
+      "id": "01M2Q4Z0AYBHKMJTK62KE178HT",
+      "name": "priority",
+      "type": "int16",
+      "required": true,
+      "default": 100,
+      "description": "Evaluation order; lower runs first."
+    },
+    {
+      "id": "01M2FKC4A0B833PXSG8YQ0TRK1",
+      "name": "isStackable",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether it combines with other discounts."
+    },
+    {
+      "id": "01M2F5MWFDCQNY1G2SM5Y396K7",
+      "name": "validity",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "description": "When the rule applies."
+    }
+  ]
+}

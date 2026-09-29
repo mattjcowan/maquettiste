@@ -1,0 +1,60 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1J35XG4PXHGRSVTBAVRS2YP",
+  "name": "QualityInspection",
+  "displayName": "Quality inspection",
+  "pluralName": "Quality inspections",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "An inspection of received or stored goods, which may put them on hold.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M222RA1HF2PACSYZG1PQCF82"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M222RA1HF2PACSYZG1PQCF82",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the quality inspection."
+    },
+    {
+      "id": "01M324K49R1NX7C690TD7M5V0Q",
+      "name": "inspectedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When it was inspected."
+    },
+    {
+      "id": "01M1VTD3GQWQVQDSBW5HFE05F8",
+      "name": "result",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "passed, failed or conditional."
+    },
+    {
+      "id": "01M28BX065HGGZTWSKT0BE66RW",
+      "name": "sampleSize",
+      "type": "int32",
+      "validation": {
+        "min": 1
+      },
+      "description": "Units inspected."
+    },
+    {
+      "id": "01M1T7VPH4N99BFZASB8D0B1ZW",
+      "name": "notes",
+      "type": "text",
+      "description": "Findings."
+    }
+  ]
+}

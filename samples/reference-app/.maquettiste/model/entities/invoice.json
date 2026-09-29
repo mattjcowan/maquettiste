@@ -1,0 +1,136 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2AXW23BB6G1HZZ8CBAXJQXB",
+  "name": "Invoice",
+  "displayName": "Invoice",
+  "pluralName": "Invoices",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "A bill to a customer for shipped goods and charges, posted to receivables.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "financial",
+    "transactional"
+  ],
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "key": {
+    "attributes": [
+      "01M1Y83VWAQRVETBE3DBJBMQRB"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1Y83VWAQRVETBE3DBJBMQRB",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the invoice."
+    },
+    {
+      "id": "01M31F52MKE36TJ2DDGCAB5YX3",
+      "name": "invoiceNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Invoice number."
+    },
+    {
+      "id": "01M2999RASNN83DK0BP30YM4EB",
+      "name": "invoiceDate",
+      "type": "date",
+      "required": true,
+      "indexed": true,
+      "description": "Invoice date."
+    },
+    {
+      "id": "01M20T8WVZAWQHDX0NGQD9CF67",
+      "name": "dueDate",
+      "type": "date",
+      "required": true,
+      "indexed": true,
+      "description": "Payment due date."
+    },
+    {
+      "id": "01M1ZZQ2NCXZMWDM4PESMMJMVZ",
+      "name": "status",
+      "type": {
+        "ref": "01M1X606HJ9Q9BFSJESVDTP976"
+      },
+      "required": true,
+      "default": "Draft",
+      "description": "Lifecycle state."
+    },
+    {
+      "id": "01M2B1SX99QRFYPFNNWM257B8W",
+      "name": "billingAddress",
+      "type": {
+        "ref": "01M2WPKGPNR6R40TDZ1WGNN874"
+      },
+      "required": true,
+      "description": "Bill-to address."
+    },
+    {
+      "id": "01M1HXY646Q9FP239M5GG73S3K",
+      "name": "subtotal",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Sum of line totals."
+    },
+    {
+      "id": "01M35T3GX70WKGEZPXYDBV8ZXT",
+      "name": "taxTotal",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Sales tax."
+    },
+    {
+      "id": "01M35B5TTRMD46F5HMCGQKK0FP",
+      "name": "grandTotal",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Amount invoiced."
+    },
+    {
+      "id": "01M1F44H7CSR4Y8TCXP0DQN1CH",
+      "name": "amountPaid",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Payments allocated so far."
+    },
+    {
+      "id": "01M24ZMRQBJMC4AQVQN2G88T8D",
+      "name": "balanceDue",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Amount still owed."
+    },
+    {
+      "id": "01M1DRV7C7CDSXQBWP35CFDDMH",
+      "name": "sentAt",
+      "type": "datetimeoffset",
+      "description": "When it was delivered to the customer."
+    },
+    {
+      "id": "01M1WNGW0BVCG6CG619463WK1B",
+      "name": "notes",
+      "type": "text",
+      "description": "Remarks printed on the invoice."
+    }
+  ]
+}

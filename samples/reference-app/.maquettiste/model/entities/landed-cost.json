@@ -1,0 +1,56 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M30P3YKV9SP8Q5BRW9K35FWG",
+  "name": "LandedCost",
+  "displayName": "Landed cost",
+  "pluralName": "Landed costs",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "An extra cost of getting goods to the warehouse, such as freight, duty or brokerage, spread over a receipt.",
+  "tags": [
+    "financial"
+  ],
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "key": {
+    "attributes": [
+      "01M36QBBZF1B5BWNKNQDMP91RY"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M36QBBZF1B5BWNKNQDMP91RY",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the landed cost."
+    },
+    {
+      "id": "01M1ZH8E2WAZ3SXP6XD9249XE9",
+      "name": "costType",
+      "type": "string",
+      "length": 30,
+      "required": true,
+      "description": "freight, duty, insurance or brokerage."
+    },
+    {
+      "id": "01M1E526D923AC8X89T1W5T2QH",
+      "name": "amount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Cost amount."
+    },
+    {
+      "id": "01M274J46MWSH8J4F7187F4VC7",
+      "name": "allocationMethod",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "value",
+      "description": "value, weight or quantity."
+    }
+  ]
+}

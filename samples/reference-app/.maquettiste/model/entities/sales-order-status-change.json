@@ -1,0 +1,61 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M28MWSDAN18EQHNE9QHZEMFN",
+  "name": "SalesOrderStatusChange",
+  "displayName": "Sales order status change",
+  "pluralName": "Sales order status changes",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "A status transition of a sales order, kept as history.",
+  "tags": [
+    "high-volume"
+  ],
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M2MA69C4KNZA0YYGT2TNGVP2"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M2MA69C4KNZA0YYGT2TNGVP2",
+      "name": "id",
+      "type": "int64",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the sales order status change."
+    },
+    {
+      "id": "01M2X6E45CDYX1P4MY2MCSF55F",
+      "name": "fromStatus",
+      "type": {
+        "ref": "01M1ND9H30R3QBP5WGNQFW4FQZ"
+      },
+      "description": "Status before."
+    },
+    {
+      "id": "01M1QWVNE498JQ80AAKECCSQ9J",
+      "name": "toStatus",
+      "type": {
+        "ref": "01M1ND9H30R3QBP5WGNQFW4FQZ"
+      },
+      "required": true,
+      "description": "Status after."
+    },
+    {
+      "id": "01M232VF4XCCYE6MZPY0H19272",
+      "name": "changedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the change happened."
+    },
+    {
+      "id": "01M1W270479T161V8DFN64VCRX",
+      "name": "reason",
+      "type": "string",
+      "length": 300,
+      "description": "Why it changed."
+    }
+  ]
+}

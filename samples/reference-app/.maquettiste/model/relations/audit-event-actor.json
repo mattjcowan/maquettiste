@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2DECA25GDZDY5NVRYV3X3TF",
+  "name": "audit event actor",
+  "package": "01M1F99DBQ9B1T1RVMQRR1GS7V",
+  "description": "Who did it; null for system jobs.",
+  "category": "01M38C3WQ4HSCF45E03KGN6AF5",
+  "ends": [
+    {
+      "id": "01M2J62WXPTAK680RCFT5X7KBP",
+      "entity": "01M2CMF5JR3GW828G267AZ0M1E",
+      "role": "actor",
+      "navigation": "actor",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M3864VF9F8F44C8MG2FE1CQV",
+      "entity": "01M32D0ZFS59TK463QBGQ7TWG0",
+      "role": "auditEvents"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2PZK9FDV6Z7M4C36RS9PW6W",
+  "name": "quality inspection inspector",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Inspector.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M2HK2F6AKHWVQ8QDQZZG0YVY",
+      "entity": "01M1RJC20E0YQ2SZNHD9NJW74W",
+      "role": "inspector",
+      "navigation": "inspector",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1MXN8TJCEHBJZ8NZNQXZ0SK",
+      "entity": "01M1J35XG4PXHGRSVTBAVRS2YP",
+      "role": "qualityInspections"
+    }
+  ]
+}

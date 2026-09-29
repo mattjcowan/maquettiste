@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1R5PWK3E2PS3B9HVYWR9KTA",
+  "name": "tax rate sales tax account",
+  "package": "01M1EYTWAA6REG1KFCR9N7XQ27",
+  "description": "Liability account the tax posts to.",
+  "category": "01M1E9BTZZTKGKC2S6YTG3CKTZ",
+  "ends": [
+    {
+      "id": "01M2071ENJ8XF1HRCZN2J0989T",
+      "entity": "01M33CZQC491X54XW35063THC2",
+      "role": "salesTaxAccount",
+      "navigation": "salesTaxAccount",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M26V1W8JY78TMECYT9RW54HN",
+      "entity": "01M32MPMZK5YHFPNR1E8HDD0ZM",
+      "role": "taxRates"
+    }
+  ]
+}

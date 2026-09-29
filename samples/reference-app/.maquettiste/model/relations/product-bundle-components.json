@@ -1,0 +1,28 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M367R80TPWAM0FJBDC4T2C1B",
+  "name": "product bundle components",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "relationKind": "composition",
+  "description": "Products in the bundle.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "ends": [
+    {
+      "id": "01M265RP6ZFR0WSVHFDGHMP2WA",
+      "entity": "01M2GCS5Q7Z2VYKTT0EVAJWVWB",
+      "role": "productBundle",
+      "navigation": "productBundle",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M34XPVNM5BGSPR280SWEYWSS",
+      "entity": "01M1YQHVQ03T8T5DYE0EM8XFSG",
+      "role": "components",
+      "navigation": "components",
+      "ordered": true
+    }
+  ]
+}

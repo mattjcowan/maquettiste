@@ -1,0 +1,47 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M2K8Z15HDBWEBEHRGWGEQE8Q",
+  "name": "CaseStatus",
+  "displayName": "Case status",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "Lifecycle of a service case.",
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "members": [
+    {
+      "id": "01M31VZJ0FWCZ6SN3EWAW1Z7KZ",
+      "name": "New",
+      "value": 0,
+      "code": "NEW",
+      "description": "Not yet triaged."
+    },
+    {
+      "id": "01M1P7JGSAAN8WBV8582HGS6XP",
+      "name": "Open",
+      "value": 1,
+      "code": "OPEN",
+      "description": "Being worked."
+    },
+    {
+      "id": "01M2TRS2N06389TN1B35KG300G",
+      "name": "WaitingOnCustomer",
+      "value": 2,
+      "code": "WAIT",
+      "description": "Waiting for the customer's answer."
+    },
+    {
+      "id": "01M26A1FVFT5VAVMEJ1WHEAE7Y",
+      "name": "Resolved",
+      "value": 3,
+      "code": "RESOLVED",
+      "description": "Solution provided."
+    },
+    {
+      "id": "01M320E38SNFP4FXVTZD2ACFZ2",
+      "name": "Closed",
+      "value": 4,
+      "code": "CLOSED",
+      "description": "Confirmed or timed out."
+    }
+  ]
+}

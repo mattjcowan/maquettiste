@@ -1,0 +1,96 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M1EGCMD3S06F3A4EEM0DQJT4",
+  "name": "integration_outbox",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "description": "Transactional outbox. Rows are written in the same transaction as the business change and relayed to the message broker.",
+  "tags": [
+    "integration"
+  ],
+  "columns": [
+    {
+      "id": "01M1HSKQB5SHJARTR243KQEX29",
+      "name": "id",
+      "type": "int64",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Relay order."
+    },
+    {
+      "id": "01M1KNQXJ1V2C2CZAVAX3XCJQ3",
+      "name": "aggregate_type",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Entity name of the aggregate that changed."
+    },
+    {
+      "id": "01M36V1JWPHH1VD736WXS9YF5M",
+      "name": "aggregate_id",
+      "type": "string",
+      "length": 64,
+      "nullable": false,
+      "comment": "Key of the aggregate that changed."
+    },
+    {
+      "id": "01M1R96T464X19FRCFQ6VC3SZD",
+      "name": "event_type",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Event name, such as SalesOrderSubmitted."
+    },
+    {
+      "id": "01M1QYH1RSZ5YNVC0JW2ZRN5V7",
+      "name": "payload",
+      "type": "json",
+      "nullable": false,
+      "comment": "Event body."
+    },
+    {
+      "id": "01M2QZWXE8Z86GQHZJ5PX4MTCG",
+      "name": "occurred_at",
+      "type": "datetimeoffset",
+      "nullable": false,
+      "defaultSql": {
+        "*": "CURRENT_TIMESTAMP"
+      },
+      "comment": "When the change was committed."
+    },
+    {
+      "id": "01M2D32E9A0KKC0K91QWR99D62",
+      "name": "relayed_at",
+      "type": "datetimeoffset",
+      "comment": "When the relay published the event; null while pending."
+    },
+    {
+      "id": "01M1M90R26K76TPKHTTMV6D65H",
+      "name": "attempts",
+      "type": "int32",
+      "nullable": false,
+      "default": 0,
+      "comment": "Publish attempts so far."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_integration_outbox",
+    "columns": [
+      "01M1HSKQB5SHJARTR243KQEX29"
+    ]
+  },
+  "indexes": [
+    {
+      "id": "01M22XCFS8KJYV238GH2NFP7BN",
+      "name": "ix_integration_outbox_pending",
+      "columns": [
+        {
+          "column": "01M2QZWXE8Z86GQHZJ5PX4MTCG"
+        }
+      ],
+      "where": "relayed_at IS NULL"
+    }
+  ],
+  "comment": "Written by the application, drained by the outbox relay."
+}

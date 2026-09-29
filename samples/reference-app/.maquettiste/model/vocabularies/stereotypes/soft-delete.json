@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../.schema/v1/stereotype.json",
+  "kind": "stereotype",
+  "id": "01M1SHK73M34WQ7A32P3MZBA30",
+  "key": "soft-delete",
+  "name": "Soft delete",
+  "description": "Rows are never physically deleted; a deletion stamps deletedAt and queries filter it out.",
+  "appliesTo": [
+    "entity"
+  ],
+  "attributes": [
+    {
+      "id": "01M33A5T6SBSH45N4QS0Q3R59H",
+      "name": "deletedAt",
+      "type": "datetimeoffset",
+      "description": "When the row was marked deleted; null while it is live."
+    }
+  ]
+}

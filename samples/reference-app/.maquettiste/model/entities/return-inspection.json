@@ -1,0 +1,55 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2G3F0QRHJQDX7XH86FZ40ZQ",
+  "name": "ReturnInspection",
+  "displayName": "Return inspection",
+  "pluralName": "Return inspections",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "An inspection of returned goods that decides the disposition.",
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "key": {
+    "attributes": [
+      "01M366970W0D7CBH9Y9HWGRVMC"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M366970W0D7CBH9Y9HWGRVMC",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the return inspection."
+    },
+    {
+      "id": "01M1WMJF7WMQS01SHQ4XDYMV3A",
+      "name": "inspectedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When it was inspected."
+    },
+    {
+      "id": "01M37PKRV8SWTNGER7CNNYR9S9",
+      "name": "outcome",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "resaleable, refurbish or scrap."
+    },
+    {
+      "id": "01M1THC8ZVBFSQ64GW5KBGZS5D",
+      "name": "notes",
+      "type": "text",
+      "description": "Findings."
+    },
+    {
+      "id": "01M26QWPC4PQ69GPJM7JP6MGS7",
+      "name": "photoUrl",
+      "type": "string",
+      "length": 400,
+      "description": "Photo of the goods."
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M2XZVHW6YAGQS5JE873BVVXA",
+  "name": "OrderLineStatus",
+  "displayName": "Order line status",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "Fulfillment state of a sales order line.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "members": [
+    {
+      "id": "01M3843SSC22VH1HD7PA462RKW",
+      "name": "Open",
+      "value": 0,
+      "code": "OPEN",
+      "description": "Not yet allocated."
+    },
+    {
+      "id": "01M284QMNANB7WZB92M5SN7ZMC",
+      "name": "Allocated",
+      "value": 1,
+      "code": "ALLOC",
+      "description": "Stock reserved."
+    },
+    {
+      "id": "01M2XQ1YHV2BRGA1E4N1TQ3ZMC",
+      "name": "Backordered",
+      "value": 2,
+      "code": "BACKORD",
+      "description": "Waiting for stock."
+    },
+    {
+      "id": "01M364SM0RPVRS90C64HY9S0TW",
+      "name": "Picked",
+      "value": 3,
+      "code": "PICKED",
+      "description": "Picked in the warehouse."
+    },
+    {
+      "id": "01M2QJVNJ1HGD7GCHJ864Z7C85",
+      "name": "Shipped",
+      "value": 4,
+      "code": "SHIPPED",
+      "description": "Left the warehouse."
+    },
+    {
+      "id": "01M1GH81EYYFESSDAFSC7RDDYZ",
+      "name": "Cancelled",
+      "value": 5,
+      "code": "CANCEL",
+      "description": "Cancelled."
+    }
+  ]
+}

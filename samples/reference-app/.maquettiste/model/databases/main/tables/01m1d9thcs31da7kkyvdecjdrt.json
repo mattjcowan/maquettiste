@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M1D9THCS31DA7KKYVDECJDRT",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "origin": "synthesized",
+  "entity": "01M2DF9XGX67C72G614BCTGVMB",
+  "description": "Allocation can never exceed what is on hand plus what is inbound.",
+  "checks": [
+    {
+      "id": "01M2SKVD4H0HEH877W0QAS8Q04",
+      "name": "ck_inventory_items_allocation",
+      "expression": {
+        "*": "quantity_allocated <= quantity_on_hand + quantity_on_order"
+      }
+    }
+  ]
+}

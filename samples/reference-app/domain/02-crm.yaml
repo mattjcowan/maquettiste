@@ -1,0 +1,336 @@
+package: Crm
+displayName: Parties and CRM
+description: The organizations Northwind trades with (customers, suppliers, carriers), their people and addresses, and the sales pipeline that wins new business.
+
+enums:
+  AddressType:
+    description: Purpose of a party address.
+    members:
+      Billing: BIL | Where invoices and statements are sent.
+      Shipping: SHP | Where goods are delivered.
+      Headquarters: HQ | Registered office.
+      Warehouse: WHS | A receiving dock of the party.
+      Remittance: REM | Where payments are sent.
+  LeadStatus:
+    description: Qualification state of a lead.
+    members:
+      New: NEW | Captured, not yet worked.
+      Contacted: CON | A rep has reached out.
+      Qualified: QUA | Budget, need and timing confirmed.
+      Disqualified: DIS | Not a fit; kept for reporting.
+      Converted: CNV | Became a customer account.
+  ActivityType:
+    description: Kind of sales activity.
+    members:
+      Call: CALL | A phone call.
+      Email: MAIL | An email exchange.
+      Meeting: MEET | A scheduled meeting, online or in person.
+      Visit: VISIT | A site visit to the customer.
+      Task: TASK | A follow-up to do.
+
+entities:
+  Party:
+    description: Any organization Northwind does business with. Customers, suppliers and carriers are kinds of party and share one table (TPH).
+    abstract: true
+    stereotypes: [aggregate-root, audited, soft-delete]
+    tags: [master-data]
+    pluralName: Parties
+    attributes:
+      partyNumber: string(20)! | Business number shown on documents, such as C-104233.
+      name: string(200)! indexed | Legal name.
+      tradingName: string(200) | Name the party trades under, when different.
+      taxId: string(30) | VAT or EIN registration number.
+      website: string(200) | Public website URL.
+      email: EmailAddress | General mailbox.
+      phone: PhoneNumber | Main switchboard.
+      headquarters: Address | Registered office address.
+      isActive: bool! default=true | Whether new transactions may reference the party.
+    alternateKeys:
+      partyNumber: [partyNumber]
+    refs:
+      preferredLanguage: Language | Language for documents and messages.
+      preferredCurrency: Currency | Currency used on documents by default.
+      paymentTerm: PaymentTerm | Payment terms agreed with the party, both directions.
+    mapping:
+      description: Customers, suppliers and carriers share the parties table (TPH) with a readable discriminator; the headquarters address columns get a short hq_ prefix.
+      inheritance: tph
+      discriminator: PARTY
+      prefix:
+        headquarters: hq_
+
+  Customer:
+    description: A business that buys from Northwind on account.
+    base: Party
+    tags: [financial]
+    attributes:
+      accountNumber: string(20)! unique | Customer account number used on orders and remittances.
+      customerSince: date! | Date the account was opened.
+      onCreditHold: bool! default=false | Whether new orders are held for credit review.
+      isTaxExempt: bool! default=false | Whether sales tax is waived; requires a valid exemption certificate.
+      annualRevenue: Money | Customer's reported annual revenue, used for segmentation.
+    refs:
+      segment: CustomerSegment | Marketing segment.
+      customerGroup: CustomerGroup | Pricing group.
+      accountManager: Employee | Sales rep who owns the account.
+      territory: SalesTerritory | Sales territory of the account.
+      industry: Industry | Industry the customer operates in.
+      parentCustomer: Customer back=subsidiaries | Parent account for consolidated billing.
+    mapping:
+      description: Discriminator value of customers in the parties table.
+      discriminator: CUSTOMER
+
+  Supplier:
+    description: A vendor Northwind buys goods from.
+    base: Party
+    attributes:
+      leadTimeDays: int16! default=14 min=0 | Typical days from purchase order to receipt.
+      minimumOrderValue: Money | Smallest purchase order the supplier accepts.
+      isPreferred: bool! default=false | Whether buyers should source from this supplier first.
+      onboardedOn: date | Date the supplier passed vendor onboarding.
+      remitToAddresses: Address[] | Addresses where payments may be sent; kept in a child table.
+    mapping:
+      description: Discriminator value of suppliers in the parties table.
+      discriminator: SUPPLIER
+
+  Carrier:
+    description: A freight or parcel company that moves Northwind shipments.
+    base: Party
+    attributes:
+      scacCode: string(4) unique | Standard Carrier Alpha Code.
+      carrierAccountNumber: string(30) | Northwind's shipper account number with the carrier.
+      trackingUrlTemplate: string(300) | URL with a {tracking} placeholder.
+      offersLtl: bool! default=false | Whether the carrier moves less-than-truckload freight.
+      insuranceExpiresOn: date | Expiry of the carrier's cargo insurance certificate.
+    mapping:
+      description: Discriminator value of carriers in the parties table.
+      discriminator: CARRIER
+
+  Contact:
+    description: A person at a party that Northwind deals with, such as a buyer, an accounts payable clerk or a dispatcher.
+    stereotypes: [audited, soft-delete]
+    tags: [pii]
+    attributes:
+      name: PersonName! pii | Name of the contact.
+      jobTitle: string(100) | Position at the party.
+      email: EmailAddress indexed pii | Work email.
+      phone: PhoneNumber pii | Direct line.
+      additionalPhones: PhoneNumber[] pii | Mobile and other numbers.
+      isPrimary: bool! default=false | Main contact of the party.
+      isBillingContact: bool! default=false | Receives invoices and statements.
+    refs:
+      party: Party! cascade back=contacts | Organization the contact works for.
+      language: Language | Language the contact prefers.
+    mapping:
+      description: Additional phone numbers are stored as a JSON array rather than a child table.
+      storage:
+        additionalPhones: json
+
+  PartyAddress:
+    description: A named address of a party, such as a ship-to location of a customer with several branches.
+    stereotypes: [audited]
+    tags: [pii]
+    pluralName: Party addresses
+    attributes:
+      label: string(80)! | Name of the location, such as Denver branch.
+      addressType: AddressType! | Purpose of the address.
+      address: Address! | The postal address.
+      location: GeoCoordinate | Geocoded position for routing.
+      isDefault: bool! default=false | Default address of its type.
+      deliveryInstructions: string(500) | Dock hours, gate codes and the like.
+    refs:
+      party: Party! cascade back=addresses | Party the address belongs to.
+
+  CustomerSegment:
+    description: Marketing segment of a customer, such as Independent retailer or National chain.
+    stereotypes: [lookup]
+    tags: [configuration]
+    key: identity32
+    attributes:
+      description: string(300) | Who belongs to the segment.
+
+  CustomerGroup:
+    description: A group of customers that share price lists and discounts, such as Buying group A.
+    stereotypes: [audited]
+    tags: [configuration]
+    attributes:
+      name: string(80)! unique | Group name.
+      description: string(300) | Who belongs to the group.
+      defaultDiscount: Percentage | Discount applied when no better price exists.
+
+  SalesTerritory:
+    description: A geographic sales territory, nested into regions (US > West > Pacific Northwest).
+    stereotypes: [audited]
+    tags: [configuration]
+    attributes:
+      code: string(12)! unique | Territory code.
+      name: string(100)! | Territory name.
+      annualQuota: Money | Revenue target for the fiscal year.
+    refs:
+      parent: SalesTerritory back=subTerritories | Enclosing territory.
+      manager: Employee | Sales manager responsible for the territory.
+
+  AccountAssignment:
+    description: Assignment of an employee to a customer account in a role, such as inside sales or key account manager.
+    stereotypes: [audited]
+    attributes:
+      assignmentRole: string(40)! | Role on the account, such as key-account.
+      validity: DateRange! | Period of the assignment.
+      isPrimary: bool! default=false | Primary owner of the account.
+    refs:
+      customer: Customer! cascade back=assignments | Customer account.
+      employee: Employee! | Assigned employee.
+
+  Lead:
+    description: A prospective customer not yet qualified, captured from a trade show, the website or a referral.
+    stereotypes: [audited, soft-delete]
+    tags: [pii]
+    attributes:
+      companyName: string(200)! | Prospect's company.
+      contactName: PersonName pii | Person who inquired.
+      email: EmailAddress indexed pii | Prospect's email.
+      phone: PhoneNumber pii | Prospect's phone.
+      status: LeadStatus! default=New | Qualification state.
+      estimatedAnnualValue: Money | Estimated yearly purchases.
+      notes: text | Qualification notes.
+      convertedOn: date | Date the lead became a customer.
+    refs:
+      source: LeadSource | Where the lead came from.
+      owner: Employee | Rep working the lead.
+      industry: Industry | Prospect's industry.
+      convertedCustomer: Customer | Customer created from the lead.
+
+  LeadSource:
+    description: Origin of a lead, such as Trade show or Website form.
+    stereotypes: [lookup]
+    tags: [configuration]
+    key: identity32
+    attributes:
+      channel: string(40) | Marketing channel the source rolls up to.
+
+  Opportunity:
+    description: A potential deal with a customer, tracked through pipeline stages to won or lost.
+    stereotypes: [aggregate-root, audited]
+    pluralName: Opportunities
+    attributes:
+      name: string(200)! | Short description of the deal.
+      amount: Money! | Expected revenue.
+      probability: Percentage | Win probability; defaults from the stage.
+      expectedCloseOn: date! indexed | Expected decision date.
+      closedOn: date | Date the deal was won or lost.
+      lossReason: string(300) | Why the deal was lost.
+    refs:
+      customer: Customer! back=opportunities | Customer the deal is with.
+      stage: OpportunityStage! | Current pipeline stage.
+      owner: Employee! | Rep who owns the deal.
+
+  OpportunityStage:
+    description: A pipeline stage, such as Discovery, Proposal or Negotiation.
+    stereotypes: [lookup]
+    tags: [configuration]
+    key: identity32
+    attributes:
+      defaultProbability: Percentage! | Win probability assigned on entering the stage.
+      isClosed: bool! default=false | Whether the stage ends the pipeline.
+      isWon: bool! default=false | Whether the stage means the deal was won.
+
+  SalesActivity:
+    description: A call, email, meeting, visit or task logged against a party.
+    stereotypes: [audited]
+    tags: [transactional]
+    pluralName: Sales activities
+    attributes:
+      activityType: ActivityType! | Kind of activity.
+      subject: string(200)! | One-line summary.
+      dueAt: datetimeoffset | When the activity is scheduled or due.
+      completedAt: datetimeoffset | When it was done.
+      notes: text | Outcome and details.
+    refs:
+      party: Party! cascade back=activities | Organization the activity concerns.
+      contact: Contact | Person involved.
+      opportunity: Opportunity | Deal the activity advances.
+      owner: Employee! | Employee responsible.
+
+  PartyNote:
+    description: A free-text note on a party, such as delivery quirks or negotiation history.
+    stereotypes: [audited]
+    attributes:
+      body: text! | Note text in Markdown.
+      isPinned: bool! default=false | Shown at the top of the party's page.
+    refs:
+      party: Party! cascade back=notes | Party the note is about.
+      author: UserAccount | Who wrote the note.
+
+  Campaign:
+    description: A marketing campaign, such as a spring catalog mailing or a trade show.
+    stereotypes: [audited]
+    attributes:
+      name: string(150)! unique | Campaign name.
+      description: text | Goals and audience.
+      channel: string(40)! | Channel, such as email, print or event.
+      period: DateRange! | When the campaign runs.
+      budget: Money | Approved spend.
+    refs:
+      owner: Employee | Marketer responsible.
+
+  CampaignResponse:
+    description: A response to a campaign by a contact or a lead, such as a click, a booth visit or a request for quote.
+    tags: [transactional]
+    attributes:
+      respondedAt: datetimeoffset! | When the response happened.
+      responseType: string(40)! | Kind of response, such as clicked or visited-booth.
+      notes: string(500) | Details.
+    refs:
+      campaign: Campaign! cascade back=responses | Campaign responded to.
+      contact: Contact | Responding contact.
+      lead: Lead | Responding lead.
+
+  CreditProfile:
+    description: The credit standing of a customer, reviewed by the credit department before limits change.
+    stereotypes: [audited]
+    tags: [financial]
+    attributes:
+      creditLimit: Money! | Maximum open receivables allowed.
+      riskRating: string(2)! | Internal rating from A1 (best) to D (worst).
+      externalScore: int32 min=0 max=1000 | Score from the credit bureau.
+      lastReviewedOn: date | Date of the last credit review.
+      reviewNotes: text | Reviewer's notes.
+    refs:
+      customer: Customer! cascade one back=creditProfile | Customer assessed.
+
+  TaxExemptionCertificate:
+    description: A resale or exemption certificate a customer filed to buy without sales tax in a state.
+    stereotypes: [audited]
+    tags: [financial]
+    attributes:
+      certificateNumber: string(40)! | Number on the certificate.
+      exemptionReason: string(60)! | Reason, such as resale or nonprofit.
+      validity: DateRange! | Period the certificate covers.
+      documentUrl: string(400) | Link to the scanned certificate.
+    refs:
+      customer: Customer! cascade back=taxExemptions | Customer that filed the certificate.
+      stateProvince: StateProvince | State where the exemption applies.
+
+  CommunicationPreference:
+    description: A contact's opt-in or opt-out for a channel and topic, kept for anti-spam compliance.
+    tags: [pii]
+    attributes:
+      channel: string(20)! | Channel, such as email or sms.
+      topic: string(40)! | Topic, such as promotions or order-updates.
+      optedIn: bool! | Whether the contact agreed to receive it.
+      changedAt: datetimeoffset! | When the preference was last set.
+      source: string(40) | Where it was set, such as portal or phone.
+    refs:
+      contact: Contact! cascade back=communicationPreferences | Contact the preference belongs to.
+
+  Industry:
+    description: Industry classification of a customer or lead, based on NAICS sectors.
+    stereotypes: [lookup]
+    tags: [configuration]
+    key: identity32
+    pluralName: Industries
+    attributes:
+      naicsCode: string(6) | NAICS code of the sector.
+
+diagram:
+  name: Parties and CRM
+  description: Parties and their kinds, contacts and addresses, and the pipeline from lead to opportunity.

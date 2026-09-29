@@ -1,0 +1,30 @@
+{
+  "$schema": "../../.schema/v1/value-object.json",
+  "kind": "value-object",
+  "id": "01M30MZJ6XA7K0NQK6ACTMB0VD",
+  "name": "PhoneNumber",
+  "displayName": "Phone number",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "A telephone number in E.164 form with an optional extension.",
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "attributes": [
+    {
+      "id": "01M2XGCNR9A93G7CMNJFZ726JT",
+      "name": "number",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "validation": {
+        "pattern": "^\\+[1-9][0-9]{6,14}$"
+      },
+      "description": "Number in E.164 form, such as +14155550100."
+    },
+    {
+      "id": "01M1MY7VCYQZC3CZTVHX2M3MAP",
+      "name": "extension",
+      "type": "string",
+      "length": 10,
+      "description": "Internal extension."
+    }
+  ]
+}

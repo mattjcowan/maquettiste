@@ -1,0 +1,57 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2WNBHAKV7D0A1DREE1M7648",
+  "name": "WarehouseShift",
+  "displayName": "Warehouse shift",
+  "pluralName": "Warehouse shifts",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "A working shift of a warehouse, such as the night picking shift.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M2Q438DF1DVPJ7RYVRGFQG5C"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2Q438DF1DVPJ7RYVRGFQG5C",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the warehouse shift."
+    },
+    {
+      "id": "01M2KTAJDH7E75RKDPD2ZMR4GS",
+      "name": "name",
+      "type": "string",
+      "length": 60,
+      "required": true,
+      "description": "Shift name."
+    },
+    {
+      "id": "01M2367DPGJMTHWJF8091CRCN2",
+      "name": "startsAt",
+      "type": "time",
+      "required": true,
+      "description": "Start time, local to the warehouse."
+    },
+    {
+      "id": "01M22AYVAKFRM0572NBYMQKTQ3",
+      "name": "endsAt",
+      "type": "time",
+      "required": true,
+      "description": "End time."
+    },
+    {
+      "id": "01M29D4DHWDVY6J30C6XYCNYPH",
+      "name": "weekdays",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "Days worked, such as Mon-Fri."
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "../../.schema/v1/scalar-type.json",
+  "kind": "scalar-type",
+  "id": "01M1T721QDBZQ0CD3XP8NBVSEQ",
+  "name": "CountryCode",
+  "displayName": "Country code",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "An ISO 3166-1 alpha-2 country code, such as US or DE.",
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "base": "string",
+  "length": 2,
+  "validation": {
+    "pattern": "^[A-Z]{2}$"
+  }
+}

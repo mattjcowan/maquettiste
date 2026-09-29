@@ -1,0 +1,207 @@
+package: Identity
+displayName: Identity and access
+description: Employees, their organization, user accounts, roles and permissions, API clients and the security audit trail.
+
+enums:
+  UserStatus:
+    description: Lifecycle of a user account.
+    members:
+      Invited: INV | An invitation was sent and not yet accepted.
+      Active: ACT | The user can sign in.
+      Locked: LCK | Sign-in is blocked after too many failed attempts.
+      Suspended: SUS | An administrator blocked the account.
+      Deactivated: DEA | The account is closed and kept for audit.
+
+entities:
+  UserAccount:
+    description: A person or service that signs in to Northwind systems, either an employee or a customer portal user.
+    stereotypes: [aggregate-root, audited, soft-delete]
+    tags: [security, pii]
+    attributes:
+      userName: string(64)! unique | Sign-in name, lower case.
+      email: EmailAddress! unique pii | Address for sign-in links and notifications.
+      displayName: string(120)! | Name shown in the user interface.
+      status: UserStatus! default=Invited | Lifecycle state of the account.
+      passwordHash: string(255) secret | Argon2id hash of the password; null for single sign-on users.
+      mfaEnabled: bool! default=false | Whether a second factor is required.
+      lastSignInAt: datetimeoffset | Most recent successful sign-in.
+      failedSignInCount: int16! default=0 min=0 | Consecutive failed attempts since the last success.
+      preferredLanguage: string(5) | BCP 47 tag of the interface language.
+    refs:
+      employee: Employee one back=userAccount | The employee this account belongs to, for staff accounts.
+      contact: Contact one back=portalAccount | The customer contact this account belongs to, for portal accounts.
+
+  Role:
+    description: A named set of permissions granted to user accounts, such as Order desk or Warehouse lead.
+    stereotypes: [audited]
+    tags: [security, configuration]
+    key: identity32
+    attributes:
+      name: string(80)! unique | Role name.
+      description: string(500) | What the role is for.
+      isSystem: bool! default=false | Built-in role that cannot be deleted.
+
+  Permission:
+    description: A single grantable right on a resource, such as sales-order:approve.
+    tags: [security, configuration]
+    key: identity32
+    attributes:
+      code: string(80)! unique | Resource and action, such as sales-order:approve.
+      resource: string(60)! | Protected resource.
+      action: string(40)! | Action on the resource.
+      description: string(300) | What the permission allows.
+
+  Department:
+    description: An organizational unit of Northwind, nested into a hierarchy (Operations > Warehousing > Receiving).
+    stereotypes: [audited]
+    tags: [master-data]
+    attributes:
+      code: string(20)! unique | Short department code used in cost reports.
+      name: string(100)! | Department name.
+      isActive: bool! default=true | Whether employees can be assigned.
+    refs:
+      parent: Department back=subDepartments | Parent department; null for the top level.
+      costCenter: CostCenter | Cost center that absorbs the department's expenses.
+
+  Employee:
+    description: A person employed by Northwind, from warehouse associates to account managers.
+    stereotypes: [aggregate-root, audited, soft-delete]
+    tags: [pii, master-data]
+    attributes:
+      employeeNumber: string(12)! | Payroll number.
+      name: PersonName! pii | Legal name.
+      workEmail: EmailAddress! unique pii | Company email address.
+      workPhone: PhoneNumber pii | Direct line.
+      jobTitle: string(100)! | Position title.
+      hiredOn: date! | First day of employment.
+      terminatedOn: date | Last day of employment; null while employed.
+      isSalesRep: bool! default=false | Whether the employee can own customer accounts and earn commission.
+    alternateKeys:
+      employeeNumber: [employeeNumber]
+    refs:
+      department: Department! back=employees | Department the employee belongs to.
+      manager: Employee back=directReports | Line manager; null for the chief executive.
+      homeWarehouse: Warehouse | Warehouse the employee usually works at, for warehouse staff.
+
+  Team:
+    description: A working group that shares a queue or a territory, such as the Northeast inside sales team.
+    stereotypes: [audited]
+    attributes:
+      name: string(80)! unique | Team name.
+      purpose: string(300) | What the team does.
+      email: EmailAddress | Shared mailbox.
+    refs:
+      lead: Employee | Team lead.
+
+  UserSession:
+    description: A signed-in session of a user account, kept to support sign-out everywhere and anomaly detection.
+    tags: [security, high-volume]
+    key: ulid
+    attributes:
+      startedAt: datetimeoffset! | When the session was created.
+      expiresAt: datetimeoffset! indexed | Absolute expiry.
+      lastSeenAt: datetimeoffset | Last request on the session.
+      ipAddress: string(45) pii | Client IP address (IPv4 or IPv6).
+      userAgent: string(400) | Client user agent string.
+      revokedAt: datetimeoffset | When the session was revoked; null while valid.
+    refs:
+      userAccount: UserAccount! cascade back=sessions | Account that signed in.
+
+  ApiClient:
+    description: A machine client (EDI gateway, marketplace connector, carrier webhook) that calls Northwind APIs.
+    stereotypes: [audited, soft-delete]
+    tags: [security, integration]
+    attributes:
+      name: string(100)! unique | Client name.
+      description: string(500) | What the integration does.
+      ownerEmail: EmailAddress! | Contact for the integration.
+      allowedScopes: string(1000)! | Space-separated OAuth scopes.
+      rateLimitPerMinute: int32! default=600 min=1 | Request budget per minute.
+      isEnabled: bool! default=true | Whether the client can obtain tokens.
+
+  ApiKey:
+    description: A secret credential of an API client; only a hash is stored.
+    stereotypes: [audited]
+    tags: [security]
+    key: ulid
+    attributes:
+      prefix: string(12)! unique | Public prefix shown in the console to identify the key.
+      keyHash: string(128)! secret | SHA-256 hash of the secret.
+      expiresOn: date | Expiry date; null for no expiry.
+      lastUsedAt: datetimeoffset | Most recent use.
+      revokedAt: datetimeoffset | When the key was revoked.
+    refs:
+      apiClient: ApiClient! cascade back=keys | Client that owns the key.
+
+  SignInAttempt:
+    description: One sign-in attempt, successful or not, used for lockout and security reviews.
+    tags: [security, high-volume]
+    key: identity
+    attributes:
+      attemptedAt: datetimeoffset! indexed | When the attempt happened.
+      userName: string(64)! | User name entered.
+      succeeded: bool! | Whether the attempt succeeded.
+      failureReason: string(60) | Why it failed, such as bad-password or locked.
+      ipAddress: string(45)! pii | Client IP address.
+    refs:
+      userAccount: UserAccount cascade | Matched account; null when the user name is unknown.
+
+  PasswordReset:
+    description: A single-use password reset request sent by email.
+    tags: [security]
+    key: ulid
+    attributes:
+      tokenHash: string(128)! unique secret | Hash of the emailed token.
+      requestedAt: datetimeoffset! | When the reset was requested.
+      expiresAt: datetimeoffset! | When the token stops working.
+      usedAt: datetimeoffset | When the token was used.
+    refs:
+      userAccount: UserAccount! cascade | Account being reset.
+
+  AuditEvent:
+    description: An append-only record of a security-relevant or business-critical action, such as a role grant or a credit limit change.
+    tags: [security, high-volume]
+    key: identity
+    attributes:
+      occurredAt: datetimeoffset! indexed | When the action happened.
+      action: string(80)! | What happened, such as role.granted.
+      entityType: string(80)! | Kind of record affected.
+      entityKey: string(64)! | Key of the record affected.
+      details: json | Before and after values.
+      ipAddress: string(45) pii | Client IP address.
+    refs:
+      actor: UserAccount | Who did it; null for system jobs.
+    overlay:
+      description: Details are stored as jsonb so auditors can query inside them.
+      columns:
+        details:
+          nativeType: jsonb
+          comment: Before and after values, queried with jsonb operators.
+      indexes:
+        - name: ix_audit_events_entity
+          columns: [entityType, entityKey]
+
+relations:
+  - name: user account holds role
+    description: Roles granted to a user account; the grant records who granted it and when.
+    ends:
+      - UserAccount users * nav
+      - Role roles * nav
+    attributes:
+      grantedAt: datetimeoffset! | When the role was granted.
+      grantedBy: string(64)! | User name of the administrator who granted it.
+      expiresOn: date | Date the grant lapses; null for permanent grants.
+  - name: role grants permission
+    description: Permissions included in a role.
+    ends:
+      - Role roles * nav
+      - Permission permissions * nav
+  - name: team membership
+    description: Employees who belong to a team; an employee may belong to several teams.
+    ends:
+      - Team teams * nav
+      - Employee members * nav
+
+diagram:
+  name: Identity and access
+  description: Who works here, who can sign in, and what they are allowed to do.

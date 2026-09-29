@@ -1,0 +1,52 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M38G8AZ949PRH0AWCXWZT0Z7",
+  "name": "ProductBarcode",
+  "displayName": "Product barcode",
+  "pluralName": "Product barcodes",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "A barcode that identifies a product at a packaging level.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M2AQ3JKY9B3ZDBQYZWX2KSGW"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2AQ3JKY9B3ZDBQYZWX2KSGW",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the product barcode."
+    },
+    {
+      "id": "01M1EN9DV177WNZAC4SSGK3GDC",
+      "name": "symbology",
+      "type": "string",
+      "length": 12,
+      "required": true,
+      "description": "Barcode type, such as GTIN-13, UPC-A or GS1-128."
+    },
+    {
+      "id": "01M2Z3E44QE07E3EVPYQYNTM3W",
+      "name": "value",
+      "type": "string",
+      "length": 48,
+      "required": true,
+      "unique": true,
+      "description": "Encoded value."
+    },
+    {
+      "id": "01M2S2ADNPWGJG6R3Z549EJDE4",
+      "name": "isPrimary",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Barcode printed on labels by default."
+    }
+  ]
+}

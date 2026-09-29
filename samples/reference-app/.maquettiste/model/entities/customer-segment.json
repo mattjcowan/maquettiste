@@ -1,0 +1,40 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2S99HP8J0AGSW9K89VDT178",
+  "name": "CustomerSegment",
+  "displayName": "Customer segment",
+  "pluralName": "Customer segments",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "Marketing segment of a customer, such as Independent retailer or National chain.",
+  "stereotypes": [
+    "lookup"
+  ],
+  "tags": [
+    "configuration"
+  ],
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "key": {
+    "attributes": [
+      "01M2TAMQR73BMVNXWQPNZCFP8G"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M2TAMQR73BMVNXWQPNZCFP8G",
+      "name": "id",
+      "type": "int32",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the customer segment."
+    },
+    {
+      "id": "01M38GR3AYX9AKWPB05129Z5HA",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "description": "Who belongs to the segment."
+    }
+  ]
+}

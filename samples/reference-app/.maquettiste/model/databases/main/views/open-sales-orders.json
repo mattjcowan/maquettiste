@@ -1,0 +1,49 @@
+{
+  "$schema": "../../../../.schema/v1/view.json",
+  "kind": "view",
+  "id": "01M1MQG3PF94PDYRTXRBEAH7JY",
+  "name": "open_sales_orders",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "description": "Sales orders still being worked - submitted, confirmed, on hold or partially shipped - for the order desk dashboard.",
+  "body": {
+    "*": "SELECT id, order_number, ordered_at, status, promised_delivery_on, grand_total_amount, grand_total_currency\nFROM northwind.sales_orders\nWHERE status IN ('SUBMIT', 'CONFIRM', 'HOLD', 'PARTSHIP') AND deleted_at IS NULL"
+  },
+  "columns": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "name": "order_number",
+      "type": "string",
+      "nullable": false
+    },
+    {
+      "name": "ordered_at",
+      "type": "datetimeoffset",
+      "nullable": false
+    },
+    {
+      "name": "status",
+      "type": "string",
+      "nullable": false
+    },
+    {
+      "name": "promised_delivery_on",
+      "type": "date"
+    },
+    {
+      "name": "grand_total_amount",
+      "type": "decimal",
+      "nullable": false
+    },
+    {
+      "name": "grand_total_currency",
+      "type": "string",
+      "nullable": false
+    }
+  ],
+  "comment": "Excludes soft-deleted orders."
+}

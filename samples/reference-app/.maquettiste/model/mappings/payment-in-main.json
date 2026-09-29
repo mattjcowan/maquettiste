@@ -1,0 +1,10 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M2AHEGD95XJFC5PR0C8MGZPF",
+  "name": "Payment in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "entity": "01M1TQTM9KTF1VNQJV2M3WM130",
+  "description": "Card payments and bank transfers each get their own table keyed by the payment id (table per type).",
+  "inheritance": "tpt"
+}

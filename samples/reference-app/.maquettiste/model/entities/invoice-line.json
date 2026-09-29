@@ -1,0 +1,92 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1G0CXN70ZE3GA6793X6HE47",
+  "name": "InvoiceLine",
+  "displayName": "Invoice line",
+  "pluralName": "Invoice lines",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "A line of an invoice - a shipped product or a charge.",
+  "tags": [
+    "financial",
+    "high-volume"
+  ],
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "key": {
+    "attributes": [
+      "01M1ZJ02ZJSTZK44KENMP84VGA"
+    ],
+    "strategy": "ulid"
+  },
+  "attributes": [
+    {
+      "id": "01M1ZJ02ZJSTZK44KENMP84VGA",
+      "name": "id",
+      "type": "ulid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the invoice line."
+    },
+    {
+      "id": "01M2ZZ7N9NQAGJKHQSJEQDKDEZ",
+      "name": "lineNumber",
+      "type": "int32",
+      "required": true,
+      "validation": {
+        "min": 1
+      },
+      "description": "Line number."
+    },
+    {
+      "id": "01M38Q873T8F98DJ374A0V7XR6",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "required": true,
+      "description": "Line text."
+    },
+    {
+      "id": "01M1M3THFYBSWKMZ33R7S700PK",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "description": "Quantity invoiced."
+    },
+    {
+      "id": "01M1E2BETT21ARNW7PRW2EC056",
+      "name": "unitPrice",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Price per unit."
+    },
+    {
+      "id": "01M1Z98X9EG39TZ6TBAV20STTB",
+      "name": "discount",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "description": "Discount."
+    },
+    {
+      "id": "01M1WTD1C568BAXSSMY9A7E6XW",
+      "name": "taxRate",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "description": "Tax rate."
+    },
+    {
+      "id": "01M2W1JW0S8S44P3MPCBT84F5P",
+      "name": "lineTotal",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Line total."
+    }
+  ]
+}

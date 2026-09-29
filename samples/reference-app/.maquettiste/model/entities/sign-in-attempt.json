@@ -1,0 +1,70 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M245ZGAQNMAKQMCEM2NPCD22",
+  "name": "SignInAttempt",
+  "displayName": "Sign in attempt",
+  "pluralName": "Sign in attempts",
+  "package": "01M1F99DBQ9B1T1RVMQRR1GS7V",
+  "description": "One sign-in attempt, successful or not, used for lockout and security reviews.",
+  "tags": [
+    "security",
+    "high-volume"
+  ],
+  "category": "01M38C3WQ4HSCF45E03KGN6AF5",
+  "key": {
+    "attributes": [
+      "01M28W4EKEJTDHRXXF4X8NDEJT"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M28W4EKEJTDHRXXF4X8NDEJT",
+      "name": "id",
+      "type": "int64",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the sign in attempt."
+    },
+    {
+      "id": "01M2ZCNV9H97JYW3BFEGP99MPV",
+      "name": "attemptedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "indexed": true,
+      "description": "When the attempt happened."
+    },
+    {
+      "id": "01M2PVM3RMFTVMKYGB44GNR8CQ",
+      "name": "userName",
+      "type": "string",
+      "length": 64,
+      "required": true,
+      "description": "User name entered."
+    },
+    {
+      "id": "01M2EKHGF3BKJZGBARNJC4A8P3",
+      "name": "succeeded",
+      "type": "bool",
+      "required": true,
+      "description": "Whether the attempt succeeded."
+    },
+    {
+      "id": "01M2DEZH7Y9F65F952130R0VJV",
+      "name": "failureReason",
+      "type": "string",
+      "length": 60,
+      "description": "Why it failed, such as bad-password or locked."
+    },
+    {
+      "id": "01M1DR1D4XG3WQZAZDBAD1KYDY",
+      "name": "ipAddress",
+      "type": "string",
+      "length": 45,
+      "required": true,
+      "sensitive": "pii",
+      "description": "Client IP address."
+    }
+  ]
+}

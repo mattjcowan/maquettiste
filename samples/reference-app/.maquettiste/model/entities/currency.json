@@ -1,0 +1,77 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M32FRDS6GBKX8Q2GRAAJB5YM",
+  "name": "Currency",
+  "displayName": "Currency",
+  "pluralName": "Currencies",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "A currency from ISO 4217 that prices, invoices and payments may be expressed in.",
+  "stereotypes": [
+    "reference-data"
+  ],
+  "tags": [
+    "master-data",
+    "financial"
+  ],
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "key": {
+    "attributes": [
+      "01M1SDBW7HCRAWN462AYWG6D7V"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01M1SDBW7HCRAWN462AYWG6D7V",
+      "name": "code",
+      "type": {
+        "ref": "01M1YARMMY84EBD16K0VMXBS4V"
+      },
+      "required": true,
+      "description": "ISO 4217 alphabetic code; the natural key."
+    },
+    {
+      "id": "01M2F86BGCC4T8YA9TW8AVRWM4",
+      "name": "numericCode",
+      "type": "string",
+      "length": 3,
+      "required": true,
+      "description": "ISO 4217 numeric code."
+    },
+    {
+      "id": "01M37N9NWDJ759KTVNG1KM4TT6",
+      "name": "name",
+      "type": "string",
+      "length": 60,
+      "required": true,
+      "description": "English name, such as Euro."
+    },
+    {
+      "id": "01M32JERP8G5F9EW21XX2QACWG",
+      "name": "symbol",
+      "type": "string",
+      "length": 5,
+      "description": "Display symbol, such as the euro sign."
+    },
+    {
+      "id": "01M1RZ7R04SKPQD9M7F0905FWQ",
+      "name": "minorUnits",
+      "type": "int16",
+      "required": true,
+      "default": 2,
+      "validation": {
+        "min": 0,
+        "max": 4
+      },
+      "description": "Number of decimals in the minor unit."
+    },
+    {
+      "id": "01M2ZH8JDJ73VXR5KNKAQN6WK2",
+      "name": "isActive",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether new documents may use the currency."
+    }
+  ]
+}

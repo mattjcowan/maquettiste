@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M29MFEM4AG9K6X8Y3G6ERXEB",
+  "name": "goods receipt received by",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "Receiving clerk.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "ends": [
+    {
+      "id": "01M2MTFXE0H616SNWN3SMGHJFP",
+      "entity": "01M1RJC20E0YQ2SZNHD9NJW74W",
+      "role": "receivedBy",
+      "navigation": "receivedBy",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1RNV77R963TP788G3VK72G8",
+      "entity": "01M27E4E7S60R5YRR4BS9CEQW9",
+      "role": "goodsReceipts"
+    }
+  ]
+}

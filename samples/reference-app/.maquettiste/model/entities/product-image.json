@@ -1,0 +1,68 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1YKMM6N69TF9A0YDH4E0HYP",
+  "name": "ProductImage",
+  "displayName": "Product image",
+  "pluralName": "Product images",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "An image of a product, stored in the media CDN.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M363PHST3SPTCGZTKF8CY568"
+    ],
+    "strategy": "ulid"
+  },
+  "attributes": [
+    {
+      "id": "01M363PHST3SPTCGZTKF8CY568",
+      "name": "id",
+      "type": "ulid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the product image."
+    },
+    {
+      "id": "01M26RS1X0S81ZDB3WB83FSNSX",
+      "name": "url",
+      "type": "string",
+      "length": 400,
+      "required": true,
+      "description": "Image URL."
+    },
+    {
+      "id": "01M1JNEP88WCGF9MFQRZPZJZZJ",
+      "name": "altText",
+      "type": "string",
+      "length": 200,
+      "description": "Accessible description."
+    },
+    {
+      "id": "01M1JFBGNJ4FTYQGA9W2FAXJTM",
+      "name": "widthPx",
+      "type": "int32",
+      "validation": {
+        "min": 1
+      },
+      "description": "Width in pixels."
+    },
+    {
+      "id": "01M2ZY8SGEQ0MBFHS3BX2GB6EJ",
+      "name": "heightPx",
+      "type": "int32",
+      "validation": {
+        "min": 1
+      },
+      "description": "Height in pixels."
+    },
+    {
+      "id": "01M2D4SNK253PZ9FCZVWXMHDHT",
+      "name": "isPrimary",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Image used in listings."
+    }
+  ]
+}

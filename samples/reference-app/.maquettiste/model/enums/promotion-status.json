@@ -1,0 +1,47 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M2E9CY8H60VT41FX8T5BFXGQ",
+  "name": "PromotionStatus",
+  "displayName": "Promotion status",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "Lifecycle of a promotion.",
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "members": [
+    {
+      "id": "01M1SEXZDRCH1YKCJX73W5ZTS0",
+      "name": "Draft",
+      "value": 0,
+      "code": "DRAFT",
+      "description": "Being designed."
+    },
+    {
+      "id": "01M2ER8RME4ZTP89ETYPEQEVT8",
+      "name": "Scheduled",
+      "value": 1,
+      "code": "SCHED",
+      "description": "Approved, waiting for its start date."
+    },
+    {
+      "id": "01M26R69Y2KN617DC4EVJKCV1A",
+      "name": "Active",
+      "value": 2,
+      "code": "ACTIVE",
+      "description": "Running."
+    },
+    {
+      "id": "01M26K4BB20WXWVM68ARN0DS7X",
+      "name": "Paused",
+      "value": 3,
+      "code": "PAUSE",
+      "description": "Temporarily stopped."
+    },
+    {
+      "id": "01M2BMRT4A6P2SVPG21AH3DSZ4",
+      "name": "Ended",
+      "value": 4,
+      "code": "ENDED",
+      "description": "Finished or cancelled."
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2TR5XR5D2DFH2H31SW6VC8R",
+  "name": "ReturnReason",
+  "displayName": "Return reason",
+  "pluralName": "Return reasons",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "A reason for a return, such as Damaged in transit or Ordered in error.",
+  "stereotypes": [
+    "lookup"
+  ],
+  "tags": [
+    "configuration"
+  ],
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "key": {
+    "attributes": [
+      "01M1KFSNPQRMAWYWG12W7KCBZB"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M1KFSNPQRMAWYWG12W7KCBZB",
+      "name": "id",
+      "type": "int32",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the return reason."
+    },
+    {
+      "id": "01M31D9DWEFQNZZ56TEMMFFQP8",
+      "name": "isCustomerFault",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether a restocking fee applies."
+    },
+    {
+      "id": "01M2XCMC1MWD9C3N7B7FSS1GWG",
+      "name": "requiresInspection",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether goods must be inspected before credit."
+    }
+  ]
+}

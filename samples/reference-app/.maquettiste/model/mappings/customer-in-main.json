@@ -1,0 +1,10 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M2GE2AEV6BXWM0DJQD2FW0CN",
+  "name": "Customer in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "entity": "01M1ECZKYNSKVNCWW2XM34E20X",
+  "description": "Discriminator value of customers in the parties table.",
+  "discriminatorValue": "CUSTOMER"
+}

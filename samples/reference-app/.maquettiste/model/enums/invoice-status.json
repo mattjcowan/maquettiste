@@ -1,0 +1,54 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M1X606HJ9Q9BFSJESVDTP976",
+  "name": "InvoiceStatus",
+  "displayName": "Invoice status",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "Lifecycle of a customer invoice.",
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "members": [
+    {
+      "id": "01M1RK63NGHBR4Q7MPCK4SWSCA",
+      "name": "Draft",
+      "value": 0,
+      "code": "DRAFT",
+      "description": "Being prepared; not yet sent."
+    },
+    {
+      "id": "01M2Z4KXC0MJTXW9DBYADT0D62",
+      "name": "Issued",
+      "value": 1,
+      "code": "ISSUED",
+      "description": "Sent to the customer."
+    },
+    {
+      "id": "01M2XPA69M03V97BK3NY16WYM2",
+      "name": "PartiallyPaid",
+      "value": 2,
+      "code": "PARTPAID",
+      "description": "Some of it is paid."
+    },
+    {
+      "id": "01M28ZM3SCK1HFHB0CRYCNAXFY",
+      "name": "Paid",
+      "value": 3,
+      "code": "PAID",
+      "description": "Fully paid."
+    },
+    {
+      "id": "01M1J448Y26QNYHBBAAW95SZRZ",
+      "name": "Overdue",
+      "value": 4,
+      "code": "OVERDUE",
+      "description": "Past due with a balance."
+    },
+    {
+      "id": "01M2NGSY7MYN9XPMXY7ZKTP74V",
+      "name": "Void",
+      "value": 5,
+      "code": "VOID",
+      "description": "Cancelled by a credit note."
+    }
+  ]
+}

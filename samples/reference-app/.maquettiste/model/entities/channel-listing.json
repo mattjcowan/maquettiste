@@ -1,0 +1,62 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1EPZCNNN5KJTD094M8Z918V",
+  "name": "ChannelListing",
+  "displayName": "Channel listing",
+  "pluralName": "Channel listings",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "A product offered on a sales channel, with the channel's identifier and price.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "integration"
+  ],
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M1PGKD89XMY64FVEY7E7JR0K"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1PGKD89XMY64FVEY7E7JR0K",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the channel listing."
+    },
+    {
+      "id": "01M1HE4TZXFBX35XJNN8VRZ3R1",
+      "name": "externalId",
+      "type": "string",
+      "length": 64,
+      "description": "Channel's identifier for the listing."
+    },
+    {
+      "id": "01M2KN74ZZ0AM4BG856VHFFD87",
+      "name": "listedPrice",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Price shown on the channel."
+    },
+    {
+      "id": "01M2X873TDMMVEV1QBPYMNZWYC",
+      "name": "isPublished",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether the listing is live."
+    },
+    {
+      "id": "01M20MYG4KDAGWGZJ47R90BKRZ",
+      "name": "publishedAt",
+      "type": "datetimeoffset",
+      "description": "When it went live."
+    }
+  ]
+}

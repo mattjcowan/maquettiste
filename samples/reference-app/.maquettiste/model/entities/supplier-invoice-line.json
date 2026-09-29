@@ -1,0 +1,65 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2139GNDEW1JRM6YMTG48E8F",
+  "name": "SupplierInvoiceLine",
+  "displayName": "Supplier invoice line",
+  "pluralName": "Supplier invoice lines",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "An invoiced item of a supplier invoice.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "key": {
+    "attributes": [
+      "01M1EKMW1CCNMB0DSBN6TJ44VD"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1EKMW1CCNMB0DSBN6TJ44VD",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the supplier invoice line."
+    },
+    {
+      "id": "01M1GE5H2QFH8SAED12BN77ZY5",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "required": true,
+      "description": "Line text."
+    },
+    {
+      "id": "01M1SM3557TG3Z8HM6JP67KQKR",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity invoiced."
+    },
+    {
+      "id": "01M29JNNJSHC7H8FGRNJJP5HEE",
+      "name": "unitCost",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Cost per unit."
+    },
+    {
+      "id": "01M36WSW8S29PEZRDDAAXPFSFK",
+      "name": "lineTotal",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Line total."
+    }
+  ]
+}

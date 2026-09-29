@@ -1,0 +1,59 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1WDD9XYAXK20K6QA157GVFK",
+  "name": "PromotionReward",
+  "displayName": "Promotion reward",
+  "pluralName": "Promotion rewards",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "A benefit granted when a promotion's conditions are met.",
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "key": {
+    "attributes": [
+      "01M1RRXZAP2F705WZC42ER7A5E"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1RRXZAP2F705WZC42ER7A5E",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the promotion reward."
+    },
+    {
+      "id": "01M1MFHJZ9Y4W1QANSNXJB6AZT",
+      "name": "rewardType",
+      "type": {
+        "ref": "01M2GY5JW2EF7880VD84VY7WDD"
+      },
+      "required": true,
+      "description": "Kind of benefit."
+    },
+    {
+      "id": "01M1WVTW5BKA16JMZTAJGTT1SW",
+      "name": "value",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 4,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Percentage, amount or price, depending on the type."
+    },
+    {
+      "id": "01M1WFCA07SJXBZSJ5S18AZW1P",
+      "name": "freeQuantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "validation": {
+        "min": 0
+      },
+      "description": "Free units, for free goods."
+    }
+  ]
+}

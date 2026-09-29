@@ -1,0 +1,114 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2CMF5JR3GW828G267AZ0M1E",
+  "name": "UserAccount",
+  "displayName": "User account",
+  "pluralName": "User accounts",
+  "package": "01M1F99DBQ9B1T1RVMQRR1GS7V",
+  "description": "A person or service that signs in to Northwind systems, either an employee or a customer portal user.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited",
+    "soft-delete"
+  ],
+  "tags": [
+    "security",
+    "pii"
+  ],
+  "category": "01M38C3WQ4HSCF45E03KGN6AF5",
+  "key": {
+    "attributes": [
+      "01M2ZXMY1CER3R4X70V32NQ8DE"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2ZXMY1CER3R4X70V32NQ8DE",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the user account."
+    },
+    {
+      "id": "01M1TXG45RG0GPJ5GNQFX0X49Z",
+      "name": "userName",
+      "type": "string",
+      "length": 64,
+      "required": true,
+      "unique": true,
+      "description": "Sign-in name, lower case."
+    },
+    {
+      "id": "01M2Z0MT4AAW7XWSQ4VPCSGA6J",
+      "name": "email",
+      "type": {
+        "ref": "01M1RSY89TKR4D2MJY2YC131S7"
+      },
+      "required": true,
+      "unique": true,
+      "sensitive": "pii",
+      "description": "Address for sign-in links and notifications."
+    },
+    {
+      "id": "01M1RYF9BJRV8ZFYM70BDPXK7X",
+      "name": "displayName",
+      "type": "string",
+      "length": 120,
+      "required": true,
+      "description": "Name shown in the user interface."
+    },
+    {
+      "id": "01M379QW3ERCDGSBPM5V516716",
+      "name": "status",
+      "type": {
+        "ref": "01M1Z50K53EYAMWSSKFQGQQXKQ"
+      },
+      "required": true,
+      "default": "Invited",
+      "description": "Lifecycle state of the account."
+    },
+    {
+      "id": "01M29M9GR2RVZ93BB56DAQE8BD",
+      "name": "passwordHash",
+      "type": "string",
+      "length": 255,
+      "sensitive": "secret",
+      "description": "Argon2id hash of the password; null for single sign-on users."
+    },
+    {
+      "id": "01M1KPJ04BJG410CTM2A2GZGA9",
+      "name": "mfaEnabled",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether a second factor is required."
+    },
+    {
+      "id": "01M2FJE8NSVZ9H7J27TB8ZAH3K",
+      "name": "lastSignInAt",
+      "type": "datetimeoffset",
+      "description": "Most recent successful sign-in."
+    },
+    {
+      "id": "01M1Q9QFS6117N9EZB9V8VCYKH",
+      "name": "failedSignInCount",
+      "type": "int16",
+      "required": true,
+      "default": 0,
+      "validation": {
+        "min": 0
+      },
+      "description": "Consecutive failed attempts since the last success."
+    },
+    {
+      "id": "01M2NFBDT0RTCZSTPD5ZNAJ78X",
+      "name": "preferredLanguage",
+      "type": "string",
+      "length": 5,
+      "description": "BCP 47 tag of the interface language."
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1KC0P5WJ1VA5JA0Y6YBZW8S",
+  "name": "Campaign",
+  "displayName": "Campaign",
+  "pluralName": "Campaigns",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "A marketing campaign, such as a spring catalog mailing or a trade show.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "key": {
+    "attributes": [
+      "01M1HDFDKWVYT1NPA70Z5VRZW2"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1HDFDKWVYT1NPA70Z5VRZW2",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the campaign."
+    },
+    {
+      "id": "01M1QP1N259HFDG8KGWQSQN5T7",
+      "name": "name",
+      "type": "string",
+      "length": 150,
+      "required": true,
+      "unique": true,
+      "description": "Campaign name."
+    },
+    {
+      "id": "01M1HXTHRHF60KMMDE2C82BHCJ",
+      "name": "description",
+      "type": "text",
+      "description": "Goals and audience."
+    },
+    {
+      "id": "01M2BRKKJCCWPP4V1KC051AN3W",
+      "name": "channel",
+      "type": "string",
+      "length": 40,
+      "required": true,
+      "description": "Channel, such as email, print or event."
+    },
+    {
+      "id": "01M22K53DGTF786JCR0F14MHT7",
+      "name": "period",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "required": true,
+      "description": "When the campaign runs."
+    },
+    {
+      "id": "01M29PJB1THHZXE1JPSC5GNXYY",
+      "name": "budget",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Approved spend."
+    }
+  ]
+}

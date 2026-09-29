@@ -1,0 +1,116 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2PKYF42VBPP64C8WV8TWXZ6",
+  "name": "PurchaseOrder",
+  "displayName": "Purchase order",
+  "pluralName": "Purchase orders",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "An order Northwind places with a supplier for delivery to one warehouse.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited",
+    "soft-delete"
+  ],
+  "tags": [
+    "transactional",
+    "financial"
+  ],
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "key": {
+    "attributes": [
+      "01M2ZGJ5QMEGZDZ7MV4NP04V9R"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2ZGJ5QMEGZDZ7MV4NP04V9R",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the purchase order."
+    },
+    {
+      "id": "01M1G0HAEDA5E6EA6D8Q2DXNYF",
+      "name": "poNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Purchase order number, PO- followed by six digits from purchase_order_number_seq."
+    },
+    {
+      "id": "01M1HHWD6R27BMBZHXHDJEDPSB",
+      "name": "orderedOn",
+      "type": "date",
+      "required": true,
+      "description": "Order date."
+    },
+    {
+      "id": "01M1DGAJFGPKN1ZW0PYNY2387T",
+      "name": "status",
+      "type": {
+        "ref": "01M34HFTVY0V59YCNPJHWS70ZR"
+      },
+      "required": true,
+      "default": "Draft",
+      "description": "Lifecycle state."
+    },
+    {
+      "id": "01M30S4B7HYZPF1P4VD05HR8B4",
+      "name": "expectedOn",
+      "type": "date",
+      "description": "Expected delivery date."
+    },
+    {
+      "id": "01M1QE6PH3YRN2F124FHXZ57SC",
+      "name": "freightTerms",
+      "type": {
+        "ref": "01M2HBFSPDYPYC46TQHGZ649QT"
+      },
+      "description": "Incoterm agreed."
+    },
+    {
+      "id": "01M1DYQ18EFEE4TX43WB8V5SNG",
+      "name": "subtotal",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Sum of line totals."
+    },
+    {
+      "id": "01M2FSV7BZP93B74J632D5TEVX",
+      "name": "taxTotal",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Tax charged by the supplier."
+    },
+    {
+      "id": "01M1K9P3EP4886FE37M5HJ0EBT",
+      "name": "freightTotal",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Freight charged by the supplier."
+    },
+    {
+      "id": "01M271V2H21785TJMNPDBG3F42",
+      "name": "grandTotal",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Total owed to the supplier."
+    },
+    {
+      "id": "01M20WYC6WH4BR6HEZE43EQS4J",
+      "name": "notes",
+      "type": "text",
+      "description": "Instructions to the supplier."
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M1SWJR9NE3QQB9TX9E0N7GD9",
+  "name": "SalesOrder in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "entity": "01M1GBW3NDKS6WCM5FAXYVHV7B",
+  "description": "The two embedded addresses get short bill_ and ship_ column prefixes.",
+  "attributes": [
+    {
+      "attribute": "01M27Q3N6W3KBQXPDVDZJ2TM7Z",
+      "prefix": "bill_"
+    },
+    {
+      "attribute": "01M349YSMDHDVTH7ZZV21127AX",
+      "prefix": "ship_"
+    }
+  ]
+}

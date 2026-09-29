@@ -1,0 +1,61 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2FXB60N1J83XJX22PWX3817",
+  "name": "PriceListEntry",
+  "displayName": "Price list entry",
+  "pluralName": "Price list entries",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "The price of a product or variant on a price list.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "key": {
+    "attributes": [
+      "01M1P7M66C6XR5J1Y7VS40DBDN"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1P7M66C6XR5J1Y7VS40DBDN",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the price list entry."
+    },
+    {
+      "id": "01M1HQ07XJ08F6WPTF4GGSDQTY",
+      "name": "unitPrice",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Price per unit."
+    },
+    {
+      "id": "01M2VEE77TQ72Y6HPGM6JS2GCN",
+      "name": "minimumQuantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "validation": {
+        "min": 0
+      },
+      "description": "Smallest quantity the price applies to."
+    },
+    {
+      "id": "01M26EYM5379APDMY9NTWVRREH",
+      "name": "validity",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "description": "Period the entry is valid, within the list's period."
+    }
+  ]
+}

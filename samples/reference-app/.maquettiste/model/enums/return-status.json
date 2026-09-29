@@ -1,0 +1,61 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M1XDYVZ99Q8N5J7Q9Y1MVCM1",
+  "name": "ReturnStatus",
+  "displayName": "Return status",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "Lifecycle of a return authorization.",
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "members": [
+    {
+      "id": "01M2WDG4YY5JSXNS5PBP6HX9VZ",
+      "name": "Requested",
+      "value": 0,
+      "code": "REQ",
+      "description": "Asked for by the customer."
+    },
+    {
+      "id": "01M2XB2998W0XY0Q6TTC11S9T3",
+      "name": "Approved",
+      "value": 1,
+      "code": "APPR",
+      "description": "Approved; the customer may send the goods."
+    },
+    {
+      "id": "01M1DRJSNA9DH7RE6VGPHSXZYX",
+      "name": "Rejected",
+      "value": 2,
+      "code": "REJ",
+      "description": "Not accepted."
+    },
+    {
+      "id": "01M1H6AEKH23RAJ79140DRCW4B",
+      "name": "Received",
+      "value": 3,
+      "code": "RCVD",
+      "description": "Goods arrived at the warehouse."
+    },
+    {
+      "id": "01M20JYBH6FS57T3MWQ0EPA51V",
+      "name": "Inspected",
+      "value": 4,
+      "code": "INSP",
+      "description": "Goods inspected and dispositioned."
+    },
+    {
+      "id": "01M1VCVJBBY7F27PJC4RHGEPWD",
+      "name": "Credited",
+      "value": 5,
+      "code": "CRED",
+      "description": "Credit note issued."
+    },
+    {
+      "id": "01M2EEBQGCNR2NRYC3H92JPBR3",
+      "name": "Closed",
+      "value": 6,
+      "code": "CLOSED",
+      "description": "Complete."
+    }
+  ]
+}

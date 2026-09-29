@@ -1,0 +1,71 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M23E2N4041K8MN2FD5705C4M",
+  "name": "InventoryCostLayer",
+  "displayName": "Inventory cost layer",
+  "pluralName": "Inventory cost layers",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "A FIFO cost layer created by a receipt and consumed by issues, for inventory valuation.",
+  "tags": [
+    "financial",
+    "high-volume"
+  ],
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M2NJA1PWJ0D9GEBQNGCF923A"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M2NJA1PWJ0D9GEBQNGCF923A",
+      "name": "id",
+      "type": "int64",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the inventory cost layer."
+    },
+    {
+      "id": "01M1TXR8QTT47NEJKFSDC0T294",
+      "name": "receivedOn",
+      "type": "date",
+      "required": true,
+      "description": "Date the layer was created."
+    },
+    {
+      "id": "01M1FD54EKWVKTZ9TV870ZBMYN",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity received."
+    },
+    {
+      "id": "01M27SDDS9R8YBS665V8QYTRJG",
+      "name": "remainingQuantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity not yet consumed."
+    },
+    {
+      "id": "01M2828X9VXSFM19Q0TN4HSNHV",
+      "name": "unitCost",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Landed cost per unit."
+    }
+  ]
+}

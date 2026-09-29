@@ -1,0 +1,40 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M2S2V5V5N22BXR0NPTC78S4T",
+  "name": "CasePriority",
+  "displayName": "Case priority",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "Urgency of a service case.",
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "members": [
+    {
+      "id": "01M2J9DEP1AYY62808EV1DZJ73",
+      "name": "Low",
+      "value": 0,
+      "code": "P4",
+      "description": "Answer within five business days."
+    },
+    {
+      "id": "01M32BMWHAHDDH2BZY0776AHXM",
+      "name": "Normal",
+      "value": 1,
+      "code": "P3",
+      "description": "Answer within two business days."
+    },
+    {
+      "id": "01M1EJYBSW3J6P42M02WPKQ11G",
+      "name": "High",
+      "value": 2,
+      "code": "P2",
+      "description": "Answer within one business day."
+    },
+    {
+      "id": "01M32BHNSGAG5W4QK36MX6Y9S5",
+      "name": "Urgent",
+      "value": 3,
+      "code": "P1",
+      "description": "Answer within four hours; customer operations are blocked."
+    }
+  ]
+}

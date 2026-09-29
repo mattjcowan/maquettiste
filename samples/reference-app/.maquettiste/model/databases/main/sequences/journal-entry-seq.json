@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../../.schema/v1/sequence.json",
+  "kind": "sequence",
+  "id": "01M31G9BMK4DRC7GQFT8V9Q9G0",
+  "name": "journal_entry_seq",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "description": "Keys journal entries; gapless numbering is enforced by the posting service.",
+  "cache": 1
+}

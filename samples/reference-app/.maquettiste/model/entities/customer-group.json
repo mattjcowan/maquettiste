@@ -1,0 +1,57 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1DCQB50PJ28VXNVM2MEZQXQ",
+  "name": "CustomerGroup",
+  "displayName": "Customer group",
+  "pluralName": "Customer groups",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "A group of customers that share price lists and discounts, such as Buying group A.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "configuration"
+  ],
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "key": {
+    "attributes": [
+      "01M1SJTHFSMK06NJEVPVVT8JCZ"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1SJTHFSMK06NJEVPVVT8JCZ",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the customer group."
+    },
+    {
+      "id": "01M1FQP5KD17MJGMM4BV8E6ZHN",
+      "name": "name",
+      "type": "string",
+      "length": 80,
+      "required": true,
+      "unique": true,
+      "description": "Group name."
+    },
+    {
+      "id": "01M2N2R4GAGBS5T7JV45H5J3XC",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "description": "Who belongs to the group."
+    },
+    {
+      "id": "01M343BYZF9FMKYYKGNM3K61YV",
+      "name": "defaultDiscount",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "description": "Discount applied when no better price exists."
+    }
+  ]
+}

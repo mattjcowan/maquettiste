@@ -1,0 +1,72 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2124S65JEY623MSBN0P9FVJ",
+  "name": "ProductCategory",
+  "displayName": "Product category",
+  "pluralName": "Product categories",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "A node of the catalog tree (Janitorial > Gloves > Nitrile gloves).",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "master-data"
+  ],
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M2PWSXTNBTHGS6VWVP2NSQNS"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2PWSXTNBTHGS6VWVP2NSQNS",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the product category."
+    },
+    {
+      "id": "01M1KEFTVSG34BP9YXQXK8VZ0S",
+      "name": "code",
+      "type": "string",
+      "length": 40,
+      "required": true,
+      "unique": true,
+      "description": "Stable category code used in feeds."
+    },
+    {
+      "id": "01M1DXRJK65FJD8PGW3JVGZZ6Q",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "required": true,
+      "description": "Category name."
+    },
+    {
+      "id": "01M1FFVPCWNHQ2XMY1FSRMVTDV",
+      "name": "description",
+      "type": "text",
+      "description": "Category landing page copy."
+    },
+    {
+      "id": "01M1X0GV1Z3334V4HVJRDX9JM1",
+      "name": "sortOrder",
+      "type": "int32",
+      "required": true,
+      "default": 0,
+      "description": "Position among its siblings."
+    },
+    {
+      "id": "01M22K150KB9HRSFMQJVA9PDW3",
+      "name": "isActive",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether the category is shown."
+    }
+  ]
+}

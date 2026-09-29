@@ -1,0 +1,72 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2W8EQ597AFESYKQ9XRMVM2Q",
+  "name": "CreditProfile",
+  "displayName": "Credit profile",
+  "pluralName": "Credit profiles",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "The credit standing of a customer, reviewed by the credit department before limits change.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "key": {
+    "attributes": [
+      "01M1WF2RH3PKN0S4Y692SQP0HG"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1WF2RH3PKN0S4Y692SQP0HG",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the credit profile."
+    },
+    {
+      "id": "01M2SMWY2JNSPKG5RQQZCQGC2Q",
+      "name": "creditLimit",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Maximum open receivables allowed."
+    },
+    {
+      "id": "01M35MQ8TH2SEBHCTJD6SBS4X1",
+      "name": "riskRating",
+      "type": "string",
+      "length": 2,
+      "required": true,
+      "description": "Internal rating from A1 (best) to D (worst)."
+    },
+    {
+      "id": "01M364FX3ZDV25PDZDEJ7M74V9",
+      "name": "externalScore",
+      "type": "int32",
+      "validation": {
+        "min": 0,
+        "max": 1000
+      },
+      "description": "Score from the credit bureau."
+    },
+    {
+      "id": "01M2TW9TJJF5DN9GE3K5C1BD80",
+      "name": "lastReviewedOn",
+      "type": "date",
+      "description": "Date of the last credit review."
+    },
+    {
+      "id": "01M1G7T31H0BA190ZRAN35VQTZ",
+      "name": "reviewNotes",
+      "type": "text",
+      "description": "Reviewer's notes."
+    }
+  ]
+}

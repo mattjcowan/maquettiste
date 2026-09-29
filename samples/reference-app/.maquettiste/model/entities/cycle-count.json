@@ -1,0 +1,62 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2NGDKC9XHW37BDXATNQ314D",
+  "name": "CycleCount",
+  "displayName": "Cycle count",
+  "pluralName": "Cycle counts",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "A scheduled count of part of a warehouse to verify stock accuracy.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M2FTPF42ENVGN9F8MD1TMB58"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2FTPF42ENVGN9F8MD1TMB58",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the cycle count."
+    },
+    {
+      "id": "01M2YCNWTK81Z7SJAW0J4VY0B7",
+      "name": "countNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Count number."
+    },
+    {
+      "id": "01M1J2MDKJCSV4FD8VCP6DFKV2",
+      "name": "scheduledOn",
+      "type": "date",
+      "required": true,
+      "description": "Planned date."
+    },
+    {
+      "id": "01M1NRFZW7KXXMF69NYMW6AP5Q",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "planned",
+      "description": "planned, counting, review or closed."
+    },
+    {
+      "id": "01M2037SH7TKZ6X23E65ZWKT12",
+      "name": "completedAt",
+      "type": "datetimeoffset",
+      "description": "When counting finished."
+    }
+  ]
+}

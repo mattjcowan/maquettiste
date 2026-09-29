@@ -1,0 +1,70 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2YZRYH468YVFQMMZJ96Y03R",
+  "name": "AdvanceShipNotice",
+  "displayName": "Advance ship notice",
+  "pluralName": "Advance ship notices",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "An EDI 856 advance ship notice announcing an inbound delivery.",
+  "tags": [
+    "integration"
+  ],
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "key": {
+    "attributes": [
+      "01M2MNT0JJ7JVW68FJVT7GQSZF"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2MNT0JJ7JVW68FJVT7GQSZF",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the advance ship notice."
+    },
+    {
+      "id": "01M1NDG00QJE061CBWVKCTZHR6",
+      "name": "asnNumber",
+      "type": "string",
+      "length": 40,
+      "required": true,
+      "description": "Supplier's ASN number."
+    },
+    {
+      "id": "01M1VWQFWXJ3YFS6W8TZWTCTWW",
+      "name": "shippedOn",
+      "type": "date",
+      "description": "Ship date."
+    },
+    {
+      "id": "01M2475EQZT6R4D99Z43YX4HX9",
+      "name": "expectedArrivalOn",
+      "type": "date",
+      "description": "Expected arrival."
+    },
+    {
+      "id": "01M1JEK3QVWXPC6YDZNDJJS998",
+      "name": "carrierName",
+      "type": "string",
+      "length": 100,
+      "description": "Carrier."
+    },
+    {
+      "id": "01M2P0VSNPPR9C34CZCP3MP92B",
+      "name": "trackingNumber",
+      "type": "string",
+      "length": 60,
+      "description": "Tracking number."
+    },
+    {
+      "id": "01M1MDA9KGGDDB9S3WK2D9CG5T",
+      "name": "rawDocument",
+      "type": "json",
+      "description": "Original EDI document, as JSON."
+    }
+  ]
+}

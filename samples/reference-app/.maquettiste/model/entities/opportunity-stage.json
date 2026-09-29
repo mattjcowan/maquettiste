@@ -1,0 +1,58 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1MZ5QR4A63KE2ZH2J41M6B5",
+  "name": "OpportunityStage",
+  "displayName": "Opportunity stage",
+  "pluralName": "Opportunity stages",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "A pipeline stage, such as Discovery, Proposal or Negotiation.",
+  "stereotypes": [
+    "lookup"
+  ],
+  "tags": [
+    "configuration"
+  ],
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "key": {
+    "attributes": [
+      "01M21N7A05M3931T1587F2MXW3"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M21N7A05M3931T1587F2MXW3",
+      "name": "id",
+      "type": "int32",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the opportunity stage."
+    },
+    {
+      "id": "01M21V41N01RKA77B3QD9XESDP",
+      "name": "defaultProbability",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "required": true,
+      "description": "Win probability assigned on entering the stage."
+    },
+    {
+      "id": "01M29WCGG3XT2DXRQA05P84N0S",
+      "name": "isClosed",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether the stage ends the pipeline."
+    },
+    {
+      "id": "01M1JQQHBFC10BFWAR6ZZF0MQC",
+      "name": "isWon",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether the stage means the deal was won."
+    }
+  ]
+}

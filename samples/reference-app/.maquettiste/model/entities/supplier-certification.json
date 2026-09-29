@@ -1,0 +1,61 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M37A5NJEPZATPNMASH90TE69",
+  "name": "SupplierCertification",
+  "displayName": "Supplier certification",
+  "pluralName": "Supplier certifications",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "A certification held by a supplier, such as ISO 9001 or a food safety audit.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "key": {
+    "attributes": [
+      "01M1KP7VYAMKXF1CFZS5PZSGYM"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1KP7VYAMKXF1CFZS5PZSGYM",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the supplier certification."
+    },
+    {
+      "id": "01M35YFJ3GF5S9D6TWZEX23FJX",
+      "name": "certificationType",
+      "type": "string",
+      "length": 60,
+      "required": true,
+      "description": "Scheme."
+    },
+    {
+      "id": "01M2EN05NYW221YZ9KQHH70SDJ",
+      "name": "certificateNumber",
+      "type": "string",
+      "length": 60,
+      "description": "Certificate number."
+    },
+    {
+      "id": "01M21TH6CFB38V21X68A6T3DTG",
+      "name": "validity",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "required": true,
+      "description": "Validity."
+    },
+    {
+      "id": "01M1KW40ESZDQ6258CHH7NSQH4",
+      "name": "documentUrl",
+      "type": "string",
+      "length": 400,
+      "description": "Scanned certificate."
+    }
+  ]
+}

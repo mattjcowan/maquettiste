@@ -1,0 +1,68 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M2VGK040JVBRYQA2T0D1QY1F",
+  "name": "StockMovementType",
+  "displayName": "Stock movement type",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Kind of stock movement.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "members": [
+    {
+      "id": "01M2XF4SR4YP75YZEBY1SYSNXP",
+      "name": "Receipt",
+      "value": 0,
+      "code": "RCV",
+      "description": "Goods received from a supplier."
+    },
+    {
+      "id": "01M252XQTFYFBGW7QTAAA2PGPS",
+      "name": "Issue",
+      "value": 1,
+      "code": "ISS",
+      "description": "Goods picked for a customer shipment."
+    },
+    {
+      "id": "01M1Y7R132KPT8058GMZF901BM",
+      "name": "TransferOut",
+      "value": 2,
+      "code": "TOUT",
+      "description": "Goods leaving for another warehouse."
+    },
+    {
+      "id": "01M253DJQXZ5SJHVW6S4F1WC2V",
+      "name": "TransferIn",
+      "value": 3,
+      "code": "TIN",
+      "description": "Goods arriving from another warehouse."
+    },
+    {
+      "id": "01M1YR74XPT53YGBK77VHKJAE4",
+      "name": "Relocation",
+      "value": 4,
+      "code": "MOVE",
+      "description": "Goods moved between bins of one warehouse."
+    },
+    {
+      "id": "01M351QMTCQNT8X2D7FK94C1PW",
+      "name": "Adjustment",
+      "value": 5,
+      "code": "ADJ",
+      "description": "Correction after a count or damage."
+    },
+    {
+      "id": "01M1DWJJPF4VNAWV6TQZS72Y4N",
+      "name": "CustomerReturn",
+      "value": 6,
+      "code": "RET",
+      "description": "Goods returned by a customer."
+    },
+    {
+      "id": "01M1RK401A9NK0KJDK8DQDMYBK",
+      "name": "Scrap",
+      "value": 7,
+      "code": "SCRAP",
+      "description": "Goods written off and destroyed."
+    }
+  ]
+}

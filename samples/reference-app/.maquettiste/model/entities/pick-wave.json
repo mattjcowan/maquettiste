@@ -1,0 +1,60 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2N2R4A43YR0JEB2CQP5RJ4K",
+  "name": "PickWave",
+  "displayName": "Pick wave",
+  "pluralName": "Pick waves",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "A batch of orders released to the warehouse floor together, such as the 10:00 parcel wave.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "key": {
+    "attributes": [
+      "01M1VK3TPYJHJ2F7FVZ3PF28XJ"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1VK3TPYJHJ2F7FVZ3PF28XJ",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the pick wave."
+    },
+    {
+      "id": "01M1D60QVMPY2PWAK8PMW1TD3C",
+      "name": "waveNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Wave number."
+    },
+    {
+      "id": "01M1JJAPHFY35AGNF4KS77B2EG",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "planned",
+      "description": "planned, released or complete."
+    },
+    {
+      "id": "01M2GNB3VYZSPFDPKGB5DRNFHH",
+      "name": "plannedStartAt",
+      "type": "datetimeoffset",
+      "description": "Planned release time."
+    },
+    {
+      "id": "01M1M1AMBKHZNX5A9RVNS5AW8N",
+      "name": "releasedAt",
+      "type": "datetimeoffset",
+      "description": "Actual release time."
+    }
+  ]
+}

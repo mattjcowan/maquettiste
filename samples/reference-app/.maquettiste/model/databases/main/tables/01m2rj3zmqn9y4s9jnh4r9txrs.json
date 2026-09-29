@@ -1,0 +1,39 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "origin": "synthesized",
+  "entity": "01M20RAEF2QZ5W8HV57RBX5PQV",
+  "description": "Product search and integrity tuning.",
+  "columns": [
+    {
+      "id": "01M38BN06FY3KH4QY5S0V08BVN",
+      "attribute": "01M1YR5HYS8A9QPY38XWTNXMV0",
+      "comment": "Searched with a trigram index in production."
+    }
+  ],
+  "checks": [
+    {
+      "id": "01M20K5EZS2M75Q0JYDXHBM8R1",
+      "name": "ck_products_discontinued_after_launch",
+      "expression": {
+        "*": "discontinued_on IS NULL OR launched_on IS NULL OR discontinued_on >= launched_on"
+      }
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M311KNX8DFB2WWFHKTEQJKB4",
+      "name": "ix_products_status_name",
+      "columns": [
+        {
+          "column": "01M29DN2SH7797NZQ6X169SD1T"
+        },
+        {
+          "column": "01M1YR5HYS8A9QPY38XWTNXMV0"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1D4CTN6F0HS5SZQC5VH8H2N",
+  "name": "JournalEntry",
+  "displayName": "Journal entry",
+  "pluralName": "Journal entries",
+  "package": "01M1EYTWAA6REG1KFCR9N7XQ27",
+  "description": "A balanced set of debits and credits posted to the ledger, from an invoice, a payment, a receipt or a manual adjustment.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "financial",
+    "high-volume"
+  ],
+  "category": "01M1E9BTZZTKGKC2S6YTG3CKTZ",
+  "key": {
+    "attributes": [
+      "01M27B9FWF09SG7XM0YACEC41D"
+    ],
+    "strategy": "sequence"
+  },
+  "attributes": [
+    {
+      "id": "01M27B9FWF09SG7XM0YACEC41D",
+      "name": "id",
+      "type": "int64",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the journal entry."
+    },
+    {
+      "id": "01M1NM0QKGPER8ACDP4PXXCW1C",
+      "name": "entryDate",
+      "type": "date",
+      "required": true,
+      "indexed": true,
+      "description": "Accounting date."
+    },
+    {
+      "id": "01M29DN94FPWW60CVTQX65VGYZ",
+      "name": "reference",
+      "type": "string",
+      "length": 40,
+      "description": "Source document number."
+    },
+    {
+      "id": "01M1X1BCZ9ZXXRXQNXB67113ZY",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "required": true,
+      "description": "What the entry records."
+    },
+    {
+      "id": "01M29THV55RW5YARWYH0BKQPMA",
+      "name": "status",
+      "type": {
+        "ref": "01M1Z982ARCCW1K6XHA2JTZBFC"
+      },
+      "required": true,
+      "default": "Draft",
+      "description": "Posting state."
+    },
+    {
+      "id": "01M1F36AEYMAB0MY8M8WG3A0JD",
+      "name": "sourceDocument",
+      "type": "string",
+      "length": 40,
+      "description": "Kind of source, such as invoice or goods-receipt."
+    },
+    {
+      "id": "01M2RPY4HHWBCN915DFD8VBATE",
+      "name": "postedAt",
+      "type": "datetimeoffset",
+      "description": "When it was posted."
+    }
+  ]
+}

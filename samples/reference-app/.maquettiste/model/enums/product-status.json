@@ -1,0 +1,47 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M2YW6JHEB1CVE5XWYKQ1MYBG",
+  "name": "ProductStatus",
+  "displayName": "Product status",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "Lifecycle of a product in the catalog.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "members": [
+    {
+      "id": "01M21NVJJ9PSFFBHAQ1JQPX8XY",
+      "name": "Draft",
+      "value": 0,
+      "code": "DRAFT",
+      "description": "Being set up; not sellable."
+    },
+    {
+      "id": "01M1E47ZB485AAXRT2RR2P4WBY",
+      "name": "Active",
+      "value": 1,
+      "code": "ACTIVE",
+      "description": "Sellable and replenished."
+    },
+    {
+      "id": "01M1EWCV24AR3BAH493YJ8YDQB",
+      "name": "PhasingOut",
+      "value": 2,
+      "code": "PHASEOUT",
+      "description": "Sold from remaining stock, no longer replenished."
+    },
+    {
+      "id": "01M25W3E12B7FPGPFAMN2VHCG1",
+      "name": "Discontinued",
+      "value": 3,
+      "code": "DISC",
+      "description": "No longer sold."
+    },
+    {
+      "id": "01M2GMB69E0WV1P8X57MQ42M9X",
+      "name": "Blocked",
+      "value": 4,
+      "code": "BLOCK",
+      "description": "Temporarily unsellable, for example after a recall."
+    }
+  ]
+}

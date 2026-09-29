@@ -1,0 +1,168 @@
+{
+  "$schema": "../../.schema/v1/diagram.json",
+  "kind": "diagram",
+  "id": "01M210SF85GK6MVFJPEXMPB3K1",
+  "name": "Sales orders",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "Quotes and orders with their lines, holds, charges and history.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "members": [
+    {
+      "element": "01M1GBW3NDKS6WCM5FAXYVHV7B",
+      "x": 40,
+      "y": 40
+    },
+    {
+      "element": "01M2JSECEQ3FD3TKWAQR961TJ0",
+      "x": 360,
+      "y": 40
+    },
+    {
+      "element": "01M1X8D633QD4FHDVREPQ0K8JN",
+      "x": 680,
+      "y": 40
+    },
+    {
+      "element": "01M294FEGERKZCJTBBXWJ6E302",
+      "x": 1000,
+      "y": 40
+    },
+    {
+      "element": "01M1GGGF7MKSKSSN9E4MQGWNG4",
+      "x": 1320,
+      "y": 40
+    },
+    {
+      "element": "01M2MFKW4HVFDKS6H9XAXFW6D3",
+      "x": 40,
+      "y": 280
+    },
+    {
+      "element": "01M2PPEFRPNY403BPXFTVNS3BT",
+      "x": 360,
+      "y": 280
+    },
+    {
+      "element": "01M28MWSDAN18EQHNE9QHZEMFN",
+      "x": 680,
+      "y": 280
+    },
+    {
+      "element": "01M2BMWZ1QVXGP8CRGD6645WZC",
+      "x": 1000,
+      "y": 280
+    },
+    {
+      "element": "01M2MCP43J29YSHR3FTSX2PB4N",
+      "x": 1320,
+      "y": 280
+    },
+    {
+      "element": "01M202MD69QFR0PAA1BD0Y8GRP",
+      "x": 40,
+      "y": 520
+    },
+    {
+      "element": "01M37YEM5BDAS9JA7K1XHGRYQB",
+      "x": 360,
+      "y": 520
+    },
+    {
+      "element": "01M2RAWA2R3YTRTN2NZYY3W84T",
+      "x": 680,
+      "y": 520
+    },
+    {
+      "element": "01M1G2XC8VHF50WCS54G3Y5R96",
+      "x": 1000,
+      "y": 520
+    },
+    {
+      "element": "01M2F67H1NJPNCPERPZKKZ4Y2R",
+      "x": 1320,
+      "y": 520
+    },
+    {
+      "element": "01M33RY9G59ZRWXQSAY6YKZMCH",
+      "x": 40,
+      "y": 760
+    },
+    {
+      "element": "01M1Z07H8911C6G8XMGB68QRV0",
+      "x": 360,
+      "y": 760
+    },
+    {
+      "element": "01M1R0WN3NQVHP8WNHAT901REQ",
+      "x": 680,
+      "y": 760
+    },
+    {
+      "element": "01M1SZZ5FB56D5W109DHXXMACT",
+      "x": 1000,
+      "y": 760
+    },
+    {
+      "element": "01M2XHGJFZKF467SJBM67ZQ9F4",
+      "x": 1320,
+      "y": 760
+    },
+    {
+      "element": "01M2S1V1ZHRK062QGBNVEKCBRA"
+    },
+    {
+      "element": "01M2AXDYBBVY3WBEKB1E4RMC5Y"
+    },
+    {
+      "element": "01M2FXZ2BADTZKSJ3R2BKP30H3"
+    },
+    {
+      "element": "01M33C3XBDEQTZ5A16R0CY872C"
+    },
+    {
+      "element": "01M1FM9EBC8JTXHX0D3XJ8TTFF"
+    },
+    {
+      "element": "01M260R0RX1GQ0RXGF839KAGE5"
+    },
+    {
+      "element": "01M1HKPRWNB5CG1MH9CAYFCGXH"
+    },
+    {
+      "element": "01M1DY7GZXV1857DK200DTMFP5"
+    },
+    {
+      "element": "01M2KN78DVMHZSS6A76H0RYBBB"
+    },
+    {
+      "element": "01M1MKK7ZWX3PG2VAEWHGT5QWC"
+    },
+    {
+      "element": "01M2V9RBN5XGR9HEMQTMK3SGME"
+    },
+    {
+      "element": "01M2N0V06XSMWGKQD4EWTXS5KJ"
+    },
+    {
+      "element": "01M2C31Z3A70TZ34535BSXPRWQ"
+    },
+    {
+      "element": "01M1RN4NH7V68KAFEADJC30VBS"
+    },
+    {
+      "element": "01M1JH26AMHHBKD738KDD46GDP"
+    },
+    {
+      "element": "01M2H4EMS0DA2W2KSZN452X4QZ"
+    },
+    {
+      "element": "01M2BK78BN5VSQ5TTMW4M8H9R8"
+    },
+    {
+      "element": "01M20CY4XZYYK3HRTVWJ96VXBT"
+    }
+  ],
+  "viewport": {
+    "zoom": 0.8
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2XYYP2TX3CAXKCVF4SJ4A57",
+  "name": "ReturnLine",
+  "displayName": "Return line",
+  "pluralName": "Return lines",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "A product and quantity on a return authorization, with its condition and disposition.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "key": {
+    "attributes": [
+      "01M2956DMYEZP7T3YVRJY3M9B1"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2956DMYEZP7T3YVRJY3M9B1",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the return line."
+    },
+    {
+      "id": "01M2FAR4T9A3749Y292DYZY51H",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity authorized."
+    },
+    {
+      "id": "01M2RAJZ91PNEA07ERBRFTBH9J",
+      "name": "receivedQuantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity received."
+    },
+    {
+      "id": "01M1MA8GTYMNGXRPN1FFR6C3N8",
+      "name": "itemCondition",
+      "type": "string",
+      "length": 20,
+      "description": "new, opened or damaged."
+    },
+    {
+      "id": "01M2T0RJZGC9G1SEDE4TEZ9G27",
+      "name": "disposition",
+      "type": "string",
+      "length": 20,
+      "description": "restock, scrap or return-to-vendor."
+    },
+    {
+      "id": "01M31JEYC4HQ40QW26T8FDMV9W",
+      "name": "creditAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Credit granted for the line."
+    }
+  ]
+}

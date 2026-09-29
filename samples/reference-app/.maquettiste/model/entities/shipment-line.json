@@ -1,0 +1,42 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2AZFG6SKKFV4W4136MH72X5",
+  "name": "ShipmentLine",
+  "displayName": "Shipment line",
+  "pluralName": "Shipment lines",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "The quantity of an order line included in a shipment.",
+  "tags": [
+    "high-volume"
+  ],
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "key": {
+    "attributes": [
+      "01M2F2KSZ4P6GE0145WK4SPY8A"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2F2KSZ4P6GE0145WK4SPY8A",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the shipment line."
+    },
+    {
+      "id": "01M1NK2QXS21W4P4FPYSX7Y69G",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity shipped."
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2GHVSN9EWR3VSH0N7HE0NMD",
+  "name": "SupplierProduct",
+  "displayName": "Supplier product",
+  "pluralName": "Supplier products",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "A product as offered in a supplier's catalog, with the supplier's SKU, cost and lead time.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "master-data"
+  ],
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "key": {
+    "attributes": [
+      "01M1SWR27EEJC0T6PQ0QFKJ45J"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1SWR27EEJC0T6PQ0QFKJ45J",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the supplier product."
+    },
+    {
+      "id": "01M300TB4PCC1GJFP8MWHVDV5C",
+      "name": "supplierSku",
+      "type": "string",
+      "length": 40,
+      "required": true,
+      "description": "Supplier's item number."
+    },
+    {
+      "id": "01M2PMZTGTE2ZJFVFXYD8RE58F",
+      "name": "supplierDescription",
+      "type": "string",
+      "length": 300,
+      "description": "Supplier's item description."
+    },
+    {
+      "id": "01M2XCEQ82V2ZH2XCG8EN7E8ZW",
+      "name": "unitCost",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Current cost."
+    },
+    {
+      "id": "01M24X56QVKT2VBW3F57XXMWSK",
+      "name": "minimumOrderQuantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "validation": {
+        "min": 0
+      },
+      "description": "Minimum order quantity."
+    },
+    {
+      "id": "01M1NXE3CK7NCCWMZ1MT43TAGZ",
+      "name": "packSize",
+      "type": "int32",
+      "validation": {
+        "min": 1
+      },
+      "description": "Base units per purchase unit."
+    },
+    {
+      "id": "01M37Q8JSQ4AQSE54KNMTTTVEG",
+      "name": "leadTimeDays",
+      "type": "int16",
+      "validation": {
+        "min": 0
+      },
+      "description": "Lead time for the item."
+    },
+    {
+      "id": "01M21S7V2W5PNACNYES76Z6Z1H",
+      "name": "isPreferred",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Preferred source for the product."
+    }
+  ]
+}

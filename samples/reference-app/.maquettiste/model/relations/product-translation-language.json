@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2Q7YDGGYWAQK8HXD8P74ZFE",
+  "name": "product translation language",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "Language of the translation.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "ends": [
+    {
+      "id": "01M1HSDACA9FTDMBD61DEYPBEF",
+      "entity": "01M1V6VP1AXYNH3ABJ0SAQH2D1",
+      "role": "language",
+      "navigation": "language",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M313NW78Q560WN5AKG3SZJY1",
+      "entity": "01M2TTC2J0TWG6D931H4QJNX63",
+      "role": "productTranslations"
+    }
+  ]
+}

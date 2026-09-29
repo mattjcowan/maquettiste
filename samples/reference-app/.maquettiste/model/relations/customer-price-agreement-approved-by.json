@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1N213JAG1N5CQ50B8J7SDG4",
+  "name": "customer price agreement approved by",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "Pricing manager who approved it.",
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "ends": [
+    {
+      "id": "01M291PNM5520W5H6CVWMTZF5P",
+      "entity": "01M1RJC20E0YQ2SZNHD9NJW74W",
+      "role": "approvedBy",
+      "navigation": "approvedBy",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2CSVNXJQQANZQCV2RCBAFH2",
+      "entity": "01M2Q6WMJ0KQXMQV0R0QFGYX21",
+      "role": "customerPriceAgreements"
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2MDX83CB2ACRJRW882FSMKH",
+  "name": "ProductDocument",
+  "displayName": "Product document",
+  "pluralName": "Product documents",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "A document attached to a product, such as a safety data sheet or an installation guide.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M1DZRGWA5Z6G7W3KN9E06PPV"
+    ],
+    "strategy": "ulid"
+  },
+  "attributes": [
+    {
+      "id": "01M1DZRGWA5Z6G7W3KN9E06PPV",
+      "name": "id",
+      "type": "ulid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the product document."
+    },
+    {
+      "id": "01M2XDEHNZCV7N3WPEBM99Y7EZ",
+      "name": "title",
+      "type": "string",
+      "length": 200,
+      "required": true,
+      "description": "Document title."
+    },
+    {
+      "id": "01M1VA8NVMFS8H556E5RN7KPVD",
+      "name": "documentType",
+      "type": "string",
+      "length": 40,
+      "required": true,
+      "description": "Kind, such as sds, datasheet or manual."
+    },
+    {
+      "id": "01M1Y68PMX8DBNTAQS2T9ZMMJ0",
+      "name": "url",
+      "type": "string",
+      "length": 400,
+      "required": true,
+      "description": "Document URL."
+    },
+    {
+      "id": "01M2GFZ609C4A5R43K6H2PR8EX",
+      "name": "languageCode",
+      "type": "string",
+      "length": 5,
+      "description": "Language of the document."
+    },
+    {
+      "id": "01M2MPRSYG11S4QNZ8T2APF54F",
+      "name": "revision",
+      "type": "string",
+      "length": 10,
+      "description": "Revision label."
+    },
+    {
+      "id": "01M322C1Z0ZF0WS2DN5ZR3Z6E0",
+      "name": "publishedOn",
+      "type": "date",
+      "description": "Date the revision was published."
+    }
+  ]
+}

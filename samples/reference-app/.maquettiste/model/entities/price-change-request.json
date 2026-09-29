@@ -1,0 +1,67 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1M5T9RM1VHV29AM44RVNYQ9",
+  "name": "PriceChangeRequest",
+  "displayName": "Price change request",
+  "pluralName": "Price change requests",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "A requested change to a list price, reviewed by pricing before it takes effect.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "key": {
+    "attributes": [
+      "01M1DPHMXHSZVBVC8X9BPGNFKE"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1DPHMXHSZVBVC8X9BPGNFKE",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the price change request."
+    },
+    {
+      "id": "01M1SXDYYVYDXZ78ZHVMPXXHC4",
+      "name": "requestedPrice",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Proposed new price."
+    },
+    {
+      "id": "01M2JPBZ34N84X5701E1ZHXJTV",
+      "name": "effectiveOn",
+      "type": "date",
+      "required": true,
+      "description": "Date the new price should apply."
+    },
+    {
+      "id": "01M1NYYF6KBAPKFQBJTPC8SJ48",
+      "name": "justification",
+      "type": "text",
+      "description": "Reason, such as supplier cost increase."
+    },
+    {
+      "id": "01M2EJQ8Y0ND2DAXXD2XF204K4",
+      "name": "decision",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "pending",
+      "description": "pending, approved or rejected."
+    },
+    {
+      "id": "01M22A68DS25S7S8EVXPK5RBDE",
+      "name": "decidedAt",
+      "type": "datetimeoffset",
+      "description": "When the decision was made."
+    }
+  ]
+}

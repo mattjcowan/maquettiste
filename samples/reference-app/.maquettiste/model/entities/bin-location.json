@@ -1,0 +1,94 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M23889DSDTV8CMFDQXJCF0NM",
+  "name": "BinLocation",
+  "displayName": "Bin location",
+  "pluralName": "Bin locations",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "A storage location addressed by aisle, rack, level and position.",
+  "tags": [
+    "master-data"
+  ],
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M1MYMB21N4H16VGEWF4R7FAJ"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1MYMB21N4H16VGEWF4R7FAJ",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the bin location."
+    },
+    {
+      "id": "01M2YBQ3BV05WQMGDPWVKY3PSP",
+      "name": "code",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "indexed": true,
+      "description": "Location code, such as A-01-02-03."
+    },
+    {
+      "id": "01M2P8CE6FTV34530D72CNBZTC",
+      "name": "aisle",
+      "type": "string",
+      "length": 4,
+      "required": true,
+      "description": "Aisle."
+    },
+    {
+      "id": "01M2JCAHV32RJ1HN8Y275DTM9M",
+      "name": "rack",
+      "type": "string",
+      "length": 4,
+      "required": true,
+      "description": "Rack or bay."
+    },
+    {
+      "id": "01M2E7MEAA4TVY1D19GP8VVCJN",
+      "name": "level",
+      "type": "string",
+      "length": 4,
+      "required": true,
+      "description": "Shelf level."
+    },
+    {
+      "id": "01M1Z15Q47RR36FGDQN77Z1H4B",
+      "name": "position",
+      "type": "string",
+      "length": 4,
+      "description": "Position on the shelf."
+    },
+    {
+      "id": "01M1J9VQWEWA73R58QH8FSSRPY",
+      "name": "maxWeight",
+      "type": {
+        "ref": "01M36PE7EQVEDETJ5QMAXH25ZX"
+      },
+      "description": "Load limit."
+    },
+    {
+      "id": "01M26XYTHCP9YKFXE4WM0G13JF",
+      "name": "isPickFace",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether pickers pick from it."
+    },
+    {
+      "id": "01M1T4FRR4TSP5BTNNYVJDJ4JD",
+      "name": "isActive",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether stock can be put away there."
+    }
+  ]
+}

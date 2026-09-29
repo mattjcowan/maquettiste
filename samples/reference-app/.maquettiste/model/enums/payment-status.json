@@ -1,0 +1,61 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M2VSQF570CS69G1GC9FRG9EZ",
+  "name": "PaymentStatus",
+  "displayName": "Payment status",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "Processing state of a payment or refund.",
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "members": [
+    {
+      "id": "01M2RT1KXCXC44VHD7ZA3WC3W4",
+      "name": "Pending",
+      "value": 0,
+      "code": "PEND",
+      "description": "Recorded, not yet confirmed."
+    },
+    {
+      "id": "01M1VCGDB8H9F7PCDVCDK8D5GC",
+      "name": "Authorized",
+      "value": 1,
+      "code": "AUTH",
+      "description": "Card authorized, not captured."
+    },
+    {
+      "id": "01M21T5XA21HYTK1Q4ET911F3R",
+      "name": "Captured",
+      "value": 2,
+      "code": "CAPT",
+      "description": "Funds captured."
+    },
+    {
+      "id": "01M1TH9R16BEG7C7S5WETCGSZK",
+      "name": "Settled",
+      "value": 3,
+      "code": "SETL",
+      "description": "Funds on the bank statement."
+    },
+    {
+      "id": "01M1JSN4ESHWRA09QB789XTFT5",
+      "name": "Failed",
+      "value": 4,
+      "code": "FAIL",
+      "description": "Declined or returned."
+    },
+    {
+      "id": "01M25FTKSJSJZ6BF9TCA1MNQ4W",
+      "name": "Refunded",
+      "value": 5,
+      "code": "RFND",
+      "description": "Returned to the payer."
+    },
+    {
+      "id": "01M20Z9Y59MRRFHVAAWXJBEFVN",
+      "name": "Voided",
+      "value": 6,
+      "code": "VOID",
+      "description": "Cancelled before settlement."
+    }
+  ]
+}

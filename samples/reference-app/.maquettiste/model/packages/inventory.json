@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/package.json",
+  "kind": "package",
+  "id": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "name": "Inventory",
+  "displayName": "Inventory and warehousing",
+  "description": "Warehouses and their layout, stock on hand by product, lot and serial number, movements, counts, transfers, replenishment and quality holds.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS"
+}

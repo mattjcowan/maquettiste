@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2EAH2K700M66H84JV62DG97",
+  "name": "goods receipt dock door",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "Door unloaded at.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "ends": [
+    {
+      "id": "01M1QDC8GRZJDG7M24MQNATX0Z",
+      "entity": "01M2YP7N3SJSR5RNJJYQVGSA5B",
+      "role": "dockDoor",
+      "navigation": "dockDoor",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2037YVF74H12RDKXMF337KQ",
+      "entity": "01M27E4E7S60R5YRR4BS9CEQW9",
+      "role": "goodsReceipts"
+    }
+  ]
+}

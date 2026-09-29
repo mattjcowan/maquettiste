@@ -1,0 +1,218 @@
+{
+  "$schema": "../../.schema/v1/diagram.json",
+  "kind": "diagram",
+  "id": "01M1R1CJ6TFM7938S67D8PK5YH",
+  "name": "Catalog",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "Products with their variants, content, packaging and classification.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "members": [
+    {
+      "element": "01M20RAEF2QZ5W8HV57RBX5PQV",
+      "x": 40,
+      "y": 40
+    },
+    {
+      "element": "01M1KG55EGGS6MGV2175NWVN2N",
+      "x": 360,
+      "y": 40
+    },
+    {
+      "element": "01M2124S65JEY623MSBN0P9FVJ",
+      "x": 680,
+      "y": 40
+    },
+    {
+      "element": "01M1DM9WKXNHCGJDYBWDP5R6J7",
+      "x": 1000,
+      "y": 40
+    },
+    {
+      "element": "01M2GNPY4VHZ54THRVC2PFYTY0",
+      "x": 1320,
+      "y": 40
+    },
+    {
+      "element": "01M2ED9JXTW2FCN7D38SHAXQDA",
+      "x": 40,
+      "y": 280
+    },
+    {
+      "element": "01M24F5G7KR5ZKQVE1B4HKMP65",
+      "x": 360,
+      "y": 280
+    },
+    {
+      "element": "01M1EX8055X3HF127S2A1CTRD1",
+      "x": 680,
+      "y": 280
+    },
+    {
+      "element": "01M1YKMM6N69TF9A0YDH4E0HYP",
+      "x": 1000,
+      "y": 280
+    },
+    {
+      "element": "01M2MDX83CB2ACRJRW882FSMKH",
+      "x": 1320,
+      "y": 280
+    },
+    {
+      "element": "01M2GCS5Q7Z2VYKTT0EVAJWVWB",
+      "x": 40,
+      "y": 520
+    },
+    {
+      "element": "01M1YQHVQ03T8T5DYE0EM8XFSG",
+      "x": 360,
+      "y": 520
+    },
+    {
+      "element": "01M38G8AZ949PRH0AWCXWZT0Z7",
+      "x": 680,
+      "y": 520
+    },
+    {
+      "element": "01M1SKVXDMR7ZF78GHPE2A8TE8",
+      "x": 1000,
+      "y": 520
+    },
+    {
+      "element": "01M35V5HJM8F5VZX6S43FHFV8X",
+      "x": 1320,
+      "y": 520
+    },
+    {
+      "element": "01M2XK5S4S09XT3T4Y07Y6BTMM",
+      "x": 40,
+      "y": 760
+    },
+    {
+      "element": "01M38NCZKS41XQ56VGTP0P6PM7",
+      "x": 360,
+      "y": 760
+    },
+    {
+      "element": "01M1EPZCNNN5KJTD094M8Z918V",
+      "x": 680,
+      "y": 760
+    },
+    {
+      "element": "01M1WNA0QDVH1FZGDRZ793BEWZ",
+      "x": 1000,
+      "y": 760
+    },
+    {
+      "element": "01M2Z1VNXQEJKE0HFDEMV4SEZ5",
+      "x": 1320,
+      "y": 760
+    },
+    {
+      "element": "01M1J74B04MKM165DQBGCYK4JP",
+      "x": 40,
+      "y": 1000
+    },
+    {
+      "element": "01M2TTC2J0TWG6D931H4QJNX63",
+      "x": 360,
+      "y": 1000
+    },
+    {
+      "element": "01M2GPE1118GZA4QY5E0XNMV9H",
+      "x": 680,
+      "y": 1000
+    },
+    {
+      "element": "01M2SZM8FE9BCWZV496BDSA9V7",
+      "x": 1000,
+      "y": 1000
+    },
+    {
+      "element": "01M26Z9FH61TFVGMFWYPHECH1R"
+    },
+    {
+      "element": "01M3721BXK4MMH8SCW9TRMF1CJ"
+    },
+    {
+      "element": "01M1MTPRNVH6AC4CPJCVXS3K5P"
+    },
+    {
+      "element": "01M1GZPR0S28NE9Q3JYXKT26SP"
+    },
+    {
+      "element": "01M34JE7SWMBRVAG6G29EKP3NH"
+    },
+    {
+      "element": "01M1Z9DWKCYRQNZN6ES3JTWPG5"
+    },
+    {
+      "element": "01M1Q4W3FEK5KA403BVSF38KBK"
+    },
+    {
+      "element": "01M1J9WK1GYQ79XQJC0HZTFZHV"
+    },
+    {
+      "element": "01M2JHAB22ARQ12KT76S8W8NYZ"
+    },
+    {
+      "element": "01M1QQ2JHFAWSJ6X0BPWXXEHK0"
+    },
+    {
+      "element": "01M1W2KZGJYMDJZK8EN6M59V0V"
+    },
+    {
+      "element": "01M1W9C9X61YQ6BKRMAQC3CPHG"
+    },
+    {
+      "element": "01M2QS5M0AF8D4S97YRXC3F05R"
+    },
+    {
+      "element": "01M2NCG0NX01B4MPCTNBFGRV6K"
+    },
+    {
+      "element": "01M28QTTB6W6JGHQ4PKFAMS3EZ"
+    },
+    {
+      "element": "01M32NVKJZ3MMYFB6T2F69YWKR"
+    },
+    {
+      "element": "01M1X7R6VEHKQA7MP0Q5YH24C0"
+    },
+    {
+      "element": "01M367R80TPWAM0FJBDC4T2C1B"
+    },
+    {
+      "element": "01M1XDVN78MBBGQ33067TRZTGY"
+    },
+    {
+      "element": "01M1JCFPRQM0DZSCNV4XT822C0"
+    },
+    {
+      "element": "01M2Z7VZQHTK9SZN8KAC5XJ9R1"
+    },
+    {
+      "element": "01M1SZB2WJW7V4BTD7RY401CXE"
+    },
+    {
+      "element": "01M2EPQ7K2G7SZ7KE8WBBKT741"
+    },
+    {
+      "element": "01M20XBC2QN6TPZCC9QHTKBHJZ"
+    },
+    {
+      "element": "01M36WF3Z7DE7YEAM348G848GE"
+    },
+    {
+      "element": "01M2XD11EXN6JHH8NJK1HEAD2F"
+    },
+    {
+      "element": "01M1KTTR6E9C75H24B4JZ7T3ZV"
+    },
+    {
+      "element": "01M1T73FKETJR70PHT66958T32"
+    }
+  ],
+  "viewport": {
+    "zoom": 0.8
+  }
+}

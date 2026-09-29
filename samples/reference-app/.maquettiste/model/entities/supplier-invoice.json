@@ -1,0 +1,89 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1MWDZA086JA1GBZQKRB5K1Q",
+  "name": "SupplierInvoice",
+  "displayName": "Supplier invoice",
+  "pluralName": "Supplier invoices",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "An invoice received from a supplier, matched to the order and the receipt before payment.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "key": {
+    "attributes": [
+      "01M1PWWBS0D2FY2XMPYQ9S7D61"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1PWWBS0D2FY2XMPYQ9S7D61",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the supplier invoice."
+    },
+    {
+      "id": "01M36SFRVHJN2DD938MZX7NYF1",
+      "name": "invoiceNumber",
+      "type": "string",
+      "length": 40,
+      "required": true,
+      "description": "Supplier's invoice number."
+    },
+    {
+      "id": "01M24MCY7MRG63YS6EG8BQ28MM",
+      "name": "invoiceDate",
+      "type": "date",
+      "required": true,
+      "description": "Invoice date."
+    },
+    {
+      "id": "01M351X1X0ACEY0YT8H66S0127",
+      "name": "dueDate",
+      "type": "date",
+      "required": true,
+      "indexed": true,
+      "description": "Payment due date."
+    },
+    {
+      "id": "01M2AS3SDNXDM3J4VVBYGJM82A",
+      "name": "totalAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Invoice total."
+    },
+    {
+      "id": "01M33K142V9J5SE9B4G6R1DZEC",
+      "name": "taxAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Tax on the invoice."
+    },
+    {
+      "id": "01M1ECT34F61WZT8P8C5VZ6M8B",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "received",
+      "description": "received, matched, approved, paid or disputed."
+    },
+    {
+      "id": "01M2PG50MVTCHP3SQWRE3Z31YE",
+      "name": "matchedAt",
+      "type": "datetimeoffset",
+      "description": "When the three-way match succeeded."
+    }
+  ]
+}

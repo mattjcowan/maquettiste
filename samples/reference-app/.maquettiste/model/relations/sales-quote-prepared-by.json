@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2BSH6N8BE3XD6TZSZYY83KV",
+  "name": "sales quote prepared by",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "Rep who prepared it.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "ends": [
+    {
+      "id": "01M2YCZRQ9KVN7T3ZVPYG2V9FV",
+      "entity": "01M1RJC20E0YQ2SZNHD9NJW74W",
+      "role": "preparedBy",
+      "navigation": "preparedBy",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2PE3F34G1VQGDEWM2YMEH2D",
+      "entity": "01M1X8D633QD4FHDVREPQ0K8JN",
+      "role": "salesQuotes"
+    }
+  ]
+}

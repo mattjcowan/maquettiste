@@ -1,0 +1,30 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M2GD6QYSRRK545Z2FCJ57JXN",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "origin": "synthesized",
+  "entity": "01M2AXW23BB6G1HZZ8CBAXJQXB",
+  "description": "The due date cannot precede the invoice date; open invoices are listed by due date.",
+  "checks": [
+    {
+      "id": "01M2CAF8ZH3P0N6HC40CFMVQN9",
+      "name": "ck_invoices_due_after_invoice_date",
+      "expression": {
+        "*": "due_date >= invoice_date"
+      }
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M20N67BBR7VTNN4PNSGWPK7K",
+      "name": "ix_invoices_open_by_due_date",
+      "columns": [
+        {
+          "column": "01M20T8WVZAWQHDX0NGQD9CF67"
+        }
+      ],
+      "where": "status <> 'PAID'"
+    }
+  ]
+}

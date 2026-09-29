@@ -1,0 +1,100 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1TQ7YZ23DXXYR1CF7BFFWFS",
+  "name": "PurchaseOrderLine",
+  "displayName": "Purchase order line",
+  "pluralName": "Purchase order lines",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "A product and quantity ordered from a supplier.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "transactional"
+  ],
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "key": {
+    "attributes": [
+      "01M2T5FRE5KZMA57ZYKM551F5S"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2T5FRE5KZMA57ZYKM551F5S",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the purchase order line."
+    },
+    {
+      "id": "01M22RK023C6DDTREFW6RAE1Y9",
+      "name": "lineNumber",
+      "type": "int32",
+      "required": true,
+      "validation": {
+        "min": 1
+      },
+      "description": "Line number."
+    },
+    {
+      "id": "01M378BB3ZM3KNQCD7ERV2K5KF",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity ordered."
+    },
+    {
+      "id": "01M1E8WTTQQ7GMT28S49GFQ5SN",
+      "name": "unitCost",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Cost per unit."
+    },
+    {
+      "id": "01M382KZ1559MWPF5J3JWWWZBS",
+      "name": "lineTotal",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Line total."
+    },
+    {
+      "id": "01M1J8JNTY0EY5XNAH93SQN301",
+      "name": "expectedOn",
+      "type": "date",
+      "description": "Line delivery date, when split."
+    },
+    {
+      "id": "01M2MZTCJYRNMNEFHYXQW64WVS",
+      "name": "receivedQuantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "default": 0,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity received so far."
+    },
+    {
+      "id": "01M295YFFB67T43SQ0GCXFF0C7",
+      "name": "isClosed",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether no more receipts are expected."
+    }
+  ]
+}

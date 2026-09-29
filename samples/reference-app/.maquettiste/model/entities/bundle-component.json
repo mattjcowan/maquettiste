@@ -1,0 +1,39 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1YQHVQ03T8T5DYE0EM8XFSG",
+  "name": "BundleComponent",
+  "displayName": "Bundle component",
+  "pluralName": "Bundle components",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "A product and quantity included in a bundle.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M26CNQNQT4CVADDW0QGE6GPN"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M26CNQNQT4CVADDW0QGE6GPN",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the bundle component."
+    },
+    {
+      "id": "01M1F258TFJY3PWARKHHFHEHMN",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity per bundle, in the product's base unit."
+    }
+  ]
+}

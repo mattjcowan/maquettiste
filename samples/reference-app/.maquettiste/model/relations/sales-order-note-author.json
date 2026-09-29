@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1DMHJ8Q7FC9XWZWX6VK603Q",
+  "name": "sales order note author",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "Who wrote the note.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "ends": [
+    {
+      "id": "01M2K7R1Y2FZ57ZKNANSBP42GM",
+      "entity": "01M2CMF5JR3GW828G267AZ0M1E",
+      "role": "author",
+      "navigation": "author",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2J57M6RE2S9C2D9S0E0WJMH",
+      "entity": "01M2PPEFRPNY403BPXFTVNS3BT",
+      "role": "salesOrderNotes"
+    }
+  ]
+}

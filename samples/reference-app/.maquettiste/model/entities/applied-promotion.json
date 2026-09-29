@@ -1,0 +1,43 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2RAWA2R3YTRTN2NZYY3W84T",
+  "name": "AppliedPromotion",
+  "displayName": "Applied promotion",
+  "pluralName": "Applied promotions",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "A promotion applied to a sales order or one of its lines, with the discount it granted.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M21ZP5RXWB0ZCXPE77ABA1BX"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M21ZP5RXWB0ZCXPE77ABA1BX",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the applied promotion."
+    },
+    {
+      "id": "01M2X3RNXT9CF3TE90MKPNXDR5",
+      "name": "discountAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Discount granted."
+    },
+    {
+      "id": "01M1MRKJZQ54DP1QJBTGWDAR50",
+      "name": "appliedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When it was applied."
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M21XA43KW7D316GXT2AFNBZH",
+  "name": "LedgerAccountType",
+  "displayName": "Ledger account type",
+  "package": "01M1EYTWAA6REG1KFCR9N7XQ27",
+  "description": "Classification of a ledger account in the financial statements.",
+  "category": "01M1E9BTZZTKGKC2S6YTG3CKTZ",
+  "members": [
+    {
+      "id": "01M1EJA04FAF3J31CZ2CG2A0BP",
+      "name": "Asset",
+      "value": 0,
+      "code": "A",
+      "description": "Resources owned, such as cash, receivables and inventory."
+    },
+    {
+      "id": "01M1WR3E3PGE7RCGBNSAHZ4SDK",
+      "name": "Liability",
+      "value": 1,
+      "code": "L",
+      "description": "Obligations, such as payables and tax due."
+    },
+    {
+      "id": "01M2CH49C3YA3VAAGKG50Q0Q61",
+      "name": "Equity",
+      "value": 2,
+      "code": "E",
+      "description": "Owners' equity."
+    },
+    {
+      "id": "01M2GM148WK0HXY63QH7887D3C",
+      "name": "Revenue",
+      "value": 3,
+      "code": "R",
+      "description": "Income from sales."
+    },
+    {
+      "id": "01M2Z6SDVXHSPVEXGX7DFPAHDZ",
+      "name": "Expense",
+      "value": 4,
+      "code": "X",
+      "description": "Costs, including cost of goods sold."
+    }
+  ]
+}

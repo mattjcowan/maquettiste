@@ -1,0 +1,45 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1KJSJ5XRC8BCYTQT8DNYWHD",
+  "name": "PartyNote",
+  "displayName": "Party note",
+  "pluralName": "Party notes",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "A free-text note on a party, such as delivery quirks or negotiation history.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "key": {
+    "attributes": [
+      "01M23B69DD4VTQ8CPQW6YT5TD1"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M23B69DD4VTQ8CPQW6YT5TD1",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the party note."
+    },
+    {
+      "id": "01M267YZA294F3YR536XVPFPF6",
+      "name": "body",
+      "type": "text",
+      "required": true,
+      "description": "Note text in Markdown."
+    },
+    {
+      "id": "01M2JKBGEY5WP8EYW2RYVC9HXS",
+      "name": "isPinned",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Shown at the top of the party's page."
+    }
+  ]
+}

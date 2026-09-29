@@ -1,0 +1,90 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2EPFHYBDKM3VHP8XR1NNKGZ",
+  "name": "Promotion",
+  "displayName": "Promotion",
+  "pluralName": "Promotions",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "A time-boxed marketing promotion with conditions and rewards, such as buy 10 cases get 1 free.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "key": {
+    "attributes": [
+      "01M1W77Q9Q0T9J5618NR5J0T0F"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1W77Q9Q0T9J5618NR5J0T0F",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the promotion."
+    },
+    {
+      "id": "01M33AXRQDYBAV35HABWV6J5V7",
+      "name": "code",
+      "type": "string",
+      "length": 30,
+      "required": true,
+      "unique": true,
+      "description": "Promotion code."
+    },
+    {
+      "id": "01M1NBMHAJY692ZXQ53FZ8WT2N",
+      "name": "name",
+      "type": "string",
+      "length": 150,
+      "required": true,
+      "description": "Promotion name."
+    },
+    {
+      "id": "01M1S5B25BJE3YSJY5C40E0226",
+      "name": "description",
+      "type": "text",
+      "description": "Terms shown to customers."
+    },
+    {
+      "id": "01M1N2KT17Z54S1C6TVQ2QDDH8",
+      "name": "status",
+      "type": {
+        "ref": "01M2E9CY8H60VT41FX8T5BFXGQ"
+      },
+      "required": true,
+      "default": "Draft",
+      "description": "Lifecycle state."
+    },
+    {
+      "id": "01M205J5QBN1Y4ZH0N9P0DPEDC",
+      "name": "validity",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "required": true,
+      "description": "When the promotion runs."
+    },
+    {
+      "id": "01M1QTPNVWNNPEP5PJ2SGPNZ4B",
+      "name": "budget",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Maximum discount spend."
+    },
+    {
+      "id": "01M373PRMSCVHEHWPF0GVDE8CQ",
+      "name": "maxRedemptions",
+      "type": "int32",
+      "validation": {
+        "min": 1
+      },
+      "description": "Cap on redemptions across all customers."
+    }
+  ]
+}

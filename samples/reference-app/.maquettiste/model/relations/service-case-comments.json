@@ -1,0 +1,28 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M352801TZGCKK5TMWSV7JFVX",
+  "name": "service case comments",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "relationKind": "composition",
+  "description": "Conversation.",
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "ends": [
+    {
+      "id": "01M1GZR2XGCTQTQN9XEVJHPJYF",
+      "entity": "01M2NPNWREHQKBV15PJMWZPKRK",
+      "role": "serviceCase",
+      "navigation": "serviceCase",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M1H2Z930V6XAZQ8N3YSR5AY5",
+      "entity": "01M1KB2EDCA27GXNM5WJ5AB8MD",
+      "role": "comments",
+      "navigation": "comments",
+      "ordered": true
+    }
+  ]
+}

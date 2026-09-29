@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Sequence",
+  "description": "A database sequence.",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "kind",
+    "id",
+    "name",
+    "displayName",
+    "pluralName",
+    "database",
+    "schema",
+    "description",
+    "stereotypes",
+    "tags",
+    "category",
+    "type",
+    "start",
+    "increment",
+    "min",
+    "max",
+    "cycle",
+    "cache",
+    "properties",
+    "generation",
+    "source"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "kind": {
+      "const": "sequence"
+    },
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "name": {
+      "$ref": "common.json#/$defs/label",
+      "default": ""
+    },
+    "displayName": {
+      "type": "string"
+    },
+    "pluralName": {
+      "type": "string"
+    },
+    "database": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "schema": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "description": {
+      "$ref": "common.json#/$defs/description"
+    },
+    "stereotypes": {
+      "$ref": "common.json#/$defs/keyList",
+      "default": []
+    },
+    "tags": {
+      "$ref": "common.json#/$defs/tagList",
+      "default": []
+    },
+    "category": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "type": {
+      "enum": ["int16", "int32", "int64"],
+      "default": "int64"
+    },
+    "start": {
+      "type": "integer",
+      "default": 1
+    },
+    "increment": {
+      "type": "integer",
+      "default": 1,
+      "not": {
+        "const": 0
+      }
+    },
+    "min": {
+      "type": "integer"
+    },
+    "max": {
+      "type": "integer"
+    },
+    "cycle": {
+      "type": "boolean",
+      "default": false
+    },
+    "cache": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "properties": {
+      "$ref": "common.json#/$defs/properties",
+      "default": {}
+    },
+    "generation": {
+      "$ref": "common.json#/$defs/generation",
+      "default": {}
+    },
+    "source": {
+      "$ref": "common.json#/$defs/source"
+    }
+  },
+  "required": ["kind", "id", "name", "database"],
+  "additionalProperties": false
+}

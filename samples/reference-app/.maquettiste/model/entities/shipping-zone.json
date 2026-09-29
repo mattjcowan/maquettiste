@@ -1,0 +1,54 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2BMMVEMY8VK72J5CG52HYCZ",
+  "name": "ShippingZone",
+  "displayName": "Shipping zone",
+  "pluralName": "Shipping zones",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "A destination zone used to rate freight, such as zone 5 from Denver.",
+  "tags": [
+    "configuration"
+  ],
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "key": {
+    "attributes": [
+      "01M234GRXTF73ZSFNKA1XRHTRS"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M234GRXTF73ZSFNKA1XRHTRS",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the shipping zone."
+    },
+    {
+      "id": "01M332ZB1R8YSRZJ1QS68F57GW",
+      "name": "code",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Zone code."
+    },
+    {
+      "id": "01M2MC5GE3AV24RWYPTKMP6HA4",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "required": true,
+      "description": "Zone name."
+    },
+    {
+      "id": "01M1SFDJCZPQPQJ7AVNRFDBCMH",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "description": "Postal code ranges in the zone."
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M36B5S17JHX2WD4MPTH5TREK",
+  "name": "InventoryHold",
+  "displayName": "Inventory hold",
+  "pluralName": "Inventory holds",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "A hold that blocks stock from being picked, such as a recall or a failed inspection.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M35CCV7JMKXAQ9VVDW9BCJXR"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M35CCV7JMKXAQ9VVDW9BCJXR",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the inventory hold."
+    },
+    {
+      "id": "01M1WJEMRN9FZ9G5HH7HBA4C5H",
+      "name": "reason",
+      "type": "string",
+      "length": 200,
+      "required": true,
+      "description": "Why the stock is held."
+    },
+    {
+      "id": "01M2MHJR0T7DTRYTX1G7HQKKVF",
+      "name": "placedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the hold was placed."
+    },
+    {
+      "id": "01M219PXY924KD8R4QPJCX948X",
+      "name": "releasedAt",
+      "type": "datetimeoffset",
+      "description": "When it was released."
+    },
+    {
+      "id": "01M24D916WSGFZR75A10WFFWHG",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity held; null for everything in scope."
+    }
+  ]
+}

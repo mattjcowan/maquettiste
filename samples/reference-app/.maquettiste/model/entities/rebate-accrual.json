@@ -1,0 +1,64 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2JEP6SPY9HB6JD7RSDP7RX6",
+  "name": "RebateAccrual",
+  "displayName": "Rebate accrual",
+  "pluralName": "Rebate accruals",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "A rebate accrued on an invoice under a rebate program.",
+  "tags": [
+    "financial",
+    "transactional"
+  ],
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "key": {
+    "attributes": [
+      "01M35G1G55N9CMQ6DCK8ST1WTS"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M35G1G55N9CMQ6DCK8ST1WTS",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the rebate accrual."
+    },
+    {
+      "id": "01M1V1XD1YHKX8W4J7VQ9HQBKG",
+      "name": "accruedOn",
+      "type": "date",
+      "required": true,
+      "description": "Date of accrual."
+    },
+    {
+      "id": "01M1WZRN271EVZB6M9GEX2X6RQ",
+      "name": "baseAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Eligible invoice amount."
+    },
+    {
+      "id": "01M24Z4FC7HCPAE4R9C26GFK20",
+      "name": "rebateAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Rebate accrued."
+    },
+    {
+      "id": "01M1DJGWPCZZ7GAHWH82HQVQWG",
+      "name": "isSettled",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether it was paid out or credited."
+    }
+  ]
+}

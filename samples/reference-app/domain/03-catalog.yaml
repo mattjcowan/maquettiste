@@ -1,0 +1,329 @@
+package: Catalog
+displayName: Catalog
+description: What Northwind sells - products and their variants, categories, brands, packaging, barcodes, content and compliance data.
+
+enums:
+  ProductStatus:
+    description: Lifecycle of a product in the catalog.
+    members:
+      Draft: DRAFT | Being set up; not sellable.
+      Active: ACTIVE | Sellable and replenished.
+      PhasingOut: PHASEOUT | Sold from remaining stock, no longer replenished.
+      Discontinued: DISC | No longer sold.
+      Blocked: BLOCK | Temporarily unsellable, for example after a recall.
+
+entities:
+  Product:
+    description: A catalog item Northwind sells and stocks. Variants carry the sellable SKUs when the product comes in several options.
+    stereotypes: [aggregate-root, audited, soft-delete]
+    tags: [master-data]
+    attributes:
+      sku: Sku! | Stock keeping unit of the base product.
+      name: string(200)! indexed | Product name as printed on documents.
+      shortDescription: string(500) | One-paragraph description for listings.
+      longDescription: text | Full description in Markdown.
+      status: ProductStatus! default=Draft | Lifecycle state.
+      isSerialized: bool! default=false | Whether each unit carries a serial number.
+      isLotControlled: bool! default=false | Whether stock is tracked by lot or batch.
+      shelfLifeDays: int16 min=1 | Days from production to expiry, for perishables.
+      dimensions: Dimensions | Size of one sales unit.
+      weight: Weight | Weight of one sales unit.
+      listPrice: Money | Published list price per sales unit.
+      countryOfOrigin: CountryCode | Where the goods were produced, for customs.
+      launchedOn: date | First sale date.
+      discontinuedOn: date | Last sale date.
+    alternateKeys:
+      sku: [sku]
+    refs:
+      category: ProductCategory! back=products | Primary catalog category.
+      brand: Brand back=products | Brand the product is sold under.
+      manufacturer: Manufacturer | Who makes the product.
+      baseUnit: UnitOfMeasure! | Unit stock is counted in.
+      salesUnit: UnitOfMeasure | Unit the product is sold in when it differs from the base unit.
+      tariffCode: TariffCode | Harmonized System code for customs.
+      hazardClass: HazardClass | Dangerous goods class; null when not hazardous.
+      storageCondition: StorageCondition | Required storage condition.
+      preferredSupplier: Supplier | Supplier buyers source from by default.
+    children:
+      variants: ProductVariant | Sellable options of the product.
+      images: ProductImage ordered | Images in display order.
+      documents: ProductDocument | Datasheets, manuals and safety data sheets.
+      barcodes: ProductBarcode | Barcodes printed on the product and its packaging.
+      packagings: ProductPackaging | Packaging levels (inner, case, pallet).
+      translations: ProductTranslation | Localized names and descriptions.
+      attributeValues: ProductAttributeValue | Values of filterable product attributes.
+    mapping:
+      description: The product status is stored through a lookup table so reports can join its display names.
+      storage:
+        status: lookup
+    overlay:
+      description: Product search and integrity tuning.
+      columns:
+        name:
+          comment: Searched with a trigram index in production.
+      checks:
+        ck_products_discontinued_after_launch: discontinued_on IS NULL OR launched_on IS NULL OR discontinued_on >= launched_on
+      indexes:
+        - name: ix_products_status_name
+          columns: [status, name]
+
+  ProductVariant:
+    description: A sellable option of a product, such as a size or a color, with its own SKU.
+    stereotypes: [audited, soft-delete]
+    tags: [master-data]
+    attributes:
+      sku: Sku! unique | SKU of the variant.
+      name: string(200)! | Variant name, such as Nitrile gloves, large.
+      optionSummary: string(200) | Option values, such as Blue / Large.
+      listPrice: Money | Variant list price when it differs from the product's.
+      weight: Weight | Weight of one unit.
+      isActive: bool! default=true | Whether the variant can be ordered.
+
+  ProductCategory:
+    description: A node of the catalog tree (Janitorial > Gloves > Nitrile gloves).
+    stereotypes: [audited]
+    tags: [master-data]
+    pluralName: Product categories
+    attributes:
+      code: string(40)! unique | Stable category code used in feeds.
+      name: string(120)! | Category name.
+      description: text | Category landing page copy.
+      sortOrder: int32! default=0 | Position among its siblings.
+      isActive: bool! default=true | Whether the category is shown.
+    refs:
+      parent: ProductCategory back=subcategories | Parent category; null for top-level categories.
+
+  Brand:
+    description: A brand products are marketed under, which may differ from the manufacturer.
+    stereotypes: [audited]
+    tags: [master-data]
+    attributes:
+      name: string(120)! unique | Brand name.
+      description: text | Brand story.
+      logoUrl: string(400) | Logo image URL.
+      website: string(200) | Brand website.
+    refs:
+      manufacturer: Manufacturer back=brands | Company that owns the brand.
+
+  Manufacturer:
+    description: A company that produces goods Northwind sells.
+    stereotypes: [audited]
+    tags: [master-data]
+    attributes:
+      name: string(200)! unique | Manufacturer name.
+      website: string(200) | Website.
+      supportEmail: EmailAddress | Technical support mailbox.
+      supportPhone: PhoneNumber | Technical support line.
+      countryCode: CountryCode | Country of the head office.
+
+  ProductAttribute:
+    description: Definition of a filterable product characteristic, such as Glove size or Voltage.
+    tags: [configuration]
+    key: identity32
+    attributes:
+      code: string(60)! unique | Attribute code used in feeds.
+      name: string(100)! | Display name.
+      dataType: string(20)! | Value type - text, number, boolean or option.
+      unit: string(10) | Unit of numeric values, such as mm.
+      isFilterable: bool! default=true | Whether the storefront offers it as a filter.
+    children:
+      options: ProductAttributeOption ordered | Allowed values of an option attribute.
+
+  ProductAttributeOption:
+    description: An allowed value of an option attribute, such as Large for Glove size.
+    tags: [configuration]
+    key: identity32
+    attributes:
+      value: string(100)! | Option value.
+      label: string(100) | Display label when it differs from the value.
+
+  ProductAttributeValue:
+    description: The value of one attribute for one product.
+    key: ulid
+    attributes:
+      textValue: string(500) | Value of a text attribute.
+      numericValue: decimal(18,4) | Value of a number attribute.
+      booleanValue: bool | Value of a boolean attribute.
+    refs:
+      definition: ProductAttribute! restrict | Attribute the value is for.
+      option: ProductAttributeOption | Chosen option, for option attributes.
+
+  ProductImage:
+    description: An image of a product, stored in the media CDN.
+    key: ulid
+    attributes:
+      url: string(400)! | Image URL.
+      altText: string(200) | Accessible description.
+      widthPx: int32 min=1 | Width in pixels.
+      heightPx: int32 min=1 | Height in pixels.
+      isPrimary: bool! default=false | Image used in listings.
+
+  ProductDocument:
+    description: A document attached to a product, such as a safety data sheet or an installation guide.
+    stereotypes: [audited]
+    key: ulid
+    attributes:
+      title: string(200)! | Document title.
+      documentType: string(40)! | Kind, such as sds, datasheet or manual.
+      url: string(400)! | Document URL.
+      languageCode: string(5) | Language of the document.
+      revision: string(10) | Revision label.
+      publishedOn: date | Date the revision was published.
+
+  ProductBundle:
+    description: A kit sold under one SKU and assembled from component products at picking time, such as a janitorial starter kit.
+    stereotypes: [aggregate-root, audited, soft-delete]
+    tags: [master-data]
+    attributes:
+      sku: Sku! unique | SKU of the bundle.
+      name: string(200)! | Bundle name.
+      price: Money! | Bundle price.
+      isActive: bool! default=true | Whether the bundle can be ordered.
+    children:
+      components: BundleComponent ordered | Products in the bundle.
+
+  BundleComponent:
+    description: A product and quantity included in a bundle.
+    attributes:
+      quantity: decimal(12,3)! min=0 | Quantity per bundle, in the product's base unit.
+    refs:
+      product: Product! | Component product.
+
+  ProductBarcode:
+    description: A barcode that identifies a product at a packaging level.
+    attributes:
+      symbology: string(12)! | Barcode type, such as GTIN-13, UPC-A or GS1-128.
+      value: string(48)! unique | Encoded value.
+      isPrimary: bool! default=false | Barcode printed on labels by default.
+    refs:
+      unit: UnitOfMeasure | Packaging unit the barcode identifies.
+
+  ProductPackaging:
+    description: A packaging level of a product, such as a case of 12 or a pallet of 60 cases.
+    attributes:
+      packagingLevel: string(20)! | Packaging level - each, inner, case or pallet.
+      unitsPerPackage: int32! min=1 | Base units in one package.
+      dimensions: Dimensions | Outer dimensions.
+      grossWeight: Weight | Weight including packaging.
+      gtin: string(14) | GTIN of the package.
+    refs:
+      unit: UnitOfMeasure! | Unit of measure of the package.
+
+  TariffCode:
+    description: A Harmonized System tariff code with the default import duty rate.
+    tags: [master-data, integration]
+    attributes:
+      code: string(12)! unique | HS or HTS code, such as 4015.19.1010.
+      description: string(300)! | Official description.
+      dutyRate: Percentage | General duty rate.
+    refs:
+      country: Country | Country whose tariff schedule defines the code; null for the international six-digit code.
+
+  HazardClass:
+    description: A dangerous goods class for shipping and storage, such as 3 Flammable liquids.
+    stereotypes: [lookup]
+    tags: [configuration]
+    key: identity32
+    pluralName: Hazard classes
+    attributes:
+      unNumber: string(6) | UN number of the typical substance.
+      packingGroup: string(3) | Packing group I, II or III.
+      requiresPlacard: bool! default=false | Whether vehicles must display a placard.
+
+  SalesChannel:
+    description: A route to market, such as the customer portal, EDI or a marketplace.
+    stereotypes: [audited]
+    tags: [configuration]
+    attributes:
+      code: string(20)! unique | Channel code.
+      name: string(100)! | Channel name.
+      isMarketplace: bool! default=false | Whether a third party hosts the channel.
+      commissionRate: Percentage | Fee the channel charges on sales.
+
+  ChannelListing:
+    description: A product offered on a sales channel, with the channel's identifier and price.
+    stereotypes: [audited]
+    tags: [integration]
+    attributes:
+      externalId: string(64) | Channel's identifier for the listing.
+      listedPrice: Money | Price shown on the channel.
+      isPublished: bool! default=false | Whether the listing is live.
+      publishedAt: datetimeoffset | When it went live.
+    refs:
+      product: Product! cascade back=channelListings | Product listed.
+      salesChannel: SalesChannel! | Channel the product is listed on.
+
+  ProductCollection:
+    description: A curated set of products, such as Back to school or Top sellers, used by merchandising.
+    stereotypes: [audited]
+    attributes:
+      name: string(120)! unique | Collection name.
+      description: text | Description shown to customers.
+      isFeatured: bool! default=false | Shown on the portal home page.
+      validity: DateRange | When the collection is shown.
+
+  ProductCertification:
+    description: A certification a product holds, such as UL, CE or FDA 510(k).
+    stereotypes: [audited]
+    tags: [master-data]
+    attributes:
+      certificationType: string(40)! | Scheme, such as UL or CE.
+      certificateNumber: string(60) | Certificate number.
+      issuedBy: string(120) | Certification body.
+      validity: DateRange! | Period the certificate is valid.
+    refs:
+      product: Product! cascade back=certifications | Certified product.
+
+  ProductSubstitute:
+    description: A product that can replace another when it is out of stock, ranked by preference.
+    attributes:
+      reason: string(200) | Why the substitute fits.
+      priority: int16! default=1 min=1 | Rank among substitutes; 1 is preferred.
+      requiresApproval: bool! default=true | Whether the customer must approve the substitution.
+    refs:
+      product: Product! cascade back=substitutes | Product being replaced.
+      substitute: Product! | Replacement product.
+
+  ProductTranslation:
+    description: The name and descriptions of a product in another language.
+    attributes:
+      name: string(200)! | Translated name.
+      shortDescription: string(500) | Translated short description.
+      longDescription: text | Translated long description.
+    refs:
+      language: Language! | Language of the translation.
+
+  ProductLifecycleEvent:
+    description: A change of a product's lifecycle status, kept as history.
+    tags: [high-volume]
+    key: identity
+    attributes:
+      fromStatus: ProductStatus | Status before the change.
+      toStatus: ProductStatus! | Status after the change.
+      occurredAt: datetimeoffset! | When the change happened.
+      reason: string(300) | Why the status changed.
+    refs:
+      product: Product! cascade back=lifecycleEvents | Product that changed.
+      changedBy: UserAccount | Who changed it.
+
+  ProductRecommendation:
+    description: A cross-sell, up-sell or accessory suggestion from one product to another.
+    attributes:
+      recommendationType: string(20)! | Kind of suggestion - cross-sell, up-sell or accessory.
+      score: decimal(5,4) min=0 max=1 | Relevance score from the recommender.
+      isManual: bool! default=false | Whether merchandising added it by hand.
+    refs:
+      product: Product! cascade back=recommendations | Product viewed.
+      recommended: Product! | Product suggested.
+
+relations:
+  - name: collection includes product
+    description: Products in a merchandising collection; a product may appear in many collections.
+    ends:
+      - ProductCollection collections * nav
+      - Product products * nav
+
+diagram:
+  name: Catalog
+  description: Products with their variants, content, packaging and classification.
+  columns: 5

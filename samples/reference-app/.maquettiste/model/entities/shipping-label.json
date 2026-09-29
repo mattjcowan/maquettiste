@@ -1,0 +1,50 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1R6S1JXPMN2ESV2D5SF0RK6",
+  "name": "ShippingLabel",
+  "displayName": "Shipping label",
+  "pluralName": "Shipping labels",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "A carrier label generated for a package.",
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "key": {
+    "attributes": [
+      "01M1GDH31R360DVMSPDZFZ1XM6"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1GDH31R360DVMSPDZFZ1XM6",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the shipping label."
+    },
+    {
+      "id": "01M1E73B478PRKTZH77WCYF652",
+      "name": "format",
+      "type": "string",
+      "length": 10,
+      "required": true,
+      "description": "ZPL or PDF."
+    },
+    {
+      "id": "01M2FY52YH0ND2M28PQ2BM2ZPG",
+      "name": "storageKey",
+      "type": "string",
+      "length": 400,
+      "required": true,
+      "description": "Object storage key of the label file."
+    },
+    {
+      "id": "01M1Z0F4SNB93YCVQ4B8PKEDWV",
+      "name": "generatedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the label was generated."
+    }
+  ]
+}

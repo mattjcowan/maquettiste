@@ -1,0 +1,41 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2MFKW4HVFDKS6H9XAXFW6D3",
+  "name": "HoldReason",
+  "displayName": "Hold reason",
+  "pluralName": "Hold reasons",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "A reason for holding an order, such as Credit limit exceeded or Price below cost.",
+  "stereotypes": [
+    "lookup"
+  ],
+  "tags": [
+    "configuration"
+  ],
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M2P64PTPS4CSPJCEHYGFYCT6"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M2P64PTPS4CSPJCEHYGFYCT6",
+      "name": "id",
+      "type": "int32",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the hold reason."
+    },
+    {
+      "id": "01M1NTHWCBDEPHMTEMK7443HE7",
+      "name": "requiresCreditApproval",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether only the credit department can release it."
+    }
+  ]
+}

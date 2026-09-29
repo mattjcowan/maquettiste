@@ -1,0 +1,10 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M1KCV6RXC2TMFYC5R9X6GFKB",
+  "name": "Carrier in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "entity": "01M1G2SEEYS4QSB6TPNAN1D1TC",
+  "description": "Discriminator value of carriers in the parties table.",
+  "discriminatorValue": "CARRIER"
+}

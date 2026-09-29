@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M33P7HGNR8HXC6QSF07Y4X8T",
+  "name": "service case assigned to",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "Agent.",
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "ends": [
+    {
+      "id": "01M28EP20294T9QS9HV3DGCHVM",
+      "entity": "01M1RJC20E0YQ2SZNHD9NJW74W",
+      "role": "assignedTo",
+      "navigation": "assignedTo",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2YZ3M62HT30JT2QJKHCEAKP",
+      "entity": "01M2NPNWREHQKBV15PJMWZPKRK",
+      "role": "serviceCases"
+    }
+  ]
+}

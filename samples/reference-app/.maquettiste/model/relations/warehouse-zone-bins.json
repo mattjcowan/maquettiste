@@ -1,0 +1,27 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2FVG6WHP2RP8MXSKKQ54PTW",
+  "name": "warehouse zone bins",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "relationKind": "composition",
+  "description": "Bins in the zone.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M2TYNXAKP70QCW5YYKGPJK3V",
+      "entity": "01M1VN8RTMC4K1SC96KPFP2P1H",
+      "role": "warehouseZone",
+      "navigation": "warehouseZone",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M32SW8TS3MR9RB80Z66RE56J",
+      "entity": "01M23889DSDTV8CMFDQXJCF0NM",
+      "role": "bins",
+      "navigation": "bins"
+    }
+  ]
+}

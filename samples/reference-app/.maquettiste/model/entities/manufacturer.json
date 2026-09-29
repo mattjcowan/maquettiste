@@ -1,0 +1,73 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2GNPY4VHZ54THRVC2PFYTY0",
+  "name": "Manufacturer",
+  "displayName": "Manufacturer",
+  "pluralName": "Manufacturers",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "A company that produces goods Northwind sells.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "master-data"
+  ],
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M2Y9BGF1Z4F2PMQJBN1C56J9"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2Y9BGF1Z4F2PMQJBN1C56J9",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the manufacturer."
+    },
+    {
+      "id": "01M1GKPACJ9C3WXN0EGFQ2STTJ",
+      "name": "name",
+      "type": "string",
+      "length": 200,
+      "required": true,
+      "unique": true,
+      "description": "Manufacturer name."
+    },
+    {
+      "id": "01M2C8R9CBJEXR9595GCQT0B5S",
+      "name": "website",
+      "type": "string",
+      "length": 200,
+      "description": "Website."
+    },
+    {
+      "id": "01M1JS8FS1P5W06R75SZ4SS75G",
+      "name": "supportEmail",
+      "type": {
+        "ref": "01M1RSY89TKR4D2MJY2YC131S7"
+      },
+      "description": "Technical support mailbox."
+    },
+    {
+      "id": "01M2C4PWY2ZCDMGCKYM2WWJABS",
+      "name": "supportPhone",
+      "type": {
+        "ref": "01M30MZJ6XA7K0NQK6ACTMB0VD"
+      },
+      "description": "Technical support line."
+    },
+    {
+      "id": "01M2T3MN2PJ22C8PP7MJFRWEB6",
+      "name": "countryCode",
+      "type": {
+        "ref": "01M1T721QDBZQ0CD3XP8NBVSEQ"
+      },
+      "description": "Country of the head office."
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2ZJSYWGGAKNSMD065A5WGJ5",
+  "name": "StandardCost",
+  "displayName": "Standard cost",
+  "pluralName": "Standard costs",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "The standard cost of a product for a period, used for margin reporting and inventory valuation.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "key": {
+    "attributes": [
+      "01M1GYDEN9QCMM8DGSNYREFJCH"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1GYDEN9QCMM8DGSNYREFJCH",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the standard cost."
+    },
+    {
+      "id": "01M2ESDXXD7AV8R4VYAFRBG1GK",
+      "name": "cost",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Cost per base unit."
+    },
+    {
+      "id": "01M1TW6XJW229NSZMWX2D6MRYC",
+      "name": "validity",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "required": true,
+      "description": "Period the cost applies."
+    },
+    {
+      "id": "01M2Z8G5QA0AHQ9DVG63M10TA5",
+      "name": "costingMethod",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "standard",
+      "description": "standard, average or last-purchase."
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2EE2G117QN4KHVZYDCHGQP6",
+  "name": "JournalLine",
+  "displayName": "Journal line",
+  "pluralName": "Journal lines",
+  "package": "01M1EYTWAA6REG1KFCR9N7XQ27",
+  "description": "A debit or credit to one ledger account within a journal entry.",
+  "tags": [
+    "financial",
+    "high-volume"
+  ],
+  "category": "01M1E9BTZZTKGKC2S6YTG3CKTZ",
+  "key": {
+    "attributes": [
+      "01M30AWF1N7VZSM0RK3B2STNHV"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M30AWF1N7VZSM0RK3B2STNHV",
+      "name": "id",
+      "type": "int64",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the journal line."
+    },
+    {
+      "id": "01M2E935787BKB79J6DCJ4BS0V",
+      "name": "debit",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Debit amount; null on credit lines."
+    },
+    {
+      "id": "01M29A3YWEPK3R9F76HEABHSX6",
+      "name": "credit",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Credit amount; null on debit lines."
+    },
+    {
+      "id": "01M1X5MG36WAH6JZCKG3T53BGK",
+      "name": "memo",
+      "type": "string",
+      "length": 200,
+      "description": "Line memo."
+    }
+  ]
+}

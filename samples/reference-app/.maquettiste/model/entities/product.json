@@ -1,0 +1,154 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M20RAEF2QZ5W8HV57RBX5PQV",
+  "name": "Product",
+  "displayName": "Product",
+  "pluralName": "Products",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "A catalog item Northwind sells and stocks. Variants carry the sellable SKUs when the product comes in several options.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited",
+    "soft-delete"
+  ],
+  "tags": [
+    "master-data"
+  ],
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M21CEWPZEZXBZBFT2MQB0408"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "alternateKeys": [
+    {
+      "id": "01M31F6AYEYF7WCT72X6QSG95K",
+      "name": "sku",
+      "attributes": [
+        "01M2582KZ5DN65SSVP7M06QPGE"
+      ]
+    }
+  ],
+  "attributes": [
+    {
+      "id": "01M21CEWPZEZXBZBFT2MQB0408",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the product."
+    },
+    {
+      "id": "01M2582KZ5DN65SSVP7M06QPGE",
+      "name": "sku",
+      "type": {
+        "ref": "01M2FWAWDSNBGY4P6KKC4TJBR0"
+      },
+      "required": true,
+      "description": "Stock keeping unit of the base product."
+    },
+    {
+      "id": "01M1YR5HYS8A9QPY38XWTNXMV0",
+      "name": "name",
+      "type": "string",
+      "length": 200,
+      "required": true,
+      "indexed": true,
+      "description": "Product name as printed on documents."
+    },
+    {
+      "id": "01M2RWFVH5HYDZEGFS5T8VA9CV",
+      "name": "shortDescription",
+      "type": "string",
+      "length": 500,
+      "description": "One-paragraph description for listings."
+    },
+    {
+      "id": "01M1NG8W64XA0TZJ6RWY12ZKG8",
+      "name": "longDescription",
+      "type": "text",
+      "description": "Full description in Markdown."
+    },
+    {
+      "id": "01M29DN2SH7797NZQ6X169SD1T",
+      "name": "status",
+      "type": {
+        "ref": "01M2YW6JHEB1CVE5XWYKQ1MYBG"
+      },
+      "required": true,
+      "default": "Draft",
+      "description": "Lifecycle state."
+    },
+    {
+      "id": "01M2X53ZQBNVDF7ARG6CHB2582",
+      "name": "isSerialized",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether each unit carries a serial number."
+    },
+    {
+      "id": "01M1N9FACG3CMAVR26FWF54Y4B",
+      "name": "isLotControlled",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether stock is tracked by lot or batch."
+    },
+    {
+      "id": "01M35RQNJPV4BYGVKV58HRQ2V9",
+      "name": "shelfLifeDays",
+      "type": "int16",
+      "validation": {
+        "min": 1
+      },
+      "description": "Days from production to expiry, for perishables."
+    },
+    {
+      "id": "01M27AY8CK2XTX15MMMRWVJ776",
+      "name": "dimensions",
+      "type": {
+        "ref": "01M2KN9XND2J83MCCF4JHYK5ED"
+      },
+      "description": "Size of one sales unit."
+    },
+    {
+      "id": "01M2V3PFDDZR5W2H4SDT8QWN93",
+      "name": "weight",
+      "type": {
+        "ref": "01M36PE7EQVEDETJ5QMAXH25ZX"
+      },
+      "description": "Weight of one sales unit."
+    },
+    {
+      "id": "01M1XT4J2YH7BKRYPPJP5K7VMZ",
+      "name": "listPrice",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Published list price per sales unit."
+    },
+    {
+      "id": "01M2GTK3ZM85Y01XJXQR3QBMT5",
+      "name": "countryOfOrigin",
+      "type": {
+        "ref": "01M1T721QDBZQ0CD3XP8NBVSEQ"
+      },
+      "description": "Where the goods were produced, for customs."
+    },
+    {
+      "id": "01M1KJ51K1NAZ33XAJ0WXWCKNT",
+      "name": "launchedOn",
+      "type": "date",
+      "description": "First sale date."
+    },
+    {
+      "id": "01M33GSMNA9WP68R0QRWZS3SVH",
+      "name": "discontinuedOn",
+      "type": "date",
+      "description": "Last sale date."
+    }
+  ]
+}

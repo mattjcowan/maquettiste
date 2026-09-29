@@ -1,0 +1,39 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M28TJCF7N27D37WBVSPC4GTB",
+  "name": "BudgetLine",
+  "displayName": "Budget line",
+  "pluralName": "Budget lines",
+  "package": "01M1EYTWAA6REG1KFCR9N7XQ27",
+  "description": "A budgeted amount for one ledger account and period.",
+  "tags": [
+    "financial"
+  ],
+  "category": "01M1E9BTZZTKGKC2S6YTG3CKTZ",
+  "key": {
+    "attributes": [
+      "01M24GQ3XVP5RH18CRB9JXRBZN"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M24GQ3XVP5RH18CRB9JXRBZN",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the budget line."
+    },
+    {
+      "id": "01M201REDD6WEPVJSCA4STH3TR",
+      "name": "amount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Budgeted amount."
+    }
+  ]
+}

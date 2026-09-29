@@ -1,0 +1,17 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M25T7P8M1N0AAPHRJKNEXJSA",
+  "name": "Party in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "entity": "01M2FA89Y26C424MWK7D3TQPT5",
+  "description": "Customers, suppliers and carriers share the parties table (TPH) with a readable discriminator; the headquarters address columns get a short hq_ prefix.",
+  "inheritance": "tph",
+  "discriminatorValue": "PARTY",
+  "attributes": [
+    {
+      "attribute": "01M1THCWTCJ280XZXDDKJ0BBCF",
+      "prefix": "hq_"
+    }
+  ]
+}

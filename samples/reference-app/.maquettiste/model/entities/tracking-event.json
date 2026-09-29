@@ -1,0 +1,68 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M3299XTTYA2ED10M1J5P66Q2",
+  "name": "TrackingEvent",
+  "displayName": "Tracking event",
+  "pluralName": "Tracking events",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "A scan event reported by a carrier for a shipment.",
+  "tags": [
+    "high-volume",
+    "integration"
+  ],
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "key": {
+    "attributes": [
+      "01M1FA1JTE1BBX2E91EEQMBXYG"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M1FA1JTE1BBX2E91EEQMBXYG",
+      "name": "id",
+      "type": "int64",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the tracking event."
+    },
+    {
+      "id": "01M1RR01XZ4M6739HQ1ANZ5GYW",
+      "name": "occurredAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the scan happened."
+    },
+    {
+      "id": "01M1TG8628QQ619R50ZPXPF843",
+      "name": "eventCode",
+      "type": "string",
+      "length": 10,
+      "required": true,
+      "description": "Carrier event code."
+    },
+    {
+      "id": "01M1DXBACES3G6XTJ57V0EHDQ3",
+      "name": "description",
+      "type": "string",
+      "length": 200,
+      "description": "Event text."
+    },
+    {
+      "id": "01M1DXGM963KB2YKWZDCQVSYP1",
+      "name": "city",
+      "type": "string",
+      "length": 80,
+      "description": "Scan location."
+    },
+    {
+      "id": "01M2A9A1GKEAF7PVZQ0GT30KAW",
+      "name": "countryCode",
+      "type": {
+        "ref": "01M1T721QDBZQ0CD3XP8NBVSEQ"
+      },
+      "description": "Scan country."
+    }
+  ]
+}

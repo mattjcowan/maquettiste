@@ -1,0 +1,333 @@
+package: Sales
+displayName: Sales orders
+description: Quotes, orders and their lines, holds, charges and promotions applied, blanket and standing orders, the portal cart and sales commissions.
+
+enums:
+  SalesOrderStatus:
+    description: Lifecycle of a sales order.
+    members:
+      Draft: DRAFT | Being entered.
+      Submitted: SUBMIT | Placed by the customer, awaiting confirmation.
+      Confirmed: CONFIRM | Accepted; stock is being allocated.
+      OnHold: HOLD | Blocked by a credit, pricing or compliance hold.
+      PartiallyShipped: PARTSHIP | Some lines have shipped.
+      Shipped: SHIPPED | Every line has shipped.
+      Invoiced: INVOICED | Fully invoiced.
+      Cancelled: CANCEL | Cancelled before shipping.
+      Closed: CLOSED | Complete and archived.
+  OrderLineStatus:
+    description: Fulfillment state of a sales order line.
+    members:
+      Open: OPEN | Not yet allocated.
+      Allocated: ALLOC | Stock reserved.
+      Backordered: BACKORD | Waiting for stock.
+      Picked: PICKED | Picked in the warehouse.
+      Shipped: SHIPPED | Left the warehouse.
+      Cancelled: CANCEL | Cancelled.
+  QuoteStatus:
+    description: Lifecycle of a sales quote.
+    members:
+      Draft: DRAFT | Being prepared.
+      Sent: SENT | Sent to the customer.
+      Accepted: ACCEPT | Accepted; an order was created.
+      Rejected: REJECT | Declined by the customer.
+      Expired: EXPIRE | Validity date passed.
+
+entities:
+  SalesOrder:
+    description: A customer's order for goods, from entry through shipping and invoicing.
+    stereotypes: [aggregate-root, audited, soft-delete]
+    tags: [transactional, financial]
+    attributes:
+      orderNumber: string(20)! unique | Order number, SO- followed by six digits from sales_order_number_seq.
+      orderedAt: datetimeoffset! | When the order was placed.
+      status: SalesOrderStatus! default=Draft | Lifecycle state.
+      customerPoNumber: string(40) indexed | Customer's purchase order number.
+      source: string(20)! default=portal | Entry channel - portal, edi, phone or email.
+      requestedDeliveryOn: date | Delivery date the customer asked for.
+      promisedDeliveryOn: date | Delivery date Northwind committed to.
+      billingAddress: Address! | Bill-to address, copied from the customer when the order is placed.
+      shippingAddress: Address! | Ship-to address.
+      freightTerms: FreightTerms | Incoterm that decides who pays freight.
+      subtotal: Money! | Sum of line totals.
+      discountTotal: Money! | Order-level discounts.
+      taxTotal: Money! | Sales tax.
+      freightTotal: Money! | Freight and handling charges.
+      grandTotal: Money! | Amount the customer owes.
+      notes: text | Instructions from the customer.
+    refs:
+      customer: Customer! back=salesOrders | Customer who placed the order.
+      contact: Contact | Buyer who placed the order.
+      salesRep: Employee | Rep credited with the sale.
+      priceList: PriceList | Price list used.
+      currency: Currency! | Currency of the order.
+      paymentTerm: PaymentTerm | Payment terms of the order.
+      shipFromWarehouse: Warehouse | Warehouse that fulfills the order.
+      salesChannel: SalesChannel | Channel the order came through.
+      quote: SalesQuote | Quote the order was created from.
+      cancellationReason: CancellationReason | Why the order was cancelled.
+    children:
+      lines: SalesOrderLine ordered | Ordered products.
+      charges: OrderCharge | Freight, handling and surcharges.
+      holds: OrderHold | Holds placed on the order.
+      comments: SalesOrderNote | Internal and customer-visible notes.
+      statusChanges: SalesOrderStatusChange | Status history.
+      attachments: SalesOrderAttachment | Files attached to the order.
+      appliedPromotions: AppliedPromotion | Promotions applied to the order.
+    mapping:
+      description: The two embedded addresses get short bill_ and ship_ column prefixes.
+      prefix:
+        billingAddress: bill_
+        shippingAddress: ship_
+    overlay:
+      description: Order number default, amount checks and the order-date index.
+      columns:
+        orderNumber:
+          defaultSql: "'SO-' || lpad(nextval('northwind.sales_order_number_seq')::text, 6, '0')"
+          comment: Assigned from sales_order_number_seq when the application does not supply one.
+      indexes:
+        - name: ix_sales_orders_ordered_at
+          columns: [orderedAt desc]
+
+  SalesOrderLine:
+    description: One product ordered on a sales order, with its quantity, price and fulfillment state.
+    stereotypes: [audited]
+    tags: [transactional, high-volume]
+    key: ulid
+    attributes:
+      lineNumber: int32! min=1 | Line number printed on documents.
+      description: string(300) | Line text, defaulting to the product name.
+      quantity: decimal(12,3)! min=0 | Quantity ordered, in the line's unit.
+      unitPrice: Money! | Price per unit after contract pricing.
+      discount: Percentage | Line discount.
+      taxRate: Percentage | Sales tax rate applied.
+      lineTotal: Money! | Quantity times price, less discount.
+      status: OrderLineStatus! default=Open | Fulfillment state.
+      requestedOn: date | Requested delivery date, when it differs from the order's.
+    refs:
+      product: Product! | Product ordered.
+      variant: ProductVariant | Variant ordered.
+      unit: UnitOfMeasure! | Unit of the quantity.
+      warehouse: Warehouse | Warehouse the line ships from, when split.
+    mapping:
+      description: Line status is stored as its integer value to keep this high-volume table narrow.
+      storage:
+        status: int
+    overlay:
+      description: Quantity must be positive.
+      checks:
+        ck_sales_order_lines_quantity_positive: quantity > 0
+
+  SalesQuote:
+    description: A priced offer to a customer that can be converted into an order.
+    stereotypes: [aggregate-root, audited, soft-delete]
+    tags: [transactional]
+    attributes:
+      quoteNumber: string(20)! unique | Quote number.
+      issuedOn: date! | Date the quote was sent.
+      validUntil: date! | Last day the prices hold.
+      status: QuoteStatus! default=Draft | Lifecycle state.
+      totalAmount: Money | Quoted total.
+      notes: text | Terms and remarks.
+    refs:
+      customer: Customer! back=quotes | Customer quoted.
+      preparedBy: Employee | Rep who prepared it.
+      currency: Currency! | Currency of the quote.
+    children:
+      lines: SalesQuoteLine ordered | Quoted products.
+
+  SalesQuoteLine:
+    description: A quoted product and price.
+    attributes:
+      quantity: decimal(12,3)! min=0 | Quantity quoted.
+      unitPrice: Money! | Quoted price per unit.
+      discount: Percentage | Quoted discount.
+      lineTotal: Money | Line total.
+    refs:
+      product: Product! | Quoted product.
+      unit: UnitOfMeasure | Unit of the quantity.
+
+  OrderHold:
+    description: A hold that blocks an order from shipping until released, such as a credit hold.
+    stereotypes: [audited]
+    attributes:
+      placedAt: datetimeoffset! | When the hold was placed.
+      releasedAt: datetimeoffset | When it was released.
+      comment: string(500) | Explanation.
+    refs:
+      reason: HoldReason! | Why the order is held.
+      placedBy: UserAccount | Who placed it; null for automatic holds.
+      releasedBy: UserAccount | Who released it.
+
+  HoldReason:
+    description: A reason for holding an order, such as Credit limit exceeded or Price below cost.
+    stereotypes: [lookup]
+    tags: [configuration]
+    key: identity32
+    attributes:
+      requiresCreditApproval: bool! default=false | Whether only the credit department can release it.
+
+  SalesOrderNote:
+    description: A note on a sales order, internal or visible to the customer on the portal.
+    stereotypes: [audited]
+    attributes:
+      body: text! | Note text.
+      isCustomerVisible: bool! default=false | Shown on the customer portal.
+    refs:
+      author: UserAccount | Who wrote the note.
+
+  SalesOrderStatusChange:
+    description: A status transition of a sales order, kept as history.
+    tags: [high-volume]
+    key: identity
+    attributes:
+      fromStatus: SalesOrderStatus | Status before.
+      toStatus: SalesOrderStatus! | Status after.
+      changedAt: datetimeoffset! | When the change happened.
+      reason: string(300) | Why it changed.
+    refs:
+      changedBy: UserAccount | Who changed it; null for automatic transitions.
+
+  Backorder:
+    description: A quantity of an order line that could not be allocated and waits for replenishment.
+    stereotypes: [audited]
+    tags: [transactional]
+    attributes:
+      quantity: decimal(12,3)! min=0 | Quantity waiting.
+      expectedOn: date | Expected availability date.
+      customerNotifiedAt: datetimeoffset | When the customer was told.
+      isFulfilled: bool! default=false | Whether it has been allocated since.
+    refs:
+      salesOrderLine: SalesOrderLine! cascade back=backorders | Line backordered.
+      purchaseOrderLine: PurchaseOrderLine | Inbound purchase that will cover it.
+
+  BlanketOrder:
+    description: A long-term purchase commitment by a customer, released in smaller orders over time.
+    stereotypes: [aggregate-root, audited]
+    tags: [transactional, financial]
+    attributes:
+      blanketNumber: string(20)! unique | Agreement number.
+      validity: DateRange! | Commitment period.
+      committedAmount: Money! | Total amount committed.
+      releasedAmount: Money! | Amount released so far.
+      isClosed: bool! default=false | Whether the commitment is closed.
+    refs:
+      customer: Customer! back=blanketOrders | Committing customer.
+      currency: Currency! | Currency of the commitment.
+    children:
+      lines: BlanketOrderLine | Committed products.
+
+  BlanketOrderLine:
+    description: A product and quantity committed on a blanket order.
+    attributes:
+      committedQuantity: decimal(12,3)! min=0 | Quantity committed.
+      releasedQuantity: decimal(12,3)! default=0 min=0 | Quantity released so far.
+      unitPrice: Money! | Committed price.
+    refs:
+      product: Product! | Committed product.
+
+  OrderCharge:
+    description: A charge added to a sales order, such as freight, handling or a fuel surcharge.
+    attributes:
+      chargeType: string(30)! | freight, handling, fuel-surcharge or small-order.
+      description: string(200) | Text printed on the invoice.
+      amount: Money! | Charge amount.
+      isTaxable: bool! default=false | Whether sales tax applies.
+    refs:
+      surcharge: Surcharge | Surcharge rule that produced the charge.
+
+  AppliedPromotion:
+    description: A promotion applied to a sales order or one of its lines, with the discount it granted.
+    attributes:
+      discountAmount: Money! | Discount granted.
+      appliedAt: datetimeoffset! | When it was applied.
+    refs:
+      promotion: Promotion! | Promotion applied.
+      salesOrderLine: SalesOrderLine cascade | Line it applies to; null for order-level promotions.
+
+  Cart:
+    description: A customer portal shopping cart that becomes a sales order at checkout.
+    stereotypes: [aggregate-root, audited]
+    attributes:
+      cartToken: string(64)! unique | Opaque token held by the browser.
+      lastActivityAt: datetimeoffset! | Last change to the cart.
+      isAbandoned: bool! default=false | Flagged by the abandoned-cart job.
+    refs:
+      userAccount: UserAccount! | Portal user who owns the cart.
+      customer: Customer! | Customer account the cart orders for.
+      convertedOrder: SalesOrder | Order created at checkout.
+    children:
+      items: CartItem ordered | Products in the cart.
+
+  CartItem:
+    description: A product in a portal cart.
+    attributes:
+      quantity: decimal(12,3)! min=0 | Quantity wanted.
+      addedAt: datetimeoffset! | When it was added.
+      unitPriceSnapshot: Money | Price shown when it was added.
+    refs:
+      product: Product! | Product in the cart.
+      variant: ProductVariant | Variant in the cart.
+
+  StandingOrder:
+    description: A recurring order that the scheduler places automatically, such as weekly cleaning supplies.
+    stereotypes: [aggregate-root, audited]
+    attributes:
+      name: string(120)! | Name shown to the customer.
+      frequency: string(20)! | weekly, biweekly or monthly.
+      nextRunOn: date! indexed | Date the next order will be placed.
+      isActive: bool! default=true | Whether it is running.
+      validity: DateRange | When it runs.
+    refs:
+      customer: Customer! back=standingOrders | Ordering customer.
+      shipTo: PartyAddress | Delivery address.
+    children:
+      lines: StandingOrderLine ordered | Products ordered each time.
+
+  StandingOrderLine:
+    description: A product and quantity ordered on every run of a standing order.
+    attributes:
+      quantity: decimal(12,3)! min=0 | Quantity per run.
+    refs:
+      product: Product! | Product ordered.
+      unit: UnitOfMeasure | Unit of the quantity.
+
+  SalesOrderAttachment:
+    description: A file attached to a sales order, such as the customer's PO PDF.
+    stereotypes: [audited]
+    key: ulid
+    attributes:
+      fileName: string(255)! | Original file name.
+      contentType: string(100)! | MIME type.
+      sizeBytes: int64! min=0 | File size.
+      storageKey: string(400)! | Object storage key.
+      uploadedAt: datetimeoffset! | When it was uploaded.
+    refs:
+      uploadedBy: UserAccount | Who uploaded it.
+
+  CancellationReason:
+    description: A reason for cancelling an order, such as Customer changed mind or Duplicate order.
+    stereotypes: [lookup]
+    tags: [configuration]
+    key: identity32
+    attributes:
+      countsAsLostSale: bool! default=true | Whether the cancellation counts as a lost sale in reports.
+
+  SalesCommission:
+    description: Commission earned by a sales rep on an order.
+    stereotypes: [audited]
+    tags: [financial]
+    attributes:
+      commissionRate: Percentage! | Rate applied.
+      commissionAmount: Money! | Commission earned.
+      earnedOn: date! | Date it was earned, usually the invoice date.
+      isPaid: bool! default=false | Whether payroll paid it.
+      paidOn: date | Payroll date.
+    refs:
+      salesRep: Employee! | Rep who earned it.
+      salesOrder: SalesOrder! cascade back=commissions | Order it was earned on.
+
+diagram:
+  name: Sales orders
+  description: Quotes and orders with their lines, holds, charges and history.
+  columns: 5

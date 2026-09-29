@@ -1,0 +1,35 @@
+{
+  "$schema": "../../.schema/v1/value-object.json",
+  "kind": "value-object",
+  "id": "01M2MP2MXM08FGYG28KHK94RB5",
+  "name": "PersonName",
+  "displayName": "Person name",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "The name of a natural person.",
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "attributes": [
+    {
+      "id": "01M2SE2PD23MMVJ8C1W4TJ4MXC",
+      "name": "givenName",
+      "type": "string",
+      "length": 80,
+      "required": true,
+      "description": "First or given name."
+    },
+    {
+      "id": "01M1RCZ8W26X73GNAPPTSWQEP8",
+      "name": "familyName",
+      "type": "string",
+      "length": 80,
+      "required": true,
+      "description": "Last or family name."
+    },
+    {
+      "id": "01M29PBJAP4MKX1DHTZSG7253V",
+      "name": "title",
+      "type": "string",
+      "length": 20,
+      "description": "Salutation, such as Dr. or Ms."
+    }
+  ]
+}

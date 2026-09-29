@@ -1,0 +1,186 @@
+package: Returns
+displayName: Returns and service
+description: After the sale - return authorizations and inspections, replacements, warranty claims, repairs, service cases and customer feedback.
+
+enums:
+  ReturnStatus:
+    description: Lifecycle of a return authorization.
+    members:
+      Requested: REQ | Asked for by the customer.
+      Approved: APPR | Approved; the customer may send the goods.
+      Rejected: REJ | Not accepted.
+      Received: RCVD | Goods arrived at the warehouse.
+      Inspected: INSP | Goods inspected and dispositioned.
+      Credited: CRED | Credit note issued.
+      Closed: CLOSED | Complete.
+  CasePriority:
+    description: Urgency of a service case.
+    members:
+      Low: P4 | Answer within five business days.
+      Normal: P3 | Answer within two business days.
+      High: P2 | Answer within one business day.
+      Urgent: P1 | Answer within four hours; customer operations are blocked.
+  CaseStatus:
+    description: Lifecycle of a service case.
+    members:
+      New: NEW | Not yet triaged.
+      Open: OPEN | Being worked.
+      WaitingOnCustomer: WAIT | Waiting for the customer's answer.
+      Resolved: RESOLVED | Solution provided.
+      Closed: CLOSED | Confirmed or timed out.
+
+entities:
+  ReturnAuthorization:
+    description: A return merchandise authorization (RMA) permitting a customer to send goods back.
+    stereotypes: [aggregate-root, audited]
+    tags: [transactional]
+    attributes:
+      rmaNumber: string(20)! unique | RMA number the customer writes on the parcel.
+      requestedOn: date! | Request date.
+      status: ReturnStatus! default=Requested | Lifecycle state.
+      approvedOn: date | Approval date.
+      returnMethod: string(20) | carrier-pickup or drop-off.
+      restockingFeePercent: Percentage | Restocking fee charged.
+      customerComments: text | What the customer said.
+    refs:
+      customer: Customer! back=returns | Returning customer.
+      salesOrder: SalesOrder | Original order.
+      invoice: Invoice | Original invoice.
+      approvedBy: Employee | Who approved it.
+      receivingWarehouse: Warehouse | Where the goods go.
+    children:
+      lines: ReturnLine | Products returned.
+
+  ReturnLine:
+    description: A product and quantity on a return authorization, with its condition and disposition.
+    stereotypes: [audited]
+    attributes:
+      quantity: decimal(12,3)! min=0 | Quantity authorized.
+      receivedQuantity: decimal(12,3) min=0 | Quantity received.
+      itemCondition: string(20) | new, opened or damaged.
+      disposition: string(20) | restock, scrap or return-to-vendor.
+      creditAmount: Money | Credit granted for the line.
+    refs:
+      product: Product! | Product returned.
+      reason: ReturnReason! | Why it was returned.
+      salesOrderLine: SalesOrderLine | Original order line.
+      serialNumber: SerialNumber | Serialized unit returned.
+      lot: StockLot | Lot returned.
+
+  ReturnReason:
+    description: A reason for a return, such as Damaged in transit or Ordered in error.
+    stereotypes: [lookup]
+    tags: [configuration]
+    key: identity32
+    attributes:
+      isCustomerFault: bool! default=false | Whether a restocking fee applies.
+      requiresInspection: bool! default=true | Whether goods must be inspected before credit.
+
+  ReturnInspection:
+    description: An inspection of returned goods that decides the disposition.
+    attributes:
+      inspectedAt: datetimeoffset! | When it was inspected.
+      outcome: string(20)! | resaleable, refurbish or scrap.
+      notes: text | Findings.
+      photoUrl: string(400) | Photo of the goods.
+    refs:
+      returnLine: ReturnLine! cascade back=inspections | Line inspected.
+      inspector: Employee | Inspector.
+
+  WarrantyClaim:
+    description: A claim that a product failed within its warranty, passed on to the manufacturer.
+    stereotypes: [aggregate-root, audited]
+    attributes:
+      claimNumber: string(20)! unique | Claim number.
+      filedOn: date! | Filing date.
+      failureDescription: text! | What failed.
+      status: string(20)! default=filed | filed, approved, denied or reimbursed.
+      claimAmount: Money | Amount claimed from the manufacturer.
+      resolution: string(500) | Outcome.
+    refs:
+      customer: Customer! | Claiming customer.
+      product: Product! | Failed product.
+      serialNumber: SerialNumber | Failed unit.
+      manufacturer: Manufacturer | Manufacturer claimed against.
+
+  ServiceCase:
+    description: A customer service request, such as a missing delivery, a billing question or a product problem.
+    stereotypes: [aggregate-root, audited]
+    tags: [transactional]
+    attributes:
+      caseNumber: string(20)! unique | Case number.
+      subject: string(200)! | One-line summary.
+      description: text | Customer's description.
+      priority: CasePriority! default=Normal | Urgency.
+      status: CaseStatus! default=New | Lifecycle state.
+      openedAt: datetimeoffset! | When the case was opened.
+      slaDueAt: datetimeoffset indexed | When the first answer is due.
+      resolvedAt: datetimeoffset | When it was resolved.
+    refs:
+      customer: Customer! back=serviceCases | Customer.
+      contact: Contact | Contact who raised it.
+      assignedTo: Employee | Agent.
+      salesOrder: SalesOrder | Order concerned.
+      product: Product | Product concerned.
+    children:
+      comments: ServiceCaseComment ordered | Conversation.
+
+  ServiceCaseComment:
+    description: A message on a service case, from the customer or an agent.
+    attributes:
+      body: text! | Message.
+      isInternal: bool! default=false | Hidden from the customer.
+      postedAt: datetimeoffset! | When it was posted.
+    refs:
+      author: UserAccount | Author.
+
+  RepairOrder:
+    description: A repair of a returned or warranty unit, in house or at a service partner.
+    stereotypes: [audited]
+    attributes:
+      repairNumber: string(20)! unique | Repair number.
+      receivedOn: date | Date the unit arrived.
+      status: string(20)! default=open | open, diagnosing, repairing or done.
+      diagnosis: text | Technician's diagnosis.
+      laborHours: decimal(6,2) min=0 | Hours worked.
+      cost: Money | Repair cost.
+      completedOn: date | Date finished.
+    refs:
+      serviceCase: ServiceCase | Case that triggered it.
+      warrantyClaim: WarrantyClaim | Warranty claim covering it.
+      product: Product! | Product repaired.
+      serialNumber: SerialNumber | Unit repaired.
+      technician: Employee | Technician.
+
+  Replacement:
+    description: A replacement sent for a returned or failed product before or instead of a credit.
+    stereotypes: [audited]
+    attributes:
+      quantity: decimal(12,3)! min=0 | Quantity sent.
+      shippedOn: date | Ship date.
+      isCharged: bool! default=false | Whether the customer pays for it.
+      notes: string(500) | Remarks.
+    refs:
+      returnLine: ReturnLine! | Return line replaced.
+      product: Product! | Product sent.
+      shipment: Shipment | Shipment that carried it.
+
+  CustomerFeedback:
+    description: A rating and comment from a customer after a delivery or a service case.
+    tags: [pii]
+    pluralName: Customer feedback
+    attributes:
+      submittedAt: datetimeoffset! | When it was submitted.
+      rating: int16! min=1 max=5 | Rating from 1 to 5.
+      channel: string(20) | survey, portal or phone.
+      comments: text | Free text.
+      followUpRequired: bool! default=false | Whether someone should call back.
+    refs:
+      customer: Customer | Customer.
+      contact: Contact | Contact who answered.
+      salesOrder: SalesOrder | Order rated.
+      serviceCase: ServiceCase | Case rated.
+
+diagram:
+  name: Returns and service
+  description: Returns, warranty, repairs and service cases.

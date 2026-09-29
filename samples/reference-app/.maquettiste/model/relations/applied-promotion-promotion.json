@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M35ER98A8BZZYV38YW2FJHXA",
+  "name": "applied promotion promotion",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "Promotion applied.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "ends": [
+    {
+      "id": "01M1DNPKX3HNK5Z1SJ758PQVP3",
+      "entity": "01M2EPFHYBDKM3VHP8XR1NNKGZ",
+      "role": "promotion",
+      "navigation": "promotion",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M1R6Y1WEHHMH5NY69ANC79SN",
+      "entity": "01M2RAWA2R3YTRTN2NZYY3W84T",
+      "role": "appliedPromotions"
+    }
+  ]
+}

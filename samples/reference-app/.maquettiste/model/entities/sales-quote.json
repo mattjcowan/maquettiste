@@ -1,0 +1,82 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1X8D633QD4FHDVREPQ0K8JN",
+  "name": "SalesQuote",
+  "displayName": "Sales quote",
+  "pluralName": "Sales quotes",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "A priced offer to a customer that can be converted into an order.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited",
+    "soft-delete"
+  ],
+  "tags": [
+    "transactional"
+  ],
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M1H6T7ZA8NAM0154KEN75Z13"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1H6T7ZA8NAM0154KEN75Z13",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the sales quote."
+    },
+    {
+      "id": "01M1Z65X24EJR6C8DD0VE58FCD",
+      "name": "quoteNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Quote number."
+    },
+    {
+      "id": "01M2NWX7FBTCEG43ZD8TFBX840",
+      "name": "issuedOn",
+      "type": "date",
+      "required": true,
+      "description": "Date the quote was sent."
+    },
+    {
+      "id": "01M26WNFG7D41WPNKBE6ZPZBJZ",
+      "name": "validUntil",
+      "type": "date",
+      "required": true,
+      "description": "Last day the prices hold."
+    },
+    {
+      "id": "01M2TS7HHH0SHPQXJXFQYGFCEC",
+      "name": "status",
+      "type": {
+        "ref": "01M1GJF7Z2MAYD6N02ZBGZ6AWQ"
+      },
+      "required": true,
+      "default": "Draft",
+      "description": "Lifecycle state."
+    },
+    {
+      "id": "01M1F8N872YR9J58NZ4CF7V5CW",
+      "name": "totalAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Quoted total."
+    },
+    {
+      "id": "01M1XCQFSY41QV9PG72487AQVY",
+      "name": "notes",
+      "type": "text",
+      "description": "Terms and remarks."
+    }
+  ]
+}

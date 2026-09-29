@@ -1,0 +1,53 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1J74B04MKM165DQBGCYK4JP",
+  "name": "ProductSubstitute",
+  "displayName": "Product substitute",
+  "pluralName": "Product substitutes",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "A product that can replace another when it is out of stock, ranked by preference.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M1TFN8P1W7GVE2KV4CSNZHTX"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1TFN8P1W7GVE2KV4CSNZHTX",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the product substitute."
+    },
+    {
+      "id": "01M2ZSVZR07QH9W8R41WVEWKH1",
+      "name": "reason",
+      "type": "string",
+      "length": 200,
+      "description": "Why the substitute fits."
+    },
+    {
+      "id": "01M2J7DKAD518YFYP68KHNJY60",
+      "name": "priority",
+      "type": "int16",
+      "required": true,
+      "default": 1,
+      "validation": {
+        "min": 1
+      },
+      "description": "Rank among substitutes; 1 is preferred."
+    },
+    {
+      "id": "01M31XWCY2AG9WXHGMXD9W606C",
+      "name": "requiresApproval",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether the customer must approve the substitution."
+    }
+  ]
+}

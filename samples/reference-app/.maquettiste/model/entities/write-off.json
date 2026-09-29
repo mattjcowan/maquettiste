@@ -1,0 +1,57 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1JB5KP4X1QZ0YD2TYHE2E3Y",
+  "name": "WriteOff",
+  "displayName": "Write off",
+  "pluralName": "Write offs",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "A bad debt write-off of an uncollectable invoice balance.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "key": {
+    "attributes": [
+      "01M2E4JX6Y8DBGVHYGCCA6SE21"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2E4JX6Y8DBGVHYGCCA6SE21",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the write off."
+    },
+    {
+      "id": "01M1K5VC02QEX13MRMHZ7ZAZVB",
+      "name": "writtenOffOn",
+      "type": "date",
+      "required": true,
+      "description": "Date written off."
+    },
+    {
+      "id": "01M25X5QEY665914Z54TH3795A",
+      "name": "amount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Amount written off."
+    },
+    {
+      "id": "01M1VH4F6SE7BRM718GJ0A8HRB",
+      "name": "reason",
+      "type": "string",
+      "length": 300,
+      "required": true,
+      "description": "Why it is uncollectable."
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "$schema": "../../../.schema/v1/stereotype.json",
+  "kind": "stereotype",
+  "id": "01M268M1HR6GYTBR9W825CY8WE",
+  "key": "lookup",
+  "name": "Lookup",
+  "description": "An extensible code list maintained by administrators; each row has a code, a display name, an order and an active flag.",
+  "appliesTo": [
+    "entity"
+  ],
+  "attributes": [
+    {
+      "id": "01M1Q2XEZTSQ4A7SG2QB2MDQ7G",
+      "name": "code",
+      "type": "string",
+      "length": 32,
+      "required": true,
+      "unique": true,
+      "description": "Short stable code used in integrations and imports."
+    },
+    {
+      "id": "01M32VYTXQMHC0TM6FHBHKHE4T",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "required": true,
+      "description": "Display name shown in pick lists."
+    },
+    {
+      "id": "01M2WVYB596ZFE7XF9DEVKTVCD",
+      "name": "sortOrder",
+      "type": "int32",
+      "required": true,
+      "default": 0,
+      "description": "Position in pick lists."
+    },
+    {
+      "id": "01M352J3V77SWZZE4X5PY7GPHN",
+      "name": "isActive",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether the value can be chosen for new records."
+    }
+  ]
+}

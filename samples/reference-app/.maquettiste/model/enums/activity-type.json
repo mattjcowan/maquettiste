@@ -1,0 +1,47 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M31GDDDB5XZG88XWED2KE84K",
+  "name": "ActivityType",
+  "displayName": "Activity type",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "Kind of sales activity.",
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "members": [
+    {
+      "id": "01M1YWXWDENTR8FQ35YPHGCG7B",
+      "name": "Call",
+      "value": 0,
+      "code": "CALL",
+      "description": "A phone call."
+    },
+    {
+      "id": "01M1HZRQ8Q351FNZHVVCFVQN20",
+      "name": "Email",
+      "value": 1,
+      "code": "MAIL",
+      "description": "An email exchange."
+    },
+    {
+      "id": "01M2ETT4NBNRQYJHD80H77AFE5",
+      "name": "Meeting",
+      "value": 2,
+      "code": "MEET",
+      "description": "A scheduled meeting, online or in person."
+    },
+    {
+      "id": "01M30R7KSYSA6GES576M4HYYEZ",
+      "name": "Visit",
+      "value": 3,
+      "code": "VISIT",
+      "description": "A site visit to the customer."
+    },
+    {
+      "id": "01M31DVFXRCE5RM0C4QDHK9WE0",
+      "name": "Task",
+      "value": 4,
+      "code": "TASK",
+      "description": "A follow-up to do."
+    }
+  ]
+}

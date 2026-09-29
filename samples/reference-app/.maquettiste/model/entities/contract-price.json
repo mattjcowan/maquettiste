@@ -1,0 +1,55 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1KJGAVWEYW5G736B2EFT27H",
+  "name": "ContractPrice",
+  "displayName": "Contract price",
+  "pluralName": "Contract prices",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "A contracted cost of a product under a supplier contract.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "key": {
+    "attributes": [
+      "01M1VMYPVGXJCGZFXG2VFNNPCM"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1VMYPVGXJCGZFXG2VFNNPCM",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the contract price."
+    },
+    {
+      "id": "01M2DPAR6WRKTZAVCZ2M2VBAXZ",
+      "name": "unitCost",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Contracted cost."
+    },
+    {
+      "id": "01M2ZSEDYG9J76C8PQ9RG0NS41",
+      "name": "minimumQuantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "validation": {
+        "min": 0
+      },
+      "description": "Minimum quantity for the cost."
+    },
+    {
+      "id": "01M30GQVWSWJ64VGPV8VSN0XHA",
+      "name": "validity",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "description": "Validity within the contract."
+    }
+  ]
+}

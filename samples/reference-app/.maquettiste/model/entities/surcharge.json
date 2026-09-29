@@ -1,0 +1,82 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M31YXX3N12VR7R73KM2FD95H",
+  "name": "Surcharge",
+  "displayName": "Surcharge",
+  "pluralName": "Surcharges",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "An extra charge added to orders, such as a fuel surcharge or a small-order fee.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "configuration"
+  ],
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "key": {
+    "attributes": [
+      "01M2ATV3CE4H0P1QDE8XPA2FEG"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2ATV3CE4H0P1QDE8XPA2FEG",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the surcharge."
+    },
+    {
+      "id": "01M1X1JAYDMFNNZX2R30327SBT",
+      "name": "code",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Surcharge code."
+    },
+    {
+      "id": "01M1VZKM29F7WPETXDFTWF3HN3",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "required": true,
+      "description": "Name printed on invoices."
+    },
+    {
+      "id": "01M1DJKT42YM9G2XGKH427D8X4",
+      "name": "calculation",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "percent or flat."
+    },
+    {
+      "id": "01M1RDWNM1CG450VC0WEE0S9KF",
+      "name": "rate",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "description": "Percentage, for percent surcharges."
+    },
+    {
+      "id": "01M1NT92KPMN74KE4RGZE8VTG6",
+      "name": "amount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Amount, for flat surcharges."
+    },
+    {
+      "id": "01M27KVVW8ZGF0M05M90B02TSV",
+      "name": "validity",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "description": "When the surcharge applies."
+    }
+  ]
+}

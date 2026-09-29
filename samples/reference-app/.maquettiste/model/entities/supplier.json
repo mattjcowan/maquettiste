@@ -1,0 +1,56 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2A5WW8NFWJS1V5NFRKCBNYV",
+  "name": "Supplier",
+  "displayName": "Supplier",
+  "pluralName": "Suppliers",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "base": "01M2FA89Y26C424MWK7D3TQPT5",
+  "description": "A vendor Northwind buys goods from.",
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "attributes": [
+    {
+      "id": "01M25RBBGHFYKVQQ1MKWTJMS47",
+      "name": "leadTimeDays",
+      "type": "int16",
+      "required": true,
+      "default": 14,
+      "validation": {
+        "min": 0
+      },
+      "description": "Typical days from purchase order to receipt."
+    },
+    {
+      "id": "01M2SV35SHYKN67WHGA09JKPND",
+      "name": "minimumOrderValue",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Smallest purchase order the supplier accepts."
+    },
+    {
+      "id": "01M2WHFE5VREPDSHRRMWC13RG8",
+      "name": "isPreferred",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether buyers should source from this supplier first."
+    },
+    {
+      "id": "01M1PD3AWCAVG0XEABKS2T3CJJ",
+      "name": "onboardedOn",
+      "type": "date",
+      "description": "Date the supplier passed vendor onboarding."
+    },
+    {
+      "id": "01M1EF3TQ138CHVRCM6Y0BPCBP",
+      "name": "remitToAddresses",
+      "type": {
+        "ref": "01M2WPKGPNR6R40TDZ1WGNN874"
+      },
+      "collection": true,
+      "description": "Addresses where payments may be sent; kept in a child table."
+    }
+  ]
+}

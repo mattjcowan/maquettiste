@@ -1,0 +1,69 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2GZ7CDQBV3AYDJG2TSYK8MJ",
+  "name": "LateFee",
+  "displayName": "Late fee",
+  "pluralName": "Late fees",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "A finance charge assessed on an overdue invoice.",
+  "tags": [
+    "financial"
+  ],
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "key": {
+    "attributes": [
+      "01M2ZN1V5ZMTRG5SKHEMRSY7GH"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2ZN1V5ZMTRG5SKHEMRSY7GH",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the late fee."
+    },
+    {
+      "id": "01M2EDFZ3M31HD6J8MY1SYYSTQ",
+      "name": "assessedOn",
+      "type": "date",
+      "required": true,
+      "description": "Date assessed."
+    },
+    {
+      "id": "01M24V116QTF1411A8MXB3SQTF",
+      "name": "amount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Fee amount."
+    },
+    {
+      "id": "01M2HKZ0ZZPT8WKZNMN24NDRKX",
+      "name": "rate",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "description": "Monthly rate applied."
+    },
+    {
+      "id": "01M25D482YH7MDPSE480QFTQPE",
+      "name": "isWaived",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether it was waived."
+    },
+    {
+      "id": "01M2KYBHA41CF7YNH1FNV9JWYB",
+      "name": "waivedReason",
+      "type": "string",
+      "length": 200,
+      "description": "Why it was waived."
+    }
+  ]
+}

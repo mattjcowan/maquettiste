@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/package.json",
+  "kind": "package",
+  "id": "01M1EYTWAA6REG1KFCR9N7XQ27",
+  "name": "Finance",
+  "displayName": "Finance and ledger",
+  "description": "The general ledger - chart of accounts, fiscal periods, journal entries, cost centers, tax rates and jurisdictions, exchange rates and budgets.",
+  "category": "01M1E9BTZZTKGKC2S6YTG3CKTZ"
+}

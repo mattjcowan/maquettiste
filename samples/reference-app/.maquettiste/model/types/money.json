@@ -1,0 +1,30 @@
+{
+  "$schema": "../../.schema/v1/value-object.json",
+  "kind": "value-object",
+  "id": "01M1E1QZTYXKP86JJA9BVRS3V7",
+  "name": "Money",
+  "displayName": "Money",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "An amount in a currency. Amounts carry four decimals so unit prices of cheap items survive rounding.",
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "attributes": [
+    {
+      "id": "01M2F0J6BP6ANZPCKC1PDHHED0",
+      "name": "amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "required": true,
+      "description": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M2GZ9SKD5TS6ZHWVX02PM0J1",
+      "name": "currency",
+      "type": {
+        "ref": "01M1YARMMY84EBD16K0VMXBS4V"
+      },
+      "required": true,
+      "description": "The ISO 4217 currency of the amount."
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/package.json",
+  "kind": "package",
+  "id": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "name": "Returns",
+  "displayName": "Returns and service",
+  "description": "After the sale - return authorizations and inspections, replacements, warranty claims, repairs, service cases and customer feedback.",
+  "category": "01M1QNVKDMDN8496P6K46TZG03"
+}

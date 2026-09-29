@@ -1,0 +1,21 @@
+{{-
+include "_csharp.scriban"
+name = type_name(value_object)
+usings = namespaces_used(value_object, value_object.attributes)
+-}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+using System.Text.Json;
+{{- for u in usings }}
+using {{ u }};
+{{- end }}
+
+namespace {{ ns(value_object) }};
+
+{{ doc(value_object.description, "") }}public sealed partial record {{ name }}
+{
+{{- for a in value_object.attributes }}
+{{ doc(a.description, "    ") }}    public {{ prop_type(a) }} {{ prop_name(a, name) }} { get; init; }{{ initializer(a) }}
+{{- end }}
+}

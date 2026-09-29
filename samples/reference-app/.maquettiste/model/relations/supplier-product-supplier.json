@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1NRZXNJ044NV2C6MZ9CBS56",
+  "name": "supplier product supplier",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "Supplier offering it.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "ends": [
+    {
+      "id": "01M1H39590V52J23XHHXVEGD34",
+      "entity": "01M2A5WW8NFWJS1V5NFRKCBNYV",
+      "role": "supplier",
+      "navigation": "supplier",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M1EP9ZXE7AVAZ73XBZXY6SMY",
+      "entity": "01M2GHVSN9EWR3VSH0N7HE0NMD",
+      "role": "catalogItems",
+      "navigation": "catalogItems"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M31K5YGJMF9WMPW2ZYPV88GH",
+  "name": "public holiday country",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "Country observing the holiday.",
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "ends": [
+    {
+      "id": "01M2V76BHQMD8MDJ7CS973VACQ",
+      "entity": "01M2RAXZ22RVANB50R7WSE5D6R",
+      "role": "country",
+      "navigation": "country",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M2F5RQCWBN6GT2F1KWP6FNWJ",
+      "entity": "01M1JN1E7DZ4F3N86DGE4GPWNQ",
+      "role": "publicHolidays",
+      "navigation": "publicHolidays"
+    }
+  ]
+}

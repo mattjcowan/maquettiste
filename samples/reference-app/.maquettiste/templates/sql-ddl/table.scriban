@@ -1,0 +1,15 @@
+{{- include "_sql.scriban" -}}
+{{ banner "--" }}
+-- Table {{ table.schema ? table.schema + "." : "" }}{{ table.name }} of database {{ table.database.name }} ({{ dialect_title(table.database) }}).
+{{- if table.entity }}
+-- Maps entity {{ table.entity.name }}{{ if table.is_junction }} (junction){{ end }}.
+{{- else if table.relation }}
+-- Junction table of relation "{{ table.relation.name }}".
+{{- else if table.is_lookup }}
+-- Lookup table of an enum; its rows are in seed.sql.
+{{- end }}
+{{- if pack.params.comments && table.comment && table.database.dialect == "sqlite" }}
+-- {{ table.comment }}
+{{- end }}
+
+{{ include "_table.scriban" table }}

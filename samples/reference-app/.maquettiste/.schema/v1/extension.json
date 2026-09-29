@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Extension schema",
+  "description": "extensions/*.json: custom properties for element kinds or stereotypes.",
+  "type": "object",
+  "x-order": ["$schema", "name", "description", "appliesTo", "properties", "required"],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "appliesTo": {
+      "type": "object",
+      "x-order": ["kinds", "stereotypes"],
+      "properties": {
+        "kinds": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "package",
+              "entity",
+              "value-object",
+              "scalar-type",
+              "enum",
+              "relation",
+              "database",
+              "table",
+              "view",
+              "sequence",
+              "mapping",
+              "diagram",
+              "tag-vocabulary",
+              "category-tree",
+              "stereotype",
+              "attribute",
+              "enum-member",
+              "column"
+            ]
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "stereotypes": {
+          "$ref": "common.json#/$defs/keyList",
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
+    "properties": {
+      "description": "A JSON Schema properties object.",
+      "type": "object",
+      "additionalProperties": {
+        "type": ["object", "boolean"]
+      }
+    },
+    "required": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": []
+    }
+  },
+  "required": ["name", "appliesTo", "properties"],
+  "additionalProperties": false
+}

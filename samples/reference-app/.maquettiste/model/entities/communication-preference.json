@@ -1,0 +1,67 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1QZREBJR1KJB4CRM7DVFX2M",
+  "name": "CommunicationPreference",
+  "displayName": "Communication preference",
+  "pluralName": "Communication preferences",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "A contact's opt-in or opt-out for a channel and topic, kept for anti-spam compliance.",
+  "tags": [
+    "pii"
+  ],
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "key": {
+    "attributes": [
+      "01M24KHTF1TKM1NXJMSMGZZP1K"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M24KHTF1TKM1NXJMSMGZZP1K",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the communication preference."
+    },
+    {
+      "id": "01M2NR4DTNE86SBXK77X98TFB1",
+      "name": "channel",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "Channel, such as email or sms."
+    },
+    {
+      "id": "01M2MAWVCH69RB44YT931AMCYA",
+      "name": "topic",
+      "type": "string",
+      "length": 40,
+      "required": true,
+      "description": "Topic, such as promotions or order-updates."
+    },
+    {
+      "id": "01M1T12PZV1R3SETNQRDSXKTT8",
+      "name": "optedIn",
+      "type": "bool",
+      "required": true,
+      "description": "Whether the contact agreed to receive it."
+    },
+    {
+      "id": "01M1VDPVV344PHSXGGE07QVYKY",
+      "name": "changedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the preference was last set."
+    },
+    {
+      "id": "01M2K16MM95XPHP1AZ3XWDMFBM",
+      "name": "source",
+      "type": "string",
+      "length": 40,
+      "description": "Where it was set, such as portal or phone."
+    }
+  ]
+}

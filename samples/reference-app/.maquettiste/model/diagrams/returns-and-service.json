@@ -1,0 +1,88 @@
+{
+  "$schema": "../../.schema/v1/diagram.json",
+  "kind": "diagram",
+  "id": "01M1Y452JBVY5YWCS6VA5HP8D5",
+  "name": "Returns and service",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "Returns, warranty, repairs and service cases.",
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "members": [
+    {
+      "element": "01M1E3YR0WSPEYKSWJAT9DXN0N",
+      "x": 40,
+      "y": 40
+    },
+    {
+      "element": "01M2XYYP2TX3CAXKCVF4SJ4A57",
+      "x": 360,
+      "y": 40
+    },
+    {
+      "element": "01M2TR5XR5D2DFH2H31SW6VC8R",
+      "x": 680,
+      "y": 40
+    },
+    {
+      "element": "01M2G3F0QRHJQDX7XH86FZ40ZQ",
+      "x": 1000,
+      "y": 40
+    },
+    {
+      "element": "01M36YFEAJKTX0GEAR37WGKBNY",
+      "x": 40,
+      "y": 280
+    },
+    {
+      "element": "01M2NPNWREHQKBV15PJMWZPKRK",
+      "x": 360,
+      "y": 280
+    },
+    {
+      "element": "01M1KB2EDCA27GXNM5WJ5AB8MD",
+      "x": 680,
+      "y": 280
+    },
+    {
+      "element": "01M20WRVKPBD33DKT9AJDHG02M",
+      "x": 1000,
+      "y": 280
+    },
+    {
+      "element": "01M2V6B7V63NW9F0RMBDPZ84J8",
+      "x": 40,
+      "y": 520
+    },
+    {
+      "element": "01M1MJZYBD0T8P93CJNST5EH65",
+      "x": 360,
+      "y": 520
+    },
+    {
+      "element": "01M2B7X9JBMXMXNEHWV58CBJ3D"
+    },
+    {
+      "element": "01M2AA3TYH3890SK281872QTNW"
+    },
+    {
+      "element": "01M1W0HN2T67W27QTKN6TT9XMZ"
+    },
+    {
+      "element": "01M352801TZGCKK5TMWSV7JFVX"
+    },
+    {
+      "element": "01M36QQDQMMA7AE1ZZ0Q43MXGD"
+    },
+    {
+      "element": "01M28B972FF171D6P4CRSJNV0J"
+    },
+    {
+      "element": "01M36AEKEEJ7X2HAR2P7YAX9P1"
+    },
+    {
+      "element": "01M2MXDGDCGEKNE7G5MZWTJCAR"
+    }
+  ],
+  "viewport": {
+    "zoom": 0.8
+  }
+}

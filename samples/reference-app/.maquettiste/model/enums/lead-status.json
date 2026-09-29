@@ -1,0 +1,47 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M1J2VYGD1Z513E1SM4R1P362",
+  "name": "LeadStatus",
+  "displayName": "Lead status",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "Qualification state of a lead.",
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "members": [
+    {
+      "id": "01M1KTKG9HMADQT8G7MQT29SKK",
+      "name": "New",
+      "value": 0,
+      "code": "NEW",
+      "description": "Captured, not yet worked."
+    },
+    {
+      "id": "01M1MJMQNH5DQNT8929QVHQ1Y1",
+      "name": "Contacted",
+      "value": 1,
+      "code": "CON",
+      "description": "A rep has reached out."
+    },
+    {
+      "id": "01M2F87H3J6141DHFMYMCW7TKH",
+      "name": "Qualified",
+      "value": 2,
+      "code": "QUA",
+      "description": "Budget, need and timing confirmed."
+    },
+    {
+      "id": "01M317H32NAFVHC1MAQXFPRYZ0",
+      "name": "Disqualified",
+      "value": 3,
+      "code": "DIS",
+      "description": "Not a fit; kept for reporting."
+    },
+    {
+      "id": "01M20CWR0H8CGC3YG3TB09RXK1",
+      "name": "Converted",
+      "value": 4,
+      "code": "CNV",
+      "description": "Became a customer account."
+    }
+  ]
+}

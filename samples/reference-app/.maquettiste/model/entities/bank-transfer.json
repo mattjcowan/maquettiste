@@ -1,0 +1,42 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2MHMAPDE692QC7VC75VVCEJ",
+  "name": "BankTransfer",
+  "displayName": "Bank transfer",
+  "pluralName": "Bank transfers",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "base": "01M1TQTM9KTF1VNQJV2M3WM130",
+  "description": "A payment by ACH, wire or SEPA transfer, identified on the bank statement.",
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "attributes": [
+    {
+      "id": "01M1F60NR2SMVC01K1E1Q7GAQA",
+      "name": "transferReference",
+      "type": "string",
+      "length": 64,
+      "required": true,
+      "description": "Reference on the bank statement."
+    },
+    {
+      "id": "01M1VCM2Y3DZ4PGZ11TPW8M83Y",
+      "name": "payerBankName",
+      "type": "string",
+      "length": 100,
+      "description": "Payer's bank."
+    },
+    {
+      "id": "01M1S6ZGDR2ETGFHR3QE7TVPEG",
+      "name": "payerAccountLast4",
+      "type": "string",
+      "length": 4,
+      "description": "Last digits of the payer's account."
+    },
+    {
+      "id": "01M24VCSS1M8FDBAB1VQYS4WWS",
+      "name": "valueDate",
+      "type": "date",
+      "description": "Date the funds became available."
+    }
+  ]
+}

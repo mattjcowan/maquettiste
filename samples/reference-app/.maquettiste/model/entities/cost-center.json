@@ -1,0 +1,59 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2CS3TZ92TERS04MA3196AS4",
+  "name": "CostCenter",
+  "displayName": "Cost center",
+  "pluralName": "Cost centers",
+  "package": "01M1EYTWAA6REG1KFCR9N7XQ27",
+  "description": "A unit that collects costs for management reporting, such as Denver warehouse or Inside sales.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "financial",
+    "master-data"
+  ],
+  "category": "01M1E9BTZZTKGKC2S6YTG3CKTZ",
+  "key": {
+    "attributes": [
+      "01M2TKFFYKSJ5NYYXCNN17PTYH"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2TKFFYKSJ5NYYXCNN17PTYH",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the cost center."
+    },
+    {
+      "id": "01M2JP0ZWWA1Q11QG6K2JW16JV",
+      "name": "code",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Cost center code."
+    },
+    {
+      "id": "01M1ZGMXCRN98NT9D9VBPN84E6",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "required": true,
+      "description": "Cost center name."
+    },
+    {
+      "id": "01M2JVD028EJRXJDB0Z0CSWB5P",
+      "name": "isActive",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether it can be charged."
+    }
+  ]
+}

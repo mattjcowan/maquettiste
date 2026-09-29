@@ -1,0 +1,56 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M35V5HJM8F5VZX6S43FHFV8X",
+  "name": "TariffCode",
+  "displayName": "Tariff code",
+  "pluralName": "Tariff codes",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "A Harmonized System tariff code with the default import duty rate.",
+  "tags": [
+    "master-data",
+    "integration"
+  ],
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M2VPDPGD18YWB5APW1F9AMPW"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2VPDPGD18YWB5APW1F9AMPW",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the tariff code."
+    },
+    {
+      "id": "01M2PP7AT324JSPD88JQMQNDS9",
+      "name": "code",
+      "type": "string",
+      "length": 12,
+      "required": true,
+      "unique": true,
+      "description": "HS or HTS code, such as 4015.19.1010."
+    },
+    {
+      "id": "01M2BP9FR5CSEYYWV620XN35QN",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "required": true,
+      "description": "Official description."
+    },
+    {
+      "id": "01M1GEKB6KT47WKRQDV6PNZ1QW",
+      "name": "dutyRate",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "description": "General duty rate."
+    }
+  ]
+}

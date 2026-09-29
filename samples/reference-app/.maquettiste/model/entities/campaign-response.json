@@ -1,0 +1,52 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M26W6ESK61D6GNWTNF5PKPRB",
+  "name": "CampaignResponse",
+  "displayName": "Campaign response",
+  "pluralName": "Campaign responses",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "A response to a campaign by a contact or a lead, such as a click, a booth visit or a request for quote.",
+  "tags": [
+    "transactional"
+  ],
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "key": {
+    "attributes": [
+      "01M2D9TGB5RQVR877WYY3YP1PM"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2D9TGB5RQVR877WYY3YP1PM",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the campaign response."
+    },
+    {
+      "id": "01M25DASTB78NW18SMP56DQHSP",
+      "name": "respondedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the response happened."
+    },
+    {
+      "id": "01M2EN76AVBS1M03HY6GCNK0F0",
+      "name": "responseType",
+      "type": "string",
+      "length": 40,
+      "required": true,
+      "description": "Kind of response, such as clicked or visited-booth."
+    },
+    {
+      "id": "01M1JC5F9Y64J35WYQA9C3TRRD",
+      "name": "notes",
+      "type": "string",
+      "length": 500,
+      "description": "Details."
+    }
+  ]
+}

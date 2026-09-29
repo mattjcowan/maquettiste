@@ -1,0 +1,83 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1KG55EGGS6MGV2175NWVN2N",
+  "name": "ProductVariant",
+  "displayName": "Product variant",
+  "pluralName": "Product variants",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "A sellable option of a product, such as a size or a color, with its own SKU.",
+  "stereotypes": [
+    "audited",
+    "soft-delete"
+  ],
+  "tags": [
+    "master-data"
+  ],
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M23ZHXCMWJP1HNAS2TX9TX6N"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M23ZHXCMWJP1HNAS2TX9TX6N",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the product variant."
+    },
+    {
+      "id": "01M1KWY67FSY968Q3E7KZP7CJB",
+      "name": "sku",
+      "type": {
+        "ref": "01M2FWAWDSNBGY4P6KKC4TJBR0"
+      },
+      "required": true,
+      "unique": true,
+      "description": "SKU of the variant."
+    },
+    {
+      "id": "01M2CFD3PP1P1DMZ9F8CYRT1SR",
+      "name": "name",
+      "type": "string",
+      "length": 200,
+      "required": true,
+      "description": "Variant name, such as Nitrile gloves, large."
+    },
+    {
+      "id": "01M2EJAP48GE208324D7HM2VRS",
+      "name": "optionSummary",
+      "type": "string",
+      "length": 200,
+      "description": "Option values, such as Blue / Large."
+    },
+    {
+      "id": "01M378QE8ZWT6ZYTEBV4JEQSVR",
+      "name": "listPrice",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Variant list price when it differs from the product's."
+    },
+    {
+      "id": "01M1Y099123AE9M60BDEHK3FPC",
+      "name": "weight",
+      "type": {
+        "ref": "01M36PE7EQVEDETJ5QMAXH25ZX"
+      },
+      "description": "Weight of one unit."
+    },
+    {
+      "id": "01M2A88EXBJW77TK63FWR2WN1S",
+      "name": "isActive",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether the variant can be ordered."
+    }
+  ]
+}

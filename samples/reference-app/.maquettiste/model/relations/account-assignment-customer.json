@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1K1MDTY7EKZ5KQW2HAW2DNR",
+  "name": "account assignment customer",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "Customer account.",
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "ends": [
+    {
+      "id": "01M3852H9QYT8NCQCG4BZ7J6SM",
+      "entity": "01M1ECZKYNSKVNCWW2XM34E20X",
+      "role": "customer",
+      "navigation": "customer",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M1HZ38FB5CMMHADKTFGK05PE",
+      "entity": "01M27MB1JDD1JEXGF6HNEJ3AR7",
+      "role": "assignments",
+      "navigation": "assignments"
+    }
+  ]
+}

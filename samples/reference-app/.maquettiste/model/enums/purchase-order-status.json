@@ -1,0 +1,68 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M34HFTVY0V59YCNPJHWS70ZR",
+  "name": "PurchaseOrderStatus",
+  "displayName": "Purchase order status",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "Lifecycle of a purchase order.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "members": [
+    {
+      "id": "01M2N9P87JVM7VW5YRW7QWVV0G",
+      "name": "Draft",
+      "value": 0,
+      "code": "DRAFT",
+      "description": "Being prepared by the buyer."
+    },
+    {
+      "id": "01M347B2AT39124FB7EBC6AZEM",
+      "name": "PendingApproval",
+      "value": 1,
+      "code": "PENDAPPR",
+      "description": "Waiting for approval."
+    },
+    {
+      "id": "01M26ADF41E4V6GS7QBAX7YMNN",
+      "name": "Approved",
+      "value": 2,
+      "code": "APPROVED",
+      "description": "Approved, not yet sent."
+    },
+    {
+      "id": "01M2TRMVN33TAV7GPA82YG49NF",
+      "name": "Sent",
+      "value": 3,
+      "code": "SENT",
+      "description": "Sent to the supplier."
+    },
+    {
+      "id": "01M2GG5P1XNR0Q2A77FYBNF32K",
+      "name": "PartiallyReceived",
+      "value": 4,
+      "code": "PARTRCV",
+      "description": "Some goods received."
+    },
+    {
+      "id": "01M1SXKDS62F7ZH9FM7M5ET811",
+      "name": "Received",
+      "value": 5,
+      "code": "RECEIVED",
+      "description": "Everything received."
+    },
+    {
+      "id": "01M2FAQ0ANE4DF9M48B3SSMPYS",
+      "name": "Closed",
+      "value": 6,
+      "code": "CLOSED",
+      "description": "Received and invoiced."
+    },
+    {
+      "id": "01M1VBB1FRH7X9R9R8CW4BN9HT",
+      "name": "Cancelled",
+      "value": 7,
+      "code": "CANCEL",
+      "description": "Cancelled."
+    }
+  ]
+}

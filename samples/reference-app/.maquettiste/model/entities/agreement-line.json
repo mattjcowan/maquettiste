@@ -1,0 +1,54 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M23MARQX94BHXK3Y4EB4Q77C",
+  "name": "AgreementLine",
+  "displayName": "Agreement line",
+  "pluralName": "Agreement lines",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "A price or discount for a product or a whole category within a customer agreement.",
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "key": {
+    "attributes": [
+      "01M2FG1MEEJHCZ1286R7XD9JQM"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2FG1MEEJHCZ1286R7XD9JQM",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the agreement line."
+    },
+    {
+      "id": "01M251835FMV39VV8XNJWJQ9DN",
+      "name": "agreedPrice",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Fixed contract price."
+    },
+    {
+      "id": "01M25VNK1GPC7MFRFBMMC57824",
+      "name": "discount",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "description": "Discount off list price, when no fixed price is agreed."
+    },
+    {
+      "id": "01M2CNP3QFB14DA9MMD9B926JZ",
+      "name": "minimumQuantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "validation": {
+        "min": 0
+      },
+      "description": "Minimum order quantity for the price."
+    }
+  ]
+}

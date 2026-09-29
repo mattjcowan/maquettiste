@@ -1,0 +1,170 @@
+{{-
+# Migration scripts, written once each (mode "once"): one per database and schema revision, from the schema diff between the
+# committed snapshot (.maquettiste/snapshots/<database>.json) and the current model. After a successful generate the snapshot
+# moves to the new revision, so the next diff is empty until the model changes again.
+#
+# Every earlier revision is emitted again as a short placeholder. A "once" file that already exists is kept untouched, so the
+# placeholder is never written over a migration; it only keeps the file owned by this unit, so it is not reported as orphaned.
+include "_sql.scriban"
+include "_objects.scriban"
+include "_migration.scriban"
+db = database
+diff = schema_diff[db.name]
+if diff && diff.to_revision >= 1
+  d = db.dialect
+  go = d == "sqlserver" ? "GO" : ""
+  for rev in 1..diff.to_revision
+    path = (kebab db.name) + "/migrations/" + (rev | math.format "0000") + ".sql"
+    if rev < diff.to_revision || diff.is_empty
+-}}
+{{- capture content -}}
+-- Migration {{ rev | math.format "0000" }} of database {{ db.name }} was written when the schema reached revision {{ rev }}.
+-- This placeholder only appears when that file was deleted; restore the original from version control.
+{{ end -}}
+{{- file path content -}}
+{{-
+      continue
+    end
+    statements = []
+    # Views first: a dropped or changed view may depend on columns that change below.
+    for oc in diff.views
+      if oc.kind == "dropped" || oc.kind == "altered"
+        emit(statements, view_drop(db, oc))
+      end
+    end
+    creates = false
+    for tc in diff.tables
+      if tc.kind == "added"
+        creates = true
+        break
+      end
+    end
+    for oc in diff.sequences
+      if oc.kind == "added"
+        creates = true
+      end
+    end
+    if creates
+      for s in schemas_to_create(db)
+        emit(statements, schema_sql(s, db))
+      end
+    end
+    for oc in diff.sequences
+      if oc.kind == "added"
+        sequence_statements(db, oc, statements)
+      end
+    end
+    # Phase 1: table renames, then foreign key drops (before the keys they reference), then the other constraint and index
+    # drops and renames, then dropped tables (the diff lists them in reverse dependency order).
+    produced = {}
+    for tc in diff.tables
+      if tc.kind == "renamed" || tc.kind == "altered"
+        n = statements.size
+        table_rename_statements(tc, db, statements)
+        table_phase_statements(tc, "before", ["foreign key"], statements)
+        produced[tc.key] = statements.size - n
+      end
+    end
+    for tc in diff.tables
+      if tc.kind == "renamed" || tc.kind == "altered"
+        n = statements.size
+        table_phase_statements(tc, "before", ["check", "unique", "index", "primary key"], statements)
+        produced[tc.key] = produced[tc.key] + statements.size - n
+      end
+    end
+    for tc in diff.tables
+      if tc.kind == "dropped"
+        emit(statements, "DROP TABLE " + qn(db.default_schema, tc.old_name ?? tc.key, db) + ";")
+      end
+    end
+    # Phase 2: column changes.
+    for tc in diff.tables
+      if tc.kind == "renamed" || tc.kind == "altered"
+        n = statements.size
+        table_column_statements(tc, statements)
+        produced[tc.key] = produced[tc.key] + statements.size - n
+      end
+    end
+    # Phase 3: new tables in dependency order (a foreign key closing a cycle among them is added with ALTER TABLE after the last
+    # one), then the new and changed keys, constraints and indexes of the other tables, foreign keys last.
+    added = []
+    for tc in diff.tables
+      if tc.kind == "added"
+        added[added.size] = tc.table
+      end
+    end
+    added_spec = dependency_spec(added)
+    added_breaks = ddl_cycle_breaks added_spec
+    added_skip = cycle_skip(added, added_breaks, db)
+    for i in (ddl_order added_spec)
+      emit(statements, include "_table.scriban" added[i] added_skip)
+    end
+    cycle_fk_statements(added, added_breaks, db, statements)
+    for tc in diff.tables
+      if tc.kind == "renamed" || tc.kind == "altered"
+        n = statements.size
+        table_phase_statements(tc, "after", ["primary key", "unique", "check", "index"], statements)
+        produced[tc.key] = produced[tc.key] + statements.size - n
+      end
+    end
+    for tc in diff.tables
+      if tc.kind == "renamed" || tc.kind == "altered"
+        n = statements.size
+        table_phase_statements(tc, "after", ["foreign key"], statements)
+        produced[tc.key] = produced[tc.key] + statements.size - n
+      end
+    end
+    # Lookup rows of changed lookup tables (idempotent, like seed.sql), and a note for tables whose change has no statement.
+    for tc in diff.tables
+      if tc.kind == "renamed" || tc.kind == "altered"
+        if tc.table.is_lookup && tc.table.lookup_rows.size > 0
+          emit(statements, lookup_upsert(tc.table))
+        else if produced[tc.key] == 0
+          emit(statements, "-- " + tc.table.name + ": the table's schema or comment changed; review by hand.")
+        end
+      end
+    end
+    for oc in diff.views
+      if oc.kind == "added" || oc.kind == "altered"
+        v = find_named(db.views, oc.new_name ?? oc.old_name)
+        emit(statements, go != "" ? go + "\n" + view_sql(v, db) + "\n" + go : view_sql(v, db))
+      else if oc.kind == "renamed"
+        if d == "postgresql"
+          emit(statements, "ALTER VIEW " + qn(db.default_schema, oc.old_name, db) + " RENAME TO " + q(oc.new_name, db) + ";")
+        else if d == "sqlserver"
+          emit(statements, rename_object(db, schema_prefix(db.default_schema) + oc.old_name, oc.new_name, "OBJECT"))
+        else
+          emit(statements, "-- TODO (SQLite): drop view " + oc.old_name + " and create " + oc.new_name + ".")
+        end
+      end
+    end
+    for oc in diff.sequences
+      if oc.kind != "added"
+        sequence_statements(db, oc, statements)
+      end
+    end
+-}}
+{{- capture content -}}
+-- Migration {{ rev | math.format "0000" }} of database {{ db.name }} ({{ dialect_title(db) }}): schema revision {{ diff.from_revision }} to {{ diff.to_revision }}.
+-- Written once by Maquettiste (sql-ddl/migration) from the schema diff. It is yours now: review it, adjust it and commit it.
+-- Lines marked TODO need a decision the diff cannot make (data conversions, SQLite table rebuilds).
+{{- if d == "sqlserver" }}
+
+SET XACT_ABORT ON;
+BEGIN TRANSACTION;
+{{- else }}
+
+BEGIN;
+{{- end }}
+{{- for s in statements }}
+
+{{ s }}
+{{- end }}
+
+{{ d == "sqlserver" ? "COMMIT TRANSACTION;" : "COMMIT;" }}
+{{ end -}}
+{{- file path content -}}
+{{-
+  end
+end
+-}}

@@ -1,0 +1,23 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2FGZABF4E9KBAP72JVG64VB",
+  "name": "team membership",
+  "package": "01M1F99DBQ9B1T1RVMQRR1GS7V",
+  "description": "Employees who belong to a team; an employee may belong to several teams.",
+  "category": "01M38C3WQ4HSCF45E03KGN6AF5",
+  "ends": [
+    {
+      "id": "01M2C2MYK0F6THDA283MQA2FJQ",
+      "entity": "01M1DBA4TXCMJHKDV0EMM0ZD24",
+      "role": "teams",
+      "navigation": "teams"
+    },
+    {
+      "id": "01M2A7TDKXS4XP5N5136NE3HZ8",
+      "entity": "01M1RJC20E0YQ2SZNHD9NJW74W",
+      "role": "members",
+      "navigation": "members"
+    }
+  ]
+}

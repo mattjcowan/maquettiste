@@ -1,0 +1,90 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2H4Z09QHFS2SY99G9PG6CPP",
+  "name": "FreightClaim",
+  "displayName": "Freight claim",
+  "pluralName": "Freight claims",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "A claim against a carrier for lost, damaged or delayed freight.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "key": {
+    "attributes": [
+      "01M26T0465AS531RB3E49PYN6A"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M26T0465AS531RB3E49PYN6A",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the freight claim."
+    },
+    {
+      "id": "01M2E2G778PYDYQ1Y8526EP8WP",
+      "name": "claimNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Claim number."
+    },
+    {
+      "id": "01M2WJYSBB9EMK01AV00PVP1M2",
+      "name": "filedOn",
+      "type": "date",
+      "required": true,
+      "description": "Filing date."
+    },
+    {
+      "id": "01M2ANN55QAGKM8XF2N7AXQFT6",
+      "name": "claimType",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "loss, damage or delay."
+    },
+    {
+      "id": "01M22F8DYKSD203NQY12T87XT4",
+      "name": "claimedAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Amount claimed."
+    },
+    {
+      "id": "01M1M15XM3G4JYMMDA3304T691",
+      "name": "settledAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Amount the carrier paid."
+    },
+    {
+      "id": "01M31DPGEYCGQ92BTW0BTA350D",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "filed",
+      "description": "filed, under-review, settled or denied."
+    },
+    {
+      "id": "01M2M9KGV2M4W95D9C6RH45V8V",
+      "name": "notes",
+      "type": "text",
+      "description": "Claim narrative."
+    }
+  ]
+}

@@ -1,0 +1,297 @@
+package: Purchasing
+displayName: Purchasing and suppliers
+description: Buying stock - requisitions, requests for quote, supplier catalogs and contracts, purchase orders and approvals, advance ship notices, receipts, supplier invoices and supplier performance.
+
+enums:
+  PurchaseOrderStatus:
+    description: Lifecycle of a purchase order.
+    members:
+      Draft: DRAFT | Being prepared by the buyer.
+      PendingApproval: PENDAPPR | Waiting for approval.
+      Approved: APPROVED | Approved, not yet sent.
+      Sent: SENT | Sent to the supplier.
+      PartiallyReceived: PARTRCV | Some goods received.
+      Received: RECEIVED | Everything received.
+      Closed: CLOSED | Received and invoiced.
+      Cancelled: CANCEL | Cancelled.
+
+entities:
+  PurchaseOrder:
+    description: An order Northwind places with a supplier for delivery to one warehouse.
+    stereotypes: [aggregate-root, audited, soft-delete]
+    tags: [transactional, financial]
+    attributes:
+      poNumber: string(20)! unique | Purchase order number, PO- followed by six digits from purchase_order_number_seq.
+      orderedOn: date! | Order date.
+      status: PurchaseOrderStatus! default=Draft | Lifecycle state.
+      expectedOn: date | Expected delivery date.
+      freightTerms: FreightTerms | Incoterm agreed.
+      subtotal: Money! | Sum of line totals.
+      taxTotal: Money | Tax charged by the supplier.
+      freightTotal: Money | Freight charged by the supplier.
+      grandTotal: Money! | Total owed to the supplier.
+      notes: text | Instructions to the supplier.
+    refs:
+      supplier: Supplier! back=purchaseOrders | Supplier ordered from.
+      buyer: Employee | Buyer responsible.
+      warehouse: Warehouse! | Delivery warehouse.
+      currency: Currency! | Currency of the order.
+      paymentTerm: PaymentTerm | Payment terms.
+      contract: SupplierContract | Contract the prices come from.
+      requisition: PurchaseRequisition | Requisition fulfilled.
+    children:
+      lines: PurchaseOrderLine ordered | Ordered products.
+      approvals: PurchaseApproval | Approval steps.
+    overlay:
+      description: PO number default from purchase_order_number_seq.
+      columns:
+        poNumber:
+          defaultSql: "'PO-' || lpad(nextval('northwind.purchase_order_number_seq')::text, 6, '0')"
+          comment: Assigned from purchase_order_number_seq when the application does not supply one.
+
+  PurchaseOrderLine:
+    description: A product and quantity ordered from a supplier.
+    stereotypes: [audited]
+    tags: [transactional]
+    attributes:
+      lineNumber: int32! min=1 | Line number.
+      quantity: decimal(12,3)! min=0 | Quantity ordered.
+      unitCost: Money! | Cost per unit.
+      lineTotal: Money! | Line total.
+      expectedOn: date | Line delivery date, when split.
+      receivedQuantity: decimal(12,3)! default=0 min=0 | Quantity received so far.
+      isClosed: bool! default=false | Whether no more receipts are expected.
+    refs:
+      product: Product! | Product ordered.
+      supplierProduct: SupplierProduct | Supplier catalog item ordered.
+      unit: UnitOfMeasure! | Purchase unit.
+
+  PurchaseRequisition:
+    description: An internal request to buy goods, turned into purchase orders by a buyer.
+    stereotypes: [aggregate-root, audited]
+    attributes:
+      requisitionNumber: string(20)! unique | Requisition number.
+      requestedOn: date! | Request date.
+      neededBy: date | Date the goods are needed.
+      status: string(20)! default=open | open, approved, ordered or rejected.
+      justification: text | Business reason.
+    refs:
+      requestedBy: Employee! | Requester.
+      warehouse: Warehouse | Delivery warehouse.
+      costCenter: CostCenter | Cost center charged, for non-stock purchases.
+    children:
+      lines: RequisitionLine | Requested items.
+
+  RequisitionLine:
+    description: An item requested on a requisition.
+    attributes:
+      description: string(300)! | What is needed.
+      quantity: decimal(12,3)! min=0 | Quantity.
+      estimatedCost: Money | Estimated unit cost.
+    refs:
+      product: Product | Catalog product, when stocked.
+      suggestedSupplier: Supplier | Supplier the requester suggests.
+
+  SupplierProduct:
+    description: A product as offered in a supplier's catalog, with the supplier's SKU, cost and lead time.
+    stereotypes: [audited]
+    tags: [master-data]
+    attributes:
+      supplierSku: string(40)! | Supplier's item number.
+      supplierDescription: string(300) | Supplier's item description.
+      unitCost: Money! | Current cost.
+      minimumOrderQuantity: decimal(12,3) min=0 | Minimum order quantity.
+      packSize: int32 min=1 | Base units per purchase unit.
+      leadTimeDays: int16 min=0 | Lead time for the item.
+      isPreferred: bool! default=false | Preferred source for the product.
+    refs:
+      supplier: Supplier! cascade back=catalogItems | Supplier offering it.
+      product: Product! back=supplierProducts | Northwind product it corresponds to.
+      purchaseUnit: UnitOfMeasure | Unit the supplier sells in.
+
+  SupplierContract:
+    description: A purchasing contract with a supplier, fixing prices and commitments for a period.
+    stereotypes: [aggregate-root, audited]
+    tags: [financial]
+    attributes:
+      contractNumber: string(20)! unique | Contract number.
+      validity: DateRange! | Contract period.
+      terms: text | Key terms.
+      autoRenew: bool! default=false | Whether it renews automatically.
+      spendCommitment: Money | Committed yearly spend.
+    refs:
+      supplier: Supplier! back=contracts | Contracted supplier.
+      owner: Employee | Category manager who owns it.
+    children:
+      prices: ContractPrice | Contracted prices.
+
+  ContractPrice:
+    description: A contracted cost of a product under a supplier contract.
+    attributes:
+      unitCost: Money! | Contracted cost.
+      minimumQuantity: decimal(12,3) min=0 | Minimum quantity for the cost.
+      validity: DateRange | Validity within the contract.
+    refs:
+      product: Product! | Product priced.
+
+  GoodsReceipt:
+    description: The receipt of goods at a warehouse dock, against a purchase order or an advance ship notice.
+    stereotypes: [aggregate-root, audited]
+    tags: [transactional]
+    attributes:
+      receiptNumber: string(20)! unique | Receipt number.
+      receivedAt: datetimeoffset! | When the goods were received.
+      deliveryNote: string(40) | Supplier's delivery note number.
+      notes: string(500) | Damage or discrepancies noted.
+    refs:
+      purchaseOrder: PurchaseOrder back=receipts | Order received against.
+      warehouse: Warehouse! | Receiving warehouse.
+      receivedBy: Employee | Receiving clerk.
+      dockDoor: DockDoor | Door unloaded at.
+      advanceShipNotice: AdvanceShipNotice | Notice the receipt matches.
+    children:
+      lines: GoodsReceiptLine | Products received.
+
+  GoodsReceiptLine:
+    description: A product and quantity received, with rejects.
+    tags: [transactional]
+    attributes:
+      quantityReceived: decimal(12,3)! min=0 | Quantity accepted.
+      quantityRejected: decimal(12,3)! default=0 min=0 | Quantity refused.
+      rejectionReason: string(200) | Why goods were refused.
+    refs:
+      purchaseOrderLine: PurchaseOrderLine | Order line received.
+      product: Product! | Product received.
+      lot: StockLot | Lot received.
+      bin: BinLocation | Staging bin.
+
+  SupplierInvoice:
+    description: An invoice received from a supplier, matched to the order and the receipt before payment.
+    stereotypes: [aggregate-root, audited]
+    tags: [financial]
+    attributes:
+      invoiceNumber: string(40)! | Supplier's invoice number.
+      invoiceDate: date! | Invoice date.
+      dueDate: date! indexed | Payment due date.
+      totalAmount: Money! | Invoice total.
+      taxAmount: Money | Tax on the invoice.
+      status: string(20)! default=received | received, matched, approved, paid or disputed.
+      matchedAt: datetimeoffset | When the three-way match succeeded.
+    refs:
+      supplier: Supplier! back=supplierInvoices | Invoicing supplier.
+      purchaseOrder: PurchaseOrder | Order invoiced.
+      journalEntry: JournalEntry | Posting in the ledger.
+    children:
+      lines: SupplierInvoiceLine | Invoiced items.
+
+  SupplierInvoiceLine:
+    description: An invoiced item of a supplier invoice.
+    attributes:
+      description: string(300)! | Line text.
+      quantity: decimal(12,3)! min=0 | Quantity invoiced.
+      unitCost: Money! | Cost per unit.
+      lineTotal: Money! | Line total.
+    refs:
+      purchaseOrderLine: PurchaseOrderLine | Order line invoiced.
+      ledgerAccount: LedgerAccount | Expense account, for non-stock lines.
+
+  SupplierScorecard:
+    description: A periodic rating of a supplier's delivery, fill rate and quality.
+    stereotypes: [audited]
+    attributes:
+      period: DateRange! | Period rated.
+      onTimeRate: Percentage | Share of lines delivered on time.
+      fillRate: Percentage | Share of quantity delivered.
+      qualityRate: Percentage | Share of quantity accepted.
+      overallScore: decimal(5,2) min=0 max=100 | Weighted score.
+      comments: text | Reviewer's comments.
+    refs:
+      supplier: Supplier! cascade back=scorecards | Supplier rated.
+      reviewedBy: Employee | Reviewer.
+
+  RequestForQuote:
+    description: A request asking several suppliers to quote for a product.
+    stereotypes: [aggregate-root, audited]
+    attributes:
+      rfqNumber: string(20)! unique | RFQ number.
+      issuedOn: date! | Date sent.
+      responseDueOn: date! | Deadline for quotes.
+      status: string(20)! default=open | open, evaluating, awarded or cancelled.
+      description: text | Requirements.
+    refs:
+      buyer: Employee | Buyer.
+      product: Product | Product sourced.
+
+  SupplierQuote:
+    description: A supplier's answer to a request for quote.
+    attributes:
+      quotedOn: date! | Date quoted.
+      unitCost: Money! | Quoted cost.
+      leadTimeDays: int16 min=0 | Quoted lead time.
+      validUntil: date | Last day the quote holds.
+      isAwarded: bool! default=false | Whether the business was awarded.
+    refs:
+      requestForQuote: RequestForQuote! cascade back=quotes | Request answered.
+      supplier: Supplier! | Quoting supplier.
+
+  PurchaseApproval:
+    description: One approval step of a purchase order, by amount threshold.
+    stereotypes: [audited]
+    attributes:
+      approvalLevel: int16! min=1 | Step number.
+      decision: string(20)! default=pending | pending, approved or rejected.
+      decidedAt: datetimeoffset | When the approver decided.
+      comment: string(500) | Approver's comment.
+    refs:
+      approver: Employee! | Approver.
+
+  AdvanceShipNotice:
+    description: An EDI 856 advance ship notice announcing an inbound delivery.
+    tags: [integration]
+    attributes:
+      asnNumber: string(40)! | Supplier's ASN number.
+      shippedOn: date | Ship date.
+      expectedArrivalOn: date | Expected arrival.
+      carrierName: string(100) | Carrier.
+      trackingNumber: string(60) | Tracking number.
+      rawDocument: json | Original EDI document, as JSON.
+    refs:
+      supplier: Supplier! | Shipping supplier.
+      purchaseOrder: PurchaseOrder | Order shipped against.
+
+  LandedCost:
+    description: An extra cost of getting goods to the warehouse, such as freight, duty or brokerage, spread over a receipt.
+    tags: [financial]
+    attributes:
+      costType: string(30)! | freight, duty, insurance or brokerage.
+      amount: Money! | Cost amount.
+      allocationMethod: string(20)! default=value | value, weight or quantity.
+    refs:
+      goodsReceipt: GoodsReceipt! cascade back=landedCosts | Receipt the cost applies to.
+      supplierInvoice: SupplierInvoice | Invoice that billed the cost.
+
+  SupplierCertification:
+    description: A certification held by a supplier, such as ISO 9001 or a food safety audit.
+    stereotypes: [audited]
+    attributes:
+      certificationType: string(60)! | Scheme.
+      certificateNumber: string(60) | Certificate number.
+      validity: DateRange! | Validity.
+      documentUrl: string(400) | Scanned certificate.
+    refs:
+      supplier: Supplier! cascade back=certifications | Certified supplier.
+
+relations:
+  - name: rfq invites supplier
+    description: Suppliers invited to quote on a request for quote, with the invitation date.
+    ends:
+      - RequestForQuote requestsForQuote * nav
+      - Supplier invitedSuppliers * nav
+    attributes:
+      invitedAt: datetimeoffset! | When the invitation was sent.
+      declined: bool! default=false | Whether the supplier declined to quote.
+
+diagram:
+  name: Purchasing and suppliers
+  description: From requisition to supplier invoice.
+  columns: 5

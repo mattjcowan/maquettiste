@@ -1,0 +1,81 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2RAXZ22RVANB50R7WSE5D6R",
+  "name": "Country",
+  "displayName": "Country",
+  "pluralName": "Countries",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "A country or territory from ISO 3166-1. Drives address validation, tax jurisdictions and customs paperwork.",
+  "stereotypes": [
+    "reference-data"
+  ],
+  "tags": [
+    "master-data"
+  ],
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "key": {
+    "attributes": [
+      "01M2VXQG2SQDNZV1S5RFZNFJC1"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01M2VXQG2SQDNZV1S5RFZNFJC1",
+      "name": "code",
+      "type": {
+        "ref": "01M1T721QDBZQ0CD3XP8NBVSEQ"
+      },
+      "required": true,
+      "description": "ISO 3166-1 alpha-2 code; the natural key."
+    },
+    {
+      "id": "01M1MGCBT5JSM2E11R7MSEEDWQ",
+      "name": "alpha3Code",
+      "type": "string",
+      "length": 3,
+      "required": true,
+      "unique": true,
+      "description": "ISO 3166-1 alpha-3 code."
+    },
+    {
+      "id": "01M1K8WKEMEA3GK3N58AVV374A",
+      "name": "numericCode",
+      "type": "string",
+      "length": 3,
+      "required": true,
+      "description": "ISO 3166-1 numeric code."
+    },
+    {
+      "id": "01M1HH5AKH59R93REJ3JSBX2NC",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "required": true,
+      "description": "English short name."
+    },
+    {
+      "id": "01M2S4ECQZQCQ1962Y9C2YTPNE",
+      "name": "callingCode",
+      "type": "string",
+      "length": 8,
+      "description": "International dialling prefix, such as +49."
+    },
+    {
+      "id": "01M2CES5EVEG7968GC9R2NZ7EA",
+      "name": "isEuMember",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether intra-community VAT rules apply."
+    },
+    {
+      "id": "01M1KBYBCCT09PR3VHE2N9N8FX",
+      "name": "isSanctioned",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether trade with the country is blocked by export controls."
+    }
+  ]
+}

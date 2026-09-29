@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M30J3P9FKSRCP8YXSEPHFNZJ",
+  "name": "stock adjustment approved by",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Approver, for adjustments above the threshold.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M3228VRHD6DNTE5WJDWBYEKT",
+      "entity": "01M1RJC20E0YQ2SZNHD9NJW74W",
+      "role": "approvedBy",
+      "navigation": "approvedBy",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1V3NH953Y428N2VDK7JSD33",
+      "entity": "01M2RBMWVBV5KBHJGHCTYTQKVW",
+      "role": "stockAdjustments"
+    }
+  ]
+}

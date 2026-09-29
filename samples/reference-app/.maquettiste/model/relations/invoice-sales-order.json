@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1H2GS7GZMJ4WAEXGRKAEWRW",
+  "name": "invoice sales order",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "Order invoiced.",
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "ends": [
+    {
+      "id": "01M1R3CWEE9R4MQW4JAY1HZE2D",
+      "entity": "01M1GBW3NDKS6WCM5FAXYVHV7B",
+      "role": "salesOrder",
+      "navigation": "salesOrder",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M29NND4TXBGJNHC0GC93HQK7",
+      "entity": "01M2AXW23BB6G1HZZ8CBAXJQXB",
+      "role": "invoices",
+      "navigation": "invoices"
+    }
+  ]
+}

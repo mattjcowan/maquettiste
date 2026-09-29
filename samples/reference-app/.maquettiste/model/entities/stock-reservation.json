@@ -1,0 +1,65 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2NSKVNWRMGEBA1J8749H29A",
+  "name": "StockReservation",
+  "displayName": "Stock reservation",
+  "pluralName": "Stock reservations",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "A quantity of stock reserved for a sales order line.",
+  "tags": [
+    "transactional",
+    "high-volume"
+  ],
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M2C1HSTPPX0WXNKJDQARX4SZ"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2C1HSTPPX0WXNKJDQARX4SZ",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the stock reservation."
+    },
+    {
+      "id": "01M36JARV93KMVQC0DBNYGWY1Y",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity reserved."
+    },
+    {
+      "id": "01M1ZR2N426B60P8FEHHG8KMNT",
+      "name": "reservedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When it was reserved."
+    },
+    {
+      "id": "01M2SKB8JMZBFXBPP7W34AQQG4",
+      "name": "expiresAt",
+      "type": "datetimeoffset",
+      "description": "When a soft reservation lapses."
+    },
+    {
+      "id": "01M2KADQV24DKFZRP6E4G02VZE",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "active",
+      "description": "active, picked, released or expired."
+    }
+  ]
+}

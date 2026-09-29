@@ -1,0 +1,235 @@
+package: Pricing
+displayName: Pricing and promotions
+description: How prices are set - price lists with quantity breaks, negotiated customer agreements, discount rules, promotions and coupons, rebates and standard costs.
+
+enums:
+  DiscountType:
+    description: How a discount or reward is computed.
+    members:
+      PercentOff: PCT | A percentage off the price.
+      AmountOff: AMT | A fixed amount off the price.
+      FixedPrice: FIX | The price is replaced by a fixed price.
+      FreeGoods: FREE | Free units of a product.
+  PromotionStatus:
+    description: Lifecycle of a promotion.
+    members:
+      Draft: DRAFT | Being designed.
+      Scheduled: SCHED | Approved, waiting for its start date.
+      Active: ACTIVE | Running.
+      Paused: PAUSE | Temporarily stopped.
+      Ended: ENDED | Finished or cancelled.
+
+entities:
+  PriceList:
+    description: A list of prices in one currency, such as the US wholesale list or the Canada distributor list.
+    stereotypes: [aggregate-root, audited]
+    tags: [master-data, financial]
+    attributes:
+      code: string(20)! unique | Price list code.
+      name: string(120)! | Price list name.
+      validity: DateRange! | Period the list is in force.
+      isDefault: bool! default=false | List used when a customer has no other list.
+      pricesIncludeTax: bool! default=false | Whether prices are tax-inclusive.
+    refs:
+      currency: Currency! | Currency of the prices.
+    children:
+      entries: PriceListEntry | Prices in the list.
+
+  PriceListEntry:
+    description: The price of a product or variant on a price list.
+    stereotypes: [audited]
+    tags: [financial]
+    pluralName: Price list entries
+    attributes:
+      unitPrice: Money! | Price per unit.
+      minimumQuantity: decimal(12,3) min=0 | Smallest quantity the price applies to.
+      validity: DateRange | Period the entry is valid, within the list's period.
+    refs:
+      product: Product! | Priced product.
+      variant: ProductVariant | Priced variant, when the price is variant-specific.
+      unit: UnitOfMeasure | Unit the price is per; defaults to the product's sales unit.
+    children:
+      tiers: PriceTier ordered | Quantity breaks.
+
+  PriceTier:
+    description: A quantity break of a price list entry, such as 5 percent off from 100 cases.
+    attributes:
+      fromQuantity: decimal(12,3)! min=0 | Quantity from which the tier applies.
+      unitPrice: Money! | Price per unit in the tier.
+
+  CustomerPriceAgreement:
+    description: A negotiated contract price agreement with one customer, overriding the price lists for the products it covers.
+    stereotypes: [aggregate-root, audited]
+    tags: [financial]
+    attributes:
+      agreementNumber: string(20)! unique | Contract number.
+      validity: DateRange! | Contract period.
+      isApproved: bool! default=false | Whether pricing approved the agreement.
+      approvedOn: date | Approval date.
+      notes: text | Negotiation notes.
+    refs:
+      customer: Customer! back=priceAgreements | Customer the agreement is with.
+      approvedBy: Employee | Pricing manager who approved it.
+    children:
+      lines: AgreementLine | Covered products and categories.
+
+  AgreementLine:
+    description: A price or discount for a product or a whole category within a customer agreement.
+    attributes:
+      agreedPrice: Money | Fixed contract price.
+      discount: Percentage | Discount off list price, when no fixed price is agreed.
+      minimumQuantity: decimal(12,3) min=0 | Minimum order quantity for the price.
+    refs:
+      product: Product | Covered product.
+      productCategory: ProductCategory | Covered category, when the line covers a category.
+
+  DiscountRule:
+    description: An automatic discount, such as 3 percent off janitorial supplies for buying group A.
+    stereotypes: [audited]
+    tags: [configuration]
+    attributes:
+      name: string(120)! | Rule name.
+      discountType: DiscountType! | How the discount is computed.
+      value: decimal(12,4)! min=0 | Percentage or amount, depending on the type.
+      priority: int16! default=100 | Evaluation order; lower runs first.
+      isStackable: bool! default=false | Whether it combines with other discounts.
+      validity: DateRange | When the rule applies.
+    refs:
+      customerGroup: CustomerGroup | Customers the rule applies to.
+      productCategory: ProductCategory | Products the rule applies to.
+
+  Promotion:
+    description: A time-boxed marketing promotion with conditions and rewards, such as buy 10 cases get 1 free.
+    stereotypes: [aggregate-root, audited]
+    attributes:
+      code: string(30)! unique | Promotion code.
+      name: string(150)! | Promotion name.
+      description: text | Terms shown to customers.
+      status: PromotionStatus! default=Draft | Lifecycle state.
+      validity: DateRange! | When the promotion runs.
+      budget: Money | Maximum discount spend.
+      maxRedemptions: int32 min=1 | Cap on redemptions across all customers.
+    children:
+      conditions: PromotionCondition | What an order must contain.
+      rewards: PromotionReward | What the customer gets.
+
+  PromotionCondition:
+    description: A condition an order must meet for a promotion to apply.
+    attributes:
+      conditionType: string(40)! | Kind of condition - product-quantity, category-amount or order-amount.
+      thresholdQuantity: decimal(12,3) min=0 | Minimum quantity.
+      thresholdAmount: Money | Minimum amount.
+    refs:
+      product: Product | Product counted.
+      productCategory: ProductCategory | Category counted.
+
+  PromotionReward:
+    description: A benefit granted when a promotion's conditions are met.
+    attributes:
+      rewardType: DiscountType! | Kind of benefit.
+      value: decimal(12,4)! min=0 | Percentage, amount or price, depending on the type.
+      freeQuantity: decimal(12,3) min=0 | Free units, for free goods.
+    refs:
+      freeProduct: Product | Product given free.
+
+  Coupon:
+    description: A code customers enter to redeem a promotion.
+    stereotypes: [audited]
+    attributes:
+      code: string(40)! unique | Coupon code.
+      maxUses: int32 min=1 | Maximum redemptions of the code.
+      usedCount: int32! default=0 min=0 | Redemptions so far.
+      expiresOn: date | Last day the code works.
+    refs:
+      promotion: Promotion! cascade back=coupons | Promotion redeemed.
+      customer: Customer | Customer the code is reserved for.
+
+  CouponRedemption:
+    description: One use of a coupon on a sales order.
+    tags: [transactional]
+    attributes:
+      redeemedAt: datetimeoffset! | When the coupon was applied.
+      discountAmount: Money! | Discount granted.
+    refs:
+      coupon: Coupon! back=redemptions | Coupon used.
+      salesOrder: SalesOrder! cascade | Order it was used on.
+
+  RebateProgram:
+    description: A volume rebate agreement that pays a customer back a percentage of purchases over a period.
+    stereotypes: [aggregate-root, audited]
+    tags: [financial]
+    attributes:
+      name: string(150)! | Program name.
+      description: text | Program terms.
+      period: DateRange! | Accrual period.
+      rebateRate: Percentage! | Rebate percentage of eligible sales.
+      thresholdAmount: Money | Purchases required before rebates accrue.
+    refs:
+      customer: Customer! back=rebatePrograms | Customer earning the rebate.
+
+  RebateAccrual:
+    description: A rebate accrued on an invoice under a rebate program.
+    tags: [financial, transactional]
+    attributes:
+      accruedOn: date! | Date of accrual.
+      baseAmount: Money! | Eligible invoice amount.
+      rebateAmount: Money! | Rebate accrued.
+      isSettled: bool! default=false | Whether it was paid out or credited.
+    refs:
+      rebateProgram: RebateProgram! cascade back=accruals | Program the accrual belongs to.
+      invoice: Invoice | Invoice the accrual is based on.
+
+  PriceChangeRequest:
+    description: A requested change to a list price, reviewed by pricing before it takes effect.
+    stereotypes: [audited]
+    attributes:
+      requestedPrice: Money! | Proposed new price.
+      effectiveOn: date! | Date the new price should apply.
+      justification: text | Reason, such as supplier cost increase.
+      decision: string(20)! default=pending | pending, approved or rejected.
+      decidedAt: datetimeoffset | When the decision was made.
+    refs:
+      priceListEntry: PriceListEntry! cascade | Entry whose price would change.
+      requestedBy: Employee! | Who asked.
+      decidedBy: Employee | Who decided.
+
+  StandardCost:
+    description: The standard cost of a product for a period, used for margin reporting and inventory valuation.
+    stereotypes: [audited]
+    tags: [financial]
+    attributes:
+      cost: Money! | Cost per base unit.
+      validity: DateRange! | Period the cost applies.
+      costingMethod: string(20)! default=standard | standard, average or last-purchase.
+    refs:
+      product: Product! cascade back=standardCosts | Costed product.
+
+  Surcharge:
+    description: An extra charge added to orders, such as a fuel surcharge or a small-order fee.
+    stereotypes: [audited]
+    tags: [configuration]
+    attributes:
+      code: string(20)! unique | Surcharge code.
+      name: string(100)! | Name printed on invoices.
+      calculation: string(20)! | percent or flat.
+      rate: Percentage | Percentage, for percent surcharges.
+      amount: Money | Amount, for flat surcharges.
+      validity: DateRange | When the surcharge applies.
+    refs:
+      productCategory: ProductCategory | Category the surcharge applies to; null for all.
+
+relations:
+  - name: price list serves customer group
+    description: Customer groups that buy from a price list.
+    ends:
+      - PriceList priceLists * nav
+      - CustomerGroup customerGroups * nav
+  - name: promotion targets segment
+    description: Customer segments a promotion is offered to; none means everyone.
+    ends:
+      - Promotion promotions * nav
+      - CustomerSegment segments * nav
+
+diagram:
+  name: Pricing and promotions
+  description: Price lists, agreements, discounts, promotions and rebates.

@@ -1,0 +1,69 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1MJZYBD0T8P93CJNST5EH65",
+  "name": "CustomerFeedback",
+  "displayName": "Customer feedback",
+  "pluralName": "Customer feedback",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "A rating and comment from a customer after a delivery or a service case.",
+  "tags": [
+    "pii"
+  ],
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "key": {
+    "attributes": [
+      "01M2PSRHTVX0X402WYB6WMGEZZ"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2PSRHTVX0X402WYB6WMGEZZ",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the customer feedback."
+    },
+    {
+      "id": "01M20G1MMHAVFKDD0EGTPMVWKB",
+      "name": "submittedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When it was submitted."
+    },
+    {
+      "id": "01M1S6GYE85F1GTJ46HXG61P2V",
+      "name": "rating",
+      "type": "int16",
+      "required": true,
+      "validation": {
+        "min": 1,
+        "max": 5
+      },
+      "description": "Rating from 1 to 5."
+    },
+    {
+      "id": "01M2N8JKBT86WDG3V10GG464KJ",
+      "name": "channel",
+      "type": "string",
+      "length": 20,
+      "description": "survey, portal or phone."
+    },
+    {
+      "id": "01M276Z4RSZ7ZWTV1KQ6DF1515",
+      "name": "comments",
+      "type": "text",
+      "description": "Free text."
+    },
+    {
+      "id": "01M2EM10V8JQGE7SACPWK4X4H1",
+      "name": "followUpRequired",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether someone should call back."
+    }
+  ]
+}

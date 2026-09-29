@@ -1,0 +1,76 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1Y0MBZ4HBTH6ZF5QCKBZBAF",
+  "name": "ReplenishmentRule",
+  "displayName": "Replenishment rule",
+  "pluralName": "Replenishment rules",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Min-max replenishment settings of a product in a warehouse.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "configuration"
+  ],
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M1D69TZ3S0B6TW05N8V0AMBC"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1D69TZ3S0B6TW05N8V0AMBC",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the replenishment rule."
+    },
+    {
+      "id": "01M1GXAEA3ZE6VQV7NBKJE1D51",
+      "name": "minQuantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Reorder when available stock falls below it."
+    },
+    {
+      "id": "01M1EG51PC7NJ0GQWEYBVA63T7",
+      "name": "maxQuantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Order up to this level."
+    },
+    {
+      "id": "01M228VZ8G9V0MPAZH21J63YGV",
+      "name": "reorderQuantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "validation": {
+        "min": 0
+      },
+      "description": "Fixed order quantity, when used instead of max."
+    },
+    {
+      "id": "01M2DP9N3ZRFQ3CB07YYW93T2H",
+      "name": "isActive",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether the rule is evaluated."
+    }
+  ]
+}

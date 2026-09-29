@@ -1,0 +1,55 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1V6VP1AXYNH3ABJ0SAQH2D1",
+  "name": "Language",
+  "displayName": "Language",
+  "pluralName": "Languages",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "A language (ISO 639-1) used for product translations, documents and customer communication.",
+  "stereotypes": [
+    "reference-data"
+  ],
+  "tags": [
+    "master-data"
+  ],
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "key": {
+    "attributes": [
+      "01M1TF916ABJEJQXR22N7PJZ1G"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01M1TF916ABJEJQXR22N7PJZ1G",
+      "name": "code",
+      "type": "string",
+      "length": 5,
+      "required": true,
+      "description": "BCP 47 language tag, such as en or fr-CA; the natural key."
+    },
+    {
+      "id": "01M2TR99RQFWV7P88W9C3ZYC8P",
+      "name": "name",
+      "type": "string",
+      "length": 60,
+      "required": true,
+      "description": "English name."
+    },
+    {
+      "id": "01M381K9E79ZNRDJNKCQR113YY",
+      "name": "nativeName",
+      "type": "string",
+      "length": 60,
+      "description": "Name in the language itself."
+    },
+    {
+      "id": "01M2B43CGPFVZZ81Q657RXM707",
+      "name": "isRightToLeft",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether text is written right to left."
+    }
+  ]
+}

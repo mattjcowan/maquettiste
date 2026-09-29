@@ -1,0 +1,66 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2XJ2JS9QHPBPRS652GKRX01",
+  "name": "SupplierQuote",
+  "displayName": "Supplier quote",
+  "pluralName": "Supplier quotes",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "A supplier's answer to a request for quote.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "key": {
+    "attributes": [
+      "01M2E2X9ME21DWXSY719H9VZK9"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2E2X9ME21DWXSY719H9VZK9",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the supplier quote."
+    },
+    {
+      "id": "01M1H8ET0XF2ZHPHSEJGXCZGZC",
+      "name": "quotedOn",
+      "type": "date",
+      "required": true,
+      "description": "Date quoted."
+    },
+    {
+      "id": "01M1ZG7DWNCCDDC87NWNFZSC3M",
+      "name": "unitCost",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Quoted cost."
+    },
+    {
+      "id": "01M31K7FWGTKHNV0XM8MWCKZZ9",
+      "name": "leadTimeDays",
+      "type": "int16",
+      "validation": {
+        "min": 0
+      },
+      "description": "Quoted lead time."
+    },
+    {
+      "id": "01M2VDNW5Z78YR7FHGWZ1CR3T3",
+      "name": "validUntil",
+      "type": "date",
+      "description": "Last day the quote holds."
+    },
+    {
+      "id": "01M1NXAC04VCKB6YBVY9999TDZ",
+      "name": "isAwarded",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether the business was awarded."
+    }
+  ]
+}

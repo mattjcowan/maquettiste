@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/package.json",
+  "kind": "package",
+  "id": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "name": "Purchasing",
+  "displayName": "Purchasing and suppliers",
+  "description": "Buying stock - requisitions, requests for quote, supplier catalogs and contracts, purchase orders and approvals, advance ship notices, receipts, supplier invoices and supplier performance.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX"
+}

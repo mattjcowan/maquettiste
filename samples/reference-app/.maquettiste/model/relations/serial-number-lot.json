@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1RSQHVXE2HAXBFSYJVVHJNZ",
+  "name": "serial number lot",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Lot the unit belongs to.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M360QCSR1Q0ZKAQ1MWYDXTR5",
+      "entity": "01M1KXX9R3RW3ATAD1NCYF0QP0",
+      "role": "lot",
+      "navigation": "lot",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2MQFDPRY7ZYQSS5K8SH2RNV",
+      "entity": "01M2JSJ9P18GDTRZZ4MS9MEPAC",
+      "role": "serialNumbers"
+    }
+  ]
+}

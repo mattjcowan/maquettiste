@@ -1,0 +1,115 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2FA89Y26C424MWK7D3TQPT5",
+  "name": "Party",
+  "displayName": "Party",
+  "pluralName": "Parties",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "abstract": true,
+  "description": "Any organization Northwind does business with. Customers, suppliers and carriers are kinds of party and share one table (TPH).",
+  "stereotypes": [
+    "aggregate-root",
+    "audited",
+    "soft-delete"
+  ],
+  "tags": [
+    "master-data"
+  ],
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "key": {
+    "attributes": [
+      "01M2PABG7Q90DK6CTHZNFWHW3A"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "alternateKeys": [
+    {
+      "id": "01M2DS1JX4A9ZTX4WHY9H1TMDH",
+      "name": "partyNumber",
+      "attributes": [
+        "01M2Y1A63WCANH0N1ERPJGBQH7"
+      ]
+    }
+  ],
+  "attributes": [
+    {
+      "id": "01M2PABG7Q90DK6CTHZNFWHW3A",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the party."
+    },
+    {
+      "id": "01M2Y1A63WCANH0N1ERPJGBQH7",
+      "name": "partyNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "Business number shown on documents, such as C-104233."
+    },
+    {
+      "id": "01M3278CH2NBYK70W8DV57NMWM",
+      "name": "name",
+      "type": "string",
+      "length": 200,
+      "required": true,
+      "indexed": true,
+      "description": "Legal name."
+    },
+    {
+      "id": "01M2KY1Y3SYW98FZJJ3V1NZC4F",
+      "name": "tradingName",
+      "type": "string",
+      "length": 200,
+      "description": "Name the party trades under, when different."
+    },
+    {
+      "id": "01M23PBRWTG8Y3YCA32W7RSC3B",
+      "name": "taxId",
+      "type": "string",
+      "length": 30,
+      "description": "VAT or EIN registration number."
+    },
+    {
+      "id": "01M2Q8JDYYD7P49WC73KN83F9Z",
+      "name": "website",
+      "type": "string",
+      "length": 200,
+      "description": "Public website URL."
+    },
+    {
+      "id": "01M2XHGR4THFAJMHDJHDPZKAZM",
+      "name": "email",
+      "type": {
+        "ref": "01M1RSY89TKR4D2MJY2YC131S7"
+      },
+      "description": "General mailbox."
+    },
+    {
+      "id": "01M2XGY95BD51CSPAG5B8655NW",
+      "name": "phone",
+      "type": {
+        "ref": "01M30MZJ6XA7K0NQK6ACTMB0VD"
+      },
+      "description": "Main switchboard."
+    },
+    {
+      "id": "01M1THCWTCJ280XZXDDKJ0BBCF",
+      "name": "headquarters",
+      "type": {
+        "ref": "01M2WPKGPNR6R40TDZ1WGNN874"
+      },
+      "description": "Registered office address."
+    },
+    {
+      "id": "01M1GTAP8Y5XAYA5FEWQRWZCF7",
+      "name": "isActive",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether new transactions may reference the party."
+    }
+  ]
+}

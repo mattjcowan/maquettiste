@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1JH26AMHHBKD738KDD46GDP",
+  "name": "cart converted order",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "Order created at checkout.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "ends": [
+    {
+      "id": "01M1NNJ2548NNX6ZRHEWDAWQ28",
+      "entity": "01M1GBW3NDKS6WCM5FAXYVHV7B",
+      "role": "convertedOrder",
+      "navigation": "convertedOrder",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M32FKT7GB7K6TEPFCEPJ7EZ7",
+      "entity": "01M1G2XC8VHF50WCS54G3Y5R96",
+      "role": "carts"
+    }
+  ]
+}

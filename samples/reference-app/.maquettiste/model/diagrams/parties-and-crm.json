@@ -1,0 +1,196 @@
+{
+  "$schema": "../../.schema/v1/diagram.json",
+  "kind": "diagram",
+  "id": "01M2ZSGWM9XMH1SH84JHZGS4FV",
+  "name": "Parties and CRM",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "Parties and their kinds, contacts and addresses, and the pipeline from lead to opportunity.",
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "members": [
+    {
+      "element": "01M2FA89Y26C424MWK7D3TQPT5",
+      "x": 40,
+      "y": 40
+    },
+    {
+      "element": "01M1ECZKYNSKVNCWW2XM34E20X",
+      "x": 360,
+      "y": 40
+    },
+    {
+      "element": "01M2A5WW8NFWJS1V5NFRKCBNYV",
+      "x": 680,
+      "y": 40
+    },
+    {
+      "element": "01M1G2SEEYS4QSB6TPNAN1D1TC",
+      "x": 1000,
+      "y": 40
+    },
+    {
+      "element": "01M2SNDY2SEQ9745HMSG6ZTDRC",
+      "x": 40,
+      "y": 280
+    },
+    {
+      "element": "01M2BKNW8ET53B7685KC3KZW3K",
+      "x": 360,
+      "y": 280
+    },
+    {
+      "element": "01M2S99HP8J0AGSW9K89VDT178",
+      "x": 680,
+      "y": 280
+    },
+    {
+      "element": "01M1DCQB50PJ28VXNVM2MEZQXQ",
+      "x": 1000,
+      "y": 280
+    },
+    {
+      "element": "01M20WKPA5534RWHK392W0BWNH",
+      "x": 40,
+      "y": 520
+    },
+    {
+      "element": "01M27MB1JDD1JEXGF6HNEJ3AR7",
+      "x": 360,
+      "y": 520
+    },
+    {
+      "element": "01M2QFZSC4KWD20CENXN364C9Y",
+      "x": 680,
+      "y": 520
+    },
+    {
+      "element": "01M1K1PZ4W63S3CCKFSZT788AE",
+      "x": 1000,
+      "y": 520
+    },
+    {
+      "element": "01M2RW4HVGMQC1RBEMC61AV8Y9",
+      "x": 40,
+      "y": 760
+    },
+    {
+      "element": "01M1MZ5QR4A63KE2ZH2J41M6B5",
+      "x": 360,
+      "y": 760
+    },
+    {
+      "element": "01M22CJ6P4AJ7S66B6ND6GTZF9",
+      "x": 680,
+      "y": 760
+    },
+    {
+      "element": "01M1KJSJ5XRC8BCYTQT8DNYWHD",
+      "x": 1000,
+      "y": 760
+    },
+    {
+      "element": "01M1KC0P5WJ1VA5JA0Y6YBZW8S",
+      "x": 40,
+      "y": 1000
+    },
+    {
+      "element": "01M26W6ESK61D6GNWTNF5PKPRB",
+      "x": 360,
+      "y": 1000
+    },
+    {
+      "element": "01M2W8EQ597AFESYKQ9XRMVM2Q",
+      "x": 680,
+      "y": 1000
+    },
+    {
+      "element": "01M2H0CTE2YH4RT4GV78S425Q7",
+      "x": 1000,
+      "y": 1000
+    },
+    {
+      "element": "01M1QZREBJR1KJB4CRM7DVFX2M",
+      "x": 40,
+      "y": 1240
+    },
+    {
+      "element": "01M25DP2M0C04S4KCENQTV1KWB",
+      "x": 360,
+      "y": 1240
+    },
+    {
+      "element": "01M2QP4NQDJX68AJR6KTD5BWQV"
+    },
+    {
+      "element": "01M1VJWZTTTSPVR6T3THHHBF5P"
+    },
+    {
+      "element": "01M233GP3PE48SPQP6MZ452KWH"
+    },
+    {
+      "element": "01M34DVR2B19ZS64XXXXTC30ZG"
+    },
+    {
+      "element": "01M38CGNPTWK0XZ1ZJ7T6JJVK4"
+    },
+    {
+      "element": "01M2R9JBSPWJWAJVWXFS341E4Y"
+    },
+    {
+      "element": "01M1SD72T3EJAW2CF4FG7841PR"
+    },
+    {
+      "element": "01M1KFF2S8AGRSGNW556YH6JP8"
+    },
+    {
+      "element": "01M1K1MDTY7EKZ5KQW2HAW2DNR"
+    },
+    {
+      "element": "01M31R0XCAF8JTFZJX20VRM8N4"
+    },
+    {
+      "element": "01M2HQYB95X5N5KYTGG7Z2TBNR"
+    },
+    {
+      "element": "01M25XA3HH3VDBW2HQQFNTHV08"
+    },
+    {
+      "element": "01M290DR1THADCMZB9Y8CY423J"
+    },
+    {
+      "element": "01M1F7KCNVEJWPCDRPHQ7ZZ1XY"
+    },
+    {
+      "element": "01M2EYM7ZTQBFQV3HB9CXF7T46"
+    },
+    {
+      "element": "01M2NVPC8FA3RKDHD1W7NPRW68"
+    },
+    {
+      "element": "01M2HW38N8W7QG2WBQY1E45Z2Q"
+    },
+    {
+      "element": "01M1JSM71MRGK2AE3F3NKB4092"
+    },
+    {
+      "element": "01M2BPVGSA60Q0MFPZB02Q883Z"
+    },
+    {
+      "element": "01M1S29VSWDMT9GC4HJ3E46VF0"
+    },
+    {
+      "element": "01M2AFBT7KVG5XJ2GTECAXYRTV"
+    },
+    {
+      "element": "01M36ZGXH3ET4FFKJJZ6FZYE2K"
+    },
+    {
+      "element": "01M2W24ENEKCX72V710GMY87A7"
+    },
+    {
+      "element": "01M1WQ54T9AFFR6TSAZP41HQNX"
+    }
+  ],
+  "viewport": {
+    "zoom": 0.8
+  }
+}

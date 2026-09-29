@@ -1,0 +1,106 @@
+package: ReferenceData
+displayName: Reference data
+description: Global code lists seeded from international standards and shared by every package, plus the shared value objects and scalar types.
+
+enums:
+  LengthUnit:
+    description: Unit of a length measure.
+    members:
+      Millimeter: MMT | Millimeter.
+      Centimeter: CMT | Centimeter.
+      Meter: MTR | Meter.
+      Inch: INH | Inch.
+      Foot: FOT | Foot.
+  WeightUnit:
+    description: Unit of a weight measure.
+    members:
+      Gram: GRM | Gram.
+      Kilogram: KGM | Kilogram.
+      Ounce: ONZ | Avoirdupois ounce.
+      Pound: LBR | Avoirdupois pound.
+
+entities:
+  Country:
+    description: A country or territory from ISO 3166-1. Drives address validation, tax jurisdictions and customs paperwork.
+    stereotypes: [reference-data]
+    tags: [master-data]
+    key: code
+    pluralName: Countries
+    attributes:
+      code: CountryCode! | ISO 3166-1 alpha-2 code; the natural key.
+      alpha3Code: string(3)! unique | ISO 3166-1 alpha-3 code.
+      numericCode: string(3)! | ISO 3166-1 numeric code.
+      name: string(100)! | English short name.
+      callingCode: string(8) | International dialling prefix, such as +49.
+      isEuMember: bool! default=false | Whether intra-community VAT rules apply.
+      isSanctioned: bool! default=false | Whether trade with the country is blocked by export controls.
+    refs:
+      currency: Currency | Default currency of the country.
+
+  StateProvince:
+    description: A first-level subdivision of a country (ISO 3166-2), used for sales tax and shipping zones.
+    stereotypes: [reference-data]
+    tags: [master-data]
+    key: identity32
+    attributes:
+      code: string(6)! | ISO 3166-2 subdivision code without the country prefix, such as CA.
+      name: string(100)! | Name of the subdivision.
+      subdivisionType: string(40) | Kind of subdivision, such as state, province or county.
+    alternateKeys:
+      countrySubdivision: [code]
+    refs:
+      country: Country! cascade back=subdivisions | Country the subdivision belongs to.
+
+  Currency:
+    description: A currency from ISO 4217 that prices, invoices and payments may be expressed in.
+    stereotypes: [reference-data]
+    tags: [master-data, financial]
+    key: code
+    pluralName: Currencies
+    attributes:
+      code: CurrencyCode! | ISO 4217 alphabetic code; the natural key.
+      numericCode: string(3)! | ISO 4217 numeric code.
+      name: string(60)! | English name, such as Euro.
+      symbol: string(5) | Display symbol, such as the euro sign.
+      minorUnits: int16! default=2 min=0 max=4 | Number of decimals in the minor unit.
+      isActive: bool! default=true | Whether new documents may use the currency.
+
+  Language:
+    description: A language (ISO 639-1) used for product translations, documents and customer communication.
+    stereotypes: [reference-data]
+    tags: [master-data]
+    key: code
+    attributes:
+      code: string(5)! | BCP 47 language tag, such as en or fr-CA; the natural key.
+      name: string(60)! | English name.
+      nativeName: string(60) | Name in the language itself.
+      isRightToLeft: bool! default=false | Whether text is written right to left.
+
+  UnitOfMeasure:
+    description: A unit in which goods are counted, weighed or sold, from UN/CEFACT Recommendation 20.
+    stereotypes: [reference-data]
+    tags: [master-data]
+    key: code
+    pluralName: Units of measure
+    attributes:
+      code: string(3)! | UN/CEFACT common code, such as EA, KGM or CS; the natural key.
+      name: string(60)! | Display name, such as each, kilogram or case.
+      dimension: string(20)! | What the unit measures - count, mass, length, volume or area.
+      isBaseUnit: bool! default=false | Whether the unit is the base of its dimension.
+      decimalsAllowed: int16! default=0 min=0 max=6 | Decimals allowed on quantities in the unit.
+
+  PublicHoliday:
+    description: A non-working day in a country, used for delivery date promises and payment due dates.
+    stereotypes: [reference-data]
+    key: identity32
+    attributes:
+      observedOn: date! indexed | Date the holiday is observed.
+      name: string(100)! | Name of the holiday.
+      isNationwide: bool! default=true | Whether it applies to the whole country rather than some regions.
+    refs:
+      country: Country! cascade back=publicHolidays | Country observing the holiday.
+
+diagram:
+  name: Reference data
+  description: The shared ISO and UN/CEFACT code lists and how they relate.
+  columns: 3

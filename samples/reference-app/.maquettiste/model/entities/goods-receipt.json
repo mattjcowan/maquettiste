@@ -1,0 +1,64 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M27E4E7S60R5YRR4BS9CEQW9",
+  "name": "GoodsReceipt",
+  "displayName": "Goods receipt",
+  "pluralName": "Goods receipts",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "The receipt of goods at a warehouse dock, against a purchase order or an advance ship notice.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "transactional"
+  ],
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "key": {
+    "attributes": [
+      "01M2GXK16NMBSWQXRVTDEP82FW"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2GXK16NMBSWQXRVTDEP82FW",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the goods receipt."
+    },
+    {
+      "id": "01M2S1Y8PD5DYBCVXVZRF0TBHC",
+      "name": "receiptNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Receipt number."
+    },
+    {
+      "id": "01M1F5RF7XQ86H2W1QYA1HQ273",
+      "name": "receivedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the goods were received."
+    },
+    {
+      "id": "01M29VM3V9JHWMXTZK8P6E6PN0",
+      "name": "deliveryNote",
+      "type": "string",
+      "length": 40,
+      "description": "Supplier's delivery note number."
+    },
+    {
+      "id": "01M387YE079CQGWVZR0S76P8ZT",
+      "name": "notes",
+      "type": "string",
+      "length": 500,
+      "description": "Damage or discrepancies noted."
+    }
+  ]
+}

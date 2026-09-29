@@ -1,0 +1,158 @@
+{
+  "$schema": "../../.schema/v1/diagram.json",
+  "kind": "diagram",
+  "id": "01M1RR1QTDGAWMXA562JZ7PBQW",
+  "name": "Purchasing and suppliers",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "From requisition to supplier invoice.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "members": [
+    {
+      "element": "01M2PKYF42VBPP64C8WV8TWXZ6",
+      "x": 40,
+      "y": 40
+    },
+    {
+      "element": "01M1TQ7YZ23DXXYR1CF7BFFWFS",
+      "x": 360,
+      "y": 40
+    },
+    {
+      "element": "01M1G5ZRBD1BNSWC0BGGQH6YN6",
+      "x": 680,
+      "y": 40
+    },
+    {
+      "element": "01M2CT5MQTB4BBCT99449QSBCM",
+      "x": 1000,
+      "y": 40
+    },
+    {
+      "element": "01M2GHVSN9EWR3VSH0N7HE0NMD",
+      "x": 1320,
+      "y": 40
+    },
+    {
+      "element": "01M1YBDE7K81GQ5NMW21JH5T14",
+      "x": 40,
+      "y": 280
+    },
+    {
+      "element": "01M1KJGAVWEYW5G736B2EFT27H",
+      "x": 360,
+      "y": 280
+    },
+    {
+      "element": "01M27E4E7S60R5YRR4BS9CEQW9",
+      "x": 680,
+      "y": 280
+    },
+    {
+      "element": "01M2GBMZTV29WK7A5V2BAQSNCF",
+      "x": 1000,
+      "y": 280
+    },
+    {
+      "element": "01M1MWDZA086JA1GBZQKRB5K1Q",
+      "x": 1320,
+      "y": 280
+    },
+    {
+      "element": "01M2139GNDEW1JRM6YMTG48E8F",
+      "x": 40,
+      "y": 520
+    },
+    {
+      "element": "01M2YSJWJ04N5TKKQX3405T66A",
+      "x": 360,
+      "y": 520
+    },
+    {
+      "element": "01M271KH4GNVYE9K93HPVTFKZT",
+      "x": 680,
+      "y": 520
+    },
+    {
+      "element": "01M2XJ2JS9QHPBPRS652GKRX01",
+      "x": 1000,
+      "y": 520
+    },
+    {
+      "element": "01M20VDNES01WS4DZ5NXHEAFX7",
+      "x": 1320,
+      "y": 520
+    },
+    {
+      "element": "01M2YZRYH468YVFQMMZJ96Y03R",
+      "x": 40,
+      "y": 760
+    },
+    {
+      "element": "01M30P3YKV9SP8Q5BRW9K35FWG",
+      "x": 360,
+      "y": 760
+    },
+    {
+      "element": "01M37A5NJEPZATPNMASH90TE69",
+      "x": 680,
+      "y": 760
+    },
+    {
+      "element": "01M1WNNRCJT6007KZWJ0G4DSAH"
+    },
+    {
+      "element": "01M1Y9REDJ024NRDWR78ADKJWC"
+    },
+    {
+      "element": "01M32V28PHGQT95RXPVM0MEVTB"
+    },
+    {
+      "element": "01M26DBQX0Y0CCXX0KDXTTRTR2"
+    },
+    {
+      "element": "01M1HVKCERQ40FA6CTVZGZXJ5S"
+    },
+    {
+      "element": "01M2SG4JZYM29GTHNK128CG2W5"
+    },
+    {
+      "element": "01M20SGEC7M53D9K6R2EGFW5DR"
+    },
+    {
+      "element": "01M1J4HAX42MXHNKJ6Y8MM3430"
+    },
+    {
+      "element": "01M382SY6AF9XYABMAEAEF319Y"
+    },
+    {
+      "element": "01M1QCERJBMXJGFVTG33RJ9AA5"
+    },
+    {
+      "element": "01M27FN6T2WTG1STHA1MMNCZV6"
+    },
+    {
+      "element": "01M2XZ7HQVM4NVZSNPG772AT9J"
+    },
+    {
+      "element": "01M1T0T21TRZTJY7HJKVGP22E9"
+    },
+    {
+      "element": "01M1E2W2WGM38FJHX8VQKR5CFJ"
+    },
+    {
+      "element": "01M2X88JZ6H6QNMK6T2JP4Y9E8"
+    },
+    {
+      "element": "01M2P1344JFNR76K8E7ARXVX1W"
+    },
+    {
+      "element": "01M29VE9RSWRZ5XTYK61R3VAZD"
+    },
+    {
+      "element": "01M1EE8VQ1AA27ST991YXZMZHR"
+    }
+  ],
+  "viewport": {
+    "zoom": 0.8
+  }
+}

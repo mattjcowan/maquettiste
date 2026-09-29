@@ -1,0 +1,68 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1NR7G0RYYPWNCM445SA8RRR",
+  "name": "ShipmentPackage",
+  "displayName": "Shipment package",
+  "pluralName": "Shipment packages",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "A carton or pallet of a shipment with its own tracking number.",
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "key": {
+    "attributes": [
+      "01M2VBFBG3HZTQJ3SBEWS54YA5"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2VBFBG3HZTQJ3SBEWS54YA5",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the shipment package."
+    },
+    {
+      "id": "01M332QG0689SAE2N5EF1GVXWK",
+      "name": "packageNumber",
+      "type": "int32",
+      "required": true,
+      "validation": {
+        "min": 1
+      },
+      "description": "Package number within the shipment."
+    },
+    {
+      "id": "01M2435BBWA4BPVJ498DAYQNHZ",
+      "name": "packageType",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "carton, pallet or envelope."
+    },
+    {
+      "id": "01M24XVASFDNY222Y1QHEQT3EV",
+      "name": "trackingNumber",
+      "type": "string",
+      "length": 60,
+      "description": "Carrier tracking number."
+    },
+    {
+      "id": "01M1XSV227RS5Y9BAMVBAZHBKT",
+      "name": "dimensions",
+      "type": {
+        "ref": "01M2KN9XND2J83MCCF4JHYK5ED"
+      },
+      "description": "Outer dimensions."
+    },
+    {
+      "id": "01M2FHN5T4QY07EXPZXP9HXSJ7",
+      "name": "weight",
+      "type": {
+        "ref": "01M36PE7EQVEDETJ5QMAXH25ZX"
+      },
+      "description": "Gross weight."
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1VN8RTMC4K1SC96KPFP2P1H",
+  "name": "WarehouseZone",
+  "displayName": "Warehouse zone",
+  "pluralName": "Warehouse zones",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "An area of a warehouse with one purpose, such as receiving, bulk storage, pick faces or a freezer.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M1MN2GZGEEZC8PR8Z4ZFNG81"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1MN2GZGEEZC8PR8Z4ZFNG81",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the warehouse zone."
+    },
+    {
+      "id": "01M26BBQ1R80HKV6T9TS69HCG5",
+      "name": "code",
+      "type": "string",
+      "length": 10,
+      "required": true,
+      "description": "Zone code within the warehouse."
+    },
+    {
+      "id": "01M32F801QT8Z3PC72WZSKR5F2",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "required": true,
+      "description": "Zone name."
+    },
+    {
+      "id": "01M21RD367YGVNBB1DRHNBXTG2",
+      "name": "zoneType",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "receiving, bulk, pick, staging, quarantine or shipping."
+    }
+  ]
+}

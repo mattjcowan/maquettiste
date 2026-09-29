@@ -1,0 +1,84 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1GFAC07AMC9MV09YGQE6Y3M",
+  "name": "BillingAccount",
+  "displayName": "Billing account",
+  "pluralName": "Billing accounts",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "How and where a customer wants to be invoiced; large customers have one per division.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "key": {
+    "attributes": [
+      "01M33XN3C8GTPMKA7YDVJNMGS5"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M33XN3C8GTPMKA7YDVJNMGS5",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the billing account."
+    },
+    {
+      "id": "01M2D7VMG80TXTSCHD91EPEVNA",
+      "name": "accountNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Billing account number."
+    },
+    {
+      "id": "01M1JMJ1MTNT7ERDEGC5A8WEWY",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "required": true,
+      "description": "Account name, such as Facilities division."
+    },
+    {
+      "id": "01M1N95K5YNJ3V292S6JGJSJ5K",
+      "name": "billingAddress",
+      "type": {
+        "ref": "01M2WPKGPNR6R40TDZ1WGNN874"
+      },
+      "required": true,
+      "description": "Where invoices go."
+    },
+    {
+      "id": "01M21523BR82E0ND9VFG4GHZ0P",
+      "name": "invoiceDeliveryMethod",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "email",
+      "description": "email, portal, edi or mail."
+    },
+    {
+      "id": "01M1F8A9SBGTY7BJNWY1DWHGWZ",
+      "name": "invoiceEmail",
+      "type": {
+        "ref": "01M1RSY89TKR4D2MJY2YC131S7"
+      },
+      "description": "Mailbox for invoices."
+    },
+    {
+      "id": "01M207CT17A5NT8Z4E24NSVYBE",
+      "name": "consolidateInvoices",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether to send one monthly invoice."
+    }
+  ]
+}

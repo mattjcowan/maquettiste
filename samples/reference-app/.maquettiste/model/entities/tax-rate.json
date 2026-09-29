@@ -1,0 +1,67 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M32MPMZK5YHFPNR1E8HDD0ZM",
+  "name": "TaxRate",
+  "displayName": "Tax rate",
+  "pluralName": "Tax rates",
+  "package": "01M1EYTWAA6REG1KFCR9N7XQ27",
+  "description": "A sales tax rate of a jurisdiction for a tax category and period.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M1E9BTZZTKGKC2S6YTG3CKTZ",
+  "key": {
+    "attributes": [
+      "01M375H4BBKJ65DJRTVD9ZJA83"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M375H4BBKJ65DJRTVD9ZJA83",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the tax rate."
+    },
+    {
+      "id": "01M1S6CJ8N54BSYNNWCJ8HK9SW",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "required": true,
+      "description": "Rate name, such as Colorado state sales tax."
+    },
+    {
+      "id": "01M1MQC93PNDA60AV1AJ571B1C",
+      "name": "rate",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "required": true,
+      "description": "Rate."
+    },
+    {
+      "id": "01M2KEZ1784R5EDMY4VP53DTZ5",
+      "name": "taxCategory",
+      "type": "string",
+      "length": 30,
+      "required": true,
+      "description": "Goods category, such as general or food."
+    },
+    {
+      "id": "01M2QNFK2JTRG0GA6SD6N0D7SQ",
+      "name": "validity",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "required": true,
+      "description": "Period the rate applies."
+    }
+  ]
+}

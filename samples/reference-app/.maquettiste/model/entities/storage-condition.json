@@ -1,0 +1,57 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M27RMKNGSD4A9ZF3G4VYW9KV",
+  "name": "StorageCondition",
+  "displayName": "Storage condition",
+  "pluralName": "Storage conditions",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "A storage requirement, such as Ambient, Chilled 2-8 C or Frozen.",
+  "stereotypes": [
+    "lookup"
+  ],
+  "tags": [
+    "configuration"
+  ],
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M2PTCFZ4AZRG509647YA5V0A"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M2PTCFZ4AZRG509647YA5V0A",
+      "name": "id",
+      "type": "int32",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the storage condition."
+    },
+    {
+      "id": "01M1YXNVPGSWPAT1FHX0N8R0MV",
+      "name": "minTemperatureC",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "description": "Lowest allowed temperature."
+    },
+    {
+      "id": "01M2RFB12V5C89Z3SV4T40E8GY",
+      "name": "maxTemperatureC",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "description": "Highest allowed temperature."
+    },
+    {
+      "id": "01M1PA7F9M6684DN5X06G0H692",
+      "name": "requiresHumidityControl",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether humidity is controlled."
+    }
+  ]
+}

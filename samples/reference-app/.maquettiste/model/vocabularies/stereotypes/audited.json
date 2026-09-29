@@ -1,0 +1,44 @@
+{
+  "$schema": "../../../.schema/v1/stereotype.json",
+  "kind": "stereotype",
+  "id": "01M2ANHQJTDZN9QG7C7DCRTV57",
+  "key": "audited",
+  "name": "Audited",
+  "description": "Records who created and last changed each row, and when.",
+  "appliesTo": [
+    "entity"
+  ],
+  "attributes": [
+    {
+      "id": "01M204A7X0TDKJ3A8CB9P01VED",
+      "name": "createdAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "readOnly": true,
+      "description": "When the row was created."
+    },
+    {
+      "id": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+      "name": "createdBy",
+      "type": "string",
+      "length": 64,
+      "readOnly": true,
+      "description": "User name of the creator."
+    },
+    {
+      "id": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+      "name": "updatedAt",
+      "type": "datetimeoffset",
+      "readOnly": true,
+      "description": "When the row was last changed."
+    },
+    {
+      "id": "01M2B7V6SFC870XEYWMTH1AB2X",
+      "name": "updatedBy",
+      "type": "string",
+      "length": 64,
+      "readOnly": true,
+      "description": "User name of the last editor."
+    }
+  ]
+}

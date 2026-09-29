@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/package.json",
+  "kind": "package",
+  "id": "01M1F99DBQ9B1T1RVMQRR1GS7V",
+  "name": "Identity",
+  "displayName": "Identity and access",
+  "description": "Employees, their organization, user accounts, roles and permissions, API clients and the security audit trail.",
+  "category": "01M38C3WQ4HSCF45E03KGN6AF5"
+}

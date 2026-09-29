@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1DDMMF08GXYGAGK49YR5VGS",
+  "name": "surcharge product category",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "Category the surcharge applies to; null for all.",
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "ends": [
+    {
+      "id": "01M2WK6TW91714KQQWNYJ00A7Y",
+      "entity": "01M2124S65JEY623MSBN0P9FVJ",
+      "role": "productCategory",
+      "navigation": "productCategory",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1HAD175ZZVFQ85Y6JRFVDDS",
+      "entity": "01M31YXX3N12VR7R73KM2FD95H",
+      "role": "surcharges"
+    }
+  ]
+}

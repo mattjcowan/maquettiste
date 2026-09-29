@@ -1,0 +1,49 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2C837KSF3XZJHGPY66P8B2H",
+  "name": "payment settles invoice",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "How a payment is allocated to the invoices it pays; one payment can settle many invoices and one invoice can be paid in instalments.",
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "ends": [
+    {
+      "id": "01M2MHCVN9D1MCBJPAENFEAZXB",
+      "entity": "01M1TQTM9KTF1VNQJV2M3WM130",
+      "role": "payments",
+      "navigation": "payments"
+    },
+    {
+      "id": "01M23WM87AHCCEG601YDXV6KR5",
+      "entity": "01M2AXW23BB6G1HZZ8CBAXJQXB",
+      "role": "invoices",
+      "navigation": "invoices"
+    }
+  ],
+  "attributes": [
+    {
+      "id": "01M1P8K68TVVM7A3WPEY4CY17C",
+      "name": "allocatedAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Amount of the payment applied to the invoice."
+    },
+    {
+      "id": "01M2Q0YQ896TTNTDEBGX0J97NS",
+      "name": "allocatedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the allocation was made."
+    },
+    {
+      "id": "01M2SJ405BCWN8SMYD7VD0HECP",
+      "name": "discountTaken",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Early payment discount taken."
+    }
+  ]
+}

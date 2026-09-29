@@ -1,0 +1,58 @@
+{
+  "$schema": "../../.schema/v1/value-object.json",
+  "kind": "value-object",
+  "id": "01M2WPKGPNR6R40TDZ1WGNN874",
+  "name": "Address",
+  "displayName": "Address",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "A postal address.",
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "attributes": [
+    {
+      "id": "01M36P0JCD8FVZ00WRN0DQ1RWJ",
+      "name": "line1",
+      "type": "string",
+      "length": 120,
+      "required": true,
+      "description": "Street and number, or PO box."
+    },
+    {
+      "id": "01M1K49FEDQ20K31AVX157K81Y",
+      "name": "line2",
+      "type": "string",
+      "length": 120,
+      "description": "Suite, floor or building."
+    },
+    {
+      "id": "01M2ZCJGT4NRE52Q41FKFC67CV",
+      "name": "city",
+      "type": "string",
+      "length": 80,
+      "required": true,
+      "description": "City or locality."
+    },
+    {
+      "id": "01M2C3BFYSTQTK6JV9KAN7EGV6",
+      "name": "region",
+      "type": "string",
+      "length": 80,
+      "description": "State, province or county."
+    },
+    {
+      "id": "01M1DS9RK9STKGBPD8W2JGRNY4",
+      "name": "postalCode",
+      "type": "string",
+      "length": 20,
+      "description": "Postal or ZIP code."
+    },
+    {
+      "id": "01M28FWJX8S0P0MM3RBBDZYBF4",
+      "name": "countryCode",
+      "type": {
+        "ref": "01M1T721QDBZQ0CD3XP8NBVSEQ"
+      },
+      "required": true,
+      "description": "ISO country code."
+    }
+  ]
+}

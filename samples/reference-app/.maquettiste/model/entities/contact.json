@@ -1,0 +1,96 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2SNDY2SEQ9745HMSG6ZTDRC",
+  "name": "Contact",
+  "displayName": "Contact",
+  "pluralName": "Contacts",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "A person at a party that Northwind deals with, such as a buyer, an accounts payable clerk or a dispatcher.",
+  "stereotypes": [
+    "audited",
+    "soft-delete"
+  ],
+  "tags": [
+    "pii"
+  ],
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "key": {
+    "attributes": [
+      "01M22Y7JXVPK7NMMB16GWXSX2W"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M22Y7JXVPK7NMMB16GWXSX2W",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the contact."
+    },
+    {
+      "id": "01M1SGWH74J58YNNY82BM9KBE3",
+      "name": "name",
+      "type": {
+        "ref": "01M2MP2MXM08FGYG28KHK94RB5"
+      },
+      "required": true,
+      "sensitive": "pii",
+      "description": "Name of the contact."
+    },
+    {
+      "id": "01M1QMH8G2DAYVY787SQVT0H3V",
+      "name": "jobTitle",
+      "type": "string",
+      "length": 100,
+      "description": "Position at the party."
+    },
+    {
+      "id": "01M2MMR2QE3EKTM6ZYQP1KV95D",
+      "name": "email",
+      "type": {
+        "ref": "01M1RSY89TKR4D2MJY2YC131S7"
+      },
+      "indexed": true,
+      "sensitive": "pii",
+      "description": "Work email."
+    },
+    {
+      "id": "01M1KY9825DQ5ZWHFVV6YJS6GX",
+      "name": "phone",
+      "type": {
+        "ref": "01M30MZJ6XA7K0NQK6ACTMB0VD"
+      },
+      "sensitive": "pii",
+      "description": "Direct line."
+    },
+    {
+      "id": "01M24HTK79WKR3K253PCQQ070K",
+      "name": "additionalPhones",
+      "type": {
+        "ref": "01M30MZJ6XA7K0NQK6ACTMB0VD"
+      },
+      "collection": true,
+      "sensitive": "pii",
+      "description": "Mobile and other numbers."
+    },
+    {
+      "id": "01M1Q0RA0EX8X68KNKHV1SRBCX",
+      "name": "isPrimary",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Main contact of the party."
+    },
+    {
+      "id": "01M1TZQWG3RWGTVM3CJ0CSJNTG",
+      "name": "isBillingContact",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Receives invoices and statements."
+    }
+  ]
+}

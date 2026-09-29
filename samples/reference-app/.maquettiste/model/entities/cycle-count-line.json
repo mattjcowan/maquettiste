@@ -1,0 +1,58 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M21Y0KVFX1RBJ8PW4RYPAV3T",
+  "name": "CycleCountLine",
+  "displayName": "Cycle count line",
+  "pluralName": "Cycle count lines",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "One product in one bin to count, with the expected and counted quantities.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M2J8K6CD5A71PGEJGJKZF8WK"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2J8K6CD5A71PGEJGJKZF8WK",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the cycle count line."
+    },
+    {
+      "id": "01M1YNB5E5VE8V1G2F5NMFN55J",
+      "name": "expectedQuantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "required": true,
+      "description": "Quantity on record."
+    },
+    {
+      "id": "01M2ZX9GKGRC0GMBDBCPY30SW7",
+      "name": "countedQuantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "description": "Quantity found."
+    },
+    {
+      "id": "01M28MYB61H71Y6SHXFYW1X5XT",
+      "name": "countedAt",
+      "type": "datetimeoffset",
+      "description": "When it was counted."
+    },
+    {
+      "id": "01M1MTBMW80NNARVAHN290Q8HA",
+      "name": "varianceApproved",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether a variance was approved."
+    }
+  ]
+}

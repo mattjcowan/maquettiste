@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M29PNCVTQQ22YYT5ZWQEWAH3",
+  "name": "stock transfer line lot",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Lot transferred.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M2KSXVZSZ665W3GHWGK7RRVT",
+      "entity": "01M1KXX9R3RW3ATAD1NCYF0QP0",
+      "role": "lot",
+      "navigation": "lot",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1Y7BADBE4F1T8714FD4S2ED",
+      "entity": "01M1XGAKD7QF42QNGG4SGXZZVH",
+      "role": "stockTransferLines"
+    }
+  ]
+}

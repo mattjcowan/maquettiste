@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M294DQA8R8Q6AJK0XDCAZ2D7",
+  "name": "warehouse cost center",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Cost center of the site.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M1FEEY9Z8G9RDGM0FMFAF5EW",
+      "entity": "01M2CS3TZ92TERS04MA3196AS4",
+      "role": "costCenter",
+      "navigation": "costCenter",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2KJFEJ5GHE7G7P13MCJN8S2",
+      "entity": "01M1PN7QBBJ001FSBR7DTP2QS6",
+      "role": "warehouses"
+    }
+  ]
+}

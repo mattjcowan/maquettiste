@@ -1,0 +1,19 @@
+{
+  "name": "reference-app-tools",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Builds the Northwind Operations reference model from domain/*.yaml, checks it and seeds it through the editor API.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build-model": "node build-model.mjs",
+    "check": "node check-model.mjs",
+    "test": "node check-model.mjs",
+    "seed": "node seed.mjs"
+  },
+  "dependencies": {
+    "yaml": "2.8.1"
+  }
+}

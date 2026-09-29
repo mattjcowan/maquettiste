@@ -1,0 +1,69 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M271KH4GNVYE9K93HPVTFKZT",
+  "name": "RequestForQuote",
+  "displayName": "Request for quote",
+  "pluralName": "Request for quotes",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "A request asking several suppliers to quote for a product.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "key": {
+    "attributes": [
+      "01M1QNRRFG2T9E19S9ETJMDCA3"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1QNRRFG2T9E19S9ETJMDCA3",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the request for quote."
+    },
+    {
+      "id": "01M26QEHYY7S9DE2GEJ6D6TPSG",
+      "name": "rfqNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "RFQ number."
+    },
+    {
+      "id": "01M26BV5YYYGPE3R4XVY5TFSJJ",
+      "name": "issuedOn",
+      "type": "date",
+      "required": true,
+      "description": "Date sent."
+    },
+    {
+      "id": "01M37ZF3954BRDJFH5KAQAK807",
+      "name": "responseDueOn",
+      "type": "date",
+      "required": true,
+      "description": "Deadline for quotes."
+    },
+    {
+      "id": "01M1THH9V8F9098KSJP07Y9RN5",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "open",
+      "description": "open, evaluating, awarded or cancelled."
+    },
+    {
+      "id": "01M28DCT5YDTGE488XE104JBTF",
+      "name": "description",
+      "type": "text",
+      "description": "Requirements."
+    }
+  ]
+}

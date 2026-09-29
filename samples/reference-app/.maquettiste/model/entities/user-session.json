@@ -1,0 +1,73 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M33169ZNHEKKZGWZBFWA2FWS",
+  "name": "UserSession",
+  "displayName": "User session",
+  "pluralName": "User sessions",
+  "package": "01M1F99DBQ9B1T1RVMQRR1GS7V",
+  "description": "A signed-in session of a user account, kept to support sign-out everywhere and anomaly detection.",
+  "tags": [
+    "security",
+    "high-volume"
+  ],
+  "category": "01M38C3WQ4HSCF45E03KGN6AF5",
+  "key": {
+    "attributes": [
+      "01M2SM04K2PK0E8KTKAN4MR6YW"
+    ],
+    "strategy": "ulid"
+  },
+  "attributes": [
+    {
+      "id": "01M2SM04K2PK0E8KTKAN4MR6YW",
+      "name": "id",
+      "type": "ulid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the user session."
+    },
+    {
+      "id": "01M34KKB6T7Y9WVSV4SZXHMY8X",
+      "name": "startedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the session was created."
+    },
+    {
+      "id": "01M2B0NDVB4ZP383ZPH5MTV6CB",
+      "name": "expiresAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "indexed": true,
+      "description": "Absolute expiry."
+    },
+    {
+      "id": "01M263MQ6TG586XVJAMXJB5HR3",
+      "name": "lastSeenAt",
+      "type": "datetimeoffset",
+      "description": "Last request on the session."
+    },
+    {
+      "id": "01M1N9AM8KJHZHNQKPAFYFMSSQ",
+      "name": "ipAddress",
+      "type": "string",
+      "length": 45,
+      "sensitive": "pii",
+      "description": "Client IP address (IPv4 or IPv6)."
+    },
+    {
+      "id": "01M2YGMY07AMFN5RM9QTS47PC6",
+      "name": "userAgent",
+      "type": "string",
+      "length": 400,
+      "description": "Client user agent string."
+    },
+    {
+      "id": "01M1DDKWWWSECFS4CE26VXSCEV",
+      "name": "revokedAt",
+      "type": "datetimeoffset",
+      "description": "When the session was revoked; null while valid."
+    }
+  ]
+}

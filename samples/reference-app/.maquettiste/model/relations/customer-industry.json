@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M34DVR2B19ZS64XXXXTC30ZG",
+  "name": "customer industry",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "Industry the customer operates in.",
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "ends": [
+    {
+      "id": "01M3391C1GXKJHCEC7M3K6TDH2",
+      "entity": "01M25DP2M0C04S4KCENQTV1KWB",
+      "role": "industry",
+      "navigation": "industry",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M24JJ4Q78ADBM5RF6FCZPV1R",
+      "entity": "01M1ECZKYNSKVNCWW2XM34E20X",
+      "role": "customers"
+    }
+  ]
+}

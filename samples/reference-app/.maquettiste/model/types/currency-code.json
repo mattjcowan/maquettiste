@@ -1,0 +1,15 @@
+{
+  "$schema": "../../.schema/v1/scalar-type.json",
+  "kind": "scalar-type",
+  "id": "01M1YARMMY84EBD16K0VMXBS4V",
+  "name": "CurrencyCode",
+  "displayName": "Currency code",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "An ISO 4217 alphabetic currency code, such as USD or EUR.",
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "base": "string",
+  "length": 3,
+  "validation": {
+    "pattern": "^[A-Z]{3}$"
+  }
+}

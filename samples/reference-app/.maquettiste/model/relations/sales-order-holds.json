@@ -1,0 +1,27 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1FM9EBC8JTXHX0D3XJ8TTFF",
+  "name": "sales order holds",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "relationKind": "composition",
+  "description": "Holds placed on the order.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "ends": [
+    {
+      "id": "01M1F3JHC8FSFG8DKQKGK8P1J0",
+      "entity": "01M1GBW3NDKS6WCM5FAXYVHV7B",
+      "role": "salesOrder",
+      "navigation": "salesOrder",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M2GNQD5HAETEMRGWSGKRYQR1",
+      "entity": "01M1GGGF7MKSKSSN9E4MQGWNG4",
+      "role": "holds",
+      "navigation": "holds"
+    }
+  ]
+}

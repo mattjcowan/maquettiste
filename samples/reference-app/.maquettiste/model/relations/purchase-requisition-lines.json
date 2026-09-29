@@ -1,0 +1,27 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2SG4JZYM29GTHNK128CG2W5",
+  "name": "purchase requisition lines",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "relationKind": "composition",
+  "description": "Requested items.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "ends": [
+    {
+      "id": "01M1YFQK8J34N9DYG0QVGQNV09",
+      "entity": "01M1G5ZRBD1BNSWC0BGGQH6YN6",
+      "role": "purchaseRequisition",
+      "navigation": "purchaseRequisition",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M1JPY3AK2P0AKWM7J0PMB0TJ",
+      "entity": "01M2CT5MQTB4BBCT99449QSBCM",
+      "role": "lines",
+      "navigation": "lines"
+    }
+  ]
+}

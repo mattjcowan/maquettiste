@@ -1,0 +1,40 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1NX3GHBS6G31FNKR5X8JFBV",
+  "name": "rfq invites supplier",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "Suppliers invited to quote on a request for quote, with the invitation date.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "ends": [
+    {
+      "id": "01M2QJ8MP93K14ZW2HF41YE8KX",
+      "entity": "01M271KH4GNVYE9K93HPVTFKZT",
+      "role": "requestsForQuote",
+      "navigation": "requestsForQuote"
+    },
+    {
+      "id": "01M2KBDS04RY72X05SC39N8GYR",
+      "entity": "01M2A5WW8NFWJS1V5NFRKCBNYV",
+      "role": "invitedSuppliers",
+      "navigation": "invitedSuppliers"
+    }
+  ],
+  "attributes": [
+    {
+      "id": "01M2GEJQXTMVN76J5CT3CFVKEK",
+      "name": "invitedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the invitation was sent."
+    },
+    {
+      "id": "01M2H5PFFGJG77KYGD8BZP7V4M",
+      "name": "declined",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether the supplier declined to quote."
+    }
+  ]
+}

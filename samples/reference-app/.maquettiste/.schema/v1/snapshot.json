@@ -1,0 +1,394 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Physical snapshot",
+  "description": "snapshots/<db>.json: the schema diff baseline.",
+  "type": "object",
+  "x-order": ["$schema", "database", "name", "dialect", "revision", "tables", "views", "sequences"],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "database": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "dialect": {
+      "enum": ["postgresql", "sqlserver", "mysql", "sqlite", "oracle"]
+    },
+    "revision": {
+      "type": "integer",
+      "default": 0,
+      "minimum": 0
+    },
+    "tables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "x-order": ["key", "name", "schema", "columns", "primaryKey", "uniques", "foreignKeys", "checks", "indexes", "comment"],
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "schema": {
+            "type": "string"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "x-order": [
+                "key",
+                "name",
+                "type",
+                "length",
+                "precision",
+                "scale",
+                "nativeType",
+                "nullable",
+                "default",
+                "defaultSql",
+                "identity",
+                "sequence",
+                "computed",
+                "computedStored",
+                "collation",
+                "comment"
+              ],
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "type": {
+                  "$ref": "common.json#/$defs/builtinType"
+                },
+                "length": {
+                  "$ref": "common.json#/$defs/length"
+                },
+                "precision": {
+                  "$ref": "common.json#/$defs/precision"
+                },
+                "scale": {
+                  "$ref": "common.json#/$defs/scale"
+                },
+                "nativeType": {
+                  "type": "string"
+                },
+                "nullable": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "default": {},
+                "defaultSql": {
+                  "type": "string"
+                },
+                "identity": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "sequence": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "computed": {
+                  "type": "string"
+                },
+                "computedStored": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "collation": {
+                  "type": "string"
+                },
+                "comment": {
+                  "type": "string"
+                }
+              },
+              "required": ["key", "name", "type"],
+              "additionalProperties": false
+            },
+            "default": []
+          },
+          "primaryKey": {
+            "type": "object",
+            "x-order": ["key", "name", "columns", "clustered"],
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "clustered": {
+                "type": "boolean"
+              }
+            },
+            "required": ["key", "name", "columns"],
+            "additionalProperties": false
+          },
+          "uniques": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "x-order": ["key", "name", "columns", "clustered"],
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "columns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "clustered": {
+                  "type": "boolean"
+                }
+              },
+              "required": ["key", "name", "columns"],
+              "additionalProperties": false
+            },
+            "default": []
+          },
+          "foreignKeys": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "x-order": ["key", "name", "columns", "referencedTable", "referencedColumns", "onDelete", "onUpdate"],
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "columns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "referencedTable": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "referencedColumns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "onDelete": {
+                  "enum": ["no-action", "restrict", "cascade", "set-null", "set-default"],
+                  "default": "no-action"
+                },
+                "onUpdate": {
+                  "enum": ["no-action", "restrict", "cascade", "set-null", "set-default"],
+                  "default": "no-action"
+                }
+              },
+              "required": ["key", "name", "columns", "referencedTable", "referencedColumns"],
+              "additionalProperties": false
+            },
+            "default": []
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "x-order": ["key", "name", "expression"],
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "expression": {
+                  "type": "string"
+                }
+              },
+              "required": ["key", "name", "expression"],
+              "additionalProperties": false
+            },
+            "default": []
+          },
+          "indexes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "x-order": ["key", "name", "columns", "include", "where", "unique", "method"],
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "columns": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "x-order": ["column", "descending"],
+                    "properties": {
+                      "column": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "descending": {
+                        "type": "boolean",
+                        "default": false
+                      }
+                    },
+                    "required": ["column"],
+                    "additionalProperties": false
+                  }
+                },
+                "include": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "default": []
+                },
+                "where": {
+                  "type": "string"
+                },
+                "unique": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "method": {
+                  "enum": ["default", "btree", "hash", "gin", "gist", "clustered"],
+                  "default": "default"
+                }
+              },
+              "required": ["key", "name", "columns"],
+              "additionalProperties": false
+            },
+            "default": []
+          },
+          "comment": {
+            "type": "string"
+          }
+        },
+        "required": ["key", "name"],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "views": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "x-order": ["key", "name", "schema", "body"],
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "schema": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          }
+        },
+        "required": ["key", "name", "body"],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "sequences": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "x-order": ["key", "name", "schema", "type", "start", "increment", "min", "max", "cycle", "cache"],
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "schema": {
+            "type": "string"
+          },
+          "type": {
+            "enum": ["int16", "int32", "int64"],
+            "default": "int64"
+          },
+          "start": {
+            "type": "integer",
+            "default": 1
+          },
+          "increment": {
+            "type": "integer",
+            "default": 1
+          },
+          "min": {
+            "type": "integer"
+          },
+          "max": {
+            "type": "integer"
+          },
+          "cycle": {
+            "type": "boolean",
+            "default": false
+          },
+          "cache": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": ["key", "name"],
+        "additionalProperties": false
+      },
+      "default": []
+    }
+  },
+  "required": ["database", "name", "dialect"],
+  "additionalProperties": false
+}

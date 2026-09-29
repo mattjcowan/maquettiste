@@ -1,0 +1,82 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2BKNW8ET53B7685KC3KZW3K",
+  "name": "PartyAddress",
+  "displayName": "Party address",
+  "pluralName": "Party addresses",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "A named address of a party, such as a ship-to location of a customer with several branches.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "pii"
+  ],
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "key": {
+    "attributes": [
+      "01M1E890MB46VVAE12NZ3GB8YE"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1E890MB46VVAE12NZ3GB8YE",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the party address."
+    },
+    {
+      "id": "01M378371VX38Q4H2W8BNR0T0G",
+      "name": "label",
+      "type": "string",
+      "length": 80,
+      "required": true,
+      "description": "Name of the location, such as Denver branch."
+    },
+    {
+      "id": "01M2HPFBM77AN19X8ZV84D6F5J",
+      "name": "addressType",
+      "type": {
+        "ref": "01M2REZ2EG3YJFDH8W529QRP5N"
+      },
+      "required": true,
+      "description": "Purpose of the address."
+    },
+    {
+      "id": "01M36V8200HHCQHGZ1BTCMWHBV",
+      "name": "address",
+      "type": {
+        "ref": "01M2WPKGPNR6R40TDZ1WGNN874"
+      },
+      "required": true,
+      "description": "The postal address."
+    },
+    {
+      "id": "01M1QC0JSXKQHCQZKEHDSF40EW",
+      "name": "location",
+      "type": {
+        "ref": "01M2D3J3CAF7MGQ91CWJFVMSQ4"
+      },
+      "description": "Geocoded position for routing."
+    },
+    {
+      "id": "01M29G2G70G9SBZPHY862RSVJ7",
+      "name": "isDefault",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Default address of its type."
+    },
+    {
+      "id": "01M31SKSYTC2HMPRT1HH0ZV6WH",
+      "name": "deliveryInstructions",
+      "type": "string",
+      "length": 500,
+      "description": "Dock hours, gate codes and the like."
+    }
+  ]
+}

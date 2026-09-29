@@ -1,0 +1,63 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M35A9JR8WQHEXW9H4SS5WB55",
+  "name": "Permission",
+  "displayName": "Permission",
+  "pluralName": "Permissions",
+  "package": "01M1F99DBQ9B1T1RVMQRR1GS7V",
+  "description": "A single grantable right on a resource, such as sales-order:approve.",
+  "tags": [
+    "security",
+    "configuration"
+  ],
+  "category": "01M38C3WQ4HSCF45E03KGN6AF5",
+  "key": {
+    "attributes": [
+      "01M2EE0833MXRNMHR2WG9Y1RXW"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M2EE0833MXRNMHR2WG9Y1RXW",
+      "name": "id",
+      "type": "int32",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the permission."
+    },
+    {
+      "id": "01M32TB6NC8BBTMD14DE198DPX",
+      "name": "code",
+      "type": "string",
+      "length": 80,
+      "required": true,
+      "unique": true,
+      "description": "Resource and action, such as sales-order:approve."
+    },
+    {
+      "id": "01M2Z7W14NRSDQYZ2A4ZW9GQDJ",
+      "name": "resource",
+      "type": "string",
+      "length": 60,
+      "required": true,
+      "description": "Protected resource."
+    },
+    {
+      "id": "01M2J83S0Z6ZYA2E7PZCTJ0M2H",
+      "name": "action",
+      "type": "string",
+      "length": 40,
+      "required": true,
+      "description": "Action on the resource."
+    },
+    {
+      "id": "01M1YDJC00D4G9G9FQHDR6DX5Z",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "description": "What the permission allows."
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "../../../.schema/v1/stereotype.json",
+  "kind": "stereotype",
+  "id": "01M1GDHRMDT5X9RZTXVQ44M05W",
+  "key": "aggregate-root",
+  "name": "Aggregate root",
+  "description": "The entry point of a consistency boundary; its children are loaded and saved through it.",
+  "appliesTo": [
+    "entity"
+  ]
+}

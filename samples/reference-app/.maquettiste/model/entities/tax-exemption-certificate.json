@@ -1,0 +1,65 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2H0CTE2YH4RT4GV78S425Q7",
+  "name": "TaxExemptionCertificate",
+  "displayName": "Tax exemption certificate",
+  "pluralName": "Tax exemption certificates",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "A resale or exemption certificate a customer filed to buy without sales tax in a state.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "key": {
+    "attributes": [
+      "01M1ZCA1QDAVWCM1KDA511FZ7H"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1ZCA1QDAVWCM1KDA511FZ7H",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the tax exemption certificate."
+    },
+    {
+      "id": "01M280BPT5289H1DS6FQFE50NP",
+      "name": "certificateNumber",
+      "type": "string",
+      "length": 40,
+      "required": true,
+      "description": "Number on the certificate."
+    },
+    {
+      "id": "01M1N1T3M4BH49SGFS1D7DRRBQ",
+      "name": "exemptionReason",
+      "type": "string",
+      "length": 60,
+      "required": true,
+      "description": "Reason, such as resale or nonprofit."
+    },
+    {
+      "id": "01M2PG485NFQD772J1JV82GFZE",
+      "name": "validity",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "required": true,
+      "description": "Period the certificate covers."
+    },
+    {
+      "id": "01M1N8Z1PX756VW64D8GE2ARN9",
+      "name": "documentUrl",
+      "type": "string",
+      "length": 400,
+      "description": "Link to the scanned certificate."
+    }
+  ]
+}

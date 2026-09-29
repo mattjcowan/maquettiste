@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/package.json",
+  "kind": "package",
+  "id": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "name": "Catalog",
+  "displayName": "Catalog",
+  "description": "What Northwind sells - products and their variants, categories, brands, packaging, barcodes, content and compliance data.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0"
+}

@@ -1,0 +1,74 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2Z3F1EM1Y1CWQ30C4RRN2PJ",
+  "name": "ProofOfDelivery",
+  "displayName": "Proof of delivery",
+  "pluralName": "Proofs of delivery",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "Evidence that a shipment was delivered - who signed, where and when.",
+  "tags": [
+    "pii"
+  ],
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "key": {
+    "attributes": [
+      "01M1XWHGRNK94FJA5DGGCTTVWJ"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1XWHGRNK94FJA5DGGCTTVWJ",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the proof of delivery."
+    },
+    {
+      "id": "01M2JHYDABDEAB3J5SSHBDSJG0",
+      "name": "deliveredAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "Delivery time."
+    },
+    {
+      "id": "01M30340FSZP1AQPE52JH60DBM",
+      "name": "receivedByName",
+      "type": "string",
+      "length": 120,
+      "sensitive": "pii",
+      "description": "Name of the person who signed."
+    },
+    {
+      "id": "01M1DXHJMZ8261EP4SJCTN0ZQ0",
+      "name": "signatureImageUrl",
+      "type": "string",
+      "length": 400,
+      "description": "Signature capture."
+    },
+    {
+      "id": "01M2F8KFQFCM7TA29FQZ0KDSTC",
+      "name": "photoUrl",
+      "type": "string",
+      "length": 400,
+      "description": "Photo of the delivered goods."
+    },
+    {
+      "id": "01M2BGNQ6BDR4HSZA87N12TEQX",
+      "name": "location",
+      "type": {
+        "ref": "01M2D3J3CAF7MGQ91CWJFVMSQ4"
+      },
+      "description": "Where it was captured."
+    },
+    {
+      "id": "01M2KN7BZ4GRNXPSMBH06TF8X8",
+      "name": "notes",
+      "type": "string",
+      "length": 500,
+      "description": "Driver's remarks."
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2QFZSC4KWD20CENXN364C9Y",
+  "name": "Lead",
+  "displayName": "Lead",
+  "pluralName": "Leads",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "A prospective customer not yet qualified, captured from a trade show, the website or a referral.",
+  "stereotypes": [
+    "audited",
+    "soft-delete"
+  ],
+  "tags": [
+    "pii"
+  ],
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "key": {
+    "attributes": [
+      "01M1VE53AJEJRRTSTXXB5NH8SV"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1VE53AJEJRRTSTXXB5NH8SV",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the lead."
+    },
+    {
+      "id": "01M1S92JP508464S02YATK6K53",
+      "name": "companyName",
+      "type": "string",
+      "length": 200,
+      "required": true,
+      "description": "Prospect's company."
+    },
+    {
+      "id": "01M1TRG3JZF5BC667SAH8K14KV",
+      "name": "contactName",
+      "type": {
+        "ref": "01M2MP2MXM08FGYG28KHK94RB5"
+      },
+      "sensitive": "pii",
+      "description": "Person who inquired."
+    },
+    {
+      "id": "01M33ZDKZJXXJC7H4QYW6G16X8",
+      "name": "email",
+      "type": {
+        "ref": "01M1RSY89TKR4D2MJY2YC131S7"
+      },
+      "indexed": true,
+      "sensitive": "pii",
+      "description": "Prospect's email."
+    },
+    {
+      "id": "01M1NAYN5D1R9AJXS5ZQZH6T5M",
+      "name": "phone",
+      "type": {
+        "ref": "01M30MZJ6XA7K0NQK6ACTMB0VD"
+      },
+      "sensitive": "pii",
+      "description": "Prospect's phone."
+    },
+    {
+      "id": "01M1S3XK8FC1746NZA87M49PYS",
+      "name": "status",
+      "type": {
+        "ref": "01M1J2VYGD1Z513E1SM4R1P362"
+      },
+      "required": true,
+      "default": "New",
+      "description": "Qualification state."
+    },
+    {
+      "id": "01M1WAXWA621SJEBA9VT1KX6BJ",
+      "name": "estimatedAnnualValue",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Estimated yearly purchases."
+    },
+    {
+      "id": "01M2EVQNXE9RDSPYQJQD0FDMYG",
+      "name": "notes",
+      "type": "text",
+      "description": "Qualification notes."
+    },
+    {
+      "id": "01M1T4RS91MRTCPTC0GZCXYPVT",
+      "name": "convertedOn",
+      "type": "date",
+      "description": "Date the lead became a customer."
+    }
+  ]
+}

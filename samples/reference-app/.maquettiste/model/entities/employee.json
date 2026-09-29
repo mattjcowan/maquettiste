@@ -1,0 +1,112 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1RJC20E0YQ2SZNHD9NJW74W",
+  "name": "Employee",
+  "displayName": "Employee",
+  "pluralName": "Employees",
+  "package": "01M1F99DBQ9B1T1RVMQRR1GS7V",
+  "description": "A person employed by Northwind, from warehouse associates to account managers.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited",
+    "soft-delete"
+  ],
+  "tags": [
+    "pii",
+    "master-data"
+  ],
+  "category": "01M38C3WQ4HSCF45E03KGN6AF5",
+  "key": {
+    "attributes": [
+      "01M1MB28Y14M89NZJKW1YHW3QQ"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "alternateKeys": [
+    {
+      "id": "01M2SR3J5JJ2Q3NAR8K3PA32SE",
+      "name": "employeeNumber",
+      "attributes": [
+        "01M2BJ4SMVG6FTWDA5DRJ9701Q"
+      ]
+    }
+  ],
+  "attributes": [
+    {
+      "id": "01M1MB28Y14M89NZJKW1YHW3QQ",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the employee."
+    },
+    {
+      "id": "01M2BJ4SMVG6FTWDA5DRJ9701Q",
+      "name": "employeeNumber",
+      "type": "string",
+      "length": 12,
+      "required": true,
+      "description": "Payroll number."
+    },
+    {
+      "id": "01M1M7221K9RQ1RSF99WPWM4ND",
+      "name": "name",
+      "type": {
+        "ref": "01M2MP2MXM08FGYG28KHK94RB5"
+      },
+      "required": true,
+      "sensitive": "pii",
+      "description": "Legal name."
+    },
+    {
+      "id": "01M2YJGG5GE0Z9DBEVCPQ273DR",
+      "name": "workEmail",
+      "type": {
+        "ref": "01M1RSY89TKR4D2MJY2YC131S7"
+      },
+      "required": true,
+      "unique": true,
+      "sensitive": "pii",
+      "description": "Company email address."
+    },
+    {
+      "id": "01M1DG7VVTWMS67ASS19SD0KMN",
+      "name": "workPhone",
+      "type": {
+        "ref": "01M30MZJ6XA7K0NQK6ACTMB0VD"
+      },
+      "sensitive": "pii",
+      "description": "Direct line."
+    },
+    {
+      "id": "01M2GA9T5GTTKT567M9EJPNV5X",
+      "name": "jobTitle",
+      "type": "string",
+      "length": 100,
+      "required": true,
+      "description": "Position title."
+    },
+    {
+      "id": "01M34BW471R4X27C5KA1GAM0G5",
+      "name": "hiredOn",
+      "type": "date",
+      "required": true,
+      "description": "First day of employment."
+    },
+    {
+      "id": "01M2P4Z1ZFM5XVAKT2QPNKZZQC",
+      "name": "terminatedOn",
+      "type": "date",
+      "description": "Last day of employment; null while employed."
+    },
+    {
+      "id": "01M1WCM83VXFBCWGJMXJNMJ6JJ",
+      "name": "isSalesRep",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether the employee can own customer accounts and earn commission."
+    }
+  ]
+}

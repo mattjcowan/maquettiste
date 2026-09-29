@@ -1,0 +1,81 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2W79FBW6R8KE7WKVGGRF06D",
+  "name": "StoredPaymentMethod",
+  "displayName": "Stored payment method",
+  "pluralName": "Stored payment methods",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "A tokenized card or bank account a customer saved on the portal; the details stay with the processor.",
+  "stereotypes": [
+    "audited",
+    "soft-delete"
+  ],
+  "tags": [
+    "pii"
+  ],
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "key": {
+    "attributes": [
+      "01M38F1RJHH6RVY5ACBJSYV8TV"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M38F1RJHH6RVY5ACBJSYV8TV",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the stored payment method."
+    },
+    {
+      "id": "01M2Q6FQ7Q409QSZ6EPX8JNB60",
+      "name": "methodType",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "card or bank-account."
+    },
+    {
+      "id": "01M2E5YRCQJE9S5XF5ZE48N8X9",
+      "name": "cardBrand",
+      "type": {
+        "ref": "01M2RSFMKWCQ1CZQ5J0VTJ74GK"
+      },
+      "description": "Card network, for cards."
+    },
+    {
+      "id": "01M25PGA1NX93MNPXEFNETAYA0",
+      "name": "last4",
+      "type": "string",
+      "length": 4,
+      "required": true,
+      "description": "Last four digits."
+    },
+    {
+      "id": "01M34E72TZMFNEZ0M68GY2FPQW",
+      "name": "expiresOn",
+      "type": "date",
+      "description": "Expiry, for cards."
+    },
+    {
+      "id": "01M2NF4J7Q631GFWD37J045RCK",
+      "name": "processorToken",
+      "type": "string",
+      "length": 128,
+      "required": true,
+      "sensitive": "secret",
+      "description": "Token issued by the processor."
+    },
+    {
+      "id": "01M2GQXA073PEQW85FZXRTPDDS",
+      "name": "isDefault",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Used for automatic payments."
+    }
+  ]
+}

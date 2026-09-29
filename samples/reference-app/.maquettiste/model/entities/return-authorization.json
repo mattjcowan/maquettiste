@@ -1,0 +1,87 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1E3YR0WSPEYKSWJAT9DXN0N",
+  "name": "ReturnAuthorization",
+  "displayName": "Return authorization",
+  "pluralName": "Return authorizations",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "A return merchandise authorization (RMA) permitting a customer to send goods back.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "transactional"
+  ],
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "key": {
+    "attributes": [
+      "01M2XQKFHT2CVJWST1FSMVA270"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2XQKFHT2CVJWST1FSMVA270",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the return authorization."
+    },
+    {
+      "id": "01M2DHK2G7ERJ2JY32KKYEXB2S",
+      "name": "rmaNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "RMA number the customer writes on the parcel."
+    },
+    {
+      "id": "01M1XB19NNHGJ5H6TPYE04NXKN",
+      "name": "requestedOn",
+      "type": "date",
+      "required": true,
+      "description": "Request date."
+    },
+    {
+      "id": "01M22MD7JF6NQZ7BJGPKSWE9PR",
+      "name": "status",
+      "type": {
+        "ref": "01M1XDYVZ99Q8N5J7Q9Y1MVCM1"
+      },
+      "required": true,
+      "default": "Requested",
+      "description": "Lifecycle state."
+    },
+    {
+      "id": "01M2YAF872T2R32DW20E9CKHBY",
+      "name": "approvedOn",
+      "type": "date",
+      "description": "Approval date."
+    },
+    {
+      "id": "01M1MF15Y7TGQJ76A2JZCH4EAM",
+      "name": "returnMethod",
+      "type": "string",
+      "length": 20,
+      "description": "carrier-pickup or drop-off."
+    },
+    {
+      "id": "01M3109VR1TQ8CKSX0X4ME1M2N",
+      "name": "restockingFeePercent",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "description": "Restocking fee charged."
+    },
+    {
+      "id": "01M31RFJRVWTSETX1Y1K2F291J",
+      "name": "customerComments",
+      "type": "text",
+      "description": "What the customer said."
+    }
+  ]
+}

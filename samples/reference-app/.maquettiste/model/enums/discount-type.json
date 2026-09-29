@@ -1,0 +1,40 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M2GY5JW2EF7880VD84VY7WDD",
+  "name": "DiscountType",
+  "displayName": "Discount type",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "How a discount or reward is computed.",
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "members": [
+    {
+      "id": "01M2MRSFQKAW62SWY7XZ1YEBWG",
+      "name": "PercentOff",
+      "value": 0,
+      "code": "PCT",
+      "description": "A percentage off the price."
+    },
+    {
+      "id": "01M1D6HVK7H13GNY5YSXAWKPME",
+      "name": "AmountOff",
+      "value": 1,
+      "code": "AMT",
+      "description": "A fixed amount off the price."
+    },
+    {
+      "id": "01M2DXPBJTJ1F7DTTFYJ3YEHGC",
+      "name": "FixedPrice",
+      "value": 2,
+      "code": "FIX",
+      "description": "The price is replaced by a fixed price."
+    },
+    {
+      "id": "01M1J723PFCTJPPHXG39V0260G",
+      "name": "FreeGoods",
+      "value": 3,
+      "code": "FREE",
+      "description": "Free units of a product."
+    }
+  ]
+}

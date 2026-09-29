@@ -1,0 +1,39 @@
+{
+  "name": "sql-ddl",
+  "version": "1.0.0",
+  "engine": ">=1.0 <2.0",
+  "description": "SQL DDL for PostgreSQL, SQL Server and SQLite: one script per table, one schema script per database, once-mode migrations from the schema diff and a seed script with protected regions.",
+  "parameters": {
+    "comments": true,
+    "quoting": "",
+    "schemaScript": "inline"
+  },
+  "usesSchemaDiff": true,
+  "units": [
+    {
+      "id": "table",
+      "template": "table.scriban",
+      "for": "each table",
+      "output": "{{ kebab table.database.name }}/{{ if table.schema }}{{ table.schema }}/{{ end }}tables/{{ table.name }}.sql"
+    },
+    {
+      "id": "schema",
+      "template": "schema.scriban",
+      "for": "select databases",
+      "output": "{{ kebab database.name }}/schema.sql"
+    },
+    {
+      "id": "migration",
+      "template": "migration.scriban",
+      "for": "select databases",
+      "mode": "once"
+    },
+    {
+      "id": "seed",
+      "template": "seed.scriban",
+      "for": "select databases",
+      "output": "{{ kebab database.name }}/seed.sql",
+      "mode": "regions"
+    }
+  ]
+}

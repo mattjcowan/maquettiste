@@ -1,0 +1,61 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1WNA0QDVH1FZGDRZ793BEWZ",
+  "name": "ProductCollection",
+  "displayName": "Product collection",
+  "pluralName": "Product collections",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "A curated set of products, such as Back to school or Top sellers, used by merchandising.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M1ZHPFTE99MBTMAFCRP8483B"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1ZHPFTE99MBTMAFCRP8483B",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the product collection."
+    },
+    {
+      "id": "01M385H7HN116AZDMG70YB9AWK",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "required": true,
+      "unique": true,
+      "description": "Collection name."
+    },
+    {
+      "id": "01M2B0R8XQT9SZGKTYF26QVJXB",
+      "name": "description",
+      "type": "text",
+      "description": "Description shown to customers."
+    },
+    {
+      "id": "01M269BN87KCYDMS62E5JK9E2H",
+      "name": "isFeatured",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Shown on the portal home page."
+    },
+    {
+      "id": "01M2MCQYJ0B3M6DMQGE7KG0472",
+      "name": "validity",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "description": "When the collection is shown."
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M32D0ZFS59TK463QBGQ7TWG0",
+  "name": "AuditEvent",
+  "displayName": "Audit event",
+  "pluralName": "Audit events",
+  "package": "01M1F99DBQ9B1T1RVMQRR1GS7V",
+  "description": "An append-only record of a security-relevant or business-critical action, such as a role grant or a credit limit change.",
+  "tags": [
+    "security",
+    "high-volume"
+  ],
+  "category": "01M38C3WQ4HSCF45E03KGN6AF5",
+  "key": {
+    "attributes": [
+      "01M2HHWHSTE0J8SNWGF7GVFKB7"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M2HHWHSTE0J8SNWGF7GVFKB7",
+      "name": "id",
+      "type": "int64",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the audit event."
+    },
+    {
+      "id": "01M1MKSRMZWHQWE0BTNK599YHK",
+      "name": "occurredAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "indexed": true,
+      "description": "When the action happened."
+    },
+    {
+      "id": "01M2FBZBFE3DZNNREG2R0J52A2",
+      "name": "action",
+      "type": "string",
+      "length": 80,
+      "required": true,
+      "description": "What happened, such as role.granted."
+    },
+    {
+      "id": "01M2WFAJV8DQMC2EKN8244EYN1",
+      "name": "entityType",
+      "type": "string",
+      "length": 80,
+      "required": true,
+      "description": "Kind of record affected."
+    },
+    {
+      "id": "01M23V2RXAHDW7VQFDR57HF6Y8",
+      "name": "entityKey",
+      "type": "string",
+      "length": 64,
+      "required": true,
+      "description": "Key of the record affected."
+    },
+    {
+      "id": "01M1G0P9J3536W9H9B3M5HA2RS",
+      "name": "details",
+      "type": "json",
+      "description": "Before and after values."
+    },
+    {
+      "id": "01M1KGPMH5Q6T2G4MAJPBHAYKV",
+      "name": "ipAddress",
+      "type": "string",
+      "length": 45,
+      "sensitive": "pii",
+      "description": "Client IP address."
+    }
+  ]
+}

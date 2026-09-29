@@ -1,0 +1,72 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2Q6WMJ0KQXMQV0R0QFGYX21",
+  "name": "CustomerPriceAgreement",
+  "displayName": "Customer price agreement",
+  "pluralName": "Customer price agreements",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "A negotiated contract price agreement with one customer, overriding the price lists for the products it covers.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "key": {
+    "attributes": [
+      "01M2A782V1R6S75DVSSMYXXWG7"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2A782V1R6S75DVSSMYXXWG7",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the customer price agreement."
+    },
+    {
+      "id": "01M1YFH7Z896VBYZTX8BASGX08",
+      "name": "agreementNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Contract number."
+    },
+    {
+      "id": "01M1S041F9KRE5RCS4DPPTW6V7",
+      "name": "validity",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "required": true,
+      "description": "Contract period."
+    },
+    {
+      "id": "01M2VZJKJHAFP9QXDRSFE9SB43",
+      "name": "isApproved",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether pricing approved the agreement."
+    },
+    {
+      "id": "01M21PP6ZHQ3W2CP0Y7C3B719T",
+      "name": "approvedOn",
+      "type": "date",
+      "description": "Approval date."
+    },
+    {
+      "id": "01M1NRQ1BNS1D441R72BEEXV7Z",
+      "name": "notes",
+      "type": "text",
+      "description": "Negotiation notes."
+    }
+  ]
+}

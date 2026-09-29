@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/value-object.json",
+  "kind": "value-object",
+  "id": "01M1XXVRRM2ZA4D91TGCHG2P31",
+  "name": "DateRange",
+  "displayName": "Date range",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "An inclusive range of calendar dates; an open end means no limit.",
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "attributes": [
+    {
+      "id": "01M2DD18YRN08A7JCCJ66VTYM1",
+      "name": "startsOn",
+      "type": "date",
+      "required": true,
+      "description": "First day of the range."
+    },
+    {
+      "id": "01M1Q6MGT5Z2EY2HVP9RHZ5M6S",
+      "name": "endsOn",
+      "type": "date",
+      "description": "Last day of the range; null when open-ended."
+    }
+  ]
+}

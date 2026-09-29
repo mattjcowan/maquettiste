@@ -1,0 +1,168 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1GBW3NDKS6WCM5FAXYVHV7B",
+  "name": "SalesOrder",
+  "displayName": "Sales order",
+  "pluralName": "Sales orders",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "A customer's order for goods, from entry through shipping and invoicing.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited",
+    "soft-delete"
+  ],
+  "tags": [
+    "transactional",
+    "financial"
+  ],
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M2EACDTQ5DK0E5KCNM4GSD8R"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2EACDTQ5DK0E5KCNM4GSD8R",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the sales order."
+    },
+    {
+      "id": "01M256CQ05TNXT00ZA778NC7F1",
+      "name": "orderNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Order number, SO- followed by six digits from sales_order_number_seq."
+    },
+    {
+      "id": "01M2DKD1SBG981A6F0Q0ZK5KHV",
+      "name": "orderedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the order was placed."
+    },
+    {
+      "id": "01M25N9ECNK5AHV2W8MZ7FJFZV",
+      "name": "status",
+      "type": {
+        "ref": "01M1ND9H30R3QBP5WGNQFW4FQZ"
+      },
+      "required": true,
+      "default": "Draft",
+      "description": "Lifecycle state."
+    },
+    {
+      "id": "01M1VA0HCGQJB4VT1Z6CQ3SQK2",
+      "name": "customerPoNumber",
+      "type": "string",
+      "length": 40,
+      "indexed": true,
+      "description": "Customer's purchase order number."
+    },
+    {
+      "id": "01M1R59J0CTZBR59JSYZK7MAY8",
+      "name": "source",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "portal",
+      "description": "Entry channel - portal, edi, phone or email."
+    },
+    {
+      "id": "01M2MRH1B5DS69NJE8FTX2EDHQ",
+      "name": "requestedDeliveryOn",
+      "type": "date",
+      "description": "Delivery date the customer asked for."
+    },
+    {
+      "id": "01M369MWGWXN4Z2PG5Y282PDFP",
+      "name": "promisedDeliveryOn",
+      "type": "date",
+      "description": "Delivery date Northwind committed to."
+    },
+    {
+      "id": "01M27Q3N6W3KBQXPDVDZJ2TM7Z",
+      "name": "billingAddress",
+      "type": {
+        "ref": "01M2WPKGPNR6R40TDZ1WGNN874"
+      },
+      "required": true,
+      "description": "Bill-to address, copied from the customer when the order is placed."
+    },
+    {
+      "id": "01M349YSMDHDVTH7ZZV21127AX",
+      "name": "shippingAddress",
+      "type": {
+        "ref": "01M2WPKGPNR6R40TDZ1WGNN874"
+      },
+      "required": true,
+      "description": "Ship-to address."
+    },
+    {
+      "id": "01M27RPG4PWTHDHDCAACWKCP8Q",
+      "name": "freightTerms",
+      "type": {
+        "ref": "01M2HBFSPDYPYC46TQHGZ649QT"
+      },
+      "description": "Incoterm that decides who pays freight."
+    },
+    {
+      "id": "01M2JV7RJ3BBPEXVYE44FAZ7XG",
+      "name": "subtotal",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Sum of line totals."
+    },
+    {
+      "id": "01M1M5Y506QZGN2KXKVWVZHVPJ",
+      "name": "discountTotal",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Order-level discounts."
+    },
+    {
+      "id": "01M1MBYGPQYY86VJERSYPRB5GT",
+      "name": "taxTotal",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Sales tax."
+    },
+    {
+      "id": "01M1J30QTGJMV7PBBVP7AXQKNY",
+      "name": "freightTotal",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Freight and handling charges."
+    },
+    {
+      "id": "01M29Q7GEJBHTF6Z5X665Z927Z",
+      "name": "grandTotal",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Amount the customer owes."
+    },
+    {
+      "id": "01M2HRY8P1ME07FXDR51Y19H1P",
+      "name": "notes",
+      "type": "text",
+      "description": "Instructions from the customer."
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2Z1VNXQEJKE0HFDEMV4SEZ5",
+  "name": "ProductCertification",
+  "displayName": "Product certification",
+  "pluralName": "Product certifications",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "A certification a product holds, such as UL, CE or FDA 510(k).",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "master-data"
+  ],
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M2QWKK7XS20XZJW954ZF1Z7K"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2QWKK7XS20XZJW954ZF1Z7K",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the product certification."
+    },
+    {
+      "id": "01M1WTX4CEFGQ9M3ADHJ3X0444",
+      "name": "certificationType",
+      "type": "string",
+      "length": 40,
+      "required": true,
+      "description": "Scheme, such as UL or CE."
+    },
+    {
+      "id": "01M1ETDGXX6PW7JD13CPWAVQN8",
+      "name": "certificateNumber",
+      "type": "string",
+      "length": 60,
+      "description": "Certificate number."
+    },
+    {
+      "id": "01M2HYXS5R1TYP2D5J6D8P6RJK",
+      "name": "issuedBy",
+      "type": "string",
+      "length": 120,
+      "description": "Certification body."
+    },
+    {
+      "id": "01M2X2JZ0R5NH0E4CVH9N5S2TN",
+      "name": "validity",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "required": true,
+      "description": "Period the certificate is valid."
+    }
+  ]
+}

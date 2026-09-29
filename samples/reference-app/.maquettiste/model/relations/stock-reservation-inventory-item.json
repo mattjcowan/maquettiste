@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M21XAJE9DY03XK01EANNBFKQ",
+  "name": "stock reservation inventory item",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Stock reserved.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M1V24RTWPQHGY6NW3RMJDKHS",
+      "entity": "01M2DF9XGX67C72G614BCTGVMB",
+      "role": "inventoryItem",
+      "navigation": "inventoryItem",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M2QMEP2M606SEYNVHZ3AXVXA",
+      "entity": "01M2NSKVNWRMGEBA1J8749H29A",
+      "role": "reservations",
+      "navigation": "reservations"
+    }
+  ]
+}

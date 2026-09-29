@@ -1,0 +1,49 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1KB2EDCA27GXNM5WJ5AB8MD",
+  "name": "ServiceCaseComment",
+  "displayName": "Service case comment",
+  "pluralName": "Service case comments",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "A message on a service case, from the customer or an agent.",
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "key": {
+    "attributes": [
+      "01M2DWZGRKD6PJHDRXF2MJDSC9"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2DWZGRKD6PJHDRXF2MJDSC9",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the service case comment."
+    },
+    {
+      "id": "01M2KBTCEBAY6DWK901N9ZAQ9K",
+      "name": "body",
+      "type": "text",
+      "required": true,
+      "description": "Message."
+    },
+    {
+      "id": "01M2XNK10E3DR3GF3NVS2ACYZS",
+      "name": "isInternal",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Hidden from the customer."
+    },
+    {
+      "id": "01M2EVAQK56ND2YP0KPGW2K4HV",
+      "name": "postedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When it was posted."
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M20RTE9GYMJF4W6ZSG87Y5T2",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "origin": "synthesized",
+  "entity": "01M2PKYF42VBPP64C8WV8TWXZ6",
+  "description": "PO number default from purchase_order_number_seq.",
+  "columns": [
+    {
+      "id": "01M1M82JG1FWGMEFY3P0FW09DT",
+      "attribute": "01M1G0HAEDA5E6EA6D8Q2DXNYF",
+      "defaultSql": {
+        "*": "'PO-' || lpad(nextval('northwind.purchase_order_number_seq')::text, 6, '0')"
+      },
+      "comment": "Assigned from purchase_order_number_seq when the application does not supply one."
+    }
+  ]
+}

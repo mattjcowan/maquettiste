@@ -1,0 +1,65 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2027CBB2N9VHJ0DAGKYJZT5",
+  "name": "StateProvince",
+  "displayName": "State province",
+  "pluralName": "State provinces",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "A first-level subdivision of a country (ISO 3166-2), used for sales tax and shipping zones.",
+  "stereotypes": [
+    "reference-data"
+  ],
+  "tags": [
+    "master-data"
+  ],
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "key": {
+    "attributes": [
+      "01M1XW775DCDYYKN8XBS7PN92N"
+    ],
+    "strategy": "database-identity"
+  },
+  "alternateKeys": [
+    {
+      "id": "01M1MZGVQNJ8E7N2KHFGK2XKWE",
+      "name": "countrySubdivision",
+      "attributes": [
+        "01M1GX2DYW24P8P7PHR6HMDYFW"
+      ]
+    }
+  ],
+  "attributes": [
+    {
+      "id": "01M1XW775DCDYYKN8XBS7PN92N",
+      "name": "id",
+      "type": "int32",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the state province."
+    },
+    {
+      "id": "01M1GX2DYW24P8P7PHR6HMDYFW",
+      "name": "code",
+      "type": "string",
+      "length": 6,
+      "required": true,
+      "description": "ISO 3166-2 subdivision code without the country prefix, such as CA."
+    },
+    {
+      "id": "01M35Z026KDD0VQ03E2F8XXSKY",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "required": true,
+      "description": "Name of the subdivision."
+    },
+    {
+      "id": "01M33420RR41EY401QSM2NRTFP",
+      "name": "subdivisionType",
+      "type": "string",
+      "length": 40,
+      "description": "Kind of subdivision, such as state, province or county."
+    }
+  ]
+}

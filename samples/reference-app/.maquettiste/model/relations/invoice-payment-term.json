@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1EJ87SBHGRGW2MTZP0S8R30",
+  "name": "invoice payment term",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "Payment terms.",
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "ends": [
+    {
+      "id": "01M2X0HYFFXT01HXTE66AY82R7",
+      "entity": "01M34TDE50KP64ZCX6H1J0PC9K",
+      "role": "paymentTerm",
+      "navigation": "paymentTerm",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2RYFQ8EB29XQFZSKJJ6WX7C",
+      "entity": "01M2AXW23BB6G1HZZ8CBAXJQXB",
+      "role": "invoices"
+    }
+  ]
+}

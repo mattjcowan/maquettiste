@@ -1,0 +1,11 @@
+{
+  "$schema": "../../../.schema/v1/stereotype.json",
+  "kind": "stereotype",
+  "id": "01M2FV0SGARTKG1Q3G13PD6XVN",
+  "key": "reference-data",
+  "name": "Reference data",
+  "description": "Global, rarely changing data seeded from an external standard (ISO, UN/CEFACT) and shared by every package.",
+  "appliesTo": [
+    "entity"
+  ]
+}

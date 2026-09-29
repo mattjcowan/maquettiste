@@ -1,0 +1,23 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M282MQ6M3VBH01R9A8V2AA83",
+  "name": "price list serves customer group",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "Customer groups that buy from a price list.",
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "ends": [
+    {
+      "id": "01M200MSPK9NWTST9Y6WRXW2QZ",
+      "entity": "01M1ZA51HW43QA941A634JYM8M",
+      "role": "priceLists",
+      "navigation": "priceLists"
+    },
+    {
+      "id": "01M25YW3WJ31QVGCXWY0G8GMCH",
+      "entity": "01M1DCQB50PJ28VXNVM2MEZQXQ",
+      "role": "customerGroups",
+      "navigation": "customerGroups"
+    }
+  ]
+}

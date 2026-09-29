@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1EBMAS8WNHNCKK7ANQPE2G9",
+  "name": "sales order contact",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "Buyer who placed the order.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "ends": [
+    {
+      "id": "01M2STJCBZ55VTHKQSS0E9AWFA",
+      "entity": "01M2SNDY2SEQ9745HMSG6ZTDRC",
+      "role": "contact",
+      "navigation": "contact",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1VHX0NFQ6568RE5CVDXNNFW",
+      "entity": "01M1GBW3NDKS6WCM5FAXYVHV7B",
+      "role": "salesOrders"
+    }
+  ]
+}

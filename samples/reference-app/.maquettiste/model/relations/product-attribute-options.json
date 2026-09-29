@@ -1,0 +1,28 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M28QTTB6W6JGHQ4PKFAMS3EZ",
+  "name": "product attribute options",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "relationKind": "composition",
+  "description": "Allowed values of an option attribute.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "ends": [
+    {
+      "id": "01M24AKKPXHX21XMDTWM5E3NFS",
+      "entity": "01M2ED9JXTW2FCN7D38SHAXQDA",
+      "role": "productAttribute",
+      "navigation": "productAttribute",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M1KFXKWFEX2X46V2Q04RVKFM",
+      "entity": "01M24F5G7KR5ZKQVE1B4HKMP65",
+      "role": "options",
+      "navigation": "options",
+      "ordered": true
+    }
+  ]
+}

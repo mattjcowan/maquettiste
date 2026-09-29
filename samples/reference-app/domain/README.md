@@ -1,0 +1,66 @@
+# The Northwind Operations domain
+
+Northwind Operations is a B2B wholesale distributor of janitorial, safety and facility supplies (phase2-design.md
+section 7.1). This folder describes its data model; `tools/build-model.mjs` turns it into `.maquettiste/` and
+`tools/seed.mjs` builds the same model through a running editor. Edit these files, never the JSON under `.maquettiste/model/`.
+
+| File | Package | Entities |
+| --- | --- | --- |
+| `00-project.yaml` | project settings, tags, categories, stereotypes, scalar types, value objects, database `main` | |
+| `01-identity.yaml` | Identity and access | 12 |
+| `02-crm.yaml` | Parties and CRM | 22 |
+| `03-catalog.yaml` | Catalog | 24 |
+| `04-pricing.yaml` | Pricing and promotions | 16 |
+| `05-sales.yaml` | Sales orders | 20 |
+| `06-finance.yaml` | Finance and ledger | 10 |
+| `07-inventory.yaml` | Inventory and warehousing | 24 |
+| `08-fulfillment.yaml` | Fulfillment and shipping | 18 |
+| `09-purchasing.yaml` | Purchasing and suppliers | 18 |
+| `10-billing.yaml` | Billing and payments | 20 |
+| `11-returns.yaml` | Returns and service | 10 |
+| `12-reference-data.yaml` | Reference data | 6 |
+
+## Grammar
+
+A package file has `package` (the identifier), `displayName`, `description`, `enums`, `entities`, `relations` and `diagram`.
+Every element and attribute needs a description; the build fails without one.
+
+**Attributes** are one line: `name: <type>[!] [flags] | description`.
+
+- `<type>` is a built-in (`string(40)`, `decimal(19,4)`, `text`, `bool`, `int16/32/64`, `date`, `time`, `datetimeoffset`,
+  `uuid`, `ulid`, `json`, ...) or the name of an enum, value object or scalar type; `[]` makes a collection (`Address[]`).
+- `!` means required. Flags: `unique`, `indexed`, `readonly`, `immutable`, `pii`, `secret`, `default=<literal>`,
+  `expr=<now|today|new-uuid|new-ulid>`, `min=<n>`, `max=<n>`, `pattern=<regex>`.
+- Descriptions follow ` | `; they must not contain `: ` (YAML would read a nested mapping).
+
+**Entities**: `description`, `displayName`/`pluralName` (derived from the name when omitted), `stereotypes`, `tags`,
+`abstract`, `base`, `key`, `attributes`, `alternateKeys` (`name: [attribute, ...]`), `refs`, `children`, `mapping`, `overlay`.
+
+- `key`: `uuid-v7` (the default), `ulid`, `identity` (int64), `identity32`, `sequence` (int64 from a named sequence, see
+  `overlay`), or the name of an attribute for an application-assigned natural key. The surrogate `id` attribute is added.
+  Derived entities (`base`) have no key.
+- `refs` are many-to-one relations: `role: <Entity>[!] [restrict|cascade|set-null|none] [back=<role>] [one] | description`.
+  The role names the navigation on this entity and the foreign key; `!` makes it required (default on delete `restrict`,
+  else `set-null`); `back=` adds the collection navigation on the target; `one` makes it one-to-one. The relation is
+  named `<entity words> <role words>`, such as `sales order customer`.
+- `children` are compositions: `role: <Entity> [ordered] [aggregation] | description`. The child gets a required
+  navigation back to the parent named after it, deleted with the parent.
+- `mapping` (only where conventions are not enough): `inheritance` (`tph`, `tpt`), `discriminator`, `storage`
+  (`attribute: int|string|lookup|json|table|embedded`), `prefix` (`attribute: column_prefix_`).
+- `overlay` is a synthesized table overlay in `main`: `columns` (`attribute: {nativeType, defaultSql, sequence, comment}`),
+  `checks` (`name: SQL`), `indexes` (`{name, columns: [attribute [desc]], where, unique}`).
+
+**Relations** (many-to-many and anything `refs`/`children` cannot say): `name`, `description`, `kind`, `inverseName`,
+`ends` (`"<Entity> <role> <1|0..1|*|1..*> [nav|nav=<name>] [restrict|cascade|set-null] [ordered]"`; `nav` on an end creates
+the navigation on the other end's entity) and `attributes` (which make the convention map it to a junction table).
+
+**Enums**: `description` and `members` (`Name: CODE | description`); values count from 0 in file order.
+
+**Diagram**: `name`, `description`, `columns` (grid width, default 4). Members are the package's entities in file order and
+every relation between two of them.
+
+## Ids
+
+Ids are ULIDs derived from each element's domain key (`entity:SalesOrder`, `attr:SalesOrder.orderNumber`,
+`relation:sales order customer`, ...; `tools/lib/ids.mjs`). Renaming something in YAML therefore gives it a new id; keep
+names stable once other work depends on them.

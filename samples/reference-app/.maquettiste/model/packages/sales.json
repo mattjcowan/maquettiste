@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/package.json",
+  "kind": "package",
+  "id": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "name": "Sales",
+  "displayName": "Sales orders",
+  "description": "Quotes, orders and their lines, holds, charges and promotions applied, blanket and standing orders, the portal cart and sales commissions.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ"
+}

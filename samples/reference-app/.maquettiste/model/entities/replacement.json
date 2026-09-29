@@ -1,0 +1,63 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2V6B7V63NW9F0RMBDPZ84J8",
+  "name": "Replacement",
+  "displayName": "Replacement",
+  "pluralName": "Replacements",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "A replacement sent for a returned or failed product before or instead of a credit.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "key": {
+    "attributes": [
+      "01M1D5Z4Z9252JJT3KCAK2V2E1"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1D5Z4Z9252JJT3KCAK2V2E1",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the replacement."
+    },
+    {
+      "id": "01M23ZZNMMS4AYF9TC2XCSHN2S",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity sent."
+    },
+    {
+      "id": "01M1F8ECM04DEYEB5BYNTHT2XM",
+      "name": "shippedOn",
+      "type": "date",
+      "description": "Ship date."
+    },
+    {
+      "id": "01M1MMEKYN7A8YGPE3VY519J6P",
+      "name": "isCharged",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether the customer pays for it."
+    },
+    {
+      "id": "01M2CGXHNTZMC5M1HAXX2QJVFH",
+      "name": "notes",
+      "type": "string",
+      "length": 500,
+      "description": "Remarks."
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2PPEFRPNY403BPXFTVNS3BT",
+  "name": "SalesOrderNote",
+  "displayName": "Sales order note",
+  "pluralName": "Sales order notes",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "A note on a sales order, internal or visible to the customer on the portal.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M1G6D80AAWB77Y72ZBYFHC29"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1G6D80AAWB77Y72ZBYFHC29",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the sales order note."
+    },
+    {
+      "id": "01M2JZEX2P8WEGV78EFWZYBG83",
+      "name": "body",
+      "type": "text",
+      "required": true,
+      "description": "Note text."
+    },
+    {
+      "id": "01M2KA19N1Q764THWAB53VHKGC",
+      "name": "isCustomerVisible",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Shown on the customer portal."
+    }
+  ]
+}

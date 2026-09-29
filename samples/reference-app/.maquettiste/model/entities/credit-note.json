@@ -1,0 +1,76 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1QQ79VKEFGQTFWBGNS5B00J",
+  "name": "CreditNote",
+  "displayName": "Credit note",
+  "pluralName": "Credit notes",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "A document reducing what a customer owes, after a return, a price correction or a goodwill gesture.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "key": {
+    "attributes": [
+      "01M1DPBAN79D41CGTDYT55FAA0"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1DPBAN79D41CGTDYT55FAA0",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the credit note."
+    },
+    {
+      "id": "01M1VT6H1VEVS34EJJH7MAZ8K5",
+      "name": "creditNoteNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Credit note number."
+    },
+    {
+      "id": "01M1G4487MF85MEVFW2RMHZC8N",
+      "name": "issuedOn",
+      "type": "date",
+      "required": true,
+      "description": "Issue date."
+    },
+    {
+      "id": "01M2PQMKRT36PVK1AK6WRQXY6F",
+      "name": "reason",
+      "type": "string",
+      "length": 200,
+      "required": true,
+      "description": "Why the credit was given."
+    },
+    {
+      "id": "01M339YBSG4W68QHV57AH9GG1F",
+      "name": "totalAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Credit amount."
+    },
+    {
+      "id": "01M1GFA0FGV14HNSBH67AHEH88",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "open",
+      "description": "open, applied or refunded."
+    }
+  ]
+}

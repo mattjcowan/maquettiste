@@ -1,0 +1,87 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2PQKK2RSHG3KKC6AM2WQNAS",
+  "name": "CollectionCase",
+  "displayName": "Collection case",
+  "pluralName": "Collection cases",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "A collection effort on a customer's overdue balance, possibly handed to an agency.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "key": {
+    "attributes": [
+      "01M2DPV00XBDNDCJ4E1QYA1GBZ"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2DPV00XBDNDCJ4E1QYA1GBZ",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the collection case."
+    },
+    {
+      "id": "01M24AHTCD89EA5AHDHHJ5Z7SQ",
+      "name": "caseNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Case number."
+    },
+    {
+      "id": "01M2D5BNKGH8Z7Q485ZD7VNH0V",
+      "name": "openedOn",
+      "type": "date",
+      "required": true,
+      "description": "Date opened."
+    },
+    {
+      "id": "01M1GWASHYT6H5MMPVAMZT8Z4Z",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "open",
+      "description": "open, promise-to-pay, agency or closed."
+    },
+    {
+      "id": "01M32Q4GGQMBX40VXDGQYS3J72",
+      "name": "totalOverdue",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Overdue balance when opened."
+    },
+    {
+      "id": "01M1XJ4AR44D9JGB2DVRCPSNY3",
+      "name": "agencyName",
+      "type": "string",
+      "length": 120,
+      "description": "Collection agency, when outsourced."
+    },
+    {
+      "id": "01M2RRWVV1FNNXJ6C9VYM3H9D0",
+      "name": "closedOn",
+      "type": "date",
+      "description": "Date closed."
+    },
+    {
+      "id": "01M30845DD6QFBKV5FWVC2C7Q3",
+      "name": "notes",
+      "type": "text",
+      "description": "Case notes."
+    }
+  ]
+}

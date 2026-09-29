@@ -1,0 +1,48 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2TTC2J0TWG6D931H4QJNX63",
+  "name": "ProductTranslation",
+  "displayName": "Product translation",
+  "pluralName": "Product translations",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "The name and descriptions of a product in another language.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M2E7MZ749WMAA1YCSQXE2SD4"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2E7MZ749WMAA1YCSQXE2SD4",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the product translation."
+    },
+    {
+      "id": "01M2K7K5CV9FHCTP8FJ0TA4XPQ",
+      "name": "name",
+      "type": "string",
+      "length": 200,
+      "required": true,
+      "description": "Translated name."
+    },
+    {
+      "id": "01M2TYX23SADWK901QX47FR306",
+      "name": "shortDescription",
+      "type": "string",
+      "length": 500,
+      "description": "Translated short description."
+    },
+    {
+      "id": "01M34M5510F2PBRE3J6TB6P4NR",
+      "name": "longDescription",
+      "type": "text",
+      "description": "Translated long description."
+    }
+  ]
+}

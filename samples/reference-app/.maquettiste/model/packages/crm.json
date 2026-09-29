@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/package.json",
+  "kind": "package",
+  "id": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "name": "Crm",
+  "displayName": "Parties and CRM",
+  "description": "The organizations Northwind trades with (customers, suppliers, carriers), their people and addresses, and the sales pipeline that wins new business.",
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ"
+}

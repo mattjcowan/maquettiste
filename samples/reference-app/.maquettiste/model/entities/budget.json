@@ -1,0 +1,63 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2FZARSCWK75XW8P7QZZQVRZ",
+  "name": "Budget",
+  "displayName": "Budget",
+  "pluralName": "Budgets",
+  "package": "01M1EYTWAA6REG1KFCR9N7XQ27",
+  "description": "An approved spending budget for a fiscal year and cost center.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M1E9BTZZTKGKC2S6YTG3CKTZ",
+  "key": {
+    "attributes": [
+      "01M1WD7QSWSE2EDB3JAG7QJ3DP"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1WD7QSWSE2EDB3JAG7QJ3DP",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the budget."
+    },
+    {
+      "id": "01M1H6FA553FZ6R0JD72VRHYS3",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "required": true,
+      "description": "Budget name."
+    },
+    {
+      "id": "01M1EHR9G9WVE59ZDQMPJSBYYT",
+      "name": "fiscalYear",
+      "type": "int16",
+      "required": true,
+      "description": "Fiscal year."
+    },
+    {
+      "id": "01M1P38Q3F1E9SGHJWZXYC3D4Y",
+      "name": "isApproved",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether finance approved it."
+    },
+    {
+      "id": "01M1KBG18KGBSR2E4WWC8WW84D",
+      "name": "notes",
+      "type": "text",
+      "description": "Assumptions."
+    }
+  ]
+}

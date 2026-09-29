@@ -1,0 +1,81 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2YSJWJ04N5TKKQX3405T66A",
+  "name": "SupplierScorecard",
+  "displayName": "Supplier scorecard",
+  "pluralName": "Supplier scorecards",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "A periodic rating of a supplier's delivery, fill rate and quality.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "key": {
+    "attributes": [
+      "01M1EWVAF3JVBAXWK1A9ZFVJQ5"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1EWVAF3JVBAXWK1A9ZFVJQ5",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the supplier scorecard."
+    },
+    {
+      "id": "01M2RC94SJKQQMDQ48SQYB0EA7",
+      "name": "period",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "required": true,
+      "description": "Period rated."
+    },
+    {
+      "id": "01M1H0ZP8FBWDK8SPSZGW967WQ",
+      "name": "onTimeRate",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "description": "Share of lines delivered on time."
+    },
+    {
+      "id": "01M375XN53N2B9K2Q7ZS4CSZE0",
+      "name": "fillRate",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "description": "Share of quantity delivered."
+    },
+    {
+      "id": "01M1K0VBMADNMEV9115XDA8HTG",
+      "name": "qualityRate",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "description": "Share of quantity accepted."
+    },
+    {
+      "id": "01M1R4WW7R0WMH77NX8K9QN3X5",
+      "name": "overallScore",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "validation": {
+        "min": 0,
+        "max": 100
+      },
+      "description": "Weighted score."
+    },
+    {
+      "id": "01M36T9TKMKQVFV354TYFE4GR2",
+      "name": "comments",
+      "type": "text",
+      "description": "Reviewer's comments."
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2XK5S4S09XT3T4Y07Y6BTMM",
+  "name": "HazardClass",
+  "displayName": "Hazard class",
+  "pluralName": "Hazard classes",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "A dangerous goods class for shipping and storage, such as 3 Flammable liquids.",
+  "stereotypes": [
+    "lookup"
+  ],
+  "tags": [
+    "configuration"
+  ],
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M1WBF1X7E3KQH7GP1K29BKC1"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M1WBF1X7E3KQH7GP1K29BKC1",
+      "name": "id",
+      "type": "int32",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the hazard class."
+    },
+    {
+      "id": "01M2HXXAS4N9KAK566A2Z7CRV6",
+      "name": "unNumber",
+      "type": "string",
+      "length": 6,
+      "description": "UN number of the typical substance."
+    },
+    {
+      "id": "01M20HXWYSQFBZDN7FNGRCE3QW",
+      "name": "packingGroup",
+      "type": "string",
+      "length": 3,
+      "description": "Packing group I, II or III."
+    },
+    {
+      "id": "01M2G671Y38QBTM4DPBDGVRBSJ",
+      "name": "requiresPlacard",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether vehicles must display a placard."
+    }
+  ]
+}

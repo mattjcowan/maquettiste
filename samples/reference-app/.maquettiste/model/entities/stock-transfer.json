@@ -1,0 +1,72 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2GFXG35ZVVY61FKPBPFYVJZ",
+  "name": "StockTransfer",
+  "displayName": "Stock transfer",
+  "pluralName": "Stock transfers",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "A movement of stock between two Northwind warehouses.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "transactional"
+  ],
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M30A99HRD6A3ZGVV24H9WH6G"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M30A99HRD6A3ZGVV24H9WH6G",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the stock transfer."
+    },
+    {
+      "id": "01M2KNS5E87ACD8P4N5VEDY71R",
+      "name": "transferNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Transfer number."
+    },
+    {
+      "id": "01M1YG4CVXH0TCEV16GEE4EWN6",
+      "name": "status",
+      "type": {
+        "ref": "01M2ASY2HNCPZR0186V1YTSZ35"
+      },
+      "required": true,
+      "default": "Requested",
+      "description": "Lifecycle state."
+    },
+    {
+      "id": "01M1XGBGHA08EYSY80AZWHZG47",
+      "name": "requestedOn",
+      "type": "date",
+      "required": true,
+      "description": "Date requested."
+    },
+    {
+      "id": "01M37JK9TH6WWEJY67T5B3ZPXT",
+      "name": "shippedAt",
+      "type": "datetimeoffset",
+      "description": "When it left the source."
+    },
+    {
+      "id": "01M1SGRJQE5KFRT2XR3AHW7M6F",
+      "name": "receivedAt",
+      "type": "datetimeoffset",
+      "description": "When it arrived."
+    }
+  ]
+}

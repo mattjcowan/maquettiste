@@ -1,0 +1,15 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M2SQVFA9QARDB33N64TQJN92",
+  "name": "SalesOrderLine in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "entity": "01M2JSECEQ3FD3TKWAQR961TJ0",
+  "description": "Line status is stored as its integer value to keep this high-volume table narrow.",
+  "attributes": [
+    {
+      "attribute": "01M2TNPAR5AG0F4DVMDQQR8D60",
+      "storage": "int"
+    }
+  ]
+}

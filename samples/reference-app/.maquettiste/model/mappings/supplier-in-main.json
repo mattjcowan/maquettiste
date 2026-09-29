@@ -1,0 +1,10 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M32N461BVTE145N88BHGQZSB",
+  "name": "Supplier in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "entity": "01M2A5WW8NFWJS1V5NFRKCBNYV",
+  "description": "Discriminator value of suppliers in the parties table.",
+  "discriminatorValue": "SUPPLIER"
+}

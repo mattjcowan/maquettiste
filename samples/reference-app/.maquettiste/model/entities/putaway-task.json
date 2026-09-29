@@ -1,0 +1,60 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1NT9EH5DJSZTWAYCX8SVYB1",
+  "name": "PutawayTask",
+  "displayName": "Putaway task",
+  "pluralName": "Putaway tasks",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "A task to move received goods from the dock to a storage bin.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "transactional"
+  ],
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M2BY5QYCBB50KYBV833TAAK6"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2BY5QYCBB50KYBV833TAAK6",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the putaway task."
+    },
+    {
+      "id": "01M1X5MX37WK634E6K0D9MS5C6",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "open",
+      "description": "open, in-progress or done."
+    },
+    {
+      "id": "01M1X0XS9FB5X3X8K1XCN53Z4Z",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity to put away."
+    },
+    {
+      "id": "01M2NBZH4VC8SDJC27SD4Q5W8P",
+      "name": "completedAt",
+      "type": "datetimeoffset",
+      "description": "When it was done."
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2GCS5Q7Z2VYKTT0EVAJWVWB",
+  "name": "ProductBundle",
+  "displayName": "Product bundle",
+  "pluralName": "Product bundles",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "A kit sold under one SKU and assembled from component products at picking time, such as a janitorial starter kit.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited",
+    "soft-delete"
+  ],
+  "tags": [
+    "master-data"
+  ],
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M1XPGYM1CEX6KX2Q6TST9ZKH"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1XPGYM1CEX6KX2Q6TST9ZKH",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the product bundle."
+    },
+    {
+      "id": "01M1MT5H9VCKDH94NJRX5CQK87",
+      "name": "sku",
+      "type": {
+        "ref": "01M2FWAWDSNBGY4P6KKC4TJBR0"
+      },
+      "required": true,
+      "unique": true,
+      "description": "SKU of the bundle."
+    },
+    {
+      "id": "01M2FHR0GAXKAHBFY110XT4FV7",
+      "name": "name",
+      "type": "string",
+      "length": 200,
+      "required": true,
+      "description": "Bundle name."
+    },
+    {
+      "id": "01M22PYAR58C5E2GZ58257QAY0",
+      "name": "price",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Bundle price."
+    },
+    {
+      "id": "01M26WYNX3MNV02YQNW7BSA2R7",
+      "name": "isActive",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether the bundle can be ordered."
+    }
+  ]
+}

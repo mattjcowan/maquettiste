@@ -1,0 +1,74 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1HVAJKBNG4WYESRE5RMYFHS",
+  "name": "BankAccount",
+  "displayName": "Bank account",
+  "pluralName": "Bank accounts",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "A Northwind bank account that receives customer payments.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "financial",
+    "master-data"
+  ],
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "key": {
+    "attributes": [
+      "01M2FTDJA0CRJSZS9W93QEJWS1"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2FTDJA0CRJSZS9W93QEJWS1",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the bank account."
+    },
+    {
+      "id": "01M1V22K10HYV1MVZBAWHZTSPC",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "required": true,
+      "unique": true,
+      "description": "Account name, such as Operating account USD."
+    },
+    {
+      "id": "01M26BBFW0B75HQAW05B5H9V2T",
+      "name": "bankName",
+      "type": "string",
+      "length": 100,
+      "required": true,
+      "description": "Bank."
+    },
+    {
+      "id": "01M237432EV536KPHTG39TZ90V",
+      "name": "accountNumberMasked",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "Masked account number."
+    },
+    {
+      "id": "01M1GK9KG6CPTJ8MC7FXSNTS4Y",
+      "name": "iban",
+      "type": "string",
+      "length": 34,
+      "sensitive": "secret",
+      "description": "IBAN, for euro accounts."
+    },
+    {
+      "id": "01M1MC2PWMGNHSP5NBYGM81KYT",
+      "name": "routingNumber",
+      "type": "string",
+      "length": 9,
+      "description": "ABA routing number, for US accounts."
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M32KK88ZB9Q7Q739WN1CP2JX",
+  "name": "user account holds role",
+  "package": "01M1F99DBQ9B1T1RVMQRR1GS7V",
+  "description": "Roles granted to a user account; the grant records who granted it and when.",
+  "category": "01M38C3WQ4HSCF45E03KGN6AF5",
+  "ends": [
+    {
+      "id": "01M1GAZ34REJXCX967QZZ7X132",
+      "entity": "01M2CMF5JR3GW828G267AZ0M1E",
+      "role": "users",
+      "navigation": "users"
+    },
+    {
+      "id": "01M2F5T34700M5FTE6CP1YAT4Q",
+      "entity": "01M1EHSJCMNFP23CXQBWYXVG5H",
+      "role": "roles",
+      "navigation": "roles"
+    }
+  ],
+  "attributes": [
+    {
+      "id": "01M1VVT2HTG1PGEN735HPK5EMV",
+      "name": "grantedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the role was granted."
+    },
+    {
+      "id": "01M2005T6E9AJ5AP7HCNX1EYN7",
+      "name": "grantedBy",
+      "type": "string",
+      "length": 64,
+      "required": true,
+      "description": "User name of the administrator who granted it."
+    },
+    {
+      "id": "01M31QP97YVAS6XCJC9HZNDKWB",
+      "name": "expiresOn",
+      "type": "date",
+      "description": "Date the grant lapses; null for permanent grants."
+    }
+  ]
+}

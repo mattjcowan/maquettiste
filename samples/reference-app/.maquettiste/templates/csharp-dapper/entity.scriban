@@ -1,0 +1,47 @@
+{{-
+include "_csharp.scriban"
+include "_dapper.scriban"
+name = type_name(entity)
+m = dapper_mapping(entity)
+own = []
+for a in entity.attributes
+  if !a.is_inherited
+    own[own.size] = a
+  end
+end
+usings = namespaces_used(entity, own)
+if entity.base && ns(entity.base) != ns(entity) && !(usings | array.contains ns(entity.base))
+  usings[usings.size] = ns(entity.base)
+  usings = usings | array.sort
+end
+inherited = inherited_storage(entity)
+storage = []
+for c in storage_columns(entity, m)
+  if !(inherited | array.contains row_prop(c))
+    storage[storage.size] = c
+  end
+end
+-}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+using System.Text.Json;
+{{- for u in usings }}
+using {{ u }};
+{{- end }}
+
+namespace {{ ns(entity) }};
+
+{{ doc(entity.description, "") }}public {{ if entity.is_abstract }}abstract {{ end }}partial class {{ name }}{{ if entity.base }} : {{ type_name(entity.base) }}{{ end }}
+{
+{{- for a in own }}
+{{ doc(a.description, "    ") }}    public {{ prop_type(a) }} {{ prop_name(a, name) }} { get; set; }{{ initializer(a) }}
+{{- end }}
+{{- if storage.size > 0 }}
+
+    // Columns of table {{ m.table.name }} (database {{ m.database.name }}) that no attribute maps, such as foreign keys.
+{{- for c in storage }}
+    public {{ row_type(c) }} {{ row_prop(c) }} { get; set; }{{ if !c.nullable && !(cs_value_type row_type(c)) }} = default!;{{ end }}
+{{- end }}
+{{- end }}
+}

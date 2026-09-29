@@ -1,0 +1,97 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2NPNWREHQKBV15PJMWZPKRK",
+  "name": "ServiceCase",
+  "displayName": "Service case",
+  "pluralName": "Service cases",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "A customer service request, such as a missing delivery, a billing question or a product problem.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "transactional"
+  ],
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "key": {
+    "attributes": [
+      "01M2EQXDAJ969E2SK1FN3ZM875"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2EQXDAJ969E2SK1FN3ZM875",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the service case."
+    },
+    {
+      "id": "01M2XGJFNPQVD1BVQWN9DFSEGM",
+      "name": "caseNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Case number."
+    },
+    {
+      "id": "01M1Y46C44YC9ES8YA4BYKPCDC",
+      "name": "subject",
+      "type": "string",
+      "length": 200,
+      "required": true,
+      "description": "One-line summary."
+    },
+    {
+      "id": "01M2WE7VT6V9KQFMEYTM9G04PB",
+      "name": "description",
+      "type": "text",
+      "description": "Customer's description."
+    },
+    {
+      "id": "01M2SGB7SRRDJXTZFN01VX90AV",
+      "name": "priority",
+      "type": {
+        "ref": "01M2S2V5V5N22BXR0NPTC78S4T"
+      },
+      "required": true,
+      "default": "Normal",
+      "description": "Urgency."
+    },
+    {
+      "id": "01M34YPX19R1YS0CVPCA3YE7JK",
+      "name": "status",
+      "type": {
+        "ref": "01M2K8Z15HDBWEBEHRGWGEQE8Q"
+      },
+      "required": true,
+      "default": "New",
+      "description": "Lifecycle state."
+    },
+    {
+      "id": "01M1V4QRT5JRCTCBEZV2YF13XS",
+      "name": "openedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the case was opened."
+    },
+    {
+      "id": "01M38F2BVK1NCWDAN2984HWQH3",
+      "name": "slaDueAt",
+      "type": "datetimeoffset",
+      "indexed": true,
+      "description": "When the first answer is due."
+    },
+    {
+      "id": "01M2VMCXHAMHBTY4P212V4C38C",
+      "name": "resolvedAt",
+      "type": "datetimeoffset",
+      "description": "When it was resolved."
+    }
+  ]
+}

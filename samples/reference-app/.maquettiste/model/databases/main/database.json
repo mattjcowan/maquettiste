@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../.schema/v1/database.json",
+  "kind": "database",
+  "id": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "name": "main",
+  "displayName": "Northwind Operations",
+  "dialect": "postgresql",
+  "version": "16",
+  "defaultSchema": "northwind",
+  "description": "The operational PostgreSQL 16 database that holds every package.",
+  "schemas": [
+    {
+      "id": "01M3284CYQRZY91V34X73GDH91",
+      "name": "northwind",
+      "description": "All operational tables of Northwind Operations."
+    }
+  ]
+}

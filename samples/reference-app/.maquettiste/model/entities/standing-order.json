@@ -1,0 +1,71 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M33RY9G59ZRWXQSAY6YKZMCH",
+  "name": "StandingOrder",
+  "displayName": "Standing order",
+  "pluralName": "Standing orders",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "A recurring order that the scheduler places automatically, such as weekly cleaning supplies.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M1JC9XRK9DJ0R5XMJYPX3Q7G"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1JC9XRK9DJ0R5XMJYPX3Q7G",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the standing order."
+    },
+    {
+      "id": "01M1VBMZBPNM21RRR6Q54Z8AYE",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "required": true,
+      "description": "Name shown to the customer."
+    },
+    {
+      "id": "01M211RT91XVGM992Z5PBQGJ5P",
+      "name": "frequency",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "weekly, biweekly or monthly."
+    },
+    {
+      "id": "01M1DDVT7C0D6Z9VD8ATAV9245",
+      "name": "nextRunOn",
+      "type": "date",
+      "required": true,
+      "indexed": true,
+      "description": "Date the next order will be placed."
+    },
+    {
+      "id": "01M379XXQC58YBMC2T9CWZYYFP",
+      "name": "isActive",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether it is running."
+    },
+    {
+      "id": "01M2QBVDYAMADTJFQRY3NCD53Z",
+      "name": "validity",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "description": "When it runs."
+    }
+  ]
+}

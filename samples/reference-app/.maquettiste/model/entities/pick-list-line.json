@@ -1,0 +1,59 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1NBGV6RCQPPD3FSTB6SVZWJ",
+  "name": "PickListLine",
+  "displayName": "Pick list line",
+  "pluralName": "Pick list lines",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "One pick - a product, a bin and a quantity for an order line.",
+  "tags": [
+    "high-volume"
+  ],
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "key": {
+    "attributes": [
+      "01M1WF8TRATEYDR1G6PVQTC7XW"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1WF8TRATEYDR1G6PVQTC7XW",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the pick list line."
+    },
+    {
+      "id": "01M325BCHBGE3QRFKN3EPH9BQ2",
+      "name": "quantityToPick",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity to pick."
+    },
+    {
+      "id": "01M2B9D0H92RC5AM2VCWMWPBFZ",
+      "name": "quantityPicked",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity confirmed."
+    },
+    {
+      "id": "01M24NB12ZB1Z2YTPS48F3HGY8",
+      "name": "pickedAt",
+      "type": "datetimeoffset",
+      "description": "When it was confirmed."
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1TQTM9KTF1VNQJV2M3WM130",
+  "name": "Payment",
+  "displayName": "Payment",
+  "pluralName": "Payments",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "Money received from a customer. Card payments and bank transfers extend it in their own tables (TPT); checks and cash use the base table only.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "financial",
+    "transactional"
+  ],
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "key": {
+    "attributes": [
+      "01M2MNYS01WWSG1AHCSA0GZ8HE"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2MNYS01WWSG1AHCSA0GZ8HE",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the payment."
+    },
+    {
+      "id": "01M1QKB48PDXMR30D205NHHQ98",
+      "name": "paymentNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Payment number."
+    },
+    {
+      "id": "01M2ARQB0KWPM691G795X4TJD0",
+      "name": "receivedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the payment was received."
+    },
+    {
+      "id": "01M2CWSF6E5VJWCDCYWRVN3Y8X",
+      "name": "amount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Amount received."
+    },
+    {
+      "id": "01M21QMSZSKFMSMGCSWEX9ABZ2",
+      "name": "unappliedAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Amount not yet allocated to invoices."
+    },
+    {
+      "id": "01M1GCPDWVEPTW0CY6SPY1ND1E",
+      "name": "status",
+      "type": {
+        "ref": "01M2VSQF570CS69G1GC9FRG9EZ"
+      },
+      "required": true,
+      "default": "Pending",
+      "description": "Processing state."
+    },
+    {
+      "id": "01M1ERAZJBQRP918X81RHSF9YN",
+      "name": "reference",
+      "type": "string",
+      "length": 64,
+      "description": "Payer's reference, such as a check number."
+    }
+  ]
+}

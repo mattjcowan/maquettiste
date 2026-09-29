@@ -1,0 +1,163 @@
+package: Finance
+displayName: Finance and ledger
+description: The general ledger - chart of accounts, fiscal periods, journal entries, cost centers, tax rates and jurisdictions, exchange rates and budgets.
+
+enums:
+  LedgerAccountType:
+    description: Classification of a ledger account in the financial statements.
+    members:
+      Asset: A | Resources owned, such as cash, receivables and inventory.
+      Liability: L | Obligations, such as payables and tax due.
+      Equity: E | Owners' equity.
+      Revenue: R | Income from sales.
+      Expense: X | Costs, including cost of goods sold.
+  JournalEntryStatus:
+    description: Posting state of a journal entry.
+    members:
+      Draft: D | Being prepared; does not affect balances.
+      Posted: P | Posted to the ledger; immutable.
+      Reversed: R | Cancelled by a reversing entry.
+
+entities:
+  LedgerAccount:
+    description: An account of the chart of accounts, such as 1200 Accounts receivable, nested into summary accounts.
+    stereotypes: [aggregate-root, audited]
+    tags: [financial, master-data]
+    attributes:
+      accountNumber: string(20)! unique | Account number.
+      name: string(120)! | Account name.
+      accountType: LedgerAccountType! | Statement classification.
+      normalBalance: string(6)! | debit or credit.
+      isPostable: bool! default=true | Whether journal lines may post to it; summary accounts are not postable.
+      isActive: bool! default=true | Whether it can be used.
+    refs:
+      parent: LedgerAccount back=subAccounts | Summary account above it.
+      currency: Currency | Currency the account is restricted to; null for any.
+
+  FiscalPeriod:
+    description: A monthly accounting period of a fiscal year.
+    stereotypes: [audited]
+    tags: [financial]
+    attributes:
+      name: string(20)! unique | Period name, such as FY2026-09.
+      fiscalYear: int16! | Fiscal year.
+      periodNumber: int16! min=1 max=13 | Period within the year; 13 is the adjustment period.
+      period: DateRange! | Dates covered.
+      isClosed: bool! default=false | Whether posting is closed.
+      closedAt: datetimeoffset | When it was closed.
+
+  JournalEntry:
+    description: A balanced set of debits and credits posted to the ledger, from an invoice, a payment, a receipt or a manual adjustment.
+    stereotypes: [aggregate-root, audited]
+    tags: [financial, high-volume]
+    key: sequence
+    pluralName: Journal entries
+    attributes:
+      entryDate: date! indexed | Accounting date.
+      reference: string(40) | Source document number.
+      description: string(300)! | What the entry records.
+      status: JournalEntryStatus! default=Draft | Posting state.
+      sourceDocument: string(40) | Kind of source, such as invoice or goods-receipt.
+      postedAt: datetimeoffset | When it was posted.
+    refs:
+      fiscalPeriod: FiscalPeriod! | Period the entry posts to.
+      postedBy: UserAccount | Who posted it.
+      reversalOf: JournalEntry | Entry this one reverses.
+    children:
+      lines: JournalLine ordered | Debit and credit lines.
+    overlay:
+      description: Journal entry keys come from the named, uncached journal_entry_seq.
+      columns:
+        id:
+          sequence: journal_entry_seq
+          comment: Drawn from journal_entry_seq.
+
+  JournalLine:
+    description: A debit or credit to one ledger account within a journal entry.
+    tags: [financial, high-volume]
+    key: identity
+    attributes:
+      debit: Money | Debit amount; null on credit lines.
+      credit: Money | Credit amount; null on debit lines.
+      memo: string(200) | Line memo.
+    refs:
+      ledgerAccount: LedgerAccount! | Account posted to.
+      costCenter: CostCenter | Cost center charged.
+
+  CostCenter:
+    description: A unit that collects costs for management reporting, such as Denver warehouse or Inside sales.
+    stereotypes: [audited]
+    tags: [financial, master-data]
+    attributes:
+      code: string(20)! unique | Cost center code.
+      name: string(120)! | Cost center name.
+      isActive: bool! default=true | Whether it can be charged.
+    refs:
+      manager: Employee | Budget owner.
+      parent: CostCenter back=subCostCenters | Enclosing cost center.
+
+  TaxRate:
+    description: A sales tax rate of a jurisdiction for a tax category and period.
+    stereotypes: [audited]
+    tags: [financial]
+    attributes:
+      name: string(100)! | Rate name, such as Colorado state sales tax.
+      rate: Percentage! | Rate.
+      taxCategory: string(30)! | Goods category, such as general or food.
+      validity: DateRange! | Period the rate applies.
+    refs:
+      jurisdiction: TaxJurisdiction! cascade back=rates | Jurisdiction levying the tax.
+      salesTaxAccount: LedgerAccount | Liability account the tax posts to.
+
+  TaxJurisdiction:
+    description: An authority that levies sales tax - a country, state, county or city.
+    stereotypes: [audited]
+    tags: [financial, master-data]
+    attributes:
+      code: string(20)! unique | Jurisdiction code.
+      name: string(120)! | Name.
+      level: string(20)! | country, state, county, city or district.
+    refs:
+      country: Country! | Country of the jurisdiction.
+      stateProvince: StateProvince | State of the jurisdiction.
+      parent: TaxJurisdiction back=subJurisdictions | Enclosing jurisdiction.
+
+  ExchangeRate:
+    description: A currency conversion rate on a date, loaded daily from the central bank feed.
+    tags: [financial, integration]
+    key: identity
+    attributes:
+      rate: decimal(18,8)! min=0 | Units of the target currency per unit of the source currency.
+      effectiveOn: date! indexed | Date the rate applies.
+      rateType: string(10)! default=spot | spot, average or budget.
+      source: string(40) | Feed the rate came from.
+    refs:
+      fromCurrency: Currency! | Source currency.
+      toCurrency: Currency! | Target currency.
+
+  Budget:
+    description: An approved spending budget for a fiscal year and cost center.
+    stereotypes: [aggregate-root, audited]
+    tags: [financial]
+    attributes:
+      name: string(120)! | Budget name.
+      fiscalYear: int16! | Fiscal year.
+      isApproved: bool! default=false | Whether finance approved it.
+      notes: text | Assumptions.
+    refs:
+      costCenter: CostCenter | Cost center budgeted; null for the company budget.
+    children:
+      lines: BudgetLine | Amounts by account and period.
+
+  BudgetLine:
+    description: A budgeted amount for one ledger account and period.
+    tags: [financial]
+    attributes:
+      amount: Money! | Budgeted amount.
+    refs:
+      ledgerAccount: LedgerAccount! | Account budgeted.
+      fiscalPeriod: FiscalPeriod! | Period budgeted.
+
+diagram:
+  name: Finance and ledger
+  description: The chart of accounts, journal entries, taxes, rates and budgets.

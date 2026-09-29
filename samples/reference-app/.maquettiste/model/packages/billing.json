@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/package.json",
+  "kind": "package",
+  "id": "01M3305VG5Q9PSEM8788TC0QZC",
+  "name": "Billing",
+  "displayName": "Billing and payments",
+  "description": "Accounts receivable - invoices and credit notes, payments by card and bank transfer and how they settle invoices, statements, dunning, collections, refunds and disputes.",
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y"
+}

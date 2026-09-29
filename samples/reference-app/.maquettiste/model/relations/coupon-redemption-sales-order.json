@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2Y6M8F2SQ7SA0R04ZC67B8Y",
+  "name": "coupon redemption sales order",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "Order it was used on.",
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "ends": [
+    {
+      "id": "01M2G6E3E07G6ND14CD1M3MQKJ",
+      "entity": "01M1GBW3NDKS6WCM5FAXYVHV7B",
+      "role": "salesOrder",
+      "navigation": "salesOrder",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M1JZ4FMCE09VNNB8G7AX8ZVA",
+      "entity": "01M1X5DK1KBDWND1CQEPZ6GNYD",
+      "role": "couponRedemptions"
+    }
+  ]
+}

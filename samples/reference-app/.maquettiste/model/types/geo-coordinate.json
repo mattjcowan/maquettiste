@@ -1,0 +1,38 @@
+{
+  "$schema": "../../.schema/v1/value-object.json",
+  "kind": "value-object",
+  "id": "01M2D3J3CAF7MGQ91CWJFVMSQ4",
+  "name": "GeoCoordinate",
+  "displayName": "Geo coordinate",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "A WGS 84 latitude and longitude.",
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "attributes": [
+    {
+      "id": "01M1JH1NPCTY668N5DZ7Y7QFRY",
+      "name": "latitude",
+      "type": "decimal",
+      "precision": 9,
+      "scale": 6,
+      "required": true,
+      "validation": {
+        "min": -90,
+        "max": 90
+      },
+      "description": "Degrees north of the equator."
+    },
+    {
+      "id": "01M1K3C82621CA4968XGEYNDRR",
+      "name": "longitude",
+      "type": "decimal",
+      "precision": 9,
+      "scale": 6,
+      "required": true,
+      "validation": {
+        "min": -180,
+        "max": 180
+      },
+      "description": "Degrees east of Greenwich."
+    }
+  ]
+}

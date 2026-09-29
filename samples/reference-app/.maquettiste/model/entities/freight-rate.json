@@ -1,0 +1,74 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1WQQJJKX88GYGFV9TENSXVW",
+  "name": "FreightRate",
+  "displayName": "Freight rate",
+  "pluralName": "Freight rates",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "A contracted rate of a carrier service for a zone and weight band.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "key": {
+    "attributes": [
+      "01M33BMNW84H338HXTEZAPFTKN"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M33BMNW84H338HXTEZAPFTKN",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the freight rate."
+    },
+    {
+      "id": "01M2DF3S1RZ3P0PCA7G2H0GVBA",
+      "name": "weightFromKg",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Lower bound of the weight band."
+    },
+    {
+      "id": "01M2TVWJGY44PQAC8GJRG9QJ3R",
+      "name": "weightToKg",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 3,
+      "validation": {
+        "min": 0
+      },
+      "description": "Upper bound; null for no limit."
+    },
+    {
+      "id": "01M2MCVD3G3Y161YK78H3F5C1P",
+      "name": "rate",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Rate for the band."
+    },
+    {
+      "id": "01M20895QKWJKNQ0XKQDBX53N6",
+      "name": "validity",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "required": true,
+      "description": "Contract period."
+    }
+  ]
+}

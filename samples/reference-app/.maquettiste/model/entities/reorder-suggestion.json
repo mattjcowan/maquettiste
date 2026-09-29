@@ -1,0 +1,62 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1WB5JSXR6GGW8C3TYKPG50A",
+  "name": "ReorderSuggestion",
+  "displayName": "Reorder suggestion",
+  "pluralName": "Reorder suggestions",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "A replenishment proposal computed nightly for a buyer to accept or dismiss.",
+  "tags": [
+    "transactional"
+  ],
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M1M1E2EPYR81SEACJBY7ZBK2"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1M1E2EPYR81SEACJBY7ZBK2",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the reorder suggestion."
+    },
+    {
+      "id": "01M2RCY4QKPG9462BSPKMCVR7A",
+      "name": "suggestedQuantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity to order."
+    },
+    {
+      "id": "01M1VZFHGEKA4G9G2C3XR7HA19",
+      "name": "suggestedOn",
+      "type": "date",
+      "required": true,
+      "description": "Date computed."
+    },
+    {
+      "id": "01M36KXH90ATVWQ3GDHHC70ZMK",
+      "name": "isAccepted",
+      "type": "bool",
+      "description": "Whether the buyer accepted it; null while undecided."
+    },
+    {
+      "id": "01M1N7HTQFQD9M1KS0F7CX6HEX",
+      "name": "dismissedReason",
+      "type": "string",
+      "length": 200,
+      "description": "Why it was dismissed."
+    }
+  ]
+}

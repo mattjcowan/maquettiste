@@ -1,0 +1,85 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M33CZQC491X54XW35063THC2",
+  "name": "LedgerAccount",
+  "displayName": "Ledger account",
+  "pluralName": "Ledger accounts",
+  "package": "01M1EYTWAA6REG1KFCR9N7XQ27",
+  "description": "An account of the chart of accounts, such as 1200 Accounts receivable, nested into summary accounts.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "financial",
+    "master-data"
+  ],
+  "category": "01M1E9BTZZTKGKC2S6YTG3CKTZ",
+  "key": {
+    "attributes": [
+      "01M1KH1BA022JPV7G9BVW70E4W"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1KH1BA022JPV7G9BVW70E4W",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the ledger account."
+    },
+    {
+      "id": "01M1H6FA3KFDD90H9Z7GKVDY5R",
+      "name": "accountNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Account number."
+    },
+    {
+      "id": "01M1DXV05FF6QFBPG4YQR7DRCR",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "required": true,
+      "description": "Account name."
+    },
+    {
+      "id": "01M32MQQABZQACYM559SGQZ7BE",
+      "name": "accountType",
+      "type": {
+        "ref": "01M21XA43KW7D316GXT2AFNBZH"
+      },
+      "required": true,
+      "description": "Statement classification."
+    },
+    {
+      "id": "01M2V9V8TT4CKK2124K8HY5X2H",
+      "name": "normalBalance",
+      "type": "string",
+      "length": 6,
+      "required": true,
+      "description": "debit or credit."
+    },
+    {
+      "id": "01M1Q0P1DMFKAEWWEJTCWT39Y7",
+      "name": "isPostable",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether journal lines may post to it; summary accounts are not postable."
+    },
+    {
+      "id": "01M220CD6Z4WSDSY4C93WPTZFJ",
+      "name": "isActive",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether it can be used."
+    }
+  ]
+}

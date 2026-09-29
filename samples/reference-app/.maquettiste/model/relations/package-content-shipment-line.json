@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2FZ05VG2XNJN10X06ZABXVG",
+  "name": "package content shipment line",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "Line packed.",
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "ends": [
+    {
+      "id": "01M21TSH9RW8HJFH19AG1KJGXJ",
+      "entity": "01M2AZFG6SKKFV4W4136MH72X5",
+      "role": "shipmentLine",
+      "navigation": "shipmentLine",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M2BHNA2H46GC2168523TA3QW",
+      "entity": "01M2HMRZD9SV5A2E8EG4348Q7C",
+      "role": "packageContents"
+    }
+  ]
+}

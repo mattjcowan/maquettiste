@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2BT4G2K7T8SEADGT5163WXF",
+  "name": "inventory item product",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Stocked product.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M2EAK38GEVA0QWX152SWDC8J",
+      "entity": "01M20RAEF2QZ5W8HV57RBX5PQV",
+      "role": "product",
+      "navigation": "product",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M2M260PKA3XQ7M1BRYXR0T7C",
+      "entity": "01M2DF9XGX67C72G614BCTGVMB",
+      "role": "inventoryItems"
+    }
+  ]
+}

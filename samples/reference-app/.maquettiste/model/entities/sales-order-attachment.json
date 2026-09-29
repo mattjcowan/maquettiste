@@ -1,0 +1,71 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1R0WN3NQVHP8WNHAT901REQ",
+  "name": "SalesOrderAttachment",
+  "displayName": "Sales order attachment",
+  "pluralName": "Sales order attachments",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "A file attached to a sales order, such as the customer's PO PDF.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M1KMJYV5HGQ198JP8TG7BZHF"
+    ],
+    "strategy": "ulid"
+  },
+  "attributes": [
+    {
+      "id": "01M1KMJYV5HGQ198JP8TG7BZHF",
+      "name": "id",
+      "type": "ulid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the sales order attachment."
+    },
+    {
+      "id": "01M2VBXKPY54EFMEQ5ZE5VX0KY",
+      "name": "fileName",
+      "type": "string",
+      "length": 255,
+      "required": true,
+      "description": "Original file name."
+    },
+    {
+      "id": "01M2ADGPFB1WZY8G7C7RV15MRH",
+      "name": "contentType",
+      "type": "string",
+      "length": 100,
+      "required": true,
+      "description": "MIME type."
+    },
+    {
+      "id": "01M2NS69PSSBFDM251K745TQHD",
+      "name": "sizeBytes",
+      "type": "int64",
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "File size."
+    },
+    {
+      "id": "01M1VG0CJYMDAZXVPVDT54GSGS",
+      "name": "storageKey",
+      "type": "string",
+      "length": 400,
+      "required": true,
+      "description": "Object storage key."
+    },
+    {
+      "id": "01M2N1NMJFFNG68RD0C3XHJRRR",
+      "name": "uploadedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When it was uploaded."
+    }
+  ]
+}

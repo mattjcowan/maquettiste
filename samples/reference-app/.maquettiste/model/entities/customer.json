@@ -1,0 +1,57 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1ECZKYNSKVNCWW2XM34E20X",
+  "name": "Customer",
+  "displayName": "Customer",
+  "pluralName": "Customers",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "base": "01M2FA89Y26C424MWK7D3TQPT5",
+  "description": "A business that buys from Northwind on account.",
+  "tags": [
+    "financial"
+  ],
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "attributes": [
+    {
+      "id": "01M2S2CVFZVFSEYSD0325CNJBV",
+      "name": "accountNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Customer account number used on orders and remittances."
+    },
+    {
+      "id": "01M2C31NTX0ZY7K6BEX2620R30",
+      "name": "customerSince",
+      "type": "date",
+      "required": true,
+      "description": "Date the account was opened."
+    },
+    {
+      "id": "01M1N28H79MACNFR6QXSEW5BFT",
+      "name": "onCreditHold",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether new orders are held for credit review."
+    },
+    {
+      "id": "01M33MCK94GJ2SVRTK3R563T06",
+      "name": "isTaxExempt",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether sales tax is waived; requires a valid exemption certificate."
+    },
+    {
+      "id": "01M2HA9ESJR9ZE64TZFEZJ5QBA",
+      "name": "annualRevenue",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Customer's reported annual revenue, used for segmentation."
+    }
+  ]
+}

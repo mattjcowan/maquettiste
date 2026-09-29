@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/package.json",
+  "kind": "package",
+  "id": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "name": "Pricing",
+  "displayName": "Pricing and promotions",
+  "description": "How prices are set - price lists with quantity breaks, negotiated customer agreements, discount rules, promotions and coupons, rebates and standard costs.",
+  "category": "01M1DAV43K3Q185051SG2CRJSN"
+}

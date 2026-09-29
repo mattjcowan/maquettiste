@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M34VQXM7EVEHJPFAP09W9FK1",
+  "name": "journal line cost center",
+  "package": "01M1EYTWAA6REG1KFCR9N7XQ27",
+  "description": "Cost center charged.",
+  "category": "01M1E9BTZZTKGKC2S6YTG3CKTZ",
+  "ends": [
+    {
+      "id": "01M2ZBNKK3MGCFAHSE7V01JXK7",
+      "entity": "01M2CS3TZ92TERS04MA3196AS4",
+      "role": "costCenter",
+      "navigation": "costCenter",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2Y8SWWYKFMFYYM1AVW2K70K",
+      "entity": "01M2EE2G117QN4KHVZYDCHGQP6",
+      "role": "journalLines"
+    }
+  ]
+}

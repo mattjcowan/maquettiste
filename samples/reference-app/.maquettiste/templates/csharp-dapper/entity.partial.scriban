@@ -1,0 +1,10 @@
+{{- include "_csharp.scriban" -}}
+using System;
+
+namespace {{ ns(entity) }};
+
+// The hand-written half of {{ type_name(entity) }}. Maquettiste wrote this file once and never touches it again:
+// add members, attributes and interfaces here. The generated half is {{ type_name(entity) }}.g.cs.
+public partial class {{ type_name(entity) }}
+{
+}

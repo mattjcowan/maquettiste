@@ -1,0 +1,40 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M2ASY2HNCPZR0186V1YTSZ35",
+  "name": "TransferStatus",
+  "displayName": "Transfer status",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Lifecycle of a stock transfer between warehouses.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "members": [
+    {
+      "id": "01M324Y2Y37W2HZ5B52HG6JA1F",
+      "name": "Requested",
+      "value": 0,
+      "code": "REQ",
+      "description": "Requested, not yet picked."
+    },
+    {
+      "id": "01M2E4TPMK06RT5SVZ3015FXWA",
+      "name": "InTransit",
+      "value": 1,
+      "code": "TRANSIT",
+      "description": "Shipped from the source warehouse."
+    },
+    {
+      "id": "01M3789VXM44VM57AQHY9TZ25M",
+      "name": "Received",
+      "value": 2,
+      "code": "RCVD",
+      "description": "Received at the destination."
+    },
+    {
+      "id": "01M2C2Z6BF4SDCAGJRG2MKAFWQ",
+      "name": "Cancelled",
+      "value": 3,
+      "code": "CANCEL",
+      "description": "Cancelled."
+    }
+  ]
+}

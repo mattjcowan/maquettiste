@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2322FKJMDHAWBQ42PWRV3JW",
+  "name": "billing account currency",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "Invoice currency.",
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "ends": [
+    {
+      "id": "01M2KPYFQAM7QBSJNZ3B45Y2K1",
+      "entity": "01M32FRDS6GBKX8Q2GRAAJB5YM",
+      "role": "currency",
+      "navigation": "currency",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2DEZ1DVBZFNZPYNBV7VW3HX",
+      "entity": "01M1GFAC07AMC9MV09YGQE6Y3M",
+      "role": "billingAccounts"
+    }
+  ]
+}

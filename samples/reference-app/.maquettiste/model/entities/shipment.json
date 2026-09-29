@@ -1,0 +1,121 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2KGD56DK66D518GC8HV02RM",
+  "name": "Shipment",
+  "displayName": "Shipment",
+  "pluralName": "Shipments",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "Goods leaving a warehouse for one destination, on a carrier or an own-fleet route.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "transactional",
+    "integration"
+  ],
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "key": {
+    "attributes": [
+      "01M2EQCKFMA6ZTMQJY6TC6YXPC"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2EQCKFMA6ZTMQJY6TC6YXPC",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the shipment."
+    },
+    {
+      "id": "01M1DADFNXH43T65Q940ZW092K",
+      "name": "shipmentNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Shipment number printed on the packing slip."
+    },
+    {
+      "id": "01M355S3N74XY7BPND6XYQWH0X",
+      "name": "status",
+      "type": {
+        "ref": "01M1YZSXAHNTHBXBK0QRA5MQ08"
+      },
+      "required": true,
+      "default": "Planned",
+      "description": "Lifecycle state."
+    },
+    {
+      "id": "01M202QR8JQKQ7G2DW8FM4M2Y5",
+      "name": "shipToAddress",
+      "type": {
+        "ref": "01M2WPKGPNR6R40TDZ1WGNN874"
+      },
+      "required": true,
+      "description": "Delivery address."
+    },
+    {
+      "id": "01M1ZTYY0RXN0CPHVK15S3PTHZ",
+      "name": "freightTerms",
+      "type": {
+        "ref": "01M2HBFSPDYPYC46TQHGZ649QT"
+      },
+      "description": "Incoterm of the shipment."
+    },
+    {
+      "id": "01M2BKNRCT7563GVBM5CRRJKDP",
+      "name": "trackingNumber",
+      "type": "string",
+      "length": 60,
+      "indexed": true,
+      "description": "Master tracking or PRO number."
+    },
+    {
+      "id": "01M2VKHT3T6KF1WGWQD0TDEVYJ",
+      "name": "estimatedDeliveryOn",
+      "type": "date",
+      "description": "Carrier's estimate."
+    },
+    {
+      "id": "01M2HF2QB1MQW84XNR3RYDW4X0",
+      "name": "shippedAt",
+      "type": "datetimeoffset",
+      "description": "When it left the dock."
+    },
+    {
+      "id": "01M2GBZB9TRQ1FMV8GT6YXV1F3",
+      "name": "deliveredAt",
+      "type": "datetimeoffset",
+      "description": "When it was delivered."
+    },
+    {
+      "id": "01M1VZ6FHX724PGB9E30RMPM4X",
+      "name": "freightCost",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Freight charged by the carrier."
+    },
+    {
+      "id": "01M1TXPREFF61D2V0GAYDJ3RJ5",
+      "name": "declaredValue",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Value declared for insurance."
+    },
+    {
+      "id": "01M2SZQXVRQ7SRMRERXGYTWYRK",
+      "name": "totalWeight",
+      "type": {
+        "ref": "01M36PE7EQVEDETJ5QMAXH25ZX"
+      },
+      "description": "Gross weight of all packages."
+    }
+  ]
+}

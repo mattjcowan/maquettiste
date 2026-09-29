@@ -1,0 +1,67 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1Q7QASS98NWARA5XQ5ZZK23",
+  "name": "RemittanceAdvice",
+  "displayName": "Remittance advice",
+  "pluralName": "Remittance advices",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "A customer's remittance advice explaining which invoices a payment covers, from EDI 820 or email.",
+  "tags": [
+    "integration"
+  ],
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "key": {
+    "attributes": [
+      "01M1M5Z7KAZJSPTSAQ52CXHV13"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1M5Z7KAZJSPTSAQ52CXHV13",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the remittance advice."
+    },
+    {
+      "id": "01M32XSFQJDCGVRTY1JDK4AJYY",
+      "name": "receivedOn",
+      "type": "date",
+      "required": true,
+      "description": "Date received."
+    },
+    {
+      "id": "01M1FKRSQ9VF5G5B0YVMCBVDNM",
+      "name": "payerReference",
+      "type": "string",
+      "length": 64,
+      "description": "Payer's reference."
+    },
+    {
+      "id": "01M1J8Z4CM80BSE61SPAB1DYJ9",
+      "name": "totalAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Amount remitted."
+    },
+    {
+      "id": "01M1QD6KKV9YTTKMRF69AR0ZN3",
+      "name": "rawDocument",
+      "type": "json",
+      "description": "Original document, as JSON."
+    },
+    {
+      "id": "01M1DYQC8915N1H7KCN11SQHGY",
+      "name": "isMatched",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether it was matched to a payment."
+    }
+  ]
+}

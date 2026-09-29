@@ -1,0 +1,54 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M2HBFSPDYPYC46TQHGZ649QT",
+  "name": "FreightTerms",
+  "displayName": "Freight terms",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "Incoterms 2020 rule agreed for a shipment, deciding who pays freight and carries the risk.",
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "members": [
+    {
+      "id": "01M1W8TGGP454DMK15T5K3X6TB",
+      "name": "ExWorks",
+      "value": 0,
+      "code": "EXW",
+      "description": "Buyer collects at the warehouse."
+    },
+    {
+      "id": "01M36W7SS1EYKCCG16MVPZXT96",
+      "name": "FreeCarrier",
+      "value": 1,
+      "code": "FCA",
+      "description": "Seller hands the goods to the buyer's carrier."
+    },
+    {
+      "id": "01M1QJ00TE3MKJD3JQWM3EKZBC",
+      "name": "FreeOnBoard",
+      "value": 2,
+      "code": "FOB",
+      "description": "Seller loads the goods on the vessel."
+    },
+    {
+      "id": "01M1R8P6NZCAF237AW0HC51KDA",
+      "name": "CarriagePaidTo",
+      "value": 3,
+      "code": "CPT",
+      "description": "Seller pays carriage to the named place."
+    },
+    {
+      "id": "01M1EV094JV898R72HBQM4BQ1R",
+      "name": "DeliveredAtPlace",
+      "value": 4,
+      "code": "DAP",
+      "description": "Seller delivers to the named place, unloaded by the buyer."
+    },
+    {
+      "id": "01M1RZT69778MRY9R737KMNKFX",
+      "name": "DeliveredDutyPaid",
+      "value": 5,
+      "code": "DDP",
+      "description": "Seller delivers cleared for import, duties paid."
+    }
+  ]
+}

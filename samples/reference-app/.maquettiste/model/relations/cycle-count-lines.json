@@ -1,0 +1,27 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M28RYW1CCMNZBZKM97SQFF4B",
+  "name": "cycle count lines",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "relationKind": "composition",
+  "description": "Locations and products to count.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M34T1GTFAX72MHFMBM6A3Z20",
+      "entity": "01M2NGDKC9XHW37BDXATNQ314D",
+      "role": "cycleCount",
+      "navigation": "cycleCount",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M2WRB5SDW684FDT8D1NJAZ2P",
+      "entity": "01M21Y0KVFX1RBJ8PW4RYPAV3T",
+      "role": "lines",
+      "navigation": "lines"
+    }
+  ]
+}

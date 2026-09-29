@@ -1,0 +1,47 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M2REZ2EG3YJFDH8W529QRP5N",
+  "name": "AddressType",
+  "displayName": "Address type",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "Purpose of a party address.",
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "members": [
+    {
+      "id": "01M2TYJH9XQKKJWYXCZH5ER6RZ",
+      "name": "Billing",
+      "value": 0,
+      "code": "BIL",
+      "description": "Where invoices and statements are sent."
+    },
+    {
+      "id": "01M2XMKTEZVS53Z7ER18AKZ1TG",
+      "name": "Shipping",
+      "value": 1,
+      "code": "SHP",
+      "description": "Where goods are delivered."
+    },
+    {
+      "id": "01M2861AKK3WGJZPNBXWSFX7MF",
+      "name": "Headquarters",
+      "value": 2,
+      "code": "HQ",
+      "description": "Registered office."
+    },
+    {
+      "id": "01M22CV31ZQ80Z8SF0M06F3TT7",
+      "name": "Warehouse",
+      "value": 3,
+      "code": "WHS",
+      "description": "A receiving dock of the party."
+    },
+    {
+      "id": "01M2NH07FF60C0GVWP1YR54QMH",
+      "name": "Remittance",
+      "value": 4,
+      "code": "REM",
+      "description": "Where payments are sent."
+    }
+  ]
+}

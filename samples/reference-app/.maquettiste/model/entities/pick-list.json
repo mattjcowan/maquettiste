@@ -1,0 +1,64 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M361WZGT03TXCK3ZS2SN07NE",
+  "name": "PickList",
+  "displayName": "Pick list",
+  "pluralName": "Pick lists",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "A list of picks assigned to one picker, generated when a wave is released.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "transactional"
+  ],
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "key": {
+    "attributes": [
+      "01M24CVHB10QTH6KYAZM1M90QC"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M24CVHB10QTH6KYAZM1M90QC",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the pick list."
+    },
+    {
+      "id": "01M2ECGSBQHNFAG55P5R6PJ5NB",
+      "name": "pickListNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Pick list number."
+    },
+    {
+      "id": "01M2A4B6BP7GKBG2TQER153XTY",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "open",
+      "description": "open, picking, done or short."
+    },
+    {
+      "id": "01M2VNMTA77SA2YNMGNYZPQS01",
+      "name": "releasedAt",
+      "type": "datetimeoffset",
+      "description": "When it was released to the floor."
+    },
+    {
+      "id": "01M1VMVDG5TPXPGXNPXPJXVF9B",
+      "name": "completedAt",
+      "type": "datetimeoffset",
+      "description": "When the last pick was confirmed."
+    }
+  ]
+}

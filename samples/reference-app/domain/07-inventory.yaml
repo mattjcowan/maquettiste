@@ -1,0 +1,354 @@
+package: Inventory
+displayName: Inventory and warehousing
+description: Warehouses and their layout, stock on hand by product, lot and serial number, movements, counts, transfers, replenishment and quality holds.
+
+enums:
+  StockMovementType:
+    description: Kind of stock movement.
+    members:
+      Receipt: RCV | Goods received from a supplier.
+      Issue: ISS | Goods picked for a customer shipment.
+      TransferOut: TOUT | Goods leaving for another warehouse.
+      TransferIn: TIN | Goods arriving from another warehouse.
+      Relocation: MOVE | Goods moved between bins of one warehouse.
+      Adjustment: ADJ | Correction after a count or damage.
+      CustomerReturn: RET | Goods returned by a customer.
+      Scrap: SCRAP | Goods written off and destroyed.
+  TransferStatus:
+    description: Lifecycle of a stock transfer between warehouses.
+    members:
+      Requested: REQ | Requested, not yet picked.
+      InTransit: TRANSIT | Shipped from the source warehouse.
+      Received: RCVD | Received at the destination.
+      Cancelled: CANCEL | Cancelled.
+
+entities:
+  Warehouse:
+    description: A distribution center Northwind ships from, such as Denver DC or Reno DC.
+    stereotypes: [aggregate-root, audited]
+    tags: [master-data]
+    attributes:
+      code: string(10)! unique | Warehouse code printed on labels.
+      name: string(100)! | Warehouse name.
+      address: Address! | Street address.
+      location: GeoCoordinate | Position for routing.
+      timeZone: string(40)! | IANA time zone, such as America/Denver.
+      floorAreaSqm: decimal(10,2) min=0 | Floor area in square meters.
+      isActive: bool! default=true | Whether it can receive and ship.
+    refs:
+      manager: Employee | Site manager.
+      costCenter: CostCenter | Cost center of the site.
+    children:
+      zones: WarehouseZone | Zones of the warehouse.
+
+  WarehouseZone:
+    description: An area of a warehouse with one purpose, such as receiving, bulk storage, pick faces or a freezer.
+    stereotypes: [audited]
+    attributes:
+      code: string(10)! | Zone code within the warehouse.
+      name: string(100)! | Zone name.
+      zoneType: string(20)! | receiving, bulk, pick, staging, quarantine or shipping.
+    refs:
+      storageCondition: StorageCondition | Condition the zone maintains.
+    children:
+      bins: BinLocation | Bins in the zone.
+
+  BinLocation:
+    description: A storage location addressed by aisle, rack, level and position.
+    tags: [master-data]
+    attributes:
+      code: string(20)! indexed | Location code, such as A-01-02-03.
+      aisle: string(4)! | Aisle.
+      rack: string(4)! | Rack or bay.
+      level: string(4)! | Shelf level.
+      position: string(4) | Position on the shelf.
+      maxWeight: Weight | Load limit.
+      isPickFace: bool! default=false | Whether pickers pick from it.
+      isActive: bool! default=true | Whether stock can be put away there.
+
+  InventoryItem:
+    description: Stock of one product in one warehouse, with on-hand, allocated and on-order quantities.
+    stereotypes: [audited]
+    tags: [high-volume]
+    attributes:
+      quantityOnHand: decimal(14,3)! default=0 | Physical quantity in the warehouse.
+      quantityAllocated: decimal(14,3)! default=0 min=0 | Quantity reserved for open orders.
+      quantityOnOrder: decimal(14,3)! default=0 min=0 | Quantity on open purchase orders.
+      reorderPoint: decimal(14,3) min=0 | Quantity that triggers replenishment.
+      lastCountedOn: date | Date of the last cycle count.
+    refs:
+      product: Product! | Stocked product.
+      warehouse: Warehouse! cascade back=inventoryItems | Warehouse holding the stock.
+      defaultBin: BinLocation | Pick face of the product.
+    overlay:
+      description: Allocation can never exceed what is on hand plus what is inbound.
+      checks:
+        ck_inventory_items_allocation: quantity_allocated <= quantity_on_hand + quantity_on_order
+
+  StockLot:
+    description: A production lot or batch of a lot-controlled product, with its expiry date.
+    stereotypes: [audited]
+    attributes:
+      lotNumber: string(40)! indexed | Lot number.
+      supplierLotNumber: string(40) | Lot number on the supplier's label.
+      manufacturedOn: date | Production date.
+      expiresOn: date indexed | Expiry date, for first-expired-first-out picking.
+    refs:
+      product: Product! | Product of the lot.
+      supplier: Supplier | Supplier the lot came from.
+
+  SerialNumber:
+    description: A serialized unit of a product, tracked from receipt to the customer.
+    attributes:
+      serial: string(60)! unique | Serial number.
+      status: string(20)! default=in-stock | in-stock, shipped, returned or scrapped.
+      receivedAt: datetimeoffset | When it was received.
+    refs:
+      product: Product! | Product of the unit.
+      lot: StockLot | Lot the unit belongs to.
+      currentBin: BinLocation | Where the unit is stored.
+
+  StockMovement:
+    description: An immutable record of stock moving into, out of or within a warehouse; balances are derived from these.
+    tags: [high-volume, financial]
+    key: identity
+    attributes:
+      movementType: StockMovementType! | Kind of movement.
+      quantity: decimal(14,3)! | Quantity moved, in the base unit; negative for issues.
+      occurredAt: datetimeoffset! | When the movement happened.
+      referenceDocument: string(40) | Source document number.
+      unitCost: Money | Cost per unit for valuation.
+    refs:
+      product: Product! | Product moved.
+      fromBin: BinLocation | Source bin.
+      toBin: BinLocation | Destination bin.
+      lot: StockLot | Lot moved.
+      performedBy: Employee | Who moved it.
+    overlay:
+      description: Movements are read newest first.
+      indexes:
+        - name: ix_stock_movements_occurred_at
+          columns: [occurredAt desc]
+
+  StockAdjustment:
+    description: A correction of on-hand stock after a count, damage or theft, approved above a value threshold.
+    stereotypes: [audited]
+    tags: [financial]
+    attributes:
+      adjustmentNumber: string(20)! unique | Adjustment number.
+      adjustedAt: datetimeoffset! | When the adjustment was booked.
+      quantityDelta: decimal(14,3)! | Change in quantity.
+      valueDelta: Money | Change in inventory value.
+      notes: string(500) | Explanation.
+    refs:
+      inventoryItem: InventoryItem! | Stock adjusted.
+      reason: AdjustmentReason! | Why.
+      approvedBy: Employee | Approver, for adjustments above the threshold.
+
+  AdjustmentReason:
+    description: A reason for a stock adjustment, such as Damaged in warehouse or Count correction.
+    stereotypes: [lookup]
+    tags: [configuration]
+    key: identity32
+    attributes:
+      affectsCost: bool! default=true | Whether it posts a write-off to the ledger.
+
+  CycleCount:
+    description: A scheduled count of part of a warehouse to verify stock accuracy.
+    stereotypes: [aggregate-root, audited]
+    attributes:
+      countNumber: string(20)! unique | Count number.
+      scheduledOn: date! | Planned date.
+      status: string(20)! default=planned | planned, counting, review or closed.
+      completedAt: datetimeoffset | When counting finished.
+    refs:
+      warehouse: Warehouse! | Warehouse counted.
+      zone: WarehouseZone | Zone counted; null for the whole warehouse.
+      assignedTo: Employee | Counter.
+    children:
+      lines: CycleCountLine | Locations and products to count.
+
+  CycleCountLine:
+    description: One product in one bin to count, with the expected and counted quantities.
+    attributes:
+      expectedQuantity: decimal(14,3)! | Quantity on record.
+      countedQuantity: decimal(14,3) | Quantity found.
+      countedAt: datetimeoffset | When it was counted.
+      varianceApproved: bool! default=false | Whether a variance was approved.
+    refs:
+      product: Product! | Product counted.
+      bin: BinLocation! | Bin counted.
+      lot: StockLot | Lot counted.
+
+  StockTransfer:
+    description: A movement of stock between two Northwind warehouses.
+    stereotypes: [aggregate-root, audited]
+    tags: [transactional]
+    attributes:
+      transferNumber: string(20)! unique | Transfer number.
+      status: TransferStatus! default=Requested | Lifecycle state.
+      requestedOn: date! | Date requested.
+      shippedAt: datetimeoffset | When it left the source.
+      receivedAt: datetimeoffset | When it arrived.
+    refs:
+      fromWarehouse: Warehouse! | Source warehouse.
+      toWarehouse: Warehouse! | Destination warehouse.
+      carrier: Carrier | Carrier moving it.
+    children:
+      lines: StockTransferLine | Products transferred.
+
+  StockTransferLine:
+    description: A product and quantity on a stock transfer.
+    attributes:
+      quantity: decimal(14,3)! min=0 | Quantity shipped.
+      receivedQuantity: decimal(14,3) min=0 | Quantity received.
+    refs:
+      product: Product! | Product transferred.
+      lot: StockLot | Lot transferred.
+
+  ReplenishmentRule:
+    description: Min-max replenishment settings of a product in a warehouse.
+    stereotypes: [audited]
+    tags: [configuration]
+    attributes:
+      minQuantity: decimal(14,3)! min=0 | Reorder when available stock falls below it.
+      maxQuantity: decimal(14,3)! min=0 | Order up to this level.
+      reorderQuantity: decimal(14,3) min=0 | Fixed order quantity, when used instead of max.
+      isActive: bool! default=true | Whether the rule is evaluated.
+    refs:
+      product: Product! | Product replenished.
+      warehouse: Warehouse! cascade | Warehouse replenished.
+      preferredSupplier: Supplier | Supplier to order from.
+
+  StockReservation:
+    description: A quantity of stock reserved for a sales order line.
+    tags: [transactional, high-volume]
+    attributes:
+      quantity: decimal(14,3)! min=0 | Quantity reserved.
+      reservedAt: datetimeoffset! | When it was reserved.
+      expiresAt: datetimeoffset | When a soft reservation lapses.
+      status: string(20)! default=active | active, picked, released or expired.
+    refs:
+      inventoryItem: InventoryItem! cascade back=reservations | Stock reserved.
+      salesOrderLine: SalesOrderLine! cascade back=reservations | Line the stock is for.
+
+  InventoryCostLayer:
+    description: A FIFO cost layer created by a receipt and consumed by issues, for inventory valuation.
+    tags: [financial, high-volume]
+    key: identity
+    attributes:
+      receivedOn: date! | Date the layer was created.
+      quantity: decimal(14,3)! min=0 | Quantity received.
+      remainingQuantity: decimal(14,3)! min=0 | Quantity not yet consumed.
+      unitCost: Money! | Landed cost per unit.
+    refs:
+      product: Product! | Product valued.
+      warehouse: Warehouse! | Warehouse holding it.
+      goodsReceiptLine: GoodsReceiptLine | Receipt that created the layer.
+
+  PutawayTask:
+    description: A task to move received goods from the dock to a storage bin.
+    stereotypes: [audited]
+    tags: [transactional]
+    attributes:
+      status: string(20)! default=open | open, in-progress or done.
+      quantity: decimal(14,3)! min=0 | Quantity to put away.
+      completedAt: datetimeoffset | When it was done.
+    refs:
+      product: Product! | Product to put away.
+      fromBin: BinLocation | Staging location.
+      toBin: BinLocation! | Target bin.
+      assignedTo: Employee | Warehouse associate.
+      goodsReceiptLine: GoodsReceiptLine | Receipt line being put away.
+
+  WarehouseEquipment:
+    description: Material handling equipment of a warehouse, such as a forklift or a reach truck.
+    stereotypes: [audited]
+    pluralName: Warehouse equipment
+    attributes:
+      assetTag: string(20)! unique | Asset tag.
+      equipmentType: string(40)! | Kind, such as forklift or pallet jack.
+      manufacturerName: string(80) | Maker.
+      modelName: string(80) | Model.
+      lastInspectedOn: date | Last safety inspection.
+      isOperational: bool! default=true | Whether it can be used.
+    refs:
+      warehouse: Warehouse! back=equipment | Warehouse it belongs to.
+
+  DockDoor:
+    description: A loading dock door of a warehouse, scheduled for inbound and outbound trailers.
+    attributes:
+      doorNumber: string(10)! | Door number.
+      doorType: string(20)! | inbound, outbound or both.
+      hasLeveler: bool! default=true | Whether it has a dock leveler.
+      isActive: bool! default=true | Whether it can be scheduled.
+    refs:
+      warehouse: Warehouse! cascade back=dockDoors | Warehouse of the door.
+
+  WarehouseShift:
+    description: A working shift of a warehouse, such as the night picking shift.
+    attributes:
+      name: string(60)! | Shift name.
+      startsAt: time! | Start time, local to the warehouse.
+      endsAt: time! | End time.
+      weekdays: string(20)! | Days worked, such as Mon-Fri.
+    refs:
+      warehouse: Warehouse! cascade back=shifts | Warehouse of the shift.
+      supervisor: Employee | Shift supervisor.
+
+  StorageCondition:
+    description: A storage requirement, such as Ambient, Chilled 2-8 C or Frozen.
+    stereotypes: [lookup]
+    tags: [configuration]
+    key: identity32
+    attributes:
+      minTemperatureC: decimal(5,2) | Lowest allowed temperature.
+      maxTemperatureC: decimal(5,2) | Highest allowed temperature.
+      requiresHumidityControl: bool! default=false | Whether humidity is controlled.
+
+  QualityInspection:
+    description: An inspection of received or stored goods, which may put them on hold.
+    stereotypes: [audited]
+    attributes:
+      inspectedAt: datetimeoffset! | When it was inspected.
+      result: string(20)! | passed, failed or conditional.
+      sampleSize: int32 min=1 | Units inspected.
+      notes: text | Findings.
+    refs:
+      product: Product! | Product inspected.
+      lot: StockLot | Lot inspected.
+      inspector: Employee | Inspector.
+      goodsReceiptLine: GoodsReceiptLine | Receipt inspected.
+
+  InventoryHold:
+    description: A hold that blocks stock from being picked, such as a recall or a failed inspection.
+    stereotypes: [audited]
+    attributes:
+      reason: string(200)! | Why the stock is held.
+      placedAt: datetimeoffset! | When the hold was placed.
+      releasedAt: datetimeoffset | When it was released.
+      quantity: decimal(14,3) min=0 | Quantity held; null for everything in scope.
+    refs:
+      product: Product! | Product held.
+      lot: StockLot | Lot held.
+      warehouse: Warehouse! | Warehouse where it applies.
+      placedBy: Employee | Who placed it.
+
+  ReorderSuggestion:
+    description: A replenishment proposal computed nightly for a buyer to accept or dismiss.
+    tags: [transactional]
+    attributes:
+      suggestedQuantity: decimal(14,3)! min=0 | Quantity to order.
+      suggestedOn: date! | Date computed.
+      isAccepted: bool | Whether the buyer accepted it; null while undecided.
+      dismissedReason: string(200) | Why it was dismissed.
+    refs:
+      product: Product! | Product to order.
+      warehouse: Warehouse! | Warehouse to replenish.
+      supplier: Supplier | Suggested supplier.
+      purchaseOrder: PurchaseOrder | Purchase order created from it.
+
+diagram:
+  name: Inventory and warehousing
+  description: Warehouse layout, stock records and the movements and tasks that change them.
+  columns: 5

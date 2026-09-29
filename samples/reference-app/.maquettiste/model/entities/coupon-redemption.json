@@ -1,0 +1,46 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1X5DK1KBDWND1CQEPZ6GNYD",
+  "name": "CouponRedemption",
+  "displayName": "Coupon redemption",
+  "pluralName": "Coupon redemptions",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "One use of a coupon on a sales order.",
+  "tags": [
+    "transactional"
+  ],
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "key": {
+    "attributes": [
+      "01M25NER51JQ1PN65R64E88C8D"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M25NER51JQ1PN65R64E88C8D",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the coupon redemption."
+    },
+    {
+      "id": "01M2SGHD8H2SWCX6KKRCF05WT8",
+      "name": "redeemedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the coupon was applied."
+    },
+    {
+      "id": "01M1P3NXTYBA1D9218ZYNWK5NR",
+      "name": "discountAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Discount granted."
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1ES4802N0XEHQWM1J3DN5X3",
+  "name": "shipping zone origin warehouse",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "Warehouse the zone is measured from.",
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "ends": [
+    {
+      "id": "01M1N38S9ZRHZZX0YJM94SV0SQ",
+      "entity": "01M1PN7QBBJ001FSBR7DTP2QS6",
+      "role": "originWarehouse",
+      "navigation": "originWarehouse",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2GXWZ89XJV4E1T7CJ4X65DX",
+      "entity": "01M2BMMVEMY8VK72J5CG52HYCZ",
+      "role": "shippingZones"
+    }
+  ]
+}

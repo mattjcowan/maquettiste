@@ -1,0 +1,33 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M1Z982ARCCW1K6XHA2JTZBFC",
+  "name": "JournalEntryStatus",
+  "displayName": "Journal entry status",
+  "package": "01M1EYTWAA6REG1KFCR9N7XQ27",
+  "description": "Posting state of a journal entry.",
+  "category": "01M1E9BTZZTKGKC2S6YTG3CKTZ",
+  "members": [
+    {
+      "id": "01M1ZMZPWMNDHE91M2ZJB9G23X",
+      "name": "Draft",
+      "value": 0,
+      "code": "D",
+      "description": "Being prepared; does not affect balances."
+    },
+    {
+      "id": "01M1D6XG2XW7FNNEXC6VGW9G7Z",
+      "name": "Posted",
+      "value": 1,
+      "code": "P",
+      "description": "Posted to the ledger; immutable."
+    },
+    {
+      "id": "01M1RCW9CXZZC7RSGF47EH96RC",
+      "name": "Reversed",
+      "value": 2,
+      "code": "R",
+      "description": "Cancelled by a reversing entry."
+    }
+  ]
+}

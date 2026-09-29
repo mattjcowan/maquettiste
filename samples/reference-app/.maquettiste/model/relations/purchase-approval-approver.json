@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1NDHSPVSJRSMHS3JH7GAPDX",
+  "name": "purchase approval approver",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "Approver.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "ends": [
+    {
+      "id": "01M1JYDZHJQNJ7DCVDXDB2PP77",
+      "entity": "01M1RJC20E0YQ2SZNHD9NJW74W",
+      "role": "approver",
+      "navigation": "approver",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M1FX33AMQ6B8NVC293MWWY9M",
+      "entity": "01M20VDNES01WS4DZ5NXHEAFX7",
+      "role": "purchaseApprovals"
+    }
+  ]
+}

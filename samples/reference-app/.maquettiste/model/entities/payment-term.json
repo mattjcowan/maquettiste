@@ -1,0 +1,61 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M34TDE50KP64ZCX6H1J0PC9K",
+  "name": "PaymentTerm",
+  "displayName": "Payment term",
+  "pluralName": "Payment terms",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "Payment terms, such as Net 30 or 2/10 Net 30.",
+  "stereotypes": [
+    "lookup"
+  ],
+  "tags": [
+    "configuration",
+    "financial"
+  ],
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "key": {
+    "attributes": [
+      "01M2MPY2RQJJYXNPMPA9A4F00Q"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M2MPY2RQJJYXNPMPA9A4F00Q",
+      "name": "id",
+      "type": "int32",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the payment term."
+    },
+    {
+      "id": "01M2J9KMWA1JSMWWDBS3A738M9",
+      "name": "netDays",
+      "type": "int16",
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Days until the invoice is due."
+    },
+    {
+      "id": "01M1HFG8EN57A62N0VHEHZ6T00",
+      "name": "discountDays",
+      "type": "int16",
+      "validation": {
+        "min": 0
+      },
+      "description": "Days within which the early payment discount applies."
+    },
+    {
+      "id": "01M2BAGP72DJ34PD8JDX7MFCR9",
+      "name": "discountPercent",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "description": "Early payment discount."
+    }
+  ]
+}

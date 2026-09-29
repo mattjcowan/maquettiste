@@ -1,0 +1,15 @@
+{
+  "$schema": "../../.schema/v1/scalar-type.json",
+  "kind": "scalar-type",
+  "id": "01M2FWAWDSNBGY4P6KKC4TJBR0",
+  "name": "Sku",
+  "displayName": "Sku",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "A stock keeping unit code, unique per product variant.",
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "base": "string",
+  "length": 40,
+  "validation": {
+    "pattern": "^[A-Z0-9][A-Z0-9-]*$"
+  }
+}

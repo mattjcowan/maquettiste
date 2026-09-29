@@ -1,0 +1,39 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1Z07H8911C6G8XMGB68QRV0",
+  "name": "StandingOrderLine",
+  "displayName": "Standing order line",
+  "pluralName": "Standing order lines",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "A product and quantity ordered on every run of a standing order.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M1H9G8V859N7J0M6SEFRAGYV"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1H9G8V859N7J0M6SEFRAGYV",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the standing order line."
+    },
+    {
+      "id": "01M1YEK6BNAPRPNXVRW473W9ZQ",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity per run."
+    }
+  ]
+}

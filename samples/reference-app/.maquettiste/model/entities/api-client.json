@@ -1,0 +1,87 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1NR7VGEMHMC1238QBWCKF9K",
+  "name": "ApiClient",
+  "displayName": "Api client",
+  "pluralName": "Api clients",
+  "package": "01M1F99DBQ9B1T1RVMQRR1GS7V",
+  "description": "A machine client (EDI gateway, marketplace connector, carrier webhook) that calls Northwind APIs.",
+  "stereotypes": [
+    "audited",
+    "soft-delete"
+  ],
+  "tags": [
+    "security",
+    "integration"
+  ],
+  "category": "01M38C3WQ4HSCF45E03KGN6AF5",
+  "key": {
+    "attributes": [
+      "01M2ZMHEMC5KN5X0F9K0AYC0RH"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2ZMHEMC5KN5X0F9K0AYC0RH",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the api client."
+    },
+    {
+      "id": "01M2B14FZT1RRMFAF0EKK6ATWB",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "required": true,
+      "unique": true,
+      "description": "Client name."
+    },
+    {
+      "id": "01M1F9SD13XN02C7KPB52V3STA",
+      "name": "description",
+      "type": "string",
+      "length": 500,
+      "description": "What the integration does."
+    },
+    {
+      "id": "01M2TRRH0ZVRZTX3MMWQKXNGGG",
+      "name": "ownerEmail",
+      "type": {
+        "ref": "01M1RSY89TKR4D2MJY2YC131S7"
+      },
+      "required": true,
+      "description": "Contact for the integration."
+    },
+    {
+      "id": "01M37KVWET07GEYFYWCG54Y9Q9",
+      "name": "allowedScopes",
+      "type": "string",
+      "length": 1000,
+      "required": true,
+      "description": "Space-separated OAuth scopes."
+    },
+    {
+      "id": "01M1N22QABTM7G6J7HMTFHC6BQ",
+      "name": "rateLimitPerMinute",
+      "type": "int32",
+      "required": true,
+      "default": 600,
+      "validation": {
+        "min": 1
+      },
+      "description": "Request budget per minute."
+    },
+    {
+      "id": "01M276NSEMBHV19ECCFQQ67257",
+      "name": "isEnabled",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether the client can obtain tokens."
+    }
+  ]
+}

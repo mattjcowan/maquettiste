@@ -1,0 +1,59 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M37YEM5BDAS9JA7K1XHGRYQB",
+  "name": "OrderCharge",
+  "displayName": "Order charge",
+  "pluralName": "Order charges",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "A charge added to a sales order, such as freight, handling or a fuel surcharge.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M1NJ4YHZ6BHWPVJRM91C1PNQ"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1NJ4YHZ6BHWPVJRM91C1PNQ",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the order charge."
+    },
+    {
+      "id": "01M255968DAHW9YGA7Q3K0PEJN",
+      "name": "chargeType",
+      "type": "string",
+      "length": 30,
+      "required": true,
+      "description": "freight, handling, fuel-surcharge or small-order."
+    },
+    {
+      "id": "01M22AK9N8KDMC9GJW6BNPRN8X",
+      "name": "description",
+      "type": "string",
+      "length": 200,
+      "description": "Text printed on the invoice."
+    },
+    {
+      "id": "01M34M4JMPBGSFHKTNXF7GBPER",
+      "name": "amount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Charge amount."
+    },
+    {
+      "id": "01M1SM7ZK142GBJQ4K9JNRJTRN",
+      "name": "isTaxable",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether sales tax applies."
+    }
+  ]
+}

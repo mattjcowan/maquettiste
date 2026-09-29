@@ -1,0 +1,68 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1JM4WMTSZA8BN2XA85WNNE7",
+  "name": "CardPayment",
+  "displayName": "Card payment",
+  "pluralName": "Card payments",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "base": "01M1TQTM9KTF1VNQJV2M3WM130",
+  "description": "A payment by credit or purchasing card through the payment processor.",
+  "tags": [
+    "pii"
+  ],
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "attributes": [
+    {
+      "id": "01M2PMAPNZA43DDKKWHWJXAZ6D",
+      "name": "cardBrand",
+      "type": {
+        "ref": "01M2RSFMKWCQ1CZQ5J0VTJ74GK"
+      },
+      "required": true,
+      "description": "Card network."
+    },
+    {
+      "id": "01M1YVBQ0G1XZMJQK99X5HAAS1",
+      "name": "last4",
+      "type": "string",
+      "length": 4,
+      "required": true,
+      "description": "Last four digits of the card."
+    },
+    {
+      "id": "01M23HV475EH618FQRSPWYTWWB",
+      "name": "expiryMonth",
+      "type": "int16",
+      "validation": {
+        "min": 1,
+        "max": 12
+      },
+      "description": "Card expiry month."
+    },
+    {
+      "id": "01M1JYTCPCM744TF6B7D7ANHQ4",
+      "name": "expiryYear",
+      "type": "int16",
+      "validation": {
+        "min": 2000
+      },
+      "description": "Card expiry year."
+    },
+    {
+      "id": "01M2GA4ZDBTYSPV445G90G70VA",
+      "name": "authorizationCode",
+      "type": "string",
+      "length": 20,
+      "description": "Issuer's authorization code."
+    },
+    {
+      "id": "01M1M513DRFV7KPGVYNPSV74AP",
+      "name": "processorReference",
+      "type": "string",
+      "length": 64,
+      "indexed": true,
+      "description": "Processor transaction id."
+    }
+  ]
+}

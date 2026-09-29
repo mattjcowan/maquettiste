@@ -1,0 +1,61 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2GPE1118GZA4QY5E0XNMV9H",
+  "name": "ProductLifecycleEvent",
+  "displayName": "Product lifecycle event",
+  "pluralName": "Product lifecycle events",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "A change of a product's lifecycle status, kept as history.",
+  "tags": [
+    "high-volume"
+  ],
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M35MMTXG3B00WTYGYVASBAX7"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M35MMTXG3B00WTYGYVASBAX7",
+      "name": "id",
+      "type": "int64",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the product lifecycle event."
+    },
+    {
+      "id": "01M31PGH01CBG78W89NC2GRCV6",
+      "name": "fromStatus",
+      "type": {
+        "ref": "01M2YW6JHEB1CVE5XWYKQ1MYBG"
+      },
+      "description": "Status before the change."
+    },
+    {
+      "id": "01M23RBH1DCVYSB7GF6057PSGM",
+      "name": "toStatus",
+      "type": {
+        "ref": "01M2YW6JHEB1CVE5XWYKQ1MYBG"
+      },
+      "required": true,
+      "description": "Status after the change."
+    },
+    {
+      "id": "01M2JKSC0TZ5EQ8T0BMMFYBX8R",
+      "name": "occurredAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the change happened."
+    },
+    {
+      "id": "01M1N1ZY99BVVSK4HCTEPPA7JV",
+      "name": "reason",
+      "type": "string",
+      "length": 300,
+      "description": "Why the status changed."
+    }
+  ]
+}

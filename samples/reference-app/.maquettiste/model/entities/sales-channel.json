@@ -1,0 +1,66 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M38NCZKS41XQ56VGTP0P6PM7",
+  "name": "SalesChannel",
+  "displayName": "Sales channel",
+  "pluralName": "Sales channels",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "A route to market, such as the customer portal, EDI or a marketplace.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "configuration"
+  ],
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M2YE2TNBG8F3P5C1TS0JE3GQ"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2YE2TNBG8F3P5C1TS0JE3GQ",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the sales channel."
+    },
+    {
+      "id": "01M28NDH47RRKBDR5THAEGN1JD",
+      "name": "code",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Channel code."
+    },
+    {
+      "id": "01M21RD9R66C30Q248RER3BX8W",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "required": true,
+      "description": "Channel name."
+    },
+    {
+      "id": "01M1KZSY0SBSPMHQF8VW04E32S",
+      "name": "isMarketplace",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether a third party hosts the channel."
+    },
+    {
+      "id": "01M1Z876FQ0SQ0GDTXWJVA9X6V",
+      "name": "commissionRate",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "description": "Fee the channel charges on sales."
+    }
+  ]
+}

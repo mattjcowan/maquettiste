@@ -1,0 +1,85 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M20WRVKPBD33DKT9AJDHG02M",
+  "name": "RepairOrder",
+  "displayName": "Repair order",
+  "pluralName": "Repair orders",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "A repair of a returned or warranty unit, in house or at a service partner.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "key": {
+    "attributes": [
+      "01M2JYV43E6GQE3FKFZ3AY1706"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2JYV43E6GQE3FKFZ3AY1706",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the repair order."
+    },
+    {
+      "id": "01M20RHMTJQVE2CZYA6TJQ9Z2F",
+      "name": "repairNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Repair number."
+    },
+    {
+      "id": "01M30JAAJ394XC51TZ4YCRN7C6",
+      "name": "receivedOn",
+      "type": "date",
+      "description": "Date the unit arrived."
+    },
+    {
+      "id": "01M1H8QTCE6EKERVQWG3B0KD1W",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "open",
+      "description": "open, diagnosing, repairing or done."
+    },
+    {
+      "id": "01M2H2CTVZ8EC7W0GS62V5RYDB",
+      "name": "diagnosis",
+      "type": "text",
+      "description": "Technician's diagnosis."
+    },
+    {
+      "id": "01M22JD1NFCP0GKWJJYFAGFV0V",
+      "name": "laborHours",
+      "type": "decimal",
+      "precision": 6,
+      "scale": 2,
+      "validation": {
+        "min": 0
+      },
+      "description": "Hours worked."
+    },
+    {
+      "id": "01M2Z4J1GG34PNK5MA7KKP9R5B",
+      "name": "cost",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Repair cost."
+    },
+    {
+      "id": "01M1D5JBVTXGEV3JSQ2GJR0F1E",
+      "name": "completedOn",
+      "type": "date",
+      "description": "Date finished."
+    }
+  ]
+}

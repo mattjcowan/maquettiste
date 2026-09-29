@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1F3M3AQGG0CEA7914ZCH6F1",
+  "name": "customer feedback contact",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "Contact who answered.",
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "ends": [
+    {
+      "id": "01M2KT6MHAXEHFKP7SGKFD1QZN",
+      "entity": "01M2SNDY2SEQ9745HMSG6ZTDRC",
+      "role": "contact",
+      "navigation": "contact",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1G6RGWQDBKPKAMQ90512DX4",
+      "entity": "01M1MJZYBD0T8P93CJNST5EH65",
+      "role": "customerFeedbacks"
+    }
+  ]
+}

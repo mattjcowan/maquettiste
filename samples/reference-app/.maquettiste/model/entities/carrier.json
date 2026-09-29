@@ -1,0 +1,50 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1G2SEEYS4QSB6TPNAN1D1TC",
+  "name": "Carrier",
+  "displayName": "Carrier",
+  "pluralName": "Carriers",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "base": "01M2FA89Y26C424MWK7D3TQPT5",
+  "description": "A freight or parcel company that moves Northwind shipments.",
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "attributes": [
+    {
+      "id": "01M20X289F63K9MJSM35G7EG1N",
+      "name": "scacCode",
+      "type": "string",
+      "length": 4,
+      "unique": true,
+      "description": "Standard Carrier Alpha Code."
+    },
+    {
+      "id": "01M344R4N91MTZDW6MHN2T2MDE",
+      "name": "carrierAccountNumber",
+      "type": "string",
+      "length": 30,
+      "description": "Northwind's shipper account number with the carrier."
+    },
+    {
+      "id": "01M36YD9YHE4EGJHS41Q3FNP0S",
+      "name": "trackingUrlTemplate",
+      "type": "string",
+      "length": 300,
+      "description": "URL with a {tracking} placeholder."
+    },
+    {
+      "id": "01M1WBX1SBD564XA8G88P3F420",
+      "name": "offersLtl",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether the carrier moves less-than-truckload freight."
+    },
+    {
+      "id": "01M24G5BWWWBG9ZZTH0RHDQMGY",
+      "name": "insuranceExpiresOn",
+      "type": "date",
+      "description": "Expiry of the carrier's cargo insurance certificate."
+    }
+  ]
+}

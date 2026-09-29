@@ -1,0 +1,74 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1MQMRJC9DXDNBTZ62V1NVBQ",
+  "name": "RebateProgram",
+  "displayName": "Rebate program",
+  "pluralName": "Rebate programs",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "A volume rebate agreement that pays a customer back a percentage of purchases over a period.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "key": {
+    "attributes": [
+      "01M1EE1HCQZQT8ZNPJAZ7442ER"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1EE1HCQZQT8ZNPJAZ7442ER",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the rebate program."
+    },
+    {
+      "id": "01M1N6Y8V8MMNNFAH9YN29BB0Y",
+      "name": "name",
+      "type": "string",
+      "length": 150,
+      "required": true,
+      "description": "Program name."
+    },
+    {
+      "id": "01M1DW3MQNWR73RQB7XTYKDMJ7",
+      "name": "description",
+      "type": "text",
+      "description": "Program terms."
+    },
+    {
+      "id": "01M1Z43FJWZWKGY2H9V9EE2KRV",
+      "name": "period",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "required": true,
+      "description": "Accrual period."
+    },
+    {
+      "id": "01M2Y6246E9EWJXS77S6NCPM4F",
+      "name": "rebateRate",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "required": true,
+      "description": "Rebate percentage of eligible sales."
+    },
+    {
+      "id": "01M1QJFVCZ7FTR1EDY8RJN8TQP",
+      "name": "thresholdAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Purchases required before rebates accrue."
+    }
+  ]
+}

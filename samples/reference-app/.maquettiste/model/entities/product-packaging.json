@@ -1,0 +1,68 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1SKVXDMR7ZF78GHPE2A8TE8",
+  "name": "ProductPackaging",
+  "displayName": "Product packaging",
+  "pluralName": "Product packagings",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "A packaging level of a product, such as a case of 12 or a pallet of 60 cases.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M2S27VK2SQ8D7JN80MNHDMJ0"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2S27VK2SQ8D7JN80MNHDMJ0",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the product packaging."
+    },
+    {
+      "id": "01M2D75XZ8QBTZFDS0N2EH4J14",
+      "name": "packagingLevel",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "Packaging level - each, inner, case or pallet."
+    },
+    {
+      "id": "01M2V87WEPGEPJEARTENEGNVXQ",
+      "name": "unitsPerPackage",
+      "type": "int32",
+      "required": true,
+      "validation": {
+        "min": 1
+      },
+      "description": "Base units in one package."
+    },
+    {
+      "id": "01M2KA5PDCDYR8DFYXVSSQFA3G",
+      "name": "dimensions",
+      "type": {
+        "ref": "01M2KN9XND2J83MCCF4JHYK5ED"
+      },
+      "description": "Outer dimensions."
+    },
+    {
+      "id": "01M2SBHKFV6MYQBT97QCCXBGN8",
+      "name": "grossWeight",
+      "type": {
+        "ref": "01M36PE7EQVEDETJ5QMAXH25ZX"
+      },
+      "description": "Weight including packaging."
+    },
+    {
+      "id": "01M1E23F3WVQZ3M1PECZ5KFD3V",
+      "name": "gtin",
+      "type": "string",
+      "length": 14,
+      "description": "GTIN of the package."
+    }
+  ]
+}

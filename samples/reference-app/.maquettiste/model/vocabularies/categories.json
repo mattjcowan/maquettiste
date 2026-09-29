@@ -1,0 +1,116 @@
+{
+  "$schema": "../../.schema/v1/category-tree.json",
+  "kind": "category-tree",
+  "id": "01M1E204DP9K508ADZ5R856ZVP",
+  "name": "categories",
+  "categories": [
+    {
+      "id": "01M31M4DKKQ5M32092W98D2NBY",
+      "name": "Commercial",
+      "order": 1,
+      "description": "Selling to customers, from first contact to the order."
+    },
+    {
+      "id": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+      "name": "Parties and CRM",
+      "parent": "01M31M4DKKQ5M32092W98D2NBY",
+      "order": 1,
+      "description": "Elements of the Parties and CRM subject area."
+    },
+    {
+      "id": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+      "name": "Purchasing and suppliers",
+      "parent": "01M298P58045QKCT8K6VSPYXAE",
+      "order": 1,
+      "description": "Elements of the Purchasing and suppliers subject area."
+    },
+    {
+      "id": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+      "name": "Billing and payments",
+      "parent": "01M2YDG6RG1G2RARVSJDFGH48J",
+      "order": 1,
+      "description": "Elements of the Billing and payments subject area."
+    },
+    {
+      "id": "01M38C3WQ4HSCF45E03KGN6AF5",
+      "name": "Identity and access",
+      "parent": "01M2TS24D1G21TY9KHXBCF94A4",
+      "order": 1,
+      "description": "Elements of the Identity and access subject area."
+    },
+    {
+      "id": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+      "name": "Catalog",
+      "parent": "01M31M4DKKQ5M32092W98D2NBY",
+      "order": 2,
+      "description": "Elements of the Catalog subject area."
+    },
+    {
+      "id": "01M298P58045QKCT8K6VSPYXAE",
+      "name": "Supply chain",
+      "order": 2,
+      "description": "Buying, storing and moving goods."
+    },
+    {
+      "id": "01M23SKM8QFT1AZMAWCDFTJRMS",
+      "name": "Inventory and warehousing",
+      "parent": "01M298P58045QKCT8K6VSPYXAE",
+      "order": 2,
+      "description": "Elements of the Inventory and warehousing subject area."
+    },
+    {
+      "id": "01M1E9BTZZTKGKC2S6YTG3CKTZ",
+      "name": "Finance and ledger",
+      "parent": "01M2YDG6RG1G2RARVSJDFGH48J",
+      "order": 2,
+      "description": "Elements of the Finance and ledger subject area."
+    },
+    {
+      "id": "01M2NP61380Z4QBPZW486DGXYD",
+      "name": "Reference data",
+      "parent": "01M2TS24D1G21TY9KHXBCF94A4",
+      "order": 2,
+      "description": "Elements of the Reference data subject area."
+    },
+    {
+      "id": "01M1DAV43K3Q185051SG2CRJSN",
+      "name": "Pricing and promotions",
+      "parent": "01M31M4DKKQ5M32092W98D2NBY",
+      "order": 3,
+      "description": "Elements of the Pricing and promotions subject area."
+    },
+    {
+      "id": "01M3782KNWEVSQ63MXDYY1X3TY",
+      "name": "Fulfillment and shipping",
+      "parent": "01M298P58045QKCT8K6VSPYXAE",
+      "order": 3,
+      "description": "Elements of the Fulfillment and shipping subject area."
+    },
+    {
+      "id": "01M2YDG6RG1G2RARVSJDFGH48J",
+      "name": "Finance",
+      "order": 3,
+      "description": "Money owed, received and accounted for."
+    },
+    {
+      "id": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+      "name": "Sales orders",
+      "parent": "01M31M4DKKQ5M32092W98D2NBY",
+      "order": 4,
+      "description": "Elements of the Sales orders subject area."
+    },
+    {
+      "id": "01M1QNVKDMDN8496P6K46TZG03",
+      "name": "Returns and service",
+      "parent": "01M298P58045QKCT8K6VSPYXAE",
+      "order": 4,
+      "description": "Elements of the Returns and service subject area."
+    },
+    {
+      "id": "01M2TS24D1G21TY9KHXBCF94A4",
+      "name": "Platform",
+      "order": 4,
+      "description": "People, access and shared reference data."
+    }
+  ]
+}

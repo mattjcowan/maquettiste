@@ -1,0 +1,68 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1DQ616MEK35RH2FF7YJF9G8",
+  "name": "UnitOfMeasure",
+  "displayName": "Unit of measure",
+  "pluralName": "Units of measure",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "A unit in which goods are counted, weighed or sold, from UN/CEFACT Recommendation 20.",
+  "stereotypes": [
+    "reference-data"
+  ],
+  "tags": [
+    "master-data"
+  ],
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "key": {
+    "attributes": [
+      "01M1DMJKN68JMPAPFSSKQDXAAR"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01M1DMJKN68JMPAPFSSKQDXAAR",
+      "name": "code",
+      "type": "string",
+      "length": 3,
+      "required": true,
+      "description": "UN/CEFACT common code, such as EA, KGM or CS; the natural key."
+    },
+    {
+      "id": "01M33BM5QAN67ZSY5337FRQY01",
+      "name": "name",
+      "type": "string",
+      "length": 60,
+      "required": true,
+      "description": "Display name, such as each, kilogram or case."
+    },
+    {
+      "id": "01M1XXAS2NR0DYKXP381MEJC28",
+      "name": "dimension",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "What the unit measures - count, mass, length, volume or area."
+    },
+    {
+      "id": "01M36R68ESCEHEJ1D0VFS0PF1H",
+      "name": "isBaseUnit",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether the unit is the base of its dimension."
+    },
+    {
+      "id": "01M1FA9YS2Y31HQ86G0V7PZ5AP",
+      "name": "decimalsAllowed",
+      "type": "int16",
+      "required": true,
+      "default": 0,
+      "validation": {
+        "min": 0,
+        "max": 6
+      },
+      "description": "Decimals allowed on quantities in the unit."
+    }
+  ]
+}

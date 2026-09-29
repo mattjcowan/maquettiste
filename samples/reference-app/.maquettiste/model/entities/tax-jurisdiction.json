@@ -1,0 +1,59 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2JHN13ZZTJ9XPSSN37W22D9",
+  "name": "TaxJurisdiction",
+  "displayName": "Tax jurisdiction",
+  "pluralName": "Tax jurisdictions",
+  "package": "01M1EYTWAA6REG1KFCR9N7XQ27",
+  "description": "An authority that levies sales tax - a country, state, county or city.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "financial",
+    "master-data"
+  ],
+  "category": "01M1E9BTZZTKGKC2S6YTG3CKTZ",
+  "key": {
+    "attributes": [
+      "01M38M8A60Q4JMY5SBBNKVV29W"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M38M8A60Q4JMY5SBBNKVV29W",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the tax jurisdiction."
+    },
+    {
+      "id": "01M28AGFXBC89D7CCZCDHJYDKR",
+      "name": "code",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Jurisdiction code."
+    },
+    {
+      "id": "01M30MFT6ZMPPFX9M2KJE4TYX0",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "required": true,
+      "description": "Name."
+    },
+    {
+      "id": "01M2DY9Y9D0KFXV4FSGZWHG96Z",
+      "name": "level",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "country, state, county, city or district."
+    }
+  ]
+}

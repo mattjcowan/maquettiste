@@ -1,0 +1,49 @@
+{
+  "$schema": "../../.schema/v1/tag-vocabulary.json",
+  "kind": "tag-vocabulary",
+  "id": "01M1TQ8ZRN92ZJ3TCHCY3HPZJS",
+  "name": "tags",
+  "strict": true,
+  "definitions": [
+    {
+      "key": "pii",
+      "description": "Holds personal data about a natural person; subject to access and erasure requests.",
+      "color": "#d33c3c"
+    },
+    {
+      "key": "financial",
+      "description": "Feeds the general ledger or a financial report; changes are audited.",
+      "color": "#2f6fdf"
+    },
+    {
+      "key": "master-data",
+      "description": "Slowly changing data that many transactions reference.",
+      "color": "#7b4fd1"
+    },
+    {
+      "key": "transactional",
+      "description": "High-churn business documents created by day-to-day operations.",
+      "color": "#1f9d6b"
+    },
+    {
+      "key": "high-volume",
+      "description": "Expected to exceed ten million rows; partitioning and archiving candidates.",
+      "color": "#e08a1e"
+    },
+    {
+      "key": "integration",
+      "description": "Exchanged with an external system (carrier, bank, EDI partner or marketplace).",
+      "color": "#11a3b8"
+    },
+    {
+      "key": "configuration",
+      "description": "Maintained by administrators to configure how the business runs.",
+      "color": "#6d7a88"
+    },
+    {
+      "key": "security",
+      "description": "Governs authentication or authorization.",
+      "color": "#b3261e"
+    }
+  ]
+}

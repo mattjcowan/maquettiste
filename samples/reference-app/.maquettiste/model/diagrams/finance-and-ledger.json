@@ -1,0 +1,106 @@
+{
+  "$schema": "../../.schema/v1/diagram.json",
+  "kind": "diagram",
+  "id": "01M1GCHGGRK46TS0RJMRK27Q3S",
+  "name": "Finance and ledger",
+  "package": "01M1EYTWAA6REG1KFCR9N7XQ27",
+  "description": "The chart of accounts, journal entries, taxes, rates and budgets.",
+  "category": "01M1E9BTZZTKGKC2S6YTG3CKTZ",
+  "members": [
+    {
+      "element": "01M33CZQC491X54XW35063THC2",
+      "x": 40,
+      "y": 40
+    },
+    {
+      "element": "01M2MTSRD14ZCYXV1QGEW29NHS",
+      "x": 360,
+      "y": 40
+    },
+    {
+      "element": "01M1D4CTN6F0HS5SZQC5VH8H2N",
+      "x": 680,
+      "y": 40
+    },
+    {
+      "element": "01M2EE2G117QN4KHVZYDCHGQP6",
+      "x": 1000,
+      "y": 40
+    },
+    {
+      "element": "01M2CS3TZ92TERS04MA3196AS4",
+      "x": 40,
+      "y": 280
+    },
+    {
+      "element": "01M32MPMZK5YHFPNR1E8HDD0ZM",
+      "x": 360,
+      "y": 280
+    },
+    {
+      "element": "01M2JHN13ZZTJ9XPSSN37W22D9",
+      "x": 680,
+      "y": 280
+    },
+    {
+      "element": "01M2MBCHCYHK5VWKRHVF914YN9",
+      "x": 1000,
+      "y": 280
+    },
+    {
+      "element": "01M2FZARSCWK75XW8P7QZZQVRZ",
+      "x": 40,
+      "y": 520
+    },
+    {
+      "element": "01M28TJCF7N27D37WBVSPC4GTB",
+      "x": 360,
+      "y": 520
+    },
+    {
+      "element": "01M299G30AGH11HSGCBQ17E2D0"
+    },
+    {
+      "element": "01M2GCBA159D9N8FPTMETM2MMJ"
+    },
+    {
+      "element": "01M2ENYY4H8ST8HKAG08S9YF3V"
+    },
+    {
+      "element": "01M2029QBDNRD53YBFS7X43NE9"
+    },
+    {
+      "element": "01M1TDNF61V72D3WTS1BPM17J4"
+    },
+    {
+      "element": "01M34VQXM7EVEHJPFAP09W9FK1"
+    },
+    {
+      "element": "01M1WFP7A54RMMWE7GG70X9M88"
+    },
+    {
+      "element": "01M22JVV2NBX9FEB1VPKWPG15X"
+    },
+    {
+      "element": "01M1R5PWK3E2PS3B9HVYWR9KTA"
+    },
+    {
+      "element": "01M1HNQYM4R6RBVC2Q48RR2722"
+    },
+    {
+      "element": "01M32T18J6SHMBC9RFNSQHXDB3"
+    },
+    {
+      "element": "01M2SASW8TM64KDTV4696CVT3K"
+    },
+    {
+      "element": "01M280T9D10R8ASVRZB49R180F"
+    },
+    {
+      "element": "01M1EF4CVX7NQY397525GG2ZE3"
+    }
+  ],
+  "viewport": {
+    "zoom": 0.8
+  }
+}

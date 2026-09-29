@@ -1,0 +1,72 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2XHGJFZKF467SJBM67ZQ9F4",
+  "name": "SalesCommission",
+  "displayName": "Sales commission",
+  "pluralName": "Sales commissions",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "Commission earned by a sales rep on an order.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M1HYTYTS9WESFAC66R99GJWM"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1HYTYTS9WESFAC66R99GJWM",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the sales commission."
+    },
+    {
+      "id": "01M1MNGCN8B3DJJ3YART0CPR5D",
+      "name": "commissionRate",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "required": true,
+      "description": "Rate applied."
+    },
+    {
+      "id": "01M2PNXVTK7J5HK9DQ9SHPQM8J",
+      "name": "commissionAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Commission earned."
+    },
+    {
+      "id": "01M2DZP20TNVCE0NV3SNMTKT5G",
+      "name": "earnedOn",
+      "type": "date",
+      "required": true,
+      "description": "Date it was earned, usually the invoice date."
+    },
+    {
+      "id": "01M1M91VC6F1ZNMHYC7954BKE0",
+      "name": "isPaid",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether payroll paid it."
+    },
+    {
+      "id": "01M2TSPJ439VM6X8SDHG7T6RS1",
+      "name": "paidOn",
+      "type": "date",
+      "description": "Payroll date."
+    }
+  ]
+}

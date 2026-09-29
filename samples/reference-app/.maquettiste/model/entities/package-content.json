@@ -1,0 +1,39 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2HMRZD9SV5A2E8EG4348Q7C",
+  "name": "PackageContent",
+  "displayName": "Package content",
+  "pluralName": "Package contents",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "A quantity of a shipment line packed in a package.",
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "key": {
+    "attributes": [
+      "01M1HGP0WW83Q83PX9XEQD934F"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1HGP0WW83Q83PX9XEQD934F",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the package content."
+    },
+    {
+      "id": "01M1P5X01QHXWEQSZYF9SQNDB7",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity packed."
+    }
+  ]
+}

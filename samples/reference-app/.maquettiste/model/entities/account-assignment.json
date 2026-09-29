@@ -1,0 +1,55 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M27MB1JDD1JEXGF6HNEJ3AR7",
+  "name": "AccountAssignment",
+  "displayName": "Account assignment",
+  "pluralName": "Account assignments",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "Assignment of an employee to a customer account in a role, such as inside sales or key account manager.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "key": {
+    "attributes": [
+      "01M32EJ4H459ABTT87RJ6SMS0Q"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M32EJ4H459ABTT87RJ6SMS0Q",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the account assignment."
+    },
+    {
+      "id": "01M2FSEBAV45MFV5S3JQTFY04X",
+      "name": "assignmentRole",
+      "type": "string",
+      "length": 40,
+      "required": true,
+      "description": "Role on the account, such as key-account."
+    },
+    {
+      "id": "01M2V192ZQYDEB2WJFJ36QF0MX",
+      "name": "validity",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "required": true,
+      "description": "Period of the assignment."
+    },
+    {
+      "id": "01M1FW9Q4PPSPS7SGH503FH5S1",
+      "name": "isPrimary",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Primary owner of the account."
+    }
+  ]
+}

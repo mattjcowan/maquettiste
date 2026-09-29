@@ -1,0 +1,27 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1Z5V9HX79V557JW3EHW4F0A",
+  "name": "warehouse zones",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "relationKind": "composition",
+  "description": "Zones of the warehouse.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M35VYVWT0TWJ16SMHSWVZYPZ",
+      "entity": "01M1PN7QBBJ001FSBR7DTP2QS6",
+      "role": "warehouse",
+      "navigation": "warehouse",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M2EPFW1QCJX5E9PZFZ78Z9JZ",
+      "entity": "01M1VN8RTMC4K1SC96KPFP2P1H",
+      "role": "zones",
+      "navigation": "zones"
+    }
+  ]
+}

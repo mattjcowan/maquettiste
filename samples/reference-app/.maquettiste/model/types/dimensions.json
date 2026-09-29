@@ -1,0 +1,57 @@
+{
+  "$schema": "../../.schema/v1/value-object.json",
+  "kind": "value-object",
+  "id": "01M2KN9XND2J83MCCF4JHYK5ED",
+  "name": "Dimensions",
+  "displayName": "Dimensions",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "Length, width and height of an item or a package.",
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "attributes": [
+    {
+      "id": "01M26XBJHGAQ8QYRAM8KKVFJ8H",
+      "name": "length",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Longest side."
+    },
+    {
+      "id": "01M2BRTF0HWQF4TQQC60YAJ597",
+      "name": "width",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Second side."
+    },
+    {
+      "id": "01M1H302TC57PJJZPWWYE97KA3",
+      "name": "height",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Vertical side."
+    },
+    {
+      "id": "01M24SH5RE8AEHVQH67HD2HYHZ",
+      "name": "unit",
+      "type": {
+        "ref": "01M25MDNN6VDEX32DK2HN7GWNS"
+      },
+      "required": true,
+      "description": "Unit of the three measures."
+    }
+  ]
+}

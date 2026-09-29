@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2EPQ7K2G7SZ7KE8WBBKT741",
+  "name": "product substitute product",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "Product being replaced.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "ends": [
+    {
+      "id": "01M1F5EZA02V1BPG7AKV8AGWDZ",
+      "entity": "01M20RAEF2QZ5W8HV57RBX5PQV",
+      "role": "product",
+      "navigation": "product",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M2MFENB7J062NEH5HR7N9X7Q",
+      "entity": "01M1J74B04MKM165DQBGCYK4JP",
+      "role": "substitutes",
+      "navigation": "substitutes"
+    }
+  ]
+}

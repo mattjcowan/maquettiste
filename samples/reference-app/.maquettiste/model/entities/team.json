@@ -1,0 +1,54 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1DBA4TXCMJHKDV0EMM0ZD24",
+  "name": "Team",
+  "displayName": "Team",
+  "pluralName": "Teams",
+  "package": "01M1F99DBQ9B1T1RVMQRR1GS7V",
+  "description": "A working group that shares a queue or a territory, such as the Northeast inside sales team.",
+  "stereotypes": [
+    "audited"
+  ],
+  "category": "01M38C3WQ4HSCF45E03KGN6AF5",
+  "key": {
+    "attributes": [
+      "01M1NQ8GRM5RZDDJDEQFKP1TGT"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1NQ8GRM5RZDDJDEQFKP1TGT",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the team."
+    },
+    {
+      "id": "01M30K13ZW5D913RQ4YPFYG8QS",
+      "name": "name",
+      "type": "string",
+      "length": 80,
+      "required": true,
+      "unique": true,
+      "description": "Team name."
+    },
+    {
+      "id": "01M2Z1TY81RDTHDJR947YX7FEN",
+      "name": "purpose",
+      "type": "string",
+      "length": 300,
+      "description": "What the team does."
+    },
+    {
+      "id": "01M309T7WH1A7RPXY5K4XTPHRP",
+      "name": "email",
+      "type": {
+        "ref": "01M1RSY89TKR4D2MJY2YC131S7"
+      },
+      "description": "Shared mailbox."
+    }
+  ]
+}

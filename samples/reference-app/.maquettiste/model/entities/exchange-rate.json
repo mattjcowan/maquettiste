@@ -1,0 +1,67 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2MBCHCYHK5VWKRHVF914YN9",
+  "name": "ExchangeRate",
+  "displayName": "Exchange rate",
+  "pluralName": "Exchange rates",
+  "package": "01M1EYTWAA6REG1KFCR9N7XQ27",
+  "description": "A currency conversion rate on a date, loaded daily from the central bank feed.",
+  "tags": [
+    "financial",
+    "integration"
+  ],
+  "category": "01M1E9BTZZTKGKC2S6YTG3CKTZ",
+  "key": {
+    "attributes": [
+      "01M1H2R2SY4K2BF7ZNDV4DGDT9"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M1H2R2SY4K2BF7ZNDV4DGDT9",
+      "name": "id",
+      "type": "int64",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the exchange rate."
+    },
+    {
+      "id": "01M2EQ7TH5W80CA13VEM35NJM5",
+      "name": "rate",
+      "type": "decimal",
+      "precision": 18,
+      "scale": 8,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Units of the target currency per unit of the source currency."
+    },
+    {
+      "id": "01M38GM41RDR8CKT20WJNH9FZM",
+      "name": "effectiveOn",
+      "type": "date",
+      "required": true,
+      "indexed": true,
+      "description": "Date the rate applies."
+    },
+    {
+      "id": "01M2QNQ80RJWHDCNTM5C43QEYG",
+      "name": "rateType",
+      "type": "string",
+      "length": 10,
+      "required": true,
+      "default": "spot",
+      "description": "spot, average or budget."
+    },
+    {
+      "id": "01M2SDMRX7RE3VKV1Y27DAH35R",
+      "name": "source",
+      "type": "string",
+      "length": 40,
+      "description": "Feed the rate came from."
+    }
+  ]
+}

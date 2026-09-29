@@ -1,0 +1,75 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1R3WZG3XBKJ15HZ1TMBJK0J",
+  "name": "CarrierService",
+  "displayName": "Carrier service",
+  "pluralName": "Carrier services",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "A service a carrier offers, such as Ground, 2-day air or LTL standard.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "configuration",
+    "integration"
+  ],
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "key": {
+    "attributes": [
+      "01M2C58G7K0XJAW5QPYCG17Z7Z"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2C58G7K0XJAW5QPYCG17Z7Z",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the carrier service."
+    },
+    {
+      "id": "01M1HBXN2R32G7EEZZP4QXB9V1",
+      "name": "code",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "Carrier's service code."
+    },
+    {
+      "id": "01M2PWFDR8K05SCQ23VFPX05PK",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "required": true,
+      "description": "Service name."
+    },
+    {
+      "id": "01M1VFAMQCZHW38QNFAXJPC7VA",
+      "name": "serviceLevel",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "ground, express, overnight, ltl or ftl."
+    },
+    {
+      "id": "01M2JXR8YPG4PX1KWDX3XBW8E5",
+      "name": "transitDays",
+      "type": "int16",
+      "validation": {
+        "min": 0
+      },
+      "description": "Typical business days in transit."
+    },
+    {
+      "id": "01M2VFV5NPYD1CENXXMQKTY9KB",
+      "name": "isActive",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether it can be booked."
+    }
+  ]
+}

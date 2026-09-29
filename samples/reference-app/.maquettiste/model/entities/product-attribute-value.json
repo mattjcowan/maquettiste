@@ -1,0 +1,48 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1EX8055X3HF127S2A1CTRD1",
+  "name": "ProductAttributeValue",
+  "displayName": "Product attribute value",
+  "pluralName": "Product attribute values",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "The value of one attribute for one product.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M25PTX0B6RV5MD2Z2RTF8S9D"
+    ],
+    "strategy": "ulid"
+  },
+  "attributes": [
+    {
+      "id": "01M25PTX0B6RV5MD2Z2RTF8S9D",
+      "name": "id",
+      "type": "ulid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the product attribute value."
+    },
+    {
+      "id": "01M37NWY102KC7TJF9206TC9SW",
+      "name": "textValue",
+      "type": "string",
+      "length": 500,
+      "description": "Value of a text attribute."
+    },
+    {
+      "id": "01M1Z8RMXDM1J7CX9FA0AKXH9X",
+      "name": "numericValue",
+      "type": "decimal",
+      "precision": 18,
+      "scale": 4,
+      "description": "Value of a number attribute."
+    },
+    {
+      "id": "01M2CJ255HGH0S55W7BFX4Q022",
+      "name": "booleanValue",
+      "type": "bool",
+      "description": "Value of a boolean attribute."
+    }
+  ]
+}

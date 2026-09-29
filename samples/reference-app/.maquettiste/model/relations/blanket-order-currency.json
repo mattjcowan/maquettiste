@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1EZES0M8V8PNT8Q8W9KQV3K",
+  "name": "blanket order currency",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "Currency of the commitment.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "ends": [
+    {
+      "id": "01M1E4MXY0AC9XC1GT8Z2RG53X",
+      "entity": "01M32FRDS6GBKX8Q2GRAAJB5YM",
+      "role": "currency",
+      "navigation": "currency",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M27941GQADM95D3TC9CS6DHJ",
+      "entity": "01M2MCP43J29YSHR3FTSX2PB4N",
+      "role": "blanketOrders"
+    }
+  ]
+}

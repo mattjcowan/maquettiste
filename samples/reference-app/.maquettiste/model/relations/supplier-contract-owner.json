@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2MV56BKEJ7SGW35YJVD8EYR",
+  "name": "supplier contract owner",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "Category manager who owns it.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "ends": [
+    {
+      "id": "01M22A8Y32B0XYN22KH83HQK9Z",
+      "entity": "01M1RJC20E0YQ2SZNHD9NJW74W",
+      "role": "owner",
+      "navigation": "owner",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2HZ4WWF4P1R5VGREV516M3M",
+      "entity": "01M1YBDE7K81GQ5NMW21JH5T14",
+      "role": "supplierContracts"
+    }
+  ]
+}

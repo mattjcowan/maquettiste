@@ -1,0 +1,83 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2MTSRD14ZCYXV1QGEW29NHS",
+  "name": "FiscalPeriod",
+  "displayName": "Fiscal period",
+  "pluralName": "Fiscal periods",
+  "package": "01M1EYTWAA6REG1KFCR9N7XQ27",
+  "description": "A monthly accounting period of a fiscal year.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M1E9BTZZTKGKC2S6YTG3CKTZ",
+  "key": {
+    "attributes": [
+      "01M1WCAV2DYEZDBEVRQE3N1TSR"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1WCAV2DYEZDBEVRQE3N1TSR",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the fiscal period."
+    },
+    {
+      "id": "01M1H2SYDNA1VN14GFWSH0Z68R",
+      "name": "name",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Period name, such as FY2026-09."
+    },
+    {
+      "id": "01M1HE2HZ7737G9JRRY52ZN9YJ",
+      "name": "fiscalYear",
+      "type": "int16",
+      "required": true,
+      "description": "Fiscal year."
+    },
+    {
+      "id": "01M270V1YN7G7T63S9XQKJG8Q4",
+      "name": "periodNumber",
+      "type": "int16",
+      "required": true,
+      "validation": {
+        "min": 1,
+        "max": 13
+      },
+      "description": "Period within the year; 13 is the adjustment period."
+    },
+    {
+      "id": "01M1KF0EK5WQ3619SQN99SNTB1",
+      "name": "period",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "required": true,
+      "description": "Dates covered."
+    },
+    {
+      "id": "01M1NQA39MDHARDBNPGVP9PCQJ",
+      "name": "isClosed",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether posting is closed."
+    },
+    {
+      "id": "01M1J1TPT6TZAXY2AGQQ7X4MDV",
+      "name": "closedAt",
+      "type": "datetimeoffset",
+      "description": "When it was closed."
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M24MAK7EJ1YNK8BPJF1YF077",
+  "name": "stored payment method customer",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "Customer that saved it.",
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "ends": [
+    {
+      "id": "01M259ZT6NAA1X8877C8ZCVSCG",
+      "entity": "01M1ECZKYNSKVNCWW2XM34E20X",
+      "role": "customer",
+      "navigation": "customer",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M1DX3NKC846F6V59PVJ80PFC",
+      "entity": "01M2W79FBW6R8KE7WKVGGRF06D",
+      "role": "paymentMethods",
+      "navigation": "paymentMethods"
+    }
+  ]
+}

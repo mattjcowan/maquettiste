@@ -1,0 +1,40 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M2RSFMKWCQ1CZQ5J0VTJ74GK",
+  "name": "CardBrand",
+  "displayName": "Card brand",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "Card network of a card payment.",
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "members": [
+    {
+      "id": "01M365VD22RKN9NYGRZVXP0VZ0",
+      "name": "Visa",
+      "value": 0,
+      "code": "VISA",
+      "description": "Visa."
+    },
+    {
+      "id": "01M1P7SBVZ9FFP3B6E11SBTQDT",
+      "name": "Mastercard",
+      "value": 1,
+      "code": "MC",
+      "description": "Mastercard."
+    },
+    {
+      "id": "01M2BGTJWBZNZ9EW58EG4T0TBM",
+      "name": "AmericanExpress",
+      "value": 2,
+      "code": "AMEX",
+      "description": "American Express."
+    },
+    {
+      "id": "01M30GNGMPG7PMZC6D2SZAAETF",
+      "name": "Discover",
+      "value": 3,
+      "code": "DISC",
+      "description": "Discover."
+    }
+  ]
+}

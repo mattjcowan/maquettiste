@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M27JTQ9M8P7Y5EZ522FW2KZS",
+  "name": "shipment line sales order line",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "Order line shipped.",
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "ends": [
+    {
+      "id": "01M37Z392N6X7JN55E95BXFH8G",
+      "entity": "01M2JSECEQ3FD3TKWAQR961TJ0",
+      "role": "salesOrderLine",
+      "navigation": "salesOrderLine",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M1ERYHZTEGHS1TXPQT1ZG4Z4",
+      "entity": "01M2AZFG6SKKFV4W4136MH72X5",
+      "role": "shipmentLines"
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2CT5MQTB4BBCT99449QSBCM",
+  "name": "RequisitionLine",
+  "displayName": "Requisition line",
+  "pluralName": "Requisition lines",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "An item requested on a requisition.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "key": {
+    "attributes": [
+      "01M2PR7QPYQDNBSEFMM5HD0DMN"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2PR7QPYQDNBSEFMM5HD0DMN",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the requisition line."
+    },
+    {
+      "id": "01M1HDR5VCE4CGHCP69VPDKKVY",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "required": true,
+      "description": "What is needed."
+    },
+    {
+      "id": "01M24BD32EW725HB6Y9WWPMZPK",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity."
+    },
+    {
+      "id": "01M3822PEWAQ5HBFFCE0VKYHKX",
+      "name": "estimatedCost",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Estimated unit cost."
+    }
+  ]
+}

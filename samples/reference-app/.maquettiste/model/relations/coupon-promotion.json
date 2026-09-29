@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2TST7KV1ZXC62XS9PQ12SC6",
+  "name": "coupon promotion",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "Promotion redeemed.",
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "ends": [
+    {
+      "id": "01M2W589SMP7BTFARYTK8WR525",
+      "entity": "01M2EPFHYBDKM3VHP8XR1NNKGZ",
+      "role": "promotion",
+      "navigation": "promotion",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M2P3HA1YM0YS70DMT125Y77G",
+      "entity": "01M2SBZEWJ8DAVPGH51GMTD8YD",
+      "role": "coupons",
+      "navigation": "coupons"
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2BMWZ1QVXGP8CRGD6645WZC",
+  "name": "Backorder",
+  "displayName": "Backorder",
+  "pluralName": "Backorders",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "A quantity of an order line that could not be allocated and waits for replenishment.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "transactional"
+  ],
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M1R8YWANSVFEJJEHGHAD6S32"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1R8YWANSVFEJJEHGHAD6S32",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the backorder."
+    },
+    {
+      "id": "01M1KKWNMJV16HY9NJ1T78RZGB",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity waiting."
+    },
+    {
+      "id": "01M27FMRS7H42RZHZ8WQZ2D02B",
+      "name": "expectedOn",
+      "type": "date",
+      "description": "Expected availability date."
+    },
+    {
+      "id": "01M1HAEZSCN9C98CYFWSR44225",
+      "name": "customerNotifiedAt",
+      "type": "datetimeoffset",
+      "description": "When the customer was told."
+    },
+    {
+      "id": "01M1R0ZRSXB5M87R4HY4DZ4CDB",
+      "name": "isFulfilled",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether it has been allocated since."
+    }
+  ]
+}

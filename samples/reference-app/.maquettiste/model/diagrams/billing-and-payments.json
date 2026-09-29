@@ -1,0 +1,177 @@
+{
+  "$schema": "../../.schema/v1/diagram.json",
+  "kind": "diagram",
+  "id": "01M21DJ6HNJNS11RDQH7DAE9DZ",
+  "name": "Billing and payments",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "Invoices, credits, payments and collections.",
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "members": [
+    {
+      "element": "01M2AXW23BB6G1HZZ8CBAXJQXB",
+      "x": 40,
+      "y": 40
+    },
+    {
+      "element": "01M1G0CXN70ZE3GA6793X6HE47",
+      "x": 360,
+      "y": 40
+    },
+    {
+      "element": "01M1QQ79VKEFGQTFWBGNS5B00J",
+      "x": 680,
+      "y": 40
+    },
+    {
+      "element": "01M2PP8AVP0AZH2E3EFKJS3Y7B",
+      "x": 1000,
+      "y": 40
+    },
+    {
+      "element": "01M1TQTM9KTF1VNQJV2M3WM130",
+      "x": 1320,
+      "y": 40
+    },
+    {
+      "element": "01M1JM4WMTSZA8BN2XA85WNNE7",
+      "x": 40,
+      "y": 280
+    },
+    {
+      "element": "01M2MHMAPDE692QC7VC75VVCEJ",
+      "x": 360,
+      "y": 280
+    },
+    {
+      "element": "01M2W79FBW6R8KE7WKVGGRF06D",
+      "x": 680,
+      "y": 280
+    },
+    {
+      "element": "01M34TDE50KP64ZCX6H1J0PC9K",
+      "x": 1000,
+      "y": 280
+    },
+    {
+      "element": "01M1GFAC07AMC9MV09YGQE6Y3M",
+      "x": 1320,
+      "y": 280
+    },
+    {
+      "element": "01M1DTX8A39PC2ZS8A1W03R2K0",
+      "x": 40,
+      "y": 520
+    },
+    {
+      "element": "01M2950V72DJTDEAD13QJMTHPM",
+      "x": 360,
+      "y": 520
+    },
+    {
+      "element": "01M1JB5KP4X1QZ0YD2TYHE2E3Y",
+      "x": 680,
+      "y": 520
+    },
+    {
+      "element": "01M1MNW48RMMQ7NV6ZC5F8QER5",
+      "x": 1000,
+      "y": 520
+    },
+    {
+      "element": "01M2F3G3F8HA53RQPAHHJCVARH",
+      "x": 1320,
+      "y": 520
+    },
+    {
+      "element": "01M25NP2BER8C9A1P470N4809J",
+      "x": 40,
+      "y": 760
+    },
+    {
+      "element": "01M1HVAJKBNG4WYESRE5RMYFHS",
+      "x": 360,
+      "y": 760
+    },
+    {
+      "element": "01M1Q7QASS98NWARA5XQ5ZZK23",
+      "x": 680,
+      "y": 760
+    },
+    {
+      "element": "01M2GZ7CDQBV3AYDJG2TSYK8MJ",
+      "x": 1000,
+      "y": 760
+    },
+    {
+      "element": "01M2PQKK2RSHG3KKC6AM2WQNAS",
+      "x": 1320,
+      "y": 760
+    },
+    {
+      "element": "01M1N0K0GSKQM2FX9716A6AW60"
+    },
+    {
+      "element": "01M1EJ87SBHGRGW2MTZP0S8R30"
+    },
+    {
+      "element": "01M1RX7TH90H4Q8J88M9GAB1ZP"
+    },
+    {
+      "element": "01M30DGE30KY68A304VQWXJKBZ"
+    },
+    {
+      "element": "01M2DS6FQ495JRR5NRASA46SHP"
+    },
+    {
+      "element": "01M2NQTBG7Z2SVNGSHJ8NAFYSV"
+    },
+    {
+      "element": "01M1SX3ATGYHMDVQGEWF0Q804S"
+    },
+    {
+      "element": "01M3039900H78EK9SR4N3MGASX"
+    },
+    {
+      "element": "01M1KV5NBBNNHEBNYHHPHMZAHT"
+    },
+    {
+      "element": "01M32YEQQH9J2RFHXF3H6E679S"
+    },
+    {
+      "element": "01M1YXNCKXFZ1YRA5ANM05YQ4H"
+    },
+    {
+      "element": "01M30Z3D3SQA4XASCN6H42JG8R"
+    },
+    {
+      "element": "01M38FCQXCFS2R9ZRFC8YE8PAF"
+    },
+    {
+      "element": "01M243XZT1RB3V73QBKDCWS7TK"
+    },
+    {
+      "element": "01M31TG271K8B1JQ08EGYY5Y73"
+    },
+    {
+      "element": "01M23FZZ7DMERFWJX5K0F84SMA"
+    },
+    {
+      "element": "01M1SGBN62RBBNWMHRM36FWCC4"
+    },
+    {
+      "element": "01M1X1XA3Q2SMPZ50C95B1ZJT5"
+    },
+    {
+      "element": "01M21TDHHWFHX90643CDNZJ8KE"
+    },
+    {
+      "element": "01M1Z55B0ZP4CV8NJ6MTZ3T9PJ"
+    },
+    {
+      "element": "01M2C837KSF3XZJHGPY66P8B2H"
+    }
+  ],
+  "viewport": {
+    "zoom": 0.8
+  }
+}

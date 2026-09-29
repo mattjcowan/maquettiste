@@ -1,0 +1,61 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M202MD69QFR0PAA1BD0Y8GRP",
+  "name": "BlanketOrderLine",
+  "displayName": "Blanket order line",
+  "pluralName": "Blanket order lines",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "A product and quantity committed on a blanket order.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M2PMKTBP065HJGM89F5RG04B"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2PMKTBP065HJGM89F5RG04B",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the blanket order line."
+    },
+    {
+      "id": "01M1Y9D2TVYV97AHJMZSFANXDX",
+      "name": "committedQuantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity committed."
+    },
+    {
+      "id": "01M32RQHZZZZXHPTA0VHFYX137",
+      "name": "releasedQuantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "default": 0,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity released so far."
+    },
+    {
+      "id": "01M1ECSNPDJ8THEH8EV34RSDTK",
+      "name": "unitPrice",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Committed price."
+    }
+  ]
+}

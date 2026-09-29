@@ -1,0 +1,75 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M1ND9H30R3QBP5WGNQFW4FQZ",
+  "name": "SalesOrderStatus",
+  "displayName": "Sales order status",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "Lifecycle of a sales order.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "members": [
+    {
+      "id": "01M1T6PYMNPX2VTW0ETQ06SV5Y",
+      "name": "Draft",
+      "value": 0,
+      "code": "DRAFT",
+      "description": "Being entered."
+    },
+    {
+      "id": "01M2TKRP54Y1JW47RP0DPK07SQ",
+      "name": "Submitted",
+      "value": 1,
+      "code": "SUBMIT",
+      "description": "Placed by the customer, awaiting confirmation."
+    },
+    {
+      "id": "01M1QS15GW33BR9DE9FQK4C2WA",
+      "name": "Confirmed",
+      "value": 2,
+      "code": "CONFIRM",
+      "description": "Accepted; stock is being allocated."
+    },
+    {
+      "id": "01M2ZDQR4DKMCEXP726D34NT8B",
+      "name": "OnHold",
+      "value": 3,
+      "code": "HOLD",
+      "description": "Blocked by a credit, pricing or compliance hold."
+    },
+    {
+      "id": "01M1DQSN6FJPS4YFCDDCY2EDPJ",
+      "name": "PartiallyShipped",
+      "value": 4,
+      "code": "PARTSHIP",
+      "description": "Some lines have shipped."
+    },
+    {
+      "id": "01M2KD41ZCVJ3Q1F08VXPF011F",
+      "name": "Shipped",
+      "value": 5,
+      "code": "SHIPPED",
+      "description": "Every line has shipped."
+    },
+    {
+      "id": "01M2J9W093VW3PES35F3C3PEY9",
+      "name": "Invoiced",
+      "value": 6,
+      "code": "INVOICED",
+      "description": "Fully invoiced."
+    },
+    {
+      "id": "01M2VCYVEYHYDPQ7QWF2NEGKPS",
+      "name": "Cancelled",
+      "value": 7,
+      "code": "CANCEL",
+      "description": "Cancelled before shipping."
+    },
+    {
+      "id": "01M31J5WM2NCGT6R8TKD2K1NCJ",
+      "name": "Closed",
+      "value": 8,
+      "code": "CLOSED",
+      "description": "Complete and archived."
+    }
+  ]
+}

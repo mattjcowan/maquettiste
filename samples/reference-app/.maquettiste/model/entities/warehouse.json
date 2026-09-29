@@ -1,0 +1,95 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1PN7QBBJ001FSBR7DTP2QS6",
+  "name": "Warehouse",
+  "displayName": "Warehouse",
+  "pluralName": "Warehouses",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "A distribution center Northwind ships from, such as Denver DC or Reno DC.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "master-data"
+  ],
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "key": {
+    "attributes": [
+      "01M1MQK25YM6YQY99VCCV5G4BE"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1MQK25YM6YQY99VCCV5G4BE",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the warehouse."
+    },
+    {
+      "id": "01M30T72QVD0YZRPQC2NYQM6RJ",
+      "name": "code",
+      "type": "string",
+      "length": 10,
+      "required": true,
+      "unique": true,
+      "description": "Warehouse code printed on labels."
+    },
+    {
+      "id": "01M1MR0MM0E4QM6TYMWW8TYZ9M",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "required": true,
+      "description": "Warehouse name."
+    },
+    {
+      "id": "01M32KFRVFH7E55C9GWPM67KY8",
+      "name": "address",
+      "type": {
+        "ref": "01M2WPKGPNR6R40TDZ1WGNN874"
+      },
+      "required": true,
+      "description": "Street address."
+    },
+    {
+      "id": "01M24RS2VDRBN8M16STNHR0YAQ",
+      "name": "location",
+      "type": {
+        "ref": "01M2D3J3CAF7MGQ91CWJFVMSQ4"
+      },
+      "description": "Position for routing."
+    },
+    {
+      "id": "01M2AGZ80C60544A6GXXHQ0T7P",
+      "name": "timeZone",
+      "type": "string",
+      "length": 40,
+      "required": true,
+      "description": "IANA time zone, such as America/Denver."
+    },
+    {
+      "id": "01M2QX32GFMEQWTY3M9TE7RKW5",
+      "name": "floorAreaSqm",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 2,
+      "validation": {
+        "min": 0
+      },
+      "description": "Floor area in square meters."
+    },
+    {
+      "id": "01M2TEM4BM5DNE7P2G22GG4H8Y",
+      "name": "isActive",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether it can receive and ship."
+    }
+  ]
+}

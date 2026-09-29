@@ -1,0 +1,68 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1G5ZRBD1BNSWC0BGGQH6YN6",
+  "name": "PurchaseRequisition",
+  "displayName": "Purchase requisition",
+  "pluralName": "Purchase requisitions",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "An internal request to buy goods, turned into purchase orders by a buyer.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "key": {
+    "attributes": [
+      "01M1YE539612QVAWSCAJ9F71S9"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1YE539612QVAWSCAJ9F71S9",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the purchase requisition."
+    },
+    {
+      "id": "01M1G4P57NQWYN9Z162FACZ941",
+      "name": "requisitionNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Requisition number."
+    },
+    {
+      "id": "01M1TE6Q02EN3HB252HVHAJ37J",
+      "name": "requestedOn",
+      "type": "date",
+      "required": true,
+      "description": "Request date."
+    },
+    {
+      "id": "01M317PZ4F6FNPNNE8032F9CZP",
+      "name": "neededBy",
+      "type": "date",
+      "description": "Date the goods are needed."
+    },
+    {
+      "id": "01M355ZNTZCBZ8F6P2YCPWBTME",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "default": "open",
+      "description": "open, approved, ordered or rejected."
+    },
+    {
+      "id": "01M2K9Q6T4XK6N1TR2TZN3FRJR",
+      "name": "justification",
+      "type": "text",
+      "description": "Business reason."
+    }
+  ]
+}

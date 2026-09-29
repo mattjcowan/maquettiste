@@ -1,0 +1,15 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M2KDC7XY1X05JQ8MWJTWBABX",
+  "name": "Product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "entity": "01M20RAEF2QZ5W8HV57RBX5PQV",
+  "description": "The product status is stored through a lookup table so reports can join its display names.",
+  "attributes": [
+    {
+      "attribute": "01M29DN2SH7797NZQ6X169SD1T",
+      "storage": "lookup"
+    }
+  ]
+}

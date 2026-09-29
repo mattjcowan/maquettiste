@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1TM7515C2NMXT1WP17KBZN9",
+  "name": "contact language",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "Language the contact prefers.",
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "ends": [
+    {
+      "id": "01M2RDKRAJJQ0SBT8HRFPJQ8FG",
+      "entity": "01M1V6VP1AXYNH3ABJ0SAQH2D1",
+      "role": "language",
+      "navigation": "language",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2CXEWQGXQPM5D9NQJBN4R5Q",
+      "entity": "01M2SNDY2SEQ9745HMSG6ZTDRC",
+      "role": "contacts"
+    }
+  ]
+}

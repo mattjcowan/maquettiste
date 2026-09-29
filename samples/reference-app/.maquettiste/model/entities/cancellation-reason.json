@@ -1,0 +1,41 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1SZZ5FB56D5W109DHXXMACT",
+  "name": "CancellationReason",
+  "displayName": "Cancellation reason",
+  "pluralName": "Cancellation reasons",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "A reason for cancelling an order, such as Customer changed mind or Duplicate order.",
+  "stereotypes": [
+    "lookup"
+  ],
+  "tags": [
+    "configuration"
+  ],
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M20SQS4TNK6RE59010AX4ZX1"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M20SQS4TNK6RE59010AX4ZX1",
+      "name": "id",
+      "type": "int32",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the cancellation reason."
+    },
+    {
+      "id": "01M2AR8572BQQFS3X1R7S79TY2",
+      "name": "countsAsLostSale",
+      "type": "bool",
+      "required": true,
+      "default": true,
+      "description": "Whether the cancellation counts as a lost sale in reports."
+    }
+  ]
+}

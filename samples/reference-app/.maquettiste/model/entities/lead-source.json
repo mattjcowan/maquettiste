@@ -1,0 +1,40 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1K1PZ4W63S3CCKFSZT788AE",
+  "name": "LeadSource",
+  "displayName": "Lead source",
+  "pluralName": "Lead sources",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "Origin of a lead, such as Trade show or Website form.",
+  "stereotypes": [
+    "lookup"
+  ],
+  "tags": [
+    "configuration"
+  ],
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "key": {
+    "attributes": [
+      "01M2Z7CHCCDR5Y33GB17YGMR24"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01M2Z7CHCCDR5Y33GB17YGMR24",
+      "name": "id",
+      "type": "int32",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the lead source."
+    },
+    {
+      "id": "01M2KQRFZMVKK402QSA4NW6K8V",
+      "name": "channel",
+      "type": "string",
+      "length": 40,
+      "description": "Marketing channel the source rolls up to."
+    }
+  ]
+}

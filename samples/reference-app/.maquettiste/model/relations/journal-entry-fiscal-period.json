@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2GCBA159D9N8FPTMETM2MMJ",
+  "name": "journal entry fiscal period",
+  "package": "01M1EYTWAA6REG1KFCR9N7XQ27",
+  "description": "Period the entry posts to.",
+  "category": "01M1E9BTZZTKGKC2S6YTG3CKTZ",
+  "ends": [
+    {
+      "id": "01M21SG6R5WVQVQCETJNANEH5S",
+      "entity": "01M2MTSRD14ZCYXV1QGEW29NHS",
+      "role": "fiscalPeriod",
+      "navigation": "fiscalPeriod",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M3529WMNYV4YB0FD95S3X05G",
+      "entity": "01M1D4CTN6F0HS5SZQC5VH8H2N",
+      "role": "journalEntries"
+    }
+  ]
+}

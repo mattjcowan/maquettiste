@@ -1,0 +1,27 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1W2KZGJYMDJZK8EN6M59V0V",
+  "name": "product translations",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "relationKind": "composition",
+  "description": "Localized names and descriptions.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "ends": [
+    {
+      "id": "01M22MYCSCFARP1K1EZ3840Q6W",
+      "entity": "01M20RAEF2QZ5W8HV57RBX5PQV",
+      "role": "product",
+      "navigation": "product",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M2VYVYXBVMGAANRDG41YEJDN",
+      "entity": "01M2TTC2J0TWG6D931H4QJNX63",
+      "role": "translations",
+      "navigation": "translations"
+    }
+  ]
+}

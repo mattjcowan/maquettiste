@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1JHE87SY62Q95KB45DDPPJQ",
+  "name": "sales order sales channel",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "Channel the order came through.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "ends": [
+    {
+      "id": "01M26AVTN4CVXJG590PC40YXYJ",
+      "entity": "01M38NCZKS41XQ56VGTP0P6PM7",
+      "role": "salesChannel",
+      "navigation": "salesChannel",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M237N77XX009FQPQZC0CE2DD",
+      "entity": "01M1GBW3NDKS6WCM5FAXYVHV7B",
+      "role": "salesOrders"
+    }
+  ]
+}

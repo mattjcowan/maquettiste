@@ -1,0 +1,54 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2F67H1NJPNCPERPZKKZ4Y2R",
+  "name": "CartItem",
+  "displayName": "Cart item",
+  "pluralName": "Cart items",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "A product in a portal cart.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M1X8YSQ13740ZHE9ANMXVDJQ"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1X8YSQ13740ZHE9ANMXVDJQ",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the cart item."
+    },
+    {
+      "id": "01M209VJ7BBK3RQ0RPVE9JKVBH",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true,
+      "validation": {
+        "min": 0
+      },
+      "description": "Quantity wanted."
+    },
+    {
+      "id": "01M3469B4SNTP161N09HKA0C79",
+      "name": "addedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When it was added."
+    },
+    {
+      "id": "01M2RVKTMP5HQ2K9DSA45P5PC4",
+      "name": "unitPriceSnapshot",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Price shown when it was added."
+    }
+  ]
+}

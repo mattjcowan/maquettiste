@@ -1,0 +1,47 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M25MDNN6VDEX32DK2HN7GWNS",
+  "name": "LengthUnit",
+  "displayName": "Length unit",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "Unit of a length measure.",
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "members": [
+    {
+      "id": "01M32KYQBY4YWW27JBCVCDQ2SC",
+      "name": "Millimeter",
+      "value": 0,
+      "code": "MMT",
+      "description": "Millimeter."
+    },
+    {
+      "id": "01M2Z0EPB9D4SF0S125B5WBTJE",
+      "name": "Centimeter",
+      "value": 1,
+      "code": "CMT",
+      "description": "Centimeter."
+    },
+    {
+      "id": "01M1HX4TDV29GEPGD5PY96VY8V",
+      "name": "Meter",
+      "value": 2,
+      "code": "MTR",
+      "description": "Meter."
+    },
+    {
+      "id": "01M1MC2JXRNTN4NWPSA25KBT3W",
+      "name": "Inch",
+      "value": 3,
+      "code": "INH",
+      "description": "Inch."
+    },
+    {
+      "id": "01M33309HAEBSY4FADSBA8YSA6",
+      "name": "Foot",
+      "value": 4,
+      "code": "FOT",
+      "description": "Foot."
+    }
+  ]
+}

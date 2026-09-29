@@ -1,0 +1,31 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M22A2EP3102BTAPT9HZ0YMF6",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "origin": "synthesized",
+  "entity": "01M1GBW3NDKS6WCM5FAXYVHV7B",
+  "description": "Order number default, amount checks and the order-date index.",
+  "columns": [
+    {
+      "id": "01M1FHBJHMKH23G186K1F11Q1Y",
+      "attribute": "01M256CQ05TNXT00ZA778NC7F1",
+      "defaultSql": {
+        "*": "'SO-' || lpad(nextval('northwind.sales_order_number_seq')::text, 6, '0')"
+      },
+      "comment": "Assigned from sales_order_number_seq when the application does not supply one."
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M1E4G1JN2NFTM3V1GVZT7CQ9",
+      "name": "ix_sales_orders_ordered_at",
+      "columns": [
+        {
+          "column": "01M2DKD1SBG981A6F0Q0ZK5KHV",
+          "descending": true
+        }
+      ]
+    }
+  ]
+}

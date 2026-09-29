@@ -1,0 +1,79 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2MCP43J29YSHR3FTSX2PB4N",
+  "name": "BlanketOrder",
+  "displayName": "Blanket order",
+  "pluralName": "Blanket orders",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "A long-term purchase commitment by a customer, released in smaller orders over time.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "transactional",
+    "financial"
+  ],
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M36WBW0M2B0DQS0R3C8FEPV1"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M36WBW0M2B0DQS0R3C8FEPV1",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the blanket order."
+    },
+    {
+      "id": "01M2GDDJBQ94G67GSKS2E07FX8",
+      "name": "blanketNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Agreement number."
+    },
+    {
+      "id": "01M1WXVC4EYHMPEEB932ZXF2Y5",
+      "name": "validity",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "required": true,
+      "description": "Commitment period."
+    },
+    {
+      "id": "01M2KMD4JHVG25VVTT92J8J06T",
+      "name": "committedAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Total amount committed."
+    },
+    {
+      "id": "01M2BJ4ET4R5W94VDM65EJX8PM",
+      "name": "releasedAmount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Amount released so far."
+    },
+    {
+      "id": "01M2H9412GX6KBHSS8YAMF1371",
+      "name": "isClosed",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether the commitment is closed."
+    }
+  ]
+}

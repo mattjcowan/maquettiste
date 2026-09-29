@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M38K2QP4Y617PVRRC6BZ9TCJ",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "origin": "synthesized",
+  "entity": "01M1D4CTN6F0HS5SZQC5VH8H2N",
+  "description": "Journal entry keys come from the named, uncached journal_entry_seq.",
+  "columns": [
+    {
+      "id": "01M1XTAK24VMJ86QYB1WBKGP0T",
+      "attribute": "01M27B9FWF09SG7XM0YACEC41D",
+      "generated": "sequence",
+      "sequence": "01M31G9BMK4DRC7GQFT8V9Q9G0",
+      "comment": "Drawn from journal_entry_seq."
+    }
+  ]
+}

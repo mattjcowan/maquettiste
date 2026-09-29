@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M327WHAHVQS2EACF9AQYF8X6",
+  "name": "shipment line product",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "Product shipped.",
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "ends": [
+    {
+      "id": "01M2P4BBK4T3DSG2K7758PDVHB",
+      "entity": "01M20RAEF2QZ5W8HV57RBX5PQV",
+      "role": "product",
+      "navigation": "product",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M2SEBVTF6P59DE3VBWZ7ZWVT",
+      "entity": "01M2AZFG6SKKFV4W4136MH72X5",
+      "role": "shipmentLines"
+    }
+  ]
+}

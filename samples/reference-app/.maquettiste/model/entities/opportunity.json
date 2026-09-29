@@ -1,0 +1,77 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2RW4HVGMQC1RBEMC61AV8Y9",
+  "name": "Opportunity",
+  "displayName": "Opportunity",
+  "pluralName": "Opportunities",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "A potential deal with a customer, tracked through pipeline stages to won or lost.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "key": {
+    "attributes": [
+      "01M2FQDVJVTK9QQDT1VCJPDF5F"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2FQDVJVTK9QQDT1VCJPDF5F",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the opportunity."
+    },
+    {
+      "id": "01M2S4QQ2RJVJEE45KD8G5199P",
+      "name": "name",
+      "type": "string",
+      "length": 200,
+      "required": true,
+      "description": "Short description of the deal."
+    },
+    {
+      "id": "01M2ZNBMPZ3CJXQM7XMBER6TPS",
+      "name": "amount",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "required": true,
+      "description": "Expected revenue."
+    },
+    {
+      "id": "01M207SHSB3CQZEKTXZH9597EK",
+      "name": "probability",
+      "type": {
+        "ref": "01M2HEDHV9D9FQRYSK91X0T52W"
+      },
+      "description": "Win probability; defaults from the stage."
+    },
+    {
+      "id": "01M26H3XE5NSBSM8DB1RMPAZKA",
+      "name": "expectedCloseOn",
+      "type": "date",
+      "required": true,
+      "indexed": true,
+      "description": "Expected decision date."
+    },
+    {
+      "id": "01M36SXAJ88AFG84KJK3AGWHNH",
+      "name": "closedOn",
+      "type": "date",
+      "description": "Date the deal was won or lost."
+    },
+    {
+      "id": "01M1DXY11GT2FGJTX9BSNV2M18",
+      "name": "lossReason",
+      "type": "string",
+      "length": 300,
+      "description": "Why the deal was lost."
+    }
+  ]
+}

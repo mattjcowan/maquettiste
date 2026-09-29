@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2AFBT7KVG5XJ2GTECAXYRTV",
+  "name": "campaign response lead",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "Responding lead.",
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "ends": [
+    {
+      "id": "01M1RK95MS6XCNGMHCGTNHZBVR",
+      "entity": "01M2QFZSC4KWD20CENXN364C9Y",
+      "role": "lead",
+      "navigation": "lead",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M29CSSRE2WAF1JSDHDK5NXJZ",
+      "entity": "01M26W6ESK61D6GNWTNF5PKPRB",
+      "role": "campaignResponses"
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M2SZM8FE9BCWZV496BDSA9V7",
+  "name": "ProductRecommendation",
+  "displayName": "Product recommendation",
+  "pluralName": "Product recommendations",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "A cross-sell, up-sell or accessory suggestion from one product to another.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "key": {
+    "attributes": [
+      "01M2ZXQD67T923ECB8XH6A9BMJ"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M2ZXQD67T923ECB8XH6A9BMJ",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the product recommendation."
+    },
+    {
+      "id": "01M34YF7Y6795TH4RMWERZ6D90",
+      "name": "recommendationType",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "Kind of suggestion - cross-sell, up-sell or accessory."
+    },
+    {
+      "id": "01M2HG8JZ9JTBMGD0PF8HYCV4Y",
+      "name": "score",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 4,
+      "validation": {
+        "min": 0,
+        "max": 1
+      },
+      "description": "Relevance score from the recommender."
+    },
+    {
+      "id": "01M1G0BBE5T9E0FKPPV4NEHBXV",
+      "name": "isManual",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether merchandising added it by hand."
+    }
+  ]
+}

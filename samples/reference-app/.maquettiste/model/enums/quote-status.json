@@ -1,0 +1,47 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01M1GJF7Z2MAYD6N02ZBGZ6AWQ",
+  "name": "QuoteStatus",
+  "displayName": "Quote status",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "Lifecycle of a sales quote.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "members": [
+    {
+      "id": "01M1HRAZ7M605VXAGGGDTPG69P",
+      "name": "Draft",
+      "value": 0,
+      "code": "DRAFT",
+      "description": "Being prepared."
+    },
+    {
+      "id": "01M1YF6BHB7Y7ZNB9SN6VRPH66",
+      "name": "Sent",
+      "value": 1,
+      "code": "SENT",
+      "description": "Sent to the customer."
+    },
+    {
+      "id": "01M2REW92H6VZC9GKPDJ6MPRDX",
+      "name": "Accepted",
+      "value": 2,
+      "code": "ACCEPT",
+      "description": "Accepted; an order was created."
+    },
+    {
+      "id": "01M291PR1EJWQFCENEXJCK0ERA",
+      "name": "Rejected",
+      "value": 3,
+      "code": "REJECT",
+      "description": "Declined by the customer."
+    },
+    {
+      "id": "01M1JWBVXMF4DEWW3CETQW669R",
+      "name": "Expired",
+      "value": 4,
+      "code": "EXPIRE",
+      "description": "Validity date passed."
+    }
+  ]
+}

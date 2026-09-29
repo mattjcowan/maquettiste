@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M34B2XCK0G0EW7GX48YPV9R6",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "origin": "synthesized",
+  "entity": "01M2JSECEQ3FD3TKWAQR961TJ0",
+  "description": "Quantity must be positive.",
+  "checks": [
+    {
+      "id": "01M2Y0Y9NWR6QWCD8BC0TFDVCK",
+      "name": "ck_sales_order_lines_quantity_positive",
+      "expression": {
+        "*": "quantity > 0"
+      }
+    }
+  ]
+}

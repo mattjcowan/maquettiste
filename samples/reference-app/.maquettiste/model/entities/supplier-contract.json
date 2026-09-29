@@ -1,0 +1,74 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1YBDE7K81GQ5NMW21JH5T14",
+  "name": "SupplierContract",
+  "displayName": "Supplier contract",
+  "pluralName": "Supplier contracts",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "A purchasing contract with a supplier, fixing prices and commitments for a period.",
+  "stereotypes": [
+    "aggregate-root",
+    "audited"
+  ],
+  "tags": [
+    "financial"
+  ],
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "key": {
+    "attributes": [
+      "01M1ZEMWZJZ58GXWMGKR3GTF1T"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1ZEMWZJZ58GXWMGKR3GTF1T",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the supplier contract."
+    },
+    {
+      "id": "01M332EPG7WRTFENKND0AT5ZQR",
+      "name": "contractNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "unique": true,
+      "description": "Contract number."
+    },
+    {
+      "id": "01M1W3SKS2TC2YC60MANM21V2M",
+      "name": "validity",
+      "type": {
+        "ref": "01M1XXVRRM2ZA4D91TGCHG2P31"
+      },
+      "required": true,
+      "description": "Contract period."
+    },
+    {
+      "id": "01M1H70Q47ZH0AVN3VXNTFT2KT",
+      "name": "terms",
+      "type": "text",
+      "description": "Key terms."
+    },
+    {
+      "id": "01M1NEVJVQWY2TTK9H8XJEJVB9",
+      "name": "autoRenew",
+      "type": "bool",
+      "required": true,
+      "default": false,
+      "description": "Whether it renews automatically."
+    },
+    {
+      "id": "01M2S7TKNNYSTT1BF5GS955RY2",
+      "name": "spendCommitment",
+      "type": {
+        "ref": "01M1E1QZTYXKP86JJA9BVRS3V7"
+      },
+      "description": "Committed yearly spend."
+    }
+  ]
+}

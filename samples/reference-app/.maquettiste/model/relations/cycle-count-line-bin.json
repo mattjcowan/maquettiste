@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M23QRA1H4N1F6PWVZ0HGYZPM",
+  "name": "cycle count line bin",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Bin counted.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M2SEH48MF3EMENGB5TT9PMT0",
+      "entity": "01M23889DSDTV8CMFDQXJCF0NM",
+      "role": "bin",
+      "navigation": "bin",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M1MWWSCB7F39647603F44P5S",
+      "entity": "01M21Y0KVFX1RBJ8PW4RYPAV3T",
+      "role": "cycleCountLines"
+    }
+  ]
+}

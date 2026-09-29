@@ -1,0 +1,15 @@
+{
+  "$schema": "../../.schema/v1/scalar-type.json",
+  "kind": "scalar-type",
+  "id": "01M1RSY89TKR4D2MJY2YC131S7",
+  "name": "EmailAddress",
+  "displayName": "Email address",
+  "package": "01M2GK66ZZXJET1R796Z4A3B3Z",
+  "description": "An email address (RFC 5321 length limit).",
+  "category": "01M2NP61380Z4QBPZW486DGXYD",
+  "base": "string",
+  "length": 254,
+  "validation": {
+    "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+  }
+}
