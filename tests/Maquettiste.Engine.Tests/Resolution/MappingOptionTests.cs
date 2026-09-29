@@ -40,28 +40,6 @@ public sealed class MappingOptionTests
     }
 
     [Fact]
-    public void Enum_storage_lookup_adds_a_lookup_table_with_rows_and_a_foreign_key()
-    {
-        var (b, _) = Start(22);
-        var status = b.Enum("TicketStatus").Member("Open", 1, "O").Member("Closed", 2, "C");
-        b.Entity("Ticket").Key("id", "uuid").Attr("status", status, a => a.Required());
-        b.Entity("Task").Key("id", "uuid").Attr("state", status);
-        b.Settings(s => s with { Conventions = new Conventions { EnumStorage = StorageKind.Lookup } });
-        var model = ResolutionKit.Resolve(b);
-        var db = model.Db("main");
-        var lookup = db.Table("ticket_statuses");
-        Assert.True(lookup.IsLookup);
-        Assert.Equal(status.Id + "@" + db.Id, lookup.Key);
-        Assert.Equal(["id", "code", "name"], lookup.Columns.Names());
-        Assert.Equal([(1L, "O", "Open"), (2L, "C", "Closed")], lookup.LookupRows.Select(r => (r.Id, r.Code, r.Name)));
-        Assert.Contains($"r:{status.Id}", lookup.Dependencies);
-        var fk = Assert.Single(db.Table("tickets").ForeignKeys);
-        Assert.Same(lookup, fk.ReferencedTable);
-        Assert.Equal("int32", db.Table("tickets").Column("status").Type);
-        Assert.Single(db.Tables, t => t.IsLookup); // one lookup table shared by both entities
-    }
-
-    [Fact]
     public void Value_object_embedded_gives_prefixed_columns_recursively_and_honours_the_prefix()
     {
         var (b, db) = Start(23);

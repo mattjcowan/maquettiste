@@ -18,7 +18,6 @@ CREATE TABLE invoices (
     customer_id text NOT NULL,
     CONSTRAINT pk_invoices PRIMARY KEY (id),
     CONSTRAINT uq_invoices_number UNIQUE (number),
-    CONSTRAINT fk_invoices_status FOREIGN KEY (status) REFERENCES invoice_statuses (id),
     CONSTRAINT fk_invoices_customer_id FOREIGN KEY (customer_id) REFERENCES customers (id) ON DELETE RESTRICT
 );
 CREATE INDEX ix_invoices_issued_on ON invoices (issued_on);

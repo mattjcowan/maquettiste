@@ -8,6 +8,7 @@
 include "_sql.scriban"
 include "_objects.scriban"
 include "_migration.scriban"
+include "_reference.scriban"
 db = database
 diff = schema_diff[db.name]
 if diff && diff.to_revision >= 1
@@ -53,6 +54,10 @@ if diff && diff.to_revision >= 1
       if oc.kind == "added"
         sequence_statements(db, oc, statements)
       end
+    end
+    # Native reference types (PostgreSQL enums) before any column uses them; created when missing, so every migration can run it.
+    if creates || diff.tables.size > 0
+      native_type_prelude(db, statements)
     end
     # Phase 1: table renames, then foreign key drops (before the keys they reference), then the other constraint and index
     # drops and renames, then dropped tables (the diff lists them in reverse dependency order).
@@ -114,12 +119,10 @@ if diff && diff.to_revision >= 1
         produced[tc.key] = produced[tc.key] + statements.size - n
       end
     end
-    # Lookup rows of changed lookup tables (idempotent, like seed.sql), and a note for tables whose change has no statement.
+    # A note for tables whose change has no statement.
     for tc in diff.tables
       if tc.kind == "renamed" || tc.kind == "altered"
-        if tc.table.is_lookup && tc.table.lookup_rows.size > 0
-          emit(statements, lookup_upsert(tc.table))
-        else if produced[tc.key] == 0
+        if produced[tc.key] == 0
           emit(statements, "-- " + tc.table.name + ": the table's schema or comment changed; review by hand.")
         end
       end

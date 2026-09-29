@@ -17,7 +17,7 @@ public sealed record ToolReply(bool IsError, string Text)
 
 /// <summary>
 /// A <c>maquettiste mcp</c> process over a repo, driven through the SDK's client over stdio: the CLI is started as
-/// <c>dotnet Maquettiste.Cli.dll --cache-dir &lt;temp&gt; mcp --repo &lt;repo&gt;</c>, exactly as a Claude Code <c>.mcp.json</c> would.
+/// <c>dotnet Maquettiste.Cli.dll --cache-dir &lt;temp&gt; mcp --repo &lt;repo&gt;</c>, exactly as an MCP client reading <c>.mcp.json</c> would.
 /// </summary>
 public sealed class McpSession : IAsyncDisposable
 {

@@ -3,7 +3,8 @@ import type { ElementSummary } from "@/api/types";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { camel, IDENTIFIER } from "@/model/model";
+import { defaultEndRoles, IDENTIFIER } from "@/model/model";
+import { GROUP_LABELS, KIND_LABELS } from "@/model/labels";
 
 export function NewEntityDialog({
   open,
@@ -41,9 +42,9 @@ export function NewEntityDialog({
           <Field label="Name" htmlFor="new-entity-name" hint="A PascalCase identifier, such as Shipment.">
             <Input id="new-entity-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} aria-invalid={(name !== "" && !valid) || undefined} />
           </Field>
-          <Field label="Package" htmlFor="new-entity-package">
+          <Field label={KIND_LABELS.package} htmlFor="new-entity-package">
             <Select id="new-entity-package" value={pkg} onChange={(e) => setPkg(e.target.value)}>
-              <option value="">(none)</option>
+              <option value="">{GROUP_LABELS.notInDomain}</option>
               {packages.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -96,8 +97,7 @@ export function NewRelationDialog({
   const [input, setInput] = useState<NewRelationInput>({
     name: "",
     kind: "association",
-    sourceRole: camel(sourceName),
-    targetRole: camel(targetName) + "s",
+    ...defaultEndRoles(sourceName, targetName),
     sourceMin: 1,
     sourceMax: 1,
     targetMin: 0,

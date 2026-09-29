@@ -87,6 +87,10 @@ tags:
     description: Render one unit against one element with no writes (DDL preview).
   - name: presence
     description: Which element each open editor window has selected.
+  - name: localization
+    description: Translations of the standard fields per locale and shard, their completeness, and XLIFF 2.1 and CSV exchange files (reference-types-seeds-localization.md section 3).
+  - name: reference-data
+    description: Seed CSV import and export and reference type usage (reference-types-seeds-localization.md sections 2.3 and 3.9).
   - name: realtime
     description: Events pushed over the host's SignalR hub (`webhooks`); the browser listens with `site.realtime.on`.
 x-maquettiste-realtime:
@@ -450,13 +454,23 @@ paths:
         the command palette and every canvas start from this list.
 
         E5e: the response carries an `ETag`, a hash of every row's id, file hash and path and of the index format, so it
-        changes exactly when a row does, across server restarts too. A request whose `If-None-Match` names it gets 304 with no
+        changes exactly when a row does, across server restarts too. The index format constant is `maquettiste-index/e6`.
+
+        `?locale=<tag>` (a declared locale; the default locale is the same as none) fills `displayName` from that locale's fallback
+        chain (reference-types-seeds-localization.md section 3.8) from a per-locale display-name table the host builds once per
+        snapshot; the ETag then also covers the locale, its chain and the hashes of the chain's shards. 400 for an undeclared locale. A request whose `If-None-Match` names it gets 304 with no
         body. `Cache-Control: no-cache` lets the browser keep the index and revalidate it on every use.
       x-maquettiste-role: viewer
       x-maquettiste-engine: ModelStore.GetIndexAsync
       x-engine-addition: E5e ModelReads.IndexTag(summaries)
       parameters:
         - $ref: '#/components/parameters/IfNoneMatch'
+        - name: locale
+          in: query
+          description: A declared locale whose display names fill `displayName`.
+          schema:
+            type: string
+            pattern: '^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$'
       responses:
         '200':
           description: The index.
@@ -539,6 +553,8 @@ paths:
               $ref: '#/components/headers/NoCache'
         '503':
           $ref: '#/components/responses/ModelUnavailable'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthenticated'
 
@@ -2129,8 +2145,9 @@ paths:
         the coverage line: every table's key, name, schema, origin, entity or relation and column count, without the columns.
         Unlike `/view` it answers on a model with errors: the tables whose owning elements are valid come back, the rest are
         left out, `partial` is true and the diagnostics say why. The editor keeps the last complete list per database and
-        shows it with a stale badge while a response is partial. The server resolves the model once per model version and
-        answers every database from that resolve.
+        shows it with a stale badge while a response is partial. Per model version the server validates the model once and
+        resolves each database asked for on its own (the conceptual layer and that database), so a change costs one database's
+        resolve; `diagnostics` then holds the validation diagnostics and that database's resolution diagnostics.
       x-maquettiste-role: viewer
       x-engine-addition: E5c DatabaseTables.GetAsync(databaseId)
       responses:
@@ -2140,6 +2157,398 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DatabaseTablesResult'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /api/databases/{id}/tables/{key}:
+    parameters:
+      - $ref: '#/components/parameters/ElementId'
+      - name: key
+        in: path
+        required: true
+        description: The table's key, as `TableSummary.key` (a table file's id, or a synthesized key such as `<entityId>@<databaseId>`).
+        schema:
+          type: string
+    get:
+      tags: [databases]
+      operationId: getDatabaseTable
+      summary: One table of a database with its columns, keys and indexes
+      description: |
+        E5f: one `TableView` (columns with `attributeId`, primary key, foreign keys, unique constraints, indexes) for a table's
+        children in the explorer and column-level "mapped by", without `/view`'s every table. A projection of the same
+        per-version resolve as `/tables`: after the first call for a database and model version, a lookup. Like `/tables` it
+        answers on a model with errors; `table` is null when no table of the database has the key or when the table is left
+        out because an owning element has errors (`partial` then says so).
+      x-maquettiste-role: viewer
+      x-engine-addition: E5f DatabaseTables.GetTableAsync(databaseId, key)
+      responses:
+        '200':
+          description: The table (or null), the diagnostics, and whether the model has errors.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatabaseTableResult'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  # ------------------------------------------------ reference data and localization (declared; handlers land later)
+  /api/localization:
+    get:
+      tags: [localization]
+      operationId: getLocalizationStatus
+      summary: Localization settings and completeness per locale and shard
+      description: |
+        reference-types-seeds-localization.md section 3.9. The default locale, the declared locales, and per translated locale its
+        fallback chain and per shard the expected, translated, missing and stale counts. A project without `localization` answers
+        `defaultLocale: null` and no locales.
+      x-maquettiste-role: viewer
+      responses:
+        '200':
+          description: The settings and the completeness counts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocalizationStatus'
+              example:
+                defaultLocale: en
+                locales:
+                  - locale: fr
+                    shards:
+                      - shard: .maquettiste/model/locales/fr/_reference-data.json
+                        expected: 3
+                        translated: 2
+                        missing: 1
+                        stale: 0
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /api/localization/{locale}/entries:
+    parameters:
+      - $ref: '#/components/parameters/Locale'
+    get:
+      tags: [localization]
+      operationId: getTranslations
+      summary: Translation entries of one locale, by owner, by shard or the missing ones
+      description: |
+        reference-types-seeds-localization.md section 3.9. `?owner=<id>` or `?shard=<path>` returns entries with their source text,
+        translation, effective text, state, shard path and hash; with neither, every entry of the locale. `?missing=true&cursor=` pages
+        (200 per page) the entries that need work (`missing`, `fallback` or `stale`) for the translation queue; `cursor` is the
+        previous page's last `id/field`. 404 for a locale that is not declared or is the default.
+      x-maquettiste-role: viewer
+      parameters:
+        - name: owner
+          in: query
+          schema:
+            $ref: '#/components/schemas/Ulid'
+        - name: shard
+          in: query
+          schema:
+            type: string
+        - name: missing
+          in: query
+          schema:
+            type: boolean
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The entries, and the cursor of the next page when paged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TranslationPage'
+              example:
+                entries:
+                  - id: 01JBS3C4DWA7N36096Q14DR9GP
+                    field: label
+                    source: Kilogram
+                    translation: Kilogramme
+                    state: translated
+                    shard: .maquettiste/model/locales/fr/_reference-data.json
+                    shardHash: '0000000000000000000000000000000000000000000000000000000000000000'
+                cursor: null
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+    put:
+      tags: [localization]
+      operationId: putTranslations
+      summary: Write, remove or confirm translations of one locale
+      description: |
+        reference-types-seeds-localization.md section 3.9. `{ entries: [{ id, field, value | null, confirm? }], expected: { shardPath:
+        hash } }`, one atomic save: 200 with the new hashes of the shards written, 409 when a shard named in `expected` changed (its
+        current hash in `hashes`, nothing written), 422 with diagnostics (MQ7202, MQ7203, MQ7211). `confirm` rewrites that field's
+        `src` hash without changing the text. Each entry goes to its node's shard; an entry held in another shard moves there.
+      x-maquettiste-role: editor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TranslationWrite'
+      responses:
+        '200':
+          description: The shards written and their new hashes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TranslationWriteResult'
+              example:
+                outcome: saved
+                diagnostics: []
+                hashes:
+                  .maquettiste/model/locales/fr/_reference-data.json: '0000000000000000000000000000000000000000000000000000000000000000'
+        '409':
+          description: A shard named in `expected` changed; `hashes` holds its current hash and nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TranslationWriteResult'
+        '422':
+          description: The entries are invalid; `diagnostics` says why and nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TranslationWriteResult'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /api/localization/{locale}/export:
+    parameters:
+      - $ref: '#/components/parameters/Locale'
+    get:
+      tags: [localization]
+      operationId: exportTranslations
+      summary: Export one locale as XLIFF 2.1 or CSV
+      description: |
+        reference-types-seeds-localization.md section 3.9. `?format=xliff|csv&shard=`: XLIFF 2.1 with one `file` per shard and one
+        unit per field keyed `id/field` (segment `state` `translated` or `initial`, `subState` `maquettiste:<state>`), or CSV with the
+        columns `id, field, source, translation, state, shard`.
+      x-maquettiste-role: viewer
+      parameters:
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [xliff, csv]
+            default: xliff
+        - name: shard
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The exported file.
+          content:
+            application/xliff+xml:
+              schema:
+                type: string
+            text/csv:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /api/localization/{locale}/import:
+    parameters:
+      - $ref: '#/components/parameters/Locale'
+    post:
+      tags: [localization]
+      operationId: importTranslations
+      summary: Preview or apply an XLIFF or CSV translation import
+      description: |
+        reference-types-seeds-localization.md section 3.9. `?dryRun=true` (the default) previews; `dryRun=false` writes the
+        translations as one save checked against the shard hashes read for the preview (409 when one changed). A unit with an empty
+        target is left alone; a unit naming no translatable field is ignored with MQ7203 in `diagnostics`.
+      x-maquettiste-role: editor
+      parameters:
+        - name: dryRun
+          in: query
+          schema:
+            type: boolean
+            default: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [format, content]
+              properties:
+                format:
+                  type: string
+                  enum: [xliff, csv]
+                content:
+                  type: string
+      responses:
+        '200':
+          description: The preview (or the result) of the import.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportPreview'
+              example:
+                added: 1
+                changed: []
+                removed: 0
+                diagnostics: []
+        '409':
+          description: What the preview read changed before the import was applied; nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportPreview'
+        '422':
+          description: The import makes the model invalid; `diagnostics` says why and nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportPreview'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /api/seeds/{id}/csv:
+    parameters:
+      - $ref: '#/components/parameters/ElementId'
+    get:
+      tags: [reference-data]
+      operationId: exportSeedCsv
+      summary: Export a seed's rows as CSV
+      description: |
+        reference-types-seeds-localization.md sections 2.3 and 3.9. RFC 4180, UTF-8, `@id` first, then `@code`, `@label` and `@description` for reference types, then attribute and end
+        role names in the seed's column order, then `@label:<locale>` and `@description:<locale>` per `locale`; `?bom=true` adds a
+        byte order mark and CRLF line ends. Reference cells export codes, collections `;`-joined codes, end cells row ids, value
+        objects compact JSON.
+      x-maquettiste-role: viewer
+      parameters:
+        - name: bom
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: locale
+          in: query
+          description: Adds `@label:<locale>` and `@description:<locale>` columns; repeatable.
+          schema:
+            type: array
+            items:
+              type: string
+      responses:
+        '200':
+          description: The CSV text.
+          content:
+            text/csv:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+    post:
+      tags: [reference-data]
+      operationId: importSeedCsv
+      summary: Preview or apply a CSV import into a seed
+      description: |
+        reference-types-seeds-localization.md sections 2.3 and 3.9. The body is JSON (`{ content }`, the CSV text), as every write
+        of the API. Rows match by `@id`, else by `@code` for reference types, else are new rows with new ids; `merge` updates and
+        adds, `replace` also removes rows missing from the file, except rows that cells of other seeds name (listed in `blocked`).
+        Headers that match no column are listed in `ignoredHeaders`. `?dryRun=true` (the default) previews; applying saves the seed
+        with `If-Match` (or the hash read for the preview; 409 when it changed, 422 with diagnostics) and then writes the
+        `@label:<locale>` and `@description:<locale>` translations.
+      x-maquettiste-role: editor
+      parameters:
+        - name: mode
+          in: query
+          schema:
+            type: string
+            enum: [merge, replace]
+            default: merge
+        - name: dryRun
+          in: query
+          schema:
+            type: boolean
+            default: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                  description: The CSV text.
+      responses:
+        '200':
+          description: The preview (or the result) of the import.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportPreview'
+              example:
+                added: 1
+                changed: []
+                removed: 0
+                diagnostics: []
+        '409':
+          description: What the preview read changed before the import was applied; nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportPreview'
+        '422':
+          description: The import makes the model invalid; `diagnostics` says why and nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportPreview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /api/reference-types/{id}/usage:
+    parameters:
+      - $ref: '#/components/parameters/ElementId'
+    get:
+      tags: [reference-data]
+      operationId: getReferenceTypeUsage
+      summary: The attributes that use a reference type, with their effective storage
+      description: |
+        reference-types-seeds-localization.md section 3.9. Every attribute typed by the reference type, with its owner, domain, collection, required and the effective storage
+        choice per database.
+      x-maquettiste-role: viewer
+      responses:
+        '200':
+          description: The usages.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceTypeUsage'
+              example:
+                usages: []
         '404':
           $ref: '#/components/responses/NotFound'
         '401':
@@ -2800,6 +3209,14 @@ components:
       description: '`Authorization: Bearer <MAQUETTISTE_EDITOR_TOKEN>`, the secret site variable. For the CLI, scripts and tests. Compared in fixed time. In local mode a loopback or `MAQUETTISTE_LOCAL_PEERS` caller with a local `Host` and no forwarding header needs neither scheme and is the local admin (see the authentication notes in `info`).'
 
   parameters:
+    Locale:
+      name: locale
+      in: path
+      required: true
+      description: A declared BCP 47 locale other than the default.
+      schema:
+        type: string
+        pattern: '^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$'
     ElementId:
       name: id
       in: path
@@ -3220,6 +3637,13 @@ components:
               type: array
               items:
                 type: string
+        localization:
+          description: Localization of the standard fields (reference-types-seeds-localization.md section 3.2); `null` when the project declares none.
+          oneOf:
+            - $ref: '#/components/schemas/LocalizationSettings'
+            - type: 'null'
+        referenceData:
+          $ref: '#/components/schemas/ReferenceDataSettings'
         packs:
           type: object
           additionalProperties:
@@ -3250,6 +3674,75 @@ components:
               type: integer
             templateRecursionLimit:
               type: integer
+        explorer:
+          description: Project-defined explorer folders (explorer-redesign.md section 1.6) and team scopes (section 3.2). An older server leaves it out, or leaves out `scopes`.
+          type: object
+          required: [folders]
+          properties:
+            folders:
+              type: array
+              items:
+                $ref: '#/components/schemas/ExplorerFolder'
+            scopes:
+              type: array
+              items:
+                $ref: '#/components/schemas/ExplorerScope'
+    ExplorerScope:
+      x-engine-record: Maquettiste.Engine.Model.ExplorerScope
+      type: object
+      description: A named set of explorer filter chips; an empty member does not filter.
+      required: [name, kinds, domain, tags, stereotypes, categories, errors, diagram]
+      properties:
+        name:
+          type: string
+        kinds:
+          type: array
+          items:
+            type: string
+        domain:
+          description: A domain id; its sub-domains are included.
+          type: [string, 'null']
+        tags:
+          type: array
+          items:
+            type: string
+        stereotypes:
+          type: array
+          items:
+            type: string
+        categories:
+          description: Category-tree node ids, any of; each includes its descendants.
+          type: array
+          items:
+            type: string
+        errors:
+          type: boolean
+        diagram:
+          description: A diagram id; only its members match.
+          type: [string, 'null']
+    ExplorerFolder:
+      x-engine-record: Maquettiste.Engine.Model.ExplorerFolder
+      type: object
+      required: [label, icon, kind, match]
+      properties:
+        label:
+          type: string
+        icon:
+          type: [string, 'null']
+        kind:
+          type: string
+          description: The one element kind the folder holds.
+        match:
+          type: object
+          description: Exactly one member is set; a category matches its descendants too.
+          required: [stereotype, tag, category]
+          properties:
+            stereotype:
+              type: [string, 'null']
+            tag:
+              type: [string, 'null']
+            category:
+              type: [string, 'null']
     PackSettings:
       x-engine-record: Maquettiste.Engine.Model.PackSettings
       type: object
@@ -3337,12 +3830,84 @@ components:
           oneOf:
             - $ref: '#/components/schemas/InheritanceStrategy'
             - type: 'null'
+        referenceStorage:
+          description: The storage choice for reference types; `null` inherits (and, at the project level, means template-defined).
+          oneOf:
+            - $ref: '#/components/schemas/StorageChoice'
+            - type: 'null'
+    LocalizationSettings:
+      x-engine-record: Maquettiste.Engine.Model.LocalizationSettings
+      type: object
+      required: [defaultLocale]
+      properties:
+        defaultLocale:
+          type: string
+        locales:
+          type: array
+          items:
+            type: string
+        fallbacks:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+        require:
+          type: array
+          items:
+            type: string
+    ReferenceDataSettings:
+      x-engine-record: Maquettiste.Engine.Model.ReferenceDataSettings
+      description: The storage strategies the project declares (the engine knows none) and the grouping of the Reference data screen.
+      type: object
+      properties:
+        strategies:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/StrategyDeclaration'
+        groupBy:
+          type: string
+          description: '`category`, `tag:<prefix>` or `property:<name>`.'
+    StrategyDeclaration:
+      x-engine-record: Maquettiste.Engine.Model.StrategyDeclaration
+      type: object
+      properties:
+        description:
+          type: [string, 'null']
+        collections:
+          description: A boolean, or a map from dialect (or `*`) to boolean.
+          oneOf:
+            - type: boolean
+            - type: object
+              additionalProperties:
+                type: boolean
+        options:
+          description: The JSON Schema `properties` of the strategy's options.
+          type: [object, 'null']
+          additionalProperties: true
+        required:
+          type: array
+          items:
+            type: string
+    StorageChoice:
+      x-engine-record: Maquettiste.Engine.Model.StorageChoice
+      description: A strategy key the project declares, or `null` for template-defined, and its options.
+      type: object
+      properties:
+        strategy:
+          type: [string, 'null']
+        options:
+          type: object
+          additionalProperties: true
     CaseStyle:
       type: string
       enum: [snake, pascal, camel, kebab, upper-snake, preserve]
     StorageKind:
       type: string
-      enum: [int, string, lookup, embedded, table, json]
+      description: |
+        How an enum (int, string) or a value object (embedded, table, json) is stored. The enum lookup-table option (`lookup`) is
+        retired: a file that still uses it does not load (MQ7012); a reference type replaces it.
+      enum: [int, string, embedded, table, json]
     RelationShape:
       type: string
       enum: [foreign-key, junction, promoted]
@@ -3460,15 +4025,201 @@ components:
             type: string
 
     # ---------------------------------------------------------------- model
+    LocalizationStatus:
+      description: Localization settings and completeness (reference-types-seeds-localization.md section 3.9).
+      type: object
+      required: [defaultLocale, locales]
+      properties:
+        defaultLocale:
+          type: [string, 'null']
+        declared:
+          type: array
+          description: Every declared locale, the default included, as the settings list them.
+          items:
+            type: string
+        locales:
+          type: array
+          description: The locales other than the default.
+          items:
+            type: object
+            required: [locale, shards]
+            properties:
+              locale:
+                type: string
+              chain:
+                type: array
+                description: The fallback chain, the locale first and the default last.
+                items:
+                  type: string
+              shards:
+                type: array
+                items:
+                  type: object
+                  required: [shard, expected, translated, missing, stale]
+                  properties:
+                    shard:
+                      type: string
+                    expected:
+                      type: integer
+                    translated:
+                      type: integer
+                    missing:
+                      type: integer
+                    stale:
+                      type: integer
+    TranslationPage:
+      type: object
+      required: [entries, cursor]
+      properties:
+        entries:
+          type: array
+          items:
+            type: object
+            required: [id, field, source, translation, state, shard, shardHash]
+            properties:
+              id:
+                $ref: '#/components/schemas/Ulid'
+              owner:
+                description: The element whose file holds the node.
+                $ref: '#/components/schemas/Ulid'
+              effective:
+                type: [string, 'null']
+                description: The text the fallback chain gives.
+              field:
+                type: string
+                enum: [displayName, pluralName, label, description]
+              source:
+                type: [string, 'null']
+              translation:
+                type: [string, 'null']
+              state:
+                type: string
+                enum: [translated, missing, stale, fallback]
+              shard:
+                type: string
+              shardHash:
+                oneOf:
+                  - $ref: '#/components/schemas/Hash'
+                  - type: 'null'
+        cursor:
+          type: [string, 'null']
+    TranslationWrite:
+      type: object
+      required: [entries, expected]
+      properties:
+        entries:
+          type: array
+          items:
+            type: object
+            required: [id, field, value]
+            properties:
+              id:
+                $ref: '#/components/schemas/Ulid'
+              field:
+                type: string
+                enum: [displayName, pluralName, label, description]
+              value:
+                description: 'The text, `{ "file": "<sidecar>" }`, or `null` to remove.'
+              confirm:
+                type: boolean
+        expected:
+          type: object
+          description: Shard path to the hash the caller loaded.
+          additionalProperties:
+            $ref: '#/components/schemas/Hash'
+    TranslationWriteResult:
+      description: The answer of a translation write.
+      type: object
+      required: [outcome, hashes, diagnostics]
+      properties:
+        outcome:
+          type: string
+          enum: [saved, conflict, invalid]
+        hashes:
+          type: object
+          description: The new hashes of the shards written (saved), or the current hashes of the shards that changed (conflict).
+          additionalProperties:
+            $ref: '#/components/schemas/Hash'
+        diagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+    ImportPreview:
+      description: What an import adds, changes and removes, and the diagnostics.
+      type: object
+      required: [added, changed, removed, diagnostics]
+      properties:
+        applied:
+          type: boolean
+          description: Whether the import was written (false for a dry run).
+        ignoredHeaders:
+          type: array
+          description: CSV headers that match no column.
+          items:
+            type: string
+        blocked:
+          type: array
+          description: Rows a `replace` keeps because cells of other seeds name them, each with its referrers.
+          items:
+            type: object
+            additionalProperties: true
+        hash:
+          description: The seed's new hash when applied.
+          $ref: '#/components/schemas/Hash'
+        shardHashes:
+          type: object
+          description: The new hashes of the translation shards written when applied.
+          additionalProperties:
+            $ref: '#/components/schemas/Hash'
+        added:
+          type: integer
+        changed:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        removed:
+          type: integer
+        diagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+    ReferenceTypeUsage:
+      type: object
+      required: [usages]
+      properties:
+        usages:
+          type: array
+          items:
+            type: object
+            required: [attribute, owner, collection, required, storage]
+            properties:
+              attribute:
+                $ref: '#/components/schemas/Ulid'
+              owner:
+                $ref: '#/components/schemas/Ulid'
+              domain:
+                oneOf:
+                  - $ref: '#/components/schemas/Ulid'
+                  - type: 'null'
+              collection:
+                type: boolean
+              required:
+                type: boolean
+              storage:
+                type: object
+                description: Database name to the effective storage choice.
+                additionalProperties:
+                  $ref: '#/components/schemas/StorageChoice'
     ElementKind:
       type: string
-      enum: [package, entity, value-object, scalar-type, enum, relation, database, table, view, sequence, mapping, diagram, tag-vocabulary, category-tree, stereotype]
+      enum: [package, entity, value-object, scalar-type, enum, relation, database, table, view, sequence, mapping, diagram, tag-vocabulary, category-tree, stereotype, reference-type, seed]
     ChangeSource:
       type: string
       enum: [editor, disk, cli, engine]
     ElementSummary:
       x-engine-record: Maquettiste.Engine.Model.ElementSummary
-      x-engine-addition: E4 adds `category` and `stereotypes`; E5 adds `displayName`, `database`, `entity`, `memberCount` and `ends` (explorer-redesign.md section 4.1)
+      x-engine-addition: E4 adds `category` and `stereotypes`; E5 adds `displayName`, `database`, `entity`, `memberCount` and `ends`; E5h adds `base` (explorer-redesign.md section 4.1)
       description: |
         One index row. The E5 members are optional: a server without E5 leaves them out, and an E5 server leaves each one out
         when it does not apply to the row's kind (or, for `displayName`, when the element has none), so they cost nothing on
@@ -3523,6 +4274,20 @@ components:
           description: The relation's ends in document order, on relation rows (E5).
           items:
             $ref: '#/components/schemas/RelationEndSummary'
+        target:
+          description: The entity, relation or reference type a seed holds rows for, on seed rows (reference-types-seeds-localization.md section 2.1).
+          $ref: '#/components/schemas/Ulid'
+        rowCount:
+          type: integer
+          minimum: 0
+          description: The number of rows, on seed rows; the explorer's Reference data leaf sums them.
+        fieldCount:
+          type: integer
+          minimum: 0
+          description: The number of user fields, on reference type rows.
+        base:
+          description: The base entity's id, on entity rows that have one (E5h). Related-element highlighting reads base and derived entities from it.
+          $ref: '#/components/schemas/Ulid'
     RelationEndSummary:
       x-engine-addition: E5
       x-engine-record: Maquettiste.Engine.Model.RelationEndSummary
@@ -3579,8 +4344,10 @@ components:
         - $ref: '../../schemas/v1/tag-vocabulary.json'
         - $ref: '../../schemas/v1/category-tree.json'
         - $ref: '../../schemas/v1/stereotype.json'
+        - $ref: '../../schemas/v1/reference-type.json'
+        - $ref: '../../schemas/v1/seed.json'
     NewModelDocument:
-      description: 'A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required.'
+      description: 'A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required. Reference types and seeds (`reference-type`, `seed`) are documents like any other.'
       type: object
       required: [kind]
       properties:
@@ -3679,6 +4446,12 @@ components:
         toId:
           type: string
           description: The referenced id (an element or a sub-element).
+        owning:
+          type: boolean
+          default: false
+          description: |
+            The referrer belongs to the referenced element (a seed's `target`): the reference never refuses the target's delete,
+            which deletes the referrer in the same save, so a delete confirmation lists these as deleted with it. Left out when false.
     ElementChange:
       x-engine-record: Maquettiste.Engine.ElementChange
       x-engine-addition: E5d adds `summary` on `model.changed`
@@ -3763,7 +4536,8 @@ components:
             - type: 'null'
     BatchOp:
       type: string
-      enum: [create, update, delete]
+      description: '`translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`.'
+      enum: [create, update, delete, translate]
     BatchOperation:
       x-engine-record: Maquettiste.Engine.BatchOperation
       type: object
@@ -3778,6 +4552,17 @@ components:
         element:
           type: [object, 'null']
           additionalProperties: true
+        locale:
+          description: The locale of a translation (`translate`).
+          type: [string, 'null']
+        field:
+          description: The translated field (`translate`).
+          oneOf:
+            - type: string
+              enum: [displayName, pluralName, label, description]
+            - type: 'null'
+        value:
+          description: 'The translated text, `{ "file": "<sidecar>" }`, or `null` to remove the translation (`translate`).'
     ModelBatch:
       x-engine-record: Maquettiste.Engine.ModelBatch
       type: object
@@ -3827,7 +4612,7 @@ components:
       properties:
         rule:
           type: string
-          pattern: '^(MQ[1-6][0-9]{3}|x/.+)$'
+          pattern: '^(MQ[1-7][0-9]{3}|x/.+)$'
         severity:
           $ref: '#/components/schemas/DiagnosticSeverity'
         message:
@@ -3914,9 +4699,28 @@ components:
         partial:
           type: boolean
           description: |
-            The model has errors, so tables whose owning elements have errors (the entity, the relation, the enum of a lookup
-            table, the table file or overlay, a mapping of the entity or relation, or the database itself) are left out, and the
+            The model has errors, so tables whose owning elements have errors (the entity, the relation, the table file or
+            overlay, a mapping of the entity or relation, or the database itself) are left out, and the
             rest may change when the errors are fixed. False when the list is complete.
+    DatabaseTableResult:
+      x-engine-addition: E5f
+      x-engine-record: Maquettiste.Engine.DatabaseTableResult
+      type: object
+      required: [table, diagnostics, partial]
+      properties:
+        table:
+          description: The table, or null when no table of the database has the key or the table is left out (`partial`).
+          oneOf:
+            - $ref: '#/components/schemas/TableView'
+            - type: 'null'
+        diagnostics:
+          type: array
+          description: As `DatabaseTablesResult.diagnostics`.
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+        partial:
+          type: boolean
+          description: As `DatabaseTablesResult.partial`.
     TableSummary:
       x-engine-addition: E5c
       x-engine-record: Maquettiste.Engine.TableSummary
@@ -3945,6 +4749,8 @@ components:
           type: boolean
         isLookup:
           type: boolean
+          deprecated: true
+          description: Always false. The enum lookup-table storage option is retired (MQ7012); kept so older clients still parse.
         columnCount:
           type: integer
           minimum: 0
@@ -3992,6 +4798,8 @@ components:
           type: boolean
         isLookup:
           type: boolean
+          deprecated: true
+          description: Always false. The enum lookup-table storage option is retired (MQ7012); kept so older clients still parse.
         comment:
           type: [string, 'null']
         columns:
@@ -4470,7 +5278,7 @@ components:
           type: [string, 'null']
         workspace:
           type: [string, 'null']
-          enum: [entities, database, mappings, generate, settings, null]
+          enum: [entities, reference-data, database, mappings, generate, settings, null]
     PresenceEntry:
       type: object
       required: [connectionId, user, elementId, workspace, updatedUtc]
@@ -4492,6 +5300,24 @@ components:
       description: '`model.changed` to every connection: the engine''s ChangeSet (cut to 200 KB, `truncated` then true). With E5d each `ElementChange` carries the element''s new `summary`, so the editor patches its index in place (and removes the rows of `deleted`); a change without a summary (an older server) or a truncated set makes it refetch `GET /api/model/index` with `If-None-Match`.'
       allOf:
         - $ref: '#/components/schemas/ChangeSet'
+        - type: object
+          properties:
+            translations:
+              type: array
+              description: 'After a translation change (reference-types-seeds-localization.md section 3.8): for each declared locale whose fallback chain includes a changed locale, the effective display names that changed (the fallback text when a translation was removed). Left out when none changed. Other fields are not sent: an open inspector or translation queue refetches its entries.'
+              items:
+                type: object
+                required: [locale, displayNames]
+                properties:
+                  locale:
+                    type: string
+                  displayNames:
+                    type: object
+                    additionalProperties:
+                      type: string
+            translationsTruncated:
+              type: boolean
+              description: '`translations` was dropped to fit 200 KB; the editor refetches the index for its content locale.'
       example:
         changed:
         - id: 01J92P0V0FJ23CGSNKM7P1W5V7

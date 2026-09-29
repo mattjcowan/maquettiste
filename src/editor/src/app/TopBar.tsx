@@ -4,10 +4,13 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/menu";
 import { Kbd } from "@/components/ui/misc";
 import { Tooltip } from "@/components/ui/tooltip";
+import { LOGO_TOOLTIP, PROJECT_TOOLTIP } from "@/model/labels";
 import { useEditor, type ThemeChoice } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { useServices } from "./context";
 import { useUndoRedo } from "./shortcuts";
+import { LocaleSwitcher } from "@/l10n/LocaleSwitcher";
+import { LocalizationSync } from "@/l10n/queries";
 
 const THEME_ICON = { system: Monitor, light: Sun, dark: Moon } as const;
 
@@ -28,12 +31,20 @@ export function TopBar() {
   return (
     <header className="flex h-[var(--mq-topbar-h)] shrink-0 items-center gap-3 border-b border-default bg-surface px-3" data-region="topbar">
       <div className="flex min-w-0 items-center gap-2">
-        <span aria-hidden className="grid size-6 place-items-center rounded-control bg-accent text-12 font-semibold text-accent-foreground">
-          M
-        </span>
-        <h1 className="truncate text-14 font-semibold" data-testid="project-name">
-          {project.data?.name ?? "Maquettiste"}
-        </h1>
+        <Tooltip content={LOGO_TOOLTIP}>
+          <span
+            aria-hidden
+            className="grid size-6 place-items-center rounded-control bg-accent text-12 font-semibold text-accent-foreground"
+            data-testid="logo"
+          >
+            M
+          </span>
+        </Tooltip>
+        <Tooltip content={PROJECT_TOOLTIP}>
+          <h1 className="truncate text-14 font-semibold" data-testid="project-name">
+            {project.data?.name ?? "Maquettiste"}
+          </h1>
+        </Tooltip>
         {git ? (
           <span className="flex items-center gap-1 text-12 text-secondary" data-testid="git-status">
             <GitBranch className="size-3.5" aria-hidden />
@@ -55,6 +66,8 @@ export function TopBar() {
       </button>
 
       <div className="flex items-center gap-1">
+        <LocalizationSync />
+        <LocaleSwitcher />
         <Tooltip content="Undo (Ctrl+Z)">
           <Button variant="ghost" size="icon" aria-label="Undo" disabled={!canUndo} onClick={() => void undo()}>
             <Undo2 />

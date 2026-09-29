@@ -4,6 +4,7 @@ using System.Globalization;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Hashing;
 using Maquettiste.Engine.Json;
+using Maquettiste.Engine.Localization;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 
@@ -142,11 +143,13 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         var needed = new SortedSet<string>(StringComparer.Ordinal);
         foreach (var entry in entries.Values)
         {
-            if (entry.Kind != ModelFileKind.Element || !entry.Parsed.Valid)
+            if (entry.Kind is not (ModelFileKind.Element or ModelFileKind.LocaleShard) || !entry.Parsed.Valid)
                 continue;
+            var isShard = entry.Parsed.LocaleShard is not null;
             foreach (var (_, file) in entry.Parsed.SidecarReferences)
             {
-                if (ModelPaths.ResolveSidecar(entry.ModelPath, file) is { } sidecar && ModelPaths.Classify(sidecar) is null)
+                var resolved = isShard ? LocaleShardDocument.ResolveSidecar(entry.ModelPath, file) : ModelPaths.ResolveSidecar(entry.ModelPath, file);
+                if (resolved is { } sidecar && ModelPaths.Classify(sidecar) is null)
                     needed.Add(sidecar);
             }
         }
@@ -333,9 +336,12 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         {
             parsed = kind switch
             {
+                // Files dispatch on their kind: a shard outside model/locales/<locale>/ loads as a shard, with MQ1005 (section 3.3).
+                ModelFileKind.Element when LocaleShardReader.IsShard(bytes) => MisplacedShard(_reader.ReadLocaleShard(bytes, repoPath, trusted, trustedCanonical), repoPath),
                 ModelFileKind.Element => _reader.ReadElement(bytes, repoPath, trusted, trustedCanonical),
                 ModelFileKind.Settings => _reader.ReadSettings(bytes, repoPath, trusted, trustedCanonical),
                 ModelFileKind.Extension => _reader.ReadExtension(bytes, repoPath, trusted),
+                ModelFileKind.LocaleShard => _reader.ReadLocaleShard(bytes, repoPath, trusted, trustedCanonical),
                 _ => DocumentReader.ReadText(bytes),
             };
         }
@@ -416,6 +422,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
 
         var extensions = new List<ExtensionDocument>();
         var scripts = new List<ScriptSource>();
+        var shards = new List<LocaleShardDocument>();
         foreach (var entry in entries.Values.OrderBy(e => e.ModelPath, StringComparer.Ordinal))
         {
             switch (entry.Kind)
@@ -424,6 +431,16 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
                     diagnostics.AddRange(entry.Parsed.Diagnostics);
                     if (entry.Parsed.Extension is { } extension)
                         extensions.Add(new ExtensionDocument(extension, _paths.ToRepoPath(entry.ModelPath), entry.Hash));
+                    break;
+                case ModelFileKind.LocaleShard:
+                    diagnostics.AddRange(entry.Parsed.Diagnostics);
+                    if (entry.Parsed.LocaleShard is not null && entry.Parsed.Valid)
+                        shards.Add(ShardDocument(entry, entries));
+                    break;
+                case ModelFileKind.Element when entry.Parsed.LocaleShard is not null:
+                    // A shard outside the locales folder: its diagnostics were added with the element files'.
+                    if (entry.Parsed.Valid)
+                        shards.Add(ShardDocument(entry, entries));
                     break;
                 case ModelFileKind.RuleScript:
                     diagnostics.AddRange(entry.Parsed.Diagnostics);
@@ -435,8 +452,36 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
 
         diagnostics.Sort(Diagnostic.Order);
         var snapshot = ModelSnapshot.CreateAfter(previousSnapshot, documents, settings, settingsHash, extensions, scripts, version, diagnostics,
-            options.EffectiveParallelism, ct);
+            options.EffectiveParallelism, ct, shards);
         return (snapshot, byPath);
+    }
+
+    private static ParsedFile MisplacedShard(ParsedFile parsed, string repoPath) => parsed with
+    {
+        Diagnostics = [.. parsed.Diagnostics.Append(RuleCatalog.Create("MQ1005",
+            "This locale shard is outside model/locales/<locale>/; it loads, but belongs in its locale's folder.", null, repoPath, "/kind")).Order(Diagnostic.Order)],
+    };
+
+    private LocaleShardDocument ShardDocument(FileEntry entry, Dictionary<string, FileEntry> entries)
+    {
+        var sidecars = new SortedDictionary<string, LocaleSidecar>(StringComparer.Ordinal);
+        using var hash = new HashBuilder();
+        hash.Add(entry.Hash);
+        foreach (var (_, file) in entry.Parsed.SidecarReferences)
+        {
+            if (sidecars.ContainsKey(file))
+                continue;
+            var path = LocaleShardDocument.ResolveSidecar(entry.ModelPath, file) ?? file;
+            var sidecar = entries.TryGetValue(path, out var found) && found.Kind == ModelFileKind.Sidecar
+                ? new LocaleSidecar(path, found.Parsed.Text, found.Hash)
+                : new LocaleSidecar(path, null, "absent");
+            sidecars[file] = sidecar;
+        }
+
+        foreach (var (file, sidecar) in sidecars)
+            hash.Add(file).Add(sidecar.Hash);
+        return new LocaleShardDocument(entry.Parsed.LocaleShard!, _paths.ToRepoPath(entry.ModelPath), entry.ModelPath, entry.Hash,
+            sidecars.Count == 0 ? entry.Hash : hash.Finish(), sidecars);
     }
 
     private static ElementDocument BuildDocument(FileEntry entry, string repoPath, Dictionary<string, FileEntry> entries, IReadOnlyDictionary<string, ElementDocument> previousDocuments)
@@ -475,11 +520,14 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
             .Where(d => d.Element is Database)
             .GroupBy(d => d.Element.Id, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => ModelPaths.FolderOf(_paths.FromRepoPath(g.First().Path)), StringComparer.Ordinal);
+        var stems = documents.Any(d => d.Element is Seed)
+            ? documents.GroupBy(d => d.Element.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => ModelPaths.Stem(g.First().Element), StringComparer.Ordinal)
+            : [];
         foreach (var document in documents)
         {
             var modelPath = _paths.FromRepoPath(document.Path);
             var element = document.Element;
-            var folder = ModelPaths.ConventionalFolder(element, id => databaseFolders.GetValueOrDefault(id));
+            var folder = ModelPaths.ConventionalFolder(element, id => databaseFolders.GetValueOrDefault(id), id => stems.GetValueOrDefault(id));
             if (ModelPaths.MatchesConvention(element, modelPath, folder))
                 continue;
             var expected = element is Database ? folder + "/database.json" : ModelPaths.Join(folder, ModelPaths.FileName(element, false));
@@ -508,7 +556,24 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         }
 
         var deleted = (before?.Documents ?? []).Select(d => d.Element.Id).Where(id => after.Get<Element>(id) is null).Order(StringComparer.Ordinal).ToArray();
-        return new ChangeSet(changed, deleted, ChangeSource.Disk, false);
+        return new ChangeSet(changed, deleted, ChangeSource.Disk, false) { Locales = before is null ? [] : ChangedLocales(before, after) };
+    }
+
+    private static string[] ChangedLocales(ModelSnapshot before, ModelSnapshot after)
+    {
+        if (ReferenceEquals(before.LocaleShards, after.LocaleShards))
+            return [];
+        var old = before.LocaleShards.GroupBy(s => s.Path, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().DependencyHash, StringComparer.Ordinal);
+        var locales = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var shard in after.LocaleShards)
+        {
+            if (!old.Remove(shard.Path, out var hash) || hash != shard.DependencyHash)
+                locales.Add(shard.FolderLocale);
+        }
+
+        foreach (var gone in before.LocaleShards.Where(s => old.ContainsKey(s.Path)))
+            locales.Add(gone.FolderLocale);
+        return [.. locales];
     }
 
     private async Task<bool> WriteCacheIfChangedAsync(Dictionary<string, FileEntry> entries, CancellationToken ct)

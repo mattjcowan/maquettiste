@@ -16,7 +16,7 @@ For a database `main` (PostgreSQL, schema `billing`) with a table `invoices`:
 | `table` | `overwrite` | `each table` | `main/billing/tables/invoices.sql`: `CREATE TABLE` with columns, primary key, unique constraints, foreign keys and checks, then its indexes and comments |
 | `schema` | `overwrite` | `select databases` | `main/schema.sql`: schemas, sequences, every table in foreign-key dependency order, then views |
 | `migration` | `once` | `select databases` | `main/migrations/0001.sql`, `0002.sql`, …: one script per schema revision, from `schema_diff` |
-| `seed` | `regions` | `select databases` | `main/seed.sql`: lookup-table rows as idempotent upserts, plus a `seed-data` region the team fills in |
+| `seed` | `regions` | `select databases` | `main/seed.sql`: the reference data of reference types reconciled on every run, the rows of entity and relation seeds, plus a `seed-data` region the team fills in |
 
 Database folders are the kebab-case database name; the schema folder is left out when the table has no schema (SQLite).
 
@@ -47,9 +47,10 @@ between that snapshot and the current model as `schema_diff.<database>`. A gener
 sequence changes, in one transaction. Statements run in phases so nothing is used before it exists: table renames, then
 constraint and index drops and renames (foreign keys first), then dropped tables, then column changes, then new tables, then new
 and changed constraints and indexes (foreign keys last). A changed constraint or index is dropped in the first phase and created
-again in the last. When a lookup table changes (an enum member was added or renamed), the migration upserts its rows the way
-`seed.sql` does; rows of removed members are left in place. What a diff cannot decide is written as a `-- TODO` line: data conversions, SQLite's
-missing `ALTER COLUMN` and `ADD CONSTRAINT` (rebuild the table), a new `NOT NULL` column without a default.
+again in the last. Reference rows reach their lookup tables through `seed.sql`'s idempotent upsert, not through the
+migration. What a diff cannot decide is written as a `-- TODO` line: data conversions (a column whose logical type changes gets
+one naming the old and new type, since the cast keeps each value as it is, so integer ids that become codes stay ids until you
+convert them), SQLite's missing `ALTER COLUMN` and `ADD CONSTRAINT` (rebuild the table), a new `NOT NULL` column without a default.
 
 Migrations are yours once written: review them, edit them and commit them; the engine never overwrites them. Each run also
 re-emits every earlier revision as a short placeholder; because an existing `once` file is always kept, the placeholder is only
@@ -58,11 +59,54 @@ them as orphaned after the snapshot has moved on.
 
 A dropped table, view or sequence is named with the database's default schema (the diff records only the old name).
 
+## Reference data
+
+A reference type (units of measure, countries, allergens) is stored the way the project chooses: the engine adds no table, key,
+check or type for it. A single-valued attribute typed by one is a column holding the row's code (typed by the code: `varchar(8)`),
+and a collection attribute has no column at all. The project declares its strategies and picks one per project, database or type:
+
+```json
+"referenceData": { "strategies": {
+  "lookup-table": { "description": "Table keyed by code, FK from each column", "collections": true,
+                    "options": { "schema": { "type": "string" }, "tableName": { "type": "string" } } },
+  "check":        { "description": "CHECK (col IN (...codes))", "collections": false },
+  "native":       { "description": "CREATE TYPE ... AS ENUM on PostgreSQL", "collections": { "*": false, "postgresql": true } } } },
+"conventions": { "referenceStorage": { "strategy": "lookup-table" } },
+"databases": { "reporting": { "referenceStorage": { "strategy": "check" } } }
+```
+
+The pack reaches its three realizations through the `strategyMap` parameter, from the project's strategy keys to realizations;
+the default maps each key above to the realization of the same name. A project whose keys differ (`table`, `list-check`) maps
+them there, and a key the map does not know stops the unit with a message naming it, so the pack gives no strategy name a meaning
+of its own. When the project leaves the choice to the template, the `referenceStrategy` parameter is the key.
+
+| Realization | Single-valued column | Collection | Object names |
+| --- | --- | --- | --- |
+| `lookup-table` | a foreign key to the type's table (`code` primary key, `label`, `description` when rows have one, the single-valued user fields; the `schema` and `tableName` options) | a junction table `<table>_<attribute>` with the owner's key and `<attribute singular>_code` | `units_of_measure`, `fk_<table>_<column>_ref` |
+| `check` | `CHECK (column IN (codes))` | a junction table whose code column gets the CHECK (when the project allows collections) | `ck_<table>_<column>_ref` |
+| `native` | PostgreSQL: the column is typed by `CREATE TYPE <type>_t AS ENUM (codes)`; SQL Server and SQLite: a CHECK, with a comment | PostgreSQL: an array column `<attribute> <type>_t[]`; elsewhere as `check` | `<type snake>_t` |
+
+**Reconciled on every run.** These objects are not in the schema snapshot, so `seed.sql` (regenerated on every run and safe to
+run again) reconciles them after the schema script or the migrations: native types are created when missing and get
+`ADD VALUE IF NOT EXISTS` for new codes; lookup tables are created when missing and their rows upserted by code; every
+reference-typed column's check and foreign key are dropped by name and created again for the current realization (so a strategy
+switch drops the previous one); junction tables and array columns are created when missing; then codes no longer in the seeds
+are deleted from lookup tables, which fails on the foreign key while a table still stores one. PostgreSQL cannot drop an enum
+value, so a retired native code stops the script with the codes named: retire it in a migration written by hand. SQLite cannot
+add or drop constraints on an existing table, so there the check and the foreign key are triggers named `<name>_i` (insert),
+`<name>_u` (update) and `<name>_d` (a delete from the lookup table). `schema.sql` and the migrations create the native types
+before the tables that use them. A lookup table's shape follows the type when the table is created; a field added later needs an
+`ALTER TABLE` by hand.
+
+**Seed rows.** The rows of entity and relation seeds follow as inserts, targets of referenced rows first: `ON CONFLICT DO
+NOTHING` on PostgreSQL and SQLite, `WHERE NOT EXISTS` on the primary key on SQL Server, so a second run skips them. An end column
+fills the foreign key with the referenced row's key; collection cells become junction rows or an array. Value-object cells, and
+seeds of relations stored as a foreign key (set the end on the entity's seed instead), are left to the `seed-data` region.
+
 ## Seed data and protected regions
 
-`seed.sql` is regenerated on every run (lookup rows for enums stored as `lookup`, written as upserts: `INSERT … ON CONFLICT (id)
-DO UPDATE` on PostgreSQL and SQLite, `MERGE` on SQL Server, so the script can run again on a database that has them), but
-everything between
+`seed.sql` is regenerated on every run (the reference data of reference types, reconciled with the current rows, and the rows
+of seeds, written so the script can run again on a database that has them), but everything between
 
 ```sql
 -- maquettiste:keep id=seed-data
@@ -79,7 +123,9 @@ Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
 | Parameter | Default | Meaning |
 | --- | --- | --- |
 | `comments` | `true` | Emit table and column comments. |
+| `referenceStrategy` | `"lookup-table"` | The strategy key for reference types whose storage the project leaves to the template (see Reference data). |
 | `quoting` | `""` | `always`, `reserved` or `never` to override every database's `quoting` setting; empty keeps the database's. |
+| `strategyMap` | each key to itself | From the project's reference storage strategy keys to `lookup-table`, `check` or `native` (see Reference data). |
 | `schemaScript` | `"inline"` | `inline` puts every table's DDL in `schema.sql` (runs with any client); `include` writes client include directives instead (`\ir` for psql, `:r` for sqlcmd followed by `GO`, `.read` for sqlite3; paths use `/`, which sqlcmd accepts on every OS; run sqlcmd and sqlite3 from the database folder). |
 
 ## Files
@@ -87,11 +133,12 @@ Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
 | File | Holds |
 | --- | --- |
 | `pack.json` | Units and parameter defaults. |
-| `helpers.js` | The `databases` selector and the `ddl_order` / `ddl_cycle_breaks` helpers (foreign-key dependency order). |
+| `helpers.js` | The `databases` selector, the `ddl_order` / `ddl_cycle_breaks` helpers (foreign-key dependency order) and `reference_realization` (the `strategyMap` lookup). |
 | `_sql.scriban` | Shared functions: quoting, qualified names, column definitions, foreign keys, indexes, comments. |
 | `_table.scriban` | The `CREATE TABLE` block of one table, used by `table`, `schema` and `migration`. |
 | `_objects.scriban` | Sequences, views, schemas, include directives and the dependency spec for `ddl_order`. |
 | `_migration.scriban` | Statement builders over the schema diff. |
+| `_reference.scriban` | Reference data: the realizations, their reconciliation and the seed-row inserts, used by `schema`, `migration` and `seed`. |
 | `table.scriban`, `schema.scriban`, `migration.scriban`, `seed.scriban` | The unit templates. |
 
 ## Notes

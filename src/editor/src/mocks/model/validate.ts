@@ -58,11 +58,25 @@ export interface ValidationContext extends ModelGlobals {
   firstInScope(scope: string, entry: ModelEntry): ModelEntry | undefined;
 }
 
-/** The model-wide vocabularies: stereotypes by key, the category ids and the tag vocabulary. */
+/** One tag vocabulary or category tree of a scope ("" is global, else the domain's package id). */
+interface ScopedVocabulary {
+  keys: Set<string>;
+  strict: boolean;
+}
+
+/**
+ * The model-wide vocabularies: stereotypes by key, every category id, the global tag vocabulary,
+ * and (explorer-redesign.md section 1.11) one tag vocabulary and one category tree per scope with
+ * the package parents that make up each element's chain: its domain, every enclosing one, global.
+ */
 export interface ModelGlobals {
   stereotypes: Map<string, Json>;
   categories: Set<string> | null;
   vocabulary: { keys: Set<string>; strict: boolean } | null;
+  tagVocabularies: Map<string, ScopedVocabulary>;
+  categoryTrees: Map<string, ScopedVocabulary>;
+  categoryScope: Map<string, string>;
+  packages: Map<string, { parent: string | null; name: string }>;
 }
 
 /** Kinds whose change can alter every other entry's diagnostics. */
@@ -71,13 +85,42 @@ export const GLOBAL_KINDS: ReadonlySet<string> = new Set(["stereotype", "categor
 export function globalsOf(entries: Iterable<ModelEntry>): ModelGlobals {
   const stereotypes = new Map<string, Json>();
   let categories: Set<string> | null = null;
-  let vocabulary: { keys: Set<string>; strict: boolean } | null = null;
+  const tagVocabularies = new Map<string, ScopedVocabulary>();
+  const categoryTrees = new Map<string, ScopedVocabulary>();
+  const categoryScope = new Map<string, string>();
+  const packages = new Map<string, { parent: string | null; name: string }>();
   for (const e of entries) {
-    if (e.json.kind === "stereotype" && typeof e.json.key === "string") stereotypes.set(e.json.key, e.json);
-    if (e.json.kind === "category-tree") categories = new Set(arr(e.json.categories).map((c) => String(c.id)));
-    if (e.json.kind === "tag-vocabulary") vocabulary = { keys: new Set(arr(e.json.definitions).map((d) => String(d.key))), strict: e.json.strict === true };
+    const kind = e.json.kind;
+    const scope = typeof e.json.package === "string" ? e.json.package : "";
+    if (kind === "stereotype" && typeof e.json.key === "string") stereotypes.set(e.json.key, e.json);
+    if (kind === "package") packages.set(e.id, { parent: typeof e.json.parent === "string" ? e.json.parent : null, name: String(e.json.name ?? e.id) });
+    if (kind === "category-tree" && !categoryTrees.has(scope)) {
+      // The first tree of a scope counts; a second one is MQ1009 and ignored.
+      const items = arr(e.json.categories);
+      categories ??= new Set();
+      for (const c of items) {
+        categories.add(String(c.id));
+        categoryScope.set(String(c.id), scope);
+      }
+      categoryTrees.set(scope, { keys: new Set(items.map((c) => String(c.name))), strict: false });
+    }
+    if (kind === "tag-vocabulary" && !tagVocabularies.has(scope))
+      tagVocabularies.set(scope, { keys: new Set(arr(e.json.definitions).map((d) => String(d.key))), strict: e.json.strict === true });
   }
-  return { stereotypes, categories, vocabulary };
+  return { stereotypes, categories, vocabulary: tagVocabularies.get("") ?? null, tagVocabularies, categoryTrees, categoryScope, packages };
+}
+
+/** The scopes an element sees, nearest first: its domain (a package is its own), every enclosing one, then global (""). */
+export function vocabularyChain(json: Json, globals: ModelGlobals): string[] {
+  const start = json.kind === "package" ? (typeof json.id === "string" ? json.id : null) : typeof json.package === "string" ? json.package : null;
+  const chain: string[] = [];
+  for (let at = start; at !== null && !chain.includes(at); at = globals.packages.get(at)?.parent ?? null) chain.push(at);
+  chain.push("");
+  return chain;
+}
+
+function scopeName(scope: string, globals: ModelGlobals): string {
+  return scope === "" ? "the model (global)" : `domain '${globals.packages.get(scope)?.name ?? scope}'`;
 }
 
 /** MQ3001's scope of an element (kind group, package and lower-cased name), or null when the rule does not apply. */
@@ -109,14 +152,55 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
     else if (Array.isArray(s.appliesTo) && s.appliesTo.length > 0 && !(s.appliesTo as string[]).includes(kind))
       out.push(diag("MQ2004", "error", `Stereotype '${key}' does not apply to ${kind}.`, entry, `/stereotypes/${i}`));
   });
-  // MQ2005 categories
+  const chain = vocabularyChain(json, ctx);
+  // MQ2005 categories; MQ2008 a category of a tree outside the element's chain
   if (typeof json.category === "string" && categories && !categories.has(json.category))
     out.push(diag("MQ2005", "error", `Unknown category ${json.category}.`, entry, "/category"));
-  // MQ2006 tags
-  if (vocabulary) {
+  else if (typeof json.category === "string" && categories) {
+    const scope = ctx.categoryScope.get(json.category) ?? "";
+    if (!chain.includes(scope))
+      out.push(diag("MQ2008", "error", `Category '${json.category}' is declared in the category tree of ${scopeName(scope, ctx)}, outside this element's domain chain.`, entry, "/category"));
+  }
+  // MQ2006 tags along the chain; MQ2008 a tag declared only outside it
+  if (vocabulary || ctx.tagVocabularies.size > 0) {
+    const seen = chain.map((scope) => ctx.tagVocabularies.get(scope)).filter((v): v is ScopedVocabulary => !!v);
+    const strict = seen.some((v) => v.strict);
     ((json.tags as string[] | undefined) ?? []).forEach((tag, i) => {
-      if (!vocabulary!.keys.has(tag))
-        out.push(diag("MQ2006", vocabulary!.strict ? "error" : "info", `Tag '${tag}' is not in the tag vocabulary.`, entry, `/tags/${i}`));
+      if (seen.some((v) => v.keys.has(tag))) return;
+      const outside = [...ctx.tagVocabularies].find(([, v]) => v.keys.has(tag));
+      if (outside)
+        out.push(diag("MQ2008", "error", `Tag '${tag}' is declared only in the tag vocabulary of ${scopeName(outside[0], ctx)}, outside this element's domain chain.`, entry, `/tags/${i}`));
+      else if (seen.length > 0)
+        out.push(
+          diag(
+            "MQ2006",
+            strict ? "error" : "info",
+            `Tag '${tag}' is not declared in the tag vocabulary${seen.length > 1 ? " of any domain on its chain" : ""}${strict ? ", which is strict" : ""}.`,
+            entry,
+            `/tags/${i}`,
+          ),
+        );
+    });
+  }
+  // MQ3021 a domain vocabulary redeclaring a tag key or category name of the global vocabulary or an enclosing domain's
+  if ((kind === "tag-vocabulary" || kind === "category-tree") && typeof json.package === "string") {
+    const enclosing = chain.slice(1);
+    const tags = kind === "tag-vocabulary";
+    const items = arr(tags ? json.definitions : json.categories);
+    const declared = tags ? ctx.tagVocabularies : ctx.categoryTrees;
+    items.forEach((item, i) => {
+      const value = String(tags ? item.key : item.name);
+      const scope = enclosing.find((sc) => declared.get(sc)?.keys.has(value));
+      if (scope !== undefined)
+        out.push(
+          diag(
+            "MQ3021",
+            "error",
+            `${tags ? "Tag" : "Category"} '${value}' is already declared by ${scopeName(scope, ctx)}; a domain vocabulary cannot redeclare it.`,
+            entry,
+            tags ? `/definitions/${i}/key` : `/categories/${i}/name`,
+          ),
+        );
     });
   }
   // MQ3001 duplicate names in scope (kind group and package)

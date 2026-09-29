@@ -174,6 +174,19 @@ public sealed class ResolvedModel
     /// <summary>Relations, by (package qualified name, name, id).</summary>
     public RList<RRelation> Relations { get; internal init; } = RList<RRelation>.Empty;
 
+    /// <summary>Reference types, by (name, id).</summary>
+    public RList<RReferenceType> ReferenceTypes { get; internal init; } = RList<RReferenceType>.Empty;
+
+    /// <summary>Seeds, by (name, id).</summary>
+    public RList<RSeed> Seeds { get; internal init; } = RList<RSeed>.Empty;
+
+    /// <summary>Seeds in insert order: a seed whose rows another seed's rows name comes first; ties by (dependency depth, name, id).</summary>
+    public RList<RSeed> SeedsInOrder { get; internal init; } = RList<RSeed>.Empty;
+
+    /// <summary>The declared locales (reference-types-seeds-localization.md section 3.7): the default first, then ordinal; empty
+    /// without a <c>localization</c> block.</summary>
+    public RList<RLocale> Locales { get; internal init; } = RList<RLocale>.Empty;
+
     /// <summary>Databases, by name.</summary>
     public RList<RDatabase> Databases { get; internal init; } = RList<RDatabase>.Empty;
 
@@ -187,4 +200,42 @@ public sealed class ResolvedModel
     /// <param name="id">The id.</param>
     /// <returns>The object, or <see langword="null"/>.</returns>
     public IResolvedObject? Find(string id) => ById.TryGetValue(id, out var value) ? value : null;
+}
+
+/// <summary>
+/// A declared locale (section 3.7): the element of an <c>each locale</c> unit, whose unit key is <c>locale:&lt;tag&gt;</c>, and an
+/// item of <c>model.locales</c>. It depends on the <c>localization</c> settings only.
+/// </summary>
+public sealed class RLocale : RObject
+{
+    /// <summary>The settings dependency key every locale read records.</summary>
+    public const string SettingsKey = "s:localization";
+
+    private static readonly string[] Keys = [SettingsKey];
+
+    /// <inheritdoc/>
+    public override string Kind => "locale";
+
+    /// <summary>The BCP 47 tag.</summary>
+    public string Tag { get; internal set; } = "";
+
+    /// <summary>Whether this is the default locale (the language of the element files).</summary>
+    public bool IsDefault { get; internal set; }
+
+    /// <summary>The fallback chain, starting with the locale and ending with the default.</summary>
+    public IReadOnlyList<string> Chain { get; internal set; } = [];
+
+    /// <summary>The locales of the settings, in unit order.</summary>
+    /// <param name="settings">The <c>localization</c> block, or <see langword="null"/>.</param>
+    /// <returns>The locales.</returns>
+    internal static IEnumerable<RLocale> Of(LocalizationSettings? settings) => settings is null
+        ? []
+        : Localization.LocaleChains.Ordered(settings).Select(tag => new RLocale
+        {
+            Id = "locale:" + tag,
+            Tag = tag,
+            IsDefault = string.Equals(tag, settings.DefaultLocale, StringComparison.Ordinal),
+            Chain = Localization.LocaleChains.Chain(settings, tag),
+            Dependencies = Keys,
+        });
 }

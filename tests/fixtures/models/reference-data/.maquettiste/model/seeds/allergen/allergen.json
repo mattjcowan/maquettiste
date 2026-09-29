@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../.schema/v1/seed.json",
+  "kind": "seed",
+  "id": "01JRDA00000000000000000010",
+  "name": "Allergen",
+  "target": "01JRDA00000000000000000001",
+  "columns": [
+    "code",
+    "label",
+    "01JRDA00000000000000000004"
+  ],
+  "rows": [
+    { "id": "01JRDA00000000000000000011", "values": ["gluten", "Gluten"] },
+    { "id": "01JRDA00000000000000000012", "values": ["nut", "Nuts"] },
+    { "id": "01JRDA00000000000000000013", "values": ["tree_nut", "Tree nuts", "nut"] }
+  ]
+}

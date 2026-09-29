@@ -25,6 +25,6 @@ test("vocabularies and conventions", async ({ page }) => {
   await expect(settings.getByRole("combobox", { name: "tableCase" })).toHaveValue("pascal");
 
   // The saved convention reaches the database view.
-  await page.getByRole("navigation", { name: "Workspaces" }).getByRole("button", { name: "Database", exact: true }).click();
+  await page.getByRole("navigation", { name: "Explorers" }).getByRole("button", { name: "Databases", exact: true }).click();
   await expect(page.getByRole("group", { name: "Table Invoices", exact: true })).toBeVisible();
 });

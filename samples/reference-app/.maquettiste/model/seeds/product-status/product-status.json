@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../.schema/v1/seed.json",
+  "kind": "seed",
+  "id": "01M20KGQ7VHA47ABF6NQM4FFFW",
+  "name": "ProductStatus",
+  "target": "01M2JJ5Q30GQ85ZTTVZ8WV2PRS",
+  "columns": [
+    "code",
+    "label",
+    "description"
+  ],
+  "rows": [
+    { "id": "01M22HT4TBC6BDRF815BHW92PY", "values": ["DRAFT", "Draft", "Being set up; not sellable."] },
+    { "id": "01M2E1Y2B50MBH4TBQMR79NR1F", "values": ["ACTIVE", "Active", "Sellable and replenished."] },
+    { "id": "01M1KGY3D53FYXWQ16FZTK1D72", "values": ["PHASEOUT", "Phasing out", "Sold from remaining stock, no longer replenished."] },
+    { "id": "01M22AYQTBWPDK6KBVYQD3E90H", "values": ["DISC", "Discontinued", "No longer sold."] },
+    { "id": "01M1YWCF8X2GQ1RFAM4GZC6JY8", "values": ["BLOCK", "Blocked", "Temporarily unsellable, for example after a recall."] }
+  ]
+}

@@ -86,7 +86,7 @@ internal sealed class ChangePlan
 /// moves its folder), checks expected hashes, removes references for a delete that asks for it and builds the candidate snapshot.
 /// Reads files only to carry bytes that move (database folders, sidecars) and to test whether a path is free.
 /// </summary>
-internal sealed class ChangePlanner
+internal sealed partial class ChangePlanner
 {
     private readonly ModelSnapshot _snapshot;
     private readonly ISchemaRegistry _schemas;
@@ -102,6 +102,8 @@ internal sealed class ChangePlanner
     private readonly Dictionary<string, string> _snapshotPaths = new(StringComparer.Ordinal);
     private readonly List<(int Index, string Id, ImmutableArray<string> SubIds)> _deleteChecks = [];
     private readonly Dictionary<string, string> _sidecarMoves = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _removedIds = new(StringComparer.Ordinal);
+    private HashSet<string> _batchIds = new(StringComparer.Ordinal);
     private Dictionary<string, HashSet<string>>? _sidecarUsers;
     private readonly int _parallelism;
     private CancellationToken _ct;
@@ -137,6 +139,7 @@ internal sealed class ChangePlanner
     public ChangePlan Plan(IReadOnlyList<PlannedChange> changes, CancellationToken ct)
     {
         _ct = ct;
+        _batchIds = changes.Select(c => c.Id).OfType<string>().ToHashSet(StringComparer.Ordinal);
         var outcomes = new List<ChangeOutcome>();
         for (var i = 0; i < changes.Count; i++)
         {
@@ -157,6 +160,8 @@ internal sealed class ChangePlanner
         }
 
         ModelSnapshot? candidate = null;
+        if (outcomes.All(o => o.Outcome == SaveOutcome.Saved))
+            ReconcileTranslations();
         if (outcomes.All(o => o.Outcome == SaveOutcome.Saved))
         {
             candidate = BuildCandidate();
@@ -221,7 +226,7 @@ internal sealed class ChangePlanner
 
         var modelPath = element is Database database
             ? ModelPaths.Join(FreeDatabaseFolder(database, null), "database.json")
-            : FreePath(ModelPaths.ConventionalFolder(element, DatabaseFolderOf), element, id);
+            : FreePath(ModelPaths.ConventionalFolder(element, DatabaseFolderOf, TargetStemOf), element, id);
         Stage(id, element, node, info, modelPath, outcome);
     }
 
@@ -265,7 +270,71 @@ internal sealed class ChangePlanner
         var modelPath = element is Database database
             ? MoveDatabase(current, database)
             : Relocate(current, element);
+        var previousIds = SubElementIds(id, current.Json);
         Stage(id, element, node, info, modelPath, outcome, current);
+        if (outcome.Outcome != SaveOutcome.Saved || !_working.TryGetValue(id, out var staged))
+            return;
+        var kept = DocumentReader.Scan(staged.Json).Ids.Select(x => x.Id).ToHashSet(StringComparer.Ordinal);
+        var removed = previousIds.Where(sub => !kept.Contains(sub)).ToList();
+        if (removed.Count == 0)
+            return;
+        _removedIds.UnionWith(removed);
+        DropSeedColumns(index, removed, outcome);
+    }
+
+    /// <summary>
+    /// Drops the columns naming removed attributes or ends, with their cells, from every seed that has them (section 2.7), in the
+    /// same save. Seeds the batch changes itself are left to their own operation.
+    /// </summary>
+    private void DropSeedColumns(int index, IReadOnlyCollection<string> removedIds, ChangeOutcome outcome)
+    {
+        var removed = removedIds.ToHashSet(StringComparer.Ordinal);
+        var seeds = removedIds
+            .SelectMany(sub => _snapshot.ReferencesTo(sub))
+            .Where(r => r.Field == "columns" && !_deleted.Contains(r.FromElementId) && !_batchIds.Contains(r.FromElementId))
+            .Select(r => r.FromElementId)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal);
+        foreach (var seedId in seeds)
+        {
+            if (!TryGetCurrent(seedId, null, out var seed) || seed.Element is not Seed)
+                continue;
+            var node = JsonNode.Parse(seed.Json.GetRawText())!.AsObject();
+            if (node["columns"] is not JsonArray columns)
+                continue;
+            var drop = new List<int>();
+            for (var k = 0; k < columns.Count; k++)
+            {
+                if (columns[k] is JsonValue v && v.TryGetValue<string>(out var column) && removed.Contains(column))
+                    drop.Add(k);
+            }
+
+            if (drop.Count == 0)
+                continue;
+            drop.Reverse();
+            foreach (var k in drop)
+                columns.RemoveAt(k);
+            if (node["rows"] is JsonArray rows)
+            {
+                foreach (var row in rows)
+                {
+                    if (row?["values"] is not JsonArray values)
+                        continue;
+                    foreach (var k in drop)
+                    {
+                        if (k < values.Count)
+                            values.RemoveAt(k);
+                    }
+                }
+            }
+
+            var info = KindInfo.Get(ElementKind.Seed);
+            var repoPath = _paths.ToRepoPath(seed.ModelPath);
+            if (Read(node, info, repoPath, outcome) is not { } element)
+                return;
+            _changeByElement.TryAdd(seedId, index);
+            Stage(seedId, element, node, info, seed.ModelPath, outcome, seed);
+        }
     }
 
     private void Delete(int index, PlannedChange change, ChangeOutcome outcome)
@@ -279,10 +348,22 @@ internal sealed class ChangePlanner
         Touch(id, current);
         if (!CheckHash(id, change.ExpectedHash, outcome))
             return;
+        DeleteCore(index, id, current, change.Resolution, outcome);
+    }
 
+    private void DeleteCore(int index, string id, Working current, DeleteResolution resolution, ChangeOutcome outcome)
+    {
         var subIds = SubElementIds(id, current.Json);
-        if (change.Resolution == DeleteResolution.RemoveReferences)
-            RemoveReferences(index, id, subIds, outcome);
+        // Seeds belong to their target (section 2.7): they are deleted with it, and the references to their rows are judged like the
+        // target's own. Seeds the batch names itself are left to their own operation.
+        var owned = _snapshot.ReferencesTo(id)
+            .Where(r => r.Owning && !_deleted.Contains(r.FromElementId) && !_batchIds.Contains(r.FromElementId))
+            .Select(r => r.FromElementId)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        if (resolution == DeleteResolution.RemoveReferences)
+            RemoveReferences(index, id, subIds, outcome, owned);
         if (outcome.Outcome != SaveOutcome.Saved)
             return;
 
@@ -299,13 +380,28 @@ internal sealed class ChangePlanner
         }
 
         _deleteChecks.Add((index, id, subIds));
+        _removedIds.Add(id);
+        _removedIds.UnionWith(subIds);
+        foreach (var seedId in owned)
+        {
+            if (!TryGetCurrent(seedId, null, out var seed))
+                continue;
+            _changeByElement.TryAdd(seedId, index);
+            Touch(seedId, seed);
+            DeleteCore(index, seedId, seed, resolution, outcome);
+        }
+
+        // Columns of other seeds that name the deleted element's attributes or ends go with them (section 2.7).
+        if (outcome.Outcome == SaveOutcome.Saved && subIds.Length > 0)
+            DropSeedColumns(index, subIds, outcome);
     }
 
-    private void RemoveReferences(int index, string id, ImmutableArray<string> subIds, ChangeOutcome outcome)
+    private void RemoveReferences(int index, string id, ImmutableArray<string> subIds, ChangeOutcome outcome, IReadOnlyCollection<string> owned)
     {
         var references = subIds.Prepend(id)
             .SelectMany(target => _snapshot.ReferencesTo(target))
-            .Where(r => r.FromElementId != id && !_deleted.Contains(r.FromElementId))
+            .Where(r => r.FromElementId != id && !_deleted.Contains(r.FromElementId) && !r.Owning && !owned.Contains(r.FromElementId))
+            .Where(r => r.Field != "columns" || _snapshot.Get<Seed>(r.FromElementId) is null) // seed columns are dropped with their cells
             .Distinct()
             .ToList();
         foreach (var group in references.GroupBy(r => r.FromElementId, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal))
@@ -358,6 +454,15 @@ internal sealed class ChangePlanner
             pointer = "/members/" + segments[1];
         if (!JsonPointer.TryGetParent(root, pointer, out var parent, out var last))
             return NotFound;
+        // A seed cell keeps its column: an end cell or a single code becomes null (a required end then fails MQ7003); a code in a
+        // collection cell is dropped from the list.
+        if (referrerKind == ElementKind.Seed && segments.Length == 4 && segments[0] == "rows" && segments[2] == "values"
+            && parent is JsonArray cells && JsonPointer.TryIndex(last, out var cell) && cell < cells.Count)
+        {
+            cells[cell] = null;
+            return null;
+        }
+
         switch (parent)
         {
             case JsonObject obj:
@@ -472,8 +577,8 @@ internal sealed class ChangePlanner
     private string Relocate(Working current, Element element)
     {
         var folder = ModelPaths.FolderOf(current.ModelPath);
-        var oldConventional = ModelPaths.ConventionalFolder(current.Element, DatabaseFolderOf);
-        var newConventional = ModelPaths.ConventionalFolder(element, DatabaseFolderOf);
+        var oldConventional = ModelPaths.ConventionalFolder(current.Element, DatabaseFolderOf, TargetStemOf);
+        var newConventional = ModelPaths.ConventionalFolder(element, DatabaseFolderOf, TargetStemOf);
         if (folder == oldConventional && newConventional != oldConventional)
             folder = newConventional; // a table, view or sequence moved to another database follows it
         if (folder == ModelPaths.FolderOf(current.ModelPath) && ModelPaths.FileName(current.Element, false) == ModelPaths.FileName(element, false))
@@ -813,6 +918,9 @@ internal sealed class ChangePlanner
         !_deleted.Contains(databaseId) && TryGetCurrent(databaseId, null, out var database) && database.Element is Database
             ? ModelPaths.FolderOf(database.ModelPath)
             : null;
+
+    private string? TargetStemOf(string targetId) =>
+        !_deleted.Contains(targetId) && TryGetCurrent(targetId, null, out var target) ? ModelPaths.Stem(target.Element) : null;
 
     private string FreePath(string folder, Element element, string id)
     {

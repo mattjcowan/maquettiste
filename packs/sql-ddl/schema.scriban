@@ -7,7 +7,10 @@
 # its table script declares every foreign key.
 include "_sql.scriban"
 include "_objects.scriban"
+include "_reference.scriban"
 db = database
+natives = []
+native_type_prelude(db, natives)
 tables = db.tables
 spec = dependency_spec(tables)
 order = ddl_order spec
@@ -38,6 +41,10 @@ PRAGMA foreign_keys = ON;
 {{- for s in db.sequences }}
 
 {{ sequence_sql(s, db) }}{{ go }}
+{{- end }}
+{{- for s in natives }}
+
+{{ s }}
 {{- end }}
 {{- for i in order }}
 {{- t = tables[i] }}

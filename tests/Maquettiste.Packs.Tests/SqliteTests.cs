@@ -32,14 +32,14 @@ public sealed partial class SqliteTests
 
         // The schema script, then the seed (twice); the first migration, then the seed; every table script in isolation (SQLite
         // accepts forward foreign-key references, so any order works).
-        var query = "\nSELECT 'tables=' || count(*) FROM sqlite_master WHERE type = 'table';\nSELECT 'statuses=' || count(*) FROM invoice_statuses;\n";
-        // The seed runs twice: its lookup rows are upserts, so a second run on the same database succeeds.
+        var query = "\nSELECT 'tables=' || count(*) FROM sqlite_master WHERE type = 'table' AND name <> 'payment_methods';\nSELECT 'methods=' || count(*) FROM payment_methods;\n";
+        // The seed runs twice: it reconciles the payment_methods lookup table and upserts its rows, so a second run succeeds.
         foreach (var script in new[] { schema + seed + seed + query, migration + seed + query })
         {
             var run = await ProcessRunner.RunAsync(sqlite3, ["-bail", ":memory:"], folder, TimeSpan.FromMinutes(1), script);
             Assert.True(run.ExitCode == 0, run.Output);
             Assert.Contains("tables=" + tables.Count, run.Output, StringComparison.Ordinal);
-            Assert.Contains("statuses=4", run.Output, StringComparison.Ordinal);
+            Assert.Contains("methods=3", run.Output, StringComparison.Ordinal);
         }
 
         var all = string.Concat(tables.Select(File.ReadAllText));

@@ -1,6 +1,8 @@
-// The Entities workspace (phase2-design.md 4.8): a diagram picker (the model's diagrams plus a
-// virtual "Package: <name>" view of every entity in a package) and the React Flow canvas.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+// The Domain model screen (phase2-design.md 4.8): a diagram picker (the model's diagrams plus a
+// virtual "All of <domain>" view of every entity in a domain) and the React Flow canvas. In step with the explorer
+// (explorer-redesign.md 3.5): explorer rows dropped on a diagram become members, and Show on canvas, go to definition
+// and history centre the card they select.
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
   Background,
   Controls,
@@ -14,7 +16,7 @@ import {
   type EdgeChange,
 } from "@xyflow/react";
 import { Download, LayoutGrid, Link2, Plus, Share2 } from "lucide-react";
-import { applySaveResult, keys, useElement, useElements, useIndex, useValidation } from "@/api/queries";
+import { applySaveResult, keys, loadElement, useElement, useElements, useIndex, useValidation } from "@/api/queries";
 import * as endpoints from "@/api/endpoints";
 import type { CategoryTreeDoc, DiagramDoc, EntityDoc, ModelJson, RelationDoc } from "@/api/types";
 import { useEditor } from "@/state/store";
@@ -26,6 +28,8 @@ import { loadPositions, measuredSizes, savePositions, type StoredPositions } fro
 import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
 import { Toolbar, EmptyState } from "@/components/ui/misc";
+import { CreateButtons } from "@/explorer/NewElementDialog";
+import { domainOfRow, FIRST_RUN_CREATE } from "@/explorer/create";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import {
@@ -49,17 +53,23 @@ import {
   applySelectChanges,
   cardPosition,
   expandRelated,
+  ELEMENTS_MIME,
   layoutInput,
+  NODE_HEIGHT,
+  NODE_WIDTH,
   needsLayout,
   parseView,
   relationEnds,
+  relationLookup,
   selectedEntities,
   storedPosition,
   viewElements,
+  ALL_OF_CAP,
   viewKey as keyOfView,
 } from "@/canvas/model";
-import { createWithMember } from "./actions";
+import { addToDiagram, createWithMember } from "./actions";
 import { NewEntityDialog, NewRelationDialog, type NewRelationInput } from "./dialogs";
+import { allOf, DOMAIN_VIEWS_LABEL, KIND_LABELS } from "@/model/labels";
 
 const nodeTypes = { entity: EntityNode };
 const edgeTypes = { relation: RelationEdge };
@@ -91,12 +101,19 @@ function EntitiesCanvas() {
 
   const diagrams = lookup.ofKind("diagram");
   const packages = lookup.ofKind("package");
+  // "All of <domain>" only for a domain of at most ALL_OF_CAP entities (explorer-redesign.md 1.6).
+  const allOfDomains = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of lookup.rows) if (r.kind === "entity" && r.package) counts.set(r.package, (counts.get(r.package) ?? 0) + 1);
+    return packages.filter((p) => (counts.get(p.id) ?? 0) <= ALL_OF_CAP);
+  }, [lookup, packages]);
   const view = parseView(activeDiagram);
 
   useEffect(() => {
     if (!activeDiagram && index.data) {
-      if (diagrams.length) openDiagram(diagrams[0].id);
-      else if (packages.length) openDiagram(`pkg:${packages[0].id}`);
+      // The default pick keeps the editors (see openDiagram): an editor opened in the first second after load stays.
+      if (diagrams.length) openDiagram(diagrams[0].id, { keepEditors: true });
+      else if (packages.length) openDiagram(`pkg:${packages[0].id}`, { keepEditors: true });
     }
   }, [activeDiagram, index.data, diagrams, packages, openDiagram]);
 
@@ -219,7 +236,7 @@ function EntitiesCanvas() {
             type: "relation" as const,
             ...ends,
             selected: selection.includes(rid),
-            ariaLabel: `Relation ${relation.name}`,
+            ariaLabel: `${KIND_LABELS.relation} ${relation.name}`,
             data: { relation, notation: display.notation },
           };
         })
@@ -309,6 +326,70 @@ function EntitiesCanvas() {
     });
     return () => cancelAnimationFrame(frame);
   }, [fitPending, nodes, flow]);
+
+  // ------------------------------------------------------------------ in step with the explorer (3.5)
+  const relations = useMemo(() => relationLookup(lookup.rows), [lookup]);
+  const [dropping, setDropping] = useState(false);
+  const onCanvasDragOver = (e: DragEvent) => {
+    if (!e.dataTransfer.types.includes(ELEMENTS_MIME)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = view?.type === "diagram" ? "copy" : "none";
+    setDropping(true);
+  };
+  const onCanvasDrop = async (e: DragEvent) => {
+    setDropping(false);
+    const raw = e.dataTransfer.getData(ELEMENTS_MIME);
+    if (!raw) return;
+    e.preventDefault();
+    let ids: string[] = [];
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) ids = parsed.filter((x): x is string => typeof x === "string");
+    } catch {
+      return;
+    }
+    if (view?.type !== "diagram") {
+      store.getState().notify("Choose a diagram to drop elements on; a domain's view already shows all of its entities.");
+      return;
+    }
+    const kindOf = (id: string) => lookup.byId.get(id)?.kind;
+    const dropped = ids.filter((id) => kindOf(id) === "relation");
+    // A dropped relation brings its ends, so its edge has somewhere to go.
+    const entities = [...ids.filter((id) => kindOf(id) === "entity"), ...dropped.flatMap((r) => relations.endsOf(r) ?? [])];
+    if (!entities.length) {
+      store.getState().notify("Only entities and relationships can go on this diagram.");
+      return;
+    }
+    const at = flow.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+    const added = await addToDiagram(services, view.id, { entities, relations: dropped, lookup: relations, at: { x: at.x - NODE_WIDTH / 2, y: at.y - 20 } });
+    store
+      .getState()
+      .notify(added.length ? `Added ${added.length === 1 ? "1 element" : `${added.length} elements`} to the diagram.` : "Already on the diagram.");
+  };
+
+  // Centre a card on request (Show on canvas, go to definition, history). A request waits for its card to be measured,
+  // and one not answered within a few seconds (the element is not on this canvas) is dropped.
+  const centerRequest = useEditor(store, (s) => s.centerRequest);
+  const handled = useRef({ nonce: 0, seen: 0, at: 0 });
+  const [centered, setCentered] = useState<string | null>(null);
+  useEffect(() => {
+    if (!centerRequest || handled.current.nonce === centerRequest.nonce) return;
+    if (handled.current.seen !== centerRequest.nonce) handled.current = { nonce: 0, seen: centerRequest.nonce, at: performance.now() };
+    if (performance.now() - handled.current.at > 3000) {
+      handled.current.nonce = centerRequest.nonce;
+      return;
+    }
+    const id = lookup.byId.get(centerRequest.id)?.kind === "relation" ? (relations.endsOf(centerRequest.id)?.[0] ?? centerRequest.id) : centerRequest.id;
+    const node = flow.getInternalNode(id);
+    if (!node?.measured.width) return;
+    handled.current.nonce = centerRequest.nonce;
+    const p = node.internals.positionAbsolute;
+    void flow.setCenter(p.x + (node.measured.width ?? NODE_WIDTH) / 2, p.y + (node.measured.height ?? NODE_HEIGHT) / 2, {
+      zoom: Math.max(flow.getZoom(), 0.75),
+      duration: 0,
+    });
+    setCentered(centerRequest.id);
+  }, [centerRequest, nodes, flow, lookup, relations]);
 
   const [newEntityOpen, setNewEntityOpen] = useState(false);
   // The palette's New entity (4.8) opens the same dialog as the toolbar button.
@@ -407,8 +488,7 @@ function EntitiesCanvas() {
         const relationIds = [...new Set(refs.map((r) => r.fromElementId))].filter((id) => lookup.byId.get(id)?.kind === "relation");
         return Promise.all(
           relationIds.map(
-            async (id) =>
-              (await queryClient.fetchQuery({ queryKey: keys.element(id), queryFn: () => endpoints.getElement(id) })).json as unknown as RelationDoc,
+            async (id) => (await queryClient.fetchQuery({ queryKey: keys.element(id), queryFn: () => loadElement(id) })).json as unknown as RelationDoc,
           ),
         );
       },
@@ -425,10 +505,27 @@ function EntitiesCanvas() {
     store.getState().notify(`Added ${added.length} related elements.`);
   };
 
-  if (index.isPending) return <EmptyState title="Loading the model…" />;
-  if (!view) return <EmptyState title="No diagrams or packages yet">Create a package or a diagram to start drawing.</EmptyState>;
+  // "New entity" starts on the current domain, by the explorer's rule (create.ts currentDomain): the selected
+  // element's domain (a seed follows its target; an element in no domain gives none), else the view's.
+  const newEntityDomain =
+    selection[0] && lookup.byId.has(selection[0])
+      ? domainOfRow(lookup.byId, selection[0])
+      : view?.type === "package"
+        ? view.id
+        : (diagramJson?.package ?? null);
 
-  const viewName = view.type === "diagram" ? (diagramJson?.name ?? lookup.nameOf(view.id) ?? "Diagram") : `Package: ${lookup.nameOf(view.id) ?? "?"}`;
+  if (index.isPending) return <EmptyState title="Loading the model…" />;
+  if (!view)
+    return isEmptyModel(lookup.rows) ? (
+      <FirstRunPanel />
+    ) : (
+      <EmptyState title="No diagrams or domains yet">
+        <p className="mb-2">Create a domain or a diagram to start drawing.</p>
+        <CreateButtons kinds={["package", "diagram"]} testid="canvas-create" />
+      </EmptyState>
+    );
+
+  const viewName = view.type === "diagram" ? (diagramJson?.name ?? lookup.nameOf(view.id) ?? "Diagram") : allOf(lookup.nameOf(view.id) ?? "?");
   const sourceName = connecting ? (lookup.nameOf(connecting.source) ?? "") : "";
   const targetName = connecting ? (lookup.nameOf(connecting.target) ?? "") : "";
 
@@ -446,10 +543,10 @@ function EntitiesCanvas() {
               </option>
             ))}
           </optgroup>
-          <optgroup label="Package views">
-            {packages.map((p) => (
+          <optgroup label={DOMAIN_VIEWS_LABEL}>
+            {allOfDomains.map((p) => (
               <option key={p.id} value={`pkg:${p.id}`}>
-                Package: {p.name}
+                {allOf(p.name)}
               </option>
             ))}
           </optgroup>
@@ -529,6 +626,11 @@ function EntitiesCanvas() {
         data-testid="canvas"
         data-layout-ms={layoutMs ?? undefined}
         data-node-count={nodes.length}
+        data-centered={centered ?? undefined}
+        data-drop-target={dropping || undefined}
+        onDragOver={onCanvasDragOver}
+        onDragLeave={() => setDropping(false)}
+        onDrop={(e) => void onCanvasDrop(e)}
         aria-label={`Canvas: ${viewName}`}
         role="region"
       >
@@ -564,10 +666,11 @@ function EntitiesCanvas() {
         </ReactFlow>
       </div>
       <NewEntityDialog
+        key={newEntityOpen ? `open:${newEntityDomain ?? ""}` : "closed"}
         open={newEntityOpen}
         onOpenChange={setNewEntityOpen}
         packages={packages}
-        defaultPackage={view.type === "package" ? view.id : (diagramJson?.package ?? null)}
+        defaultPackage={newEntityDomain}
         onCreate={createEntity}
       />
       {connecting ? (
@@ -580,6 +683,25 @@ function EntitiesCanvas() {
           onCreate={createRelation}
         />
       ) : null}
+    </div>
+  );
+}
+
+/** Only settings documents (vocabularies, stereotypes) or nothing at all: the model has no element to show yet. */
+export function isEmptyModel(rows: readonly { kind: string }[]): boolean {
+  return rows.every((r) => r.kind === "tag-vocabulary" || r.kind === "category-tree" || r.kind === "stereotype");
+}
+
+/** The first-run panel of an empty model: every New action, in the order a model is usually built. */
+function FirstRunPanel() {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center" data-testid="first-run">
+      <h2 className="text-15 font-semibold text-primary">Start the model</h2>
+      <p className="max-w-md text-13 text-secondary">
+        Create a domain first, then its entities, enums, value objects and custom types. Reference types hold rows managed as data; a database maps the model
+        onto tables; a diagram shows a chosen set of entities.
+      </p>
+      <CreateButtons kinds={FIRST_RUN_CREATE} testid="first-run-create" />
     </div>
   );
 }

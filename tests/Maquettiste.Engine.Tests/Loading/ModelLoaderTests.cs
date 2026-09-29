@@ -205,6 +205,78 @@ public sealed class ModelLoaderTests
     }
 
     [Fact]
+    public async Task Explorer_folders_load_from_the_project_settings()
+    {
+        using var h = new LoaderHarness();
+        h.Write("maquettiste.json", """
+            {
+              "formatVersion": 1,
+              "explorer": {
+                "folders": [
+                  { "label": "Agents", "icon": "bot", "kind": "entity", "match": { "stereotype": "acme-agent" } },
+                  { "label": "Core", "kind": "entity", "match": { "tag": "core" } }
+                ]
+              }
+            }
+
+            """);
+
+        var model = (await LoadAsync(h.NewLoader())).Snapshot;
+
+        // The hand-written text is not in canonical form (MQ1003); nothing else is reported.
+        Assert.Empty(model.LoadDiagnostics.Where(d => d.Rule != "MQ1003").Select(d => $"{d.Rule} {d.JsonPointer} {d.Message}"));
+        var folders = model.Settings.Explorer.Folders;
+        Assert.Equal(2, folders.Count);
+        Assert.Equal(("Agents", "bot", "entity", "acme-agent"), (folders[0].Label, folders[0].Icon, folders[0].Kind, folders[0].Match.Stereotype));
+        Assert.Equal((null, "core"), (folders[1].Icon, folders[1].Match.Tag));
+    }
+
+    [Fact]
+    public async Task Explorer_scopes_load_from_the_project_settings()
+    {
+        using var h = new LoaderHarness();
+        h.Write("maquettiste.json", """
+            {
+              "formatVersion": 1,
+              "explorer": {
+                "scopes": [
+                  { "name": "Billing core", "kinds": ["entity"], "domain": "01J92P0V0000000000000000AA", "tags": ["core"], "errors": true },
+                  { "name": "Everything" }
+                ]
+              }
+            }
+
+            """);
+
+        var model = (await LoadAsync(h.NewLoader())).Snapshot;
+
+        Assert.Empty(model.LoadDiagnostics.Where(d => d.Rule != "MQ1003").Select(d => $"{d.Rule} {d.JsonPointer} {d.Message}"));
+        var scopes = model.Settings.Explorer.Scopes;
+        Assert.Equal(2, scopes.Count);
+        Assert.Equal(("Billing core", "entity", "01J92P0V0000000000000000AA", "core", true), (scopes[0].Name, scopes[0].Kinds[0], scopes[0].Domain, scopes[0].Tags[0], scopes[0].Errors));
+        Assert.Equal(("Everything", 0, null, false), (scopes[1].Name, scopes[1].Kinds.Count, scopes[1].Diagram, scopes[1].Errors));
+        Assert.Empty(model.Settings.Explorer.Folders);
+    }
+
+    [Fact]
+    public async Task An_explorer_folder_with_two_conditions_is_a_schema_error()
+    {
+        using var h = new LoaderHarness();
+        h.Write("maquettiste.json", """
+            {
+              "formatVersion": 1,
+              "explorer": { "folders": [ { "label": "Both", "kind": "entity", "match": { "stereotype": "a", "tag": "b" } } ] }
+            }
+
+            """);
+
+        var model = (await LoadAsync(h.NewLoader())).Snapshot;
+
+        Assert.Contains(model.LoadDiagnostics, d => d.FilePath == ".maquettiste/maquettiste.json");
+        Assert.Empty(model.Settings.Explorer.Folders);
+    }
+
+    [Fact]
     public async Task Extensions_and_rule_scripts_load_in_path_order_and_a_bad_extension_is_MQ5004()
     {
         using var h = new LoaderHarness();

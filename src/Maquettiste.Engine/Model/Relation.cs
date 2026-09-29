@@ -65,6 +65,12 @@ public sealed record RelationEnd
     /// </summary>
     public string Navigation { get; init; } = "";
 
+    /// <summary>The end's display name, translatable like an element's.</summary>
+    public string? DisplayName { get; init; }
+
+    /// <summary>The end's plural name (to-many ends only; a to-one end's is never read).</summary>
+    public string? PluralName { get; init; }
+
     /// <summary>The lower bound: 0 or 1.</summary>
     public int Min { get; init; }
 

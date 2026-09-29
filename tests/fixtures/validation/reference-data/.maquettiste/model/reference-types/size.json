@@ -1,0 +1,14 @@
+{
+  "$schema": "../../.schema/v1/reference-type.json",
+  "kind": "reference-type",
+  "id": "01JVRT00000000000000000011",
+  "name": "Size",
+  "code": {
+    "id": "01JVRT00000000000000000012",
+    "length": 4
+  },
+  "label": {
+    "id": "01JVRT00000000000000000013",
+    "length": 32
+  }
+}

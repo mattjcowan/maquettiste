@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../.schema/v1/seed.json",
+  "kind": "seed",
+  "id": "01JVSS00000000000000000002",
+  "name": "Country",
+  "target": "01JVSE00000000000000000002",
+  "columns": [
+    "01JVSE00000000000000000021",
+    "01JVSE00000000000000000022",
+    "01JVSE00000000000000000099",
+    "label"
+  ],
+  "rows": [
+    { "id": "01JVSS00000000000000000021", "values": ["fr", "France"] },
+    { "id": "01JVSS00000000000000000022", "values": [null, "Nowhere"] },
+    { "id": "01JVSS00000000000000000023", "values": ["fr", "France again"] },
+    { "id": "01JVSS00000000000000000024", "values": ["de", "Germany", null, null, "one too many"] },
+    { "id": "01JVSS00000000000000000025", "values": ["itl", "Italy"] }
+  ]
+}

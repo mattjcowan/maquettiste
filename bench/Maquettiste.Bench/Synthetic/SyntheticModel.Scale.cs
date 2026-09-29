@@ -90,7 +90,73 @@ internal sealed partial class SyntheticModel
         BuildLookups(random);
         BuildDesignedObjects(random);
         BuildDiagrams(random);
+        if (_options.DomainVocabularies)
+            BuildDomainVocabularies(new SeededRandom(0xD0CA_B000_0000_0000UL ^ (ulong)(uint)_options.Seed));
     }
+
+    /// <summary>
+    /// The global tag vocabulary and category tree, one of each per domain (keys and names prefixed with the domain's kebab name, so
+    /// no domain redeclares an enclosing one's: MQ3021), and a tag and a category on about a third of the entities, drawn from each
+    /// entity's domain chain (MQ2008).
+    /// </summary>
+    private void BuildDomainVocabularies(SeededRandom random)
+    {
+        var tagsByScope = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        var categoriesByScope = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        void AddScope(string scope, string? package, string name, string prefix)
+        {
+            var keys = new List<string>();
+            for (var k = 0; k < 3; k++)
+                keys.Add(prefix + Vocabulary.Nouns[random.Next(Vocabulary.Nouns.Length)].ToLowerInvariant() + "-" + k.ToString(CultureInfo.InvariantCulture));
+            if (package is null)
+            {
+                // The tags the model already uses (the lookup entities', the example packs' models) are declared globally.
+                var used = _elements.SelectMany(e => e.Tags.Concat(e is Entity en ? en.Attributes.SelectMany(x => x.Tags) : []));
+                keys.AddRange(used.Distinct(StringComparer.Ordinal).Where(t => !keys.Contains(t, StringComparer.Ordinal)).Order(StringComparer.Ordinal));
+            }
+            tagsByScope[scope] = keys;
+            _elements.Add(new TagVocabulary
+            {
+                Id = _ids.Next(), Name = name, Package = package,
+                Definitions = [.. keys.Select(k => new TagDefinition { Key = k })],
+            });
+            var categories = new List<Category>();
+            for (var c = 0; c < 2; c++)
+                categories.Add(new Category { Id = _ids.Next(), Name = prefix.Length == 0 ? "Shared " + (c + 1).ToString(CultureInfo.InvariantCulture) : name + " " + (c + 1).ToString(CultureInfo.InvariantCulture) });
+            categoriesByScope[scope] = [.. categories.Select(c => c.Id)];
+            _elements.Add(new CategoryTree { Id = _ids.Next(), Name = name, Package = package, Categories = categories });
+        }
+
+        AddScope("", null, "Tags", "");
+        foreach (var package in _packages)
+            AddScope(package.Id, package.Id, package.Name, Kebab(package.Name) + "-");
+
+        var parentOf = _packages.ToDictionary(p => p.Id, p => p.Parent, StringComparer.Ordinal);
+        var positions = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var i = 0; i < _elements.Count; i++)
+            positions.TryAdd(_elements[i].Id, i);
+        for (var i = 0; i < _entities.Count; i++)
+        {
+            var entity = _entities[i];
+            if (!random.Chance(0.3))
+                continue;
+            var chain = new List<string> { "" };
+            for (var p = entity.Package; p is not null; p = parentOf.GetValueOrDefault(p))
+                chain.Add(p);
+            var tags = tagsByScope[chain[random.Next(chain.Count)]];
+            var categories = categoriesByScope[chain[random.Next(chain.Count)]];
+            var tag = tags[random.Next(tags.Count)];
+            var tagged = entity with
+            {
+                Tags = entity.Tags.Contains(tag, StringComparer.Ordinal) ? entity.Tags : [.. entity.Tags, tag],
+                Category = entity.Category ?? categories[random.Next(categories.Count)],
+            };
+            _entities[i] = tagged;
+            _elements[positions[entity.Id]] = tagged;
+        }
+    }
+
+    private static string Kebab(string name) => Maquettiste.Engine.Loading.ModelPaths.Kebab(name);
 
     private void BuildLookups(SeededRandom random)
     {

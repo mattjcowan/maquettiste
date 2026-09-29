@@ -54,7 +54,7 @@ const contract: Middleware = {
     if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
       request.headers.set("Content-Type", "application/json");
     }
-    request.headers.set("Accept", "application/json, application/problem+json, text/x-diff");
+    request.headers.set("Accept", "application/json, application/problem+json, text/x-diff, text/csv");
     return request;
   },
   async onResponse({ request, response }) {
@@ -74,6 +74,10 @@ const contract: Middleware = {
     if (!path.startsWith("/api/")) return response;
     if (response.status === 204 || response.status === 304) return response;
     if (/\/api\/generate\/plan\/[^/]+\/diff$/.test(path) && /^text\/x-diff\b/i.test(contentType) && response.ok) {
+      return response;
+    }
+    // A seed's CSV export (reference-types-seeds-localization.md 2.3) is text/csv.
+    if (/\/api\/seeds\/[^/]+\/csv$/.test(path) && request.method === "GET" && /^text\/csv\b/i.test(contentType) && response.ok) {
       return response;
     }
     if (!JSON_TYPE.test(contentType)) {

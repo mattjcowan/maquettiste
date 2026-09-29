@@ -3,17 +3,6 @@ displayName: Fulfillment and shipping
 description: Getting orders out the door - pick waves and pick lists, shipments and packages, carriers' services and rates, tracking, own-fleet delivery routes and freight claims.
 
 enums:
-  ShipmentStatus:
-    description: Lifecycle of a shipment.
-    members:
-      Planned: PLAN | Created from an order, not yet picked.
-      Picking: PICK | Being picked.
-      Packed: PACK | Packed and labeled.
-      Shipped: SHIP | Handed to the carrier or loaded on a route.
-      InTransit: TRANSIT | Moving, per carrier tracking.
-      Delivered: DLVD | Delivered to the customer.
-      DeliveryException: EXCEPT | Delayed, damaged or refused.
-      Cancelled: CANCEL | Cancelled before shipping.
   FreightTerms:
     description: Incoterms 2020 rule agreed for a shipment, deciding who pays freight and carries the risk.
     members:
@@ -24,6 +13,20 @@ enums:
       DeliveredAtPlace: DAP | Seller delivers to the named place, unloaded by the buyer.
       DeliveredDutyPaid: DDP | Seller delivers cleared for import, duties paid.
 
+referenceTypes:
+  ShipmentStatus:
+    description: Lifecycle of a shipment.
+    code: 7
+    rows:
+      PLAN: Planned | Created from an order, not yet picked.
+      PICK: Picking | Being picked.
+      PACK: Packed | Packed and labeled.
+      SHIP: Shipped | Handed to the carrier or loaded on a route.
+      TRANSIT: In transit | Moving, per carrier tracking.
+      DLVD: Delivered | Delivered to the customer.
+      EXCEPT: Delivery exception | Delayed, damaged or refused.
+      CANCEL: Cancelled | Cancelled before shipping.
+
 entities:
   Shipment:
     description: Goods leaving a warehouse for one destination, on a carrier or an own-fleet route.
@@ -31,7 +34,7 @@ entities:
     tags: [transactional, integration]
     attributes:
       shipmentNumber: string(20)! unique | Shipment number printed on the packing slip.
-      status: ShipmentStatus! default=Planned | Lifecycle state.
+      status: ShipmentStatus! default=PLAN | Lifecycle state.
       shipToAddress: Address! | Delivery address.
       freightTerms: FreightTerms | Incoterm of the shipment.
       trackingNumber: string(60) indexed | Master tracking or PRO number.
@@ -51,9 +54,7 @@ entities:
       lines: ShipmentLine | Order lines shipped.
       packages: ShipmentPackage ordered | Cartons and pallets.
     mapping:
-      description: Shipment status goes through a lookup table; the delivery address columns get a ship_to_ prefix.
-      storage:
-        status: lookup
+      description: Shipment status is a reference type stored through a lookup table; the delivery address columns get a ship_to_ prefix.
       prefix:
         shipToAddress: ship_to_
 

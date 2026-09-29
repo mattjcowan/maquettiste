@@ -18,6 +18,9 @@ internal enum ModelFileKind
     /// <summary><c>extensions/rules/*.js</c>.</summary>
     RuleScript,
 
+    /// <summary><c>model/locales/**/*.json</c>: a locale shard, which is not an element.</summary>
+    LocaleShard,
+
     /// <summary>A description sidecar referenced by an element (<c>"description": { "file": … }</c>).</summary>
     Sidecar,
 }
@@ -117,6 +120,8 @@ internal sealed class ModelPaths
         var segments = modelPath.Split('/');
         if (segments.Any(s => s.Length == 0 || s[0] == '.'))
             return null; // hidden files and folders, including the engine's own temp files
+        if (segments.Length >= 4 && segments[0] == "model" && segments[1] == "locales" && modelPath.EndsWith(".json", StringComparison.Ordinal))
+            return ModelFileKind.LocaleShard;
         if (segments.Length >= 2 && segments[0] == "model" && modelPath.EndsWith(".json", StringComparison.Ordinal))
             return ModelFileKind.Element;
         if (segments.Length == 2 && segments[0] == "extensions" && modelPath.EndsWith(".json", StringComparison.Ordinal))
@@ -193,7 +198,8 @@ internal sealed class ModelPaths
     public static string Suffix(string id) => "-" + (id.Length >= 6 ? id[^6..] : id).ToLowerInvariant();
 
     /// <summary>
-    /// The file name the element should have: the kind's fixed name, else <c>&lt;stem&gt;.json</c>; with <paramref name="suffixed"/>,
+    /// The file name the element should have: the kind's fixed name (a domain's tag vocabulary or category tree prefixes it with its
+    /// own stem and a hyphen), else <c>&lt;stem&gt;.json</c>; with <paramref name="suffixed"/>,
     /// the collision form <c>&lt;stem&gt;-&lt;id6&gt;.json</c>.
     /// </summary>
     /// <param name="element">The element.</param>
@@ -204,6 +210,8 @@ internal sealed class ModelPaths
         if (element.Kind == ElementKind.Database)
             return "database.json"; // a database collides at the folder level (DatabaseFolderName)
         var stem = KindInfo.Get(element.Kind).FixedFileName is { } fixedName ? fixedName[..^".json".Length] : Stem(element);
+        if (element is TagVocabulary { Package: not null } or CategoryTree { Package: not null })
+            stem = Stem(element) + "-" + stem; // a domain's vocabulary (explorer-redesign.md section 1.11): <name>-tags.json, <name>-categories.json
         return stem + (suffixed ? Suffix(element.Id) : "") + ".json";
     }
 
@@ -213,12 +221,13 @@ internal sealed class ModelPaths
     /// <summary>
     /// The conventional folder of an element (engine-design.md section 2.2). A database's folder is <c>model/databases/&lt;stem&gt;</c>
     /// (a collision adds the id suffix, see <see cref="DatabaseFolder"/>); tables, views and sequences live in their database's
-    /// actual folder, found through <paramref name="databaseFolder"/>.
+    /// actual folder, found through <paramref name="databaseFolder"/>; a seed lives in <c>model/seeds/&lt;target stem&gt;</c>.
     /// </summary>
     /// <param name="element">The element.</param>
     /// <param name="databaseFolder">Returns the model-relative folder of a database id, or <see langword="null"/> when unknown.</param>
+    /// <param name="targetStem">Returns the file stem of a seed's target, or <see langword="null"/> when unknown (the lowercase id is used).</param>
     /// <returns>The model-relative folder.</returns>
-    public static string ConventionalFolder(Element element, Func<string, string?> databaseFolder)
+    public static string ConventionalFolder(Element element, Func<string, string?> databaseFolder, Func<string, string?>? targetStem = null)
     {
         string Under(string databaseId, string child) =>
             (databaseFolder(databaseId) ?? DatabaseFolder(databaseId.ToLowerInvariant(), null)) + "/" + child;
@@ -229,6 +238,7 @@ internal sealed class ModelPaths
             Table t => Under(t.Database, "tables"),
             View v => Under(v.Database, "views"),
             Sequence s => Under(s.Database, "sequences"),
+            Seed seed => KindInfo.SeedsFolder + "/" + (targetStem?.Invoke(seed.Target) ?? seed.Target.ToLowerInvariant()),
             _ => KindInfo.Get(element.Kind).Folder,
         };
     }
@@ -256,7 +266,9 @@ internal sealed class ModelPaths
         }
 
         var name = FileNameOf(modelPath);
-        return FolderOf(modelPath) == folder && (name == FileName(element, false) || name == FileName(element, true));
+        var inFolder = FolderOf(modelPath) == folder
+            || (element is Seed seed && FolderOf(modelPath) == folder + Suffix(seed.Target)); // a target folder suffixed on a collision
+        return inFolder && (name == FileName(element, false) || name == FileName(element, true));
     }
 
     /// <summary>

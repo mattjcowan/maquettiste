@@ -4,6 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Hashing;
+using Maquettiste.Engine.Localization;
 using Maquettiste.Engine.Pipeline;
 
 namespace Maquettiste.Engine.Model;
@@ -33,7 +34,8 @@ public sealed class ModelSnapshot
         ImmutableArray<Diagnostic> loadDiagnostics,
         ImmutableArray<ExtensionDocument> extensions,
         ImmutableArray<ScriptSource> ruleScripts,
-        ModelIndexer.Result index)
+        ModelIndexer.Result index,
+        IReadOnlyList<LocaleShardDocument> shards)
     {
         Version = version;
         Settings = settings;
@@ -52,8 +54,20 @@ public sealed class ModelSnapshot
         _summaries = index.Summaries;
         Tags = index.Tags;
         Categories = index.Categories;
+        _tagVocabularies = index.TagVocabularies;
+        _categoryTrees = index.CategoryTrees;
         Index = index;
+        LocaleShards = shards;
+        _localization = new Lazy<LocalizationIndex>(() => new LocalizationIndex(this, shards), LazyThreadSafetyMode.ExecutionAndPublication);
     }
+
+    private readonly Lazy<LocalizationIndex> _localization;
+
+    /// <summary>The locale shards the loader read (reference-types-seeds-localization.md section 3.3), ordinal by path.</summary>
+    public IReadOnlyList<LocaleShardDocument> LocaleShards { get; }
+
+    /// <summary>The localization view: settings, effective translations, localizable nodes, completeness and the <c>l:</c> hashes.</summary>
+    public LocalizationIndex Localization => _localization.Value;
 
     /// <summary>The indexes, kept so the next snapshot of a store can patch them (<see cref="ModelIndexer.Build"/>).</summary>
     internal ModelIndexer.Result Index { get; }
@@ -69,6 +83,7 @@ public sealed class ModelSnapshot
     /// <param name="ruleScripts">The JavaScript rule scripts from <c>extensions/rules/</c>.</param>
     /// <param name="version">A number that increases with every snapshot a store produces.</param>
     /// <param name="loadDiagnostics">Diagnostics of files that failed to load, or loaded with warnings.</param>
+    /// <param name="localeShards">The locale shards (reference-types-seeds-localization.md section 3.3).</param>
     /// <returns>The snapshot.</returns>
     public static ModelSnapshot Create(
         IEnumerable<ElementDocument> documents,
@@ -77,9 +92,10 @@ public sealed class ModelSnapshot
         IReadOnlyList<ExtensionDocument> extensions,
         IReadOnlyList<ScriptSource> ruleScripts,
         long version,
-        IReadOnlyList<Diagnostic>? loadDiagnostics = null) =>
+        IReadOnlyList<Diagnostic>? loadDiagnostics = null,
+        IReadOnlyList<LocaleShardDocument>? localeShards = null) =>
         CreateAfter(null, documents, settings, settingsHash, extensions, ruleScripts, version, loadDiagnostics, ModelIndexer.DefaultParallelism,
-            CancellationToken.None);
+            CancellationToken.None, localeShards);
 
     /// <summary>
     /// <see cref="Create"/> after the store's previous snapshot, whose indexes are patched when few documents changed (the result
@@ -96,7 +112,8 @@ public sealed class ModelSnapshot
         long version,
         IReadOnlyList<Diagnostic>? loadDiagnostics,
         int parallelism,
-        CancellationToken ct)
+        CancellationToken ct,
+        IReadOnlyList<LocaleShardDocument>? localeShards = null)
     {
         ArgumentNullException.ThrowIfNull(documents);
         ArgumentNullException.ThrowIfNull(settings);
@@ -118,7 +135,8 @@ public sealed class ModelSnapshot
             diagnostics,
             extensions.OrderBy(e => e.Path, StringComparer.Ordinal).ToImmutableArray(),
             ruleScripts.OrderBy(s => s.Path, StringComparer.Ordinal).ToImmutableArray(),
-            index);
+            index,
+            localeShards is null ? previous?.LocaleShards ?? [] : [.. localeShards.OrderBy(s => s.ModelPath, StringComparer.Ordinal)]);
     }
 
     /// <summary>The snapshot version.</summary>
@@ -142,11 +160,45 @@ public sealed class ModelSnapshot
     /// <summary>JavaScript rule scripts, ordinal by path.</summary>
     public IReadOnlyList<ScriptSource> RuleScripts { get; }
 
-    /// <summary>The tag vocabulary, when the model has one.</summary>
+    /// <summary>The global tag vocabulary (one with no <c>package</c>), when the model has one.</summary>
     public TagVocabulary? Tags { get; }
 
-    /// <summary>The category tree, when the model has one.</summary>
+    /// <summary>The global category tree (one with no <c>package</c>), when the model has one.</summary>
     public CategoryTree? Categories { get; }
+
+    private readonly FrozenDictionary<string, TagVocabulary> _tagVocabularies;
+    private readonly FrozenDictionary<string, CategoryTree> _categoryTrees;
+
+    /// <summary>Every tag vocabulary validation uses, one per scope (a second one in a scope is MQ1009 and ignored), ordinal by scope.</summary>
+    public IEnumerable<TagVocabulary> TagVocabularies => _tagVocabularies.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => kv.Value);
+
+    /// <summary>Every category tree validation uses, one per scope (a second one in a scope is MQ1009 and ignored), ordinal by scope.</summary>
+    public IEnumerable<CategoryTree> CategoryTrees => _categoryTrees.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => kv.Value);
+
+    /// <summary>The tag vocabulary of a scope: a package id, or <see langword="null"/> for the global one.</summary>
+    /// <param name="scope">The package id, or <see langword="null"/>.</param>
+    /// <returns>The vocabulary, or <see langword="null"/> when the scope has none.</returns>
+    public TagVocabulary? TagVocabularyOf(string? scope) => _tagVocabularies.GetValueOrDefault(scope ?? "");
+
+    /// <summary>The category tree of a scope: a package id, or <see langword="null"/> for the global one.</summary>
+    /// <param name="scope">The package id, or <see langword="null"/>.</param>
+    /// <returns>The tree, or <see langword="null"/> when the scope has none.</returns>
+    public CategoryTree? CategoryTreeOf(string? scope) => _categoryTrees.GetValueOrDefault(scope ?? "");
+
+    /// <summary>
+    /// The vocabulary scopes an element in <paramref name="packageId"/> sees (explorer-redesign.md section 1.11): the package, each
+    /// enclosing package, nearest first, then <see langword="null"/> for global. A package cycle (MQ3xxx) stops at the first repeat.
+    /// </summary>
+    /// <param name="packageId">The element's package (a package's own chain starts at itself), or <see langword="null"/>.</param>
+    /// <returns>The scopes, nearest first, ending with <see langword="null"/>.</returns>
+    public IReadOnlyList<string?> VocabularyChain(string? packageId)
+    {
+        var chain = new List<string?>();
+        for (var id = packageId; id is not null && !chain.Contains(id); id = (GetDocument(id)?.Element as Package)?.Parent)
+            chain.Add(id);
+        chain.Add(null);
+        return chain;
+    }
 
     /// <summary>Looks up an element or sub-element id.</summary>
     /// <param name="id">The id.</param>

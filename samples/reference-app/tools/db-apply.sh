@@ -45,7 +45,8 @@ echo "migrations"
 for m in "$db"/migrations/*.sql; do run northwind_migrations "$m"; done
 run northwind_migrations "$db/seed.sql"
 
-want="$(grep -cE '^CREATE TABLE' "$db/schema.sql") tables, $(grep -cE '^CREATE (OR REPLACE )?VIEW' "$db/schema.sql") views, $(grep -cE '^CREATE SEQUENCE' "$db/schema.sql") sequences"
+# Lookup tables of reference types are created by seed.sql (reconciled on every run), not by schema.sql.
+want="$(( $(grep -cE '^CREATE TABLE' "$db/schema.sql") + $(grep -cE '^CREATE TABLE IF NOT EXISTS' "$db/seed.sql") )) tables, $(grep -cE '^CREATE (OR REPLACE )?VIEW' "$db/schema.sql") views, $(grep -cE '^CREATE SEQUENCE' "$db/schema.sql") sequences"
 if [ -n "${NW_EXPECT:-}" ] && [ "$want" != "$NW_EXPECT" ]; then
   echo "schema.sql creates $want, expected $NW_EXPECT" >&2; exit 1
 fi

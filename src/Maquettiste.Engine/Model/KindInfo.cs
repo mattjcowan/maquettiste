@@ -32,7 +32,15 @@ public sealed record KindInfo(ElementKind Kind, string Name, Type ClrType, strin
         new(ElementKind.TagVocabulary, "tag-vocabulary", typeof(TagVocabulary), "tag-vocabulary.json", "model/vocabularies", "tags.json"),
         new(ElementKind.CategoryTree, "category-tree", typeof(CategoryTree), "category-tree.json", "model/vocabularies", "categories.json"),
         new(ElementKind.Stereotype, "stereotype", typeof(Stereotype), "stereotype.json", "model/vocabularies/stereotypes", null),
+        new(ElementKind.ReferenceType, "reference-type", typeof(ReferenceType), "reference-type.json", "model/reference-types", null),
+        new(ElementKind.Seed, "seed", typeof(Seed), "seed.json", SeedsFolder, null),
     ];
+
+    /// <summary>The folder of seeds; each target's seeds share a sub-folder named after the target.</summary>
+    public const string SeedsFolder = "model/seeds";
+
+    /// <summary>The folder of locale shards, one sub-folder per locale (<c>model/locales/&lt;locale&gt;/</c>).</summary>
+    public const string LocalesFolder = "model/locales";
 
     private static readonly FrozenDictionary<string, KindInfo> ByName = AllKinds.ToFrozenDictionary(k => k.Name, StringComparer.Ordinal);
 
@@ -52,8 +60,8 @@ public sealed record KindInfo(ElementKind Kind, string Name, Type ClrType, strin
 
     /// <summary>
     /// The non-element document schemas: project settings, pack manifests, extension schemas, manifests, snapshots, batches
-    /// and the <c>validate --format json</c> output, plus the shared definitions.
+    /// the <c>validate --format json</c> output and locale shards, plus the shared definitions.
     /// </summary>
     public static IReadOnlyList<string> DocumentSchemaFiles { get; } =
-        ["common.json", "maquettiste.json", "pack.json", "extension.json", "manifest.json", "snapshot.json", "batch.json", "diagnostics.json"];
+        ["common.json", "maquettiste.json", "pack.json", "extension.json", "manifest.json", "snapshot.json", "batch.json", "diagnostics.json", "locale.json"];
 }

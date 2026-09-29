@@ -16,6 +16,19 @@ output root (`/repo`), and keeps the host's own state in the `maquettiste-host` 
 Stop with `docker compose -f <maquettiste>/docker/compose.yaml --project-directory . down` (add `-v` to drop the host volume;
 the model and generated files stay in your repository).
 
+Run `maquettiste init` before the first `up`: without `.maquettiste/`, Docker creates the mount folder itself (root-owned on
+Linux) and the editor starts on an empty project.
+
+## The CLI in the image
+
+The image also carries the `maquettiste` command line (`/usr/local/bin/maquettiste`, the CLI in `/opt/maquettiste/cli` on the
+image's .NET runtime). Given a command, the entrypoint runs it instead of the editor:
+
+    docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:latest maquettiste generate --check
+
+`--user` keeps the files it writes yours on Linux (the CLI works under any UID). docs/user-guide.md "The command line" has the
+commands and a shell function; docs/mcp.md has the `.mcp.json` entry that runs `maquettiste mcp` from the image.
+
 ## Never delete the site
 
 Never delete or rename the site `maquettiste.localhost` in the host's management UI or API. Its data folder is your bind-mounted

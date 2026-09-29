@@ -168,6 +168,8 @@ internal static class SnapshotCapture
         ComputedStored = column.ComputedStored,
         Collation = column.Collation,
         Comment = column.Comment,
+        ReferenceType = column.Type == "reference" ? column.ReferenceType?.Id : null,
+        Strategy = column.Type == "reference" ? column.Strategy : null,
     };
 
     private static SnapshotSequence CaptureSequence(RSequence sequence) => new()

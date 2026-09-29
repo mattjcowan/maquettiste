@@ -114,7 +114,11 @@ export interface paths {
          *     the command palette and every canvas start from this list.
          *
          *     E5e: the response carries an `ETag`, a hash of every row's id, file hash and path and of the index format, so it
-         *     changes exactly when a row does, across server restarts too. A request whose `If-None-Match` names it gets 304 with no
+         *     changes exactly when a row does, across server restarts too. The index format constant is `maquettiste-index/e6`.
+         *
+         *     `?locale=<tag>` (a declared locale; the default locale is the same as none) fills `displayName` from that locale's fallback
+         *     chain (reference-types-seeds-localization.md section 3.8) from a per-locale display-name table the host builds once per
+         *     snapshot; the ETag then also covers the locale, its chain and the hashes of the chain's shards. 400 for an undeclared locale. A request whose `If-None-Match` names it gets 304 with no
          *     body. `Cache-Control: no-cache` lets the browser keep the index and revalidate it on every use.
          */
         get: operations["getModelIndex"];
@@ -350,10 +354,213 @@ export interface paths {
          *     the coverage line: every table's key, name, schema, origin, entity or relation and column count, without the columns.
          *     Unlike `/view` it answers on a model with errors: the tables whose owning elements are valid come back, the rest are
          *     left out, `partial` is true and the diagnostics say why. The editor keeps the last complete list per database and
-         *     shows it with a stale badge while a response is partial. The server resolves the model once per model version and
-         *     answers every database from that resolve.
+         *     shows it with a stale badge while a response is partial. Per model version the server validates the model once and
+         *     resolves each database asked for on its own (the conceptual layer and that database), so a change costs one database's
+         *     resolve; `diagnostics` then holds the validation diagnostics and that database's resolution diagnostics.
          */
         get: operations["getDatabaseTables"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/databases/{id}/tables/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description An element or sub-element id (uppercase ULID).
+                 * @example 01J92P0V0FJ23CGSNKM7P1W5V7
+                 */
+                id: components["parameters"]["ElementId"];
+                /** @description The table's key, as `TableSummary.key` (a table file's id, or a synthesized key such as `<entityId>@<databaseId>`). */
+                key: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * One table of a database with its columns, keys and indexes
+         * @description E5f: one `TableView` (columns with `attributeId`, primary key, foreign keys, unique constraints, indexes) for a table's
+         *     children in the explorer and column-level "mapped by", without `/view`'s every table. A projection of the same
+         *     per-version resolve as `/tables`: after the first call for a database and model version, a lookup. Like `/tables` it
+         *     answers on a model with errors; `table` is null when no table of the database has the key or when the table is left
+         *     out because an owning element has errors (`partial` then says so).
+         */
+        get: operations["getDatabaseTable"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/localization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Localization settings and completeness per locale and shard
+         * @description reference-types-seeds-localization.md section 3.9. The default locale, the declared locales, and per translated locale its
+         *     fallback chain and per shard the expected, translated, missing and stale counts. A project without `localization` answers
+         *     `defaultLocale: null` and no locales.
+         */
+        get: operations["getLocalizationStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/localization/{locale}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A declared BCP 47 locale other than the default. */
+                locale: components["parameters"]["Locale"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Translation entries of one locale, by owner, by shard or the missing ones
+         * @description reference-types-seeds-localization.md section 3.9. `?owner=<id>` or `?shard=<path>` returns entries with their source text,
+         *     translation, effective text, state, shard path and hash; with neither, every entry of the locale. `?missing=true&cursor=` pages
+         *     (200 per page) the entries that need work (`missing`, `fallback` or `stale`) for the translation queue; `cursor` is the
+         *     previous page's last `id/field`. 404 for a locale that is not declared or is the default.
+         */
+        get: operations["getTranslations"];
+        /**
+         * Write, remove or confirm translations of one locale
+         * @description reference-types-seeds-localization.md section 3.9. `{ entries: [{ id, field, value | null, confirm? }], expected: { shardPath:
+         *     hash } }`, one atomic save: 200 with the new hashes of the shards written, 409 when a shard named in `expected` changed (its
+         *     current hash in `hashes`, nothing written), 422 with diagnostics (MQ7202, MQ7203, MQ7211). `confirm` rewrites that field's
+         *     `src` hash without changing the text. Each entry goes to its node's shard; an entry held in another shard moves there.
+         */
+        put: operations["putTranslations"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/localization/{locale}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A declared BCP 47 locale other than the default. */
+                locale: components["parameters"]["Locale"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Export one locale as XLIFF 2.1 or CSV
+         * @description reference-types-seeds-localization.md section 3.9. `?format=xliff|csv&shard=`: XLIFF 2.1 with one `file` per shard and one
+         *     unit per field keyed `id/field` (segment `state` `translated` or `initial`, `subState` `maquettiste:<state>`), or CSV with the
+         *     columns `id, field, source, translation, state, shard`.
+         */
+        get: operations["exportTranslations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/localization/{locale}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A declared BCP 47 locale other than the default. */
+                locale: components["parameters"]["Locale"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview or apply an XLIFF or CSV translation import
+         * @description reference-types-seeds-localization.md section 3.9. `?dryRun=true` (the default) previews; `dryRun=false` writes the
+         *     translations as one save checked against the shard hashes read for the preview (409 when one changed). A unit with an empty
+         *     target is left alone; a unit naming no translatable field is ignored with MQ7203 in `diagnostics`.
+         */
+        post: operations["importTranslations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/seeds/{id}/csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description An element or sub-element id (uppercase ULID).
+                 * @example 01J92P0V0FJ23CGSNKM7P1W5V7
+                 */
+                id: components["parameters"]["ElementId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Export a seed's rows as CSV
+         * @description reference-types-seeds-localization.md sections 2.3 and 3.9. RFC 4180, UTF-8, `@id` first, then `@code`, `@label` and `@description` for reference types, then attribute and end
+         *     role names in the seed's column order, then `@label:<locale>` and `@description:<locale>` per `locale`; `?bom=true` adds a
+         *     byte order mark and CRLF line ends. Reference cells export codes, collections `;`-joined codes, end cells row ids, value
+         *     objects compact JSON.
+         */
+        get: operations["exportSeedCsv"];
+        put?: never;
+        /**
+         * Preview or apply a CSV import into a seed
+         * @description reference-types-seeds-localization.md sections 2.3 and 3.9. The body is JSON (`{ content }`, the CSV text), as every write
+         *     of the API. Rows match by `@id`, else by `@code` for reference types, else are new rows with new ids; `merge` updates and
+         *     adds, `replace` also removes rows missing from the file, except rows that cells of other seeds name (listed in `blocked`).
+         *     Headers that match no column are listed in `ignoredHeaders`. `?dryRun=true` (the default) previews; applying saves the seed
+         *     with `If-Match` (or the hash read for the preview; 409 when it changed, 422 with diagnostics) and then writes the
+         *     `@label:<locale>` and `@description:<locale>` translations.
+         */
+        post: operations["importSeedCsv"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reference-types/{id}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description An element or sub-element id (uppercase ULID).
+                 * @example 01J92P0V0FJ23CGSNKM7P1W5V7
+                 */
+                id: components["parameters"]["ElementId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The attributes that use a reference type, with their effective storage
+         * @description reference-types-seeds-localization.md section 3.9. Every attribute typed by the reference type, with its owner, domain, collection, required and the effective storage
+         *     choice per database.
+         */
+        get: operations["getReferenceTypeUsage"];
         put?: never;
         post?: never;
         delete?: never;
@@ -815,6 +1022,9 @@ export interface components {
                 };
                 uncountable: string[];
             };
+            /** @description Localization of the standard fields (reference-types-seeds-localization.md section 3.2); `null` when the project declares none. */
+            localization?: components["schemas"]["LocalizationSettings"] | null;
+            referenceData?: components["schemas"]["ReferenceDataSettings"];
             packs: {
                 [key: string]: components["schemas"]["PackSettings"];
             };
@@ -832,6 +1042,37 @@ export interface components {
                 scriptMemoryBytes: number;
                 templateLoopLimit: number;
                 templateRecursionLimit: number;
+            };
+            /** @description Project-defined explorer folders (explorer-redesign.md section 1.6) and team scopes (section 3.2). An older server leaves it out, or leaves out `scopes`. */
+            explorer?: {
+                folders: components["schemas"]["ExplorerFolder"][];
+                scopes?: components["schemas"]["ExplorerScope"][];
+            };
+        };
+        /** @description A named set of explorer filter chips; an empty member does not filter. */
+        ExplorerScope: {
+            name: string;
+            kinds: string[];
+            /** @description A domain id; its sub-domains are included. */
+            domain: string | null;
+            tags: string[];
+            stereotypes: string[];
+            /** @description Category-tree node ids, any of; each includes its descendants. */
+            categories: string[];
+            errors: boolean;
+            /** @description A diagram id; only its members match. */
+            diagram: string | null;
+        };
+        ExplorerFolder: {
+            label: string;
+            icon: string | null;
+            /** @description The one element kind the folder holds. */
+            kind: string;
+            /** @description Exactly one member is set; a category matches its descendants too. */
+            match: {
+                stereotype: string | null;
+                tag: string | null;
+                category: string | null;
             };
         };
         PackSettings: {
@@ -870,11 +1111,52 @@ export interface components {
             valueObjectCollectionStorage?: components["schemas"]["StorageKind"] | null;
             relationsWithAttributes?: components["schemas"]["RelationShape"] | null;
             inheritance?: components["schemas"]["InheritanceStrategy"] | null;
+            /** @description The storage choice for reference types; `null` inherits (and, at the project level, means template-defined). */
+            referenceStorage?: components["schemas"]["StorageChoice"] | null;
+        };
+        LocalizationSettings: {
+            defaultLocale: string;
+            locales?: string[];
+            fallbacks?: {
+                [key: string]: string[];
+            };
+            require?: string[];
+        };
+        /** @description The storage strategies the project declares (the engine knows none) and the grouping of the Reference data screen. */
+        ReferenceDataSettings: {
+            strategies?: {
+                [key: string]: components["schemas"]["StrategyDeclaration"];
+            };
+            /** @description `category`, `tag:<prefix>` or `property:<name>`. */
+            groupBy?: string;
+        };
+        StrategyDeclaration: {
+            description?: string | null;
+            /** @description A boolean, or a map from dialect (or `*`) to boolean. */
+            collections?: boolean | {
+                [key: string]: boolean;
+            };
+            /** @description The JSON Schema `properties` of the strategy's options. */
+            options?: {
+                [key: string]: unknown;
+            } | null;
+            required?: string[];
+        };
+        /** @description A strategy key the project declares, or `null` for template-defined, and its options. */
+        StorageChoice: {
+            strategy?: string | null;
+            options?: {
+                [key: string]: unknown;
+            };
         };
         /** @enum {string} */
         CaseStyle: "snake" | "pascal" | "camel" | "kebab" | "upper-snake" | "preserve";
-        /** @enum {string} */
-        StorageKind: "int" | "string" | "lookup" | "embedded" | "table" | "json";
+        /**
+         * @description How an enum (int, string) or a value object (embedded, table, json) is stored. The enum lookup-table option (`lookup`) is
+         *     retired: a file that still uses it does not load (MQ7012); a reference type replaces it.
+         * @enum {string}
+         */
+        StorageKind: "int" | "string" | "embedded" | "table" | "json";
         /** @enum {string} */
         RelationShape: "foreign-key" | "junction" | "promoted";
         /** @enum {string} */
@@ -931,8 +1213,105 @@ export interface components {
             };
             required: string[];
         };
+        /** @description Localization settings and completeness (reference-types-seeds-localization.md section 3.9). */
+        LocalizationStatus: {
+            defaultLocale: string | null;
+            /** @description Every declared locale, the default included, as the settings list them. */
+            declared?: string[];
+            /** @description The locales other than the default. */
+            locales: {
+                locale: string;
+                /** @description The fallback chain, the locale first and the default last. */
+                chain?: string[];
+                shards: {
+                    shard: string;
+                    expected: number;
+                    translated: number;
+                    missing: number;
+                    stale: number;
+                }[];
+            }[];
+        };
+        TranslationPage: {
+            entries: {
+                id: components["schemas"]["Ulid"];
+                /** @description The element whose file holds the node. */
+                owner?: components["schemas"]["Ulid"];
+                /** @description The text the fallback chain gives. */
+                effective?: string | null;
+                /** @enum {string} */
+                field: "displayName" | "pluralName" | "label" | "description";
+                source: string | null;
+                translation: string | null;
+                /** @enum {string} */
+                state: "translated" | "missing" | "stale" | "fallback";
+                shard: string;
+                shardHash: components["schemas"]["Hash"] | null;
+            }[];
+            cursor: string | null;
+        };
+        TranslationWrite: {
+            entries: {
+                id: components["schemas"]["Ulid"];
+                /** @enum {string} */
+                field: "displayName" | "pluralName" | "label" | "description";
+                /** @description The text, `{ "file": "<sidecar>" }`, or `null` to remove. */
+                value: unknown;
+                confirm?: boolean;
+            }[];
+            /** @description Shard path to the hash the caller loaded. */
+            expected: {
+                [key: string]: components["schemas"]["Hash"];
+            };
+        };
+        /** @description The answer of a translation write. */
+        TranslationWriteResult: {
+            /** @enum {string} */
+            outcome: "saved" | "conflict" | "invalid";
+            /** @description The new hashes of the shards written (saved), or the current hashes of the shards that changed (conflict). */
+            hashes: {
+                [key: string]: components["schemas"]["Hash"];
+            };
+            diagnostics: components["schemas"]["Diagnostic"][];
+        };
+        /** @description What an import adds, changes and removes, and the diagnostics. */
+        ImportPreview: {
+            /** @description Whether the import was written (false for a dry run). */
+            applied?: boolean;
+            /** @description CSV headers that match no column. */
+            ignoredHeaders?: string[];
+            /** @description Rows a `replace` keeps because cells of other seeds name them, each with its referrers. */
+            blocked?: {
+                [key: string]: unknown;
+            }[];
+            /** @description The seed's new hash when applied. */
+            hash?: components["schemas"]["Hash"];
+            /** @description The new hashes of the translation shards written when applied. */
+            shardHashes?: {
+                [key: string]: components["schemas"]["Hash"];
+            };
+            added: number;
+            changed: {
+                [key: string]: unknown;
+            }[];
+            removed: number;
+            diagnostics: components["schemas"]["Diagnostic"][];
+        };
+        ReferenceTypeUsage: {
+            usages: {
+                attribute: components["schemas"]["Ulid"];
+                owner: components["schemas"]["Ulid"];
+                domain?: components["schemas"]["Ulid"] | null;
+                collection: boolean;
+                required: boolean;
+                /** @description Database name to the effective storage choice. */
+                storage: {
+                    [key: string]: components["schemas"]["StorageChoice"];
+                };
+            }[];
+        };
         /** @enum {string} */
-        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype";
+        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed";
         /** @enum {string} */
         ChangeSource: "editor" | "disk" | "cli" | "engine";
         /**
@@ -963,6 +1342,14 @@ export interface components {
             memberCount?: number;
             /** @description The relation's ends in document order, on relation rows (E5). */
             ends?: components["schemas"]["RelationEndSummary"][];
+            /** @description The entity, relation or reference type a seed holds rows for, on seed rows (reference-types-seeds-localization.md section 2.1). */
+            target?: components["schemas"]["Ulid"];
+            /** @description The number of rows, on seed rows; the explorer's Reference data leaf sums them. */
+            rowCount?: number;
+            /** @description The number of user fields, on reference type rows. */
+            fieldCount?: number;
+            /** @description The base entity's id, on entity rows that have one (E5h). Related-element highlighting reads base and derived entities from it. */
+            base?: components["schemas"]["Ulid"];
         };
         RelationEndSummary: {
             entity: components["schemas"]["Ulid"];
@@ -979,8 +1366,8 @@ export interface components {
             missing: string[];
         };
         /** @description A canonical model file (`schemas/v1/<kind>.json`), chosen by `kind`. */
-        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"];
-        /** @description A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required. */
+        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"];
+        /** @description A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required. Reference types and seeds (`reference-type`, `seed`) are documents like any other. */
         NewModelDocument: {
             kind: components["schemas"]["ElementKind"];
             id?: components["schemas"]["Ulid"];
@@ -1035,6 +1422,12 @@ export interface components {
             field: string;
             /** @description The referenced id (an element or a sub-element). */
             toId: string;
+            /**
+             * @description The referrer belongs to the referenced element (a seed's `target`): the reference never refuses the target's delete,
+             *     which deletes the referrer in the same save, so a delete confirmation lists these as deleted with it. Left out when false.
+             * @default false
+             */
+            owning?: boolean;
         };
         ElementChange: {
             id: components["schemas"]["Ulid"];
@@ -1080,8 +1473,11 @@ export interface components {
             referrers: components["schemas"]["ReferenceInfo"][];
             changes: components["schemas"]["ChangeSet"] | null;
         };
-        /** @enum {string} */
-        BatchOp: "create" | "update" | "delete";
+        /**
+         * @description `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`.
+         * @enum {string}
+         */
+        BatchOp: "create" | "update" | "delete" | "translate";
         BatchOperation: {
             op: components["schemas"]["BatchOp"];
             id: string | null;
@@ -1089,6 +1485,12 @@ export interface components {
             element: {
                 [key: string]: unknown;
             } | null;
+            /** @description The locale of a translation (`translate`). */
+            locale?: string | null;
+            /** @description The translated field (`translate`). */
+            field?: ("displayName" | "pluralName" | "label" | "description") | null;
+            /** @description The translated text, `{ "file": "<sidecar>" }`, or `null` to remove the translation (`translate`). */
+            value?: unknown;
         };
         ModelBatch: {
             operations: components["schemas"]["BatchOperation"][];
@@ -1141,10 +1543,18 @@ export interface components {
             /** @description Every validation and resolution diagnostic, sorted. */
             diagnostics: components["schemas"]["Diagnostic"][];
             /**
-             * @description The model has errors, so tables whose owning elements have errors (the entity, the relation, the enum of a lookup
-             *     table, the table file or overlay, a mapping of the entity or relation, or the database itself) are left out, and the
+             * @description The model has errors, so tables whose owning elements have errors (the entity, the relation, the table file or
+             *     overlay, a mapping of the entity or relation, or the database itself) are left out, and the
              *     rest may change when the errors are fixed. False when the list is complete.
              */
+            partial: boolean;
+        };
+        DatabaseTableResult: {
+            /** @description The table, or null when no table of the database has the key or the table is left out (`partial`). */
+            table: components["schemas"]["TableView"] | null;
+            /** @description As `DatabaseTablesResult.diagnostics`. */
+            diagnostics: components["schemas"]["Diagnostic"][];
+            /** @description As `DatabaseTablesResult.partial`. */
             partial: boolean;
         };
         TableSummary: {
@@ -1157,6 +1567,10 @@ export interface components {
             entityId: components["schemas"]["Ulid"] | null;
             relationId: components["schemas"]["Ulid"] | null;
             isJunction: boolean;
+            /**
+             * @deprecated
+             * @description Always false. The enum lookup-table storage option is retired (MQ7012); kept so older clients still parse.
+             */
             isLookup: boolean;
             columnCount: number;
         };
@@ -1178,6 +1592,10 @@ export interface components {
             entityId: string | null;
             relationId: string | null;
             isJunction: boolean;
+            /**
+             * @deprecated
+             * @description Always false. The enum lookup-table storage option is retired (MQ7012); kept so older clients still parse.
+             */
             isLookup: boolean;
             comment: string | null;
             columns: components["schemas"]["ColumnView"][];
@@ -1393,7 +1811,7 @@ export interface components {
             connectionId: string;
             elementId?: string | null;
             /** @enum {string|null} */
-            workspace?: "entities" | "database" | "mappings" | "generate" | "settings" | null;
+            workspace?: "entities" | "reference-data" | "database" | "mappings" | "generate" | "settings" | null;
         };
         PresenceEntry: {
             connectionId: string;
@@ -1420,7 +1838,17 @@ export interface components {
          *       "isEmpty": false
          *     }
          */
-        RealtimeModelChanged: components["schemas"]["ChangeSet"];
+        RealtimeModelChanged: components["schemas"]["ChangeSet"] & {
+            /** @description After a translation change (reference-types-seeds-localization.md section 3.8): for each declared locale whose fallback chain includes a changed locale, the effective display names that changed (the fallback text when a translation was removed). Left out when none changed. Other fields are not sent: an open inspector or translation queue refetches its entries. */
+            translations?: {
+                locale: string;
+                displayNames: {
+                    [key: string]: string;
+                };
+            }[];
+            /** @description `translations` was dropped to fit 200 KB; the editor refetches the index for its content locale. */
+            translationsTruncated?: boolean;
+        };
         /** @description `validation.completed` to every connection: a whole-model ValidationReport (cut to 200 KB; counts stay whole). The editor replaces its problems list with it, or refetches when `truncated`. */
         RealtimeValidationCompleted: components["schemas"]["ValidationReport"];
         /** @description `project.changed` to every connection: settings, packs or extension schemas changed; refetch `GET /api/project` and the settings, and drop cached database views and previews (conventions and type maps change every resolved table). A `validation.completed` follows. */
@@ -1491,6 +1919,12 @@ export interface components {
             /** @enum {string} */
             source: "deploy" | "rollback" | "functions";
         };
+        /** @description A storage choice for reference data: a strategy key the project declares in referenceData.strategies (absent means template-defined) and its options. */
+        storageChoice: {
+            strategy?: string;
+            /** @default {} */
+            options?: Record<string, never>;
+        };
         /** @description Relative path to this file's schema; rewritten by the canonical writer. */
         schemaPath: string;
         /**
@@ -1522,7 +1956,7 @@ export interface components {
             decimalScale?: number;
             datetimePrecision?: number;
             /** @enum {unknown} */
-            enumStorage?: "int" | "string" | "lookup";
+            enumStorage?: "int" | "string";
             /** @enum {unknown} */
             valueObjectStorage?: "embedded" | "table" | "json";
             /** @enum {unknown} */
@@ -1531,6 +1965,24 @@ export interface components {
             relationsWithAttributes?: "junction" | "promoted";
             /** @enum {unknown} */
             inheritance?: "tph" | "tpt" | "tpc";
+            /** @description The storage choice for reference types: the project default under conventions, a per-database override under databases. */
+            referenceStorage?: components["schemas"]["storageChoice"];
+        };
+        /** @description A BCP 47 language tag. */
+        locale: string;
+        strategyDeclaration: {
+            description?: string;
+            /**
+             * @description Whether collection attributes may use the strategy: a boolean, or a map from dialect (or "*" for the rest) to boolean.
+             * @default false
+             */
+            collections?: boolean | {
+                [key: string]: boolean;
+            };
+            /** @description The JSON Schema "properties" of the strategy's options. */
+            options?: Record<string, never>;
+            /** @default [] */
+            required?: string[];
         };
         /**
          * Project settings
@@ -1594,6 +2046,33 @@ export interface components {
                 /** @default [] */
                 uncountable?: string[];
             };
+            /** @description Localization of the standard fields (displayName, pluralName, description, a reference row's label). */
+            localization?: {
+                defaultLocale: components["schemas"]["locale"];
+                /** @default [] */
+                locales?: components["schemas"]["locale"][];
+                /** @default {} */
+                fallbacks?: {
+                    [key: string]: components["schemas"]["locale"][];
+                };
+                /**
+                 * @description The node kinds the completeness rules count; empty means every localizable node.
+                 * @default []
+                 */
+                require?: string[];
+            };
+            /**
+             * @description Reference data settings: the storage strategies the project declares (the engine knows none) and the grouping of the Reference data screen.
+             * @default {}
+             */
+            referenceData?: {
+                /** @default {} */
+                strategies?: {
+                    [key: string]: components["schemas"]["strategyDeclaration"];
+                };
+                /** @default category */
+                groupBy?: string;
+            };
             /** @default {} */
             packs?: {
                 [key: string]: {
@@ -1629,7 +2108,77 @@ export interface components {
                 /** @default 64 */
                 templateRecursionLimit?: number;
             };
+            /**
+             * @description The editor's explorer. `folders` are project-defined explorer folders (explorer-redesign.md section 1.6): in each domain, an element of the folder's kind that matches its condition is listed in the first matching folder instead of its kind folder. The product gives no stereotype, tag or category a meaning of its own; the folder is only a view.
+             * @default {}
+             */
+            explorer?: {
+                /** @default [] */
+                folders?: {
+                    label: string;
+                    /** @description An icon name from the editor's icon set; the kind's icon when absent. */
+                    icon?: string | null;
+                    /** @description The one element kind the folder holds. */
+                    kind: string;
+                    /** @description Exactly one condition: a stereotype key, a tag key, or a category-tree node id (the node and its descendants). */
+                    match: {
+                        stereotype?: string | null;
+                        tag?: string | null;
+                        category?: string | null;
+                    };
+                }[];
+                /**
+                 * @description Team scopes (explorer-redesign.md section 3.2): named sets of explorer filter chips, chosen from the scope picker beside the search box. An empty member does not filter. They change no generated output.
+                 * @default []
+                 */
+                scopes?: {
+                    name: string;
+                    /**
+                     * @description Element kinds, any of.
+                     * @default []
+                     */
+                    kinds?: string[];
+                    /** @description A domain id: the domain and its sub-domains. */
+                    domain?: string | null;
+                    /**
+                     * @description Tag keys, any of.
+                     * @default []
+                     */
+                    tags?: string[];
+                    /**
+                     * @description Stereotype keys, any of.
+                     * @default []
+                     */
+                    stereotypes?: string[];
+                    /**
+                     * @description Category-tree node ids, any of; each includes its descendants.
+                     * @default []
+                     */
+                    categories?: string[];
+                    /**
+                     * @description Only elements with validation errors.
+                     * @default false
+                     */
+                    errors?: boolean;
+                    /** @description A diagram id: only the diagram's members. */
+                    diagram?: string | null;
+                }[];
+            };
             $defs: {
+                strategyDeclaration: {
+                    description?: string;
+                    /**
+                     * @description Whether collection attributes may use the strategy: a boolean, or a map from dialect (or "*" for the rest) to boolean.
+                     * @default false
+                     */
+                    collections?: boolean | {
+                        [key: string]: boolean;
+                    };
+                    /** @description The JSON Schema "properties" of the strategy's options. */
+                    options?: Record<string, never>;
+                    /** @default [] */
+                    required?: string[];
+                };
                 /**
                  * Conventions
                  * @description Sparse naming and mapping conventions over the built-in defaults.
@@ -1659,7 +2208,7 @@ export interface components {
                     decimalScale?: number;
                     datetimePrecision?: number;
                     /** @enum {unknown} */
-                    enumStorage?: "int" | "string" | "lookup";
+                    enumStorage?: "int" | "string";
                     /** @enum {unknown} */
                     valueObjectStorage?: "embedded" | "table" | "json";
                     /** @enum {unknown} */
@@ -1668,6 +2217,8 @@ export interface components {
                     relationsWithAttributes?: "junction" | "promoted";
                     /** @enum {unknown} */
                     inheritance?: "tph" | "tpt" | "tpc";
+                    /** @description The storage choice for reference types: the project default under conventions, a per-database override under databases. */
+                    referenceStorage?: components["schemas"]["storageChoice"];
                 };
             };
         };
@@ -1738,7 +2289,7 @@ export interface components {
          * @enum {unknown}
          */
         builtinType: "string" | "text" | "bool" | "int16" | "int32" | "int64" | "decimal" | "float" | "double" | "date" | "time" | "datetime" | "datetimeoffset" | "duration" | "uuid" | "ulid" | "binary" | "json";
-        /** @description A built-in keyword, or a reference to an enum, value object or custom scalar type. */
+        /** @description A built-in keyword, or a reference to an enum, value object, custom scalar type or reference type. */
         typeRef: components["schemas"]["builtinType"] | {
             ref: components["schemas"]["id"];
         };
@@ -1992,6 +2543,8 @@ export interface components {
                  * @default
                  */
                 navigation?: components["schemas"]["identifier"] | "";
+                displayName?: string;
+                pluralName?: string;
                 /**
                  * @default 0
                  * @enum {unknown}
@@ -2107,8 +2660,6 @@ export interface components {
             attribute?: components["schemas"]["id"];
             /** @description Synthesized junction table: the relation. */
             relation?: components["schemas"]["id"];
-            /** @description Synthesized lookup table: the enum. */
-            enum?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
@@ -2331,7 +2882,7 @@ export interface components {
                 attribute: components["schemas"]["id"];
                 column?: components["schemas"]["id"];
                 /** @enum {unknown} */
-                storage?: "int" | "string" | "lookup" | "embedded" | "table" | "json";
+                storage?: "int" | "string" | "embedded" | "table" | "json";
                 prefix?: string;
                 /** @default false */
                 ignore?: boolean;
@@ -2414,6 +2965,8 @@ export interface components {
             id: components["schemas"]["id"];
             /** @default  */
             name: components["schemas"]["label"];
+            /** @description The domain the vocabulary is scoped to (that domain and the domains nested under it); absent for the global vocabulary. At most one vocabulary of each kind per scope. */
+            package?: components["schemas"]["id"];
             displayName?: string;
             pluralName?: string;
             description?: components["schemas"]["description"];
@@ -2447,6 +3000,8 @@ export interface components {
             id: components["schemas"]["id"];
             /** @default  */
             name: components["schemas"]["label"];
+            /** @description The domain the vocabulary is scoped to (that domain and the domains nested under it); absent for the global vocabulary. At most one vocabulary of each kind per scope. */
+            package?: components["schemas"]["id"];
             displayName?: string;
             pluralName?: string;
             description?: components["schemas"]["description"];
@@ -2504,7 +3059,7 @@ export interface components {
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
             /** @default [] */
-            appliesTo?: ("package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "attribute" | "enum-member" | "column")[];
+            appliesTo?: ("package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "attribute" | "enum-member" | "column")[];
             /** @default [] */
             attributes?: components["schemas"]["attribute"][];
             /** @default {} */
@@ -2518,17 +3073,120 @@ export interface components {
             source?: components["schemas"]["source"];
         };
         /**
+         * Reference type
+         * @description A named set of rows that attributes use as their type; its rows are held in seeds.
+         */
+        "reference-type": {
+            $schema?: components["schemas"]["schemaPath"];
+            /** @constant */
+            kind: "reference-type";
+            id: components["schemas"]["id"];
+            /** @default  */
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            pluralName?: string;
+            description?: components["schemas"]["description"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /**
+             * Reference code field
+             * @description The built-in code field: the row's business key, unique in the type.
+             */
+            code: {
+                id: components["schemas"]["id"];
+                /**
+                 * @default string
+                 * @enum {unknown}
+                 */
+                type?: "string" | "int16" | "int32" | "int64";
+                length?: components["schemas"]["length"];
+                pattern?: string;
+                displayName?: string;
+                description?: components["schemas"]["description"];
+            };
+            /**
+             * Reference label field
+             * @description The built-in label field: the row's display text.
+             */
+            label: {
+                id: components["schemas"]["id"];
+                length?: components["schemas"]["length"];
+                displayName?: string;
+                description?: components["schemas"]["description"];
+            };
+            /** @default [] */
+            attributes?: components["schemas"]["attribute"][];
+            /**
+             * @description Storage choices keyed by database id, or "*" for every database.
+             * @default {}
+             */
+            storage?: {
+                [key: string]: components["schemas"]["storageChoice"];
+            };
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+        };
+        /**
+         * Seed
+         * @description Rows of data for one target: an entity, a relation or a reference type.
+         */
+        seed: {
+            $schema?: components["schemas"]["schemaPath"];
+            /** @constant */
+            kind: "seed";
+            id: components["schemas"]["id"];
+            /** @default  */
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            pluralName?: string;
+            description?: components["schemas"]["description"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /** @description The entity, relation or reference type the rows are for; the seed belongs to it. */
+            target: components["schemas"]["id"];
+            /** @description Built-in keywords (code, label, description) for a reference type, else attribute or relation-end ids. */
+            columns: (components["schemas"]["id"] | ("code" | "label" | "description"))[];
+            /** @default [] */
+            rows?: {
+                id: components["schemas"]["id"];
+                /**
+                 * @description One cell per column, in column order; trailing nulls are dropped.
+                 * @default []
+                 */
+                values?: unknown[];
+            }[];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+        };
+        /**
          * Model batch
          * @description An atomic batch of element creates, updates and deletes, from the editor, a refactoring or an AI proposal.
          */
         batch: {
             operations: ({
                 /** @enum {unknown} */
-                op: "create" | "update" | "delete";
+                op: "create" | "update" | "delete" | "translate";
                 id?: components["schemas"]["id"];
                 expectedHash?: string;
                 element?: Record<string, never>;
-            } & (unknown & unknown))[];
+                locale?: components["schemas"]["locale"];
+                /** @enum {unknown} */
+                field?: "displayName" | "pluralName" | "label" | "description";
+                /** @description The translated text, a sidecar reference, or null to remove the translation. */
+                value?: components["schemas"]["description"] | null;
+            } & (unknown & unknown & unknown))[];
         };
     };
     responses: {
@@ -2648,6 +3306,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description A declared BCP 47 locale other than the default. */
+        Locale: string;
         /**
          * @description An element or sub-element id (uppercase ULID).
          * @example 01J92P0V0FJ23CGSNKM7P1W5V7
@@ -2923,7 +3583,10 @@ export interface operations {
     };
     getModelIndex: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description A declared locale whose display names fill `displayName`. */
+                locale?: string;
+            };
             header?: {
                 "If-None-Match"?: components["parameters"]["IfNoneMatch"];
             };
@@ -2952,6 +3615,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             503: components["responses"]["ModelUnavailable"];
         };
@@ -3460,6 +4124,401 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DatabaseTablesResult"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getDatabaseTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description An element or sub-element id (uppercase ULID).
+                 * @example 01J92P0V0FJ23CGSNKM7P1W5V7
+                 */
+                id: components["parameters"]["ElementId"];
+                /** @description The table's key, as `TableSummary.key` (a table file's id, or a synthesized key such as `<entityId>@<databaseId>`). */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The table (or null), the diagnostics, and whether the model has errors. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatabaseTableResult"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getLocalizationStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings and the completeness counts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "defaultLocale": "en",
+                     *       "locales": [
+                     *         {
+                     *           "locale": "fr",
+                     *           "shards": [
+                     *             {
+                     *               "shard": ".maquettiste/model/locales/fr/_reference-data.json",
+                     *               "expected": 3,
+                     *               "translated": 2,
+                     *               "missing": 1,
+                     *               "stale": 0
+                     *             }
+                     *           ]
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LocalizationStatus"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    getTranslations: {
+        parameters: {
+            query?: {
+                owner?: components["schemas"]["Ulid"];
+                shard?: string;
+                missing?: boolean;
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description A declared BCP 47 locale other than the default. */
+                locale: components["parameters"]["Locale"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The entries, and the cursor of the next page when paged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "entries": [
+                     *         {
+                     *           "id": "01JBS3C4DWA7N36096Q14DR9GP",
+                     *           "field": "label",
+                     *           "source": "Kilogram",
+                     *           "translation": "Kilogramme",
+                     *           "state": "translated",
+                     *           "shard": ".maquettiste/model/locales/fr/_reference-data.json",
+                     *           "shardHash": "0000000000000000000000000000000000000000000000000000000000000000"
+                     *         }
+                     *       ],
+                     *       "cursor": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["TranslationPage"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    putTranslations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A declared BCP 47 locale other than the default. */
+                locale: components["parameters"]["Locale"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TranslationWrite"];
+            };
+        };
+        responses: {
+            /** @description The shards written and their new hashes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "outcome": "saved",
+                     *       "diagnostics": [],
+                     *       "hashes": {
+                     *         ".maquettiste/model/locales/fr/_reference-data.json": "0000000000000000000000000000000000000000000000000000000000000000"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["TranslationWriteResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            /** @description A shard named in `expected` changed; `hashes` holds its current hash and nothing was written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranslationWriteResult"];
+                };
+            };
+            /** @description The entries are invalid; `diagnostics` says why and nothing was written. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranslationWriteResult"];
+                };
+            };
+        };
+    };
+    exportTranslations: {
+        parameters: {
+            query?: {
+                format?: "xliff" | "csv";
+                shard?: string;
+            };
+            header?: never;
+            path: {
+                /** @description A declared BCP 47 locale other than the default. */
+                locale: components["parameters"]["Locale"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The exported file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/xliff+xml": string;
+                    "text/csv": string;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    importTranslations: {
+        parameters: {
+            query?: {
+                dryRun?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description A declared BCP 47 locale other than the default. */
+                locale: components["parameters"]["Locale"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    format: "xliff" | "csv";
+                    content: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The preview (or the result) of the import. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "added": 1,
+                     *       "changed": [],
+                     *       "removed": 0,
+                     *       "diagnostics": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ImportPreview"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            /** @description What the preview read changed before the import was applied; nothing was written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportPreview"];
+                };
+            };
+            /** @description The import makes the model invalid; `diagnostics` says why and nothing was written. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportPreview"];
+                };
+            };
+        };
+    };
+    exportSeedCsv: {
+        parameters: {
+            query?: {
+                bom?: boolean;
+                /** @description Adds `@label:<locale>` and `@description:<locale>` columns; repeatable. */
+                locale?: string[];
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description An element or sub-element id (uppercase ULID).
+                 * @example 01J92P0V0FJ23CGSNKM7P1W5V7
+                 */
+                id: components["parameters"]["ElementId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The CSV text. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    importSeedCsv: {
+        parameters: {
+            query?: {
+                mode?: "merge" | "replace";
+                dryRun?: boolean;
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description An element or sub-element id (uppercase ULID).
+                 * @example 01J92P0V0FJ23CGSNKM7P1W5V7
+                 */
+                id: components["parameters"]["ElementId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The CSV text. */
+                    content: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The preview (or the result) of the import. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "added": 1,
+                     *       "changed": [],
+                     *       "removed": 0,
+                     *       "diagnostics": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ImportPreview"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            /** @description What the preview read changed before the import was applied; nothing was written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportPreview"];
+                };
+            };
+            /** @description The import makes the model invalid; `diagnostics` says why and nothing was written. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportPreview"];
+                };
+            };
+        };
+    };
+    getReferenceTypeUsage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description An element or sub-element id (uppercase ULID).
+                 * @example 01J92P0V0FJ23CGSNKM7P1W5V7
+                 */
+                id: components["parameters"]["ElementId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The usages. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "usages": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ReferenceTypeUsage"];
                 };
             };
             401: components["responses"]["Unauthenticated"];

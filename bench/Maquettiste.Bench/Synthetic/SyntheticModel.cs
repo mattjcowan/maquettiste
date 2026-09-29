@@ -86,6 +86,8 @@ internal sealed partial class SyntheticModel
             throw new ArgumentException("The synthetic model needs at least 1 package, 2 entities, 1 enum, 1 value object and 1 scalar type.");
         if (o.Fanout is < 1)
             throw new ArgumentException("The fanout must be at least 1 file per entity.");
+        if (o.Locales is < 0 or > LocaleShards.MaxLocales)
+            throw new ArgumentException(string.Create(CultureInfo.InvariantCulture, $"--locales takes 0 to {LocaleShards.MaxLocales} translated locales."));
         ValidateScaleShape(o);
         var pairs = Pairs(o.Entities);
         if (o.Relations > pairs)
@@ -518,6 +520,9 @@ internal sealed partial class SyntheticModel
             ["fanout"] = new PackSettings { Output = "gen" },
             ["sql-ddl"] = new PackSettings { Output = "db" },
         },
+        Localization = _options.Locales > 0
+            ? new LocalizationSettings { DefaultLocale = LocaleShards.DefaultLocale, Locales = [LocaleShards.DefaultLocale, .. LocaleShards.Translated(_options.Locales)] }
+            : null,
     };
 
     private static TypeRef Builtin(string keyword) => new() { Builtin = keyword };

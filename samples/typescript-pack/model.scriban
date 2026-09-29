@@ -1,0 +1,72 @@
+{{-
+# Model-wide unit written as file blocks: one module per enum and per reference type, then the barrel index.ts that
+# re-exports every generated module (sorted, so the output does not depend on the order elements were created in).
+ext = pack.params.importExtension
+modules = []
+for e in model.enums
+  name = pascal e.name
+  values = []
+  for m in e.members
+    values[values.size] = ts_string (m.code ?? m.name)
+  end
+  modules[modules.size] = kebab e.name
+-}}
+{{- capture content -}}
+{{ banner "//" }}
+
+{{ if e.description }}/** {{ e.description | string.strip }} */
+{{ end -}}
+{{- if pack.params.enumStyle == "const" -}}
+export const {{ name }} = {
+{{- for m in e.members }}
+  {{ pascal m.name }}: {{ ts_string (m.code ?? m.name) }},
+{{- end }}
+} as const;
+
+export type {{ name }} = (typeof {{ name }})[keyof typeof {{ name }}];
+{{- else -}}
+export type {{ name }} = {{ values | array.join " | " }};
+{{- end }}
+
+export const {{ camel e.name }}Values = [{{ values | array.join ", " }}] as const;
+{{ end -}}
+{{- file ((kebab e.name) + ".ts") content -}}
+{{- end -}}
+{{-
+# One module per reference type: the union of its codes in row order (string while it has no rows), and the codes as a
+# const array for zod. Rows are data, so a new row changes only this module.
+for rt in model.reference_types
+  name = pascal rt.name
+  values = []
+  for r in rt.rows
+    values[values.size] = ts_string r.code
+  end
+  modules[modules.size] = kebab rt.name
+-}}
+{{- capture content -}}
+{{ banner "//" }}
+
+{{ if rt.description }}/** {{ rt.description | string.strip }} */
+{{ end -}}
+export type {{ name }} = {{ values.size > 0 ? (values | array.join " | ") : "string" }};
+
+export const {{ camel rt.name }}Values = [{{ values | array.join ", " }}] as const;
+{{ end -}}
+{{- file ((kebab rt.name) + ".ts") content -}}
+{{- end -}}
+{{-
+for en in model.entities
+  modules[modules.size] = kebab en.name
+  if pack.params.zod && !en.is_abstract
+    modules[modules.size] = (kebab en.name) + ".schema"
+  end
+end
+modules = modules | array.sort
+-}}
+{{- capture index -}}
+{{ banner "//" }}
+{{ for m in modules }}
+export * from {{ ts_string (ts_module m ext) }};
+{{- end }}
+{{ end -}}
+{{- file "index.ts" index -}}

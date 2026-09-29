@@ -56,7 +56,9 @@ internal static class TypeOf
             case RColumn column:
                 {
                     context.Recorder.RecordObject(column);
-                    var type = Keyword(column.Type, target, map);
+                    var type = column.Type == "reference" && column.ReferenceType is { } reference
+                        ? Reference(map, target, reference, column.Strategy, true)
+                        : Keyword(column.Type, target, map);
                     return column.Nullable ? Wrap(map, "nullable", type) : type;
                 }
 
@@ -94,12 +96,34 @@ internal static class TypeOf
             case "value-object" when type.ValueObject is { } vo:
                 context.Recorder.RecordObject(vo);
                 return map.TryGetValue(vo.Name, out var voType) ? voType : vo.Name;
+            case "reference" when type.ReferenceType is { } reference:
+                context.Recorder.RecordObject(reference);
+                return Reference(map, target, reference, null, false);
             case "scalar" when type.Scalar is { } scalar:
                 context.Recorder.RecordObject(scalar);
                 return map.TryGetValue(scalar.Name, out var scalarType) ? scalarType : Keyword(type.Builtin ?? scalar.Base, target, map);
             default:
                 return Keyword(type.Builtin ?? type.Name, target, map);
         }
+    }
+
+    /// <summary>
+    /// A reference-typed value (reference-types-seeds-localization.md section 1.4): the map's <c>reference:&lt;strategy&gt;</c> entry
+    /// (a column in its database), else <c>reference:*</c>, else the code's logical type. An entry may use <c>{type}</c> (the code's
+    /// mapped type, when the map has one) and <c>{name}</c> (the reference type's name).
+    /// </summary>
+    private static string Reference(IReadOnlyDictionary<string, string> map, string target, RReferenceType reference, string? strategy, bool column)
+    {
+        var codeType = reference.Code.Type;
+        string? entry = null;
+        if (column && strategy is not null)
+            map.TryGetValue("reference:" + strategy, out entry);
+        if (entry is null)
+            map.TryGetValue("reference:*", out entry);
+        if (entry is null)
+            return Keyword(codeType, target, map);
+        var mapped = map.TryGetValue(codeType, out var code) ? code : codeType;
+        return entry.Replace("{type}", mapped, StringComparison.Ordinal).Replace("{name}", reference.Name, StringComparison.Ordinal);
     }
 
     private static string Keyword(string keyword, string target, IReadOnlyDictionary<string, string> map) =>
@@ -122,7 +146,7 @@ internal static class TypeOf
                 context.Recorder.RecordObject(column);
                 if (column.Table?.Database is { } db && SqlDialects.TryParse(db.Dialect, out var own) && own == dialect && column.NativeType.Length > 0)
                     return column.NativeType;
-                keyword = column.Type;
+                keyword = column.Type == "reference" && column.CodeType is { } codeType ? codeType : column.Type;
                 (length, precision, scale) = (column.Length, column.Precision, column.Scale);
                 databaseName = column.Table?.Database?.Name;
                 break;

@@ -3,7 +3,7 @@
 **Owner:** P2-R. See docs/engineering/phase2-design.md section 7 and SPEC.md section 21 (gate 2).
 
 The data layer of a B2B wholesale distributor, modeled in Maquettiste and generated end to end: 200 entities in 12 packages,
-8 value objects, 5 scalar types, 25 enums, 439 relations, one PostgreSQL 16 database (`main`, schema `northwind`) with
+8 value objects, 5 scalar types, 23 enums, 2 reference types, 439 relations, one PostgreSQL 16 database (`main`, schema `northwind`) with
 table overlays, a designed table, a view and three sequences, and one subject-area diagram per package.
 
 ## Layout
@@ -105,8 +105,9 @@ The editor listens on 127.0.0.1:8097 (`MAQUETTISTE_PORT`); the walk edits the mo
 - TPH inheritance `Party` -> `Customer`, `Supplier`, `Carrier` with discriminator values; TPT `Payment` -> `CardPayment`,
   `BankTransfer`.
 - Value objects embedded (with `bill_`/`ship_`/`hq_` prefixes), a value-object collection table (`Supplier.remitToAddresses`)
-  and a JSON one (`Contact.additionalPhones`); enums stored as codes, as integers (`SalesOrderLine.status`) and through
-  lookup tables (`Product.status`, `Shipment.status`).
+  and a JSON one (`Contact.additionalPhones`); enums stored as codes and as integers (`SalesOrderLine.status`);
+  reference types stored as lookup tables keyed by code (`Product.status`, `Shipment.status`; migration 0002 converts
+  their former enum lookup ids to codes).
 - Stereotypes `aggregate-root`, `audited`, `soft-delete`, `reference-data` and `lookup` (11 lookup entities); a strict tag
   vocabulary; a category tree with one category per package under four groups.
 - Alternate keys, indexed and unique attributes, overlays with native types, checks, filtered and descending indexes,

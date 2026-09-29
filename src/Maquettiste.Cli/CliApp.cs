@@ -139,6 +139,8 @@ public sealed class CliApp(CliEnvironment environment)
                                   --hand-edits fail|overwrite|skip, --watch, --dry-run, --diff, --check,
                                   --format text|json, --no-wait
           migrate               Upgrade the model format (format 1 is current)
+          format                Rewrite every model file in canonical form and report the count
+                                  --check (write nothing; exit 2 when a file would change)
           pack new <name>       Scaffold a template pack under .maquettiste/templates/<name>/
                                   --from empty|sql-ddl|csharp-dapper
           bench                 Run the synthetic benchmark
@@ -191,6 +193,7 @@ public sealed class CliApp(CliEnvironment environment)
                 "validate" => await ValidateCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "generate" => await GenerateCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "migrate" => await MigrateCommand.RunAsync(context, ct).ConfigureAwait(false),
+                "format" => await FormatCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "pack" => await PackNewCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "bench" => await BenchCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "mcp" => await McpCommand.RunAsync(context, ct).ConfigureAwait(false),
@@ -206,6 +209,11 @@ public sealed class CliApp(CliEnvironment environment)
         {
             await _environment.Error.WriteLineAsync("maquettiste: " + e.Message).ConfigureAwait(false);
             return Program.ExitCodes.Internal;
+        }
+        catch (Exception e) when (PermissionError.Find(e) is { } denied)
+        {
+            await _environment.Error.WriteLineAsync(PermissionError.Message(denied, OperatingSystem.IsLinux())).ConfigureAwait(false);
+            return Program.ExitCodes.Invalid;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

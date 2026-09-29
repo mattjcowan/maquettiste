@@ -2,7 +2,7 @@ using Maquettiste.Engine.Model;
 
 namespace Maquettiste.Engine.Resolution;
 
-/// <summary>Attribute columns: scalars, enums (int, string, lookup), value objects (embedded, table, json) and collections.</summary>
+/// <summary>Attribute columns: scalars, enums (int, string), value objects (embedded, table, json) and collections.</summary>
 internal sealed partial class DatabaseRun
 {
     /// <summary>Adds the columns of one attribute (section 7.5) to a table.</summary>
@@ -27,6 +27,18 @@ internal sealed partial class DatabaseRun
 
     private void AddValueColumns(TableBuild t, RAttribute a, string path, string name, bool nullable, StorageKind? storage, string prefix, int depth)
     {
+        if (a.Type.ReferenceType is { } reference)
+        {
+            // Reference-typed (reference-types-seeds-localization.md section 1.4): a single value is one column typed "reference"
+            // whose code facets ride along; a collection gets no column and no table (the mapping lists it as template-defined).
+            if (a.Collection)
+                return;
+            t.Deps.Element(reference.Id).Add(ResolveRun.ReferenceDataKey);
+            var c = AddColumn(t, path, name, "reference", a.Length, null, null, nullable, a.Default, a, path, reference);
+            c.Strategy = _run.StorageChoice(reference.Id, _db.Id)?.Strategy;
+            return;
+        }
+
         if (a.Type.ValueObject is { } vo)
         {
             t.Deps.Element(vo.Id).AddRange(_run.DepsOf(vo).ToList());
@@ -133,12 +145,12 @@ internal sealed partial class DatabaseRun
         }
     }
 
-    /// <summary>Enum storage: <c>int</c> (value, else ordinal), <c>string</c> (code, else name) or <c>lookup</c> (a foreign key to the lookup table).</summary>
+    /// <summary>Enum storage: <c>int</c> (value, else ordinal) or <c>string</c> (code, else name). The lookup-table option is retired (MQ7012): a reference type replaces it, and its template decides the lookup table.</summary>
     private void AddEnumColumn(TableBuild t, RAttribute a, REnum e, string path, string name, bool nullable, StorageKind? storage)
     {
         t.Deps.AddRange(_run.DepsOf(e).ToList());
-        var kind = storage is StorageKind.Int or StorageKind.String or StorageKind.Lookup ? storage.Value
-            : _conv.EnumStorage is StorageKind.Int or StorageKind.String or StorageKind.Lookup ? _conv.EnumStorage : StorageKind.Int;
+        var kind = storage is StorageKind.Int or StorageKind.String ? storage.Value
+            : _conv.EnumStorage is StorageKind.Int or StorageKind.String ? _conv.EnumStorage : StorageKind.Int;
         var member = a.Default is string text
             ? e.Members.FirstOrDefault(m => string.Equals(m.Name, text, StringComparison.Ordinal) || string.Equals(m.Code, text, StringComparison.Ordinal))
             : null;
@@ -146,12 +158,6 @@ internal sealed partial class DatabaseRun
         {
             case StorageKind.String:
                 AddColumn(t, path, name, "string", StringLength(e), null, null, nullable, member is null ? a.Default : member.Code ?? member.Name, a, path);
-                break;
-            case StorageKind.Lookup:
-                var lookup = EnsureLookup(e);
-                var idType = lookup.Resolve("id")?.Type ?? "int32";
-                AddColumn(t, path, name, idType, null, null, null, nullable, member is null ? a.Default : ValueOf(e, member), a, path);
-                t.ForeignKeys.Add(new ForeignKeySpec(t, [path], lookup, null, ["id"], "no-action", "no-action", null));
                 break;
             default:
                 AddColumn(t, path, name, IntegerType(e), null, null, null, nullable, member is null ? a.Default : ValueOf(e, member), a, path);
@@ -174,47 +180,6 @@ internal sealed partial class DatabaseRun
         e.Members.Any(m => m.Value is < int.MinValue or > int.MaxValue) ? "int64" : "int32";
 
     private static int StringLength(REnum e) => Math.Max(1, e.Members.Select(m => (m.Code ?? m.Name).Length).DefaultIfEmpty(1).Max());
-
-    /// <summary>The lookup table of an enum (<c>id</c>, <c>code</c>, <c>name</c>, rows from members), created on first use.</summary>
-    private TableBuild EnsureLookup(REnum e)
-    {
-        if (_lookups.TryGetValue(e.Id, out var existing))
-            return existing;
-        var overlay = _overlays.GetValueOrDefault("enum:" + e.Id);
-        var key = e.Id + "@" + _db.Id;
-        var r = new RTable
-        {
-            Id = key,
-            Key = key,
-            Name = overlay is { Name.Length: > 0 } ? overlay.Name : TableNameFor(e.Name, ExplicitPlural(e.Id)),
-            Schema = SchemaName(overlay?.Schema),
-            Database = _rdb,
-            Origin = "synthesized",
-            Comment = overlay?.Comment,
-            IsLookup = true,
-            LookupRows = [.. e.Members.Select((m, i) => new RLookupRow { Id = m.Value ?? i, Code = m.Code ?? m.Name, Name = m.DisplayName })],
-        };
-        var t = new TableBuild(_run.Keys, r, null, overlay, e.Id);
-        t.Deps.AddRange(_run.DepsOf(e).ToList()).Referrers(e.Id).Element(_db.Id).Add(Conventions).Add(TypeMaps);
-        if (_conv.PluralTables)
-            t.Deps.Add(InflectionKey);
-        if (overlay is not null)
-        {
-            t.Deps.Element(overlay.Id);
-            AddConstraintFiles(t, overlay);
-        }
-
-        AddTable(t);
-        _lookups[e.Id] = t;
-        AddColumn(t, "id", Render(_conv.KeyColumn, ("attribute", "id"), ("entity", e.Name), ("table", r.Name)), IntegerType(e), null, null, null, false, null, null, null);
-        AddColumn(t, "code", ColumnName("code"), "string", StringLength(e), null, null, false, null, null, null);
-        var nameLength = Math.Max(1, e.Members.Select(m => m.DisplayName.Length).DefaultIfEmpty(1).Max());
-        AddColumn(t, "name", ColumnName("name"), "string", nameLength, null, null, false, null, null, null);
-        if (t.PrimaryKey.Count == 0)
-            t.PrimaryKey.Add("id");
-        t.Uniques.Add(new UniqueSpec(["code"], null, null));
-        return t;
-    }
 
     private void DeferChildTable(TableBuild owner, RAttribute a, string path, bool collection) =>
         owner.Deferred.Add(() => CreateChildTable(owner, a, path, collection));
@@ -308,7 +273,7 @@ internal sealed partial class DatabaseRun
 
     /// <summary>Adds a synthesized column (or returns the existing one with that key), with its overlay applied.</summary>
     private RColumn AddColumn(TableBuild t, string key, string name, string type, int? length, int? precision, int? scale, bool nullable,
-        object? defaultValue, RAttribute? attribute, string? path)
+        object? defaultValue, RAttribute? attribute, string? path, RReferenceType? reference = null)
     {
         if (t.ByKey.TryGetValue(key, out var existing))
             return existing;
@@ -326,6 +291,8 @@ internal sealed partial class DatabaseRun
             Default = defaultValue,
             Attribute = attribute,
             AttributePath = path,
+            ReferenceType = reference,
+            CodeType = reference?.Code.Type,
         };
         if (t.OverlayColumns.TryGetValue(key, out var overlay))
         {
@@ -342,7 +309,7 @@ internal sealed partial class DatabaseRun
         }
 
         ApplyFacetDefaults(c);
-        c.NativeType = overlay?.NativeType ?? NativeType(c.Type, c.Length, c.Precision, c.Scale);
+        c.NativeType = overlay?.NativeType ?? NativeType(PhysicalType(c), c.Length, c.Precision, c.Scale);
         t.Columns.Add(c);
         t.ByKey[key] = c;
         _run.Register(c);

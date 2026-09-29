@@ -8,6 +8,7 @@
     "kind",
     "id",
     "name",
+    "package",
     "displayName",
     "pluralName",
     "description",
@@ -33,6 +34,10 @@
     "name": {
       "$ref": "common.json#/$defs/label",
       "default": ""
+    },
+    "package": {
+      "$ref": "common.json#/$defs/id",
+      "description": "The domain the vocabulary is scoped to (that domain and the domains nested under it); absent for the global vocabulary. At most one vocabulary of each kind per scope."
     },
     "displayName": {
       "type": "string"

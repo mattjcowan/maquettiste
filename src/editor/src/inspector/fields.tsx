@@ -1,9 +1,9 @@
 // Property forms for the kinds the phase 2 workspaces edit. Every edit goes through the draft;
 // text fields save 600 ms after the last keystroke or on blur.
+import { useDefinition } from "./definition";
 import { useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 import type {
-  CategoryTreeDoc,
   DatabaseDoc,
   ElementDocument,
   ElementSummary,
@@ -14,7 +14,6 @@ import type {
   RelationEndDoc,
   ScalarTypeDoc,
   StereotypeDoc,
-  TagVocabularyDoc,
 } from "@/api/types";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { CheckboxField } from "@/components/ui/checkbox";
@@ -22,10 +21,12 @@ import { Button } from "@/components/ui/button";
 import { SectionTitle } from "@/components/ui/misc";
 import { BUILTIN_TYPES, TYPE_KINDS } from "@/model/model";
 import { newId } from "@/lib/ids";
-import { useElement, useElements, useIndex } from "@/api/queries";
+import { useElements, useIndex } from "@/api/queries";
 import { indexLookup } from "@/model/index";
+import { categoryOptions, markDomainOf, tagOptions, vocabulariesOnChain } from "@/model/vocabularies";
 import { AttributeGrid } from "./AttributeGrid";
 import type { Diagnostic } from "@/api/types";
+import { GROUP_LABELS, KIND_LABELS } from "@/model/labels";
 
 export interface FormProps {
   id: string;
@@ -44,7 +45,7 @@ export function setOptional(json: Rec, key: string, value: unknown): void {
   else json[key] = value;
 }
 
-function TextField({
+export function TextField({
   id,
   label,
   value,
@@ -81,7 +82,7 @@ function TextField({
   );
 }
 
-function ChipsEditor({
+export function ChipsEditor({
   label,
   values,
   options,
@@ -145,7 +146,7 @@ function ChipsEditor({
         {allowFree ? (
           <datalist id={`${label}-options`}>
             {remaining.map((o) => (
-              <option key={o.value} value={o.value} />
+              <option key={o.value} value={o.value} label={o.label} />
             ))}
           </datalist>
         ) : null}
@@ -154,22 +155,24 @@ function ChipsEditor({
   );
 }
 
-export function useVocabularies(kind: string) {
+/**
+ * The stereotypes, and the tags and categories an element in `domain` is offered (explorer-redesign.md 1.11): its
+ * domain's vocabularies, each enclosing domain's, then the global ones, nearest first; a domain entry names its domain.
+ */
+export function useVocabularies(kind: string, domain: string | null = null) {
   const index = useIndex();
   const lookup = indexLookup(index.data);
-  const treeId = lookup.ofKind("category-tree")[0]?.id ?? null;
-  const tagsId = lookup.ofKind("tag-vocabulary")[0]?.id ?? null;
-  const tree = useElement(treeId);
-  const tags = useElement(tagsId);
+  const rows = index.data;
+  const tagChain = useMemo(() => vocabulariesOnChain("tag-vocabulary", domain, rows ?? []), [rows, domain]);
+  const categoryChain = useMemo(() => vocabulariesOnChain("category-tree", domain, rows ?? []), [rows, domain]);
+  const vocabularyIds = useMemo(() => [...tagChain, ...categoryChain].map((v) => v.id), [tagChain, categoryChain]);
+  const vocabularyDocs = useElements(vocabularyIds);
   const stereotypeIds = lookup.ofKind("stereotype").map((s) => s.id);
   const stereotypeDocs = useElements(stereotypeIds);
   return useMemo(() => {
-    const categories = ((tree.data?.json as CategoryTreeDoc | undefined)?.categories ?? []).map((c) => ({
-      value: c.id,
-      label: c.name,
-      parent: c.parent ?? null,
-    }));
-    const vocabulary = tags.data?.json as TagVocabularyDoc | undefined;
+    const docOf = (id: string) => vocabularyDocs.byId.get(id)?.json;
+    const categories = categoryOptions(categoryChain, docOf);
+    const tags = tagOptions(tagChain, docOf);
     const stereotypes = stereotypeIds
       .map((id) => stereotypeDocs.byId.get(id)?.json as StereotypeDoc | undefined)
       .filter((s): s is StereotypeDoc => !!s)
@@ -177,21 +180,22 @@ export function useVocabularies(kind: string) {
     return {
       lookup,
       categories,
-      tags: (vocabulary?.definitions ?? []).map((d) => ({ value: d.key, label: d.key })),
-      strictTags: vocabulary?.strict === true,
+      tags: tags.options,
+      strictTags: tags.strict,
       stereotypes,
       allStereotypes: stereotypeIds.map((id) => stereotypeDocs.byId.get(id)?.json as StereotypeDoc | undefined).filter((s): s is StereotypeDoc => !!s),
     };
-  }, [tree.data, tags.data, stereotypeDocs, stereotypeIds, lookup, kind]);
+  }, [vocabularyDocs, tagChain, categoryChain, stereotypeDocs, stereotypeIds, lookup, kind]);
 }
 
 export function CommonFields({ id, json, doc, edit, flush, diagnostics }: FormProps) {
   const rec = json as Rec;
   const kind = String(rec.kind);
-  const vocab = useVocabularies(kind);
+  const vocab = useVocabularies(kind, markDomainOf(rec));
   const invalid = (pointer: string) => diagnostics.some((d) => d.jsonPointer === pointer);
   const hasPackage = ["entity", "value-object", "scalar-type", "enum", "relation", "diagram"].includes(kind);
   const description = rec.description;
+  const definition = useDefinition();
   return (
     <div className="flex flex-col gap-3">
       {kind === "stereotype" ? (
@@ -224,8 +228,9 @@ export function CommonFields({ id, json, doc, edit, flush, diagnostics }: FormPr
         />
       </div>
       {hasPackage || kind === "package" ? (
-        <Field label={kind === "package" ? "Parent package" : "Package"} htmlFor={`${id}-package`}>
+        <Field label={kind === "package" ? `Parent ${KIND_LABELS.package.toLowerCase()}` : KIND_LABELS.package} htmlFor={`${id}-package`}>
           <Select
+            {...definition.props(String((kind === "package" ? rec.parent : rec.package) ?? "") || null)}
             id={`${id}-package`}
             value={String((kind === "package" ? rec.parent : rec.package) ?? "")}
             onChange={(e) => {
@@ -233,7 +238,7 @@ export function CommonFields({ id, json, doc, edit, flush, diagnostics }: FormPr
               flush();
             }}
           >
-            <option value="">(none)</option>
+            <option value="">{kind === "package" ? "(top level)" : GROUP_LABELS.notInDomain}</option>
             {vocab.lookup
               .ofKind("package")
               .filter((p) => p.id !== id)
@@ -311,11 +316,13 @@ export function EntityFields({ id, json, edit, flush, diagnostics }: FormProps) 
   const entity = json as EntityDoc;
   const vocab = useVocabularies("entity");
   const typeOptions = TYPE_KINDS.flatMap((k) => vocab.lookup.ofKind(k));
+  const definition = useDefinition();
   return (
     <div className="flex flex-col gap-3">
       <div className="grid grid-cols-2 gap-2">
         <Field label="Base entity" htmlFor={`${id}-base`}>
           <Select
+            {...definition.props(entity.base)}
             id={`${id}-base`}
             value={entity.base ?? ""}
             onChange={(e) => {
@@ -370,6 +377,7 @@ export function EntityFields({ id, json, edit, flush, diagnostics }: FormProps) 
         attributes={entity.attributes ?? []}
         keyIds={entity.key?.attributes ?? []}
         typeOptions={typeOptions}
+        definition={definition}
         diagnostics={diagnostics}
         onChange={(update, commit) => {
           edit((j) => update(j));
@@ -384,6 +392,7 @@ export function AttributesOnlyFields({ json, edit, flush, diagnostics }: FormPro
   const record = json as { attributes?: EntityDoc["attributes"]; name: string };
   const vocab = useVocabularies(String((json as Rec).kind));
   const typeOptions = TYPE_KINDS.flatMap((k) => vocab.lookup.ofKind(k));
+  const definition = useDefinition();
   return (
     <div className="flex flex-col gap-2">
       <SectionTitle>Attributes</SectionTitle>
@@ -391,6 +400,7 @@ export function AttributesOnlyFields({ json, edit, flush, diagnostics }: FormPro
         label={`Attributes of ${record.name}`}
         attributes={record.attributes ?? []}
         typeOptions={typeOptions}
+        definition={definition}
         diagnostics={diagnostics}
         withKey={false}
         onChange={(update, commit) => {
@@ -416,11 +426,13 @@ function EndEditor({
   flush: () => void;
 }) {
   const base = `end-${index}`;
+  const definition = useDefinition();
   return (
     <fieldset className="flex flex-col gap-2 rounded-control border border-default p-2">
       <legend className="px-1 text-12 font-medium text-secondary">End {index + 1}</legend>
       <Field label="Entity" htmlFor={`${base}-entity`}>
         <Select
+          {...definition.props(end.entity)}
           id={`${base}-entity`}
           value={end.entity}
           onChange={(e) => {
@@ -503,8 +515,8 @@ function EndEditor({
   );
 }
 
-export function RelationFields(props: FormProps) {
-  const { id, json, edit, flush } = props;
+export function RelationFields(props: FormProps & { withAttributes?: boolean }) {
+  const { id, json, edit, flush, withAttributes = true } = props;
   const relation = json as RelationDoc;
   const vocab = useVocabularies("relation");
   const entities = vocab.lookup.ofKind("entity");
@@ -550,7 +562,7 @@ export function RelationFields(props: FormProps) {
           }
         />
       ))}
-      <AttributesOnlyFields {...props} />
+      {withAttributes ? <AttributesOnlyFields {...props} /> : null}
     </div>
   );
 }

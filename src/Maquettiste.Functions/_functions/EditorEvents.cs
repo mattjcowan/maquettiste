@@ -26,6 +26,7 @@ public sealed class EditorEvents
     private readonly Lock _gate = new();
     private long _changes;
     private string? _lastSettingsHash;
+    private ModelSnapshot? _lastSnapshot;
 
     /// <summary>Creates the publisher.</summary>
     /// <param name="realtime">The site's realtime side.</param>
@@ -60,8 +61,44 @@ public sealed class EditorEvents
         ArgumentNullException.ThrowIfNull(set);
         var cut = set.TruncateTo(Api.MaxEventBytes);
         var index = cut.Changed.Count == 0 ? [] : await _store.GetIndexAsync(ct).ConfigureAwait(false);
-        await _realtime.PublishAsync("model.changed", ModelChangedEvent.Create(cut, index, Api.MaxEventBytes), Api.JsonOptions, ct).ConfigureAwait(false);
+        var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var translations = set.Locales.Count == 0 ? null : Translations(snapshot, set.Locales);
+        lock (_gate)
+            _lastSnapshot = snapshot;
+        await _realtime.PublishAsync("model.changed", ModelChangedEvent.Create(cut, index, Api.MaxEventBytes, translations), Api.JsonOptions, ct).ConfigureAwait(false);
         SignalValidation();
+    }
+
+    /// <summary>
+    /// The <c>translations</c> of <c>model.changed</c> (reference-types-seeds-localization.md section 3.8): for each translated locale
+    /// whose chain includes a changed locale, the display names that differ from the last snapshot published (every display name when
+    /// no earlier snapshot is known), each the effective text after the change.
+    /// </summary>
+    private List<LocaleDisplayNames> Translations(ModelSnapshot snapshot, IReadOnlyList<string> changed)
+    {
+        ModelSnapshot? previous;
+        lock (_gate)
+            previous = _lastSnapshot;
+        var l10n = snapshot.Localization;
+        var list = new List<LocaleDisplayNames>();
+        foreach (var locale in l10n.Locales.Where(l10n.IsTranslated))
+        {
+            if (!l10n.ChainOf(locale).Any(l => changed.Contains(l, StringComparer.Ordinal)))
+                continue;
+            var table = ModelReads.DisplayNames(snapshot, locale);
+            var before = previous is not null && previous.Localization.IsTranslated(locale) ? ModelReads.DisplayNames(previous, locale) : null;
+            var names = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            foreach (var (id, text) in table)
+            {
+                if (before is null || !before.TryGetValue(id, out var old) || old != text)
+                    names[id] = text;
+            }
+
+            if (names.Count > 0)
+                list.Add(new LocaleDisplayNames(locale, names));
+        }
+
+        return list;
     }
 
     /// <summary>
@@ -330,6 +367,11 @@ public sealed class PresenceRegistry
 public sealed record SummarizedChange(string Id, string Kind, string Path, string Hash,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ElementSummary? Summary);
 
+/// <summary>The display names of one locale in <c>model.changed</c> after a translation change.</summary>
+/// <param name="Locale">The locale.</param>
+/// <param name="DisplayNames">Element id to the effective display name.</param>
+public sealed record LocaleDisplayNames(string Locale, IReadOnlyDictionary<string, string> DisplayNames);
+
 /// <summary>The <c>model.changed</c> payload: the engine's <see cref="ChangeSet"/> shape with a summary on each change (E5d).</summary>
 /// <param name="Changed">Changed and added elements.</param>
 /// <param name="Deleted">Ids of deleted elements.</param>
@@ -337,8 +379,16 @@ public sealed record SummarizedChange(string Id, string Kind, string Path, strin
 /// <param name="Truncated">Whether items were dropped to fit the size limit; the receiver refetches the index.</param>
 public sealed record ModelChangedEvent(IReadOnlyList<SummarizedChange> Changed, IReadOnlyList<string> Deleted, ChangeSource Source, bool Truncated)
 {
+    /// <summary>The effective display names after a translation change, per affected locale (left out when none changed).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<LocaleDisplayNames>? Translations { get; init; }
+
+    /// <summary>Whether <see cref="Translations"/> was dropped to fit the size limit; the editor refetches the index in its content locale.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool TranslationsTruncated { get; init; }
+
     /// <summary>Whether nothing changed (the engine's <see cref="ChangeSet.IsEmpty"/>, kept in the payload).</summary>
-    public bool IsEmpty => Changed.Count == 0 && Deleted.Count == 0;
+    public bool IsEmpty => Changed.Count == 0 && Deleted.Count == 0 && Translations is null && !TranslationsTruncated;
 
     /// <summary>
     /// Builds the payload of a change set already cut to <paramref name="maxJsonBytes"/>: each change gets its row from
@@ -347,8 +397,19 @@ public sealed record ModelChangedEvent(IReadOnlyList<SummarizedChange> Changed, 
     /// <param name="set">The change set.</param>
     /// <param name="index">The index now.</param>
     /// <param name="maxJsonBytes">The size limit.</param>
+    /// <param name="translations">The display names of the translation change, or <see langword="null"/>; dropped (and
+    /// <see cref="TranslationsTruncated"/> set) when the payload with them would be over the limit.</param>
     /// <returns>The payload.</returns>
-    public static ModelChangedEvent Create(ChangeSet set, IReadOnlyList<ElementSummary> index, int maxJsonBytes)
+    public static ModelChangedEvent Create(ChangeSet set, IReadOnlyList<ElementSummary> index, int maxJsonBytes, IReadOnlyList<LocaleDisplayNames>? translations = null)
+    {
+        var payload = CreateCore(set, index, maxJsonBytes);
+        if (translations is not { Count: > 0 })
+            return payload;
+        var with = payload with { Translations = translations };
+        return Size(with) <= maxJsonBytes ? with : payload with { TranslationsTruncated = true };
+    }
+
+    private static ModelChangedEvent CreateCore(ChangeSet set, IReadOnlyList<ElementSummary> index, int maxJsonBytes)
     {
         ArgumentNullException.ThrowIfNull(set);
         ArgumentNullException.ThrowIfNull(index);

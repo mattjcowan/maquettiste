@@ -2,7 +2,7 @@
   "name": "csharp-dapper",
   "version": "1.0.0",
   "engine": ">=1.0 <2.0",
-  "description": "C# model and Dapper data access: entity classes as generated/hand-written pairs, enums, value objects, one repository per mapped entity and one registration file per package.",
+  "description": "C# model and Dapper data access: entity classes as generated/hand-written pairs, enums, value objects, reference types as records with a static class of rows and resource files per locale, one repository per mapped entity and one registration file per package.",
   "parameters": {
     "database": "",
     "generatedFolder": "",
@@ -32,6 +32,18 @@
       "template": "value-object.scriban",
       "for": "each value object",
       "output": "{{ join_path pack.params.generatedFolder (package_folder value_object) ((pascal value_object.name) + \".g.cs\") }}"
+    },
+    {
+      "id": "reference-type",
+      "template": "reference-type.scriban",
+      "for": "each reference type",
+      "output": "{{ join_path pack.params.generatedFolder \"ReferenceData\" ((pascal reference_type.name) + \".g.cs\") }}"
+    },
+    {
+      "id": "resources",
+      "template": "resources.scriban",
+      "for": "each locale",
+      "output": "{{ join_path pack.params.generatedFolder \"ReferenceData\" (locale.is_default ? \"ReferenceData.resx\" : (\"ReferenceData.\" + locale.tag + \".resx\")) }}"
     },
     {
       "id": "repository",

@@ -33,6 +33,21 @@ RUN base=$(dotnet msbuild src/Maquettiste.Engine -getProperty:PackageVersion) \
  && sh docker/closure/nuget-config.sh /tmp/pkgs /opt/maquettiste/nuget > /feed.NuGet.Config \
  && echo "maquettiste: engine $(cat /engine.version), $(ls /feed/*.nupkg | wc -l) packages in the local feed"
 
+# ---------------------------------------------------------------- cli: the maquettiste command line
+# Framework-dependent and portable (no runtime identifier): the runtime image has the .NET 10 runtime, so one managed build serves
+# linux/amd64 and linux/arm64 alike. Its own stage, so a CLI change does not touch the editor's layers, and the editor's `COPY . .`
+# does not rebuild the CLI. Only what the CLI's project graph reads is copied (the bench is a library of `maquettiste bench`).
+FROM engine AS cli
+COPY bench/Maquettiste.Bench bench/Maquettiste.Bench
+COPY bench/packs bench/packs
+COPY packs/sql-ddl packs/sql-ddl
+COPY packs/csharp-dapper packs/csharp-dapper
+COPY skills/maquettiste-modeling skills/maquettiste-modeling
+COPY src/Maquettiste.Cli src/Maquettiste.Cli
+RUN dotnet publish src/Maquettiste.Cli -c Release -o /cli -p:UseAppHost=false -p:Version="$(cat /engine.version)" \
+ && rm -f /cli/*.pdb \
+ && echo "maquettiste: cli $(du -sh /cli | cut -f1)"
+
 # ---------------------------------------------------------------- editor: the site zip
 # With the SPA (src/editor, workstream P2-E) the zip is its build plus _functions/ and _variables.json, packed by its pack-site.mjs;
 # without it (a checkout of the functions alone) docker/pack-site.sh packs _functions/, _variables.json and a placeholder page, so
@@ -66,6 +81,10 @@ COPY --from=engine --chown=app:app /feed.NuGet.Config /home/app/.nuget/NuGet/NuG
 COPY --from=editor /out/site.zip /opt/maquettiste/site.zip
 COPY docker/entrypoint.sh /opt/maquettiste/entrypoint.sh
 RUN sha256sum /opt/maquettiste/site.zip | cut -c1-64 > /opt/maquettiste/site.sha256 && chmod 755 /opt/maquettiste/entrypoint.sh
+# The CLI, last so a CLI change leaves the layers above cached. `docker run <image> maquettiste ...` runs it instead of the editor
+# (the entrypoint execs a given command); docker/maquettiste.sh makes it work under any --user.
+COPY --from=cli /cli /opt/maquettiste/cli
+COPY --chmod=755 docker/maquettiste.sh /usr/local/bin/maquettiste
 # Server GC with dynamic adaptation and tiered PGO off: the settings the incremental generation budget was measured under (PD23).
 ENV MAQUETTISTE_MODE=local MAQUETTISTE_REPO_ROOT=/repo MAQUETTISTE_CACHE_DIR=/data/maquettiste/cache \
     DOTNET_gcServer=1 DOTNET_GCDynamicAdaptationMode=0 DOTNET_TieredPGO=0

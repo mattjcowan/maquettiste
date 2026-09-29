@@ -50,4 +50,10 @@ public enum ElementKind
 
     /// <summary>A stereotype definition (<c>stereotype</c>).</summary>
     [JsonStringEnumMemberName("stereotype")] Stereotype,
+
+    /// <summary>A named set of rows that attributes use as their type (<c>reference-type</c>).</summary>
+    [JsonStringEnumMemberName("reference-type")] ReferenceType,
+
+    /// <summary>Rows of data for an entity, a relation or a reference type (<c>seed</c>).</summary>
+    [JsonStringEnumMemberName("seed")] Seed,
 }

@@ -1,0 +1,21 @@
+{
+  "$schema": "../../../.schema/v1/seed.json",
+  "kind": "seed",
+  "id": "01JVSS00000000000000000005",
+  "name": "Unit",
+  "target": "01JVST00000000000000000001",
+  "columns": [
+    "code",
+    "label",
+    "01JVST00000000000000000004",
+    "01JVST00000000000000000005",
+    "01JVSE00000000000000000021"
+  ],
+  "rows": [
+    { "id": "01JVSS00000000000000000051", "values": ["kg", "Kilogram", 1000, "g"] },
+    { "id": "01JVSS00000000000000000052", "values": ["g", "Gram", 1, "kg"] },
+    { "id": "01JVSS00000000000000000053", "values": ["toolong", "X", 1, "g"] },
+    { "id": "01JVSS00000000000000000054", "values": ["KG", null, "heavy", "zz"] },
+    { "id": "01JVSS00000000000000000055", "values": ["mm", "Millimetre", 1, "mm"] }
+  ]
+}

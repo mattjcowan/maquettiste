@@ -10,6 +10,7 @@
 .vs
 .vscode
 .idea
+.claude
 tmp
 bench/out
 bench/results

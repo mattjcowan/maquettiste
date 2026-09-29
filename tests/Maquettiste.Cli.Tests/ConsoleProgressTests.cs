@@ -46,6 +46,56 @@ public sealed class ConsoleProgressTests
     }
 
     [Fact]
+    public void Plain_style_writes_each_stage_once_and_in_order_when_plan_reports_before_resolve()
+    {
+        var error = new SharedWriter();
+        var progress = new ConsoleProgress(ProgressStyle.Plain, error);
+        progress.Report(new ProgressUpdate(PipelineStage.Load, 5, 5, null, null));
+        progress.Report(new ProgressUpdate(PipelineStage.Validate, 5, 5, null, null));
+        progress.Report(new ProgressUpdate(PipelineStage.Plan, 1, 2, null, "ddl"));
+        progress.Report(new ProgressUpdate(PipelineStage.Plan, 2, 2, null, "ddl"));
+        progress.Report(new ProgressUpdate(PipelineStage.Resolve, 5, 5, null, null));
+        progress.Report(new ProgressUpdate(PipelineStage.Plan, 4, 4, null, null));
+        progress.Report(new ProgressUpdate(PipelineStage.Skip, 3, 3, null, null));
+        progress.Report(new ProgressUpdate(PipelineStage.Render, 3, 3, "a", null));
+        progress.Complete();
+        var lines = Text.Lines(error.Text());
+        string[] expected = ["load", "load", "validate", "validate", "resolve", "resolve", "plan", "plan", "skip", "skip", "render", "render"];
+        Assert.Equal(expected, lines.Select(l => l[(l.IndexOf(' ', StringComparison.Ordinal) + 1)..l.IndexOf(']', StringComparison.Ordinal)]));
+        Assert.StartsWith("[4/8 plan] done: 4 in ", lines[7], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Plain_style_shows_a_held_stage_at_the_end_when_its_predecessor_never_reports()
+    {
+        var error = new SharedWriter();
+        var progress = new ConsoleProgress(ProgressStyle.Plain, error);
+        progress.Report(new ProgressUpdate(PipelineStage.Load, 1, 1, null, null));
+        progress.Report(new ProgressUpdate(PipelineStage.Validate, 1, 1, null, null));
+        progress.Report(new ProgressUpdate(PipelineStage.Plan, 1, 1, null, "ddl"));
+        progress.Complete();
+        var lines = Text.Lines(error.Text());
+        Assert.Equal(6, lines.Length);
+        Assert.Equal("[4/8 plan] started", lines[4]);
+        Assert.StartsWith("[4/8 plan] done: 1", lines[5], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Hiding_the_write_stage_shows_no_write_line_but_still_counts_files()
+    {
+        foreach (var style in new[] { ProgressStyle.Plain, ProgressStyle.Json, ProgressStyle.Terminal })
+        {
+            var error = new SharedWriter();
+            var progress = new ConsoleProgress(style, error, hideWrite: true);
+            progress.Report(new ProgressUpdate(PipelineStage.Render, 1, 1, "a", null));
+            progress.Report(new ProgressUpdate(PipelineStage.Write, 3, 3, "a", null));
+            progress.Complete();
+            Assert.DoesNotContain("write", error.Text(), StringComparison.Ordinal);
+            Assert.Equal(3, progress.FilesCompared);
+        }
+    }
+
+    [Fact]
     public void Plain_style_under_concurrent_updates_still_writes_one_start_and_one_end_line_per_stage()
     {
         var error = new SharedWriter();

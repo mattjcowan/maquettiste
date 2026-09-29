@@ -1,0 +1,37 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01JRDR00000000000000000001",
+  "name": "contains",
+  "ends": [
+    {
+      "id": "01JRDR00000000000000000011",
+      "entity": "01JRDE00000000000000000001",
+      "role": "recipe"
+    },
+    {
+      "id": "01JRDR00000000000000000012",
+      "entity": "01JRDE00000000000000000002",
+      "role": "ingredient"
+    }
+  ],
+  "attributes": [
+    {
+      "id": "01JRDR00000000000000000021",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true
+    },
+    {
+      "id": "01JRDR00000000000000000022",
+      "name": "unit_of_measure",
+      "type": {
+        "ref": "01JBM9S346Q3D25VT4F5V37E3S"
+      },
+      "required": true,
+      "default": "g"
+    }
+  ]
+}

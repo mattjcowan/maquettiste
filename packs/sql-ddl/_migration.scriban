@@ -114,8 +114,8 @@ func column_statements(t, cc, old_table, out)
     end
     ret
   end
-  $native = type_of $c $d
-  $retype = has_change(cc.changes, ["type", "length", "precision", "scale", "nativeType"])
+  $native = column_type($c)
+  $retype = has_change(cc.changes, ["type", "length", "precision", "scale", "nativeType", "strategy", "codeType"])
   $renull = has_change(cc.changes, ["nullable"])
   $redefault = has_change(cc.changes, ["default", "defaultSql"])
   $dflt = default_sql($c, $db)
@@ -131,6 +131,13 @@ func column_statements(t, cc, old_table, out)
       emit(out, alter_prefix(t) + " ALTER COLUMN " + $col + " TYPE " + $native + " USING " + $col + "::" + $native + ";")
     else
       emit(out, alter_prefix(t) + " ALTER COLUMN " + $col + " " + $native + ($c.nullable ? " NULL" : " NOT NULL") + ";")
+    end
+    # A change of logical type keeps each stored value as the cast leaves it; the reviewer decides whether values change
+    # meaning (for example integer ids that become codes) and converts them before dropping anything they depend on.
+    for ch in cc.changes
+      if ch.property == "type"
+        emit(out, "-- TODO: convert existing values of " + t.name + "." + $name + " (type: " + (ch.old ?? "null") + " -> " + (ch.new ?? "null") + "); the cast keeps each value as it is.")
+      end
     end
   else if $renull
     if $d == "postgresql"

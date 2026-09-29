@@ -68,9 +68,15 @@ internal static class ModelChanges
 
         """);
 
-    /// <summary>A new InvoiceStatus member, <c>Disputed</c> (4, code X): a new row in lookup tables.</summary>
+    /// <summary>A new InvoiceStatus member, <c>Disputed</c> (4, code X), of an enum stored as its codes.</summary>
     /// <param name="repo">The repo.</param>
     public static void AddDisputedStatus(PackRepo repo) =>
         repo.EditJson(".maquettiste/model/enums/invoice-status.json", status =>
             status["members"]!.AsArray().Add(new JsonObject { ["id"] = "01J92P0V2E0000000000000001", ["name"] = "Disputed", ["value"] = 4, ["code"] = "X" }));
+
+    /// <summary>A new PaymentMethod row, <c>voucher</c>: a new row of the lookup table and a new code in the CHECKs.</summary>
+    /// <param name="repo">The repo.</param>
+    public static void AddVoucherMethod(PackRepo repo) =>
+        repo.EditJson(".maquettiste/model/seeds/payment-method/payment-method.json", seed =>
+            seed["rows"]!.AsArray().Add(new JsonObject { ["id"] = "01J92P0V2F0000000000000014", ["values"] = new JsonArray("voucher", "Voucher") }));
 }

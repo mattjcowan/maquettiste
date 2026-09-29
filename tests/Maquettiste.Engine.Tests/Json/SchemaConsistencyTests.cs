@@ -25,6 +25,7 @@ public sealed class SchemaConsistencyTests
         data.Add("manifest.json", typeof(ManifestFile));
         data.Add("snapshot.json", typeof(PhysicalSnapshot));
         data.Add("batch.json", typeof(ModelBatch));
+        data.Add("locale.json", typeof(LocaleShard));
         return data;
     }
 

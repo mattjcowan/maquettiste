@@ -6,7 +6,12 @@
 #   4. starts static-site-hosting, forwarding TERM and INT;
 #   5. deploys the zip through the host's own API when needed;
 #   6. waits for the host and exits with its status.
+# Given a command (docker run <image> maquettiste ...), it runs that command instead.
 set -eu
+
+# A command runs instead of the editor host: docker run --rm <image> maquettiste generate (docker/maquettiste.sh). With no
+# arguments (compose, docker run <image>) the image starts the editor as before.
+if [ "$#" -gt 0 ]; then exec "$@"; fi
 
 site=maquettiste.localhost
 opt=/opt/maquettiste

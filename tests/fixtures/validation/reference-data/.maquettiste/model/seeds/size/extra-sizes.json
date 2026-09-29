@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../.schema/v1/seed.json",
+  "kind": "seed",
+  "id": "01JVRS00000000000000000002",
+  "name": "ExtraSizes",
+  "target": "01JVRT00000000000000000011",
+  "columns": [
+    "code",
+    "label"
+  ],
+  "rows": [
+    { "id": "01JVRS00000000000000000021", "values": ["s", "Small elsewhere"] },
+    { "id": "01JVRS00000000000000000022", "values": ["xl", "Extra large"] }
+  ]
+}

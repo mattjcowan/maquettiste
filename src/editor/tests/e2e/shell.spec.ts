@@ -72,8 +72,14 @@ for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.addInitScript((t) => localStorage.setItem("mq.theme", t), theme);
     await openEditor(page);
-    for (const name of ["Entities", "Database", "Mappings", "Generate", "Settings"]) {
-      await workspace(page, name);
+    // The rail's explorers and screens, then Mappings (opened from a database's menu or the palette).
+    for (const name of ["Domain model", "Reference data", "Databases", "Diagrams", "Generate", "Settings", "Mappings"]) {
+      if (name === "Mappings") {
+        await page.keyboard.press("Control+k");
+        await page.keyboard.type("screen Mappings");
+        await page.keyboard.press("Enter");
+        await expect(page.getByTestId("workspace-mappings")).toBeVisible();
+      } else await workspace(page, name);
       await expect(page.getByRole("main")).toBeVisible();
       await page.waitForLoadState("networkidle");
       const scan = await new AxeBuilder({ page }).exclude(".react-flow__minimap").analyze();

@@ -18,7 +18,10 @@ public static class SyntheticModelGenerator
         ArgumentException.ThrowIfNullOrEmpty(repoRoot);
         ArgumentNullException.ThrowIfNull(options);
         var model = await Task.Run(() => SyntheticModel.Build(options), ct).ConfigureAwait(false);
-        await new RepoWriter(repoRoot).WriteAsync(model, options, ct).ConfigureAwait(false);
+        var writer = new RepoWriter(repoRoot);
+        await writer.WriteAsync(model, options, ct).ConfigureAwait(false);
+        if (options.Locales > 0)
+            await LocaleShards.WriteAsync(repoRoot, writer, options, ct).ConfigureAwait(false);
     }
 
     /// <summary>

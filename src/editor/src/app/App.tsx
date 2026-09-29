@@ -6,7 +6,9 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, useLocation } from "react-router";
 import { Explorer } from "@/explorer/Explorer";
 import { Inspector } from "@/inspector/Inspector";
-import { CommandPalette } from "@/palette/CommandPalette";
+import { EditorArea, EditorTabBar } from "@/editors/EditorTabs";
+import { CommandPalette, QuickOpen } from "@/palette/CommandPalette";
+import { NewElementHost } from "@/explorer/NewElementDialog";
 import { ConflictDialog } from "@/inspector/ConflictDialog";
 import { Splitter } from "@/components/ui/splitter";
 import { Spinner } from "@/components/ui/misc";
@@ -15,11 +17,13 @@ import { applyDensity, applyTheme, followSystemTheme } from "@/design/theme";
 import { saveLayout, useEditor, type EditorState, type Workspace } from "@/state/store";
 import { Banners, Notices } from "./Banners";
 import { BottomPanel } from "./BottomPanel";
+import { Breadcrumbs } from "./Breadcrumbs";
 import { ServicesProvider, useServices, type AppServices } from "./context";
 import { parseLocation } from "./navigation";
-import { Rail } from "./Rail";
+import { GenerateSidebar, Rail } from "./Rail";
 import { useGlobalShortcuts } from "./shortcuts";
 import { TopBar } from "./TopBar";
+import { SCREEN_LABELS } from "@/model/labels";
 
 function named<K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) {
   return lazy(() => load().then((m) => ({ default: m[name] })));
@@ -27,6 +31,7 @@ function named<K extends string>(load: () => Promise<Record<K, ComponentType>>, 
 
 const WORKSPACE_VIEWS: Record<Workspace, ComponentType> = {
   entities: named(() => import("@/workspaces/entities/EntitiesWorkspace"), "EntitiesWorkspace"),
+  "reference-data": named(() => import("@/workspaces/reference-data/ReferenceDataWorkspace"), "ReferenceDataWorkspace"),
   database: named(() => import("@/workspaces/database/DatabaseWorkspace"), "DatabaseWorkspace"),
   mappings: named(() => import("@/workspaces/mappings/MappingsWorkspace"), "MappingsWorkspace"),
   generate: named(() => import("@/workspaces/generate/GenerateWorkspace"), "GenerateWorkspace"),
@@ -120,6 +125,9 @@ function Shell() {
   useGlobalShortcuts();
 
   const workspace = useEditor(store, (s) => s.workspace);
+  const sidebar = useEditor(store, (s) => s.explorer.active);
+  const pinned = useEditor(store, (s) => s.explorer.pinned);
+  const second = sidebar !== "generate" && pinned && pinned !== sidebar ? pinned : null;
   const explorerSize = useEditor(store, (s) => s.explorerSize);
   const inspectorSize = useEditor(store, (s) => s.inspectorSize);
   const bottomSize = useEditor(store, (s) => s.bottomSize);
@@ -142,9 +150,21 @@ function Shell() {
               aria-label="Explorer"
               data-region="explorer"
               className="flex min-h-0 shrink-0 flex-col border-r border-default bg-surface"
-              style={{ width: explorerSize }}
+              style={{ width: second ? explorerSize * 2 : explorerSize }}
             >
-              <Explorer />
+              {sidebar === "generate" ? (
+                <GenerateSidebar />
+              ) : (
+                <div className="flex h-full min-h-0">
+                  <Explorer key={sidebar} id={sidebar} />
+                  {second ? (
+                    <>
+                      <div className="w-px shrink-0 bg-default" aria-hidden />
+                      <Explorer key={`pinned-${second}`} id={second} pinned />
+                    </>
+                  ) : null}
+                </div>
+              )}
             </aside>
             <Splitter
               orientation="vertical"
@@ -158,8 +178,10 @@ function Shell() {
           </>
         )}
         <div className="flex min-w-0 flex-1 flex-col">
+          {workspace === "generate" || workspace === "settings" ? null : <Breadcrumbs />}
+          <EditorTabBar workspace={workspace} />
           <main
-            aria-label={`${workspace} workspace`}
+            aria-label={`${SCREEN_LABELS[workspace]} screen`}
             data-region="center"
             className="relative min-h-0 flex-1 overflow-hidden bg-canvas"
             data-testid={`workspace-${workspace}`}
@@ -173,6 +195,9 @@ function Shell() {
             >
               <RegionBoundary name={workspace}>
                 <View />
+              </RegionBoundary>
+              <RegionBoundary name="editor">
+                <EditorArea />
               </RegionBoundary>
             </Suspense>
           </main>
@@ -216,7 +241,9 @@ function Shell() {
       </div>
       <Notices />
       <CommandPalette />
+      <QuickOpen />
       <ConflictDialog />
+      <NewElementHost />
     </div>
   );
 }

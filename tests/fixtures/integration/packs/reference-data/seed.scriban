@@ -1,0 +1,4 @@
+{{ seed.name }} -> {{ seed.target.name }}
+{{- for r in seed.ordered_rows }}
+{{ row_uuid r }} {{ json r.values }}
+{{- end }}

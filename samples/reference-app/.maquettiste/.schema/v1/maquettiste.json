@@ -14,6 +14,8 @@
     "databases",
     "typeMaps",
     "inflection",
+    "localization",
+    "referenceData",
     "packs",
     "validation",
     "limits"
@@ -168,6 +170,67 @@
       "additionalProperties": false,
       "default": {}
     },
+    "localization": {
+      "description": "Localization of the standard fields (displayName, pluralName, description, a reference row's label).",
+      "type": "object",
+      "x-order": ["defaultLocale", "locales", "fallbacks", "require"],
+      "properties": {
+        "defaultLocale": {
+          "$ref": "common.json#/$defs/locale"
+        },
+        "locales": {
+          "type": "array",
+          "items": {
+            "$ref": "common.json#/$defs/locale"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "fallbacks": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "$ref": "common.json#/$defs/locale"
+            }
+          },
+          "default": {}
+        },
+        "require": {
+          "description": "The node kinds the completeness rules count; empty means every localizable node.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true,
+          "default": []
+        }
+      },
+      "required": ["defaultLocale"],
+      "additionalProperties": false
+    },
+    "referenceData": {
+      "description": "Reference data settings: the storage strategies the project declares (the engine knows none) and the grouping of the Reference data screen.",
+      "type": "object",
+      "x-order": ["strategies", "groupBy"],
+      "properties": {
+        "strategies": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/strategyDeclaration"
+          },
+          "default": {}
+        },
+        "groupBy": {
+          "type": "string",
+          "pattern": "^(category|tag:.+|property:[A-Za-z_][A-Za-z0-9_]*)$",
+          "default": "category"
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
     "packs": {
       "type": "object",
       "additionalProperties": {
@@ -258,6 +321,47 @@
   "required": ["formatVersion"],
   "additionalProperties": false,
   "$defs": {
+    "strategyDeclaration": {
+      "type": "object",
+      "x-order": ["description", "collections", "options", "required"],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "collections": {
+          "description": "Whether collection attributes may use the strategy: a boolean, or a map from dialect (or \"*\" for the rest) to boolean.",
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "object",
+              "propertyNames": {
+                "enum": ["postgresql", "sqlserver", "mysql", "sqlite", "oracle", "*"]
+              },
+              "additionalProperties": {
+                "type": "boolean"
+              }
+            }
+          ],
+          "default": false
+        },
+        "options": {
+          "description": "The JSON Schema \"properties\" of the strategy's options.",
+          "type": "object"
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true,
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
     "conventions": {
       "title": "Conventions",
       "description": "Sparse naming and mapping conventions over the built-in defaults.",
@@ -288,7 +392,8 @@
         "valueObjectStorage",
         "valueObjectCollectionStorage",
         "relationsWithAttributes",
-        "inheritance"
+        "inheritance",
+        "referenceStorage"
       ],
       "properties": {
         "tableCase": {
@@ -373,7 +478,7 @@
           "minimum": 0
         },
         "enumStorage": {
-          "enum": ["int", "string", "lookup"]
+          "enum": ["int", "string"]
         },
         "valueObjectStorage": {
           "enum": ["embedded", "table", "json"]
@@ -386,6 +491,10 @@
         },
         "inheritance": {
           "enum": ["tph", "tpt", "tpc"]
+        },
+        "referenceStorage": {
+          "description": "The storage choice for reference types: the project default under conventions, a per-database override under databases.",
+          "$ref": "common.json#/$defs/storageChoice"
         }
       },
       "additionalProperties": false

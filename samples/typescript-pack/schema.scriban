@@ -1,0 +1,57 @@
+{{-
+# One zod schema per entity (file blocks, so the "zod" parameter can switch the files off): the attributes and the ids of
+# to-one relation ends, validated the way the interface types them. Navigation objects are left out.
+func zod_attr(a)
+  if a.type.kind == "enum"
+    $z = "z.enum(" + (camel a.type.enum.name) + "Values)"
+  else if a.type.kind == "value-object"
+    $z = "z.record(z.unknown())"
+  else if a.type.kind == "reference"
+    $z = a.type.reference_type.rows.size > 0 ? "z.enum(" + (camel a.type.reference_type.name) + "Values)" : zod_type a.type.reference_type.code.type (a.type.reference_type.code.length ?? 0)
+  else
+    $z = zod_type a.type.builtin (a.length ?? 0)
+  end
+  if a.collection
+    $z = "z.array(" + $z + ")"
+  end
+  if !a.required
+    $z = $z + ".optional()"
+  end
+  ret $z
+end
+name = pascal entity.name
+imports = []
+for a in entity.attributes
+  if a.type.kind == "enum" && !(imports | array.contains (kebab a.type.enum.name))
+    imports[imports.size] = kebab a.type.enum.name
+  end
+  if a.type.kind == "reference" && a.type.reference_type.rows.size > 0 && !(imports | array.contains (kebab a.type.reference_type.name))
+    imports[imports.size] = kebab a.type.reference_type.name
+  end
+end
+imports = imports | array.sort
+-}}
+{{- if pack.params.zod -}}
+{{- capture content -}}
+{{ banner "//" }}
+
+import { z } from 'zod';
+{{- for i in imports }}
+import { {{ camel i }}Values } from {{ ts_string (ts_module i pack.params.importExtension) }};
+{{- end }}
+
+export const {{ camel entity.name }}Schema = z.object({
+{{- for a in entity.attributes }}
+  {{ camel a.name }}: {{ zod_attr(a) }},
+{{- end }}
+{{- for nav in entity.navigations }}
+{{- if !nav.is_collection && nav.target.key }}
+  {{ camel nav.name }}Id: {{ zod_type nav.target.key.attributes[0].type.builtin 0 }}{{ if nav.to.min < 1 }}.optional(){{ end }},
+{{- end }}
+{{- end }}
+});
+
+export type {{ name }}Input = z.infer<typeof {{ camel entity.name }}Schema>;
+{{ end -}}
+{{- file ((kebab entity.name) + ".schema.ts") content -}}
+{{- end -}}

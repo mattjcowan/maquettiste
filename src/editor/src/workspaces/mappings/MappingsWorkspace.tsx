@@ -197,7 +197,7 @@ export function MappingsWorkspace() {
           value={mapping?.table ?? ""}
           onChange={(e) => void editEntity({ table: e.target.value || undefined })}
         >
-          <option value="">synthesized by conventions</option>
+          <option value="">mapped automatically</option>
           {designedTables.map((t) => (
             <option key={t.key} value={t.key}>
               {t.schema ? `${t.schema}.` : ""}
@@ -233,7 +233,7 @@ export function MappingsWorkspace() {
           <Spinner label="Resolving tables" />
         ) : !table ? (
           <EmptyState title="No table for this entity in this database">
-            {view.data?.view ? "The entity is abstract, ignored, or outside the database's packages." : "The model has errors."}
+            {view.data?.view ? "The entity is abstract, ignored, or outside the database's domains." : "The model has errors."}
           </EmptyState>
         ) : (
           <div className="flex flex-col gap-4">
@@ -338,7 +338,7 @@ export function MappingsWorkspace() {
             </table>
             {otherColumns.length ? (
               <div>
-                <h3 className="mb-1 text-11 font-semibold uppercase tracking-wide text-secondary">Relation, order and key columns</h3>
+                <h3 className="mb-1 text-11 font-semibold uppercase tracking-wide text-secondary">Relationship, order and key columns</h3>
                 <ul className="font-mono text-12 text-secondary">
                   {otherColumns.map((c) => (
                     <li key={c.key}>

@@ -1,0 +1,27 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JVSE00000000000000000002",
+  "name": "Country",
+  "key": {
+    "attributes": [
+      "01JVSE00000000000000000021"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01JVSE00000000000000000021",
+      "name": "code",
+      "type": "string",
+      "length": 2,
+      "required": true
+    },
+    {
+      "id": "01JVSE00000000000000000022",
+      "name": "name",
+      "type": "string",
+      "length": 60,
+      "required": true
+    }
+  ]
+}

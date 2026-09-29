@@ -1,0 +1,147 @@
+{
+  "table": {
+    "key": "01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4",
+    "name": "customers",
+    "schema": "billing",
+    "origin": "synthesized",
+    "entityId": "01J92P0V0ETQKXXP951CMMNHH3",
+    "relationId": null,
+    "isJunction": false,
+    "isLookup": false,
+    "comment": null,
+    "columns": [
+      {
+        "key": "01J92P0V0KGPC29TQQG8R57EBM",
+        "name": "id",
+        "type": "uuid",
+        "nativeType": "uuid",
+        "length": null,
+        "precision": null,
+        "scale": null,
+        "nullable": false,
+        "defaultSql": null,
+        "identity": false,
+        "computed": null,
+        "attributeId": "01J92P0V0KGPC29TQQG8R57EBM",
+        "attributePath": "01J92P0V0KGPC29TQQG8R57EBM",
+        "isPrimaryKey": true,
+        "isForeignKey": false,
+        "isDiscriminator": false,
+        "position": 0
+      },
+      {
+        "key": "01J92P0V0MS09YFZHX07JQ3KMN",
+        "name": "name",
+        "type": "string",
+        "nativeType": "varchar(120)",
+        "length": 120,
+        "precision": null,
+        "scale": null,
+        "nullable": false,
+        "defaultSql": null,
+        "identity": false,
+        "computed": null,
+        "attributeId": "01J92P0V0MS09YFZHX07JQ3KMN",
+        "attributePath": "01J92P0V0MS09YFZHX07JQ3KMN",
+        "isPrimaryKey": false,
+        "isForeignKey": false,
+        "isDiscriminator": false,
+        "position": 1
+      },
+      {
+        "key": "01J92P0V0NRX99014KNVAZGPEW",
+        "name": "email",
+        "type": "string",
+        "nativeType": "varchar(254)",
+        "length": 254,
+        "precision": null,
+        "scale": null,
+        "nullable": false,
+        "defaultSql": null,
+        "identity": false,
+        "computed": null,
+        "attributeId": "01J92P0V0NRX99014KNVAZGPEW",
+        "attributePath": "01J92P0V0NRX99014KNVAZGPEW",
+        "isPrimaryKey": false,
+        "isForeignKey": false,
+        "isDiscriminator": false,
+        "position": 2
+      },
+      {
+        "key": "01J92P0V0P4MBJRM6QN6H0RSVP",
+        "name": "customer_since",
+        "type": "date",
+        "nativeType": "date",
+        "length": null,
+        "precision": null,
+        "scale": null,
+        "nullable": true,
+        "defaultSql": null,
+        "identity": false,
+        "computed": null,
+        "attributeId": "01J92P0V0P4MBJRM6QN6H0RSVP",
+        "attributePath": "01J92P0V0P4MBJRM6QN6H0RSVP",
+        "isPrimaryKey": false,
+        "isForeignKey": false,
+        "isDiscriminator": false,
+        "position": 3
+      },
+      {
+        "key": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+        "name": "created_at",
+        "type": "datetimeoffset",
+        "nativeType": "timestamptz(6)",
+        "length": null,
+        "precision": 6,
+        "scale": null,
+        "nullable": false,
+        "defaultSql": null,
+        "identity": false,
+        "computed": null,
+        "attributeId": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+        "attributePath": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+        "isPrimaryKey": false,
+        "isForeignKey": false,
+        "isDiscriminator": false,
+        "position": 4
+      },
+      {
+        "key": "01J92P0V27P8NW8KPEDG0RBZ4W",
+        "name": "updated_at",
+        "type": "datetimeoffset",
+        "nativeType": "timestamptz(6)",
+        "length": null,
+        "precision": 6,
+        "scale": null,
+        "nullable": true,
+        "defaultSql": null,
+        "identity": false,
+        "computed": null,
+        "attributeId": "01J92P0V27P8NW8KPEDG0RBZ4W",
+        "attributePath": "01J92P0V27P8NW8KPEDG0RBZ4W",
+        "isPrimaryKey": false,
+        "isForeignKey": false,
+        "isDiscriminator": false,
+        "position": 5
+      }
+    ],
+    "primaryKey": {
+      "name": "pk_customers",
+      "columns": [
+        "01J92P0V0KGPC29TQQG8R57EBM"
+      ]
+    },
+    "uniques": [
+      {
+        "name": "uq_customers_email",
+        "columns": [
+          "01J92P0V0NRX99014KNVAZGPEW"
+        ]
+      }
+    ],
+    "foreignKeys": [],
+    "indexes": []
+  },
+  "diagnostics": [],
+  "partial": false
+}

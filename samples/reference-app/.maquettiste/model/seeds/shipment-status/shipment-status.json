@@ -1,0 +1,22 @@
+{
+  "$schema": "../../../.schema/v1/seed.json",
+  "kind": "seed",
+  "id": "01M218ZMPXSA2SMJ8WDFG0M955",
+  "name": "ShipmentStatus",
+  "target": "01M1Z3KPK8ZXTXJ89EB1MG2HTS",
+  "columns": [
+    "code",
+    "label",
+    "description"
+  ],
+  "rows": [
+    { "id": "01M2J9DM53XJ5AWZX3TRZVRF4Z", "values": ["PLAN", "Planned", "Created from an order, not yet picked."] },
+    { "id": "01M1J0FH45ZVA7F9MJRH6C1534", "values": ["PICK", "Picking", "Being picked."] },
+    { "id": "01M37M61TNKGC35KP02ZWPEWH7", "values": ["PACK", "Packed", "Packed and labeled."] },
+    { "id": "01M2GSZ0Z1GJ493KGSPVNHRPD1", "values": ["SHIP", "Shipped", "Handed to the carrier or loaded on a route."] },
+    { "id": "01M35Q71RH1QFHV6ZRHA4D0RJB", "values": ["TRANSIT", "In transit", "Moving, per carrier tracking."] },
+    { "id": "01M320ATF65TBB81WCV11YZVFT", "values": ["DLVD", "Delivered", "Delivered to the customer."] },
+    { "id": "01M2A6XTDQJWTDMEMWQBG86NW7", "values": ["EXCEPT", "Delivery exception", "Delayed, damaged or refused."] },
+    { "id": "01M1KK10BRXG87X3B6ZV170XXB", "values": ["CANCEL", "Cancelled", "Cancelled before shipping."] }
+  ]
+}

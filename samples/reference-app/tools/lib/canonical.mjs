@@ -126,6 +126,13 @@ export class Canonical {
     const layout = this.layout(schemaFile);
     let normalized = this.normalize(doc, layout);
     if (layout.props.has("$schema")) normalized = { $schema: schemaReference(schemaFile, modelPath), ...normalized };
+    if (schemaFile === "seed.json" && Array.isArray(normalized.rows)) {
+      // A seed's rows are "x-layout": "row-per-line": one row per line, written inline, trailing null values trimmed.
+      const rows = normalized.rows.map((r) => (Array.isArray(r.values) ? { ...r, values: trimNulls(r.values) } : r));
+      const marker = "\u0000rows";
+      const text = stringify({ ...normalized, rows: marker }).replace(JSON.stringify(marker), rows.length === 0 ? "[]" : "[\n" + rows.map((r) => "    " + inline(r)).join(",\n") + "\n  ]");
+      return text + "\n";
+    }
     return stringify(normalized) + "\n";
   }
 }
@@ -133,6 +140,21 @@ export class Canonical {
 export function schemaReference(fileName, modelPath) {
   const depth = modelPath.split("/").filter(Boolean).length - 1;
   return "../".repeat(depth) + ".schema/v1/" + fileName;
+}
+
+function trimNulls(values) {
+  let end = values.length;
+  while (end > 0 && values[end - 1] === null) end--;
+  return values.slice(0, end);
+}
+
+function inline(v) {
+  if (Array.isArray(v)) return "[" + v.map(inline).join(", ") + "]";
+  if (isObj(v)) {
+    const keys = Object.keys(v);
+    return keys.length === 0 ? "{}" : "{ " + keys.map((k) => JSON.stringify(k) + ": " + inline(v[k])).join(", ") + " }";
+  }
+  return stringify(v);
 }
 
 function stringify(v) {

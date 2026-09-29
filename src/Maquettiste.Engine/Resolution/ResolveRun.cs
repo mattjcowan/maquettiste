@@ -71,6 +71,36 @@ internal sealed partial class ResolveRun
         }
     }
 
+    /// <summary>
+    /// Resolves the conceptual layer and one database only, for the explorer's table summaries and table detail (E5c, E5f;
+    /// explorer-redesign.md section 4.1). The database's tables are those of <see cref="Run"/>: a database run reads the conceptual
+    /// layer and its own files only; what an earlier database run adds (relation dependency keys, <c>FinishRelationMappings</c>) and
+    /// what runs after the databases (the conceptual finish, seeds, usages, the dependency freeze) do not shape tables and are
+    /// skipped, so dependency lists are not set. The diagnostics are the conceptual layer's and this database's.
+    /// </summary>
+    /// <param name="databaseId">The database element's id.</param>
+    /// <returns>The resolved database, or <see langword="null"/> when no database has the id, and the sorted diagnostics.</returns>
+    public (RDatabase? Database, IReadOnlyList<Diagnostic> Diagnostics) RunOneDatabase(string databaseId)
+    {
+        try
+        {
+            var database = Model.All<Database>().FirstOrDefault(d => string.Equals(d.Id, databaseId, StringComparison.Ordinal));
+            ResolveConceptual();
+            RDatabase? result = null;
+            if (database is not null)
+            {
+                Ct.ThrowIfCancellationRequested();
+                result = new DatabaseRun(this, database).Run();
+            }
+
+            return (result, [.. Diagnostics.Order(Diagnostic.Order)]);
+        }
+        finally
+        {
+            _withDependencies.Clear();
+        }
+    }
+
     private ResolvedModel RunCore()
     {
         var databases = Model.All<Database>().OrderBy(d => d.Name, StringComparer.Ordinal).ThenBy(d => d.Id, StringComparer.Ordinal).ToList();
@@ -89,6 +119,7 @@ internal sealed partial class ResolveRun
         }
 
         FinishConceptual();
+        ResolveSeedsAndUsages();
         var result = new ResolvedModel
         {
             Source = Model,
@@ -99,7 +130,11 @@ internal sealed partial class ResolveRun
             Enums = new RList<REnum>(_enumOrder, ["k:enum"]),
             ScalarTypes = new RList<RScalarType>(_scalarOrder, ["k:scalar-type"]),
             Relations = new RList<RRelation>(SortedRelations(), EntityMembership),
+            ReferenceTypes = new RList<RReferenceType>(_referenceTypeOrder, ["k:reference-type"]),
+            Seeds = new RList<RSeed>(_seedOrder, ["k:seed"]),
+            SeedsInOrder = new RList<RSeed>(_seedsInOrder, _seedsInOrderKeys),
             Databases = new RList<RDatabase>(resolvedDatabases, ["k:database"]),
+            Locales = new RList<RLocale>(RLocale.Of(Settings.Localization), [RLocale.SettingsKey]),
             Diagnostics = [.. Diagnostics.Order(Diagnostic.Order)],
             ById = _byId, // lookups only, never enumerated; freezing a few hundred thousand ids costs more than it saves
         };

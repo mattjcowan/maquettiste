@@ -22,7 +22,7 @@ internal static partial class Contract
     /// <summary>The contract as JSON.</summary>
     public static JsonObject OpenApi => Loaded.Value.Document;
 
-    /// <summary>Every operation the functions answer: verb and path, leaving out <c>x-maquettiste-handler: host</c> ones.</summary>
+    /// <summary>Every operation the functions answer: verb and path, leaving out <c>x-maquettiste-handler: host</c> and <c>planned</c> ones.</summary>
     public static IReadOnlyList<(string Verb, string Path, string OperationId)> Operations => Loaded.Value.Operations;
 
     /// <summary>
@@ -154,8 +154,8 @@ internal static partial class Contract
             {
                 if (verb is not ("get" or "post" or "put" or "patch" or "delete"))
                     continue;
-                if (operation?["x-maquettiste-handler"]?.GetValue<string>() == "host")
-                    continue;
+                if (operation?["x-maquettiste-handler"]?.GetValue<string>() is "host" or "planned")
+                    continue; // answered by the host, or declared ahead of a handler that lands in a later step
                 operations.Add((verb.ToUpperInvariant(), path, operation!["operationId"]!.GetValue<string>()));
             }
         }

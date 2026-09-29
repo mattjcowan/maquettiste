@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Reference type",
+  "description": "A named set of rows that attributes use as their type; its rows are held in seeds.",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "kind",
+    "id",
+    "name",
+    "displayName",
+    "pluralName",
+    "description",
+    "stereotypes",
+    "tags",
+    "category",
+    "code",
+    "label",
+    "attributes",
+    "storage",
+    "properties",
+    "generation",
+    "source"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "kind": {
+      "const": "reference-type"
+    },
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "name": {
+      "$ref": "common.json#/$defs/identifier",
+      "default": ""
+    },
+    "displayName": {
+      "type": "string"
+    },
+    "pluralName": {
+      "type": "string"
+    },
+    "description": {
+      "$ref": "common.json#/$defs/description"
+    },
+    "stereotypes": {
+      "$ref": "common.json#/$defs/keyList",
+      "default": []
+    },
+    "tags": {
+      "$ref": "common.json#/$defs/tagList",
+      "default": []
+    },
+    "category": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "code": {
+      "title": "Reference code field",
+      "description": "The built-in code field: the row's business key, unique in the type.",
+      "type": "object",
+      "x-order": ["id", "type", "length", "pattern", "displayName", "description"],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "type": {
+          "enum": ["string", "int16", "int32", "int64"],
+          "default": "string"
+        },
+        "length": {
+          "$ref": "common.json#/$defs/length"
+        },
+        "pattern": {
+          "type": "string",
+          "minLength": 1
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "description": {
+          "$ref": "common.json#/$defs/description"
+        }
+      },
+      "required": ["id"],
+      "additionalProperties": false
+    },
+    "label": {
+      "title": "Reference label field",
+      "description": "The built-in label field: the row's display text.",
+      "type": "object",
+      "x-order": ["id", "length", "displayName", "description"],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "length": {
+          "$ref": "common.json#/$defs/length"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "description": {
+          "$ref": "common.json#/$defs/description"
+        }
+      },
+      "required": ["id"],
+      "additionalProperties": false
+    },
+    "attributes": {
+      "type": "array",
+      "items": {
+        "$ref": "common.json#/$defs/attribute"
+      },
+      "x-sort": "order",
+      "default": []
+    },
+    "storage": {
+      "description": "Storage choices keyed by database id, or \"*\" for every database.",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^([0-7][0-9A-HJKMNP-TV-Z]{25}|\\*)$"
+      },
+      "additionalProperties": {
+        "$ref": "common.json#/$defs/storageChoice"
+      },
+      "default": {}
+    },
+    "properties": {
+      "$ref": "common.json#/$defs/properties",
+      "default": {}
+    },
+    "generation": {
+      "$ref": "common.json#/$defs/generation",
+      "default": {}
+    },
+    "source": {
+      "$ref": "common.json#/$defs/source"
+    }
+  },
+  "required": [
+    "kind",
+    "id",
+    "name",
+    "code",
+    "label"
+  ],
+  "additionalProperties": false
+}

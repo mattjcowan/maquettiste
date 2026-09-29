@@ -31,6 +31,12 @@ internal static class ModelIndexer
         CategoryTree? Categories,
         ImmutableArray<Diagnostic> Diagnostics)
     {
+        /// <summary>The tag vocabulary of each scope (package id, <c>""</c> for global) that validation uses.</summary>
+        internal FrozenDictionary<string, TagVocabulary> TagVocabularies { get; init; } = FrozenDictionary<string, TagVocabulary>.Empty;
+
+        /// <summary>The category tree of each scope (package id, <c>""</c> for global) that validation uses.</summary>
+        internal FrozenDictionary<string, CategoryTree> CategoryTrees { get; init; } = FrozenDictionary<string, CategoryTree>.Empty;
+
         /// <summary>The documents indexed, in path order (aligned with <see cref="Walks"/>).</summary>
         internal ImmutableArray<ElementDocument> Documents { get; init; }
 
@@ -42,11 +48,14 @@ internal static class ModelIndexer
 
         /// <summary>Whether this index was patched from the previous one rather than built in full (tests).</summary>
         internal bool Patched { get; init; }
+
+        /// <summary>The reference-data facts the walks used (kept by a patch, which rebuilds in full when they could change).</summary>
+        internal ReferenceDataIndex? ReferenceData { get; init; }
     }
 
     internal enum PropertyRole { Reference, KeyedReference, StereotypeKeys, TypeRef, Record, RecordList }
 
-    internal sealed record PropertyMeta(string Name, Func<object, object?> Get, PropertyRole Role);
+    internal sealed record PropertyMeta(string Name, Func<object, object?> Get, PropertyRole Role, bool Owning = false);
 
     /// <summary>Returns the index kind of a sub-element CLR type, or <see langword="null"/> when the type is not a sub-element.</summary>
     /// <param name="type">A model record type.</param>
@@ -59,6 +68,8 @@ internal static class ModelIndexer
         _ when type == typeof(Column) => "column",
         _ when type == typeof(Category) => "category",
         _ when type == typeof(DbSchema) => "schema",
+        _ when type == typeof(ReferenceCode) || type == typeof(ReferenceLabel) => "reference-field",
+        _ when type == typeof(SeedRow) => "row",
         _ when type == typeof(AlternateKey) || type == typeof(UniqueConstraint) || type == typeof(ForeignKey)
             || type == typeof(CheckConstraint) || type == typeof(TableIndex) => "key",
         _ => null,
@@ -101,10 +112,11 @@ internal static class ModelIndexer
         // Each document is walked on its own (in parallel: the walk reads only the element and the stereotype keys); the results are
         // then merged in document order, so the first registration of an id wins exactly as in one sequential walk.
         var metadata = new MetadataCache();
+        var referenceData = ReferenceDataIndex.Build(documents.Select(d => d.Element));
         var walks = new DocumentWalk[documents.Length];
         Parallel.For(0, documents.Length, new ParallelOptions { MaxDegreeOfParallelism = parallelism, CancellationToken = ct }, i =>
         {
-            var walk = new DocumentWalk(stereotypes, metadata);
+            var walk = new DocumentWalk(stereotypes, metadata, referenceData);
             walk.WalkElement(documents[i].Element);
             walks[i] = walk;
         });
@@ -115,9 +127,9 @@ internal static class ModelIndexer
         var byKind = new Dictionary<ElementKind, List<Element>>();
         var summaries = ImmutableArray.CreateBuilder<ElementSummary>(documents.Length);
         var diagnostics = ImmutableArray.CreateBuilder<Diagnostic>();
-        TagVocabulary? tags = null;
-        CategoryTree? categories = null;
-        string? tagsPath = null, categoriesPath = null;
+        // One vocabulary of each kind per scope (explorer-redesign.md section 1.11): the scope is the package id, "" for global.
+        var tagScopes = new Dictionary<string, (TagVocabulary Vocabulary, string Path)>(StringComparer.Ordinal);
+        var categoryScopes = new Dictionary<string, (CategoryTree Tree, string Path)>(StringComparer.Ordinal);
         var clean = true;
 
         for (var d = 0; d < documents.Length; d++)
@@ -137,18 +149,18 @@ internal static class ModelIndexer
 
             switch (element)
             {
-                case TagVocabulary t when tags is null:
-                    (tags, tagsPath) = (t, doc.Path);
+                case TagVocabulary t when tagScopes.TryAdd(t.Package ?? "", (t, doc.Path)):
                     break;
-                case CategoryTree c when categories is null:
-                    (categories, categoriesPath) = (c, doc.Path);
+                case CategoryTree c when categoryScopes.TryAdd(c.Package ?? "", (c, doc.Path)):
                     break;
                 case TagVocabulary or CategoryTree:
-                    // A singleton kind: the ordinally first file wins, the others are reported and ignored by validation (MQ1009).
+                    // One per scope: the ordinally first file wins, the others are reported and ignored by validation (MQ1009).
                     clean = false;
+                    var scope = element is TagVocabulary tv ? tv.Package : ((CategoryTree)element).Package;
+                    var firstPath = element is TagVocabulary ? tagScopes[scope ?? ""].Path : categoryScopes[scope ?? ""].Path;
                     diagnostics.Add(RuleCatalog.Create(
                         "MQ1009",
-                        $"The model already has a {element.KindName} in {(element is TagVocabulary ? tagsPath : categoriesPath)}; this second one is ignored.",
+                        $"The {(scope is null ? "model" : $"domain {scope}")} already has a {element.KindName} in {firstPath}; this second one is ignored.",
                         element.Id,
                         doc.Path,
                         ""));
@@ -180,13 +192,16 @@ internal static class ModelIndexer
             kindSetHashes,
             stereotypes.ToFrozenDictionary(StringComparer.Ordinal),
             summaries.ToImmutable(),
-            tags,
-            categories,
+            tagScopes.GetValueOrDefault("").Vocabulary,
+            categoryScopes.GetValueOrDefault("").Tree,
             diagnostics.ToImmutable())
         {
+            TagVocabularies = tagScopes.ToFrozenDictionary(kv => kv.Key, kv => kv.Value.Vocabulary, StringComparer.Ordinal),
+            CategoryTrees = categoryScopes.ToFrozenDictionary(kv => kv.Key, kv => kv.Value.Tree, StringComparer.Ordinal),
             Documents = documents,
             Walks = walks,
             Clean = clean,
+            ReferenceData = referenceData,
         };
     }
 
@@ -238,10 +253,19 @@ internal static class ModelIndexer
                 return null;
         }
 
+        // Seed cells become references through model-wide facts (reference-typed attributes, ends, codes): a change that could alter
+        // them for a document the patch keeps needs the full build.
+        if (previous.ReferenceData is not { } referenceData
+            || removed.Any(r => AffectsReferenceData(old[r].Element, referenceData))
+            || added.Any(a => AffectsReferenceData(documents[a].Element, referenceData)))
+        {
+            return null;
+        }
+
         var metadata = new MetadataCache();
         foreach (var a in added)
         {
-            var walk = new DocumentWalk(previous.Stereotypes, metadata);
+            var walk = new DocumentWalk(previous.Stereotypes, metadata, referenceData);
             walk.WalkElement(documents[a].Element);
             walks[a] = walk;
         }
@@ -397,6 +421,20 @@ internal static class ModelIndexer
         };
     }
 
+    /// <summary>Whether a change to this element could change how other documents' seed cells and codes are indexed.</summary>
+    private static bool AffectsReferenceData(Element element, ReferenceDataIndex referenceData)
+    {
+        if (element is Seed or ReferenceType)
+            return true;
+        foreach (var attribute in ReferenceDataIndex.AttributesOf(element))
+        {
+            if (referenceData.SeedColumns.Contains(attribute.Id))
+                return true;
+        }
+
+        return element is Relation relation && relation.Ends.Any(e => referenceData.SeedColumns.Contains(e.Id));
+    }
+
     /// <summary>The index row of an element (E4 and E5 members included).</summary>
     private static ElementSummary Summarize(Element element, string hash, string path) =>
         new(element.Id, element.KindName, element.Name, PackageOf(element), element.Tags, hash, path, element.Category, element.Stereotypes,
@@ -416,7 +454,11 @@ internal static class ModelIndexer
                 _ => null,
             },
             MemberCount: element is Diagram diagram ? diagram.Members.Count : null,
-            Ends: element is Relation relation ? EndsOf(relation) : null);
+            Ends: element is Relation relation ? EndsOf(relation) : null,
+            Target: element is Seed seed ? seed.Target : null,
+            RowCount: element is Seed rows ? rows.Rows.Count : null,
+            FieldCount: element is ReferenceType referenceType ? referenceType.Attributes.Count : null,
+            Base: element is Entity entity ? entity.Base : null);
 
     private static RelationEndSummary[] EndsOf(Relation relation)
     {
@@ -426,7 +468,7 @@ internal static class ModelIndexer
         return ends;
     }
 
-    private static string? PackageOf(Element element) => element switch
+    internal static string? PackageOf(Element element) => element switch
     {
         Package p => p.Parent,
         Entity e => e.Package,
@@ -435,6 +477,8 @@ internal static class ModelIndexer
         EnumType e => e.Package,
         Relation r => r.Package,
         Diagram d => d.Package,
+        TagVocabulary t => t.Package,
+        CategoryTree c => c.Package,
         _ => null,
     };
 
@@ -479,8 +523,9 @@ internal static class ModelIndexer
                     if (property.Get is null)
                         continue;
                     var role = DocumentWalk.RoleOf(property);
+                    var owning = property.AttributeProvider is PropertyInfo pi && pi.GetCustomAttribute<ElementRefAttribute>(inherit: true) is { Owning: true };
                     if (role is not null)
-                        list.Add(new PropertyMeta(property.Name, property.Get, role.Value));
+                        list.Add(new PropertyMeta(property.Name, property.Get, role.Value, owning));
                 }
             }
 
@@ -489,13 +534,98 @@ internal static class ModelIndexer
     }
 
     /// <summary>The walk of one document: its sub-element entries (in walk order) and its references.</summary>
-    internal sealed class DocumentWalk(IReadOnlyDictionary<string, Stereotype> stereotypes, MetadataCache metadata)
+    internal sealed class DocumentWalk(IReadOnlyDictionary<string, Stereotype> stereotypes, MetadataCache metadata, ReferenceDataIndex referenceData)
     {
         public List<(string Id, IndexEntry Entry)> Entries { get; } = [];
 
         public List<ReferenceInfo> References { get; } = [];
 
-        public void WalkElement(Element element) => WalkProperties(element, "", element.Id, element.Id);
+        public void WalkElement(Element element)
+        {
+            WalkProperties(element, "", element.Id, element.Id);
+            WalkReferenceData(element);
+        }
+
+        /// <summary>
+        /// References that no property attribute declares: a reference type's <c>storage</c> keys (database ids), the codes that
+        /// reference-typed defaults and <c>allowedValues</c> hold (to the row with that code), and seed cells (codes to rows, end
+        /// cells to the row ids they hold).
+        /// </summary>
+        private void WalkReferenceData(Element element)
+        {
+            if (element is ReferenceType type)
+            {
+                foreach (var key in type.Storage.Keys.Order(StringComparer.Ordinal))
+                {
+                    if (key != "*")
+                        References.Add(new ReferenceInfo(type.Id, type.Id, "/storage/" + Escape(key), "storage", key));
+                }
+            }
+
+            var attributes = ReferenceDataIndex.AttributesOf(element);
+            for (var i = 0; i < attributes.Count; i++)
+            {
+                var attribute = attributes[i];
+                if (attribute.Type.Ref is not { } typeId || !referenceData.ReferenceTypeIds.Contains(typeId))
+                    continue;
+                var pointer = "/attributes/" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                if (attribute.Default is { } literal)
+                    AddCodes(element.Id, attribute.Id, pointer + "/default", "default", typeId, literal);
+                if (attribute.Validation is { } validation)
+                {
+                    for (var j = 0; j < validation.AllowedValues.Count; j++)
+                        AddCode(element.Id, attribute.Id, pointer + "/validation/allowedValues/" + j.ToString(System.Globalization.CultureInfo.InvariantCulture), "allowedValues", typeId, validation.AllowedValues[j]);
+                }
+            }
+
+            if (element is not Seed seed)
+                return;
+            for (var k = 0; k < seed.Columns.Count; k++)
+            {
+                var column = seed.Columns[k];
+                var isEnd = referenceData.EndIds.Contains(column);
+                referenceData.AttributeTypes.TryGetValue(column, out var columnType);
+                if (!isEnd && columnType is null)
+                    continue;
+                var suffix = "/values/" + k.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                for (var r = 0; r < seed.Rows.Count; r++)
+                {
+                    var row = seed.Rows[r];
+                    if (k >= row.Values.Count)
+                        continue;
+                    var cell = row.Values[k];
+                    var pointer = "/rows/" + r.ToString(System.Globalization.CultureInfo.InvariantCulture) + suffix;
+                    if (isEnd)
+                    {
+                        if (cell.ValueKind == System.Text.Json.JsonValueKind.String && cell.GetString() is { } rowId && IdFormat.IsValid(rowId))
+                            References.Add(new ReferenceInfo(seed.Id, row.Id, pointer, "values", rowId));
+                    }
+                    else
+                    {
+                        AddCodes(seed.Id, row.Id, pointer, "values", columnType!, cell);
+                    }
+                }
+            }
+        }
+
+        private void AddCodes(string ownerId, string fromId, string pointer, string field, string typeId, System.Text.Json.JsonElement value)
+        {
+            if (value.ValueKind != System.Text.Json.JsonValueKind.Array)
+            {
+                AddCode(ownerId, fromId, pointer, field, typeId, value);
+                return;
+            }
+
+            var i = 0;
+            foreach (var item in value.EnumerateArray())
+                AddCode(ownerId, fromId, pointer + "/" + (i++).ToString(System.Globalization.CultureInfo.InvariantCulture), field, typeId, item);
+        }
+
+        private void AddCode(string ownerId, string fromId, string pointer, string field, string typeId, System.Text.Json.JsonElement code)
+        {
+            if (referenceData.RowOf(typeId, code) is { } rowId)
+                References.Add(new ReferenceInfo(ownerId, fromId, pointer, field, rowId));
+        }
 
         private void WalkObject(object value, string pointer, string ownerId, string fromId)
         {
@@ -520,7 +650,7 @@ internal static class ModelIndexer
                 switch (property.Role)
                 {
                     case PropertyRole.Reference when child is string id:
-                        References.Add(new ReferenceInfo(ownerId, fromId, childPointer, property.Name, id));
+                        References.Add(new ReferenceInfo(ownerId, fromId, childPointer, property.Name, id, property.Owning));
                         break;
                     case PropertyRole.Reference when child is IEnumerable<string> ids:
                         var i = 0;
@@ -586,6 +716,9 @@ internal static class ModelIndexer
             CheckConstraint c => c.Id,
             TableIndex x => x.Id,
             RelationEnd e => e.Id,
+            SeedRow r => r.Id,
+            ReferenceCode c => c.Id,
+            ReferenceLabel l => l.Id,
             _ => null,
         };
 

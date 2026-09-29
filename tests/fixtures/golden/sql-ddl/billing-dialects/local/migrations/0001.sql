@@ -4,14 +4,6 @@
 
 BEGIN;
 
-CREATE TABLE invoice_statuses (
-    id integer NOT NULL,
-    code text NOT NULL,
-    name text NOT NULL,
-    CONSTRAINT pk_invoice_statuses PRIMARY KEY (id),
-    CONSTRAINT uq_invoice_statuses_code UNIQUE (code)
-);
-
 CREATE TABLE customers (
     id text NOT NULL,
     name text NOT NULL,
@@ -39,7 +31,6 @@ CREATE TABLE invoices (
     customer_id text NOT NULL,
     CONSTRAINT pk_invoices PRIMARY KEY (id),
     CONSTRAINT uq_invoices_number UNIQUE (number),
-    CONSTRAINT fk_invoices_status FOREIGN KEY (status) REFERENCES invoice_statuses (id),
     CONSTRAINT fk_invoices_customer_id FOREIGN KEY (customer_id) REFERENCES customers (id) ON DELETE RESTRICT
 );
 CREATE INDEX ix_invoices_issued_on ON invoices (issued_on);
@@ -50,6 +41,7 @@ CREATE TABLE payments (
     amount_currency text NOT NULL,
     received_at text NOT NULL,
     reference text NULL,
+    method text NULL,
     created_at text NOT NULL,
     updated_at text NULL
 );

@@ -36,8 +36,15 @@ public sealed record ChangeSet(IReadOnlyList<ElementChange> Changed, IReadOnlyLi
 {
     private static readonly JsonSerializerOptions SizeOptions = CreateSizeOptions();
 
+    /// <summary>
+    /// The locales whose translation shards (or their description sidecars) changed, ordinal (reference-types-seeds-localization.md
+    /// section 3.8). Not serialized: the host turns it into the <c>translations</c> of <c>model.changed</c>.
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> Locales { get; init; } = [];
+
     /// <summary>Whether nothing changed.</summary>
-    public bool IsEmpty => Changed.Count == 0 && Deleted.Count == 0;
+    public bool IsEmpty => Changed.Count == 0 && Deleted.Count == 0 && Locales.Count == 0;
 
     /// <summary>An empty change set.</summary>
     /// <param name="source">The source.</param>
@@ -73,7 +80,7 @@ public sealed record ChangeSet(IReadOnlyList<ElementChange> Changed, IReadOnlyLi
     {
         var changed = Changed.Take(Math.Min(count, Changed.Count)).ToArray();
         var deleted = Deleted.Take(Math.Max(0, count - Changed.Count)).ToArray();
-        return new ChangeSet(changed, deleted, Source, true);
+        return new ChangeSet(changed, deleted, Source, true) { Locales = Locales };
     }
 
     private static int Size(ChangeSet set) => JsonSerializer.SerializeToUtf8Bytes(set, SizeOptions).Length;

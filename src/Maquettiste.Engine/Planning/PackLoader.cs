@@ -132,6 +132,8 @@ internal sealed class PackLoader(EngineOptions options, ISchemaRegistry schemas)
                 CheckTemplate(root, companion.Template, pointer + "/companion/template", Error);
             if (string.Equals(unit.For, "model", StringComparison.Ordinal) && unit.Where is { } where && HasElementFilters(where))
                 Error(InvalidPack, $"Unit '{unit.Id}' is for 'model', which has no element: its 'where' can only name a database.", pointer + "/where");
+            if (string.Equals(unit.For, "each locale", StringComparison.Ordinal) && unit.Where is not null)
+                Error(InvalidPack, $"Unit '{unit.Id}' is for 'each locale', which has no element to filter: it takes no 'where'.", pointer + "/where");
         }
 
         var scripts = await LoadScriptsAsync(root, relative, manifest, Error, ct).ConfigureAwait(false);

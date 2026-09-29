@@ -42,7 +42,7 @@ test("open, select Invoice, rename, problems, DDL, plan and apply", async ({ pag
   await expect(page.getByRole("tab", { name: /Problems/ })).toContainText("0");
 
   // Database: tables and the DDL preview of the whole schema.
-  await workspace(page, "Database");
+  await workspace(page, "Databases");
   await expect(page.getByTestId("database-workspace")).toBeVisible();
   await expect(page.locator(".react-flow__node")).toHaveCount(6);
   const ddl = page.getByTestId("ddl-preview");

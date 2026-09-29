@@ -10,8 +10,8 @@ namespace Maquettiste.Engine.Validation;
 /// </summary>
 internal static class PhysicalRules
 {
-    /// <summary>Column keys that are not attribute or end ids (engine-design.md section 7.3, lookup tables in 7.5).</summary>
-    private static readonly string[] SpecialColumnKeys = ["id", "position", "discriminator", "code", "name"];
+    /// <summary>Column keys that are not attribute or end ids (engine-design.md section 7.3).</summary>
+    private static readonly string[] SpecialColumnKeys = ["id", "position", "discriminator"];
 
     /// <summary>Checks an identifier against the database's limit (MQ4001).</summary>
     /// <param name="database">The database.</param>
@@ -288,8 +288,6 @@ internal static class PhysicalRules
                 && (relation.Ends.Any(e => e.Id == first) || relation.Attributes.Any(a => a.Id == first));
         }
 
-        if (table.Enum is not null)
-            return false;
         if (table.Entity is not { } entityId || model.Get<Entity>(entityId) is not { } entity)
             return false;
         if (entry.Kind == "end")

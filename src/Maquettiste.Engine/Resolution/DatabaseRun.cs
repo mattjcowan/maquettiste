@@ -5,7 +5,7 @@ namespace Maquettiste.Engine.Resolution;
 
 /// <summary>
 /// The physical resolution of one database (engine-design.md sections 7.3 to 7.6): designed and imported tables passed through,
-/// synthesized entity, child, junction, promoted and lookup tables, overlays merged, constraints named, mappings and join paths.
+/// synthesized entity, child, junction and promoted tables, overlays merged, constraints named, mappings and join paths.
 /// </summary>
 internal sealed partial class DatabaseRun
 {
@@ -28,7 +28,6 @@ internal sealed partial class DatabaseRun
     private readonly List<(RView View, string SourceId)> _views = [];
     private readonly Dictionary<string, string> _schemaNames = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Table> _overlays = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, TableBuild> _lookups = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ForeignKeySpec> _foreignKeysById = new(StringComparer.Ordinal);
     private readonly Dictionary<string, RelationPhysical> _relationPhysical = new(StringComparer.Ordinal);
     private readonly Dictionary<string, RColumn> _discriminators = new(StringComparer.Ordinal);
@@ -159,7 +158,6 @@ internal sealed partial class DatabaseRun
     private static string? OverlayTarget(Table table) =>
         table.Entity is { } entity ? (table.Attribute is { } attribute ? $"child:{entity}.{attribute}" : $"entity:{entity}")
         : table.Relation is { } relation ? $"relation:{relation}"
-        : table.Enum is { } enumId ? $"enum:{enumId}"
         : null;
 
     private void BuildDesignedTable(Table table)
@@ -276,9 +274,12 @@ internal sealed partial class DatabaseRun
         c.Comment = column.Comment ?? c.Comment;
     }
 
+    /// <summary>The logical type that decides a column's native type: a reference column's code type, else the column's type.</summary>
+    private static string PhysicalType(RColumn c) => c.Type == "reference" && c.CodeType is { } code ? code : c.Type;
+
     private void ApplyFacetDefaults(RColumn c)
     {
-        switch (c.Type)
+        switch (PhysicalType(c))
         {
             case "string":
                 c.Length ??= _conv.DefaultStringLength;

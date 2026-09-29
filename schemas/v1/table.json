@@ -16,7 +16,6 @@
     "entity",
     "attribute",
     "relation",
-    "enum",
     "description",
     "stereotypes",
     "tags",
@@ -72,10 +71,6 @@
     },
     "relation": {
       "description": "Synthesized junction table: the relation.",
-      "$ref": "common.json#/$defs/id"
-    },
-    "enum": {
-      "description": "Synthesized lookup table: the enum.",
       "$ref": "common.json#/$defs/id"
     },
     "description": {
@@ -441,9 +436,6 @@
       },
       {
         "required": ["relation"]
-      },
-      {
-        "required": ["enum"]
       }
     ],
     "dependentRequired": {
@@ -462,9 +454,6 @@
         },
         {
           "required": ["relation"]
-        },
-        {
-          "required": ["enum"]
         }
       ]
     }

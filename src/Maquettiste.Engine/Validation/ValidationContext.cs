@@ -37,6 +37,10 @@ internal sealed class ValidationContext
     private readonly Lazy<FrozenDictionary<string, ImmutableArray<ElementDocument>>> _overlays;
     private readonly Lazy<FrozenDictionary<string, ImmutableArray<ElementDocument>>> _physicalNames;
     private readonly Lazy<FrozenDictionary<string, ImmutableArray<string>>> _derived;
+    private readonly Lazy<ReferenceDataIndex> _referenceData;
+    private readonly Lazy<FrozenDictionary<string, ImmutableArray<Seed>>> _seeds;
+    private readonly Lazy<FrozenDictionary<string, Seed>> _rowSeeds;
+    private readonly Lazy<FrozenSet<string>> _cyclicRows;
 
     /// <summary>Creates a context.</summary>
     /// <param name="model">The snapshot.</param>
@@ -56,6 +60,10 @@ internal sealed class ValidationContext
         _overlays = new(BuildOverlays);
         _physicalNames = new(BuildPhysicalNames);
         _derived = new(BuildDerived);
+        _referenceData = new(() => ReferenceDataIndex.Build(Documents.Select(d => d.Element)));
+        _seeds = new(BuildSeeds);
+        _rowSeeds = new(BuildRowSeeds);
+        _cyclicRows = new(() => ReferenceDataRules.CyclicRows(this));
     }
 
     /// <summary>A context over the same model and documents, sharing every index already built, with other rule names.</summary>
@@ -74,6 +82,51 @@ internal sealed class ValidationContext
         _overlays = other._overlays;
         _physicalNames = other._physicalNames;
         _derived = other._derived;
+        _referenceData = other._referenceData;
+        _seeds = other._seeds;
+        _rowSeeds = other._rowSeeds;
+        _cyclicRows = other._cyclicRows;
+    }
+
+    /// <summary>The reference-data facts: reference-typed attributes, ends and each type's codes.</summary>
+    public ReferenceDataIndex ReferenceData => _referenceData.Value;
+
+    /// <summary>The seeds of a target, ordered by (name, id).</summary>
+    /// <param name="targetId">The entity, relation or reference type id.</param>
+    /// <returns>The seeds.</returns>
+    public ImmutableArray<Seed> SeedsOf(string targetId) => _seeds.Value.TryGetValue(targetId, out var list) ? list : [];
+
+    /// <summary>The seeds of every target, keyed by target id.</summary>
+    public FrozenDictionary<string, ImmutableArray<Seed>> AllSeeds => _seeds.Value;
+
+    /// <summary>The seed that holds a row id, or <see langword="null"/>.</summary>
+    /// <param name="rowId">The row id.</param>
+    /// <returns>The seed.</returns>
+    public Seed? SeedOfRow(string rowId) => _rowSeeds.Value.TryGetValue(rowId, out var seed) ? seed : null;
+
+    /// <summary>Whether a row is part of a cycle of required row references (MQ7103).</summary>
+    /// <param name="rowId">The row id.</param>
+    /// <returns><see langword="true"/> when it is.</returns>
+    public bool IsCyclicRow(string rowId) => _cyclicRows.Value.Contains(rowId);
+
+    private FrozenDictionary<string, ImmutableArray<Seed>> BuildSeeds() =>
+        Documents.Select(d => d.Element).OfType<Seed>()
+            .GroupBy(s => s.Target, StringComparer.Ordinal)
+            .ToFrozenDictionary(
+                g => g.Key,
+                g => g.OrderBy(s => s.Name, StringComparer.Ordinal).ThenBy(s => s.Id, StringComparer.Ordinal).ToImmutableArray(),
+                StringComparer.Ordinal);
+
+    private FrozenDictionary<string, Seed> BuildRowSeeds()
+    {
+        var map = new Dictionary<string, Seed>(StringComparer.Ordinal);
+        foreach (var seed in Documents.Select(d => d.Element).OfType<Seed>())
+        {
+            foreach (var row in seed.Rows)
+                map.TryAdd(row.Id, seed);
+        }
+
+        return map.ToFrozenDictionary(StringComparer.Ordinal);
     }
 
     /// <summary>Returns a context that shares this one's indexes but knows the registered JavaScript rule names.</summary>
@@ -391,7 +444,7 @@ internal sealed class ValidationContext
             return null;
         if (table.Entity is { } entity)
             return (table.Attribute is { } attribute ? entity + "." + attribute : entity) + "@" + table.Database;
-        return (table.Relation ?? table.Enum) is { } target ? target + "@" + table.Database : null;
+        return table.Relation is { } target ? target + "@" + table.Database : null;
     }
 
     /// <summary>Returns the overlay files targeting one synthesized table, in path order.</summary>

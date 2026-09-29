@@ -30,7 +30,7 @@
       "id": "01M31PGH01CBG78W89NC2GRCV6",
       "name": "fromStatus",
       "type": {
-        "ref": "01M2YW6JHEB1CVE5XWYKQ1MYBG"
+        "ref": "01M2JJ5Q30GQ85ZTTVZ8WV2PRS"
       },
       "description": "Status before the change."
     },
@@ -38,7 +38,7 @@
       "id": "01M23RBH1DCVYSB7GF6057PSGM",
       "name": "toStatus",
       "type": {
-        "ref": "01M2YW6JHEB1CVE5XWYKQ1MYBG"
+        "ref": "01M2JJ5Q30GQ85ZTTVZ8WV2PRS"
       },
       "required": true,
       "description": "Status after the change."

@@ -121,6 +121,29 @@ func foreign_key_body(f, db)
   ret $s
 end
 
+# The realization of a reference type's storage strategy key ("lookup-table", "check" or "native") through the strategyMap
+# parameter; a null key (the project leaves the choice to the template) takes the referenceStrategy parameter. A key the map does
+# not know fails the unit with a message naming it (reference_realization in helpers.js), so the pack reserves no strategy name.
+func ref_realization(key)
+  ret reference_realization (key ?? pack.params.referenceStrategy) pack.params.strategyMap
+end
+
+# The PostgreSQL enum type of a reference type stored as "native" ("unit_of_measure_t"), unqualified: it is created in the
+# search path's first schema.
+func native_type_name(rt)
+  ret (snake rt.name) + "_t"
+end
+
+# The SQL type of a column: the enum type for a reference-typed column realized as "native" on PostgreSQL, else type_of (for a
+# reference-typed column, the code's type).
+func column_type(c)
+  $d = c.table.database.dialect
+  if c.reference_type && $d == "postgresql" && ref_realization(c.strategy) == "native"
+    ret q(native_type_name(c.reference_type), c.table.database)
+  end
+  ret type_of c $d
+end
+
 # One column definition, without indentation or trailing comma.
 func column_def(c)
   $t = c.table
@@ -131,7 +154,7 @@ func column_def(c)
     if $d == "sqlserver"
       ret $s + " AS (" + c.computed + ")" + (c.computed_stored ? " PERSISTED" : "")
     end
-    $s = $s + " " + (type_of c $d)
+    $s = $s + " " + column_type(c)
     if $d == "postgresql"
       ret $s + " GENERATED ALWAYS AS (" + c.computed + ") STORED"
     end
@@ -140,7 +163,7 @@ func column_def(c)
   if c.is_primary_key && sqlite_rowid($t)
     ret $s + " INTEGER NOT NULL CONSTRAINT " + q($t.primary_key.name, $db) + " PRIMARY KEY"
   end
-  $s = $s + " " + (type_of c $d)
+  $s = $s + " " + column_type(c)
   if c.collation
     $s = $s + " COLLATE " + ($d == "postgresql" ? q(c.collation, $db) : c.collation)
   end
@@ -208,30 +231,6 @@ func comment_sql(t, c, text)
     ret $s + ";"
   end
   ret ""
-end
-
-# An idempotent statement that inserts or updates the rows of a lookup table (an enum stored as "lookup"): INSERT ... ON
-# CONFLICT DO UPDATE on PostgreSQL and SQLite, MERGE on SQL Server, plain INSERTs elsewhere. Rows of removed members are kept.
-func lookup_upsert(t)
-  $db = t.database
-  $d = $db.dialect
-  $id = q(t.columns[0].name, $db)
-  $code = q(t.columns[1].name, $db)
-  $name = q(t.columns[2].name, $db)
-  $values = ""
-  for r in t.lookup_rows
-    $values = $values + (for.first ? "" : ",\n    ") + "(" + r.id + ", " + lit(r.code, $db) + ", " + lit(r.name, $db) + ")"
-  end
-  if $d == "postgresql" || $d == "sqlite"
-    ret "INSERT INTO " + qt(t) + " (" + $id + ", " + $code + ", " + $name + ") VALUES\n    " + $values + "\nON CONFLICT (" + $id + ") DO UPDATE SET " + $code + " = excluded." + $code + ", " + $name + " = excluded." + $name + ";"
-  else if $d == "sqlserver"
-    ret "MERGE INTO " + qt(t) + " AS target\nUSING (VALUES\n    " + $values + ") AS source (" + $id + ", " + $code + ", " + $name + ")\nON target." + $id + " = source." + $id + "\nWHEN MATCHED THEN UPDATE SET " + $code + " = source." + $code + ", " + $name + " = source." + $name + "\nWHEN NOT MATCHED THEN INSERT (" + $id + ", " + $code + ", " + $name + ") VALUES (source." + $id + ", source." + $code + ", source." + $name + ");"
-  end
-  $s = ""
-  for r in t.lookup_rows
-    $s = $s + (for.first ? "" : "\n") + "INSERT INTO " + qt(t) + " (" + $id + ", " + $code + ", " + $name + ") VALUES (" + r.id + ", " + lit(r.code, $db) + ", " + lit(r.name, $db) + ");"
-  end
-  ret $s
 end
 
 # Human-readable dialect name for headers.

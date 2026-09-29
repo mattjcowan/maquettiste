@@ -67,6 +67,25 @@ public sealed class ExplorerScaleTests
     }
 
     [Fact]
+    public void Entity_rows_carry_their_base_and_other_rows_leave_it_out()
+    {
+        var b = new Maquettiste.Testing.ModelBuilder(7);
+        var party = b.Entity("Party").Abstract().Key("id", "uuid", IdentityStrategy.UuidV7);
+        var person = b.Entity("Person").Base(party);
+        var status = b.Enum("Status").Member("Draft", 0);
+        var snapshot = ModelSnapshot.Create(b.BuildDocuments(), new ProjectSettings { FormatVersion = EngineVersion.FormatVersion }, "", [], [], 1);
+        var rows = snapshot.Summaries();
+
+        Assert.Equal(party.Id, rows.Single(r => r.Id == person.Id).Base);
+        Assert.Null(rows.Single(r => r.Id == party.Id).Base);
+        Assert.Null(rows.Single(r => r.Id == status.Id).Base);
+        var json = JsonSerializer.SerializeToNode(rows.Single(r => r.Id == person.Id), Web)!.AsObject();
+        Assert.Equal(party.Id, (string?)json["base"]);
+        Assert.False(JsonSerializer.SerializeToNode(rows.Single(r => r.Id == party.Id), Web)!.AsObject().ContainsKey("base"));
+        Assert.NotEqual(rows.Single(r => r.Id == person.Id), rows.Single(r => r.Id == person.Id) with { Base = null });
+    }
+
+    [Fact]
     public void Summaries_compare_their_lists_by_items()
     {
         var a = new ElementSummary("A", "relation", "r", null, ["t"], "h", "p", null, ["s"], Ends: [new RelationEndSummary("E", "x")]);
@@ -182,7 +201,7 @@ public sealed class ExplorerScaleTests
     }
 
     [Fact]
-    public async Task Every_database_of_one_snapshot_is_answered_from_one_resolve()
+    public async Task A_database_is_resolved_once_per_snapshot()
     {
         await using var repo = EditorRepo.Create(packs: false);
         var tables = new DatabaseTables(repo.Service);
@@ -210,5 +229,82 @@ public sealed class ExplorerScaleTests
         var result = await tables.GetAsync(EditorRepo.MainDatabaseId, EditorRepo.Ct);
 
         Assert.NotEmpty(result.Tables);
+    }
+
+    [Fact]
+    public async Task Table_detail_is_the_views_table_and_each_database_resolved_alone_matches_the_whole_model()
+    {
+        await using var repo = EditorRepo.Create(packs: false);
+        var tables = new DatabaseTables(repo.Service);
+        var snapshot = await repo.Store.GetSnapshotAsync(EditorRepo.Ct);
+
+        foreach (var database in snapshot.All<Database>())
+        {
+            var view = (await repo.Service.GetDatabaseViewAsync(database.Id, EditorRepo.Ct)).View!;
+            var summaries = await tables.GetAsync(database.Id, EditorRepo.Ct);
+            Assert.Equal(view.Tables.Select(t => t.Key), summaries.Tables.Select(t => t.Key));
+            foreach (var table in view.Tables)
+            {
+                var detail = await tables.GetTableAsync(database.Id, table.Key, EditorRepo.Ct);
+                Assert.False(detail.Partial);
+                Assert.Equal(JsonSerializer.Serialize(table, Web), JsonSerializer.Serialize(detail.Table, Web));
+            }
+        }
+
+        Assert.Contains(snapshot.All<Database>(), d => d.Id == EditorRepo.MainDatabaseId);
+        Assert.Null((await tables.GetTableAsync(EditorRepo.MainDatabaseId, "no-such-table", EditorRepo.Ct)).Table);
+    }
+
+    [Fact]
+    public async Task Table_detail_of_a_table_whose_entity_has_errors_is_null_and_partial()
+    {
+        await using var repo = EditorRepo.Create(packs: false);
+        var tables = new DatabaseTables(repo.Service);
+        var key = (await tables.GetAsync(EditorRepo.MainDatabaseId, EditorRepo.Ct)).Tables.First(t => t.EntityId == EditorRepo.PaymentId).Key;
+        var payment = (await repo.Store.GetElementAsync(EditorRepo.PaymentId, EditorRepo.Ct))!;
+        var node = JsonNode.Parse(payment.Json.GetRawText())!.AsObject();
+        node.Remove("key");
+        File.WriteAllText(repo.Repo.PathOf(payment.Path), node.ToJsonString(), new UTF8Encoding(false));
+        await repo.Store.RescanAsync(false, EditorRepo.Ct);
+
+        var detail = await tables.GetTableAsync(EditorRepo.MainDatabaseId, key, EditorRepo.Ct);
+
+        Assert.Null(detail.Table);
+        Assert.True(detail.Partial);
+        Assert.Contains(detail.Diagnostics, d => d.Rule == "MQ3005" && d.ElementId == EditorRepo.PaymentId);
+    }
+
+    [Fact]
+    public async Task A_resolver_without_the_per_database_entry_point_falls_back_to_one_whole_model_resolve()
+    {
+        await using var repo = EditorRepo.Create(packs: false);
+        var services = Maquettiste.Engine.Generation.EngineServices.Create(repo.Repo.Options);
+        var counting = new CountingResolver(services.Resolver);
+        var tables = new DatabaseTables(new GenerationService(repo.Store, repo.Repo.Options, services with { Resolver = counting }));
+        var reference = new DatabaseTables(repo.Service);
+        var snapshot = await repo.Store.GetSnapshotAsync(EditorRepo.Ct);
+
+        foreach (var database in snapshot.All<Database>())
+        {
+            var result = await tables.GetAsync(database.Id, EditorRepo.Ct);
+            Assert.Equal(
+                JsonSerializer.Serialize((await reference.GetAsync(database.Id, EditorRepo.Ct)).Tables, Web),
+                JsonSerializer.Serialize(result.Tables, Web));
+        }
+
+        var unknown = await tables.GetAsync("01J92P0V0FJ23CGSNKM7P1W5V9", EditorRepo.Ct);
+        Assert.Contains(unknown.Diagnostics, d => d.Rule == "MQ6017");
+        Assert.Equal(1, counting.Calls);
+    }
+
+    private sealed class CountingResolver(Maquettiste.Engine.Pipeline.IModelResolver inner) : Maquettiste.Engine.Pipeline.IModelResolver
+    {
+        public int Calls;
+
+        public Task<Maquettiste.Engine.Resolution.ResolvedModel> ResolveAsync(ModelSnapshot model, IProgress<Maquettiste.Engine.Pipeline.ProgressUpdate>? progress, CancellationToken ct)
+        {
+            Interlocked.Increment(ref Calls);
+            return inner.ResolveAsync(model, progress, ct);
+        }
     }
 }

@@ -10,6 +10,8 @@ The packs under `tests/fixtures/packs/` are written for the fake renderer of the
 | Pack | Output (set by the tests) | Units |
 | --- | --- | --- |
 | `packs/e2e` | `db/e2e` (committed) | `entity` (each entity, a JavaScript helper `shout`), `table` (each table of `main`), `index` (model), `types` (each entity, `type_of` through the pack type map `types/csharp.json`), `audited` (`select audited`, a JavaScript selector), `scaffold` (`once`), `pair` (with a companion), `regions` (one `body` region), `blocks` (file blocks only, one per package) |
+| `packs/reference-data` | `gen` (committed; used over `models/reference-data` by `ReferenceDataRepo`) | `type` (each reference type: rows, `refs`, storage choices, `used_by`), `seed` (each seed: `ordered_rows`, `row_uuid`, `json` of row values), `entity` (each entity: attribute type kinds), `order` (model: `seeds_in_order`, `row`) |
+| `packs/localization` | `gen/l10n` (used over `models/reference-data` by `LocalizationGenerationTests`) | `bundle` (each locale: `display_name`, `plural_name`, `label_of` through the chain), `type-fr` (each reference type: French `display_name`, `has_translation`), `entity` (each entity: default-locale `display_name`) |
 | `packs/migrations` | `db` (committed) | `migration` (`for: model`, `mode: once`, `usesSchemaDiff`): a file block `migrations/<to_revision>.sql` when the `main` diff is not empty |
 
 With `billing-demo` the full run renders 60 units (e2e 36, billing-demo 23, migrations 1). Tests that count units or files

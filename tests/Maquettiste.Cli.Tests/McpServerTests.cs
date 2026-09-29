@@ -9,9 +9,9 @@ public sealed class McpSurfaceTests
 {
     private static readonly string[] Tools =
     [
-        "apply_batch", "apply_plan", "create_element", "delete_element", "get_database_view", "get_element", "get_model_index", "get_plan",
-        "get_plan_diff", "get_project", "get_references", "get_schema", "get_settings", "list_packs", "plan", "save_element", "save_settings",
-        "validate",
+        "apply_batch", "apply_plan", "create_element", "delete_element", "export_seed_csv", "get_database_view", "get_element", "get_model_index",
+        "get_plan", "get_plan_diff", "get_project", "get_references", "get_schema", "get_settings", "get_translations", "import_seed_csv",
+        "list_packs", "localization_status", "plan", "reference_type_usage", "save_element", "save_settings", "set_translations", "validate",
     ];
 
     [Fact]
@@ -382,7 +382,7 @@ public sealed class McpGenerationTests
     /// <summary>
     /// A client cancels a call with <c>notifications/cancelled</c> naming the request. The SDK's client (2.2.0) does not send it when a
     /// call's token is cancelled (only its own wait stops), so the test sends the request and the notification itself, as a
-    /// conforming client such as Claude Code does. The cancelled plan stops and stores nothing, the run lock is released and the server
+    /// conforming MCP client does. The cancelled plan stops and stores nothing, the run lock is released and the server
     /// keeps serving.
     /// </summary>
     [Fact]

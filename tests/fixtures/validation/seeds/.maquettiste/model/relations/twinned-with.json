@@ -1,0 +1,18 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01JVSR00000000000000000002",
+  "name": "twinned with",
+  "ends": [
+    {
+      "id": "01JVSR00000000000000000021",
+      "entity": "01JVSE00000000000000000003",
+      "role": "twin"
+    },
+    {
+      "id": "01JVSR00000000000000000022",
+      "entity": "01JVSE00000000000000000003",
+      "role": "other"
+    }
+  ]
+}

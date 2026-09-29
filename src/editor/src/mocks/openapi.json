@@ -78,6 +78,14 @@
       "description": "Which element each open editor window has selected."
     },
     {
+      "name": "localization",
+      "description": "Translations of the standard fields per locale and shard, their completeness, and XLIFF 2.1 and CSV exchange files (reference-types-seeds-localization.md section 3)."
+    },
+    {
+      "name": "reference-data",
+      "description": "Seed CSV import and export and reference type usage (reference-types-seeds-localization.md sections 2.3 and 3.9)."
+    },
+    {
       "name": "realtime",
       "description": "Events pushed over the host's SignalR hub (`webhooks`); the browser listens with `site.realtime.on`."
     }
@@ -577,13 +585,22 @@
         ],
         "operationId": "getModelIndex",
         "summary": "Summaries of every element",
-        "description": "One summary per top-level element (sub-elements such as attributes and relation ends are not listed). The explorer,\nthe command palette and every canvas start from this list.\n\nE5e: the response carries an `ETag`, a hash of every row's id, file hash and path and of the index format, so it\nchanges exactly when a row does, across server restarts too. A request whose `If-None-Match` names it gets 304 with no\nbody. `Cache-Control: no-cache` lets the browser keep the index and revalidate it on every use.\n",
+        "description": "One summary per top-level element (sub-elements such as attributes and relation ends are not listed). The explorer,\nthe command palette and every canvas start from this list.\n\nE5e: the response carries an `ETag`, a hash of every row's id, file hash and path and of the index format, so it\nchanges exactly when a row does, across server restarts too. The index format constant is `maquettiste-index/e6`.\n\n`?locale=<tag>` (a declared locale; the default locale is the same as none) fills `displayName` from that locale's fallback\nchain (reference-types-seeds-localization.md section 3.8) from a per-locale display-name table the host builds once per\nsnapshot; the ETag then also covers the locale, its chain and the hashes of the chain's shards. 400 for an undeclared locale. A request whose `If-None-Match` names it gets 304 with no\nbody. `Cache-Control: no-cache` lets the browser keep the index and revalidate it on every use.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "ModelStore.GetIndexAsync",
         "x-engine-addition": "E5e ModelReads.IndexTag(summaries)",
         "parameters": [
           {
             "$ref": "#/components/parameters/IfNoneMatch"
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "description": "A declared locale whose display names fill `displayName`.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$"
+            }
           }
         ],
         "responses": {
@@ -697,6 +714,9 @@
                 "$ref": "#/components/headers/NoCache"
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -2857,7 +2877,7 @@
         ],
         "operationId": "getDatabaseTables",
         "summary": "The table list of one database, without columns",
-        "description": "E5c: a projection of the resolved database for the explorer's Databases and Mappings sections, table-name search and\nthe coverage line: every table's key, name, schema, origin, entity or relation and column count, without the columns.\nUnlike `/view` it answers on a model with errors: the tables whose owning elements are valid come back, the rest are\nleft out, `partial` is true and the diagnostics say why. The editor keeps the last complete list per database and\nshows it with a stale badge while a response is partial. The server resolves the model once per model version and\nanswers every database from that resolve.\n",
+        "description": "E5c: a projection of the resolved database for the explorer's Databases and Mappings sections, table-name search and\nthe coverage line: every table's key, name, schema, origin, entity or relation and column count, without the columns.\nUnlike `/view` it answers on a model with errors: the tables whose owning elements are valid come back, the rest are\nleft out, `partial` is true and the diagnostics say why. The editor keeps the last complete list per database and\nshows it with a stale badge while a response is partial. Per model version the server validates the model once and\nresolves each database asked for on its own (the conceptual layer and that database), so a change costs one database's\nresolve; `diagnostics` then holds the validation diagnostics and that database's resolution diagnostics.\n",
         "x-maquettiste-role": "viewer",
         "x-engine-addition": "E5c DatabaseTables.GetAsync(databaseId)",
         "responses": {
@@ -2867,6 +2887,589 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DatabaseTablesResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/databases/{id}/tables/{key}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ElementId"
+        },
+        {
+          "name": "key",
+          "in": "path",
+          "required": true,
+          "description": "The table's key, as `TableSummary.key` (a table file's id, or a synthesized key such as `<entityId>@<databaseId>`).",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "databases"
+        ],
+        "operationId": "getDatabaseTable",
+        "summary": "One table of a database with its columns, keys and indexes",
+        "description": "E5f: one `TableView` (columns with `attributeId`, primary key, foreign keys, unique constraints, indexes) for a table's\nchildren in the explorer and column-level \"mapped by\", without `/view`'s every table. A projection of the same\nper-version resolve as `/tables`: after the first call for a database and model version, a lookup. Like `/tables` it\nanswers on a model with errors; `table` is null when no table of the database has the key or when the table is left\nout because an owning element has errors (`partial` then says so).\n",
+        "x-maquettiste-role": "viewer",
+        "x-engine-addition": "E5f DatabaseTables.GetTableAsync(databaseId, key)",
+        "responses": {
+          "200": {
+            "description": "The table (or null), the diagnostics, and whether the model has errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatabaseTableResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/localization": {
+      "get": {
+        "tags": [
+          "localization"
+        ],
+        "operationId": "getLocalizationStatus",
+        "summary": "Localization settings and completeness per locale and shard",
+        "description": "reference-types-seeds-localization.md section 3.9. The default locale, the declared locales, and per translated locale its\nfallback chain and per shard the expected, translated, missing and stale counts. A project without `localization` answers\n`defaultLocale: null` and no locales.\n",
+        "x-maquettiste-role": "viewer",
+        "responses": {
+          "200": {
+            "description": "The settings and the completeness counts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalizationStatus"
+                },
+                "example": {
+                  "defaultLocale": "en",
+                  "locales": [
+                    {
+                      "locale": "fr",
+                      "shards": [
+                        {
+                          "shard": ".maquettiste/model/locales/fr/_reference-data.json",
+                          "expected": 3,
+                          "translated": 2,
+                          "missing": 1,
+                          "stale": 0
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          }
+        }
+      }
+    },
+    "/api/localization/{locale}/entries": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Locale"
+        }
+      ],
+      "get": {
+        "tags": [
+          "localization"
+        ],
+        "operationId": "getTranslations",
+        "summary": "Translation entries of one locale, by owner, by shard or the missing ones",
+        "description": "reference-types-seeds-localization.md section 3.9. `?owner=<id>` or `?shard=<path>` returns entries with their source text,\ntranslation, effective text, state, shard path and hash; with neither, every entry of the locale. `?missing=true&cursor=` pages\n(200 per page) the entries that need work (`missing`, `fallback` or `stale`) for the translation queue; `cursor` is the\nprevious page's last `id/field`. 404 for a locale that is not declared or is the default.\n",
+        "x-maquettiste-role": "viewer",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          {
+            "name": "shard",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "missing",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The entries, and the cursor of the next page when paged.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranslationPage"
+                },
+                "example": {
+                  "entries": [
+                    {
+                      "id": "01JBS3C4DWA7N36096Q14DR9GP",
+                      "field": "label",
+                      "source": "Kilogram",
+                      "translation": "Kilogramme",
+                      "state": "translated",
+                      "shard": ".maquettiste/model/locales/fr/_reference-data.json",
+                      "shardHash": "0000000000000000000000000000000000000000000000000000000000000000"
+                    }
+                  ],
+                  "cursor": null
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "localization"
+        ],
+        "operationId": "putTranslations",
+        "summary": "Write, remove or confirm translations of one locale",
+        "description": "reference-types-seeds-localization.md section 3.9. `{ entries: [{ id, field, value | null, confirm? }], expected: { shardPath:\nhash } }`, one atomic save: 200 with the new hashes of the shards written, 409 when a shard named in `expected` changed (its\ncurrent hash in `hashes`, nothing written), 422 with diagnostics (MQ7202, MQ7203, MQ7211). `confirm` rewrites that field's\n`src` hash without changing the text. Each entry goes to its node's shard; an entry held in another shard moves there.\n",
+        "x-maquettiste-role": "editor",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TranslationWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The shards written and their new hashes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranslationWriteResult"
+                },
+                "example": {
+                  "outcome": "saved",
+                  "diagnostics": [],
+                  "hashes": {
+                    ".maquettiste/model/locales/fr/_reference-data.json": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "A shard named in `expected` changed; `hashes` holds its current hash and nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranslationWriteResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The entries are invalid; `diagnostics` says why and nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranslationWriteResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/localization/{locale}/export": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Locale"
+        }
+      ],
+      "get": {
+        "tags": [
+          "localization"
+        ],
+        "operationId": "exportTranslations",
+        "summary": "Export one locale as XLIFF 2.1 or CSV",
+        "description": "reference-types-seeds-localization.md section 3.9. `?format=xliff|csv&shard=`: XLIFF 2.1 with one `file` per shard and one\nunit per field keyed `id/field` (segment `state` `translated` or `initial`, `subState` `maquettiste:<state>`), or CSV with the\ncolumns `id, field, source, translation, state, shard`.\n",
+        "x-maquettiste-role": "viewer",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "xliff",
+                "csv"
+              ],
+              "default": "xliff"
+            }
+          },
+          {
+            "name": "shard",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The exported file.",
+            "content": {
+              "application/xliff+xml": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/localization/{locale}/import": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Locale"
+        }
+      ],
+      "post": {
+        "tags": [
+          "localization"
+        ],
+        "operationId": "importTranslations",
+        "summary": "Preview or apply an XLIFF or CSV translation import",
+        "description": "reference-types-seeds-localization.md section 3.9. `?dryRun=true` (the default) previews; `dryRun=false` writes the\ntranslations as one save checked against the shard hashes read for the preview (409 when one changed). A unit with an empty\ntarget is left alone; a unit naming no translatable field is ignored with MQ7203 in `diagnostics`.\n",
+        "x-maquettiste-role": "editor",
+        "parameters": [
+          {
+            "name": "dryRun",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "format",
+                  "content"
+                ],
+                "properties": {
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "xliff",
+                      "csv"
+                    ]
+                  },
+                  "content": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The preview (or the result) of the import.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                },
+                "example": {
+                  "added": 1,
+                  "changed": [],
+                  "removed": 0,
+                  "diagnostics": []
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "What the preview read changed before the import was applied; nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The import makes the model invalid; `diagnostics` says why and nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/seeds/{id}/csv": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ElementId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "reference-data"
+        ],
+        "operationId": "exportSeedCsv",
+        "summary": "Export a seed's rows as CSV",
+        "description": "reference-types-seeds-localization.md sections 2.3 and 3.9. RFC 4180, UTF-8, `@id` first, then `@code`, `@label` and `@description` for reference types, then attribute and end\nrole names in the seed's column order, then `@label:<locale>` and `@description:<locale>` per `locale`; `?bom=true` adds a\nbyte order mark and CRLF line ends. Reference cells export codes, collections `;`-joined codes, end cells row ids, value\nobjects compact JSON.\n",
+        "x-maquettiste-role": "viewer",
+        "parameters": [
+          {
+            "name": "bom",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "description": "Adds `@label:<locale>` and `@description:<locale>` columns; repeatable.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The CSV text.",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "reference-data"
+        ],
+        "operationId": "importSeedCsv",
+        "summary": "Preview or apply a CSV import into a seed",
+        "description": "reference-types-seeds-localization.md sections 2.3 and 3.9. The body is JSON (`{ content }`, the CSV text), as every write\nof the API. Rows match by `@id`, else by `@code` for reference types, else are new rows with new ids; `merge` updates and\nadds, `replace` also removes rows missing from the file, except rows that cells of other seeds name (listed in `blocked`).\nHeaders that match no column are listed in `ignoredHeaders`. `?dryRun=true` (the default) previews; applying saves the seed\nwith `If-Match` (or the hash read for the preview; 409 when it changed, 422 with diagnostics) and then writes the\n`@label:<locale>` and `@description:<locale>` translations.\n",
+        "x-maquettiste-role": "editor",
+        "parameters": [
+          {
+            "name": "mode",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "merge",
+                "replace"
+              ],
+              "default": "merge"
+            }
+          },
+          {
+            "name": "dryRun",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "content"
+                ],
+                "properties": {
+                  "content": {
+                    "type": "string",
+                    "description": "The CSV text."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The preview (or the result) of the import.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                },
+                "example": {
+                  "added": 1,
+                  "changed": [],
+                  "removed": 0,
+                  "diagnostics": []
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "What the preview read changed before the import was applied; nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The import makes the model invalid; `diagnostics` says why and nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reference-types/{id}/usage": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ElementId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "reference-data"
+        ],
+        "operationId": "getReferenceTypeUsage",
+        "summary": "The attributes that use a reference type, with their effective storage",
+        "description": "reference-types-seeds-localization.md section 3.9. Every attribute typed by the reference type, with its owner, domain, collection, required and the effective storage\nchoice per database.\n",
+        "x-maquettiste-role": "viewer",
+        "responses": {
+          "200": {
+            "description": "The usages.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferenceTypeUsage"
+                },
+                "example": {
+                  "usages": []
                 }
               }
             }
@@ -3786,6 +4389,16 @@
       }
     },
     "parameters": {
+      "Locale": {
+        "name": "locale",
+        "in": "path",
+        "required": true,
+        "description": "A declared BCP 47 locale other than the default.",
+        "schema": {
+          "type": "string",
+          "pattern": "^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$"
+        }
+      },
       "ElementId": {
         "name": "id",
         "in": "path",
@@ -4499,6 +5112,20 @@
               }
             }
           },
+          "localization": {
+            "description": "Localization of the standard fields (reference-types-seeds-localization.md section 3.2); `null` when the project declares none.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LocalizationSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "referenceData": {
+            "$ref": "#/components/schemas/ReferenceDataSettings"
+          },
           "packs": {
             "type": "object",
             "additionalProperties": {
@@ -4549,6 +5176,143 @@
               },
               "templateRecursionLimit": {
                 "type": "integer"
+              }
+            }
+          },
+          "explorer": {
+            "description": "Project-defined explorer folders (explorer-redesign.md section 1.6) and team scopes (section 3.2). An older server leaves it out, or leaves out `scopes`.",
+            "type": "object",
+            "required": [
+              "folders"
+            ],
+            "properties": {
+              "folders": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ExplorerFolder"
+                }
+              },
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ExplorerScope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "ExplorerScope": {
+        "x-engine-record": "Maquettiste.Engine.Model.ExplorerScope",
+        "type": "object",
+        "description": "A named set of explorer filter chips; an empty member does not filter.",
+        "required": [
+          "name",
+          "kinds",
+          "domain",
+          "tags",
+          "stereotypes",
+          "categories",
+          "errors",
+          "diagram"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "domain": {
+            "description": "A domain id; its sub-domains are included.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "stereotypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "categories": {
+            "description": "Category-tree node ids, any of; each includes its descendants.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "errors": {
+            "type": "boolean"
+          },
+          "diagram": {
+            "description": "A diagram id; only its members match.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ExplorerFolder": {
+        "x-engine-record": "Maquettiste.Engine.Model.ExplorerFolder",
+        "type": "object",
+        "required": [
+          "label",
+          "icon",
+          "kind",
+          "match"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "description": "The one element kind the folder holds."
+          },
+          "match": {
+            "type": "object",
+            "description": "Exactly one member is set; a category matches its descendants too.",
+            "required": [
+              "stereotype",
+              "tag",
+              "category"
+            ],
+            "properties": {
+              "stereotype": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tag": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "category": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             }
           }
@@ -4774,6 +5538,124 @@
                 "type": "null"
               }
             ]
+          },
+          "referenceStorage": {
+            "description": "The storage choice for reference types; `null` inherits (and, at the project level, means template-defined).",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StorageChoice"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "LocalizationSettings": {
+        "x-engine-record": "Maquettiste.Engine.Model.LocalizationSettings",
+        "type": "object",
+        "required": [
+          "defaultLocale"
+        ],
+        "properties": {
+          "defaultLocale": {
+            "type": "string"
+          },
+          "locales": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "fallbacks": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "require": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ReferenceDataSettings": {
+        "x-engine-record": "Maquettiste.Engine.Model.ReferenceDataSettings",
+        "description": "The storage strategies the project declares (the engine knows none) and the grouping of the Reference data screen.",
+        "type": "object",
+        "properties": {
+          "strategies": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/StrategyDeclaration"
+            }
+          },
+          "groupBy": {
+            "type": "string",
+            "description": "`category`, `tag:<prefix>` or `property:<name>`."
+          }
+        }
+      },
+      "StrategyDeclaration": {
+        "x-engine-record": "Maquettiste.Engine.Model.StrategyDeclaration",
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "collections": {
+            "description": "A boolean, or a map from dialect (or `*`) to boolean.",
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "boolean"
+                }
+              }
+            ]
+          },
+          "options": {
+            "description": "The JSON Schema `properties` of the strategy's options.",
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "required": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "StorageChoice": {
+        "x-engine-record": "Maquettiste.Engine.Model.StorageChoice",
+        "description": "A strategy key the project declares, or `null` for template-defined, and its options.",
+        "type": "object",
+        "properties": {
+          "strategy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "options": {
+            "type": "object",
+            "additionalProperties": true
           }
         }
       },
@@ -4790,10 +5672,10 @@
       },
       "StorageKind": {
         "type": "string",
+        "description": "How an enum (int, string) or a value object (embedded, table, json) is stored. The enum lookup-table option (`lookup`) is\nretired: a file that still uses it does not load (MQ7012); a reference type replaces it.\n",
         "enum": [
           "int",
           "string",
-          "lookup",
           "embedded",
           "table",
           "json"
@@ -5043,6 +5925,363 @@
           }
         }
       },
+      "LocalizationStatus": {
+        "description": "Localization settings and completeness (reference-types-seeds-localization.md section 3.9).",
+        "type": "object",
+        "required": [
+          "defaultLocale",
+          "locales"
+        ],
+        "properties": {
+          "defaultLocale": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "declared": {
+            "type": "array",
+            "description": "Every declared locale, the default included, as the settings list them.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "locales": {
+            "type": "array",
+            "description": "The locales other than the default.",
+            "items": {
+              "type": "object",
+              "required": [
+                "locale",
+                "shards"
+              ],
+              "properties": {
+                "locale": {
+                  "type": "string"
+                },
+                "chain": {
+                  "type": "array",
+                  "description": "The fallback chain, the locale first and the default last.",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "shards": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "shard",
+                      "expected",
+                      "translated",
+                      "missing",
+                      "stale"
+                    ],
+                    "properties": {
+                      "shard": {
+                        "type": "string"
+                      },
+                      "expected": {
+                        "type": "integer"
+                      },
+                      "translated": {
+                        "type": "integer"
+                      },
+                      "missing": {
+                        "type": "integer"
+                      },
+                      "stale": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "TranslationPage": {
+        "type": "object",
+        "required": [
+          "entries",
+          "cursor"
+        ],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "field",
+                "source",
+                "translation",
+                "state",
+                "shard",
+                "shardHash"
+              ],
+              "properties": {
+                "id": {
+                  "$ref": "#/components/schemas/Ulid"
+                },
+                "owner": {
+                  "description": "The element whose file holds the node.",
+                  "$ref": "#/components/schemas/Ulid"
+                },
+                "effective": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The text the fallback chain gives."
+                },
+                "field": {
+                  "type": "string",
+                  "enum": [
+                    "displayName",
+                    "pluralName",
+                    "label",
+                    "description"
+                  ]
+                },
+                "source": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "translation": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "translated",
+                    "missing",
+                    "stale",
+                    "fallback"
+                  ]
+                },
+                "shard": {
+                  "type": "string"
+                },
+                "shardHash": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Hash"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "TranslationWrite": {
+        "type": "object",
+        "required": [
+          "entries",
+          "expected"
+        ],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "field",
+                "value"
+              ],
+              "properties": {
+                "id": {
+                  "$ref": "#/components/schemas/Ulid"
+                },
+                "field": {
+                  "type": "string",
+                  "enum": [
+                    "displayName",
+                    "pluralName",
+                    "label",
+                    "description"
+                  ]
+                },
+                "value": {
+                  "description": "The text, `{ \"file\": \"<sidecar>\" }`, or `null` to remove."
+                },
+                "confirm": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "expected": {
+            "type": "object",
+            "description": "Shard path to the hash the caller loaded.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Hash"
+            }
+          }
+        }
+      },
+      "TranslationWriteResult": {
+        "description": "The answer of a translation write.",
+        "type": "object",
+        "required": [
+          "outcome",
+          "hashes",
+          "diagnostics"
+        ],
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "saved",
+              "conflict",
+              "invalid"
+            ]
+          },
+          "hashes": {
+            "type": "object",
+            "description": "The new hashes of the shards written (saved), or the current hashes of the shards that changed (conflict).",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Hash"
+            }
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
+          }
+        }
+      },
+      "ImportPreview": {
+        "description": "What an import adds, changes and removes, and the diagnostics.",
+        "type": "object",
+        "required": [
+          "added",
+          "changed",
+          "removed",
+          "diagnostics"
+        ],
+        "properties": {
+          "applied": {
+            "type": "boolean",
+            "description": "Whether the import was written (false for a dry run)."
+          },
+          "ignoredHeaders": {
+            "type": "array",
+            "description": "CSV headers that match no column.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blocked": {
+            "type": "array",
+            "description": "Rows a `replace` keeps because cells of other seeds name them, each with its referrers.",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "hash": {
+            "description": "The seed's new hash when applied.",
+            "$ref": "#/components/schemas/Hash"
+          },
+          "shardHashes": {
+            "type": "object",
+            "description": "The new hashes of the translation shards written when applied.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Hash"
+            }
+          },
+          "added": {
+            "type": "integer"
+          },
+          "changed": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "removed": {
+            "type": "integer"
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
+          }
+        }
+      },
+      "ReferenceTypeUsage": {
+        "type": "object",
+        "required": [
+          "usages"
+        ],
+        "properties": {
+          "usages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "attribute",
+                "owner",
+                "collection",
+                "required",
+                "storage"
+              ],
+              "properties": {
+                "attribute": {
+                  "$ref": "#/components/schemas/Ulid"
+                },
+                "owner": {
+                  "$ref": "#/components/schemas/Ulid"
+                },
+                "domain": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Ulid"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "collection": {
+                  "type": "boolean"
+                },
+                "required": {
+                  "type": "boolean"
+                },
+                "storage": {
+                  "type": "object",
+                  "description": "Database name to the effective storage choice.",
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/StorageChoice"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "ElementKind": {
         "type": "string",
         "enum": [
@@ -5060,7 +6299,9 @@
           "diagram",
           "tag-vocabulary",
           "category-tree",
-          "stereotype"
+          "stereotype",
+          "reference-type",
+          "seed"
         ]
       },
       "ChangeSource": {
@@ -5074,7 +6315,7 @@
       },
       "ElementSummary": {
         "x-engine-record": "Maquettiste.Engine.Model.ElementSummary",
-        "x-engine-addition": "E4 adds `category` and `stereotypes`; E5 adds `displayName`, `database`, `entity`, `memberCount` and `ends` (explorer-redesign.md section 4.1)",
+        "x-engine-addition": "E4 adds `category` and `stereotypes`; E5 adds `displayName`, `database`, `entity`, `memberCount` and `ends`; E5h adds `base` (explorer-redesign.md section 4.1)",
         "description": "One index row. The E5 members are optional: a server without E5 leaves them out, and an E5 server leaves each one out\nwhen it does not apply to the row's kind (or, for `displayName`, when the element has none), so they cost nothing on\nrows that do not carry them.\n",
         "type": "object",
         "required": [
@@ -5162,6 +6403,24 @@
             "items": {
               "$ref": "#/components/schemas/RelationEndSummary"
             }
+          },
+          "target": {
+            "description": "The entity, relation or reference type a seed holds rows for, on seed rows (reference-types-seeds-localization.md section 2.1).",
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "rowCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The number of rows, on seed rows; the explorer's Reference data leaf sums them."
+          },
+          "fieldCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The number of user fields, on reference type rows."
+          },
+          "base": {
+            "description": "The base entity's id, on entity rows that have one (E5h). Related-element highlighting reads base and derived entities from it.",
+            "$ref": "#/components/schemas/Ulid"
           }
         }
       },
@@ -5272,11 +6531,17 @@
           },
           {
             "$ref": "#/components/schemas/stereotype"
+          },
+          {
+            "$ref": "#/components/schemas/reference-type"
+          },
+          {
+            "$ref": "#/components/schemas/seed"
           }
         ]
       },
       "NewModelDocument": {
-        "description": "A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required.",
+        "description": "A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required. Reference types and seeds (`reference-type`, `seed`) are documents like any other.",
         "type": "object",
         "required": [
           "kind"
@@ -5472,6 +6737,11 @@
           "toId": {
             "type": "string",
             "description": "The referenced id (an element or a sub-element)."
+          },
+          "owning": {
+            "type": "boolean",
+            "default": false,
+            "description": "The referrer belongs to the referenced element (a seed's `target`): the reference never refuses the target's delete,\nwhich deletes the referrer in the same save, so a delete confirmation lists these as deleted with it. Left out when false.\n"
           }
         }
       },
@@ -5630,10 +6900,12 @@
       },
       "BatchOp": {
         "type": "string",
+        "description": "`translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`.",
         "enum": [
           "create",
           "update",
-          "delete"
+          "delete",
+          "translate"
         ]
       },
       "BatchOperation": {
@@ -5667,6 +6939,33 @@
               "null"
             ],
             "additionalProperties": true
+          },
+          "locale": {
+            "description": "The locale of a translation (`translate`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "field": {
+            "description": "The translated field (`translate`).",
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "displayName",
+                  "pluralName",
+                  "label",
+                  "description"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "value": {
+            "description": "The translated text, `{ \"file\": \"<sidecar>\" }`, or `null` to remove the translation (`translate`)."
           }
         }
       },
@@ -5765,7 +7064,7 @@
         "properties": {
           "rule": {
             "type": "string",
-            "pattern": "^(MQ[1-6][0-9]{3}|x/.+)$"
+            "pattern": "^(MQ[1-7][0-9]{3}|x/.+)$"
           },
           "severity": {
             "$ref": "#/components/schemas/DiagnosticSeverity"
@@ -5920,7 +7219,41 @@
           },
           "partial": {
             "type": "boolean",
-            "description": "The model has errors, so tables whose owning elements have errors (the entity, the relation, the enum of a lookup\ntable, the table file or overlay, a mapping of the entity or relation, or the database itself) are left out, and the\nrest may change when the errors are fixed. False when the list is complete.\n"
+            "description": "The model has errors, so tables whose owning elements have errors (the entity, the relation, the table file or\noverlay, a mapping of the entity or relation, or the database itself) are left out, and the\nrest may change when the errors are fixed. False when the list is complete.\n"
+          }
+        }
+      },
+      "DatabaseTableResult": {
+        "x-engine-addition": "E5f",
+        "x-engine-record": "Maquettiste.Engine.DatabaseTableResult",
+        "type": "object",
+        "required": [
+          "table",
+          "diagnostics",
+          "partial"
+        ],
+        "properties": {
+          "table": {
+            "description": "The table, or null when no table of the database has the key or the table is left out (`partial`).",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TableView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "diagnostics": {
+            "type": "array",
+            "description": "As `DatabaseTablesResult.diagnostics`.",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
+          },
+          "partial": {
+            "type": "boolean",
+            "description": "As `DatabaseTablesResult.partial`."
           }
         }
       },
@@ -5985,7 +7318,9 @@
             "type": "boolean"
           },
           "isLookup": {
-            "type": "boolean"
+            "type": "boolean",
+            "deprecated": true,
+            "description": "Always false. The enum lookup-table storage option is retired (MQ7012); kept so older clients still parse."
           },
           "columnCount": {
             "type": "integer",
@@ -6093,7 +7428,9 @@
             "type": "boolean"
           },
           "isLookup": {
-            "type": "boolean"
+            "type": "boolean",
+            "deprecated": true,
+            "description": "Always false. The enum lookup-table storage option is retired (MQ7012); kept so older clients still parse."
           },
           "comment": {
             "type": [
@@ -7067,6 +8404,7 @@
             ],
             "enum": [
               "entities",
+              "reference-data",
               "database",
               "mappings",
               "generate",
@@ -7115,6 +8453,37 @@
         "allOf": [
           {
             "$ref": "#/components/schemas/ChangeSet"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "translations": {
+                "type": "array",
+                "description": "After a translation change (reference-types-seeds-localization.md section 3.8): for each declared locale whose fallback chain includes a changed locale, the effective display names that changed (the fallback text when a translation was removed). Left out when none changed. Other fields are not sent: an open inspector or translation queue refetches its entries.",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "locale",
+                    "displayNames"
+                  ],
+                  "properties": {
+                    "locale": {
+                      "type": "string"
+                    },
+                    "displayNames": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
+              "translationsTruncated": {
+                "type": "boolean",
+                "description": "`translations` was dropped to fit 200 KB; the editor refetches the index for its content locale."
+              }
+            }
           }
         ],
         "example": {
@@ -7330,6 +8699,25 @@
           "source": "deploy"
         }
       },
+      "storageChoice": {
+        "description": "A storage choice for reference data: a strategy key the project declares in referenceData.strategies (absent means template-defined) and its options.",
+        "type": "object",
+        "x-order": [
+          "strategy",
+          "options"
+        ],
+        "properties": {
+          "strategy": {
+            "type": "string",
+            "minLength": 1
+          },
+          "options": {
+            "type": "object",
+            "default": {}
+          }
+        },
+        "additionalProperties": false
+      },
       "schemaPath": {
         "description": "Relative path to this file's schema; rewritten by the canonical writer.",
         "type": "string"
@@ -7364,7 +8752,8 @@
           "valueObjectStorage",
           "valueObjectCollectionStorage",
           "relationsWithAttributes",
-          "inheritance"
+          "inheritance",
+          "referenceStorage"
         ],
         "properties": {
           "tableCase": {
@@ -7465,8 +8854,7 @@
           "enumStorage": {
             "enum": [
               "int",
-              "string",
-              "lookup"
+              "string"
             ]
           },
           "valueObjectStorage": {
@@ -7494,6 +8882,68 @@
               "tpt",
               "tpc"
             ]
+          },
+          "referenceStorage": {
+            "description": "The storage choice for reference types: the project default under conventions, a per-database override under databases.",
+            "$ref": "#/components/schemas/storageChoice"
+          }
+        },
+        "additionalProperties": false
+      },
+      "locale": {
+        "description": "A BCP 47 language tag.",
+        "type": "string",
+        "pattern": "^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "strategyDeclaration": {
+        "type": "object",
+        "x-order": [
+          "description",
+          "collections",
+          "options",
+          "required"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "collections": {
+            "description": "Whether collection attributes may use the strategy: a boolean, or a map from dialect (or \"*\" for the rest) to boolean.",
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "enum": [
+                    "postgresql",
+                    "sqlserver",
+                    "mysql",
+                    "sqlite",
+                    "oracle",
+                    "*"
+                  ]
+                },
+                "additionalProperties": {
+                  "type": "boolean"
+                }
+              }
+            ],
+            "default": false
+          },
+          "options": {
+            "description": "The JSON Schema \"properties\" of the strategy's options.",
+            "type": "object"
+          },
+          "required": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true,
+            "default": []
           }
         },
         "additionalProperties": false
@@ -7514,9 +8964,12 @@
           "databases",
           "typeMaps",
           "inflection",
+          "localization",
+          "referenceData",
           "packs",
           "validation",
-          "limits"
+          "limits",
+          "explorer"
         ],
         "properties": {
           "$schema": {
@@ -7704,6 +9157,77 @@
             "additionalProperties": false,
             "default": {}
           },
+          "localization": {
+            "description": "Localization of the standard fields (displayName, pluralName, description, a reference row's label).",
+            "type": "object",
+            "x-order": [
+              "defaultLocale",
+              "locales",
+              "fallbacks",
+              "require"
+            ],
+            "properties": {
+              "defaultLocale": {
+                "$ref": "#/components/schemas/locale"
+              },
+              "locales": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/locale"
+                },
+                "uniqueItems": true,
+                "default": []
+              },
+              "fallbacks": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/locale"
+                  }
+                },
+                "default": {}
+              },
+              "require": {
+                "description": "The node kinds the completeness rules count; empty means every localizable node.",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true,
+                "default": []
+              }
+            },
+            "required": [
+              "defaultLocale"
+            ],
+            "additionalProperties": false
+          },
+          "referenceData": {
+            "description": "Reference data settings: the storage strategies the project declares (the engine knows none) and the grouping of the Reference data screen.",
+            "type": "object",
+            "x-order": [
+              "strategies",
+              "groupBy"
+            ],
+            "properties": {
+              "strategies": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/strategyDeclaration"
+                },
+                "default": {}
+              },
+              "groupBy": {
+                "type": "string",
+                "pattern": "^(category|tag:.+|property:[A-Za-z_][A-Za-z0-9_]*)$",
+                "default": "category"
+              }
+            },
+            "additionalProperties": false,
+            "default": {}
+          },
           "packs": {
             "type": "object",
             "additionalProperties": {
@@ -7805,6 +9329,170 @@
             },
             "additionalProperties": false,
             "default": {}
+          },
+          "explorer": {
+            "description": "The editor's explorer. `folders` are project-defined explorer folders (explorer-redesign.md section 1.6): in each domain, an element of the folder's kind that matches its condition is listed in the first matching folder instead of its kind folder. The product gives no stereotype, tag or category a meaning of its own; the folder is only a view.",
+            "type": "object",
+            "x-order": [
+              "folders",
+              "scopes"
+            ],
+            "properties": {
+              "folders": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "x-order": [
+                    "label",
+                    "icon",
+                    "kind",
+                    "match"
+                  ],
+                  "properties": {
+                    "label": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "icon": {
+                      "description": "An icon name from the editor's icon set; the kind's icon when absent.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "kind": {
+                      "description": "The one element kind the folder holds.",
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "match": {
+                      "description": "Exactly one condition: a stereotype key, a tag key, or a category-tree node id (the node and its descendants).",
+                      "type": "object",
+                      "x-order": [
+                        "stereotype",
+                        "tag",
+                        "category"
+                      ],
+                      "properties": {
+                        "stereotype": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "tag": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "category": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "minProperties": 1,
+                      "maxProperties": 1,
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "label",
+                    "kind",
+                    "match"
+                  ],
+                  "additionalProperties": false
+                },
+                "default": []
+              },
+              "scopes": {
+                "description": "Team scopes (explorer-redesign.md section 3.2): named sets of explorer filter chips, chosen from the scope picker beside the search box. An empty member does not filter. They change no generated output.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "x-order": [
+                    "name",
+                    "kinds",
+                    "domain",
+                    "tags",
+                    "stereotypes",
+                    "categories",
+                    "errors",
+                    "diagram"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "kinds": {
+                      "description": "Element kinds, any of.",
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "default": []
+                    },
+                    "domain": {
+                      "description": "A domain id: the domain and its sub-domains.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "tags": {
+                      "description": "Tag keys, any of.",
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "default": []
+                    },
+                    "stereotypes": {
+                      "description": "Stereotype keys, any of.",
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "default": []
+                    },
+                    "categories": {
+                      "description": "Category-tree node ids, any of; each includes its descendants.",
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "default": []
+                    },
+                    "errors": {
+                      "description": "Only elements with validation errors.",
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "diagram": {
+                      "description": "A diagram id: only the diagram's members.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                "default": []
+              }
+            },
+            "additionalProperties": false,
+            "default": {}
           }
         },
         "required": [
@@ -7812,6 +9500,59 @@
         ],
         "additionalProperties": false,
         "$defs": {
+          "strategyDeclaration": {
+            "type": "object",
+            "x-order": [
+              "description",
+              "collections",
+              "options",
+              "required"
+            ],
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "collections": {
+                "description": "Whether collection attributes may use the strategy: a boolean, or a map from dialect (or \"*\" for the rest) to boolean.",
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "enum": [
+                        "postgresql",
+                        "sqlserver",
+                        "mysql",
+                        "sqlite",
+                        "oracle",
+                        "*"
+                      ]
+                    },
+                    "additionalProperties": {
+                      "type": "boolean"
+                    }
+                  }
+                ],
+                "default": false
+              },
+              "options": {
+                "description": "The JSON Schema \"properties\" of the strategy's options.",
+                "type": "object"
+              },
+              "required": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true,
+                "default": []
+              }
+            },
+            "additionalProperties": false
+          },
           "conventions": {
             "title": "Conventions",
             "description": "Sparse naming and mapping conventions over the built-in defaults.",
@@ -7842,7 +9583,8 @@
               "valueObjectStorage",
               "valueObjectCollectionStorage",
               "relationsWithAttributes",
-              "inheritance"
+              "inheritance",
+              "referenceStorage"
             ],
             "properties": {
               "tableCase": {
@@ -7943,8 +9685,7 @@
               "enumStorage": {
                 "enum": [
                   "int",
-                  "string",
-                  "lookup"
+                  "string"
                 ]
               },
               "valueObjectStorage": {
@@ -7972,6 +9713,10 @@
                   "tpt",
                   "tpc"
                 ]
+              },
+              "referenceStorage": {
+                "description": "The storage choice for reference types: the project default under conventions, a per-database override under databases.",
+                "$ref": "#/components/schemas/storageChoice"
               }
             },
             "additionalProperties": false
@@ -8210,7 +9955,7 @@
         ]
       },
       "typeRef": {
-        "description": "A built-in keyword, or a reference to an enum, value object or custom scalar type.",
+        "description": "A built-in keyword, or a reference to an enum, value object, custom scalar type or reference type.",
         "oneOf": [
           {
             "$ref": "#/components/schemas/builtinType"
@@ -9031,6 +10776,8 @@
                 "entity",
                 "role",
                 "navigation",
+                "displayName",
+                "pluralName",
                 "min",
                 "max",
                 "onDelete",
@@ -9058,6 +10805,12 @@
                     }
                   ],
                   "default": ""
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "pluralName": {
+                  "type": "string"
                 },
                 "min": {
                   "enum": [
@@ -9345,7 +11098,6 @@
           "entity",
           "attribute",
           "relation",
-          "enum",
           "description",
           "stereotypes",
           "tags",
@@ -9405,10 +11157,6 @@
           },
           "relation": {
             "description": "Synthesized junction table: the relation.",
-            "$ref": "#/components/schemas/id"
-          },
-          "enum": {
-            "description": "Synthesized lookup table: the enum.",
             "$ref": "#/components/schemas/id"
           },
           "description": {
@@ -9861,11 +11609,6 @@
               "required": [
                 "relation"
               ]
-            },
-            {
-              "required": [
-                "enum"
-              ]
             }
           ],
           "dependentRequired": {
@@ -9893,11 +11636,6 @@
               {
                 "required": [
                   "relation"
-                ]
-              },
-              {
-                "required": [
-                  "enum"
                 ]
               }
             ]
@@ -10267,7 +12005,6 @@
                   "enum": [
                     "int",
                     "string",
-                    "lookup",
                     "embedded",
                     "table",
                     "json"
@@ -10523,6 +12260,7 @@
           "kind",
           "id",
           "name",
+          "package",
           "displayName",
           "pluralName",
           "description",
@@ -10548,6 +12286,10 @@
           "name": {
             "$ref": "#/components/schemas/label",
             "default": ""
+          },
+          "package": {
+            "$ref": "#/components/schemas/id",
+            "description": "The domain the vocabulary is scoped to (that domain and the domains nested under it); absent for the global vocabulary. At most one vocabulary of each kind per scope."
           },
           "displayName": {
             "type": "string"
@@ -10629,6 +12371,7 @@
           "kind",
           "id",
           "name",
+          "package",
           "displayName",
           "pluralName",
           "description",
@@ -10653,6 +12396,10 @@
           "name": {
             "$ref": "#/components/schemas/label",
             "default": ""
+          },
+          "package": {
+            "$ref": "#/components/schemas/id",
+            "description": "The domain the vocabulary is scoped to (that domain and the domains nested under it); absent for the global vocabulary. At most one vocabulary of each kind per scope."
           },
           "displayName": {
             "type": "string"
@@ -10851,6 +12598,8 @@
                 "tag-vocabulary",
                 "category-tree",
                 "stereotype",
+                "reference-type",
+                "seed",
                 "attribute",
                 "enum-member",
                 "column"
@@ -10897,6 +12646,310 @@
         ],
         "additionalProperties": false
       },
+      "reference-type": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Reference type",
+        "description": "A named set of rows that attributes use as their type; its rows are held in seeds.",
+        "type": "object",
+        "x-order": [
+          "$schema",
+          "kind",
+          "id",
+          "name",
+          "displayName",
+          "pluralName",
+          "description",
+          "stereotypes",
+          "tags",
+          "category",
+          "code",
+          "label",
+          "attributes",
+          "storage",
+          "properties",
+          "generation",
+          "source"
+        ],
+        "properties": {
+          "$schema": {
+            "$ref": "#/components/schemas/schemaPath"
+          },
+          "kind": {
+            "const": "reference-type"
+          },
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier",
+            "default": ""
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluralName": {
+            "type": "string"
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "tags": {
+            "$ref": "#/components/schemas/tagList",
+            "default": []
+          },
+          "category": {
+            "$ref": "#/components/schemas/id"
+          },
+          "code": {
+            "title": "Reference code field",
+            "description": "The built-in code field: the row's business key, unique in the type.",
+            "type": "object",
+            "x-order": [
+              "id",
+              "type",
+              "length",
+              "pattern",
+              "displayName",
+              "description"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "type": {
+                "enum": [
+                  "string",
+                  "int16",
+                  "int32",
+                  "int64"
+                ],
+                "default": "string"
+              },
+              "length": {
+                "$ref": "#/components/schemas/length"
+              },
+              "pattern": {
+                "type": "string",
+                "minLength": 1
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "description": {
+                "$ref": "#/components/schemas/description"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          },
+          "label": {
+            "title": "Reference label field",
+            "description": "The built-in label field: the row's display text.",
+            "type": "object",
+            "x-order": [
+              "id",
+              "length",
+              "displayName",
+              "description"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "length": {
+                "$ref": "#/components/schemas/length"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "description": {
+                "$ref": "#/components/schemas/description"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          },
+          "attributes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/attribute"
+            },
+            "x-sort": "order",
+            "default": []
+          },
+          "storage": {
+            "description": "Storage choices keyed by database id, or \"*\" for every database.",
+            "type": "object",
+            "propertyNames": {
+              "pattern": "^([0-7][0-9A-HJKMNP-TV-Z]{25}|\\*)$"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/storageChoice"
+            },
+            "default": {}
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
+          },
+          "generation": {
+            "$ref": "#/components/schemas/generation",
+            "default": {}
+          },
+          "source": {
+            "$ref": "#/components/schemas/source"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "code",
+          "label"
+        ],
+        "additionalProperties": false
+      },
+      "seed": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Seed",
+        "description": "Rows of data for one target: an entity, a relation or a reference type.",
+        "type": "object",
+        "x-order": [
+          "$schema",
+          "kind",
+          "id",
+          "name",
+          "displayName",
+          "pluralName",
+          "description",
+          "stereotypes",
+          "tags",
+          "category",
+          "target",
+          "columns",
+          "rows",
+          "properties",
+          "generation",
+          "source"
+        ],
+        "properties": {
+          "$schema": {
+            "$ref": "#/components/schemas/schemaPath"
+          },
+          "kind": {
+            "const": "seed"
+          },
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier",
+            "default": ""
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluralName": {
+            "type": "string"
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "tags": {
+            "$ref": "#/components/schemas/tagList",
+            "default": []
+          },
+          "category": {
+            "$ref": "#/components/schemas/id"
+          },
+          "target": {
+            "description": "The entity, relation or reference type the rows are for; the seed belongs to it.",
+            "$ref": "#/components/schemas/id"
+          },
+          "columns": {
+            "description": "Built-in keywords (code, label, description) for a reference type, else attribute or relation-end ids.",
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/id"
+                },
+                {
+                  "enum": [
+                    "code",
+                    "label",
+                    "description"
+                  ]
+                }
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "rows": {
+            "type": "array",
+            "x-layout": "row-per-line",
+            "items": {
+              "title": "Seed row",
+              "type": "object",
+              "x-order": [
+                "id",
+                "values"
+              ],
+              "properties": {
+                "id": {
+                  "$ref": "#/components/schemas/id"
+                },
+                "values": {
+                  "description": "One cell per column, in column order; trailing nulls are dropped.",
+                  "type": "array",
+                  "items": {
+                    "description": "A cell: a JSON literal of the column's type, an enum member name, a reference code or an array of codes, a row id for an end, an object for a value object, or null."
+                  },
+                  "x-trim": "trailing-nulls",
+                  "default": []
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "additionalProperties": false
+            },
+            "default": []
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
+          },
+          "generation": {
+            "$ref": "#/components/schemas/generation",
+            "default": {}
+          },
+          "source": {
+            "$ref": "#/components/schemas/source"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "target",
+          "columns"
+        ],
+        "additionalProperties": false
+      },
       "batch": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Model batch",
@@ -10915,14 +12968,18 @@
                 "op",
                 "id",
                 "expectedHash",
-                "element"
+                "element",
+                "locale",
+                "field",
+                "value"
               ],
               "properties": {
                 "op": {
                   "enum": [
                     "create",
                     "update",
-                    "delete"
+                    "delete",
+                    "translate"
                   ]
                 },
                 "id": {
@@ -10936,6 +12993,28 @@
                   "type": "object",
                   "required": [
                     "kind"
+                  ]
+                },
+                "locale": {
+                  "$ref": "#/components/schemas/locale"
+                },
+                "field": {
+                  "enum": [
+                    "displayName",
+                    "pluralName",
+                    "label",
+                    "description"
+                  ]
+                },
+                "value": {
+                  "description": "The translated text, a sidecar reference, or null to remove the translation.",
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/description"
+                    },
+                    {
+                      "type": "null"
+                    }
                   ]
                 }
               },
@@ -10976,6 +13055,23 @@
                   "then": {
                     "required": [
                       "element"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "op": {
+                        "const": "translate"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "locale",
+                      "id",
+                      "field",
+                      "value"
                     ]
                   }
                 }

@@ -14,7 +14,29 @@
     ]
   },
   "conventions": {
-    "enumStorage": "string"
+    "enumStorage": "string",
+    "referenceStorage": {
+      "strategy": "lookup-table"
+    }
+  },
+  "referenceData": {
+    "strategies": {
+      "check": {
+        "description": "CHECK (column IN (codes))"
+      },
+      "lookup-table": {
+        "description": "Table keyed by code, a foreign key from each column",
+        "collections": true,
+        "options": {
+          "schema": {
+            "type": "string"
+          },
+          "tableName": {
+            "type": "string"
+          }
+        }
+      }
+    }
   },
   "packs": {
     "csharp-dapper": {

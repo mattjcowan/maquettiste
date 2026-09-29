@@ -101,7 +101,7 @@ describe("editing", () => {
   });
 
   it("offers storage choices by referenced kind", () => {
-    expect(storageOptions("enum")).toEqual(["int", "string", "lookup"]);
+    expect(storageOptions("enum")).toEqual(["int", "string"]);
     expect(storageOptions("value-object")).toEqual(["embedded", "table", "json"]);
     expect(storageOptions(undefined)).toEqual([]);
   });

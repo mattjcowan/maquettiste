@@ -1,19 +1,20 @@
 // The Settings workspace (phase2-design.md 4.8; owner decision 7: phase 2 edits conventions and
-// vocabularies only). Tags (the tag vocabulary element), categories (tree editor over the
-// category tree), stereotypes (list and form), and conventions for the project and per database,
+// vocabularies only). The global tags and categories (vocabularies/VocabularyEditors; a domain's own are on the domain editor), stereotypes (list and form), conventions for the project and per database, locales (l10n/LocalesSettings),
 // saved through PUT /api/project/settings with the inherited value as placeholder. Type maps,
 // output allowlist and formatters are read-only.
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router";
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { applySaveResult, keys, useElements, useIndex, useProject, useSettings } from "@/api/queries";
 import * as endpoints from "@/api/endpoints";
-import type { CategoryDoc, CategoryTreeDoc, ConventionsJson, ModelJson, SettingsJson, StereotypeDoc, TagVocabularyDoc } from "@/api/types";
+import type { ConventionsJson, ModelJson, SettingsJson, StereotypeDoc } from "@/api/types";
 import { indexLookup } from "@/model/index";
 import { newId } from "@/lib/ids";
 import { clone } from "@/lib/json";
 import { useServices } from "@/app/context";
+import { useEditor } from "@/state/store";
+import { teamScopes } from "@/explorer/FilterBar";
 import { useEditorNavigation, parseLocation } from "@/app/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -24,9 +25,11 @@ import { useDraftDocument } from "@/inspector/useDraft";
 import { setOptional } from "@/inspector/fields";
 import { AttributeGrid } from "@/inspector/AttributeGrid";
 import { keptConventionsDraft, rebaseConventions, type ConventionsDraft } from "./conventions";
-import { TYPE_KINDS, KIND_LABELS } from "@/model/model";
+import { TYPE_KINDS } from "@/model/model";
+import { LocalesSettings } from "@/l10n/LocalesSettings";
+import { CategoryTreeEditor, TagVocabularyEditor } from "@/vocabularies/VocabularyEditors";
 
-const TABS = ["tags", "categories", "stereotypes", "conventions", "project"] as const;
+const TABS = ["tags", "categories", "stereotypes", "conventions", "locales", "project", "explorer"] as const;
 
 export function SettingsWorkspace() {
   const location = useLocation();
@@ -39,244 +42,30 @@ export function SettingsWorkspace() {
         <TabsTrigger value="categories">Categories</TabsTrigger>
         <TabsTrigger value="stereotypes">Stereotypes</TabsTrigger>
         <TabsTrigger value="conventions">Conventions</TabsTrigger>
+        <TabsTrigger value="locales">Locales</TabsTrigger>
         <TabsTrigger value="project">Type maps, outputs, formatters</TabsTrigger>
+        <TabsTrigger value="explorer">Explorer</TabsTrigger>
       </TabsList>
       {TABS.map((t) => (
         <TabsContent key={t} value={t} className="overflow-auto p-4">
           {t === "tags" ? (
-            <TagsSettings />
+            <TagVocabularyEditor scope={null} />
           ) : t === "categories" ? (
-            <CategoriesSettings />
+            <CategoryTreeEditor scope={null} />
           ) : t === "stereotypes" ? (
             <StereotypesSettings />
           ) : t === "conventions" ? (
             <ConventionsSettings />
+          ) : t === "locales" ? (
+            <LocalesSettings />
+          ) : t === "explorer" ? (
+            <ExplorerPreferences />
           ) : (
             <ReadOnlySettings />
           )}
         </TabsContent>
       ))}
     </Tabs>
-  );
-}
-
-function useSingleton(kind: "tag-vocabulary" | "category-tree") {
-  const index = useIndex();
-  const id = indexLookup(index.data).ofKind(kind)[0]?.id ?? null;
-  return { id, loading: index.isPending, ...useDraftDocument(id) };
-}
-
-function CreateSingleton({ kind, name }: { kind: "tag-vocabulary" | "category-tree"; name: string }) {
-  const { queryClient, store } = useServices();
-  return (
-    <EmptyState title={`No ${KIND_LABELS[kind].toLowerCase()} yet`}>
-      <Button
-        className="mt-2"
-        variant="primary"
-        onClick={async () => {
-          const json = { kind, id: newId(), name, ...(kind === "tag-vocabulary" ? { definitions: [] } : { categories: [] }) } as unknown as ModelJson;
-          const result = await endpoints.createElement(json);
-          if (result.outcome === "saved") applySaveResult(queryClient, result);
-          else store.getState().notify(result.diagnostics[0]?.message ?? result.outcome, "error");
-        }}
-      >
-        Create it
-      </Button>
-    </EmptyState>
-  );
-}
-
-function TagsSettings() {
-  const { id, json, edit, flush, loading } = useSingleton("tag-vocabulary");
-  if (loading) return <Spinner />;
-  if (!id) return <CreateSingleton kind="tag-vocabulary" name="tags" />;
-  if (!json) return <Spinner />;
-  const vocab = json as unknown as TagVocabularyDoc;
-  const definitions = vocab.definitions ?? [];
-  return (
-    <section className="flex max-w-3xl flex-col gap-3" aria-label="Tag vocabulary">
-      <CheckboxField
-        id="tags-strict"
-        label="Strict: an undeclared tag is an error (MQ2006)"
-        checked={vocab.strict === true}
-        onChange={(v) => {
-          edit((j) => setOptional(j as never, "strict", v ? true : undefined));
-          void flush();
-        }}
-      />
-      <SectionTitle
-        actions={
-          <Button
-            size="sm"
-            onClick={() => edit((j) => void ((j as unknown as TagVocabularyDoc).definitions = [...definitions, { key: `tag${definitions.length + 1}` }]))}
-          >
-            <Plus /> Add tag
-          </Button>
-        }
-      >
-        Tags
-      </SectionTitle>
-      <table className="w-full text-13" aria-label="Tags">
-        <thead>
-          <tr className="text-left text-11 text-secondary">
-            <th className="font-semibold">Key</th>
-            <th className="font-semibold">Description</th>
-            <th className="font-semibold">Color</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {definitions.map((d, i) => (
-            <tr key={i}>
-              <td className="py-1 pr-2">
-                <Input
-                  aria-label={`Key of tag ${i + 1}`}
-                  className="font-mono"
-                  value={d.key}
-                  onChange={(e) => edit((j) => void ((j as unknown as TagVocabularyDoc).definitions![i].key = e.target.value))}
-                  onBlur={() => void flush()}
-                />
-              </td>
-              <td className="py-1 pr-2">
-                <Input
-                  aria-label={`Description of ${d.key}`}
-                  value={d.description ?? ""}
-                  onChange={(e) => edit((j) => setOptional((j as unknown as TagVocabularyDoc).definitions![i] as never, "description", e.target.value))}
-                  onBlur={() => void flush()}
-                />
-              </td>
-              <td className="py-1 pr-2">
-                <div className="flex items-center gap-2">
-                  <span aria-hidden className="size-4 shrink-0 rounded-[4px] border border-default" style={{ background: d.color }} />
-                  <Input
-                    aria-label={`Color of ${d.key}`}
-                    className="font-mono"
-                    value={d.color ?? ""}
-                    onChange={(e) => edit((j) => setOptional((j as unknown as TagVocabularyDoc).definitions![i] as never, "color", e.target.value))}
-                    onBlur={() => void flush()}
-                  />
-                </div>
-              </td>
-              <td>
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label={`Remove tag ${d.key}`}
-                  onClick={() => {
-                    edit((j) => void ((j as unknown as TagVocabularyDoc).definitions = definitions.filter((_, k) => k !== i)));
-                    void flush();
-                  }}
-                >
-                  <Trash2 />
-                </Button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </section>
-  );
-}
-
-function CategoriesSettings() {
-  const { id, json, edit, flush, loading } = useSingleton("category-tree");
-  if (loading) return <Spinner />;
-  if (!id) return <CreateSingleton kind="category-tree" name="categories" />;
-  if (!json) return <Spinner />;
-  const tree = json as unknown as CategoryTreeDoc;
-  const categories = tree.categories ?? [];
-  const children = (parent: string | null) => categories.filter((c) => (c.parent ?? null) === parent).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  const mutate = (fn: (list: CategoryDoc[]) => void) => {
-    edit((j) => {
-      const t = j as unknown as CategoryTreeDoc;
-      const list = t.categories ?? [];
-      fn(list);
-      t.categories = list;
-    });
-    void flush();
-  };
-  const move = (c: CategoryDoc, delta: -1 | 1) =>
-    mutate((list) => {
-      const siblings = list.filter((x) => (x.parent ?? null) === (c.parent ?? null)).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-      const at = siblings.findIndex((x) => x.id === c.id);
-      const other = siblings[at + delta];
-      if (!other) return;
-      siblings.forEach((s, i) => (s.order = i + 1));
-      const a = list.find((x) => x.id === c.id)!;
-      const b = list.find((x) => x.id === other.id)!;
-      [a.order, b.order] = [b.order, a.order];
-    });
-  const render = (parent: string | null, depth: number) => (
-    <ul className="flex flex-col gap-1" role={depth === 0 ? "tree" : "group"} aria-label={depth === 0 ? "Categories" : undefined}>
-      {children(parent).map((c) => (
-        <li key={c.id} role="treeitem" aria-level={depth + 1} aria-selected={false}>
-          <div className="flex items-center gap-1" style={{ paddingLeft: depth * 20 }}>
-            <Input
-              aria-label={`Name of category ${c.name}`}
-              className="h-7 w-56"
-              value={c.name}
-              onChange={(e) =>
-                edit((j) => {
-                  const cat = (j as unknown as CategoryTreeDoc).categories!.find((x) => x.id === c.id);
-                  if (cat) cat.name = e.target.value;
-                })
-              }
-              onBlur={() => void flush()}
-            />
-            <Button size="icon-sm" variant="ghost" aria-label={`Move ${c.name} up`} onClick={() => move(c, -1)}>
-              <ArrowUp />
-            </Button>
-            <Button size="icon-sm" variant="ghost" aria-label={`Move ${c.name} down`} onClick={() => move(c, 1)}>
-              <ArrowDown />
-            </Button>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label={`Add a category under ${c.name}`}
-              onClick={() => mutate((list) => void list.push({ id: newId(), name: "New category", parent: c.id, order: children(c.id).length + 1 }))}
-            >
-              <Plus />
-            </Button>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label={`Remove ${c.name}`}
-              disabled={children(c.id).length > 0}
-              onClick={() =>
-                mutate(
-                  (list) =>
-                    void list.splice(
-                      list.findIndex((x) => x.id === c.id),
-                      1,
-                    ),
-                )
-              }
-            >
-              <Trash2 />
-            </Button>
-          </div>
-          {children(c.id).length ? render(c.id, depth + 1) : null}
-        </li>
-      ))}
-    </ul>
-  );
-  return (
-    <section className="flex max-w-3xl flex-col gap-3" aria-label="Category tree">
-      <SectionTitle
-        actions={
-          <Button size="sm" onClick={() => mutate((list) => void list.push({ id: newId(), name: "New category", order: children(null).length + 1 }))}>
-            <Plus /> Add category
-          </Button>
-        }
-      >
-        Categories
-      </SectionTitle>
-      {render(null, 0)}
-      <p className="text-12 text-secondary">
-        Categories color entity cards (in tree order) and group the explorer's category filter. A category still used by an element cannot be removed without a
-        validation error (MQ2005).
-      </p>
-    </section>
   );
 }
 
@@ -456,7 +245,7 @@ const CONVENTION_FIELDS: { key: ConventionKey; kind: "enum" | "bool" | "text" | 
   { key: "decimalPrecision", kind: "int" },
   { key: "decimalScale", kind: "int" },
   { key: "datetimePrecision", kind: "int" },
-  { key: "enumStorage", kind: "enum", options: ["int", "string", "lookup"], engineDefault: "int" },
+  { key: "enumStorage", kind: "enum", options: ["int", "string"], engineDefault: "int" },
   { key: "valueObjectStorage", kind: "enum", options: ["embedded", "table", "json"], engineDefault: "embedded" },
   { key: "valueObjectCollectionStorage", kind: "enum", options: ["table", "json"] },
   { key: "relationsWithAttributes", kind: "enum", options: ["junction", "promoted"] },
@@ -664,5 +453,41 @@ function ReadOnlySettings() {
         </ul>
       </div>
     </section>
+  );
+}
+
+/** The explorer's per-user preferences (explorer-redesign.md 1.9, 3.2) and the team's scopes from maquettiste.json. */
+function ExplorerPreferences() {
+  const { store } = useServices();
+  const highlight = useEditor(store, (s) => s.explorer.highlightRelated);
+  const mine = useEditor(store, (s) => s.explorer.scopes);
+  const settings = useSettings();
+  const team = teamScopes(settings.data?.json);
+  return (
+    <div className="flex max-w-2xl flex-col gap-4" data-testid="settings-explorer">
+      <SectionTitle>Your preferences</SectionTitle>
+      <CheckboxField
+        id="pref-highlight-related"
+        label="Highlight related elements"
+        checked={highlight}
+        onChange={(on) => store.getState().setHighlightRelated(on)}
+      />
+      <SectionTitle>Your scopes</SectionTitle>
+      {mine.length === 0 ? <p className="text-13 text-secondary">Save a scope from the scope picker beside an explorer's search box.</p> : null}
+      <ul className="flex flex-col gap-1">
+        {mine.map((scope) => (
+          <li key={scope.name} className="flex items-center gap-2 text-13">
+            <span className="flex-1">{scope.name}</span>
+            <Button type="button" variant="ghost" onClick={() => store.getState().saveScope(scope.name, null)} aria-label={`Remove scope ${scope.name}`}>
+              Remove
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <SectionTitle>Team scopes</SectionTitle>
+      <p className="text-13 text-secondary">
+        {team.length ? team.map((scope) => scope.name).join(", ") : "None yet. Save a scope with “Share with the team” to add one to the project settings."}
+      </p>
+    </div>
   );
 }

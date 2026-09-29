@@ -39,13 +39,13 @@ internal sealed class EditorHost : IAsyncDisposable
     private CancellationTokenSource? _background;
     private readonly List<Task> _running = [];
 
-    private EditorHost(string root, Action<FakeSiteVariables>? variables, bool packs)
+    private EditorHost(string root, Action<FakeSiteVariables>? variables, bool packs, string model = "billing")
     {
         Root = root;
         RepoRoot = Path.Combine(root, "repo");
         ModelRoot = Path.Combine(RepoRoot, ".maquettiste");
         CacheRoot = Path.Combine(root, "cache");
-        CopyTree(Fixtures.Path("models", "billing"), RepoRoot);
+        CopyTree(Fixtures.Path("models", model), RepoRoot);
         if (packs)
         {
             foreach (var name in new[] { "sql-ddl", "csharp-dapper" })
@@ -105,6 +105,10 @@ internal sealed class EditorHost : IAsyncDisposable
     /// <summary>A new site over a fresh copy of the billing fixture.</summary>
     public static EditorHost Create(Action<FakeSiteVariables>? variables = null, bool packs = true) =>
         new(Path.Combine(Path.GetTempPath(), "maquettiste-functions-tests", Guid.NewGuid().ToString("N")), variables, packs);
+
+    /// <summary>A new site over a fresh copy of the reference-data fixture (reference types, seeds, locales en, fr and fr-CA), without packs.</summary>
+    public static EditorHost CreateReferenceData() =>
+        new(Path.Combine(Path.GetTempPath(), "maquettiste-functions-tests", Guid.NewGuid().ToString("N")), null, false, "reference-data");
 
     /// <summary>The absolute path of a repo-relative path.</summary>
     public string PathOf(string repoPath) => Path.Combine(RepoRoot, repoPath.Replace('/', Path.DirectorySeparatorChar));

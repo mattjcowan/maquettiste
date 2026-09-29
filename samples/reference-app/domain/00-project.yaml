@@ -16,6 +16,21 @@ settings:
       - path: src/ReferenceApp.Data/Generated
   conventions:
     enumStorage: string
+    referenceStorage:
+      strategy: lookup-table
+  referenceData:
+    strategies:
+      lookup-table:
+        description: Table keyed by code, a foreign key from each column
+        collections: true
+        options:
+          schema:
+            type: string
+          tableName:
+            type: string
+      check:
+        description: CHECK (column IN (codes))
+        collections: false
   packs:
     csharp-dapper:
       output: src/ReferenceApp.Data/Generated

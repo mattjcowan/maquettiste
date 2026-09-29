@@ -26,7 +26,7 @@ public sealed record DatabaseView(string Id, string Name, string Dialect, string
 /// <param name="EntityId">The mapped entity's id, for an entity table.</param>
 /// <param name="RelationId">The relation's id, for a junction table.</param>
 /// <param name="IsJunction">Whether the table is a relation's junction table.</param>
-/// <param name="IsLookup">Whether the table is an enum lookup table.</param>
+/// <param name="IsLookup">Always <see langword="false"/>: the enum lookup-table option is retired (MQ7012); kept for the contract.</param>
 /// <param name="Comment">The comment.</param>
 /// <param name="Columns">The columns, by position.</param>
 /// <param name="PrimaryKey">The primary key, or <see langword="null"/>.</param>
@@ -135,7 +135,7 @@ internal static class DatabaseViews
             [.. database.Tables.Select(Table)]);
     }
 
-    private static TableView Table(RTable table) => new(
+    public static TableView Table(RTable table) => new(
         table.Key,
         table.Name,
         table.Schema,
@@ -143,7 +143,7 @@ internal static class DatabaseViews
         table.Entity?.Id,
         table.Relation?.Id,
         table.IsJunction,
-        table.IsLookup,
+        false, // the enum lookup-table option is retired (MQ7012)
         table.Comment,
         [.. table.Columns.Select(Column)],
         table.PrimaryKey is { } key ? new KeyView(key.Name, [.. key.Columns.Select(c => c.Key)]) : null,

@@ -107,11 +107,7 @@ public sealed class RTable : RObject
     /// <summary>Whether the table is a relation's junction table.</summary>
     public bool IsJunction { get; internal set; }
 
-    /// <summary>Whether the table is an enum lookup table.</summary>
-    public bool IsLookup { get; internal set; }
 
-    /// <summary>The rows of a lookup table.</summary>
-    public IReadOnlyList<RLookupRow> LookupRows { get; internal set; } = [];
 }
 
 /// <summary>A resolved primary key.</summary>
@@ -204,19 +200,6 @@ public sealed class RIndexColumn
     public bool Descending { get; internal set; }
 }
 
-/// <summary>A row of an enum lookup table.</summary>
-public sealed class RLookupRow
-{
-    /// <summary>The row id (the member's value, else its ordinal).</summary>
-    public long Id { get; internal set; }
-
-    /// <summary>The member's code, else its name.</summary>
-    public string Code { get; internal set; } = "";
-
-    /// <summary>The member's display name.</summary>
-    public string Name { get; internal set; } = "";
-}
-
 /// <summary>A resolved column.</summary>
 public sealed class RColumn : RObject
 {
@@ -291,6 +274,18 @@ public sealed class RColumn : RObject
 
     /// <summary>The 0-based position in the table.</summary>
     public int Position { get; internal set; }
+
+    /// <summary>
+    /// For a column typed by a reference type (<see cref="Type"/> <c>reference</c>): the reference type. The code's facets ride
+    /// along in <see cref="Length"/>, and <see cref="CodeType"/> is the code's logical type.
+    /// </summary>
+    public RReferenceType? ReferenceType { get; internal set; }
+
+    /// <summary>For a reference column: the code's logical type (<c>string</c>, <c>int16</c>, <c>int32</c> or <c>int64</c>).</summary>
+    public string? CodeType { get; internal set; }
+
+    /// <summary>For a reference column: the effective storage strategy in the column's database, or <see langword="null"/> for template-defined.</summary>
+    public string? Strategy { get; internal set; }
 }
 
 /// <summary>A resolved view.</summary>

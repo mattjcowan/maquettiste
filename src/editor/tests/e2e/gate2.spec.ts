@@ -1,10 +1,11 @@
 // The gate 2 walk (SPEC Section 21, phase2-design.md section 7.2 step 2), project live only, against the image started over
 // the seeded 200-entity reference application (samples/reference-app/tools/gate2.sh walk, .github/workflows/gate2.yml).
-// Open the editor, open Warehouse from the explorer, add an attribute through the grid, rename a relation in the inspector,
-// then plan all packs in Generate, open a diff and apply; the apply job's applyResult.outcome must be "succeeded" (its state
-// is "succeeded" for any apply that ran to completion, stale or conflicting ones included, so it is not what counts).
+// Open the editor, find Warehouse in the Domain model tree and open its editor, add an attribute through the grid, rename a
+// relation in its relationship editor, then plan all packs from the Generate explorer, open a diff and apply; the apply
+// job's applyResult.outcome must be "succeeded" (its state is "succeeded" for any apply that ran to completion, stale or
+// conflicting ones included, so it is not what counts).
 // Skipped unless MAQUETTISTE_GATE2 is set: the mock and plain live runs serve the billing fixture, not this model.
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect, test, workspace } from "./fixtures";
 
 test.skip(!process.env.MAQUETTISTE_GATE2, "gate 2 only: set MAQUETTISTE_GATE2 and serve the seeded reference application");
@@ -39,13 +40,21 @@ async function signIn(page: Page): Promise<void> {
   expect(res.status, "POST /api/session").toBe(200);
 }
 
-/** Filters the explorer on an exact element name and opens that element in the inspector. */
-async function openFromExplorer(page: Page, name: string): Promise<void> {
-  const filter = page.getByLabel("Filter elements by name");
-  await filter.fill(name);
-  await page.getByTestId(`explorer-row-${name}`).click();
-  await expect(page.getByRole("region", { name: `Inspector: ${name}` })).toBeVisible();
-  await filter.fill("");
+/** The Domain model explorer: the sidebar under the icon rail, one explorer at a time. */
+const explorer = (page: Page) => page.getByRole("complementary", { name: "Explorer" });
+
+/** Searches the Domain model explorer for an exact element name and opens that element in a pinned editor tab. */
+async function openInEditor(page: Page, name: string): Promise<Locator> {
+  const side = explorer(page);
+  const search = side.getByLabel("Search the model");
+  await search.fill(name);
+  const row = side.getByTestId(`explorer-row-${name}`);
+  // One double click on the unselected row selects it and opens the pinned editor.
+  await row.dblclick();
+  const editor = page.getByRole("region", { name: `Editor: ${name}` });
+  await expect(editor).toBeVisible(slow);
+  await search.fill("");
+  return editor;
 }
 
 test("gate 2: edit the reference application in the editor, plan and apply", async ({ page }) => {
@@ -53,16 +62,19 @@ test("gate 2: edit the reference application in the editor, plan and apply", asy
   await signIn(page);
   await page.goto("/");
   await expect(page.getByTestId("shell")).toBeVisible(slow);
-  // The seeded model, not the billing fixture: the explorer groups the elements by package (Billing alone holds 70).
-  await expect(page.getByRole("listbox", { name: "Model elements" }).getByRole("option", { name: /^Billing \d+ (expanded|collapsed)$/ })).toBeVisible(slow);
+  // The seeded model, not the billing fixture: the Domain model tree lists its domains, collapsed, with their entity counts.
+  const tree = explorer(page).getByRole("tree", { name: "Domain model" });
+  await expect(tree.getByRole("treeitem", { name: /^Billing and payments \d+ entities/ })).toBeVisible(slow);
+  await expect(tree.getByRole("treeitem", { name: /^Inventory and warehousing \d+ entities/ })).toBeVisible();
 
-  // Entities workspace: open Warehouse and add an attribute through the grid.
-  await openFromExplorer(page, "Warehouse");
-  const grid = page.getByTestId("attribute-grid");
+  // Open Warehouse in the entity editor and add an attribute through its grid.
+  const warehouse = await openInEditor(page, "Warehouse");
+  await warehouse.getByRole("tab", { name: "Attributes" }).click();
+  const grid = warehouse.getByTestId("attribute-grid");
   const names = grid.locator('td[data-column="name"]');
   const before = await names.count();
   expect(before).toBeGreaterThan(3);
-  await page.getByRole("button", { name: "Add attribute" }).click();
+  await warehouse.getByRole("button", { name: "Add attribute" }).click();
   await expect(names).toHaveCount(before + 1);
   // The new row opens in edit mode: its name editor has focus with the generated attribute<n> selected, so typing
   // replaces it.
@@ -77,19 +89,20 @@ test("gate 2: edit the reference application in the editor, plan and apply", asy
   await expect(names.nth(before)).toHaveText("receivingHours");
   await expect(page.getByTestId("save-status")).toHaveText("Saved", slow);
 
-  // Rename a relation in the inspector: the name field saves on blur.
-  await openFromExplorer(page, "delivery route warehouse");
-  const inspector = page.getByRole("region", { name: "Inspector: delivery route warehouse" });
-  const name = inspector.getByLabel("Name", { exact: true });
+  // Rename a relation in the relationship editor: the name field saves on blur, and the tab follows the new name.
+  const relation = await openInEditor(page, "delivery route warehouse");
+  const name = relation.getByLabel("Name", { exact: true });
   await expect(name).toHaveValue("delivery route warehouse");
   await name.fill("delivery route depot");
-  await name.press("Tab");
-  await expect(page.getByRole("region", { name: "Inspector: delivery route depot" })).toBeVisible(slow);
+  // The region's name follows the draft as it is typed, so the locator above no longer matches: Tab from the focus.
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("region", { name: "Editor: delivery route depot" })).toBeVisible(slow);
   await expect(page.getByTestId("save-status")).toHaveText("Saved", slow);
-  await page.getByLabel("Filter elements by name").fill("delivery route");
-  await expect(page.getByTestId("explorer-row-delivery route depot")).toBeVisible();
-  await expect(page.getByTestId("explorer-row-delivery route warehouse")).toHaveCount(0);
-  await page.getByLabel("Filter elements by name").fill("");
+  const search = explorer(page).getByLabel("Search the model");
+  await search.fill("delivery route");
+  await expect(explorer(page).getByTestId("explorer-row-delivery route depot")).toBeVisible();
+  await expect(explorer(page).getByTestId("explorer-row-delivery route warehouse")).toHaveCount(0);
+  await search.fill("");
   await expect(page.getByRole("tab", { name: /Problems/ })).not.toContainText(/[1-9]/, slow);
 
   // Generate: plan every pack, read a diff.

@@ -1,0 +1,13 @@
+{
+  "$schema": "../../../.schema/v1/seed.json",
+  "kind": "seed",
+  "id": "01JVSS00000000000000000001",
+  "name": "Shape",
+  "target": "01JVSE00000000000000000001",
+  "columns": [
+    "01JVSE00000000000000000011"
+  ],
+  "rows": [
+    { "id": "01JVSS00000000000000000011", "values": ["circle"] }
+  ]
+}

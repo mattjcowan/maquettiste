@@ -11,17 +11,32 @@ public static class ModelEndpoints
     /// Summaries of every element, with the index's hash as ETag and <c>Cache-Control: no-cache</c> (E5e): a request whose
     /// <c>If-None-Match</c> names the current tag gets 304 with no body.
     /// </summary>
+    /// <param name="locale">A declared locale: <c>displayName</c> comes from its fallback chain (reference-types-seeds-localization.md
+    /// section 3.8), and the ETag covers the locale and its shards.</param>
     /// <param name="context">The request.</param>
     /// <param name="store">The model store.</param>
     /// <param name="ct">Cancellation.</param>
-    /// <returns>200 with the summaries, or 304.</returns>
+    /// <returns>200 with the summaries, 304, or 400 for an undeclared locale.</returns>
     [HttpGet("/api/model/index")]
-    public static Task<IResult> Index(HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    public static Task<IResult> Index(string? locale, HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(store);
-        var index = await store.GetIndexAsync(ct).ConfigureAwait(false);
-        var tag = ModelReads.IndexTag(index);
+        var snapshot = await store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var index = snapshot.Summaries();
+        string tag;
+        if (!string.IsNullOrEmpty(locale) && locale != snapshot.Localization.Settings?.DefaultLocale)
+        {
+            if (!snapshot.Localization.IsTranslated(locale))
+                return Api.BadRequest($"'{locale}' is not a declared locale.");
+            tag = ModelReads.LocalizedIndexTag(snapshot, index, locale);
+            index = ModelReads.Localize(snapshot, index, locale);
+        }
+        else
+        {
+            tag = ModelReads.IndexTag(index);
+        }
+
         Api.SetETag(context, tag);
         context.Response.Headers.CacheControl = "no-cache";
         if (Api.TryReadTag(context.Request.Headers.IfNoneMatch.ToString(), out var seen) && seen == tag)

@@ -1,0 +1,47 @@
+{
+  "$schema": "../../.schema/v1/reference-type.json",
+  "kind": "reference-type",
+  "id": "01JVRT00000000000000000001",
+  "name": "Color",
+  "code": {
+    "id": "01JVRT00000000000000000002",
+    "length": 8
+  },
+  "label": {
+    "id": "01JVRT00000000000000000003",
+    "length": 32
+  },
+  "attributes": [
+    {
+      "id": "01JVRT00000000000000000004",
+      "name": "Label",
+      "type": "string",
+      "length": 16
+    },
+    {
+      "id": "01JVRT00000000000000000005",
+      "name": "owner",
+      "type": {
+        "ref": "01JVRE00000000000000000001"
+      }
+    }
+  ],
+  "storage": {
+    "*": {
+      "strategy": "lookup-table",
+      "options": {
+        "extra": true,
+        "schema": 5
+      }
+    },
+    "01JVRD00000000000000000001": {
+      "strategy": "native"
+    },
+    "01JVRD00000000000000000009": {
+      "strategy": "check"
+    },
+    "01JVRE00000000000000000001": {
+      "strategy": "check"
+    }
+  }
+}

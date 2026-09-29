@@ -34,7 +34,7 @@ internal sealed partial class ResolveRun
     private List<RRelation> _relationOrder = [];
     private IReadOnlyList<string> _entityMembership = [];
     private readonly Dictionary<string, List<string>> _mappingKeysByTarget = new(StringComparer.Ordinal);
-    private string? _categoryTreeId;
+    private readonly Dictionary<string, string> _categoryTreeOf = new(StringComparer.Ordinal); // category id -> its tree's id
     private IReadOnlyList<string>? _conceptualKeys;
 
     /// <summary><c>e:</c> keys of every database file.</summary>
@@ -103,12 +103,18 @@ internal sealed partial class ResolveRun
     public IReadOnlyList<string> EntityMembership => _entityMembership;
 
     /// <summary>Records an entity's mapping in a database.</summary>
-    public void SetEntityMapping(REntity entity, string database, REntityMapping mapping) =>
+    public void SetEntityMapping(REntity entity, string database, REntityMapping mapping)
+    {
+        mapping.TemplateDefined = TemplateDefinedOf(entity.Attributes, database, entity.Id);
         Map(_entityMappings, entity.Id)[database] = mapping;
+    }
 
     /// <summary>Records a relation's mapping in a database.</summary>
-    public void SetRelationMapping(RRelation relation, string database, RRelationMapping mapping) =>
+    public void SetRelationMapping(RRelation relation, string database, RRelationMapping mapping)
+    {
+        mapping.TemplateDefined = TemplateDefinedOf(relation.Attributes, database, relation.Id);
         Map(_relationMappings, relation.Id)[database] = mapping;
+    }
 
     /// <summary>Records a navigation's join path in a database.</summary>
     public void SetJoin(RNavigation navigation, string database, RJoinPath path) =>
@@ -146,6 +152,7 @@ internal sealed partial class ResolveRun
             ResolveScalar(scalar);
         foreach (var enumType in Model.All<EnumType>())
             ResolveEnum(enumType);
+        ResolveReferenceTypes();
         var valueObjects = Model.All<ValueObject>();
         foreach (var valueObject in valueObjects)
             _valueObjects[valueObject.Id] = new RValueObject();
@@ -239,10 +246,12 @@ internal sealed partial class ResolveRun
 
     private void ResolveCategories()
     {
-        var tree = Model.Categories;
-        if (tree is null)
-            return;
-        _categoryTreeId = tree.Id;
+        foreach (var tree in Model.CategoryTrees)
+            ResolveCategories(tree);
+    }
+
+    private void ResolveCategories(CategoryTree tree)
+    {
         var byId = tree.Categories.GroupBy(c => c.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
         foreach (var category in tree.Categories)
         {
@@ -251,7 +260,8 @@ internal sealed partial class ResolveRun
             for (var current = category; current is not null && seen.Add(current.Id); current = current.Parent is null ? null : byId.GetValueOrDefault(current.Parent))
                 names.Add(current.Name);
             names.Reverse();
-            _categories.TryAdd(category.Id, new RCategory { Id = category.Id, Name = category.Name, Path = string.Join('/', names) });
+            if (_categories.TryAdd(category.Id, new RCategory { Id = category.Id, Name = category.Name, Path = string.Join('/', names) }))
+                _categoryTreeOf[category.Id] = tree.Id;
         }
     }
 
@@ -734,8 +744,8 @@ internal sealed partial class ResolveRun
         if (element.Category is { } category && _categories.TryGetValue(category, out var rc))
         {
             r.Category = rc;
-            if (_categoryTreeId is not null)
-                deps.Element(_categoryTreeId);
+            if (_categoryTreeOf.TryGetValue(category, out var treeId))
+                deps.Element(treeId);
         }
 
         var stereotypes = new List<RStereotype>();
@@ -788,7 +798,7 @@ internal sealed partial class ResolveRun
         a.Required = attribute.Required;
         a.Default = ResolutionValues.Plain(attribute.Default);
         a.DefaultExpression = attribute.DefaultExpression;
-        a.Length = attribute.Length ?? scalar?.Length;
+        a.Length = attribute.Length ?? scalar?.Length ?? a.Type.ReferenceType?.Code.Length;
         a.Precision = attribute.Precision ?? scalar?.Precision;
         a.Scale = attribute.Scale ?? scalar?.Scale;
         a.Collection = attribute.Collection;
@@ -821,6 +831,8 @@ internal sealed partial class ResolveRun
                 return new RType { Kind = "enum", Name = e.Name, Enum = e };
             if (_valueObjects.TryGetValue(id, out var v))
                 return new RType { Kind = "value-object", Name = Model.Get<ValueObject>(id)?.Name ?? v.Name, ValueObject = v };
+            if (_referenceTypes.TryGetValue(id, out var rt))
+                return new RType { Kind = "reference", Name = rt.Name, Builtin = rt.Code.Type, ReferenceType = rt };
             if (_scalars.TryGetValue(id, out var s))
             {
                 scalar = s;

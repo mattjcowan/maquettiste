@@ -6,9 +6,11 @@ import {
   FolderTree,
   Gem,
   Hash,
+  Library,
   Link2,
   ListOrdered,
   Package,
+  Rows3,
   Stamp,
   Table2,
   Tags,
@@ -34,6 +36,8 @@ export const KIND_ICONS: Record<ElementKind, LucideIcon> = {
   "tag-vocabulary": Tags,
   "category-tree": FolderTree,
   stereotype: Stamp,
+  "reference-type": Library,
+  seed: Rows3,
 };
 
 export function KindIcon({ kind, className }: { kind: ElementKind; className?: string }) {

@@ -2,7 +2,8 @@
 # Smoke test of an editor image (phase2-design.md section 3.9): starts it with no network over a copy of the billing fixture, waits
 # for /api/health "ok" (which proves the first functions build restored offline from the image's feed), checks the host volume's
 # ownership, then runs curl checks inside the container: the project, the index, a save with If-Match, a 409 on the stale hash,
-# a plan job and an apply job through to completion. Cleans up after itself.
+# a plan job and an apply job through to completion; then the CLI in the image (--version, and generate --check as the host user
+# over a copy of what the editor wrote). Cleans up after itself.
 #
 # usage: docker/smoke.sh [image]      (run from the repository root; default image mattjcowan/maquettiste:dev)
 set -eu
@@ -131,4 +132,20 @@ if [ ! -f "$work/db/main/billing/tables/customers.sql" ]; then
   fail "the apply did not write db/main/billing/tables/customers.sql where the host can see it"
 fi
 pass "apply job $job succeeded and wrote $written files into the repository ($rendered units rendered)"
+
+# The CLI in the image (docker/maquettiste.sh), run as the host user the way docs/user-guide.md documents it, over a host-owned copy
+# of the repository the editor just wrote: --check must find the editor's output byte for byte what the CLI generates (exit 0).
+version=$(docker run --rm --network none "$image" maquettiste --version) || fail "maquettiste --version failed in the image"
+pass "maquettiste --version in the image prints $version"
+cli="$work/cli-copy"
+mkdir "$cli" && (cd "$work" && tar cf - --exclude ./cli-copy --exclude ./.maquettiste/.cache .) | (cd "$cli" && tar xf - --no-same-owner --no-same-permissions)
+chmod -R u+rwX "$cli"
+set +e
+out=$(docker run --rm --network none --user "$(id -u):$(id -g)" -v "$cli:/repo" -w /repo "$image" maquettiste generate --check --progress none 2>&1)
+code=$?
+set -e
+[ "$code" = 0 ] || { echo "$out" | tail -20 >&2; fail "maquettiste generate --check over the editor's output exited $code"; }
+foreign=$(find "$cli" ! -user "$(id -u)" | head -3)
+[ -z "$foreign" ] || fail "the CLI run as --user $(id -u) left files owned by another user: $foreign"
+pass "maquettiste generate --check as --user $(id -u):$(id -g): $(echo "$out" | grep -o 'Outcome: [A-Za-z]*' | tail -1), exit 0"
 echo "smoke: all checks passed"

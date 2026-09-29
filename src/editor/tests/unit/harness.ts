@@ -2,6 +2,7 @@
 import { afterAll, afterEach, beforeAll } from "vitest";
 import { createApiClient, setApiClient } from "@/api/client";
 import { createServices, type AppServices } from "@/app/context";
+import { resetLoaders } from "@/api/queries";
 import type { MockBackendOptions } from "@/mocks/backend";
 import { NODE_BASE_URL, startMockServer } from "@/mocks/node";
 
@@ -24,6 +25,7 @@ export function useMockApi(options: MockBackendOptions = {}) {
     mock = startMockServer(options);
     mock.server.listen({ onUnhandledRequest: "error" });
     services = null;
+    resetLoaders({ indexStore: false });
   });
   afterAll(() => mock.server.close());
   return {

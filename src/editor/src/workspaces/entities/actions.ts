@@ -3,7 +3,8 @@
 import type { AppServices } from "@/app/context";
 import type { BatchResult, DiagramDoc, DiagramMember, ElementDocument, ModelJson } from "@/api/types";
 import * as endpoints from "@/api/endpoints";
-import { applyBatchResult, keys } from "@/api/queries";
+import { applyBatchResult, elementQuery, keys, loadElement } from "@/api/queries";
+import { planMembers, type Point, type RelationLookup } from "@/canvas/model";
 import { clone } from "@/lib/json";
 
 export async function createWithMember(
@@ -16,8 +17,7 @@ export async function createWithMember(
   const { drafts, queryClient, store } = services;
   await drafts.flush(diagramId);
   const cached = queryClient.getQueryData<ElementDocument>(keys.element(diagramId));
-  const diagramDoc: ElementDocument =
-    cached ?? (await queryClient.fetchQuery({ queryKey: keys.element(diagramId), queryFn: () => endpoints.getElement(diagramId) }));
+  const diagramDoc: ElementDocument = cached ?? (await queryClient.fetchQuery({ queryKey: keys.element(diagramId), queryFn: () => loadElement(diagramId) }));
   const before = clone(diagramDoc.json as ModelJson);
   const diagram = clone(before) as unknown as DiagramDoc;
   diagram.members = [...(diagram.members ?? []), member];
@@ -43,4 +43,31 @@ export async function createWithMember(
     afterHashes: result.items.map((i) => i.hash),
   });
   return { ok: true, result };
+}
+
+/**
+ * Adds entities (and relations) to a diagram from the explorer (drop, Add to diagram, Add with related; explorer-redesign
+ * step 10), through the diagram's draft so it saves, undoes and conflicts like a card move. Returns the members added.
+ */
+export async function addToDiagram(
+  services: Pick<AppServices, "drafts" | "queryClient" | "store">,
+  diagramId: string,
+  input: { entities: readonly string[]; relations?: readonly string[]; lookup: RelationLookup; at?: Point },
+): Promise<DiagramMember[]> {
+  const { drafts, queryClient, store } = services;
+  const base = await queryClient.fetchQuery(elementQuery(diagramId));
+  const current = (store.getState().drafts[diagramId]?.json ?? base.json) as unknown as DiagramDoc;
+  const added = planMembers({ members: current.members ?? [], ...input });
+  if (!added.length) return added;
+  drafts.edit(
+    diagramId,
+    (json) => {
+      const diagram = json as unknown as DiagramDoc;
+      const have = new Set((diagram.members ?? []).map((m) => m.element));
+      diagram.members = [...(diagram.members ?? []), ...added.filter((m) => !have.has(m.element))];
+    },
+    { base },
+  );
+  await drafts.flush(diagramId);
+  return added;
 }

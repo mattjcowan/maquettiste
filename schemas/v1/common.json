@@ -148,7 +148,7 @@
       ]
     },
     "typeRef": {
-      "description": "A built-in keyword, or a reference to an enum, value object or custom scalar type.",
+      "description": "A built-in keyword, or a reference to an enum, value object, custom scalar type or reference type.",
       "oneOf": [
         {
           "$ref": "#/$defs/builtinType"
@@ -177,6 +177,27 @@
     "scale": {
       "type": "integer",
       "minimum": 0
+    },
+    "locale": {
+      "description": "A BCP 47 language tag.",
+      "type": "string",
+      "pattern": "^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$"
+    },
+    "storageChoice": {
+      "description": "A storage choice for reference data: a strategy key the project declares in referenceData.strategies (absent means template-defined) and its options.",
+      "type": "object",
+      "x-order": ["strategy", "options"],
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "options": {
+          "type": "object",
+          "default": {}
+        }
+      },
+      "additionalProperties": false
     },
     "dialectMap": {
       "description": "Dialect name (postgresql, sqlserver, mysql, sqlite, oracle) or \"*\" to SQL text.",

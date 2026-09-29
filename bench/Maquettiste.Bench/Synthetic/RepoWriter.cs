@@ -121,6 +121,15 @@ internal sealed class RepoWriter
         return count;
     }
 
+    /// <summary>Writes a JSON node canonically against one of the schemas, at a model-relative path.</summary>
+    /// <param name="node">The document.</param>
+    /// <param name="schemaFile">Its schema file name.</param>
+    /// <param name="modelPath">Its model-relative path.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>A task.</returns>
+    public Task WriteNodeAsync(System.Text.Json.Nodes.JsonNode node, string schemaFile, string modelPath, CancellationToken ct) =>
+        WriteAsync(modelPath, _json.Write(node, schemaFile, ".maquettiste/" + modelPath), ct);
+
     private async Task WriteAsync(string modelPath, byte[] bytes, CancellationToken ct)
     {
         var full = Path.Combine(_modelRoot, modelPath.Replace('/', Path.DirectorySeparatorChar));

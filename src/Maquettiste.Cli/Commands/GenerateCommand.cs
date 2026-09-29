@@ -84,7 +84,7 @@ internal static class GenerateCommand
             // are as the last apply left them answers without loading, validating, resolving or planning (Generation/README.md).
             service.ReuseLastRun = true;
 
-            var progress = new ConsoleProgress(context.Progress, context.Error);
+            var progress = new ConsoleProgress(context.Progress, context.Error, hideWrite: check);
             var result = await service.RunAsync(request, progress, ct).ConfigureAwait(false);
             progress.Complete();
             await ReportAsync(context, result, format, progress.FilesCompared, prefix: "").ConfigureAwait(false);

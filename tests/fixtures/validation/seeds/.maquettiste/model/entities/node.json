@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JVSE00000000000000000004",
+  "name": "Node",
+  "key": {
+    "attributes": [
+      "01JVSE00000000000000000041"
+    ],
+    "strategy": "ulid"
+  },
+  "attributes": [
+    {
+      "id": "01JVSE00000000000000000041",
+      "name": "id",
+      "type": "ulid",
+      "required": true
+    },
+    {
+      "id": "01JVSE00000000000000000042",
+      "name": "name",
+      "type": "string",
+      "length": 20
+    }
+  ]
+}

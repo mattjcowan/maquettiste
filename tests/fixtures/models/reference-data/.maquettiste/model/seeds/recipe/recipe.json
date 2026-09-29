@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../.schema/v1/seed.json",
+  "kind": "seed",
+  "id": "01JRDS00000000000000000001",
+  "name": "Recipe",
+  "target": "01JRDE00000000000000000001",
+  "columns": [
+    "01JRDE00000000000000000011",
+    "01JRDE00000000000000000012"
+  ],
+  "rows": [
+    { "id": "01JRDS00000000000000000101", "values": ["bread", "Bread"] },
+    { "id": "01JRDS00000000000000000102", "values": ["soup", "Soup"] }
+  ]
+}

@@ -25,7 +25,7 @@ namespace Maquettiste.Engine;
 /// their referrers through <see cref="IModelValidator"/> (only errors the change introduces refuse it), then stages every file and
 /// renames it into place (<see cref="AtomicFileSet"/>), re-reads the written paths and publishes one <see cref="ChangeSet"/>.
 /// </remarks>
-public sealed class ModelStore : IAsyncDisposable
+public sealed partial class ModelStore : IAsyncDisposable
 {
     private readonly EngineOptions _options;
     private readonly EngineServices _services;
@@ -196,6 +196,15 @@ public sealed class ModelStore : IAsyncDisposable
         {
             var o = batch.Operations[i];
             JsonNode? node = null;
+            if (o.Op == BatchOp.Translate)
+            {
+                var pointer = "/operations/" + i.ToString(CultureInfo.InvariantCulture) + "/op";
+                invalid[i] = new SaveResult(SaveOutcome.Invalid, o.Id, null, null,
+                    [RuleCatalog.Create("MQ1002", pointer + " The translate operation is declared in the contract; its handler lands in a later step.", o.Id, null, pointer)], [], null);
+                changes.Add(new PlannedChange(BatchOp.Update, o.Id, o.ExpectedHash, null, DeleteResolution.Refuse));
+                continue;
+            }
+
             // A hand-built operation may carry an element ParseBatch never saw: parse it as strictly as a request body.
             if (o.Element is { } e && !TryParseRequest(JsonMarshal.GetRawUtf8Value(e).ToArray(), o.Id, out node, out var failure))
                 invalid[i] = failure with { Diagnostics = [.. failure.Diagnostics.Select(d => d with { JsonPointer = "/operations/" + i.ToString(CultureInfo.InvariantCulture) + "/element", Line = null, Column = null })] };
@@ -650,7 +659,10 @@ public sealed class ModelStore : IAsyncDisposable
     {
         if (plan.Candidate is not { } candidate || plan.ChangedIds.Count == 0)
             return;
-        var report = await _services.Validator.ValidateAsync(candidate, new ValidationScope(plan.ChangedIds, IncludeReferrers: true), null, ct).ConfigureAwait(false);
+        // Files that referenced a changed element or sub-element before the change are validated too: a reference the change broke
+        // (a seed row or code gone) no longer shows in the candidate's index.
+        var scope = plan.ChangedIds.Concat(FormerReferrers(plan.ChangedIds, before, candidate)).Distinct(StringComparer.Ordinal).ToList();
+        var report = await _services.Validator.ValidateAsync(candidate, new ValidationScope(scope, IncludeReferrers: true), null, ct).ConfigureAwait(false);
         var existing = plan.ChangedIds.Where(id => before.TryGetEntry(id, out _)).ToList();
         var baseline = existing.Count > 0
             ? await _services.Validator.ValidateAsync(before, new ValidationScope(existing, IncludeReferrers: true), null, ct).ConfigureAwait(false)
@@ -671,6 +683,34 @@ public sealed class ModelStore : IAsyncDisposable
                 known[key] = count - 1;
             else
                 outcome.Fail(SaveOutcome.Invalid);
+        }
+    }
+
+    private static IEnumerable<string> FormerReferrers(IReadOnlyList<string> changedIds, ModelSnapshot before, ModelSnapshot candidate)
+    {
+        foreach (var id in changedIds)
+        {
+            if (before.GetDocument(id) is not { } document)
+                continue;
+            // Only referrers the candidate lost: the ones it still has are in the scope through IncludeReferrers.
+            var kept = new HashSet<string>(StringComparer.Ordinal);
+            if (candidate.GetDocument(id) is { } after)
+            {
+                foreach (var (subId, _) in DocumentReader.Scan(after.Json).Ids)
+                {
+                    foreach (var reference in candidate.ReferencesTo(subId))
+                        kept.Add(reference.FromElementId);
+                }
+            }
+
+            foreach (var (subId, _) in DocumentReader.Scan(document.Json).Ids)
+            {
+                foreach (var reference in before.ReferencesTo(subId))
+                {
+                    if (reference.FromElementId != id && !kept.Contains(reference.FromElementId) && candidate.GetDocument(reference.FromElementId) is not null)
+                        yield return reference.FromElementId;
+                }
+            }
         }
     }
 
@@ -834,6 +874,9 @@ public enum BatchOp
 
     /// <summary><c>delete</c>.</summary>
     [JsonStringEnumMemberName("delete")] Delete,
+
+    /// <summary><c>translate</c>: writes one translated field (reference-types-seeds-localization.md section 3.9); declared in the contract, applied in a later step.</summary>
+    [JsonStringEnumMemberName("translate")] Translate,
 }
 
 /// <summary>One batch operation.</summary>
@@ -841,7 +884,11 @@ public enum BatchOp
 /// <param name="Id">The element id (update, delete; optional for create).</param>
 /// <param name="ExpectedHash">The ETag the caller loaded (update, delete).</param>
 /// <param name="Element">The element JSON (create, update).</param>
-public sealed record BatchOperation(BatchOp Op, string? Id, string? ExpectedHash, JsonElement? Element);
+/// <param name="Locale">The locale of a translation (translate).</param>
+/// <param name="Field">The translated field: displayName, pluralName, label or description (translate).</param>
+/// <param name="Value">The translated text, a sidecar reference, or null to remove it (translate).</param>
+public sealed record BatchOperation(
+    BatchOp Op, string? Id, string? ExpectedHash, JsonElement? Element, string? Locale = null, string? Field = null, JsonElement? Value = null);
 
 /// <summary>An atomic batch of operations.</summary>
 /// <param name="Operations">The operations, applied in order.</param>

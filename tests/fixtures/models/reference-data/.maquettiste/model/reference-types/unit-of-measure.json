@@ -1,0 +1,39 @@
+{
+  "$schema": "../../.schema/v1/reference-type.json",
+  "kind": "reference-type",
+  "id": "01JBM9S346Q3D25VT4F5V37E3S",
+  "name": "UnitOfMeasure",
+  "displayName": "Unit of measure",
+  "pluralName": "Units of measure",
+  "description": "Units in which quantities are expressed.",
+  "code": {
+    "id": "01JB3E28JT97KB6CQ643DZVMXX",
+    "length": 8,
+    "pattern": "^[a-z0-9_]+$"
+  },
+  "label": {
+    "id": "01JBQKFBF5KZNWJ47TAN9ZT24M",
+    "length": 64
+  },
+  "attributes": [
+    {
+      "id": "01JBNPZX45HY43KWJRP1XPA7Z3",
+      "name": "factor",
+      "type": "decimal",
+      "precision": 18,
+      "scale": 6,
+      "required": true
+    },
+    {
+      "id": "01JBDJ8FSSZ5AWSH8VHTPRE95B",
+      "name": "symbol",
+      "type": "string",
+      "length": 8
+    }
+  ],
+  "storage": {
+    "*": {
+      "strategy": "check"
+    }
+  }
+}

@@ -39,6 +39,12 @@ public sealed record ProjectSettings
     /// <summary>Inflector overrides.</summary>
     public InflectionSettings Inflection { get; init; } = new();
 
+    /// <summary>Localization of the standard fields; <see langword="null"/> when the project declares none.</summary>
+    public LocalizationSettings? Localization { get; init; }
+
+    /// <summary>The reference data storage strategies and screen grouping.</summary>
+    public ReferenceDataSettings ReferenceData { get; init; } = new();
+
     /// <summary>Per-pack settings; the key is a pack name.</summary>
     public IReadOnlyDictionary<string, PackSettings> Packs { get; init; } = ImmutableDictionary<string, PackSettings>.Empty;
 
@@ -47,6 +53,76 @@ public sealed record ProjectSettings
 
     /// <summary>Sandbox limits for scripts and templates.</summary>
     public SandboxLimits Limits { get; init; } = new();
+
+    /// <summary>The editor's explorer settings: project-defined folders (explorer-redesign.md section 1.6).</summary>
+    public ExplorerSettings Explorer { get; init; } = new();
+}
+
+/// <summary>The editor's explorer settings. The engine stores them; they change no generated output.</summary>
+public sealed record ExplorerSettings
+{
+    /// <summary>Project-defined explorer folders, in match order: an element is listed in the first folder it matches.</summary>
+    public IReadOnlyList<ExplorerFolder> Folders { get; init; } = [];
+
+    /// <summary>Team scopes: named sets of explorer filter chips shared through the project (explorer-redesign.md section 3.2).</summary>
+    public IReadOnlyList<ExplorerScope> Scopes { get; init; } = [];
+}
+
+/// <summary>A named set of explorer filter chips. Every member narrows the tree; an empty member does not filter.</summary>
+public sealed record ExplorerScope
+{
+    /// <summary>The scope's name, shown in the scope picker.</summary>
+    public required string Name { get; init; }
+
+    /// <summary>Element kinds, any of.</summary>
+    public IReadOnlyList<string> Kinds { get; init; } = [];
+
+    /// <summary>A domain (package) id: the domain and its sub-domains.</summary>
+    public string? Domain { get; init; }
+
+    /// <summary>Tag keys, any of.</summary>
+    public IReadOnlyList<string> Tags { get; init; } = [];
+
+    /// <summary>Stereotype keys, any of.</summary>
+    public IReadOnlyList<string> Stereotypes { get; init; } = [];
+
+    /// <summary>Category-tree node ids, any of; each includes its descendants.</summary>
+    public IReadOnlyList<string> Categories { get; init; } = [];
+
+    /// <summary>Only elements with validation errors.</summary>
+    public bool Errors { get; init; }
+
+    /// <summary>A diagram id: only the diagram's members.</summary>
+    public string? Diagram { get; init; }
+}
+
+/// <summary>A project-defined explorer folder: one element kind and one condition.</summary>
+public sealed record ExplorerFolder
+{
+    /// <summary>The folder's label.</summary>
+    public required string Label { get; init; }
+
+    /// <summary>An icon name from the editor's icon set; null for the kind's icon.</summary>
+    public string? Icon { get; init; }
+
+    /// <summary>The one element kind the folder holds.</summary>
+    public required string Kind { get; init; }
+
+    /// <summary>The condition.</summary>
+    public required ExplorerFolderMatch Match { get; init; }
+}
+
+/// <summary>A folder condition: exactly one member is set.</summary>
+public sealed record ExplorerFolderMatch
+{
+    /// <summary>A stereotype key.</summary>
+    public string? Stereotype { get; init; }
+
+    /// <summary>A tag key.</summary>
+    public string? Tag { get; init; }
+
+    /// <summary>A category-tree node id; the node's descendants match too.</summary>
+    public string? Category { get; init; }
 }
 
 /// <summary>Output roots and deny rules.</summary>
@@ -248,6 +324,9 @@ public sealed record Conventions
 
     /// <summary>The inheritance strategy (default <c>tph</c>).</summary>
     public InheritanceStrategy? Inheritance { get; init; }
+
+    /// <summary>The storage choice for reference types (project default here, per-database override under <c>databases</c>).</summary>
+    public StorageChoice? ReferenceStorage { get; init; }
 }
 
 /// <summary>A casing style for generated names.</summary>

@@ -26,7 +26,7 @@
         "properties": {
           "rule": {
             "type": "string",
-            "pattern": "^(MQ[1-6][0-9]{3}|x/.+)$"
+            "pattern": "^(MQ[1-7][0-9]{3}|x/.+)$"
           },
           "severity": {
             "enum": ["error", "warning", "info"]

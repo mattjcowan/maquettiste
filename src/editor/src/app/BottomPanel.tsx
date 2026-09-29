@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ProblemsPanel, useProblemGroups } from "@/problems/ProblemsPanel";
 import { countBySeverity } from "@/problems/group";
 import { DiffViewer } from "@/diff/DiffViewer";
+import { ReferencesPanel } from "@/references/ReferencesPanel";
 import { useEditor, type BottomTab } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { useServices } from "./context";
@@ -50,7 +51,7 @@ export function BottomPanel() {
   const { groups } = useProblemGroups();
   const counts = countBySeverity(groups);
   return (
-    <section aria-label="Problems, output and diff" className="flex h-full min-h-0 flex-col bg-surface" data-testid="bottom-panel">
+    <section aria-label="Problems, output, diff and references" className="flex h-full min-h-0 flex-col bg-surface" data-testid="bottom-panel">
       <Tabs value={tab} onValueChange={(v) => store.getState().setBottomTab(v as BottomTab)} className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-center border-b border-default">
           <TabsList className="flex-1 border-b-0" aria-label="Bottom panel">
@@ -65,6 +66,9 @@ export function BottomPanel() {
             </TabsTrigger>
             <TabsTrigger value="diff" data-testid="tab-diff">
               Diff
+            </TabsTrigger>
+            <TabsTrigger value="references" data-testid="tab-references" title="Where used (Shift+F12)">
+              References
             </TabsTrigger>
           </TabsList>
           <Button
@@ -87,6 +91,9 @@ export function BottomPanel() {
             </TabsContent>
             <TabsContent value="diff" className="flex min-h-0 flex-col">
               <DiffPanel />
+            </TabsContent>
+            <TabsContent value="references" className="flex min-h-0 flex-col">
+              <ReferencesPanel />
             </TabsContent>
           </>
         )}

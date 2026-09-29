@@ -82,7 +82,7 @@
   {
     "rule": "MQ2002",
     "severity": "error",
-    "message": "'ref' references '01JPKG00000000000000000001', a package; expected an enum or value-object or scalar-type.",
+    "message": "'ref' references '01JPKG00000000000000000001', a package; expected an enum or value-object or scalar-type or reference-type.",
     "elementId": "01JATT00000000000000000104",
     "filePath": ".maquettiste/model/entities/order.json",
     "jsonPointer": "/attributes/3/type/ref",

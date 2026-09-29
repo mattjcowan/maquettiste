@@ -98,7 +98,7 @@ internal static class MappingRules
         var type = AttributeRules.Resolve(context.Model, attribute.Type);
         if (item.Storage is { } storage)
         {
-            StorageKind[] allowed = type.Enum is not null && !attribute.Collection ? [StorageKind.Int, StorageKind.String, StorageKind.Lookup]
+            StorageKind[] allowed = type.Enum is not null && !attribute.Collection ? [StorageKind.Int, StorageKind.String]
                 : attribute.Collection ? [StorageKind.Table, StorageKind.Json]
                 : type.ValueObject is not null ? [StorageKind.Embedded, StorageKind.Table, StorageKind.Json]
                 : [];

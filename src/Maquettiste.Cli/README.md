@@ -2,7 +2,7 @@
 
 **Owner:** W9 CLI. See docs/engineering/engine-design.md sections 16 and 18.
 
-The `maquettiste` dotnet tool: a hand-written parser (D27), `init`, `validate`, `generate`, `migrate` (stub), `pack new`, `bench`,
+The `maquettiste` dotnet tool: a hand-written parser (D27), `init`, `validate`, `generate`, `migrate` (stub), `format`, `pack new`, `bench`,
 `mcp` (the Model Context Protocol server, docs/mcp.md), console progress and exit codes. Consumes `ModelStore`, `GenerationService`, the internal `GenerationWatcher` (watch hook),
 `SarifWriter`, `SchemaRegistry`/`CanonicalJson` (init, pack new), `OutputPathPolicy` (every CLI write) and `BenchmarkHarness`.
 Tests: `tests/Maquettiste.Cli.Tests/` (in-process runs over temporary repos built from `tests/fixtures/models/billing`, plus one
@@ -113,6 +113,17 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
   stops it with exit 0.
 - **migrate:** format 1 → "Model format 1 is current." exit 0; newer → exit 4; missing file, invalid JSON or a missing or
   non-integer `formatVersion` → exit 1.
+- **format:** rewrites every model file (`maquettiste.json`, element files under `model/`, locale shards) with the engine's
+  canonical writer (SPEC section 11), through the model write guard; prints `formatted <path>` per rewritten file on stdout and
+  "Formatted n of m model files." on stderr. A file that is not JSON, has no known kind or fails its schema is left as it is and
+  named on stderr. `--check` writes nothing, prints `would format <path>` and exits 2 (drift) when any file would change, else 0.
+- **Permission errors:** an `UnauthorizedAccessException` anywhere in a failure (the run lock, the cache, an output or model
+  file, the engine's `.name.mq-<id>-<n>.tmp` named as its target) prints one line, `maquettiste: permission denied: cannot write
+  <path>. …`, with the `--user $(id -u):$(id -g)` hint on Linux, and exits 1 instead of the internal-error stack trace.
+- **Progress (plain):** one start and one done line per stage, in stage order. The pack loader reports as plan before resolve
+  starts; a stage 2 to 5 whose predecessor has not reported is held (counts folded, nothing printed) until it reports again
+  after its predecessor or the run ends. `generate --check` hides the write stage in every style (its file count still feeds
+  the summary).
 - **pack new:** `--from empty` writes a canonical `pack.json` (one `each entity` unit with output `{{ kebab entity.name }}.txt`),
   `entity.scriban` and `helpers.js`; `--from sql-ddl|csharp-dapper` copies that starter pack and renames it. Names must be
   kebab-case; an existing folder is refused (exit 4).

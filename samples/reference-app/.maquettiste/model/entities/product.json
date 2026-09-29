@@ -75,10 +75,10 @@
       "id": "01M29DN2SH7797NZQ6X169SD1T",
       "name": "status",
       "type": {
-        "ref": "01M2YW6JHEB1CVE5XWYKQ1MYBG"
+        "ref": "01M2JJ5Q30GQ85ZTTVZ8WV2PRS"
       },
       "required": true,
-      "default": "Draft",
+      "default": "DRAFT",
       "description": "Lifecycle state."
     },
     {

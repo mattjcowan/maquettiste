@@ -34,6 +34,14 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
             if (diagnostics.Count > 0)
                 return new BatchParseResult(null, diagnostics);
 
+            var translate = root.GetProperty("operations").EnumerateArray()
+                .Select((item, index) => (item, index))
+                .Where(p => p.item.GetProperty("op").ValueEquals("translate"))
+                .Select(p => RuleCatalog.Create("MQ1002", $"/operations/{p.index}/op The translate operation is declared in the contract; its handler lands in a later step.", null, null, $"/operations/{p.index}/op"))
+                .ToList();
+            if (translate.Count > 0)
+                return new BatchParseResult(null, translate);
+
             var operations = new List<BatchOperation>();
             foreach (var item in root.GetProperty("operations").EnumerateArray())
             {

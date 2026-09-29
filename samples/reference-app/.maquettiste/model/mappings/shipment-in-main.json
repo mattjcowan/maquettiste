@@ -5,12 +5,8 @@
   "name": "Shipment in main",
   "database": "01M34AZ3RECQSPQQX1DXTCN03G",
   "entity": "01M2KGD56DK66D518GC8HV02RM",
-  "description": "Shipment status goes through a lookup table; the delivery address columns get a ship_to_ prefix.",
+  "description": "Shipment status is a reference type stored through a lookup table; the delivery address columns get a ship_to_ prefix.",
   "attributes": [
-    {
-      "attribute": "01M355S3N74XY7BPND6XYQWH0X",
-      "storage": "lookup"
-    },
     {
       "attribute": "01M202QR8JQKQ7G2DW8FM4M2Y5",
       "prefix": "ship_to_"

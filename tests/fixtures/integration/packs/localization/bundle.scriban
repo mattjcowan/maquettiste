@@ -1,0 +1,7 @@
+# {{ locale.tag }} (default: {{ locale.is_default }}; chain: {{ locale.chain | array.join "," }})
+{{ for t in model.reference_types ~}}
+{{ t.name }}={{ display_name t }} / {{ plural_name t }}
+{{ for r in t.rows ~}}
+{{ t.name }}.{{ r.code }}={{ label_of r }}
+{{ end ~}}
+{{ end ~}}

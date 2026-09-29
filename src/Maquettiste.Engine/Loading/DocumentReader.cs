@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Json;
+using Maquettiste.Engine.Localization;
 using Maquettiste.Engine.Model;
 
 namespace Maquettiste.Engine.Loading;
@@ -22,6 +23,9 @@ internal sealed record ParsedFile
 
     /// <summary>The extension, for a valid extension file.</summary>
     public ExtensionSchema? Extension { get; init; }
+
+    /// <summary>The locale shard, for a locale shard file that read.</summary>
+    public LocaleShard? LocaleShard { get; init; }
 
     /// <summary>The text of a rule script or sidecar.</summary>
     public string? Text { get; init; }
@@ -210,6 +214,76 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
             };
         }
     }
+
+    /// <summary>
+    /// Reads a locale shard (<c>model/locales/&lt;locale&gt;/*.json</c>; reference-types-seeds-localization.md section 3.3): schema
+    /// failures are MQ1002, a non-canonical file MQ1003, as for element files. A shard is not an element and has no id.
+    /// </summary>
+    /// <param name="bytes">The file bytes.</param>
+    /// <param name="repoPath">The repo-relative path.</param>
+    /// <param name="trusted">Whether the bytes passed schema validation before.</param>
+    /// <param name="trustedCanonical">For a trusted read, whether the bytes were canonical.</param>
+    /// <returns>The result.</returns>
+    public ParsedFile ReadLocaleShard(byte[] bytes, string repoPath, bool trusted, bool trustedCanonical)
+    {
+        // A shard validated before is read in one forward pass, without a document tree (section 3.8).
+        if (trusted && LocaleShardReader.TryRead(bytes, out var streamed))
+        {
+            return new ParsedFile
+            {
+                LocaleShard = streamed,
+                Diagnostics = trustedCanonical ? [] : [RuleCatalog.Create("MQ1003", "The file is not in canonical form; the next save rewrites it.", null, repoPath, "")],
+                Valid = true,
+                Canonical = trustedCanonical,
+                SidecarReferences = LocaleShardReader.SidecarsOf(streamed),
+            };
+        }
+
+        if (!TryParse(bytes, repoPath, "MQ1001", out var document, out var parseError))
+            return new ParsedFile { Diagnostics = [parseError] };
+
+        using (document)
+        {
+            var root = document.RootElement;
+            var diagnostics = ImmutableArray.CreateBuilder<Diagnostic>();
+            if (!trusted)
+            {
+                var schemaDiagnostics = schemas.Evaluate(LocaleShardSchema, root, repoPath);
+                foreach (var d in schemaDiagnostics)
+                    diagnostics.Add(Locate(d, bytes));
+                if (schemaDiagnostics.Any(d => d.Severity == DiagnosticSeverity.Error))
+                    return new ParsedFile { Json = root.Clone(), Diagnostics = Sorted(diagnostics), SchemaEvaluated = true };
+            }
+
+            LocaleShard shard;
+            try
+            {
+                shard = ElementReader.Read<LocaleShard>(root);
+            }
+            catch (Exception ex) when (IsDeserializationFailure(ex))
+            {
+                diagnostics.Add(RuleCatalog.Create("MQ1002", $"The locale shard does not deserialize: {ex.Message}", null, repoPath, ""));
+                return new ParsedFile { Json = root.Clone(), Diagnostics = Sorted(diagnostics), SchemaEvaluated = !trusted };
+            }
+
+            var isCanonical = trusted ? trustedCanonical : IsCanonical(bytes, root, LocaleShardSchema, repoPath);
+            if (!isCanonical)
+                diagnostics.Add(RuleCatalog.Create("MQ1003", "The file is not in canonical form; the next save rewrites it.", null, repoPath, ""));
+            return new ParsedFile
+            {
+                LocaleShard = shard,
+                SidecarReferences = LocaleShardReader.SidecarsOf(shard),
+                Json = root.Clone(),
+                Diagnostics = Sorted(diagnostics),
+                Valid = true,
+                Canonical = isCanonical,
+                SchemaEvaluated = !trusted,
+            };
+        }
+    }
+
+    /// <summary>The schema file of locale shards.</summary>
+    public const string LocaleShardSchema = "locale.json";
 
     /// <summary>Reads an extension schema file; every failure is MQ5004 (an invalid extension file). Extensions are not checked for canonical form.</summary>
     /// <param name="bytes">The file bytes.</param>

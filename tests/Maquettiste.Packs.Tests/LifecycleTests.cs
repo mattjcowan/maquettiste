@@ -28,6 +28,25 @@ public sealed class LifecycleTests
     }
 
     [Fact]
+    public async Task A_change_of_logical_type_asks_the_reviewer_to_convert_the_existing_values()
+    {
+        using var repo = PackRepo.BillingDialects();
+        await repo.GenerateCleanlyAsync();
+
+        repo.EditJson(".maquettiste/model/entities/customer.json", customer =>
+        {
+            var since = customer["attributes"]!.AsArray().First(a => (string?)a!["name"] == "customerSince")!;
+            since["type"] = "string";
+            since["length"] = 10;
+        });
+        await repo.GenerateCleanlyAsync();
+
+        var pg = repo.Read("db/main/migrations/0002.sql");
+        AssertBefore(pg, "ALTER TABLE billing.customers ALTER COLUMN customer_since TYPE varchar(10)", "-- TODO: convert existing values of customers.customer_since (type: ");
+        Assert.Contains("-- TODO: convert existing values of customers.customer_since (type: ", repo.Read("db/reporting/migrations/0002.sql"), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_model_change_writes_the_next_migration_once_and_keeps_the_earlier_one()
     {
         using var repo = PackRepo.BillingDialects();
@@ -38,6 +57,7 @@ public sealed class LifecycleTests
         ModelChanges.ChangeCustomer(repo);
         ModelChanges.AddFeaturedInvoice(repo);
         ModelChanges.AddDisputedStatus(repo);
+        ModelChanges.AddVoucherMethod(repo);
         await repo.GenerateCleanlyAsync();
 
         Assert.Equal(first, repo.Read("db/main/migrations/0001.sql"));
@@ -66,9 +86,11 @@ public sealed class LifecycleTests
         Assert.Contains("ALTER TABLE customers RENAME COLUMN name TO full_name;", sqlite, StringComparison.Ordinal);
         Assert.Contains("-- TODO (SQLite cannot change constraints in place; rebuild invoice_lines)", sqlite, StringComparison.Ordinal);
         AssertBefore(sqlite, "ALTER TABLE customers ADD COLUMN region text NULL;", "CREATE INDEX ix_customers_region ON customers (region);");
-        // The new enum member reaches the lookup table through an idempotent upsert, not a "review by hand" note.
-        Assert.Contains("(4, 'X', 'Disputed')\nON CONFLICT (id) DO UPDATE SET code = excluded.code, name = excluded.name;", sqlite, StringComparison.Ordinal);
         Assert.DoesNotContain("review by hand", sqlite, StringComparison.Ordinal);
+        // The new reference row reaches the lookup table through the seed's idempotent upsert, and the CHECKs elsewhere.
+        var localSeed = repo.Read("db/local/seed.sql");
+        Assert.Contains("('voucher', 'Voucher')\nON CONFLICT (code) DO UPDATE SET label = excluded.label;", localSeed, StringComparison.Ordinal);
+        Assert.Contains("CHECK (method IN ('card', 'transfer', 'cash', 'voucher'));", repo.Read("db/main/seed.sql"), StringComparison.Ordinal);
 
         // Dropping a column with a default: SQL Server needs its default constraint dropped first.
         ModelChanges.RemovePriority(repo);
@@ -84,10 +106,10 @@ public sealed class LifecycleTests
         {
             var chain = string.Concat(new[] { "0001", "0002", "0003" }.Select(r => repo.Read($"db/local/migrations/{r}.sql")))
                 + repo.Read("db/local/seed.sql") + repo.Read("db/local/seed.sql")
-                + "\nSELECT 'statuses=' || count(*) FROM invoice_statuses;\nSELECT 'region=' || count(*) FROM pragma_table_info('customers') WHERE name = 'region';\n";
+                + "\nSELECT 'methods=' || count(*) FROM payment_methods;\nSELECT 'region=' || count(*) FROM pragma_table_info('customers') WHERE name = 'region';\n";
             var run = await ProcessRunner.RunAsync(sqlite3, ["-bail", ":memory:"], repo.PathOf("db/local"), TimeSpan.FromMinutes(1), chain);
             Assert.True(run.ExitCode == 0, run.Output);
-            Assert.Contains("statuses=5", run.Output, StringComparison.Ordinal);
+            Assert.Contains("methods=4", run.Output, StringComparison.Ordinal);
             Assert.Contains("region=1", run.Output, StringComparison.Ordinal);
         }
 
@@ -140,7 +162,7 @@ public sealed class LifecycleTests
             Assert.True(File.Exists(repo.PathOf("db/main/" + line[4..])), line);
         // sqlcmd on Linux and macOS rejects "\\" in :r paths, and a GO after each include keeps later batches (views) first.
         Assert.Contains(":r dbo/tables/invoices.sql\nGO\n", repo.Read("db/reporting/schema.sql"), StringComparison.Ordinal);
-        Assert.Contains(".read tables/invoice_statuses.sql", repo.Read("db/local/schema.sql"), StringComparison.Ordinal);
+        Assert.Contains(".read tables/invoices.sql", repo.Read("db/local/schema.sql"), StringComparison.Ordinal);
     }
 
     [Fact]

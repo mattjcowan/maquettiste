@@ -13,7 +13,7 @@ public sealed record PresenceReport(string? ConnectionId, string? ElementId, str
 /// <summary><c>PUT /api/presence</c> (PD14): the browser cannot publish, so it reports here and the server publishes.</summary>
 public static class PresenceEndpoints
 {
-    private static readonly string[] Workspaces = ["entities", "database", "mappings", "generate", "settings"];
+    private static readonly string[] Workspaces = ["entities", "reference-data", "database", "mappings", "generate", "settings"];
 
     /// <summary>Stores the selection of a realtime connection that belongs to the caller and publishes <c>presence.changed</c> to <c>editors</c>.</summary>
     /// <param name="context">The request.</param>

@@ -42,6 +42,7 @@ async function jsonBody(request: Request): Promise<{ ok: true; value: Json } | {
  */
 export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: ReadonlyMap<string, Recording> = recordings()): HttpHandler[] {
   const { model, generation, jobs } = backend;
+  const l10n = backend.localization;
   const http = createOpenApiHttp<paths>({ baseUrl });
 
   // Engine recordings (src/mocks/recorded/, from P2-F) are of the billing fixture: they answer the
@@ -148,10 +149,88 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
     }),
     http.get("/api/model/index", ({ request }) => {
       // E5e: the ETag of the index, 304 on a matching If-None-Match, kept by the browser with no-cache.
-      const tag = model.indexTag();
+      // ?locale= (reference-types-seeds-localization.md 3.8) fills displayName from the locale's chain.
+      const locale = new URL(request.url).searchParams.get("locale");
+      const translated = !!locale && locale !== l10n.defaultLocale;
+      if (translated && !l10n.isTranslated(locale)) return problem(400, "bad-request", `'${locale}' is not a declared locale.`) as never;
+      const tag = translated ? `${model.indexTag()}-${locale}-${l10n.version}` : model.indexTag();
       const headers = { ...etag(tag), "Cache-Control": "no-cache" };
       if (readTag(request.headers.get("If-None-Match")) === tag) return new HttpResponse(null, { status: 304, headers }) as never;
-      return HttpResponse.json(model.index(), { headers });
+      if (!translated) return HttpResponse.json(model.index(), { headers });
+      const names = l10n.displayNames(locale);
+      return HttpResponse.json(
+        model.index().map((row) => (names[row.id] && names[row.id] !== (row.displayName ?? row.name) ? { ...row, displayName: names[row.id] } : row)),
+        { headers },
+      );
+    }),
+    http.get("/api/localization", () => HttpResponse.json(l10n.status() as never)),
+    http.get("/api/localization/{locale}/entries", ({ params, request }) => {
+      if (!l10n.isTranslated(params.locale)) return problem(404, "not-found", `'${params.locale}' is not a declared locale other than the default.`);
+      const q = new URL(request.url).searchParams;
+      return HttpResponse.json(
+        l10n.entries(params.locale, { owner: q.get("owner"), shard: q.get("shard"), missing: q.get("missing") === "true", cursor: q.get("cursor") }) as never,
+      );
+    }),
+    http.put("/api/localization/{locale}/entries", async ({ params, request }) => {
+      if (!l10n.isTranslated(params.locale)) return problem(404, "not-found", `'${params.locale}' is not a declared locale other than the default.`);
+      const body = await jsonBody(request);
+      if (!body.ok) return body.response;
+      if (!Array.isArray(body.value.entries)) return problem(400, "bad-request", "entries is required.");
+      const result = l10n.write(params.locale, body.value.entries as Json[], (body.value.expected ?? {}) as Record<string, string>);
+      backend.publishTranslations(result.locales);
+      return HttpResponse.json(result.body as never, { status: result.status as 200 });
+    }),
+    http.get("/api/localization/{locale}/export", ({ params, request }) => {
+      const q = new URL(request.url).searchParams;
+      const format = q.get("format") ?? "xliff";
+      if (format !== "xliff" && format !== "csv") return problem(400, "bad-request", `format must be 'xliff' or 'csv', not '${format}'.`) as never;
+      if (!l10n.isTranslated(params.locale)) return problem(404, "not-found", `'${params.locale}' is not a declared locale other than the default.`) as never;
+      const text = l10n.exportText(params.locale, format, q.get("shard"));
+      return new HttpResponse(text, {
+        headers: { "Content-Type": format === "csv" ? "text/csv; charset=utf-8" : "application/xliff+xml; charset=utf-8" },
+      }) as never;
+    }),
+    http.post("/api/localization/{locale}/import", async ({ params, request }) => {
+      if (!l10n.isTranslated(params.locale)) return problem(404, "not-found", `'${params.locale}' is not a declared locale other than the default.`);
+      const body = await jsonBody(request);
+      if (!body.ok) return body.response;
+      const { format, content } = body.value;
+      if ((format !== "xliff" && format !== "csv") || typeof content !== "string")
+        return problem(400, "bad-request", "format ('xliff' or 'csv') and content are required.");
+      try {
+        const dryRun = new URL(request.url).searchParams.get("dryRun") !== "false";
+        const result = l10n.importText(params.locale, format, content, dryRun);
+        backend.publishTranslations(result.locales);
+        return HttpResponse.json(result.body as never, { status: result.status as 200 });
+      } catch (error) {
+        return problem(400, "bad-request", (error as Error).message);
+      }
+    }),
+    http.get("/api/seeds/{id}/csv", ({ params, request }) => {
+      const q = new URL(request.url).searchParams;
+      const text = l10n.seedCsv(params.id, q.get("bom") === "true", q.getAll("locale"));
+      if (text === null) return problem(404, "not-found", `No seed has the id ${params.id}.`) as never;
+      return new HttpResponse(text, { headers: { "Content-Type": "text/csv; charset=utf-8" } }) as never;
+    }),
+    http.post("/api/seeds/{id}/csv", async ({ params, request }) => {
+      const q = new URL(request.url).searchParams;
+      const mode = q.get("mode") ?? "merge";
+      if (mode !== "merge" && mode !== "replace") return problem(400, "bad-request", `mode must be 'merge' or 'replace', not '${mode}'.`);
+      const body = await jsonBody(request);
+      if (!body.ok) return body.response;
+      if (typeof body.value.content !== "string") return problem(400, "bad-request", "content (the CSV text) is required.");
+      try {
+        const result = l10n.importSeedCsv(params.id, body.value.content, mode === "replace", q.get("dryRun") !== "false", ifMatch(request));
+        if (!result) return problem(404, "not-found", `No seed has the id ${params.id}.`);
+        return HttpResponse.json(result.body as never, { status: result.status as 200, headers: result.body.hash ? etag(result.body.hash) : {} });
+      } catch (error) {
+        return problem(400, "bad-request", (error as Error).message);
+      }
+    }),
+    http.get("/api/reference-types/{id}/usage", ({ params }) => {
+      const usage = l10n.usage(params.id);
+      if (!usage) return problem(404, "not-found", `No reference type has the id ${params.id}.`);
+      return HttpResponse.json(usage as never);
     }),
     http.post("/api/model/elements/read", async ({ request }) => {
       const body = await jsonBody(request);
@@ -227,6 +306,16 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
       const rec = replayable(recorded, "getDatabaseTables", pristine(), (r) => mentions(r, params.id));
       if (rec) return answer(rec) as never;
       const result = generation.databaseTables(params.id);
+      if (!result)
+        return model.entries.has(params.id)
+          ? problem(404, "not-a-database", `${params.id} is not a database.`)
+          : problem(404, "not-found", `No element has the id ${params.id}.`);
+      return HttpResponse.json(result);
+    }),
+    http.get("/api/databases/{id}/tables/{key}", ({ params }) => {
+      const rec = replayable(recorded, "getDatabaseTable", pristine(), (r) => mentions(r, params.id) && mentions(r, params.key));
+      if (rec) return answer(rec) as never;
+      const result = generation.databaseTable(params.id, params.key);
       if (!result)
         return model.entries.has(params.id)
           ? problem(404, "not-a-database", `${params.id} is not a database.`)

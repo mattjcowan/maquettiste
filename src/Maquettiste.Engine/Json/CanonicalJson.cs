@@ -1,4 +1,6 @@
 using System.Buffers;
+using System.Globalization;
+using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -53,10 +55,7 @@ internal sealed class CanonicalJson(ISchemaRegistry schemas) : ICanonicalJson
         var buffer = new ArrayBufferWriter<byte>(4096);
         using (var writer = new Utf8JsonWriter(buffer, WriterOptions))
         {
-            if (normalized is null)
-                writer.WriteNullValue();
-            else
-                normalized.WriteTo(writer);
+            WriteNode(writer, normalized, layout);
         }
 
         var result = new byte[buffer.WrittenCount + 1];
@@ -195,8 +194,15 @@ internal sealed class CanonicalJson(ISchemaRegistry schemas) : ICanonicalJson
                 var items = array.Select(item => Normalize(item, itemLayout));
                 if (layout.SortKey is { } sortKey)
                     items = items.OrderBy(item => SortValue(item, sortKey)); // OrderBy is stable: equal positions keep array order
+                var list = items.ToList();
+                if (layout.TrimTrailingNulls)
+                {
+                    while (list.Count > 0 && list[^1] is null)
+                        list.RemoveAt(list.Count - 1);
+                }
+
                 var result = new JsonArray();
-                foreach (var item in items.ToList())
+                foreach (var item in list)
                     result.Add(item);
                 return result;
             }
@@ -204,6 +210,158 @@ internal sealed class CanonicalJson(ISchemaRegistry schemas) : ICanonicalJson
             default:
                 return node.DeepClone();
         }
+    }
+
+    /// <summary>Writes a normalized node, following the layout so that <c>x-layout: row-per-line</c> arrays get their row form.</summary>
+    private static void WriteNode(Utf8JsonWriter writer, JsonNode? node, ObjectLayout layout)
+    {
+        switch (node)
+        {
+            case null:
+                writer.WriteNullValue();
+                return;
+            case JsonObject obj:
+                writer.WriteStartObject();
+                foreach (var (key, value) in obj)
+                {
+                    writer.WritePropertyName(key);
+                    var child = layout.HasKeys
+                        ? layout.Properties.TryGetValue(key, out var property) ? property.Layout : ObjectLayout.FreeForm
+                        : layout.MapValues ?? ObjectLayout.FreeForm;
+                    WriteNode(writer, value, child);
+                }
+
+                writer.WriteEndObject();
+                return;
+            case JsonArray array when layout.RowPerLine && array.Count > 0:
+            {
+                writer.WriteStartArray();
+                var indent = "\n" + new string(' ', writer.CurrentDepth * 2);
+                foreach (var item in array)
+                {
+                    var row = new StringBuilder(indent);
+                    WriteCompact(row, item);
+                    writer.WriteRawValue(row.ToString(), skipInputValidation: true);
+                }
+
+                writer.WriteEndArray();
+                return;
+            }
+
+            case JsonArray array:
+            {
+                var itemLayout = layout.Items ?? ObjectLayout.FreeForm;
+                writer.WriteStartArray();
+                foreach (var item in array)
+                    WriteNode(writer, item, itemLayout);
+                writer.WriteEndArray();
+                return;
+            }
+
+            default:
+                node.WriteTo(writer);
+                return;
+        }
+    }
+
+    /// <summary>
+    /// The one-line row form (reference-types-seeds-localization.md section 2.1): one space inside braces, none inside brackets,
+    /// <c>", "</c> between items, <c>": "</c> after keys, numbers as their shortest plain decimal text.
+    /// </summary>
+    private static void WriteCompact(StringBuilder text, JsonNode? node)
+    {
+        switch (node)
+        {
+            case null:
+                text.Append("null");
+                return;
+            case JsonObject obj:
+                if (obj.Count == 0)
+                {
+                    text.Append("{}");
+                    return;
+                }
+
+                text.Append("{ ");
+                var first = true;
+                foreach (var (key, value) in obj)
+                {
+                    if (!first)
+                        text.Append(", ");
+                    first = false;
+                    text.Append(JsonValue.Create(key).ToJsonString(CompactOptions)).Append(": ");
+                    WriteCompact(text, value);
+                }
+
+                text.Append(" }");
+                return;
+            case JsonArray array:
+                text.Append('[');
+                for (var i = 0; i < array.Count; i++)
+                {
+                    if (i > 0)
+                        text.Append(", ");
+                    WriteCompact(text, array[i]);
+                }
+
+                text.Append(']');
+                return;
+            default:
+                var json = node.ToJsonString(CompactOptions);
+                text.Append(node.GetValueKind() == JsonValueKind.Number ? CanonicalNumber(json) : json);
+                return;
+        }
+    }
+
+    private static readonly JsonSerializerOptions CompactOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
+    /// <summary>
+    /// The shortest plain decimal text of a JSON number, computed on its text (never through <see cref="double"/>): no exponent, no
+    /// <c>+</c>, no leading zeros, no trailing fractional zeros; <c>1e3</c> and <c>1000.0</c> give <c>1000</c>, <c>0.360</c> gives <c>0.36</c>.
+    /// </summary>
+    /// <param name="text">A JSON number's text.</param>
+    /// <returns>The canonical text; the input when its exponent is beyond ±1000.</returns>
+    internal static string CanonicalNumber(string text)
+    {
+        var negative = text.StartsWith('-');
+        var body = negative || text.StartsWith('+') ? text[1..] : text;
+        var exponent = 0;
+        var e = body.IndexOfAny(['e', 'E']);
+        if (e >= 0)
+        {
+            if (!int.TryParse(body.AsSpan(e + 1), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out exponent) || Math.Abs(exponent) > 1000)
+                return text;
+            body = body[..e];
+        }
+
+        var dot = body.IndexOf('.', StringComparison.Ordinal);
+        var digits = dot < 0 ? body : string.Concat(body.AsSpan(0, dot), body.AsSpan(dot + 1));
+        var point = (dot < 0 ? body.Length : dot) + exponent;
+        var lead = 0;
+        while (lead < digits.Length && digits[lead] == '0')
+            lead++;
+        digits = digits[lead..].TrimEnd('0');
+        point -= lead;
+        if (digits.Length == 0)
+            return "0";
+        string whole, fraction;
+        if (point <= 0)
+        {
+            whole = "0";
+            fraction = new string('0', -point) + digits;
+        }
+        else if (point >= digits.Length)
+        {
+            whole = digits + new string('0', point - digits.Length);
+            fraction = "";
+        }
+        else
+        {
+            whole = digits[..point];
+            fraction = digits[point..];
+        }
+
+        return (negative ? "-" : "") + whole + (fraction.Length > 0 ? "." + fraction : "");
     }
 
     private static long SortValue(JsonNode? item, string key) =>

@@ -111,10 +111,6 @@ public sealed record Table : Element
     [ElementRef(ElementKind.Relation)]
     public string? Relation { get; init; }
 
-    /// <summary>For a synthesized enum lookup table's overlay: the id of the enum; key <c>&lt;enumId&gt;@&lt;databaseId&gt;</c>.</summary>
-    [ElementRef(ElementKind.Enum)]
-    public string? Enum { get; init; }
-
     /// <summary>Columns: the full list for designed and imported tables; overlays and extra columns for synthesized ones.</summary>
     public IReadOnlyList<Column> Columns { get; init; } = [];
 

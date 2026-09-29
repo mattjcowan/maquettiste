@@ -1,0 +1,2 @@
+{{- for s in model.seeds_in_order }}{{ s.name }} {{ end }}
+{{ kg = row (lookup "01JBM9S346Q3D25VT4F5V37E3S") "kg" }}{{ kg.label }} {{ row_uuid kg }}

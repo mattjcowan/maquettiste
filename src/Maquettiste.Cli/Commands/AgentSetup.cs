@@ -9,7 +9,7 @@ namespace Maquettiste.Cli.Commands;
 
 /// <summary>
 /// The agent setup of <c>maquettiste init --mcp / --skill / --agent-setup</c> (docs/mcp.md): registers the <c>maquettiste mcp</c>
-/// server in the repository's <c>.mcp.json</c> (the project-scoped MCP configuration Claude Code and other clients read) and installs
+/// server in the repository's <c>.mcp.json</c> (the project-scoped MCP configuration that MCP clients read) and installs
 /// the modeling skill as <c>.claude/skills/maquettiste-modeling/SKILL.md</c>. Both writes go through the path policy as setup writes.
 /// </summary>
 internal static class AgentSetup

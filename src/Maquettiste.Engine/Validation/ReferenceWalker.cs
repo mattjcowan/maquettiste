@@ -28,6 +28,8 @@ internal sealed class ReferenceWalker
     private static readonly ElementRefAttribute TypeRefTarget =
         typeof(TypeRef).GetProperty(nameof(TypeRef.Ref))!.GetCustomAttribute<ElementRefAttribute>()!;
 
+    private static readonly ElementRefAttribute StorageTarget = new(ElementKind.Database);
+
     private readonly ConcurrentDictionary<Type, PropertyMeta[]> _meta = new();
 
     private enum Role { Reference, TypeRef, Record, RecordList }
@@ -41,6 +43,16 @@ internal sealed class ReferenceWalker
     {
         var sites = new List<ReferenceSite>();
         WalkProperties(element, "", element.Id, sites);
+        if (element is ReferenceType type)
+        {
+            // Storage keys name databases (or "*"), so MQ2001 and MQ2002 cover them as any reference (section 1.4).
+            foreach (var key in type.Storage.Keys.Order(StringComparer.Ordinal))
+            {
+                if (key != "*")
+                    sites.Add(new ReferenceSite(Ptr.Prop(Ptr.Prop("", "storage"), key), type.Id, StorageTarget, typeof(ReferenceType), nameof(ReferenceType.Storage), key));
+            }
+        }
+
         return sites;
     }
 

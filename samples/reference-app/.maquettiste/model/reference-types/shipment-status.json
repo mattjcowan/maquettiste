@@ -1,0 +1,17 @@
+{
+  "$schema": "../../.schema/v1/reference-type.json",
+  "kind": "reference-type",
+  "id": "01M1Z3KPK8ZXTXJ89EB1MG2HTS",
+  "name": "ShipmentStatus",
+  "displayName": "Shipment status",
+  "description": "Lifecycle of a shipment.",
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "code": {
+    "id": "01M25S8SM4BMB1TFFK3J5V43B3",
+    "length": 7
+  },
+  "label": {
+    "id": "01M2ECJ8EMBFVTX61C43DKH6YK",
+    "length": 64
+  }
+}

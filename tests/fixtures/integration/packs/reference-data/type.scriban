@@ -1,0 +1,8 @@
+{{ reference_type.name }} code={{ reference_type.code.type }}({{ reference_type.code.length }})
+{{- for r in reference_type.rows }}
+{{ r.order }} {{ r.code }} {{ r.label }} {{ json r.values }}{{ if reference_type.name == "Allergen" && r.refs.parent }} parent={{ r.refs.parent.code }}{{ end }}
+{{- end }}
+{{- for s in reference_type.storage }}
+storage {{ s.key }} {{ s.value.strategy }} {{ s.value.source }}
+{{- end }}
+used by {{ for a in reference_type.used_by }}{{ a.name }} {{ end }}

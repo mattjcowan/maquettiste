@@ -1,7 +1,9 @@
-// Global keyboard: Ctrl/Cmd+K palette, Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z or Ctrl+Y redo, F6 cycles
-// regions (rail, explorer, center, inspector, bottom; phase2-design.md 4.8).
+// Global keyboard: Ctrl/Cmd+K palette, Ctrl/Cmd+P quick open, Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z or Ctrl+Y redo, F6 cycles
+// regions (rail, explorer, center, inspector, bottom; phase2-design.md 4.8), Alt+Left and Alt+Right move back and
+// forward through selections and Shift+F12 lists where the selected element is used (explorer-redesign.md 3.3).
 import { useCallback, useEffect } from "react";
 import { useServices } from "./context";
+import { useEditorNavigation } from "./navigation";
 
 export const REGIONS = ["rail", "explorer", "center", "inspector", "bottom"] as const;
 
@@ -37,12 +39,25 @@ export function useUndoRedo() {
 export function useGlobalShortcuts(): void {
   const { store } = useServices();
   const { undo, redo } = useUndoRedo();
+  const { travel } = useEditorNavigation();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
-      if (mod && e.key.toLowerCase() === "k") {
+      if (!e.defaultPrevented && e.altKey && !mod && !e.shiftKey && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !isTextTarget(e.target)) {
+        e.preventDefault();
+        travel(e.key === "ArrowLeft" ? "back" : "forward");
+      } else if (!e.defaultPrevented && e.key === "F12" && e.shiftKey && !mod) {
+        const id = store.getState().selection[0];
+        if (id) {
+          e.preventDefault();
+          store.getState().showReferences(id);
+        }
+      } else if (mod && e.key.toLowerCase() === "k") {
         e.preventDefault();
         store.getState().setPaletteOpen(!store.getState().paletteOpen);
+      } else if (mod && !e.shiftKey && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        store.getState().setQuickOpen(!store.getState().quickOpen);
       } else if (e.key === "F6") {
         e.preventDefault();
         focusRegion(e.shiftKey ? -1 : 1);
@@ -56,5 +71,5 @@ export function useGlobalShortcuts(): void {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [store, undo, redo]);
+  }, [store, undo, redo, travel]);
 }

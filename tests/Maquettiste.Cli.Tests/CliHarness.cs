@@ -163,6 +163,14 @@ public sealed class CliRepo : IDisposable
         return new CliRepo(temp);
     }
 
+    /// <summary>The reference-data fixture model (reference types, seeds, locales en, fr and fr-CA).</summary>
+    public static CliRepo ReferenceData()
+    {
+        var repo = new CliRepo(new TempRepo());
+        CopyTree(Fixtures.Path("models", "reference-data", ".maquettiste"), repo.ModelRoot);
+        return repo;
+    }
+
     /// <summary>The billing fixture model with two small test packs: <c>ddl</c> (committed root <c>db</c>) and <c>classes</c> (built root).</summary>
     public static CliRepo Billing()
     {

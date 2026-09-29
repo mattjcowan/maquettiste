@@ -18,6 +18,10 @@ internal sealed class ConsoleProgress : IProgress<ProgressUpdate>
     private static readonly int StageSlots = Enum.GetValues<PipelineStage>().Max(s => (int)s) + 1;
 
     private readonly ProgressStyle _style;
+    private readonly bool _hideWrite;
+
+    /// <summary>Plain style: the stages whose start line was written, by stage value (under the lock).</summary>
+    private readonly bool[] _shown = new bool[StageSlots];
     private readonly TextWriter _error;
     private readonly Lock _gate = new();
     private readonly Stopwatch _clock = Stopwatch.StartNew();
@@ -36,10 +40,13 @@ internal sealed class ConsoleProgress : IProgress<ProgressUpdate>
     /// <summary>Creates the reporter.</summary>
     /// <param name="style">The style.</param>
     /// <param name="error">stderr.</param>
-    public ConsoleProgress(ProgressStyle style, TextWriter error)
+    /// <param name="hideWrite">Leaves the write stage off the display (<c>generate --check</c> compares files and writes none); its file
+    /// count still reaches <see cref="FilesCompared"/>.</param>
+    public ConsoleProgress(ProgressStyle style, TextWriter error, bool hideWrite = false)
     {
         _style = style;
         _error = error;
+        _hideWrite = hideWrite;
     }
 
     /// <summary>The largest number of files the writer reported (files compared with disk), for the summary.</summary>
@@ -60,7 +67,7 @@ internal sealed class ConsoleProgress : IProgress<ProgressUpdate>
         ArgumentNullException.ThrowIfNull(value);
         if (value.Stage == PipelineStage.Write)
             Max(ref _filesCompared, value.Done);
-        if (_style == ProgressStyle.None)
+        if (_style == ProgressStyle.None || (_hideWrite && value.Stage == PipelineStage.Write))
             return;
 
         var now = _clock.Elapsed;
@@ -79,12 +86,11 @@ internal sealed class ConsoleProgress : IProgress<ProgressUpdate>
             if (first && slot >= 0 && slot < StageSlots)
                 Volatile.Write(ref _stages[slot], state);
             state.Fold(now, value.Done, value.Total);
-            state.Ended = false;
 
             switch (_style)
             {
                 case ProgressStyle.Plain:
-                    Plain(value.Stage, first);
+                    Plain(value.Stage);
                     break;
                 case ProgressStyle.Terminal:
                     if (Due(now) || value.Done == value.Total)
@@ -120,10 +126,14 @@ internal sealed class ConsoleProgress : IProgress<ProgressUpdate>
                 for (var slot = 0; slot < StageSlots; slot++)
                 {
                     if (_stages[slot] is { } state)
+                    {
+                        StartLine(slot);
                         EndLine((PipelineStage)slot, state);
+                    }
                 }
 
                 Volatile.Write(ref _current, 0);
+                Array.Clear(_shown);
             }
             else if (_style == ProgressStyle.Terminal && _lineLength > 0)
             {
@@ -166,20 +176,39 @@ internal sealed class ConsoleProgress : IProgress<ProgressUpdate>
         }
     }
 
-    private void Plain(PipelineStage stage, bool first)
+    private void Plain(PipelineStage stage)
     {
-        // Stages 1 to 5 run one after another (the pack loader reports as plan before resolve); 6 to 8 stream together, so their
-        // end lines wait for the end of the run.
+        // Every stage gets one start line and one end line, in stage order. Stages 1 to 5 run one after another, but the pack
+        // loader reports as plan before resolve starts: a stage 2 to 5 whose predecessor has not reported yet is held (its counts
+        // fold in, nothing is written) until it reports again after its predecessor, or until the run ends. Stages 6 to 8 stream
+        // together, so their end lines wait for the end of the run.
+        var slot = (int)stage;
+        if (slot > 1 && stage < PipelineStage.Render && _stages[slot - 1] is null)
+            return;
         var current = Volatile.Read(ref _current);
-        if (current != 0 && current != (int)stage && (PipelineStage)current < PipelineStage.Render && _stages[current] is { } previous)
+        if (current != 0 && current != slot && (PipelineStage)current < PipelineStage.Render && _stages[current] is { } previous)
             EndLine((PipelineStage)current, previous);
-        if (first || current != (int)stage)
+
+        // A held stage below this one that never got its lines gets them now, in order.
+        for (var lower = 1; lower < slot && lower < (int)PipelineStage.Render; lower++)
         {
-            if (first || stage < PipelineStage.Render)
-                _error.WriteLine(string.Create(CultureInfo.InvariantCulture, $"[{(int)stage}/8 {Name(stage)}] started"));
+            if (lower != current && _stages[lower] is { } held && !_shown[lower])
+            {
+                StartLine(lower);
+                EndLine((PipelineStage)lower, held);
+            }
         }
 
-        Volatile.Write(ref _current, (int)stage);
+        StartLine(slot);
+        Volatile.Write(ref _current, slot);
+    }
+
+    private void StartLine(int slot)
+    {
+        if (_shown[slot])
+            return;
+        _shown[slot] = true;
+        _error.WriteLine(string.Create(CultureInfo.InvariantCulture, $"[{slot}/8 {Name((PipelineStage)slot)}] started"));
     }
 
     private void EndLine(PipelineStage stage, StageState state)

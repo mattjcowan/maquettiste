@@ -24,7 +24,7 @@ export { expect };
 /** The React Flow card for an entity (or a table), matched on its exact name. */
 export const card = (page: Page, name: string): Locator => page.locator(".react-flow__node").filter({ has: page.getByText(name, { exact: true }) });
 
-/** Opens the editor on the Entities workspace and waits for the default diagram to draw. */
+/** Opens the editor on the Domain model screen and waits for the default diagram to draw. */
 export async function openEditor(page: Page, path = "/"): Promise<void> {
   await page.goto(path);
   await expect(page.getByTestId("shell")).toBeVisible();
@@ -33,4 +33,4 @@ export async function openEditor(page: Page, path = "/"): Promise<void> {
 }
 
 export const workspace = (page: Page, name: string): Promise<void> =>
-  page.getByRole("navigation", { name: "Workspaces" }).getByRole("button", { name, exact: true }).click();
+  page.getByRole("navigation", { name: "Explorers" }).getByRole("button", { name, exact: true }).click();

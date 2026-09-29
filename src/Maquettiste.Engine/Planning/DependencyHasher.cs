@@ -201,6 +201,7 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
             "k" => KindInfo.TryGet(rest, out var info) ? model.KindSetHash(info.Kind) : Absent,
             "r" => model.ReferrersHash(rest),
             "s" => SettingsHash(rest),
+            "l" => LocaleHash(rest),
             "t" => TemplateHash(rest),
             "d" => resolved.Find(rest) is RDatabase database && schemaDiffs.TryGetValue(database.Name, out var diff) ? diff.Hash : Absent,
             _ => Absent,
@@ -216,8 +217,24 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
             "conventions" => CanonicalForm.Hash("s:conventions", new { settings.Conventions, settings.Databases }),
             "typeMaps" => CanonicalForm.Hash("s:typeMaps", settings.TypeMaps),
             "inflection" => CanonicalForm.Hash("s:inflection", settings.Inflection),
+            "localization" => CanonicalForm.Hash("s:localization", settings.Localization),
+            // Strategy declarations and every referenceStorage choice (project and per database), by database name.
+            "referenceData" => CanonicalForm.Hash("s:referenceData", new
+            {
+                settings.ReferenceData,
+                Project = settings.Conventions.ReferenceStorage,
+                Databases = new SortedDictionary<string, StorageChoice?>(
+                    settings.Databases.Where(p => p.Value.ReferenceStorage is not null).ToDictionary(p => p.Key, p => p.Value.ReferenceStorage), StringComparer.Ordinal),
+            }),
             _ => Absent,
         };
+    }
+
+    /// <summary><c>l:&lt;locale&gt;:&lt;owner&gt;</c>: the owner's entries in that locale and their sidecars.</summary>
+    private string LocaleHash(string localeAndOwner)
+    {
+        var colon = localeAndOwner.IndexOf(':', StringComparison.Ordinal);
+        return colon <= 0 ? Absent : model.Localization.OwnerHash(localeAndOwner[..colon], localeAndOwner[(colon + 1)..]);
     }
 
     private string TemplateHash(string packAndPath)

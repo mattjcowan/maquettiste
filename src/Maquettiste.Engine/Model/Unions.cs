@@ -27,8 +27,8 @@ public sealed record TypeRef
     /// <summary>A built-in scalar keyword from <see cref="BuiltinTypes.All"/>.</summary>
     public string? Builtin { get; init; }
 
-    /// <summary>The id of an enum, value object or custom scalar type.</summary>
-    [ElementRef(ElementKind.Enum, ElementKind.ValueObject, ElementKind.ScalarType)]
+    /// <summary>The id of an enum, value object, custom scalar type or reference type.</summary>
+    [ElementRef(ElementKind.Enum, ElementKind.ValueObject, ElementKind.ScalarType, ElementKind.ReferenceType)]
     public string? Ref { get; init; }
 }
 

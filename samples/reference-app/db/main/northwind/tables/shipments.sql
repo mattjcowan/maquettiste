@@ -5,7 +5,7 @@
 CREATE TABLE northwind.shipments (
     id uuid NOT NULL,
     shipment_number varchar(20) NOT NULL,
-    status integer NOT NULL DEFAULT 0,
+    status varchar(7) NOT NULL DEFAULT 'PLAN',
     ship_to_line1 varchar(120) NOT NULL,
     ship_to_line2 varchar(120) NULL,
     ship_to_city varchar(80) NOT NULL,
@@ -34,7 +34,6 @@ CREATE TABLE northwind.shipments (
     warehouse_id uuid NOT NULL,
     CONSTRAINT pk_shipments PRIMARY KEY (id),
     CONSTRAINT uq_shipments_shipment_number UNIQUE (shipment_number),
-    CONSTRAINT fk_shipments_status FOREIGN KEY (status) REFERENCES northwind.shipment_statuses (id),
     CONSTRAINT fk_shipments_carrier_id FOREIGN KEY (carrier_id) REFERENCES northwind.parties (id) ON DELETE SET NULL,
     CONSTRAINT fk_shipments_carrier_service_id FOREIGN KEY (carrier_service_id) REFERENCES northwind.carrier_services (id) ON DELETE SET NULL,
     CONSTRAINT fk_shipments_delivery_route_id FOREIGN KEY (delivery_route_id) REFERENCES northwind.delivery_routes (id) ON DELETE SET NULL,

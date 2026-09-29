@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../.schema/v1/seed.json",
+  "kind": "seed",
+  "id": "01JB9EE0ZBGJ09TQM83XSSSS6Y",
+  "name": "UnitOfMeasure",
+  "target": "01JBM9S346Q3D25VT4F5V37E3S",
+  "columns": [
+    "code",
+    "label",
+    "01JBNPZX45HY43KWJRP1XPA7Z3",
+    "01JBDJ8FSSZ5AWSH8VHTPRE95B"
+  ],
+  "rows": [
+    { "id": "01JBS3C4DWA7N36096Q14DR9GP", "values": ["kg", "Kilogram", 1000, "kg"] },
+    { "id": "01JBQY77ZXYYK596NGYA1DQ91K", "values": ["g", "Gram", 1, "g"] },
+    { "id": "01JB5GQAPENECFSECZP11HYGCP", "values": ["pinch", "Pinch", 0.36] }
+  ]
+}

@@ -23,7 +23,7 @@ public sealed class DependencyKeyTests
             fromNavigation: "customer", toNavigation: "invoices");
         var tags = b.Relation("tags", invoice, customer, fromRole: "tagged", toRole: "tagger").Attr("at", "date");
         var db = b.Database("main", Dialect.PostgreSql);
-        b.Settings(s => s with { Conventions = new Conventions { EnumStorage = StorageKind.Lookup } });
+        b.Settings(s => s with { Conventions = new Conventions { EnumStorage = StorageKind.String } });
         return new Fixture(b, customer, invoice, places, status, tags, db);
     }
 
@@ -74,9 +74,6 @@ public sealed class DependencyKeyTests
         Assert.Contains($"r:{f.Tags.Id}", junction.Dependencies);
         Assert.Contains($"r:{f.Invoice.Id}", junction.Dependencies);
         Assert.Contains($"r:{f.Customer.Id}", junction.Dependencies);
-
-        var lookup = db.Tables.Single(t => t.IsLookup);
-        Assert.Contains($"r:{f.Status.Id}", lookup.Dependencies);
     }
 
     [Fact]
@@ -143,8 +140,6 @@ public sealed class DependencyKeyTests
                 sources.Add(e.Id);
             if (table.Relation is { } r)
                 sources.Add(r.Id);
-            if (table.IsLookup)
-                sources.Add(f.Status.Id);
             Assert.NotEmpty(sources);
             Assert.All(sources, id => Assert.Contains("r:" + id, table.Dependencies));
         }

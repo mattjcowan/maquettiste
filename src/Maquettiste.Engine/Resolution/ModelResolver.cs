@@ -1,3 +1,4 @@
+using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Text;
@@ -50,5 +51,18 @@ internal sealed class ModelResolver(EngineOptions options) : IModelResolver
         ArgumentNullException.ThrowIfNull(model);
         ct.ThrowIfCancellationRequested();
         return Task.Run(() => new ResolveRun(model, progress, ct, Options.EffectiveParallelism, InflectorFor(model.Settings.Inflection, model.Documents.Count)).Run(), ct);
+    }
+
+    /// <summary>Resolves the conceptual layer and one database only (<see cref="ResolveRun.RunOneDatabase"/>).</summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="databaseId">The database element's id.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The resolved database (null when no database has the id) and the diagnostics of that partial run.</returns>
+    internal Task<(RDatabase? Database, IReadOnlyList<Diagnostic> Diagnostics)> ResolveDatabaseAsync(ModelSnapshot model, string databaseId, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(databaseId);
+        ct.ThrowIfCancellationRequested();
+        return Task.Run(() => new ResolveRun(model, null, ct, Options.EffectiveParallelism, InflectorFor(model.Settings.Inflection, model.Documents.Count)).RunOneDatabase(databaseId), ct);
     }
 }

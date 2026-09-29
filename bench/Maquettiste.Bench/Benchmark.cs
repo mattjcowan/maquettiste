@@ -68,6 +68,21 @@ public sealed record SyntheticModelOptions
     /// <summary>Lookup-style entities (reference data: a code, a name, a sort order and many more attributes), spread over the packages.</summary>
     public int Lookups { get; init; }
 
+    /// <summary>
+    /// A global tag vocabulary and category tree plus one of each per domain, with entities tagged and categorized from their domain
+    /// chain (explorer-redesign.md section 1.11). Off by default; it draws from its own random stream, so the model is byte-identical
+    /// without it.
+    /// </summary>
+    public bool DomainVocabularies { get; init; }
+
+    /// <summary>
+    /// Translated locales besides the default (en): 0 to <see cref="Synthetic.LocaleShards.MaxLocales"/>. Each one gets complete shards
+    /// (every localizable node of the default locale translated, with its source fingerprints), for the cold-load target of
+    /// reference-types-seeds-localization.md section 5. Off by default; the texts draw from their own random stream, so the model is
+    /// byte-identical without it.
+    /// </summary>
+    public int Locales { get; init; }
+
     /// <summary>Attributes per lookup entity, the key included.</summary>
     public int LookupAttributes { get; init; } = 40;
 }

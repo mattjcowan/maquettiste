@@ -1,0 +1,32 @@
+{
+  "name": "typescript",
+  "version": "1.0.0",
+  "engine": ">=1.0 <2.0",
+  "description": "TypeScript for a Node service: one interface per entity, one module per enum, a barrel index.ts and, optionally, one zod schema per entity.",
+  "parameters": {
+    "enumStyle": "union",
+    "importExtension": ".js",
+    "zod": true
+  },
+  "units": [
+    {
+      "id": "entity",
+      "template": "entity.scriban",
+      "for": "each entity",
+      "output": "{{ kebab entity.name }}.ts"
+    },
+    {
+      "id": "model",
+      "template": "model.scriban",
+      "for": "model"
+    },
+    {
+      "id": "schema",
+      "template": "schema.scriban",
+      "for": "each entity",
+      "where": {
+        "abstract": false
+      }
+    }
+  ]
+}

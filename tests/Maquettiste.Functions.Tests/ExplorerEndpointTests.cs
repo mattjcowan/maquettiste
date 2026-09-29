@@ -126,6 +126,30 @@ public sealed class ExplorerEndpointTests
     }
 
     [Fact]
+    public async Task One_table_answers_with_its_columns_and_null_for_an_unknown_key()
+    {
+        await using var host = EditorHost.Create();
+        var tables = await host.GetAsync("/api/databases/" + EditorHost.MainDatabaseId + "/tables");
+        var key = tables.Json["tables"]!.AsArray().Single(t => t!["name"]!.GetValue<string>() == "customers")!["key"]!.GetValue<string>();
+
+        var table = await host.GetAsync("/api/databases/" + EditorHost.MainDatabaseId + "/tables/" + Uri.EscapeDataString(key));
+        var missing = await host.GetAsync("/api/databases/" + EditorHost.MainDatabaseId + "/tables/no-such-table");
+        var notADatabase = await host.GetAsync("/api/databases/" + EditorHost.InvoiceId + "/tables/" + Uri.EscapeDataString(key));
+
+        Assert.Equal(200, table.Status);
+        Contract.AssertResponse(table, "/api/databases/{id}/tables/{key}");
+        Assert.False(table.Json["partial"]!.GetValue<bool>());
+        Assert.Equal("customers", table.Json["table"]!["name"]!.GetValue<string>());
+        Assert.Equal(6, table.Json["table"]!["columns"]!.AsArray().Count);
+        Assert.Equal(200, missing.Status);
+        Contract.AssertResponse(missing, "/api/databases/{id}/tables/{key}");
+        Assert.Null(missing.Json["table"]);
+        Assert.Equal(404, notADatabase.Status);
+        Assert.Equal("not-a-database", notADatabase.ProblemCode);
+        Recorder.Json("database-table-customers.json", table);
+    }
+
+    [Fact]
     public async Task Table_summaries_on_a_model_with_errors_are_partial()
     {
         await using var host = EditorHost.Create();

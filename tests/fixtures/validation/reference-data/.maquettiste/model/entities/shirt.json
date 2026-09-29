@@ -1,0 +1,61 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JVRE00000000000000000001",
+  "name": "Shirt",
+  "key": {
+    "attributes": [
+      "01JVRE00000000000000000011"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01JVRE00000000000000000011",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01JVRE00000000000000000012",
+      "name": "size",
+      "type": {
+        "ref": "01JVRT00000000000000000011"
+      },
+      "default": "xxl"
+    },
+    {
+      "id": "01JVRE00000000000000000013",
+      "name": "fit",
+      "type": {
+        "ref": "01JVRT00000000000000000011"
+      },
+      "validation": {
+        "allowedValues": [
+          "s",
+          "zz",
+          3
+        ]
+      }
+    },
+    {
+      "id": "01JVRE00000000000000000014",
+      "name": "sizes",
+      "type": {
+        "ref": "01JVRT00000000000000000011"
+      },
+      "collection": true
+    },
+    {
+      "id": "01JVRE00000000000000000015",
+      "name": "colors",
+      "type": {
+        "ref": "01JVRT00000000000000000001"
+      },
+      "default": [
+        1
+      ],
+      "collection": true
+    }
+  ]
+}

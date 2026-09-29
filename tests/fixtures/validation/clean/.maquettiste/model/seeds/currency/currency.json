@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../.schema/v1/seed.json",
+  "kind": "seed",
+  "id": "01JSED00000000000000000001",
+  "name": "Currency",
+  "target": "01JRTY00000000000000000001",
+  "columns": [
+    "code",
+    "label",
+    "01JRFD00000000000000000003"
+  ],
+  "rows": [
+    { "id": "01JRWS00000000000000000001", "values": ["EUR", "Euro", 2] },
+    { "id": "01JRWS00000000000000000002", "values": ["JPY", "Yen", 0] }
+  ]
+}

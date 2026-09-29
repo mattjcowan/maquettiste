@@ -49,7 +49,22 @@ export class ModelIndex {
     for (const [id, entry] of this.snapshot) if (!entries.has(id)) removed.push(entry);
     if (changed.length === 0 && removed.length === 0) return new Set();
 
-    const global = [...changed, ...removed].some((e) => GLOBAL_KINDS.has(String(e.json.kind)) || GLOBAL_KINDS.has(String(this.snapshot.get(e.id)?.json.kind)));
+    const all = [...changed, ...removed];
+    // A package's parent decides the vocabulary chain of every element under it (MQ2006, MQ2008) and the enclosing scopes of
+    // its vocabularies (MQ3021), none of which references the package: a move revalidates everything while a domain
+    // vocabulary exists. Any package change refreshes the chain map (names appear in messages).
+    const isPackage = (e: ModelEntry | undefined) => e?.json.kind === "package";
+    const packageChanged = all.some((e) => isPackage(e) || isPackage(this.snapshot.get(e.id)));
+    const packageMoved = all.some((e) => {
+      const before = this.snapshot.get(e.id);
+      const after = entries.get(e.id);
+      return (isPackage(before) || isPackage(after)) && (before?.json.parent ?? null) !== (after?.json.parent ?? null);
+    });
+    const hasDomainVocabulary = () =>
+      [...entries.values()].some((e) => (e.json.kind === "tag-vocabulary" || e.json.kind === "category-tree") && e.json.package != null);
+    const global =
+      all.some((e) => GLOBAL_KINDS.has(String(e.json.kind)) || GLOBAL_KINDS.has(String(this.snapshot.get(e.id)?.json.kind))) ||
+      (packageMoved && hasDomainVocabulary());
     const affected = new Set<string>();
     const touch = (entry: ModelEntry | undefined) => {
       if (!entry) return;
@@ -68,10 +83,8 @@ export class ModelIndex {
     }
     this.snapshot = new Map(entries);
     this.sorted = null;
-    if (global) {
-      this.globals = globalsOf(this.snapshot.values());
-      for (const id of this.snapshot.keys()) affected.add(id);
-    }
+    if (global || packageChanged) this.globals = globalsOf(this.snapshot.values());
+    if (global) for (const id of this.snapshot.keys()) affected.add(id);
     const ctx = this.context();
     for (const id of affected) {
       const entry = this.snapshot.get(id);

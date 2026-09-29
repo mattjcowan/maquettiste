@@ -216,6 +216,14 @@ reads relation keys earlier runs added, `src/Maquettiste.Engine/Resolution/READM
 incremental resolution; none is in this round. A larger gen0 budget (`DOTNET_GCgen0size`) removes the collection but not the time
 (fresh pages cost about the same).
 
+## Table summaries and table detail (`time-tables`)
+
+`dotnet run -c Release --project bench/Maquettiste.Bench -- time-tables --model <dir> [--jobs 8] [--rounds 3]` times the explorer's
+table summaries (E5c) and one table's detail (E5f) for every database of a model written by `write-model`: round 1 cold, every later
+round after an edit (it rewrites one entity's description through the model store, so run it on a scratch copy), then the parts
+(validation, each database's own resolve, the conceptual layer alone, the whole-model resolve). The numbers are in
+docs/engineering/explorer-redesign.md section 4.5.
+
 ## Deviations and caveats
 
 - The example packs (`sql-ddl`, `csharp-dapper`) are written into the synthetic repo, as the design asks, so the default run
@@ -306,3 +314,24 @@ without new bytes (neighbour tables, entities and repositories, `registrations`,
 other workers, not wall time; rendering fewer of them needs finer dependency keys (per member read, or placement keys for table
 lists) in the resolver and the tracking context, which is outside this change.
 
+
+## Cold load with locales (`write-model --locales`, `time-load`)
+
+`write-model --locales N` (0 to 8, default 0) also writes complete shards for N locales besides `en` (fr, de, es, it, ...): the
+written model is loaded once, and every localizable node of the default locale gets every expected field in its domain shard,
+with the `src` fingerprint of its source text. The texts draw from their own random stream and nodes are visited in id order, so
+the same options give the same bytes; with 0 the model is byte-identical to one written without the option.
+
+`dotnet run -c Release --project bench/Maquettiste.Bench -- time-load --model <dir> [--rounds 3]` times a cold load (a new model
+store over an empty cache folder), the localizable-node index and the completeness pass. It only reads the model.
+
+Measured at the write-model defaults (26,616 element files, 146,753 localizable nodes and 199,395 fields per locale, 41 shards and
+about 26 MB per locale; 24 cores, WSL2), rounds 2 to 5 (the first is a cold process):
+
+| Model | Load | Node index | Completeness | Total |
+| --- | --- | --- | --- | --- |
+| No locales | 410-540 ms | - | 0 ms | 410-540 ms |
+| `--locales 4` | 1,010-1,300 ms | 230-430 ms | 280-390 ms | 1,720-1,960 ms |
+
+Four complete locales add about 1.2 to 1.4 s to the cold load, against the ≤ 400 ms target of
+reference-types-seeds-localization.md section 5: the target is **not met** (see that section for the breakdown and next steps).

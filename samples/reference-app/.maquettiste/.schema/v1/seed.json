@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Seed",
+  "description": "Rows of data for one target: an entity, a relation or a reference type.",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "kind",
+    "id",
+    "name",
+    "displayName",
+    "pluralName",
+    "description",
+    "stereotypes",
+    "tags",
+    "category",
+    "target",
+    "columns",
+    "rows",
+    "properties",
+    "generation",
+    "source"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "kind": {
+      "const": "seed"
+    },
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "name": {
+      "$ref": "common.json#/$defs/identifier",
+      "default": ""
+    },
+    "displayName": {
+      "type": "string"
+    },
+    "pluralName": {
+      "type": "string"
+    },
+    "description": {
+      "$ref": "common.json#/$defs/description"
+    },
+    "stereotypes": {
+      "$ref": "common.json#/$defs/keyList",
+      "default": []
+    },
+    "tags": {
+      "$ref": "common.json#/$defs/tagList",
+      "default": []
+    },
+    "category": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "target": {
+      "description": "The entity, relation or reference type the rows are for; the seed belongs to it.",
+      "$ref": "common.json#/$defs/id"
+    },
+    "columns": {
+      "description": "Built-in keywords (code, label, description) for a reference type, else attribute or relation-end ids.",
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "$ref": "common.json#/$defs/id"
+          },
+          {
+            "enum": ["code", "label", "description"]
+          }
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "rows": {
+      "type": "array",
+      "x-layout": "row-per-line",
+      "items": {
+        "title": "Seed row",
+        "type": "object",
+        "x-order": ["id", "values"],
+        "properties": {
+          "id": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "values": {
+            "description": "One cell per column, in column order; trailing nulls are dropped.",
+            "type": "array",
+            "items": {
+              "description": "A cell: a JSON literal of the column's type, an enum member name, a reference code or an array of codes, a row id for an end, an object for a value object, or null."
+            },
+            "x-trim": "trailing-nulls",
+            "default": []
+          }
+        },
+        "required": ["id"],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "properties": {
+      "$ref": "common.json#/$defs/properties",
+      "default": {}
+    },
+    "generation": {
+      "$ref": "common.json#/$defs/generation",
+      "default": {}
+    },
+    "source": {
+      "$ref": "common.json#/$defs/source"
+    }
+  },
+  "required": [
+    "kind",
+    "id",
+    "name",
+    "target",
+    "columns"
+  ],
+  "additionalProperties": false
+}

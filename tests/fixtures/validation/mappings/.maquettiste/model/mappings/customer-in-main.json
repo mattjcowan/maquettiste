@@ -10,7 +10,7 @@
   "attributes": [
     {
       "attribute": "01JATT00000000000000000102",
-      "storage": "lookup"
+      "storage": "embedded"
     },
     {
       "attribute": "01JATT00000000000000000101",

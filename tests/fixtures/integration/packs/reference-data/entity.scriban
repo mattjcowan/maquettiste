@@ -1,0 +1,4 @@
+{{ entity.name }}
+{{- for a in entity.attributes }}
+{{ a.name }}: {{ a.type.kind }} {{ a.type.name }}{{ if a.collection }}[]{{ end }}
+{{- end }}

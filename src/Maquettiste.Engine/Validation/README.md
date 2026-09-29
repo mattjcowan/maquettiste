@@ -17,6 +17,8 @@ Built-in rules (`RuleCatalog` ids), extension schema evaluation, JavaScript rule
 | `PhysicalRules.cs` | MQ4001 to MQ4008, MQ4010, MQ2001 for a foreign key's missing table, MQ2002 for a schema or sequence of another database |
 | `MappingRules.cs` | MQ4004, MQ4009, MQ4011 |
 | `ExtensionRules.cs` | MQ5001, MQ5004 (`ExtensionSet`) |
+| `ReferenceDataRules.cs` | Reference types, their use as attribute types and seeds (reference-types-seeds-localization.md sections 1.7, 2.4): MQ7001 to MQ7011, MQ7101 to MQ7106, the MQ3019 extension (a default code outside the rows), MQ7012 (enum lookup-table storage, retired: on mappings and, in whole-model runs, on `maquettiste.json` with MQ7007 and MQ7008 for project and database storage choices) |
+| `LocalizationRules.cs` | Localization (reference-types-seeds-localization.md section 3.6), whole-model only: MQ7201 (settings, through `LocaleChains.Check`), MQ7202 (undeclared or default locale folders), MQ7203 (orphans), MQ7204 and MQ7206 (one per locale and shard), MQ7205 (per node and field, only when `validation.rules` gives it a severity), MQ7207 to MQ7210 (shard placement, sidecars, duplicates), MQ7211 (plural names on to-one ends, in element files and shards). Tested in `Localization/LocalizationTests.cs` |
 | `SaveRules.cs` | MQ3020 |
 | `SarifWriter.cs` | SARIF 2.1.0 |
 | `Positions.cs` | Line and column per diagnostic (`PointerLocator`) |

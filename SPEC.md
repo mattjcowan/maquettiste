@@ -108,7 +108,9 @@ repo/
 │   │   ├── operations/           # commands, domain events
 │   │   ├── databases/<db>/       # tables/, views/, sequences/
 │   │   ├── mappings/
-│   │   ├── seeds/                # reference data rows
+│   │   ├── reference-types/      # errata E10: one file per reference type
+│   │   ├── seeds/<target>/       # errata E10: rows of an entity, relation or reference type
+│   │   ├── locales/<locale>/     # errata E10: translation shards and translated Markdown
 │   │   ├── diagrams/             # canvas views: members and positions only
 │   │   └── vocabularies/         # tags, categories, stereotypes, actors, naming rules
 │   ├── templates/<pack>/         # pack.json, *.scriban, *.js helpers, partials
@@ -201,7 +203,8 @@ The model has three layers: a conceptual layer (entities, relations, processes),
 | Event | Conceptual | A domain event with a payload shape, raised by operations or process transitions | Entity, operation, process |
 | Actor | Conceptual | Role that raises events, signs gates and holds permissions | None |
 | Permission | Conceptual | Actor × element × action (read, create, update, delete, each operation), with an optional row filter | Actor, entity, operation |
-| Seed | Conceptual | Reference data rows for an entity or enum lookup (countries, units) | Entity |
+| Reference type | Conceptual | *(Errata E7, docs/engineering/spec-errata.md.)* A set of rows managed as data (units of measure, countries): built-in `code` and `label` fields, user fields in the attribute model, rows held in seeds; usable as an attribute's type | Its seed |
+| Seed | Conceptual | *(Errata E8, docs/engineering/spec-errata.md.)* Rows for an entity, a relation or a reference type: columns listed once, one row per line with its own id, cross-row references by row id, CSV import and export; a seed belongs to its target and is deleted with it | Entity, relation or reference type |
 | Database | Physical | A store with a dialect (PostgreSQL, SQL Server, MySQL, SQLite, Oracle) | None |
 | Schema, table, view, sequence | Physical | Physical objects with columns, keys, indexes, constraints | Database |
 | Mapping | Bridge | Binds entity to table, attribute to column, relation to foreign key or junction table | Entity, table |
@@ -213,8 +216,8 @@ The model has three layers: a conceptual layer (entities, relations, processes),
 
 **Fields on every element**
 
-- `id`: a ULID, immutable, used for every reference. Names can change without breaking links.
-- `name`, `displayName`, `pluralName` (optional override), `description` (Markdown).
+- `id`: a ULID, immutable, used for every reference. Names can change without breaking links. *(Errata E15, docs/engineering/spec-errata.md.)* A reference-type row is referenced by its **code** in attribute `default`s, `validation.allowedValues` and seed cells, because the code is what every storage strategy stores; the index still records each use as a reference, and "Rename code…" rewrites them in one batch.
+- `name`, `displayName`, `pluralName` (optional override), `description` (Markdown). *(Errata E6, docs/engineering/spec-errata.md.)* The standard fields (display name, plural name, description, and the label and description of reference rows) are localizable at every level, by rule and not by list: the default texts stay in the element files, other locales live in `model/locales/<locale>/<domain>.json` shards keyed by id, with per-locale Markdown sidecars, and translations are deleted with their node. The `localization` settings are `defaultLocale`, `locales`, `fallbacks` and `require`.
 - `tags[]`, `category`, `stereotypes[]`.
 - `properties{}`: custom values validated by extension schemas.
 - `generation{}`: per-pack hints such as skip, rename or extra template variables.
@@ -235,7 +238,7 @@ An entity is a business object with identity; everything a template needs to kno
 
 | Property | Meaning |
 | --- | --- |
-| `type` | Built-in scalar keyword, or a reference to an enum, value object or custom scalar |
+| `type` | Built-in scalar keyword, or a reference to an enum, value object or custom scalar; *(Errata E7, docs/engineering/spec-errata.md.)* or to a reference type, single or `collection`, with nullability through `required` and the default and seed cells given by code |
 | `required`, `default` | Nullability and default value (literal or named expression such as `now`) |
 | `length`, `precision`, `scale` | Size facets for strings and decimals |
 | `collection` | List of the type (value objects, scalars) |
@@ -302,6 +305,7 @@ Relations are first-class, named elements with their own file, so they can carry
 | `navigation` | Property name generated on the opposite entity; empty means not navigable from there |
 | `min`, `max` | Cardinality: 0 or 1 for min, 1 or `*` for max |
 | `onDelete` | Logical intent: cascade, restrict, set null, none |
+| `displayName`, `pluralName` | *(Errata E12, docs/engineering/spec-errata.md.)* Optional display names of the end |
 
 Self-relations (a Category's parent) and several relations between the same two entities (Invoice `billTo` Customer and `shipTo` Customer) are distinguished by role.
 
@@ -469,7 +473,8 @@ Conventions map the whole entity model to tables in one pass; per-element overri
 | Attribute | One column, with name and native type overrides |
 | Value object | Prefixed embedded columns, own table, or JSON column |
 | Collection of value objects | Child table or JSON column |
-| Enum | Integer, string, or lookup table with seed rows |
+| Enum | Integer, string, or lookup table with seed rows *(Errata E8, docs/engineering/spec-errata.md.)* A seed holds rows for an entity, a relation or a reference type; this row's lookup table is retired by E17 |
+| Reference type | *(Errata E9, docs/engineering/spec-errata.md.)* Template-defined by default; a project may declare strategies in `referenceData.strategies` and choose one per project, database or type (`referenceStorage`, and `storage` keyed by database id). The engine synthesizes no table, constraint or type for them: a single-valued attribute's column is reference-typed (its physical type comes from the pack's `type_of`, and the snapshot records it as `reference`), and a collection attribute gets no column (`template_defined`) |
 | Relation | Foreign key, junction table, or promoted association entity |
 | Inheritance | Table per hierarchy (discriminator column), table per type, or table per concrete type |
 | Entity in several databases | One mapping per database (write store, reporting store) |
@@ -482,7 +487,7 @@ To reach roughly 90% boilerplate coverage, data access needs more than CRUD, so 
 - **Projections**: named shapes of an entity (field subsets, flattened relation fields, computed fields) that become DTOs, API contracts and read models.
 - **Operations**: commands and queries with typed input and output shapes (a projection or an inline shape), the actor allowed to call them, and the events they raise. CRUD operations are implied for every entity and can be switched off per entity.
 - **Events**: domain events with a payload shape, raised by operations or by process transitions, so handlers, outbox tables and message contracts can be generated.
-- **Permissions and seeds**: an actor × element × action matrix with optional row filters, and reference data rows, so authorization checks and seed scripts come from the model too.
+- **Permissions and seeds**: an actor × element × action matrix with optional row filters, and reference data rows, so authorization checks and seed scripts come from the model too. *(Errata E8, docs/engineering/spec-errata.md.)* Seeds hold the rows of an entity, a relation or a reference type, not of an enum lookup, and ship with reference types rather than in phase 4.
 
 **The resolved model templates see**
 
@@ -502,11 +507,12 @@ Every model element is one small, canonically formatted JSON file referenced by 
 - Renaming an element renames its file in the same save, which git records as a rename.
 - Diagram files hold only membership, positions and view state, so rearranging a canvas never touches model files.
 - Long descriptions may live in a sidecar Markdown file (`"description": { "file": "invoice.md" }`).
+- *(Errata E6, E10, docs/engineering/spec-errata.md.)* Reference types live in `model/reference-types/`, seeds in `model/seeds/<target>/`, and translations in `model/locales/<locale>/`: shards with `kind: "locale-shard"` and a `scope`, keyed by id, beside the translated Markdown sidecars.
 
 **Identity and references**
 
 - Ids are ULIDs, created by the editor or CLI and never changed.
-- Every reference between elements uses the id. Built-in scalar types use keywords.
+- Every reference between elements uses the id. Built-in scalar types use keywords. *(Errata E15, docs/engineering/spec-errata.md.)* Exception: a reference-type row is referenced by its code in attribute `default`s, `validation.allowedValues` and seed cells; per-type `storage` choices use database ids, so they are not an exception.
 - A dangling reference is a validation error, never a silent drop.
 
 **Canonical form** (the engine rewrites any file it saves into this form)
@@ -514,6 +520,7 @@ Every model element is one small, canonically formatted JSON file referenced by 
 - UTF-8 without BOM, LF line endings, two-space indent, trailing newline.
 - Keys in the order fixed by each schema's \`x-order\` list, which reads better than alphabetical; arrays in their meaningful order (`order` for attributes).
 - Default values omitted, so files stay sparse and diffs stay small.
+- *(Errata E10, docs/engineering/spec-errata.md.)* Seed `rows` are written one compact row per line in one exact form (`x-layout: "row-per-line"`), trailing null cells dropped, numbers in cells as plain shortest decimals.
 
 **Schemas and validation**
 
@@ -586,6 +593,7 @@ sql-ddl/
 ```
 
 - `for` scopes: `model`, `each package`, `each entity`, `each relation`, `each enum`, `each value object`, `each process`, `each table`, `each query`, `each projection`, or a JavaScript selector returning any element list.
+- *(Errata E11, docs/engineering/spec-errata.md.)* More scopes: `each reference type`, `each seed` and `each locale`. A unit of `each locale` has no element: its unit key is `locale:<tag>` and `where` is rejected on it. The dependency keys gain `s:localization`, `s:referenceData` and `l:<locale>:<owner>`.
 - `where` filters: tags, stereotypes, categories, packages, or a JavaScript predicate.
 - `output` is a Scriban expression. A template may also emit zero or many files through `file` blocks, for aggregates such as one registration file per package.
 
@@ -596,6 +604,8 @@ sql-ddl/
 **Built-in helpers**
 
 Casing (`pascal`, `camel`, `snake`, `kebab`), pluralize and singularize with a project override list, type mapping per target (`type_of attr "csharp"`), per-dialect SQL quoting and literals, indentation, and escaping for Markdown, XML and JSON.
+
+*(Errata E6, E11, docs/engineering/spec-errata.md.)* Locale-aware helpers with a fallback chain: `display_name`, `plural_name`, `description_of`, `label_of`, `translate` and `has_translation`, each with an optional locale argument; and `row` and `row_uuid` for seed rows.
 
 **Delimiters.** Scriban's `{{ }}` collides with Handlebars, JSX, Go templates and Angular output. A unit can set `delimiters` (for example `<% %>`), and Scriban's raw blocks (`{%{ }%}`) pass literal braces through.
 
@@ -685,7 +695,7 @@ The editor is a keyboard-friendly workbench with one shell and seven workspaces,
 
 **Shell**
 
-- Top bar: project name, current git branch and count of changed model files (read-only), command palette, theme switch.
+- Top bar: project name, current git branch and count of changed model files (read-only), command palette, theme switch. *(Errata E6, docs/engineering/spec-errata.md.)* A content-locale switcher, shown when two or more locales are declared.
 - Left rail: workspace switcher and a virtualized model explorer grouped by package, filterable by tag, category and stereotype.
 - Right inspector: every property of the selection, with custom properties rendered from extension schemas.
 - Bottom panel: problems (live validation), generation output, diff viewer.
@@ -701,6 +711,7 @@ The editor is a keyboard-friendly workbench with one shell and seven workspaces,
 | Templates | Pack browser, Monaco editor for Scriban and JavaScript, live preview against a chosen element, output path preview |
 | Generate | Plan summary (units; files added, changed, deleted; hand edits), per-file diff, apply, run history |
 | Settings | Vocabularies (tags, categories, stereotypes), conventions, dialect maps, output allowlist, formatters |
+| Reference data | *(Errata E13, docs/engineering/spec-errata.md.)* The type list by category with search and counts; Fields, Rows, Used by and Storage tabs. Reference types appear only here and in the Reference data explorer (rail), which is this screen's list, and search across all kinds finds them. The inspector's Translations section and the completeness view appear only when two or more locales are declared |
 | Source control | Changed model files with diffs, commit (author = signed-in user), pull with rebase, push, conflict resolution; in local mode it only shows status |
 | Team | Hosted mode only: users and roles, invite links, repos and branches, OIDC settings (later), who is online and what they have open |
 
@@ -795,7 +806,7 @@ The editor's `_functions/` expose a small JSON API on the editor's own domain, b
 | `GET /api/model/elements/{id}` | Full element, with its hash as ETag |
 | `POST /api/model/elements` | Create an element |
 | `PUT /api/model/elements/{id}` | Save with `If-Match`; returns 409 if changed on disk, plus validation results |
-| `DELETE /api/model/elements/{id}` | Delete; refused while referenced unless the request names how to resolve references |
+| `DELETE /api/model/elements/{id}` | Delete; refused while referenced unless the request names how to resolve references. *(Errata E16, docs/engineering/spec-errata.md.)* Owning references do not count: deleting an entity, relation or reference type deletes its seeds and every node's translations in the same batch, and is refused only for references from other elements (including end cells of other seeds that name its rows); removing an attribute or end drops its seed column in the same save |
 | `POST /api/model/batch` | Atomic multi-file change used by refactorings and bulk edits |
 | `GET /api/model/references/{id}` | Where used |
 | `POST /api/validate` | Validate the whole model or a scope |
@@ -815,6 +826,7 @@ The editor's `_functions/` expose a small JSON API on the editor's own domain, b
 | GET, POST /api/repos | Hosted mode: registered repos and branches; clone runs as a job |
 | GET /api/git/status, POST /api/git/commit, /pull, /push | Source control on the current repo; maintainer role; pull and push run as jobs |
 | PUT, DELETE /api/locks/{elementId} | Take or release a soft lock; a lock expires with the holder's realtime connection |
+| `/api/localization…`, `/api/seeds/{id}/csv`, `/api/reference-types/{id}/usage` | *(Errata E14, docs/engineering/spec-errata.md.)* Localization status and entries, XLIFF and CSV export and import of translations, seed CSV export and import, and the usage of a reference type. `GET /api/model/index` takes `?locale=`, `model.changed` carries `translations`, and the batch gains a `translate` operation |
 
 **Realtime events** (the host's hub at `/_host/realtime`, `site.realtime` in the browser)
 
@@ -912,7 +924,7 @@ JavaScript rules in `.maquettiste/extensions/rules/` receive an element and the 
 
 **Agents (later)**
 
-The model is schema-validated JSON, so coding agents can already edit it. A later MCP server over the Section 16 API lets agents query, change and validate the model through the same safe write path the editor uses.
+The model is schema-validated JSON, so coding agents can already edit it. A later MCP server over the Section 16 API lets agents query, change and validate the model through the same safe write path the editor uses. *(Errata E14, docs/engineering/spec-errata.md.)* Its tools and the CLI cover the localization, seed CSV and reference-type usage operations too.
 
 ## 19. Security
 
@@ -999,6 +1011,8 @@ flowchart LR
 ```
 
 Phases are ordered, not dated; each gate is a pass or fail check.
+
+*(Errata E8, docs/engineering/spec-errata.md.)* Seeds move from phase 4 to the phase that ships reference types.
 
 **Gate criteria**
 

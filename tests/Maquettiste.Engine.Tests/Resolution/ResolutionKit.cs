@@ -101,7 +101,7 @@ internal static partial class ResolutionKit
             {
                 sb.Append("  table ").Append(t.Schema is null ? "" : t.Schema + ".").Append(t.Name).Append(" key=").Append(L(t.Key)).Append(' ').Append(t.Origin)
                     .Append(t.Entity is { } te ? " entity=" + te.Name : "").Append(t.Relation is { } tr ? " relation=" + tr.Name : "")
-                    .Append(t.IsJunction ? " junction" : "").Append(t.IsLookup ? " lookup" : "").Append('\n');
+                    .Append(t.IsJunction ? " junction" : "").Append('\n');
                 foreach (var c in t.Columns)
                 {
                     sb.Append("    ").Append(c.Position).Append(' ').Append(c.Name).Append(' ').Append(c.Type)
@@ -125,8 +125,6 @@ internal static partial class ResolutionKit
                         .Append(string.Join(',', i.Columns.Select(c => c.Column.Name + (c.Descending ? " desc" : "")))).Append(")\n");
                 foreach (var ck in t.Checks)
                     sb.Append("    check ").Append(ck.Name).Append(' ').Append(ck.Expression).Append('\n');
-                foreach (var row in t.LookupRows)
-                    sb.Append("    row ").Append(row.Id).Append(' ').Append(row.Code).Append(' ').Append(row.Name).Append('\n');
             }
 
             foreach (var s in db.Sequences)

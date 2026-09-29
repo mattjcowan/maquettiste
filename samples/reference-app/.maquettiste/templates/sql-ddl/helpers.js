@@ -61,3 +61,19 @@ maquettiste.helper("ddl_cycle_breaks", (spec) => {
   });
   return result;
 });
+
+// The realization of a reference-data storage strategy key (reference-types-seeds-localization.md section 1.6): the strategyMap
+// parameter maps the project's strategy keys to the three realizations this pack knows. The pack attaches no meaning to a key
+// itself, so a project whose keys differ maps them in the pack's parameters; a key the map does not know stops the unit.
+const realizations = new Set(["lookup-table", "check", "native"]);
+maquettiste.helper("reference_realization", (key, map) => {
+  const k = String(key);
+  const value = map && Object.prototype.hasOwnProperty.call(map, k) ? map[k] : undefined;
+  if (value === undefined || value === null) {
+    throw new Error(`sql-ddl: the reference storage strategy '${k}' is not in the pack's strategyMap parameter; map it to lookup-table, check or native.`);
+  }
+  if (!realizations.has(String(value))) {
+    throw new Error(`sql-ddl: strategyMap maps '${k}' to '${value}'; the realizations are lookup-table, check and native.`);
+  }
+  return String(value);
+});

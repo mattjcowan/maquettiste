@@ -4,6 +4,7 @@
 #   MAQUETTISTE_IMAGE=mattjcowan/maquettiste:dev docker compose -f <maquettiste>/docker/compose.yaml --project-directory . up -d
 #
 # then open http://maquettiste.localhost:8080 (no login from this machine).
+# Run `maquettiste init` first (docs/user-guide.md "The command line"): without .maquettiste/, Docker creates the mount folder.
 #
 # NEVER delete or rename the site maquettiste.localhost in the host's management UI or API: its data folder is the bind-mounted
 # .maquettiste/ below, and static-site-hosting 0.2.0 deletes a site folder recursively, model included. Recovery is

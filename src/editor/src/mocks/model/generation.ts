@@ -18,6 +18,7 @@ import type {
   RenderedFile,
   RootSelection,
 } from "@/api/types";
+import type { components } from "@/api/schema";
 import { sha256Hex } from "@/lib/sha256";
 import { clone } from "@/lib/json";
 import type { MockModel } from "./store";
@@ -87,7 +88,11 @@ export class MockGeneration {
     return { view, diagnostics: [] };
   }
 
-  private tablesCache: { version: number; results: Map<string, DatabaseTablesResult> } | null = null;
+  private tablesCache: {
+    version: number;
+    results: Map<string, DatabaseTablesResult>;
+    views: Map<string, Map<string, DatabaseView["tables"][number]>>;
+  } | null = null;
 
   /**
    * E5c: the table list of one database without columns. Unlike databaseView it answers on a model
@@ -99,7 +104,7 @@ export class MockGeneration {
     const docs = this.model.docs();
     const db = docs.get(id);
     if (!db || db.kind !== "database") return null;
-    if (this.tablesCache?.version !== this.model.version) this.tablesCache = { version: this.model.version, results: new Map() };
+    if (this.tablesCache?.version !== this.model.version) this.tablesCache = { version: this.model.version, results: new Map(), views: new Map() };
     const cached = this.tablesCache.results.get(id);
     if (cached) return cached;
     const diagnostics = this.model.validate().diagnostics;
@@ -122,10 +127,11 @@ export class MockGeneration {
         view = null; // a shape the mock resolver cannot take while the model has errors
       }
     }
-    const tables = (view?.tables ?? [])
-      .filter(
-        (t) => !(t.entityId && failed.has(t.entityId)) && !(t.relationId && failed.has(t.relationId)) && !failed.has(t.key) && !failed.has(t.key.split("@")[0]),
-      )
+    const kept = (view?.tables ?? []).filter(
+      (t) => !(t.entityId && failed.has(t.entityId)) && !(t.relationId && failed.has(t.relationId)) && !failed.has(t.key) && !failed.has(t.key.split("@")[0]),
+    );
+    this.tablesCache.views.set(id, new Map(kept.map((t) => [t.key, t])));
+    const tables = kept
       .map((t) => ({
         key: t.key,
         name: t.name,
@@ -140,6 +146,17 @@ export class MockGeneration {
     const result: DatabaseTablesResult = { tables, diagnostics, partial: errors.length > 0 };
     this.tablesCache.results.set(id, result);
     return result;
+  }
+
+  /**
+   * E5f: one table of a database with its columns, keys and indexes, from the same per-version
+   * cache as databaseTables; table is null when no kept table has the key.
+   */
+  databaseTable(id: string, key: string): components["schemas"]["DatabaseTableResult"] | null {
+    const summaries = this.databaseTables(id);
+    if (!summaries) return null;
+    const table = this.tablesCache?.views.get(id)?.get(key) ?? null;
+    return { table, diagnostics: summaries.diagnostics, partial: summaries.partial };
   }
 
   private views(): DatabaseView[] {

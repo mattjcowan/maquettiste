@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/reference-type.json",
+  "kind": "reference-type",
+  "id": "01JRDA00000000000000000001",
+  "name": "Allergen",
+  "description": "Allergens an ingredient may contain; a row may name a broader allergen.",
+  "code": {
+    "id": "01JRDA00000000000000000002",
+    "length": 16
+  },
+  "label": {
+    "id": "01JRDA00000000000000000003",
+    "length": 64
+  },
+  "attributes": [
+    {
+      "id": "01JRDA00000000000000000004",
+      "name": "parent",
+      "type": {
+        "ref": "01JRDA00000000000000000001"
+      }
+    }
+  ]
+}

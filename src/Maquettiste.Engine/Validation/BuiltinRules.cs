@@ -60,13 +60,19 @@ internal static partial class BuiltinRules
                 MappingRules.CheckMapping(context, mapping, report);
                 break;
             case TagVocabulary tags:
-                CheckTagVocabulary(tags, report);
+                CheckTagVocabulary(context, tags, report);
                 break;
             case CategoryTree tree:
                 CheckCategoryTree(context, tree, report);
                 break;
             case Stereotype stereotype:
                 CheckStereotype(context, stereotype, report);
+                break;
+            case ReferenceType referenceType:
+                ReferenceDataRules.CheckReferenceType(context, referenceType, report);
+                break;
+            case Seed seed:
+                ReferenceDataRules.CheckSeed(context, report.Document, seed, report);
                 break;
         }
     }
@@ -117,14 +123,20 @@ internal static partial class BuiltinRules
         {
             report.Add("MQ2005", $"'{site.Value}' is {Article(entry.Kind)} {entry.Kind}, not a category.", site.Pointer, site.FromId);
         }
-        else if (model.Categories is null || entry.OwnerId != model.Categories.Id)
+        else if (model.CategoryTrees.FirstOrDefault(t => t.Id == entry.OwnerId) is not { } tree)
         {
             report.Add("MQ2005", $"Category '{site.Value}' belongs to a category tree that is ignored (MQ1009).", site.Pointer, site.FromId);
+        }
+        else if (!model.VocabularyChain(VocabularyScope(report.Document.Element)).Contains(tree.Package))
+        {
+            report.Add("MQ2008", $"Category '{site.Value}' is declared in the category tree of {ScopeName(model, tree.Package)}, outside this element's domain chain.", site.Pointer, site.FromId);
         }
     }
 
     private static string JsonName(ReferenceSite site)
     {
+        if (site.DeclaringType == typeof(ReferenceType) && site.PropertyName == nameof(ReferenceType.Storage))
+            return "storage";
         var segments = Ptr.Split(site.Pointer);
         for (var i = segments.Length - 1; i >= 0; i--)
         {
@@ -161,15 +173,56 @@ internal static partial class BuiltinRules
                 report.Add("MQ2004", $"Stereotype '{key}' applies to {string.Join(", ", stereotype.AppliesTo)}, not to {Article(kindName)} {kindName}.", at, item.Id);
         }
 
-        if (model.Tags is { } vocabulary && item.Tags.Count > 0)
+        if (item.Tags.Count > 0 && model.TagVocabularies.Any())
         {
+            // The vocabularies on the element's domain chain (explorer-redesign.md section 1.11): its domain, each enclosing one, global.
+            var chain = model.VocabularyChain(VocabularyScope(report.Document.Element)).Select(model.TagVocabularyOf).OfType<TagVocabulary>().ToList();
+            var strict = chain.Any(v => v.Strict);
             for (var i = 0; i < item.Tags.Count; i++)
             {
                 var tag = item.Tags[i];
-                if (vocabulary.Definitions.Any(d => d.Key == tag))
+                if (chain.Any(v => v.Definitions.Any(d => d.Key == tag)))
                     continue;
-                var severity = vocabulary.Strict ? DiagnosticSeverity.Error : DiagnosticSeverity.Info;
-                report.Add("MQ2006", severity, $"Tag '{tag}' is not declared in the tag vocabulary{(vocabulary.Strict ? ", which is strict" : "")}.", Ptr.At(pointer + "/tags", i), item.Id);
+                var at = Ptr.At(pointer + "/tags", i);
+                if (model.TagVocabularies.FirstOrDefault(v => v.Definitions.Any(d => d.Key == tag)) is { } outside)
+                    report.Add("MQ2008", $"Tag '{tag}' is declared only in the tag vocabulary of {ScopeName(model, outside.Package)}, outside this element's domain chain.", at, item.Id);
+                else if (chain.Count > 0)
+                    report.Add("MQ2006", strict ? DiagnosticSeverity.Error : DiagnosticSeverity.Info, $"Tag '{tag}' is not declared in the tag vocabulary{(chain.Count > 1 ? " of any domain on its chain" : "")}{(strict ? ", which is strict" : "")}.", at, item.Id);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The package whose vocabulary chain an element sees: a package itself, a vocabulary's package, else the element's package
+    /// (<see langword="null"/> for elements outside the domains, which see only the global vocabularies).
+    /// </summary>
+    internal static string? VocabularyScope(Element element) => element switch
+    {
+        Package package => package.Id,
+        _ => ModelIndexer.PackageOf(element),
+    };
+
+    private static string ScopeName(ModelSnapshot model, string? packageId) =>
+        packageId is null ? "the model (global)" : $"domain '{(model.GetDocument(packageId)?.Element.Name is { Length: > 0 } name ? name : packageId)}'";
+
+    // ---- MQ3021: a domain vocabulary repeats a tag key or category name of the global vocabulary or an enclosing domain's ----
+
+    private static void CheckVocabularyClash<T>(ModelSnapshot model, string? package, IReadOnlyList<T> items, Func<T, string> key, string collection,
+        string member, string noun, Func<string?, IEnumerable<string>> declaredIn, Func<T, string?> itemId, Report report)
+    {
+        if (package is null || items.Count == 0)
+            return;
+        var enclosing = model.VocabularyChain(package).Skip(1).ToList();
+        for (var i = 0; i < items.Count; i++)
+        {
+            var value = key(items[i]);
+            foreach (var scope in enclosing)
+            {
+                if (!declaredIn(scope).Contains(value, StringComparer.Ordinal))
+                    continue;
+                report.Add("MQ3021", $"{noun} '{value}' is already declared by {ScopeName(model, scope)}; a domain vocabulary cannot redeclare it.",
+                    Ptr.At(collection, i) + member, itemId(items[i]));
+                break;
             }
         }
     }
@@ -615,8 +668,13 @@ internal static partial class BuiltinRules
 
     // ---- vocabularies ----
 
-    private static void CheckTagVocabulary(TagVocabulary tags, Report report) =>
+    private static void CheckTagVocabulary(ValidationContext context, TagVocabulary tags, Report report)
+    {
         CheckDuplicates(tags.Definitions, d => d.Key, "/definitions", "/key", "Tag", _ => null, report);
+        var model = context.Model;
+        CheckVocabularyClash(model, tags.Package, tags.Definitions, d => d.Key, "/definitions", "/key", "Tag",
+            scope => model.TagVocabularyOf(scope)?.Definitions.Select(d => d.Key) ?? [], _ => null, report);
+    }
 
     private static void CheckCategoryTree(ValidationContext context, CategoryTree tree, Report report)
     {
@@ -654,6 +712,10 @@ internal static partial class BuiltinRules
                 current = parent.Parent;
             }
         }
+    
+        var model = context.Model;
+        CheckVocabularyClash(model, tree.Package, tree.Categories, c => c.Name, "/categories", "/name", "Category",
+            scope => model.CategoryTreeOf(scope)?.Categories.Select(c => c.Name) ?? [], c => c.Id, report);
     }
 
     private static void CheckStereotype(ValidationContext context, Stereotype stereotype, Report report)

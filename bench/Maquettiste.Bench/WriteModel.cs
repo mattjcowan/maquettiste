@@ -24,7 +24,8 @@ public static class WriteModel
         "usage: Maquettiste.Bench write-model --out <dir> [--seed 42] [--entities 5000] [--relations 20000] [--enums 500]\n" +
         "         [--domains 40] [--domain-depth 3] [--domain-width 4] [--diagrams 150 | --diagrams-per-domain <n>] [--diagram-size 20..300]\n" +
         "         [--schemas 3] [--designed-tables 60] [--views 40] [--sequences 30] [--lookups 60] [--lookup-attributes 60]\n" +
-        "         [--fanout <n>] [--no-example-packs]\n";
+        "         [--fanout <n>] [--no-example-packs] [--domain-vocabularies]\n" +
+        "         [--locales <0..8>]  (complete shards for that many locales besides en)\n";
 
     /// <summary>The explorer's large mock (the verb's defaults).</summary>
     public static SyntheticModelOptions ExplorerDefaults { get; } = new()
@@ -159,6 +160,7 @@ public static class WriteModel
                 "--lookups" => current with { Lookups = number },
                 "--lookup-attributes" => current with { LookupAttributes = number },
                 "--fanout" => current with { Fanout = number },
+                "--locales" => current with { Locales = number },
                 _ => null,
             };
             if (next is not null)
@@ -187,6 +189,9 @@ public static class WriteModel
                     break;
                 case "--no-example-packs":
                     current = current with { IncludeExamplePacks = false };
+                    break;
+                case "--domain-vocabularies":
+                    current = current with { DomainVocabularies = true };
                     break;
                 default:
                     return Fail("unknown option " + arg + ".", out error);

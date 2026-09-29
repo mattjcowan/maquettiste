@@ -2,15 +2,16 @@ package: Catalog
 displayName: Catalog
 description: What Northwind sells - products and their variants, categories, brands, packaging, barcodes, content and compliance data.
 
-enums:
+referenceTypes:
   ProductStatus:
     description: Lifecycle of a product in the catalog.
-    members:
-      Draft: DRAFT | Being set up; not sellable.
-      Active: ACTIVE | Sellable and replenished.
-      PhasingOut: PHASEOUT | Sold from remaining stock, no longer replenished.
-      Discontinued: DISC | No longer sold.
-      Blocked: BLOCK | Temporarily unsellable, for example after a recall.
+    code: 8
+    rows:
+      DRAFT: Draft | Being set up; not sellable.
+      ACTIVE: Active | Sellable and replenished.
+      PHASEOUT: Phasing out | Sold from remaining stock, no longer replenished.
+      DISC: Discontinued | No longer sold.
+      BLOCK: Blocked | Temporarily unsellable, for example after a recall.
 
 entities:
   Product:
@@ -22,7 +23,7 @@ entities:
       name: string(200)! indexed | Product name as printed on documents.
       shortDescription: string(500) | One-paragraph description for listings.
       longDescription: text | Full description in Markdown.
-      status: ProductStatus! default=Draft | Lifecycle state.
+      status: ProductStatus! default=DRAFT | Lifecycle state.
       isSerialized: bool! default=false | Whether each unit carries a serial number.
       isLotControlled: bool! default=false | Whether stock is tracked by lot or batch.
       shelfLifeDays: int16 min=1 | Days from production to expiry, for perishables.
@@ -53,9 +54,7 @@ entities:
       translations: ProductTranslation | Localized names and descriptions.
       attributeValues: ProductAttributeValue | Values of filterable product attributes.
     mapping:
-      description: The product status is stored through a lookup table so reports can join its display names.
-      storage:
-        status: lookup
+      description: The product status is a reference type, stored through a lookup table (the project convention) so reports can join its labels.
     overlay:
       description: Product search and integrity tuning.
       columns:

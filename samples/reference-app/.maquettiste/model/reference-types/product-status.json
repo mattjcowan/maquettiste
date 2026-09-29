@@ -1,0 +1,17 @@
+{
+  "$schema": "../../.schema/v1/reference-type.json",
+  "kind": "reference-type",
+  "id": "01M2JJ5Q30GQ85ZTTVZ8WV2PRS",
+  "name": "ProductStatus",
+  "displayName": "Product status",
+  "description": "Lifecycle of a product in the catalog.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "code": {
+    "id": "01M1RSCN6KNZWT9ENFPKYRWW6Q",
+    "length": 8
+  },
+  "label": {
+    "id": "01M1EKVFGYAWMRBGJ7CTHANZ4N",
+    "length": 64
+  }
+}

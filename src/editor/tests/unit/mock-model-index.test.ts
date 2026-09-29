@@ -96,6 +96,35 @@ describe("mock model index", () => {
     expect(model.owner(String((link.json.ends as Json[])[0].id))).toBeUndefined();
   });
 
+  it("revalidates the elements under a moved domain when a domain vocabulary exists (MQ2008)", () => {
+    const model = new MockBackend().model;
+    const saved = (input: Json) => {
+      const result = model.create(input);
+      expect(result.outcome, JSON.stringify(result.diagnostics)).toBe("saved");
+      return result.id!;
+    };
+    const home = saved({ kind: "package", name: "VocabHome" });
+    const away = saved({ kind: "package", name: "VocabAway" });
+    const moved = saved({ kind: "package", name: "VocabMoved", parent: home });
+    const inner = saved({ kind: "package", name: "VocabInner", parent: moved });
+    saved({ kind: "tag-vocabulary", name: "vocab-home-tags", package: home, definitions: [{ key: "home-only" }] });
+    const tagged = saved({
+      kind: "entity",
+      name: "VocabTagged",
+      package: inner,
+      tags: ["home-only"],
+      key: { attributes: ["01M9KEY0000000000000000002"] },
+      attributes: [{ id: "01M9KEY0000000000000000002", name: "id", type: "uuid" }],
+    });
+    expect(model.validate().diagnostics.some((d) => d.rule === "MQ2008" && d.elementId === tagged)).toBe(false);
+
+    // The entity references its own package, not the moved one, so only the chain change can reach it.
+    model.externalEdit(moved, (json) => (json.parent = away));
+    const after = model.validate().diagnostics;
+    expect(after.some((d) => d.rule === "MQ2008" && d.elementId === tagged)).toBe(true);
+    expect(after).toEqual(fromScratch(model));
+  });
+
   it("answers owners and references from the index", () => {
     const model = new MockBackend().model;
     for (const entry of model.entries.values()) {

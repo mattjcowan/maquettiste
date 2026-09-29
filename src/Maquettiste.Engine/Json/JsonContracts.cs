@@ -91,6 +91,15 @@ public sealed class ObjectLayout
     /// </summary>
     public string? SortKey { get; internal set; }
 
+    /// <summary>
+    /// For an array whose schema declares <c>"x-layout": "row-per-line"</c>: each item is written on its own line in the compact
+    /// row form (reference-types-seeds-localization.md section 2.1), with numbers in the shortest plain decimal text.
+    /// </summary>
+    public bool RowPerLine { get; internal set; }
+
+    /// <summary>For an array whose schema declares <c>"x-trim": "trailing-nulls"</c>: trailing <c>null</c> items are dropped.</summary>
+    public bool TrimTrailingNulls { get; internal set; }
+
     /// <summary>Whether the location is an object with declared keys.</summary>
     public bool HasKeys => _keys.Count > 0;
 

@@ -58,12 +58,10 @@ public sealed class PhysicalFileTests
         var team = b.Entity("Team").Key("id", "uuid");
         var rel = b.Relation("joins", user, team);
         var db = b.Database("main", Dialect.PostgreSql);
-        b.Settings(s => s with { Conventions = new Conventions { EnumStorage = StorageKind.Lookup } });
         b.Add(new Table { Id = b.NewId(), Database = db.Id, Origin = TableOrigin.Synthesized, Relation = rel.Id, Name = "memberships" });
         b.Add(new Table { Id = b.NewId(), Database = db.Id, Origin = TableOrigin.Synthesized, Entity = user.Id, Attribute = user.AttrId("aliases"), Name = "user_alias" });
-        b.Add(new Table { Id = b.NewId(), Database = db.Id, Origin = TableOrigin.Synthesized, Enum = status.Id, Name = "status_codes" });
         var names = ResolutionKit.Resolve(b).Db("main").Tables.Select(t => t.Name).ToList();
-        Assert.Equal(["memberships", "status_codes", "teams", "user_alias", "users"], names);
+        Assert.Equal(["memberships", "teams", "user_alias", "users"], names);
     }
 
     [Fact]

@@ -185,7 +185,7 @@ Caveats and signature-change requests reported by the wave A implementers and fi
 - CAVEAT: Possible design gap (finding 2): the design's MQ4011 covers only a relation whose two ends are both bound. W3 also uses MQ4011 for a bound dependent with a synthesized principal and no Mapping.ForeignKey, a case the design does not cover. The design should record which rule applies.
 - CAVEAT: Not fixed: when the dependent end is bound to a designed table, the relation's own attributes still get no columns. This is now stated in Resolution/README.md.
 - CAVEAT: Not fixed: if two overlays target the same table in one database, only the first by id is applied and the second is dropped without a diagnostic.
-- CAVEAT: Inflector limitation: override values are stored lowercase and take the input's case shape. So a whole-name override such as "SalesPerson": "SalesForce" gives the table `salesforce`, not `sales_force`. This is documented in Text/README.md.
+- CAVEAT: Inflector limitation: override values are stored lowercase and take the input's case shape. So a whole-name override such as "SalesPerson": "SalesTeam" gives the table `salesteam`, not `sales_team`. This is documented in Text/README.md.
 - CAVEAT: Possible spec/design disagreement (finding 6): the design (§2.4) says plural tables pluralize the last word of `{entity}`. W3 now lets an explicit pluralName win for table names and inflects `{entity}` as a whole name. The design text should be updated.
 - CAVEAT: The -us singular list (finding 1) is finite. A singular -us word that is not on the list will be stripped (for example 'cirrus' becomes 'cirru') unless an `inflection.plurals` entry covers it.
 

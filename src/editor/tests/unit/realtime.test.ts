@@ -1,5 +1,5 @@
 // The mock realtime transport and the cache patching it drives (phase2-design.md 4.3, 4.5).
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as endpoints from "@/api/endpoints";
 import { keys } from "@/api/queries";
 import { MockRealtime } from "@/realtime/mock";
@@ -62,7 +62,7 @@ describe("realtime cache patching", () => {
     stop();
   });
 
-  it("invalidates the index and the element on a change made elsewhere", async () => {
+  it("patches the index from the change's summary (E5d) and invalidates the element on a change made elsewhere", async () => {
     const { queryClient, stop } = connect();
     await queryClient.fetchQuery({ queryKey: keys.index, queryFn: endpoints.getModelIndex });
     await queryClient.fetchQuery({ queryKey: keys.element(IDS.invoice), queryFn: () => endpoints.getElement(IDS.invoice) });
@@ -70,8 +70,25 @@ describe("realtime cache patching", () => {
       json.name = "Bill";
     });
     await settle();
-    expect(queryClient.getQueryState(keys.index)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(keys.index)?.isInvalidated).toBe(false);
+    const rows = queryClient.getQueryData<{ id: string; name: string }[]>(keys.index);
+    expect(rows?.find((r) => r.id === IDS.invoice)?.name).toBe("Bill");
     expect(queryClient.getQueryState(keys.element(IDS.invoice))?.isInvalidated).toBe(true);
+    stop();
+  });
+
+  it("invalidates the index when a change carries no summary (an older server)", async () => {
+    const { queryClient, stop } = connect();
+    await queryClient.fetchQuery({ queryKey: keys.index, queryFn: endpoints.getModelIndex });
+    api.backend.realtime.publish("model.changed", {
+      changed: [{ id: IDS.invoice, kind: "entity", path: ".maquettiste/model/entities/invoice.json", hash: "0".repeat(64) }],
+      deleted: [],
+      source: "disk",
+      truncated: false,
+      isEmpty: false,
+    });
+    await settle();
+    expect(queryClient.getQueryState(keys.index)?.isInvalidated).toBe(true);
     stop();
   });
 
@@ -92,8 +109,9 @@ describe("realtime cache patching", () => {
     expect(payload.truncated).toBe(true);
     expect(payload.changed.length).toBeGreaterThan(0);
     expect(payload.changed.length).toBeLessThan(1000);
-    await settle();
-    expect(queryClient.getQueryState(keys.index)?.isInvalidated).toBe(true);
+    // The invalidation follows the event through the realtime channel; under a loaded test run it can take longer
+    // than one settle, so poll for it rather than pause once.
+    await vi.waitFor(() => expect(queryClient.getQueryState(keys.index)?.isInvalidated).toBe(true), { timeout: 2000 });
     stop();
   });
 

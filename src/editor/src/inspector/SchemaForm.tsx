@@ -18,12 +18,15 @@ export function SchemaForm({
   json,
   defaults,
   onChange,
+  idPrefix = "prop",
 }: {
   extensions: ExtensionSchema[];
   json: ModelJson;
   /** Effective defaults (stereotype defaultProperties), shown as placeholders. */
   defaults: Record<string, { value: unknown; from: string }>;
   onChange: (name: string, value: unknown) => void;
+  /** Distinguishes the form's field ids when the inspector and an editor show the same element. */
+  idPrefix?: string;
 }) {
   const properties = ((json as { properties?: Record<string, unknown> }).properties ?? {}) as Record<string, unknown>;
   const fields = extensions.flatMap((ext) => Object.entries(ext.properties as Record<string, Schema>).map(([name, schema]) => ({ ext, name, schema })));
@@ -31,7 +34,7 @@ export function SchemaForm({
   return (
     <div className="flex flex-col gap-3" data-testid="custom-properties">
       {fields.map(({ ext, name, schema }) => {
-        const id = `prop-${ext.name}-${name}`;
+        const id = `${idPrefix}-${ext.name}-${name}`;
         const value = properties[name];
         const fallback = defaults[name];
         const placeholder = fallback ? `${JSON.stringify(fallback.value)} (from «${fallback.from}»)` : "";

@@ -343,6 +343,8 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         Property(list, "computedStored", a.ComputedStored, b.ComputedStored);
         Property(list, "collation", a.Collation, b.Collation);
         Property(list, "comment", a.Comment, b.Comment);
+        Property(list, "referenceType", a.ReferenceType, b.ReferenceType);
+        Property(list, "strategy", a.Strategy, b.Strategy);
         return list;
     }
 

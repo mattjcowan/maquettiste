@@ -1,0 +1,22 @@
+{
+  "$schema": "../../.schema/v1/reference-type.json",
+  "kind": "reference-type",
+  "id": "01JRTY00000000000000000001",
+  "name": "Currency",
+  "code": {
+    "id": "01JRFD00000000000000000001",
+    "length": 3,
+    "pattern": "^[A-Z]{3}$"
+  },
+  "label": {
+    "id": "01JRFD00000000000000000002",
+    "length": 64
+  },
+  "attributes": [
+    {
+      "id": "01JRFD00000000000000000003",
+      "name": "minorUnits",
+      "type": "int16"
+    }
+  ]
+}

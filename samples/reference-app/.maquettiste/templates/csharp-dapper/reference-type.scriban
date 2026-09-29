@@ -1,0 +1,91 @@
+{{-
+# One file per reference type (reference-types-seeds-localization.md section 1.6): a sealed record with the code, the label, the
+# row description when a seed lists one and the single-valued and collection user fields, then a static class with one field
+# per row, All (seed order) and Find (by code). Attributes typed by a reference type hold its code (type_of: string, or the
+# code's integer type), so the record is for reading reference data in code, not for mapping columns.
+include "_csharp.scriban"
+rt = reference_type
+name = type_name(rt)
+rows_class = pascal (pluralize rt.name)
+if rows_class == name
+  rows_class = name + "Rows"
+end
+code_type = type_of rt.code.type "csharp"
+has_description = false
+for r in rt.rows
+  if r.description
+    has_description = true
+  end
+end
+
+# The C# member name of a row: its code in PascalCase, "Code" first when that does not start with a letter.
+func row_member(r)
+  $n = pascal ("" + r.code)
+  if $n == "" || ($n | string.slice 0 1 | regex.match "[A-Za-z]").size == 0
+    ret "Code" + $n
+  end
+  ret cs_ident $n
+end
+
+# A C# literal of a cell for a field.
+func cs_literal(v, f)
+  if v == null
+    ret "null"
+  end
+  if f.collection
+    $items = ""
+    for item in v
+      $items = $items + (for.first ? "" : ", ") + json item
+    end
+    ret "[" + $items + "]"
+  end
+  $kind = f.type.kind == "reference" ? f.type.reference_type.code.type : (f.type.builtin ?? "")
+  if f.type.kind == "enum"
+    ret type_name(f.type.enum) + "." + (cs_ident (pascal v.name))
+  end
+  case $kind
+    when "decimal"
+      ret (json v) + "m"
+    when "double"
+      ret (json v) + "d"
+    when "float"
+      ret (json v) + "f"
+    when "int64"
+      ret (json v) + "L"
+    when "int16", "int32", "bool", "string", "text", "ulid"
+      ret json v
+  end
+  ret "default /* " + (json v | string.replace "*/" "* /") + " */"
+end
+-}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+
+namespace {{ pack.params.namespace }};
+
+{{ doc(rt.description, "") }}public sealed record {{ name }}({{ code_type }} Code, string Label
+{{- if has_description }}, string? Description{{ end }}
+{{- for f in rt.attributes }}, {{ prop_type(f) }} {{ prop_name(f, name) }}{{ end }});
+
+/// <summary>The rows of <see cref="{{ name }}"/> in seed order, one field per row.</summary>
+public static partial class {{ rows_class }}
+{
+{{- for r in rt.rows }}
+{{ doc(r.description, "    ") }}    public static readonly {{ name }} {{ row_member(r) }} = new({{ json r.code }}, {{ json r.label }}
+{{- if has_description }}, {{ r.description ? (json r.description) : "null" }}{{ end }}
+{{- for f in rt.attributes }}, {{ cs_literal(r.values[f.name], f) }}{{ end }});
+{{- end }}
+
+    /// <summary>Every row, in seed order.</summary>
+    public static IReadOnlyList<{{ name }}> All { get; } = [{{ for r in rt.rows }}{{ for.first ? "" : ", " }}{{ row_member(r) }}{{ end }}];
+
+    /// <summary>The row with a code, or null.</summary>
+    public static {{ name }}? Find({{ code_type }} code) => code switch
+    {
+{{- for r in rt.rows }}
+        {{ json r.code }} => {{ row_member(r) }},
+{{- end }}
+        _ => null,
+    };
+}

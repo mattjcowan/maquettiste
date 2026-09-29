@@ -8,6 +8,7 @@ CREATE TABLE payments (
     amount_currency text NOT NULL,
     received_at text NOT NULL,
     reference text NULL,
+    method text NULL,
     created_at text NOT NULL,
     updated_at text NULL
 );

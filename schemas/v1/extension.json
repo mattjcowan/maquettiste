@@ -38,6 +38,8 @@
               "tag-vocabulary",
               "category-tree",
               "stereotype",
+              "reference-type",
+              "seed",
               "attribute",
               "enum-member",
               "column"

@@ -1,0 +1,26 @@
+{
+  "name": "localization",
+  "version": "1.0.0",
+  "engine": ">=1.0 <2.0",
+  "description": "Fixture pack for the localization helpers: one resource bundle per locale, one French unit per reference type, one default-locale unit per entity.",
+  "units": [
+    {
+      "id": "bundle",
+      "template": "bundle.scriban",
+      "for": "each locale",
+      "output": "i18n/{{ locale.tag }}.txt"
+    },
+    {
+      "id": "type-fr",
+      "template": "type-fr.scriban",
+      "for": "each reference type",
+      "output": "fr/{{ kebab element.name }}.txt"
+    },
+    {
+      "id": "entity",
+      "template": "entity.scriban",
+      "for": "each entity",
+      "output": "entities/{{ kebab element.name }}.txt"
+    }
+  ]
+}

@@ -3,6 +3,7 @@
   "pack": "sql-ddl",
   "files": [
     ["db/main/migrations/0001.sql", "o:29cde4a6cfb4c7b6859a135bce77a6e61f40fba5b747c4994f371787dcb6905b", "migration:01M34AZ3RECQSPQQX1DXTCN03G"],
+    ["db/main/migrations/0002.sql", "o:84829ef8a453ed4c4641406fa5e27013c0d7ca18c696582ab93b0dfd3d533335", "migration:01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/account_assignments.sql", "b3c35de2790c37df890701c4e59b769d225250b8ff06b7e496110b4ead928b25", "table:01M27MB1JDD1JEXGF6HNEJ3AR7@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/adjustment_reasons.sql", "71a6eb34447c45ee358d1f57f703091a0a88cfc6e786a31c2cf895713839487c", "table:01M1DS9VPCTYKBK92K1P6VE6W9@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/advance_ship_notices.sql", "9ad88de97aacd7263e42c3c3bcd3e2b605ea49dd1690ec1648278ff076217a12", "table:01M2YZRYH468YVFQMMZJ96Y03R@01M34AZ3RECQSPQQX1DXTCN03G"],
@@ -118,11 +119,10 @@
     ["db/main/northwind/tables/product_lifecycle_events.sql", "94a8567427e509b7b019d123477ecb0bb0782efbff14ce3cfb1446e038cea048", "table:01M2GPE1118GZA4QY5E0XNMV9H@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/product_packagings.sql", "21fbafb829c31fdccbf55e1a5832e5c7ec6549a8e04fb4fec9f74b651076689e", "table:01M1SKVXDMR7ZF78GHPE2A8TE8@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/product_recommendations.sql", "56dbb28921fcba0f08c27104029a3ca968ac840a6ffae4ac5a60a157f002cb22", "table:01M2SZM8FE9BCWZV496BDSA9V7@01M34AZ3RECQSPQQX1DXTCN03G"],
-    ["db/main/northwind/tables/product_statuses.sql", "afe443d9c13ec9017db32bc2ab4bca317ee51693ceb05b534f4df6459631681f", "table:01M2YW6JHEB1CVE5XWYKQ1MYBG@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/product_substitutes.sql", "e1202a48d4c945bce55ddd3e9a1f1480666e07a342b314be06b90d4c4d64e06b", "table:01M1J74B04MKM165DQBGCYK4JP@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/product_translations.sql", "e31bdd0df9c86b3fd2a3204925490a2a95325fde8cf6ea0da64077e2b2f52bc4", "table:01M2TTC2J0TWG6D931H4QJNX63@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/product_variants.sql", "4dc780e99aa4a88522f61729e45ebdfbf6b3c17beaad58dfb21d1484446ef19e", "table:01M1KG55EGGS6MGV2175NWVN2N@01M34AZ3RECQSPQQX1DXTCN03G"],
-    ["db/main/northwind/tables/products.sql", "0778513661cec982fb48f0a4aca7ade570cb73b03925b8872a26e9d5dc70c2b4", "table:01M20RAEF2QZ5W8HV57RBX5PQV@01M34AZ3RECQSPQQX1DXTCN03G"],
+    ["db/main/northwind/tables/products.sql", "9ab05aa9bc2f87dfb1809def536211068a9a37399cb083232399c4097e10e0fb", "table:01M20RAEF2QZ5W8HV57RBX5PQV@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/promotion_conditions.sql", "6677b7d7036ca8d3d1653eb75707599dbc85d15e60dc4b1a273b0f2cf8cf15a0", "table:01M2XJ4QVS1491ZHZHNN64AZH2@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/promotion_customer_segment.sql", "4f423e7d9f1f37e7067c38659d303770b3b40560dc9f26d97c439c44d3e29ba9", "table:01M2TBDMEP352W5PVQV59S0S1E@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/promotion_rewards.sql", "d95b05352abe02e5b9d1cd4ae2d7c3fd0f9dd1bf6e5f6712f7f4ff5420ae43d6", "table:01M1WDD9XYAXK20K6QA157GVFK@01M34AZ3RECQSPQQX1DXTCN03G"],
@@ -169,8 +169,7 @@
     ["db/main/northwind/tables/service_cases.sql", "ff6b8d92b82a335f7725f1e35eca56ae06c6123c667830dfcc9f031c944ef9de", "table:01M2NPNWREHQKBV15PJMWZPKRK@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/shipment_lines.sql", "de7cbdbd63476db86922a2b26c0416ea63cd4537e6dfe60a963a97ed8492cecc", "table:01M2AZFG6SKKFV4W4136MH72X5@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/shipment_packages.sql", "79b15625fab42094492ad1a14672c7bac6a2d3f4933f7f8c6a20ab2242c2f393", "table:01M1NR7G0RYYPWNCM445SA8RRR@01M34AZ3RECQSPQQX1DXTCN03G"],
-    ["db/main/northwind/tables/shipment_statuses.sql", "3f0157236129d20c739ef6b2b95f36b3482a4092d2e74f164114e3fd19ae1da8", "table:01M1YZSXAHNTHBXBK0QRA5MQ08@01M34AZ3RECQSPQQX1DXTCN03G"],
-    ["db/main/northwind/tables/shipments.sql", "28299eb4ddfaec748b71aafaf0fdeaed04b48f42cc23d20d4317e16826171e0b", "table:01M2KGD56DK66D518GC8HV02RM@01M34AZ3RECQSPQQX1DXTCN03G"],
+    ["db/main/northwind/tables/shipments.sql", "6a0afdc76563e6bbcde725d86944068544949a7df2d43f39212c82150c9b6083", "table:01M2KGD56DK66D518GC8HV02RM@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/shipping_labels.sql", "19269d4b9fcafdb757b150d9aa05e8c25e9e51a0f0ef8118d3dc31f81b30c716", "table:01M1R6S1JXPMN2ESV2D5SF0RK6@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/shipping_zones.sql", "2ffe588205f2ce3a51b567342dac3ab46bc10f2c3ca3e141d4678400b6f1d9a6", "table:01M2BMMVEMY8VK72J5CG52HYCZ@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/sign_in_attempts.sql", "126414de4e6499f5641720468f08c4e5cf61e5c134c832d20399a569f88ff3e2", "table:01M245ZGAQNMAKQMCEM2NPCD22@01M34AZ3RECQSPQQX1DXTCN03G"],
@@ -212,7 +211,7 @@
     ["db/main/northwind/tables/warehouses.sql", "0d92534751eac2c7f748c8234fa9e4977ea2455e52c0f01fa1e099ac726005fc", "table:01M1PN7QBBJ001FSBR7DTP2QS6@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/warranty_claims.sql", "aeb909838a4e54699cdc86ef2d411a4aa7da5140fc95df069933e24d1661b39c", "table:01M36YFEAJKTX0GEAR37WGKBNY@01M34AZ3RECQSPQQX1DXTCN03G"],
     ["db/main/northwind/tables/write_offs.sql", "64d402e1c9a7b67c7ed5f53f865bb0d7fb4382b61d4891da593b05804b5f907f", "table:01M1JB5KP4X1QZ0YD2TYHE2E3Y@01M34AZ3RECQSPQQX1DXTCN03G"],
-    ["db/main/schema.sql", "1e9967cb424cc3a1250be49ed738f14ddad3a5f111944d8154fc1cd6e925c3f3", "schema:01M34AZ3RECQSPQQX1DXTCN03G"],
-    ["db/main/seed.sql", "r:e0979a1b87714aefb0d8cc1d433baabc9f062b9ff89dea08ecfb02618cb8ec6e", "seed:01M34AZ3RECQSPQQX1DXTCN03G"]
+    ["db/main/schema.sql", "344f054a5412b4303f98238cb408e8e0591f65f12eed4882abecee1066268d48", "schema:01M34AZ3RECQSPQQX1DXTCN03G"],
+    ["db/main/seed.sql", "r:f29b2151018e15c8d3e9e2701c99e6bc208ecbeda9ab9c3b66a78933da055c57", "seed:01M34AZ3RECQSPQQX1DXTCN03G"]
   ]
 }

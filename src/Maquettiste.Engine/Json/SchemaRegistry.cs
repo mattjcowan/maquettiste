@@ -75,6 +75,14 @@ internal sealed class SchemaRegistry : ISchemaRegistry
                 if (ApplicatorKeywords.Contains(keyword))
                     continue; // summarized by the failures of the subschemas it applies
                 var pointer = detail.InstanceLocation.ToString();
+                if (IsRetiredEnumLookup(document, pointer))
+                {
+                    diagnostics.Add(RuleCatalog.Create("MQ7012", $"{pointer} The enum lookup-table storage option ('lookup') is retired: convert the enum to a " +
+                        "reference type (its rows become a seed) and choose its storage strategy under referenceData.strategies, or store the enum as 'int' or 'string'.",
+                        elementId, path, pointer));
+                    continue;
+                }
+
                 var text = keyword.Length == 0 ? message : $"{keyword}: {message}";
                 diagnostics.Add(RuleCatalog.Create("MQ1002", $"{(pointer.Length == 0 ? "/" : pointer)} {text}", elementId, path, pointer));
             }
@@ -84,6 +92,29 @@ internal sealed class SchemaRegistry : ISchemaRegistry
             diagnostics.Add(RuleCatalog.Create("MQ1002", "The document does not match its schema.", elementId, path, ""));
         diagnostics.Sort(Diagnostic.Order);
         return diagnostics;
+    }
+
+    /// <summary>
+    /// Whether a failure is the retired enum lookup-table option (<c>enumStorage</c> or a mapping's <c>storage</c> set to <c>lookup</c>),
+    /// reported as MQ7012 naming the conversion instead of a bare schema violation. The file still fails to load.
+    /// </summary>
+    private static bool IsRetiredEnumLookup(JsonElement document, string pointer)
+    {
+        if (!pointer.EndsWith("/enumStorage", StringComparison.Ordinal) && !pointer.EndsWith("/storage", StringComparison.Ordinal))
+            return false;
+        var node = document;
+        foreach (var segment in pointer.Split('/').Skip(1))
+        {
+            var name = segment.Replace("~1", "/", StringComparison.Ordinal).Replace("~0", "~", StringComparison.Ordinal);
+            if (node.ValueKind == JsonValueKind.Object && node.TryGetProperty(name, out var child))
+                node = child;
+            else if (node.ValueKind == JsonValueKind.Array && int.TryParse(name, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var i) && i < node.GetArrayLength())
+                node = node[i];
+            else
+                return false;
+        }
+
+        return node.ValueKind == JsonValueKind.String && node.ValueEquals("lookup");
     }
 
     /// <summary>
@@ -245,6 +276,12 @@ internal sealed class SchemaRegistry : ISchemaRegistry
             if (node.TryGetProperty("x-sort", out var sort) && sort.ValueKind == JsonValueKind.String)
                 layout.SortKey ??= sort.GetString();
 
+            if (node.TryGetProperty("x-layout", out var rowLayout) && rowLayout.ValueKind == JsonValueKind.String)
+                layout.RowPerLine |= rowLayout.ValueEquals("row-per-line");
+
+            if (node.TryGetProperty("x-trim", out var trim) && trim.ValueKind == JsonValueKind.String)
+                layout.TrimTrailingNulls |= trim.ValueEquals("trailing-nulls");
+
             foreach (var combinator in (ReadOnlySpan<string>)["allOf", "anyOf", "oneOf"])
             {
                 if (node.TryGetProperty(combinator, out var branches) && branches.ValueKind == JsonValueKind.Array)
@@ -272,7 +309,7 @@ internal sealed class SchemaRegistry : ISchemaRegistry
 
         private static bool HasStructure(JsonElement node) =>
             node.TryGetProperty("properties", out _) || node.TryGetProperty("items", out _) || node.TryGetProperty("additionalProperties", out _)
-            || node.TryGetProperty("x-sort", out _)
+            || node.TryGetProperty("x-sort", out _) || node.TryGetProperty("x-layout", out _) || node.TryGetProperty("x-trim", out _)
             || node.TryGetProperty("allOf", out _) || node.TryGetProperty("anyOf", out _) || node.TryGetProperty("oneOf", out _);
 
         private static (string File, string Pointer) SplitRef(string currentFile, string reference)

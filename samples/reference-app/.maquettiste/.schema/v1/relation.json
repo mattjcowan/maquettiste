@@ -74,7 +74,7 @@
       "items": {
         "title": "Relation end",
         "type": "object",
-        "x-order": ["id", "entity", "role", "navigation", "min", "max", "onDelete", "ordered", "description"],
+        "x-order": ["id", "entity", "role", "navigation", "displayName", "pluralName", "min", "max", "onDelete", "ordered", "description"],
         "properties": {
           "id": {
             "$ref": "common.json#/$defs/id"
@@ -96,6 +96,12 @@
               }
             ],
             "default": ""
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluralName": {
+            "type": "string"
           },
           "min": {
             "enum": [0, 1],

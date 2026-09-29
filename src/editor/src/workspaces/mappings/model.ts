@@ -79,7 +79,7 @@ export function isEmptyPatch(patch: AttributePatch | EntityPatch | null): boolea
 
 /** The storage choices an attribute of this referenced kind offers (none for builtins). */
 export function storageOptions(kind: string | undefined): NonNullable<MappingAttributeDoc["storage"]>[] {
-  if (kind === "enum") return ["int", "string", "lookup"];
+  if (kind === "enum") return ["int", "string"]; // the lookup-table option is retired (MQ7012)
   if (kind === "value-object") return ["embedded", "table", "json"];
   return [];
 }

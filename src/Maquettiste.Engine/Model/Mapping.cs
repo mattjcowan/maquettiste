@@ -127,9 +127,6 @@ public enum StorageKind
     /// <summary>Enum as its code or name: <c>string</c>.</summary>
     [JsonStringEnumMemberName("string")] String,
 
-    /// <summary>Enum as a foreign key to a lookup table: <c>lookup</c>.</summary>
-    [JsonStringEnumMemberName("lookup")] Lookup,
-
     /// <summary>Value object as prefixed columns: <c>embedded</c>.</summary>
     [JsonStringEnumMemberName("embedded")] Embedded,
 

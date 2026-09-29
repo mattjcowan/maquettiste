@@ -31,7 +31,7 @@ public static class RuleCatalog
         new("MQ1006", E, "Invalid ULID."),
         new("MQ1007", E, "Unsupported model format version."),
         new("MQ1008", W, "The .schema folder is out of date."),
-        new("MQ1009", E, "A second tag vocabulary or category tree; the ordinally first file is used."),
+        new("MQ1009", E, "A second tag vocabulary or category tree in the same scope (global or one domain); the ordinally first file is used."),
 
         new("MQ2001", E, "Dangling reference."),
         new("MQ2002", E, "Reference to an element of the wrong kind."),
@@ -40,6 +40,7 @@ public static class RuleCatalog
         new("MQ2005", E, "Unknown category."),
         new("MQ2006", I, "Undeclared tag (an error when the tag vocabulary is strict)."),
         new("MQ2007", E, "Attribute validation names an unknown rule."),
+        new("MQ2008", E, "A tag or category is declared only in a domain vocabulary outside the element's domain chain."),
 
         new("MQ3001", E, "Duplicate name in scope."),
         new("MQ3002", E, "Inheritance cycle."),
@@ -61,6 +62,7 @@ public static class RuleCatalog
         new("MQ3018", E, "Invalid name for the element kind."),
         new("MQ3019", E, "Literal default does not match the attribute's type (use defaultExpression for now, today, new-uuid or new-ulid)."),
         new("MQ3020", E, "A stereotype's key cannot change."),
+        new("MQ3021", E, "A domain vocabulary redeclares a tag key or category name of the global vocabulary or an enclosing domain's."),
 
         new("MQ4001", E, "Identifier longer than the dialect's limit."),
         new("MQ4002", E, "Duplicate table name in a schema."),
@@ -97,6 +99,38 @@ public static class RuleCatalog
         new("MQ6016", E, "Script error."),
         new("MQ6017", E, "Selector returned an unknown id."),
         new("MQ6018", E, "Stale schema snapshot."),
+
+        new("MQ7001", E, "Duplicate code in a reference type, across all its seeds."),
+        new("MQ7002", W, "Two codes of one reference type differ only by case."),
+        new("MQ7003", E, "A row misses a required field."),
+        new("MQ7004", E, "A seed cell does not match its column's type or facets."),
+        new("MQ7005", E, "A seed column names neither a field nor an end of the target, names one twice, or a row has more values than columns."),
+        new("MQ7006", E, "A collection attribute whose effective reference storage strategy in a database does not support collections."),
+        new("MQ7007", E, "A storage choice names a strategy the project has not declared."),
+        new("MQ7008", E, "Storage options fail the strategy's option schema."),
+        new("MQ7009", E, "A seed cell names a row that does not exist."),
+        new("MQ7010", E, "Invalid reference type field: code type, field type or reserved field name."),
+        new("MQ7011", E, "An allowedValues entry on a reference-typed attribute names a code that is not in the type's rows."),
+        new("MQ7012", E, "The enum lookup-table storage option ('lookup') is retired: convert the enum to a reference type, whose storage strategy then decides the lookup table."),
+
+        new("MQ7101", E, "A seed targets an abstract entity."),
+        new("MQ7102", E, "A seed key cell is missing, or two rows of one target share a key value."),
+        new("MQ7103", W, "Required row references form a cycle, so no insert order exists."),
+        new("MQ7104", W, "A seed has more than 10,000 rows or 5 MB."),
+        new("MQ7105", E, "A column of an entity seed names a to-many end."),
+        new("MQ7106", E, "A relation link stated twice: an entity seed has an end column of a relation that also has seeds."),
+
+        new("MQ7201", E, "Invalid localization settings: a locale that is not BCP 47, a default not in the locales, a fallback naming an undeclared locale, a fallback cycle, or a required node kind that does not exist."),
+        new("MQ7202", W, "A locale folder for an undeclared locale or for the default locale; its files are not loaded."),
+        new("MQ7203", W, "An orphan translation: its id is not a localizable node of the model, or it has a field the node does not have."),
+        new("MQ7204", I, "A locale is incomplete in a shard: the counts of missing and stale texts, for the required kinds."),
+        new("MQ7205", I, "A missing translation, one per node and field (off unless validation.rules gives it a severity)."),
+        new("MQ7206", I, "Stale translations in a shard: made from a default text that has changed since."),
+        new("MQ7207", W, "A translation entry in the wrong shard (its node moved); it still applies."),
+        new("MQ7208", E, "A translated description's Markdown sidecar does not exist."),
+        new("MQ7209", E, "One id in two shards of one locale; the ordinally first path applies."),
+        new("MQ7210", W, "A shard whose locale differs from its folder, or whose scope differs from its path; it applies to its declared locale and scope."),
+        new("MQ7211", W, "A plural name on a to-one relation end, or its translation; it is never read."),
     ];
 
     private static readonly FrozenDictionary<string, RuleInfo> ById = Rules.ToFrozenDictionary(r => r.Id, StringComparer.Ordinal);

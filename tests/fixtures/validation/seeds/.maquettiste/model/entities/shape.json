@@ -1,0 +1,15 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JVSE00000000000000000001",
+  "name": "Shape",
+  "abstract": true,
+  "attributes": [
+    {
+      "id": "01JVSE00000000000000000011",
+      "name": "label",
+      "type": "string",
+      "length": 40
+    }
+  ]
+}

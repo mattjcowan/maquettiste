@@ -51,6 +51,8 @@ public sealed class ValidationFixtureTests
     [InlineData("mappings", new[] { "MQ4004", "MQ4009", "MQ4011" })]
     [InlineData("extensions", new[] { "MQ5001", "MQ5004" })]
     [InlineData("scripts", new[] { "MQ2007", "MQ5002", "MQ5003", "x/no-draft" })]
+    [InlineData("reference-data", new[] { "MQ2001", "MQ2002", "MQ3019", "MQ7001", "MQ7002", "MQ7006", "MQ7007", "MQ7008", "MQ7010", "MQ7011" })]
+    [InlineData("seeds", new[] { "MQ7002", "MQ7003", "MQ7004", "MQ7005", "MQ7009", "MQ7101", "MQ7102", "MQ7103", "MQ7105", "MQ7106" })]
     public async Task Invalid_model_matches_its_golden_diagnostics(string family, string[] rules)
     {
         var report = await ValidateAsync(family);

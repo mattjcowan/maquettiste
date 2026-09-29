@@ -200,7 +200,7 @@ public sealed class SchemaPrecheckTests
                 if (parent is JsonArray a && a[index] is { } item)
                     a.Add(item.DeepClone());
                 else if (parent is JsonObject o3 && o3[property!] is JsonArray inner && inner.Count > 0)
-                    inner.Add(inner[0]!.DeepClone());
+                    inner.Add(inner[0]?.DeepClone()); // seed cells may be null
                 break;
         }
 

@@ -47,6 +47,7 @@ CREATE TABLE billing.payments (
     amount_currency varchar(3) NOT NULL,
     received_at timestamptz(6) NOT NULL,
     reference varchar(64) NULL,
+    method varchar(16) NULL,
     created_at timestamptz(6) NOT NULL,
     updated_at timestamptz(6) NULL,
     CONSTRAINT pk_payments PRIMARY KEY (id)

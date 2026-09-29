@@ -164,9 +164,9 @@ public sealed class ResolutionEdgeTests
         var b = new ModelBuilder(seed: 97);
         b.Entity("SalesPerson").Key("id", "uuid");
         b.Database("main", Dialect.PostgreSql);
-        b.Settings(s => s with { Inflection = new InflectionSettings { Plurals = ImmutableDictionary<string, string>.Empty.Add("SalesPerson", "SalesForce") } });
+        b.Settings(s => s with { Inflection = new InflectionSettings { Plurals = ImmutableDictionary<string, string>.Empty.Add("SalesPerson", "SalesTeam") } });
         // Overrides are matched and stored lowercase, so the plural keeps no inner word boundary (was "sales_people").
-        Assert.Equal("salesforce", ResolutionKit.Resolve(b).Db("main").Tables.Single().Name);
+        Assert.Equal("salesteam", ResolutionKit.Resolve(b).Db("main").Tables.Single().Name);
     }
 
     [Fact]

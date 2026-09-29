@@ -1,0 +1,32 @@
+{
+  "name": "reference-data",
+  "version": "1.0.0",
+  "engine": ">=1.0 <2.0",
+  "description": "Fixture pack over the reference-data model: one unit per reference type, per seed and per entity, and a model unit that reads one row.",
+  "units": [
+    {
+      "id": "type",
+      "template": "type.scriban",
+      "for": "each reference type",
+      "output": "types/{{ kebab element.name }}.txt"
+    },
+    {
+      "id": "seed",
+      "template": "seed.scriban",
+      "for": "each seed",
+      "output": "seeds/{{ kebab element.name }}.txt"
+    },
+    {
+      "id": "entity",
+      "template": "entity.scriban",
+      "for": "each entity",
+      "output": "entities/{{ kebab element.name }}.txt"
+    },
+    {
+      "id": "order",
+      "template": "order.scriban",
+      "for": "model",
+      "output": "order.txt"
+    }
+  ]
+}

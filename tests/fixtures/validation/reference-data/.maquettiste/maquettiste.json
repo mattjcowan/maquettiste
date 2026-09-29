@@ -1,0 +1,37 @@
+{
+  "$schema": ".schema/v1/maquettiste.json",
+  "formatVersion": 1,
+  "conventions": {
+    "referenceStorage": {
+      "strategy": "undeclared"
+    }
+  },
+  "databases": {
+    "main": {
+      "referenceStorage": {
+        "strategy": "check",
+        "options": {
+          "schema": "ref"
+        }
+      }
+    }
+  },
+  "referenceData": {
+    "strategies": {
+      "check": {
+        "description": "CHECK (col IN (...codes))"
+      },
+      "lookup-table": {
+        "collections": true,
+        "options": {
+          "schema": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema"
+        ]
+      }
+    }
+  }
+}

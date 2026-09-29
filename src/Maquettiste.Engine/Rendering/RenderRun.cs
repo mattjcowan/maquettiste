@@ -395,7 +395,7 @@ internal sealed class UnitRun
         if (element is not null)
         {
             var alias = element.Kind.Replace('-', '_');
-            if (!BuiltinHelpers.Variables.Contains(alias) || alias is "package" or "entity" or "relation" or "enum" or "value_object" or "table")
+            if (!BuiltinHelpers.Variables.Contains(alias) || alias is "package" or "entity" or "relation" or "enum" or "value_object" or "table" or "reference_type" or "seed" or "locale")
                 globals.SetValue(alias, element, true);
         }
 

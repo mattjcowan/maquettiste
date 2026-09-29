@@ -67,6 +67,8 @@ internal static partial class AttributeRules
         }
 
         var type = Resolve(context.Model, attribute.Type);
+        if (attribute.Type.Ref is { } referenceId && context.Model.Get<ReferenceType>(referenceId) is { } referenceType)
+            ReferenceDataRules.CheckUsage(context, attribute, referenceType, pointer, report);
         CheckFacets(type, attribute.Length, attribute.Precision, attribute.Scale, attribute.Validation, "Attribute '" + attribute.Name + "'", pointer, id, report);
 
         if (attribute.Default is { } literal)

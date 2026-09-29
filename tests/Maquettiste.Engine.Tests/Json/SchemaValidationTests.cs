@@ -215,7 +215,7 @@ public sealed class SchemaValidationTests
     [InlineData(""","origin":"synthesized","entity":"01JAX3KA1B2C3D4E5F6G7H8J9K" """, true)]
     [InlineData(""","origin":"synthesized","entity":"01JAX3KA1B2C3D4E5F6G7H8J9K","attribute":"01JAX3KB2C3D4E5F6G7H8J9KAM" """, true)]
     [InlineData(""","origin":"synthesized","relation":"01JAX3KA1B2C3D4E5F6G7H8J9K" """, true)]
-    [InlineData(""","origin":"synthesized","enum":"01JAX3KA1B2C3D4E5F6G7H8J9K" """, true)]
+    [InlineData(""","origin":"synthesized","enum":"01JAX3KA1B2C3D4E5F6G7H8J9K" """, false)] // the enum lookup table overlay is retired
     [InlineData(""","origin":"synthesized" """, false)]
     [InlineData(""","origin":"synthesized","entity":"01JAX3KA1B2C3D4E5F6G7H8J9K","relation":"01JAX3KB2C3D4E5F6G7H8J9KAM" """, false)]
     [InlineData(""","origin":"synthesized","attribute":"01JAX3KB2C3D4E5F6G7H8J9KAM","enum":"01JAX3KA1B2C3D4E5F6G7H8J9K" """, false)]
@@ -227,6 +227,18 @@ public sealed class SchemaValidationTests
         var diagnostics = Evaluate("table.json", """{"kind":"table","id":"01JAX3K9V2Q7M4T8W1Z5C6B0DE","database":"01JAX3JZ0H6N2P5R8S1T4V7W9Y" """ + fields + "}");
 
         Assert.Equal(valid, diagnostics.Count == 0);
+    }
+
+    [Theory]
+    [InlineData("mapping.json", """{"kind":"mapping","id":"01JAX3K9V2Q7M4T8W1Z5C6B0DE","name":"m","database":"01JAX3JZ0H6N2P5R8S1T4V7W9Y","entity":"01JAX3KA1B2C3D4E5F6G7H8J9K","attributes":[{"attribute":"01JAX3KB2C3D4E5F6G7H8J9KAM","storage":"lookup"}]}""", "/attributes/0/storage")]
+    [InlineData("maquettiste.json", """{"formatVersion":1,"conventions":{"enumStorage":"lookup"}}""", "/conventions/enumStorage")]
+    [InlineData("maquettiste.json", """{"formatVersion":1,"databases":{"main":{"enumStorage":"lookup"}}}""", "/databases/main/enumStorage")]
+    public void The_retired_enum_lookup_storage_is_an_MQ7012_error_naming_the_conversion(string schemaFile, string json, string pointer)
+    {
+        var d = Assert.Single(Evaluate(schemaFile, json));
+
+        Assert.Equal(("MQ7012", DiagnosticSeverity.Error, pointer), (d.Rule, d.Severity, d.JsonPointer));
+        Assert.Contains("reference type", d.Message, StringComparison.Ordinal);
     }
 
     [Fact]

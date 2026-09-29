@@ -7,6 +7,7 @@ import type {
   BatchRequest,
   BatchResult,
   DatabaseTablesResult,
+  DatabaseTableResult,
   DatabaseViewResult,
   ElementReadResult,
   ElementDocument,
@@ -23,12 +24,18 @@ import type {
   ReferenceInfo,
   SaveResult,
   SessionInfo,
+  LocalizationStatus,
   SettingsDocument,
+  TranslationPage,
+  TranslationWrite,
+  TranslationWriteResult,
   SettingsJson,
   SettingsSaveResult,
   ValidationReport,
   ValidationScope,
   EditorHealth,
+  ImportPreview,
+  ReferenceTypeUsage,
 } from "./types";
 
 function must<T>(data: T | undefined, response: Response): T {
@@ -74,6 +81,20 @@ export async function saveSettings(json: SettingsJson, hash: string): Promise<Se
 export async function getModelIndex(): Promise<ElementSummary[]> {
   const { data, response } = await api().GET("/api/model/index");
   return must(data, response);
+}
+
+/** A conditional index read (E5e): `notModified` on 304, else the body as text with its ETag. */
+export type IndexAnswer = { notModified: true; etag: string | null } | { notModified: false; etag: string | null; text: string };
+
+/** GET /api/model/index with `If-None-Match` when an ETag is known; the body is parsed by the caller. */
+export async function getModelIndexText(etag: string | null, locale?: string | null): Promise<IndexAnswer> {
+  const { data, response } = await api().GET("/api/model/index", {
+    params: { ...(etag ? { header: { "If-None-Match": etag } } : {}), ...(locale ? { query: { locale } } : {}) },
+    parseAs: "text",
+  });
+  const tag = response.headers.get("ETag");
+  if (response.status === 304) return { notModified: true, etag: tag ?? etag };
+  return { notModified: false, etag: tag, text: must(data as string | undefined, response) };
 }
 
 export async function getElement(id: string): Promise<ElementDocument> {
@@ -153,6 +174,12 @@ export async function getDatabaseTables(id: string): Promise<DatabaseTablesResul
   return must(data, response);
 }
 
+/** E5f: one table's detail (columns with `attributeId`, keys, foreign keys, unique constraints, indexes). */
+export async function getDatabaseTable(id: string, key: string): Promise<DatabaseTableResult> {
+  const { data, response } = await api().GET("/api/databases/{id}/tables/{key}", { params: { path: { id, key } } });
+  return must(data, response);
+}
+
 export async function startPlan(request: GenerationRequest): Promise<JobInfo> {
   const { data, response } = await api().POST("/api/generate/plan", { body: request });
   return must(data, response);
@@ -203,3 +230,63 @@ export async function reportPresence(report: PresenceReport): Promise<void> {
 }
 
 export { etagHash };
+
+/** Ends the session (the account menu's Sign out). */
+export async function signOut(): Promise<void> {
+  await api().DELETE("/api/session");
+}
+
+/** A seed's rows as CSV (reference-types-seeds-localization.md 2.3): `@id` first, then the columns by name. */
+export async function exportSeedCsv(id: string, options: { bom?: boolean; locale?: string[] } = {}): Promise<string> {
+  const { data, response } = await api().GET("/api/seeds/{id}/csv", {
+    params: { path: { id }, query: { bom: options.bom, locale: options.locale } },
+    parseAs: "text",
+  });
+  return must(data as string | undefined, response);
+}
+
+/**
+ * Previews (`dryRun`, the default) or applies a CSV import into a seed. Applying sends the hash the preview was read
+ * with, so a seed changed since answers 409 with nothing written; 409 and 422 come back as the preview record.
+ */
+export async function importSeedCsv(
+  id: string,
+  content: string,
+  options: { mode?: "merge" | "replace"; dryRun?: boolean; hash?: string } = {},
+): Promise<ImportPreview & { status: number }> {
+  const { data, error, response } = await api().POST("/api/seeds/{id}/csv", {
+    params: { path: { id }, query: { mode: options.mode ?? "merge", dryRun: options.dryRun ?? true } },
+    headers: options.hash ? { "If-Match": `"${options.hash}"` } : undefined,
+    body: { content },
+  });
+  return { ...record<ImportPreview>(data, error, response), status: response.status };
+}
+
+/** Every attribute typed by a reference type, with its owner and the effective storage per database. */
+export async function getReferenceTypeUsage(id: string): Promise<ReferenceTypeUsage> {
+  const { data, response } = await api().GET("/api/reference-types/{id}/usage", { params: { path: { id } } });
+  return must(data, response);
+}
+
+/** Localization settings and completeness per locale and shard (reference-types-seeds-localization.md 3.9). */
+export async function getLocalization(): Promise<LocalizationStatus> {
+  const { data, response } = await api().GET("/api/localization");
+  return must(data, response);
+}
+
+/** One locale's entries: by owner, by shard, or the paged queue of those that need work (`missing`). */
+export async function getTranslations(
+  locale: string,
+  query: { owner?: string; shard?: string; missing?: boolean; cursor?: string | null } = {},
+): Promise<TranslationPage> {
+  const { data, response } = await api().GET("/api/localization/{locale}/entries", {
+    params: { path: { locale }, query: { owner: query.owner, shard: query.shard, missing: query.missing, cursor: query.cursor ?? undefined } },
+  });
+  return must(data, response);
+}
+
+/** Writes, removes (`value: null`) or confirms translations; 409 (a shard changed) and 422 come back as the record. */
+export async function saveTranslations(locale: string, body: TranslationWrite): Promise<TranslationWriteResult & { status: number }> {
+  const { data, error, response } = await api().PUT("/api/localization/{locale}/entries", { params: { path: { locale } }, body });
+  return { ...record<TranslationWriteResult>(data, error, response), status: response.status };
+}

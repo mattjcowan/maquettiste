@@ -2,11 +2,17 @@
   "name": "sql-ddl",
   "version": "1.0.0",
   "engine": ">=1.0 <2.0",
-  "description": "SQL DDL for PostgreSQL, SQL Server and SQLite: one script per table, one schema script per database, once-mode migrations from the schema diff and a seed script with protected regions.",
+  "description": "SQL DDL for PostgreSQL, SQL Server and SQLite: one script per table, one schema script per database, once-mode migrations from the schema diff, and a seed script with protected regions that reconciles reference data (lookup tables, check constraints or native types) and inserts seed rows.",
   "parameters": {
     "comments": true,
     "quoting": "",
-    "schemaScript": "inline"
+    "referenceStrategy": "lookup-table",
+    "schemaScript": "inline",
+    "strategyMap": {
+      "check": "check",
+      "lookup-table": "lookup-table",
+      "native": "native"
+    }
   },
   "usesSchemaDiff": true,
   "units": [

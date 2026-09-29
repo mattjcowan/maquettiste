@@ -1,0 +1,644 @@
+{{-
+# Reference data and seeds for the sql-ddl pack (reference-types-seeds-localization.md sections 1.4, 1.6 and 2). Needs
+# _sql.scriban. Prints nothing.
+#
+# The engine adds no table, key, check or type for a reference type: a single-valued reference attribute is one column holding
+# the row's code, and a collection attribute has no column at all (mapping.template_defined). This pack realizes each type in
+# each database as "lookup-table" (a table keyed by code, a foreign key from each column, a junction table per collection),
+# "check" (a CHECK listing the codes) or "native" (a PostgreSQL enum type, arrays for collections; a CHECK elsewhere). These
+# strategy objects are not in the schema snapshot, so seed.sql reconciles them on every run: every statement can run again, and
+# every object has a deterministic name (ck_<table>_<column>_ref, fk_<table>_<column>_ref, <type snake>_t). SQLite cannot add or
+# drop constraints on an existing table, so there the check and the foreign key are triggers with the same names plus _i
+# (insert), _u (update) and _d (delete from the lookup table).
+
+# The realization of a reference type in a database, after the dialect fallback: "native" is PostgreSQL only and falls back to a
+# CHECK elsewhere.
+func type_realization(rt, db)
+  $choice = rt.storage[db.name]
+  $r = ref_realization($choice ? $choice.strategy : null)
+  if $r == "native" && db.dialect != "postgresql"
+    ret "check"
+  end
+  ret $r
+end
+
+# The realization before the dialect fallback, for comments.
+func declared_realization(rt, db)
+  $choice = rt.storage[db.name]
+  ret ref_realization($choice ? $choice.strategy : null)
+end
+
+func storage_option(rt, db, name)
+  $choice = rt.storage[db.name]
+  if !$choice || !$choice.options
+    ret null
+  end
+  ret $choice.options[name]
+end
+
+# The lookup table of a reference type: the "tableName" option, else the snake-cased plural name; in the "schema" option's
+# schema, else the database's default schema.
+func lookup_name(rt, db)
+  ret storage_option(rt, db, "tableName") ?? (snake (rt.plural_name ?? (pluralize rt.name)))
+end
+
+func lookup_schema(rt, db)
+  ret storage_option(rt, db, "schema") ?? db.default_schema
+end
+
+func qlookup(rt, db)
+  ret qn(lookup_schema(rt, db), lookup_name(rt, db), db)
+end
+
+# The reference types a database realizes in a given way, in model order (name, id).
+func types_realized(db, realization)
+  $result = []
+  for rt in model.reference_types
+    if type_realization(rt, db) == realization
+      $result[$result.size] = rt
+    end
+  end
+  ret $result
+end
+
+# The comma-separated SQL literals of a type's codes, in row order.
+func code_list(rt, db)
+  $s = ""
+  for r in rt.rows
+    $s = $s + (for.first ? "" : ", ") + lit(r.code, db)
+  end
+  ret $s
+end
+
+# The SQL type of a code or a label: string (with its length), int16, int32 or int64.
+func ref_sql_type(kind, length, d)
+  case kind
+    when "int16"
+      ret d == "sqlite" ? "INTEGER" : "smallint"
+    when "int32"
+      ret d == "sqlite" ? "INTEGER" : (d == "sqlserver" ? "int" : "integer")
+    when "int64"
+      ret d == "sqlite" ? "INTEGER" : "bigint"
+  end
+  if d == "sqlite"
+    ret "TEXT"
+  else if d == "sqlserver"
+    ret length ? "nvarchar(" + length + ")" : "nvarchar(max)"
+  end
+  ret length ? "varchar(" + length + ")" : "text"
+end
+
+# The SQL type of a user field of a reference type: a reference-typed field holds the code of the type it names.
+func field_sql_type(f, db)
+  if f.type.kind == "reference"
+    ret ref_sql_type(f.type.reference_type.code.type, f.type.reference_type.code.length, db.dialect)
+  end
+  ret type_of f db.dialect
+end
+
+# The user fields that get a lookup-table column: every single-valued field (a collection field stays in the model only).
+func lookup_fields(rt)
+  $result = []
+  for f in rt.attributes
+    if !f.collection
+      $result[$result.size] = f
+    end
+  end
+  ret $result
+end
+
+func has_row_descriptions(rt)
+  for r in rt.rows
+    if r.description
+      ret true
+    end
+  end
+  ret false
+end
+
+# The SQL literal of a cell: NULL, an enum member's code (or name), or the value (codes of reference cells are values).
+func cell_sql(v, db)
+  if v == null
+    ret "NULL"
+  end
+  if v.kind == "enum-member"
+    ret lit(v.code ?? v.name, db)
+  end
+  ret lit(v, db)
+end
+
+# Lookup-realized types of a database in creation order: a type after the types its fields reference (ddl_order in helpers.js).
+func lookup_order(types)
+  # One type gives the spec "", which ddl_order reads as no types.
+  if types.size < 2
+    ret types
+  end
+  $index = {}
+  for rt in types
+    $index[rt.id] = for.index
+  end
+  capture $spec
+    for rt in types
+      if !for.first
+        ";"
+      end
+      $first = true
+      for f in lookup_fields(rt)
+        if f.type.kind == "reference"
+          $target = $index[f.type.reference_type.id]
+          if !$first
+            ","
+          end
+          $first = false
+          ($target == null || f.type.reference_type.id == rt.id) ? "x" : $target
+        end
+      end
+    end
+  end
+  $result = []
+  for i in ddl_order ("" + $spec)
+    $result[$result.size] = types[i]
+  end
+  ret $result
+end
+
+# CREATE TABLE for a lookup table, run again safely (IF NOT EXISTS; OBJECT_ID on SQL Server). Its shape follows the type when it
+# is created; a field added later needs an ALTER TABLE by hand.
+func lookup_table_sql(rt, db)
+  $d = db.dialect
+  $name = lookup_name(rt, db)
+  $body = "    " + q("code", db) + " " + ref_sql_type(rt.code.type, rt.code.length, $d) + " NOT NULL"
+  $body = $body + ",\n    " + q("label", db) + " " + ref_sql_type("string", rt.label.length, $d) + " NOT NULL"
+  if has_row_descriptions(rt)
+    $body = $body + ",\n    " + q("description", db) + " " + ref_sql_type("string", null, $d) + " NULL"
+  end
+  for f in lookup_fields(rt)
+    $body = $body + ",\n    " + q(snake f.name, db) + " " + field_sql_type(f, db) + (f.required ? " NOT NULL" : " NULL")
+  end
+  $body = $body + ",\n    CONSTRAINT " + q("pk_" + $name, db) + " PRIMARY KEY (" + q("code", db) + ")"
+  for f in lookup_fields(rt)
+    if f.type.kind == "reference" && type_realization(f.type.reference_type, db) == "lookup-table"
+      $body = $body + ",\n    CONSTRAINT " + q("fk_" + $name + "_" + (snake f.name) + "_ref", db) + " FOREIGN KEY (" + q(snake f.name, db) + ") REFERENCES " + qlookup(f.type.reference_type, db) + " (" + q("code", db) + ")"
+    end
+  end
+  $create = "CREATE TABLE " + qlookup(rt, db) + " (\n" + $body + "\n);"
+  if $d == "sqlserver"
+    ret "IF OBJECT_ID(" + lit(qlookup(rt, db), db) + ", N'U') IS NULL\n" + $create
+  end
+  ret "CREATE TABLE IF NOT EXISTS " + ($create | string.remove_first "CREATE TABLE ")
+end
+
+# The rows of a lookup table as one upsert by code: INSERT ... ON CONFLICT DO UPDATE on PostgreSQL and SQLite, MERGE on SQL Server.
+func lookup_rows_sql(rt, db)
+  $d = db.dialect
+  $cols = [q("code", db), q("label", db)]
+  if has_row_descriptions(rt)
+    $cols[$cols.size] = q("description", db)
+  end
+  for f in lookup_fields(rt)
+    $cols[$cols.size] = q(snake f.name, db)
+  end
+  $values = ""
+  for r in rt.rows
+    $v = lit(r.code, db) + ", " + lit(r.label, db)
+    if has_row_descriptions(rt)
+      $v = $v + ", " + cell_sql(r.description, db)
+    end
+    for f in lookup_fields(rt)
+      $v = $v + ", " + cell_sql(r.values[f.name], db)
+    end
+    $values = $values + (for.first ? "" : ",\n    ") + "(" + $v + ")"
+  end
+  $list = $cols | array.join ", "
+  $sets = ""
+  $merge_sets = ""
+  for c in $cols
+    if !for.first
+      $sets = $sets + (for.index == 1 ? "" : ", ") + c + " = excluded." + c
+      $merge_sets = $merge_sets + (for.index == 1 ? "" : ", ") + c + " = source." + c
+    end
+  end
+  if $d == "sqlserver"
+    $source = ""
+    for c in $cols
+      $source = $source + (for.first ? "" : ", ") + "source." + c
+    end
+    ret "MERGE INTO " + qlookup(rt, db) + " AS target\nUSING (VALUES\n    " + $values + ") AS source (" + $list + ")\nON target." + q("code", db) + " = source." + q("code", db) + "\nWHEN MATCHED THEN UPDATE SET " + $merge_sets + "\nWHEN NOT MATCHED THEN INSERT (" + $list + ") VALUES (" + $source + ");"
+  end
+  ret "INSERT INTO " + qlookup(rt, db) + " (" + $list + ") VALUES\n    " + $values + "\nON CONFLICT (" + q("code", db) + ") DO UPDATE SET " + $sets + ";"
+end
+
+# Deletes the rows whose code is no longer in the seeds. The foreign keys (triggers on SQLite) make it fail while a table still
+# stores a retired code: change those rows first.
+func lookup_retire_sql(rt, db)
+  if rt.rows.size == 0
+    ret "DELETE FROM " + qlookup(rt, db) + ";"
+  end
+  ret "DELETE FROM " + qlookup(rt, db) + " WHERE " + q("code", db) + " NOT IN (" + code_list(rt, db) + ");"
+end
+
+# The PostgreSQL enum type of a "native" type, created when missing (schema.sql, migrations and seed.sql all run it).
+func native_type_create_sql(rt, db)
+  ret "DO $$ BEGIN\n    CREATE TYPE " + q(native_type_name(rt), db) + " AS ENUM (" + code_list(rt, db) + ");\nEXCEPTION WHEN duplicate_object THEN NULL;\nEND $$;"
+end
+
+# New codes of a "native" type, then a guard: PostgreSQL cannot drop an enum value, so a code no longer in the seeds stops the
+# script with the codes named; retire or rename it in a migration written by hand.
+func native_type_reconcile_sql(rt, db)
+  $name = q(native_type_name(rt), db)
+  $s = ""
+  for r in rt.rows
+    $s = $s + "ALTER TYPE " + $name + " ADD VALUE IF NOT EXISTS " + lit(r.code, db) + ";\n"
+  end
+  $not_in = rt.rows.size == 0 ? "" : " WHERE v NOT IN (" + code_list(rt, db) + ")"
+  ret $s + "DO $$ DECLARE retired text; BEGIN\n    SELECT string_agg(v, ', ') INTO retired FROM unnest(enum_range(NULL::" + $name + ")::text[]) AS v" + $not_in + ";\n    IF retired IS NOT NULL THEN\n        RAISE EXCEPTION '" + native_type_name(rt) + " holds codes no longer in the seeds of " + rt.name + ": %; retire them in a migration written by hand', retired;\n    END IF;\nEND $$;"
+end
+
+# The PostgreSQL native types a schema script or migration creates before any table uses them.
+func native_type_prelude(db, out)
+  if db.dialect != "postgresql"
+    ret
+  end
+  for rt in types_realized(db, "native")
+    out[out.size] = native_type_create_sql(rt, db)
+  end
+end
+
+# The strategy objects of one reference-typed column (table t, column name c), reconciled: the objects of every realization are
+# dropped by name, then the current realization's are created. On SQLite they are triggers; there the lookup table's _d trigger
+# guards the retire DELETE.
+func column_objects_sql(t, c, rt, db)
+  $d = db.dialect
+  $r = type_realization(rt, db)
+  $ck = "ck_" + t.name + "_" + c + "_ref"
+  $fk = "fk_" + t.name + "_" + c + "_ref"
+  $col = q(c, db)
+  $s = ""
+  if $r == "check" && declared_realization(rt, db) == "native"
+    $s = "-- " + rt.name + " is stored as \"native\"; " + dialect_title(db) + " has no enum type, so " + t.name + "." + c + " gets a CHECK.\n"
+  end
+  if $d == "sqlite"
+    for n in [$ck + "_i", $ck + "_u", $fk + "_i", $fk + "_u", $fk + "_d"]
+      $s = $s + "DROP TRIGGER IF EXISTS " + q(n, db) + ";\n"
+    end
+    if $r == "check"
+      $when = "NEW." + $col + " IS NOT NULL AND NEW." + $col + " NOT IN (" + code_list(rt, db) + ")"
+      $raise = lit($ck + ": " + t.name + "." + c + " must be a code of " + rt.name, db)
+      $s = $s + "CREATE TRIGGER " + q($ck + "_i", db) + " BEFORE INSERT ON " + qt(t) + " WHEN " + $when + " BEGIN SELECT RAISE(ABORT, " + $raise + "); END;\n"
+      $s = $s + "CREATE TRIGGER " + q($ck + "_u", db) + " BEFORE UPDATE OF " + $col + " ON " + qt(t) + " WHEN " + $when + " BEGIN SELECT RAISE(ABORT, " + $raise + "); END;"
+    else
+      $when = "NEW." + $col + " IS NOT NULL AND NOT EXISTS (SELECT 1 FROM " + qlookup(rt, db) + " WHERE " + q("code", db) + " = NEW." + $col + ")"
+      $raise = lit($fk + ": " + t.name + "." + c + " must be a code of " + rt.name, db)
+      $s = $s + "CREATE TRIGGER " + q($fk + "_i", db) + " BEFORE INSERT ON " + qt(t) + " WHEN " + $when + " BEGIN SELECT RAISE(ABORT, " + $raise + "); END;\n"
+      $s = $s + "CREATE TRIGGER " + q($fk + "_u", db) + " BEFORE UPDATE OF " + $col + " ON " + qt(t) + " WHEN " + $when + " BEGIN SELECT RAISE(ABORT, " + $raise + "); END;\n"
+      $s = $s + "CREATE TRIGGER " + q($fk + "_d", db) + " BEFORE DELETE ON " + qlookup(rt, db) + " WHEN EXISTS (SELECT 1 FROM " + qt(t) + " WHERE " + $col + " = OLD." + q("code", db) + ") BEGIN SELECT RAISE(ABORT, " + lit($fk + ": a code still stored in " + t.name + "." + c + " cannot be deleted", db) + "); END;"
+    end
+    ret $s
+  end
+  $alter = "ALTER TABLE " + qt(t)
+  if $d == "sqlserver"
+    $schema = t.schema ?? "dbo"
+    $s = $s + "IF OBJECT_ID(" + lit(qn($schema, $ck, db), db) + ", N'C') IS NOT NULL " + $alter + " DROP CONSTRAINT " + q($ck, db) + ";\n"
+    $s = $s + "IF OBJECT_ID(" + lit(qn($schema, $fk, db), db) + ", N'F') IS NOT NULL " + $alter + " DROP CONSTRAINT " + q($fk, db) + ";"
+  else
+    $s = $s + $alter + " DROP CONSTRAINT IF EXISTS " + q($ck, db) + ";\n" + $alter + " DROP CONSTRAINT IF EXISTS " + q($fk, db) + ";"
+  end
+  if $r == "check"
+    $s = $s + "\n" + $alter + " ADD CONSTRAINT " + q($ck, db) + " CHECK (" + $col + " IN (" + code_list(rt, db) + "));"
+  else if $r == "lookup-table"
+    $s = $s + "\n" + $alter + " ADD CONSTRAINT " + q($fk, db) + " FOREIGN KEY (" + $col + ") REFERENCES " + qlookup(rt, db) + " (" + q("code", db) + ");"
+  end
+  ret $s
+end
+
+# The collection attributes of reference types a database's templates realize: [table, attribute, owner name] for every mapped
+# entity and junction-mapped relation, in model order.
+func ref_collections(db)
+  $result = []
+  $seen = {}
+  for e in model.entities
+    $m = e.mappings[db.name]
+    if $m
+      for a in $m.template_defined
+        if a.type.kind == "reference" && !$seen[$m.table.key + "/" + a.id]
+          $seen[$m.table.key + "/" + a.id] = true
+          $result[$result.size] = [$m.table, a, e.name]
+        end
+      end
+    end
+  end
+  for rel in model.relations
+    $m = rel.mappings[db.name]
+    if $m && $m.junction_table
+      for a in $m.template_defined
+        if a.type.kind == "reference"
+          $result[$result.size] = [$m.junction_table, a, rel.name]
+        end
+      end
+    end
+  end
+  ret $result
+end
+
+# The junction table of a collection attribute: <table>_<attribute>, the owner's key columns prefixed with the owner's name,
+# and <attribute singular>_code.
+func junction_name(t, a)
+  ret t.name + "_" + (snake a.name)
+end
+
+func junction_code_column(a)
+  ret (singularize (snake a.name)) + "_code"
+end
+
+func junction_owner_column(owner, c)
+  ret (snake owner) + "_" + c.name
+end
+
+# The storage of one collection attribute: a junction table (lookup-table and check; its code column gets the same strategy
+# objects as a single-valued column), or an array column of the enum type ("native" on PostgreSQL).
+func collection_sql(t, a, owner, db)
+  $rt = a.type.reference_type
+  $d = db.dialect
+  if type_realization($rt, db) == "native"
+    ret "ALTER TABLE " + qt(t) + " ADD COLUMN IF NOT EXISTS " + q(snake a.name, db) + " " + q(native_type_name($rt), db) + "[] NOT NULL DEFAULT '{}';"
+  end
+  $name = junction_name(t, a)
+  $jt = { name: $name, schema: t.schema, database: db }
+  $body = ""
+  $keys = ""
+  $refs = ""
+  for c in t.primary_key.columns
+    $col = q(junction_owner_column(owner, c), db)
+    $body = $body + "    " + $col + " " + column_type(c) + " NOT NULL,\n"
+    $keys = $keys + (for.first ? "" : ", ") + $col
+    $refs = $refs + (for.first ? "" : ", ") + q(c.name, db)
+  end
+  $code = q(junction_code_column(a), db)
+  $body = $body + "    " + $code + " " + ref_sql_type($rt.code.type, $rt.code.length, $d) + " NOT NULL,\n"
+  $body = $body + "    CONSTRAINT " + q("pk_" + $name, db) + " PRIMARY KEY (" + $keys + ", " + $code + "),\n"
+  $body = $body + "    CONSTRAINT " + q("fk_" + $name + "_owner", db) + " FOREIGN KEY (" + $keys + ") REFERENCES " + qt(t) + " (" + $refs + ") ON DELETE CASCADE"
+  $create = "CREATE TABLE " + qn(t.schema, $name, db) + " (\n" + $body + "\n);"
+  if $d == "sqlserver"
+    $create = "IF OBJECT_ID(" + lit(qn(t.schema, $name, db), db) + ", N'U') IS NULL\n" + $create
+  else
+    $create = "CREATE TABLE IF NOT EXISTS " + ($create | string.remove_first "CREATE TABLE ")
+  end
+  ret $create + "\n" + column_objects_sql($jt, junction_code_column(a), $rt, db)
+end
+
+# Every reference-data statement of a database for seed.sql, in the order they must run: native types and their new codes;
+# lookup tables and their rows; the strategy objects of every reference-typed column (validating what the tables hold); the
+# collections; then the retire deletes and the native guards, which the objects above protect.
+func reference_statements(db, out)
+  $lookups = lookup_order(types_realized(db, "lookup-table"))
+  $natives = types_realized(db, "native")
+  for rt in $natives
+    out[out.size] = "-- " + rt.name + ": PostgreSQL enum type " + native_type_name(rt) + ".\n" + native_type_create_sql(rt, db)
+  end
+  for s in schemas_to_create(db)
+    for rt in $lookups
+      if lookup_schema(rt, db) == s
+        out[out.size] = schema_sql(s, db)
+        break
+      end
+    end
+  end
+  for rt in $lookups
+    $sql = "-- " + rt.name + ": lookup table " + lookup_name(rt, db) + ", rows upserted by code.\n" + lookup_table_sql(rt, db)
+    if rt.rows.size > 0
+      $sql = $sql + "\n" + lookup_rows_sql(rt, db)
+    end
+    out[out.size] = $sql
+  end
+  for t in db.tables
+    for c in t.columns
+      if c.reference_type
+        out[out.size] = "-- " + t.name + "." + c.name + " (" + c.reference_type.name + ", " + declared_realization(c.reference_type, db) + ").\n" + column_objects_sql(t, c.name, c.reference_type, db)
+      end
+    end
+  end
+  for x in ref_collections(db)
+    out[out.size] = "-- " + x[2] + "." + x[1].name + " (collection of " + x[1].type.reference_type.name + ", " + declared_realization(x[1].type.reference_type, db) + ").\n" + collection_sql(x[0], x[1], x[2], db)
+  end
+  for rt in $lookups
+    out[out.size] = "-- Codes no longer in the seeds of " + rt.name + ".\n" + lookup_retire_sql(rt, db)
+  end
+  for rt in $natives
+    out[out.size] = "-- New codes of " + native_type_name(rt) + ", then a guard against codes no longer in the seeds.\n" + native_type_reconcile_sql(rt, db)
+  end
+end
+# The value a seed row holds for an attribute (a key column's attribute, when a foreign key names the row), or null.
+func seed_value_of(row, attribute)
+  for sc in row.seed.columns
+    if sc.attribute && sc.attribute.id == attribute.id
+      ret row.values[sc.name]
+    end
+  end
+  ret null
+end
+
+# The SQL literal of a seed cell for a column: enum members by the column's storage (the code or name for text, else the value).
+func column_cell_sql(v, c, db)
+  if v != null && v.kind == "enum-member"
+    if c.type == "string" || c.type == "text"
+      ret lit(v.code ?? v.name, db)
+    end
+    ret lit(v.value, db)
+  end
+  ret cell_sql(v, db)
+end
+
+# INSERT that skips rows whose key is already there: ON CONFLICT DO NOTHING on PostgreSQL and SQLite, NOT EXISTS on SQL Server
+# (IDENTITY_INSERT around it when a listed column is an identity). A table without a listed key inserts again on every run.
+func insert_sql(t, cols, rows, db)
+  $list = ""
+  $has_key = t.primary_key != null
+  $identity = false
+  for c in cols
+    $list = $list + (for.first ? "" : ", ") + q(c.name, db)
+    if c.identity
+      $identity = true
+    end
+  end
+  if t.primary_key
+    for pk in t.primary_key.columns
+      $found = false
+      for c in cols
+        if c.name == pk.name
+          $found = true
+        end
+      end
+      $has_key = $has_key && $found
+    end
+  end
+  $values = rows | array.join ",\n    "
+  if db.dialect == "sqlserver"
+    $s = "INSERT INTO " + qt(t) + " (" + $list + ")\nSELECT " + $list + " FROM (VALUES\n    " + $values + ") AS v (" + $list + ")"
+    if $has_key
+      $cond = ""
+      for pk in t.primary_key.columns
+        $cond = $cond + (for.first ? "" : " AND ") + "x." + q(pk.name, db) + " = v." + q(pk.name, db)
+      end
+      $s = $s + "\nWHERE NOT EXISTS (SELECT 1 FROM " + qt(t) + " AS x WHERE " + $cond + ")"
+    end
+    $s = $s + ";"
+    if $identity
+      $s = "SET IDENTITY_INSERT " + qt(t) + " ON;\n" + $s + "\nSET IDENTITY_INSERT " + qt(t) + " OFF;"
+    end
+    ret $s
+  end
+  ret "INSERT INTO " + qt(t) + " (" + $list + ") VALUES\n    " + $values + ($has_key ? "\nON CONFLICT DO NOTHING" : "") + ";"
+end
+
+# The inserts of one entity or relation seed in a database (null when the target is not mapped there): the target's table,
+# then the junction rows of its reference collections. Value-object cells are left to hand-written seed data.
+func seed_sql(seed, db)
+  $target = seed.target
+  if !$target || (seed.target.kind != "entity" && seed.target.kind != "relation")
+    ret null
+  end
+  $m = $target.mappings[db.name]
+  if !$m
+    ret null
+  end
+  if $target.kind == "relation"
+    if !$m.junction_table
+      ret "-- Seed " + seed.name + ": relation " + $target.name + " is a foreign key in this database; set it through the end column of the entity's seed."
+    end
+    $t = $m.junction_table
+  else
+    $t = $m.table
+  end
+  # Columns: [column, seed column, foreign key column index or -1].
+  $cols = []
+  $plan = []
+  $collections = []
+  for sc in seed.columns
+    if sc.kind == "attribute"
+      if sc.attribute.collection
+        if sc.attribute.type.kind == "reference"
+          $collections[$collections.size] = sc
+        end
+        continue
+      end
+      for c in $t.columns
+        if c.attribute && c.attribute.id == sc.attribute.id && sc.attribute.type.kind != "value-object"
+          $cols[$cols.size] = c
+          $plan[$plan.size] = [sc, null, -1]
+          break
+        end
+      end
+    else if sc.kind == "end"
+      # The foreign key of the end: on a junction table it carries the end; on an entity's table it carries the opposite end.
+      $fk = null
+      for f in $t.foreign_keys
+        if f.end && f.end.id == sc.end.id
+          $fk = f
+          break
+        end
+      end
+      if !$fk
+        for f in $t.foreign_keys
+          if f.end && f.end.opposite && f.end.opposite.id == sc.end.id
+            $fk = f
+            break
+          end
+        end
+      end
+      if $fk
+        for fc in $fk.columns
+          $cols[$cols.size] = fc
+          $plan[$plan.size] = [sc, $fk, for.index]
+        end
+      end
+    end
+  end
+  if $target.kind == "entity" && $m.discriminator_column
+    $cols[$cols.size] = $m.discriminator_column
+    $plan[$plan.size] = [null, null, -2]
+  end
+  # Native collections (PostgreSQL arrays) are columns of the insert; the others are junction rows.
+  $junctions = []
+  for sc in $collections
+    if type_realization(sc.attribute.type.reference_type, db) == "native"
+      $cols[$cols.size] = { name: snake sc.attribute.name, identity: false }
+      $plan[$plan.size] = [sc, null, -3]
+    else
+      $junctions[$junctions.size] = sc
+    end
+  end
+  if $cols.size == 0
+    ret null
+  end
+  $rows = []
+  for r in seed.ordered_rows
+    $v = ""
+    for p in $plan
+      $sc = p[0]
+      if p[2] == -2
+        $cell = lit($m.discriminator_value, db)
+      else if p[2] == -3
+        $codes = r.values[$sc.name] ?? []
+        $items = ""
+        for code in $codes
+          $items = $items + (for.first ? "" : ", ") + lit(code, db)
+        end
+        $cell = $codes.size == 0 ? "'{}'" : "ARRAY[" + $items + "]::" + q(native_type_name($sc.attribute.type.reference_type), db) + "[]"
+      else if p[1]
+        $ref = r.refs[$sc.name]
+        $cell = $ref ? column_cell_sql(seed_value_of($ref, p[1].referenced_columns[p[2]].attribute), $cols[for.index], db) : "NULL"
+      else
+        $cell = column_cell_sql(r.values[$sc.name], $cols[for.index], db)
+      end
+      $v = $v + (for.first ? "" : ", ") + $cell
+    end
+    $rows[$rows.size] = "(" + $v + ")"
+  end
+  $s = "-- Seed " + seed.name + " (" + seed.rows.size + " rows) into " + $t.name + ".\n" + insert_sql($t, $cols, $rows, db)
+  for sc in $junctions
+    $jt = { name: junction_name($t, sc.attribute), schema: $t.schema, database: db }
+    $jcols = []
+    for pk in $t.primary_key.columns
+      $jcols[$jcols.size] = { name: junction_owner_column($target.name, pk), identity: false }
+    end
+    $jcols[$jcols.size] = { name: junction_code_column(sc.attribute), identity: false }
+    $jrows = []
+    for r in seed.ordered_rows
+      $key = ""
+      $known = true
+      for pk in $t.primary_key.columns
+        $cell = null
+        for c in $cols
+          if c.name == pk.name
+            $cell = column_cell_sql(r.values[$plan[for.index][0].name], c, db)
+          end
+        end
+        if $cell == null
+          $known = false
+        end
+        $key = $key + $cell + ", "
+      end
+      if $known
+        for code in r.values[sc.name] ?? []
+          $jrows[$jrows.size] = "(" + $key + lit(code, db) + ")"
+        end
+      end
+    end
+    if $jrows.size > 0
+      $jt.primary_key = { columns: $jcols }
+      $s = $s + "\n" + insert_sql($jt, $jcols, $jrows, db)
+    end
+  end
+  ret $s
+end
+
+# The seed rows of every entity and relation mapped in a database, targets of referenced rows first.
+func seed_statements(db, out)
+  for seed in model.seeds_in_order
+    $sql = seed_sql(seed, db)
+    if $sql
+      out[out.size] = $sql
+    end
+  end
+end
+-}}

@@ -77,6 +77,7 @@ const FOLDERS: Partial<Record<ElementKind, string>> = {
   mapping: "model/mappings",
   diagram: "model/diagrams",
   stereotype: "model/vocabularies/stereotypes",
+  "reference-type": "model/reference-types",
 };
 
 function emptyChangeSet(source: ChangeSet["source"] = "editor"): ChangeSet {
@@ -291,12 +292,15 @@ export class MockModel {
       folder = `model/databases/${dbFolder}/tables`;
       file = `${String(json.id).toLowerCase()}.json`;
     } else if (kind === "view" || kind === "sequence") folder = `model/databases/${dbFolder}/${kind}s`;
-    else if (kind === "tag-vocabulary") {
+    else if (kind === "tag-vocabulary" || kind === "category-tree") {
+      // The global vocabularies are tags.json and categories.json; a domain's is <domain>-tags.json (section 1.11).
       folder = "model/vocabularies";
-      file = "tags.json";
-    } else if (kind === "category-tree") {
-      folder = "model/vocabularies";
-      file = "categories.json";
+      const scope = typeof json.package === "string" ? this.entries.get(json.package) : undefined;
+      const base = kind === "tag-vocabulary" ? "tags" : "categories";
+      file = scope ? `${applyCase(String(scope.json.name), "kebab")}-${base}.json` : `${base}.json`;
+    } else if (kind === "seed") {
+      const target = typeof json.target === "string" ? this.entries.get(json.target) : undefined;
+      folder = `model/seeds/${applyCase(String(target?.json.name ?? json.target ?? "seed"), "kebab")}`;
     }
     let path = `${PREFIX}${folder ?? "model"}/${file}`;
     if (keepFrom && keepFrom.path === path) return path;
@@ -786,7 +790,8 @@ export function summary(e: Entry): ElementSummary {
     id: e.id,
     kind: json.kind as ElementKind,
     name: typeof json.name === "string" ? json.name : "",
-    package: typeof json.package === "string" ? json.package : null,
+    // A package's index row holds its parent (the engine's ModelIndexer.PackageOf).
+    package: typeof (json.kind === "package" ? json.parent : json.package) === "string" ? String(json.kind === "package" ? json.parent : json.package) : null,
     tags: (json.tags as string[] | undefined) ?? [],
     category: typeof json.category === "string" ? json.category : null,
     stereotypes: (json.stereotypes as string[] | undefined) ?? [],
@@ -797,7 +802,7 @@ export function summary(e: Entry): ElementSummary {
 }
 
 /** The index format hashed into the index tag; the engine's ModelReads.IndexFormat. */
-export const INDEX_FORMAT = "maquettiste-index/e5";
+export const INDEX_FORMAT = "maquettiste-index/e7";
 
 /** The E5 members of an index row, present only for the kinds that carry them (as the engine writes them). */
 function e5(json: Json): Partial<ElementSummary> {
@@ -806,6 +811,12 @@ function e5(json: Json): Partial<ElementSummary> {
   const kind = json.kind;
   if ((kind === "table" || kind === "view" || kind === "sequence" || kind === "mapping") && typeof json.database === "string") out.database = json.database;
   if ((kind === "table" || kind === "mapping") && typeof json.entity === "string") out.entity = json.entity;
+  if (kind === "entity" && typeof json.base === "string") out.base = json.base;
+  if (kind === "seed") {
+    if (typeof json.target === "string") out.target = json.target;
+    out.rowCount = Array.isArray(json.rows) ? json.rows.length : 0;
+  }
+  if (kind === "reference-type") out.fieldCount = Array.isArray(json.attributes) ? json.attributes.length : 0;
   if (kind === "diagram") out.memberCount = Array.isArray(json.members) ? json.members.length : 0;
   if (kind === "relation" && Array.isArray(json.ends))
     out.ends = (json.ends as Json[]).map((end) => ({ entity: String(end.entity ?? ""), role: String(end.role ?? "") }));
@@ -915,6 +926,18 @@ export function projectSettings(json: Json): ProjectSettings {
       scriptMemoryBytes: (limits.scriptMemoryBytes as number | undefined) ?? 67108864,
       templateLoopLimit: (limits.templateLoopLimit as number | undefined) ?? 1000000,
       templateRecursionLimit: (limits.templateRecursionLimit as number | undefined) ?? 64,
+    },
+    explorer: {
+      folders: ((((json.explorer as Json | undefined) ?? {}).folders as Json[] | undefined) ?? []).map((f) => {
+        const match = (f.match as Json | undefined) ?? {};
+        const text = (v: unknown) => (typeof v === "string" ? v : null);
+        return {
+          label: String(f.label),
+          icon: text(f.icon),
+          kind: String(f.kind),
+          match: { stereotype: text(match.stereotype), tag: text(match.tag), category: text(match.category) },
+        };
+      }),
     },
   };
 }

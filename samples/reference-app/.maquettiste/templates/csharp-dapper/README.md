@@ -17,6 +17,8 @@ For entity `Invoice` in package `Billing`:
 | `entity` | `pair` | `each entity` | `Billing/Invoice.g.cs` every run, and its companion `Billing/Invoice.cs` once |
 | `enum` | `overwrite` | `each enum` | `Billing/InvoiceStatus.g.cs`: the enum and an `InvoiceStatusCodes` class (`ToCode`, `Parse`) for text storage |
 | `value-object` | `overwrite` | `each value object` | `Billing/Money.g.cs`: a `sealed partial record` with `init` properties |
+| `reference-type` | `overwrite` | `each reference type` | `ReferenceData/UnitOfMeasure.g.cs`: a `sealed record` and a static class of rows (see Reference types) |
+| `resources` | `overwrite` | `each locale` | `ReferenceData/ReferenceData.resx`, `ReferenceData.fr.resx`, …: display names and row labels per declared locale |
 | `repository` | file blocks | `each entity` | `Billing/InvoiceRepository.g.cs`: `IInvoiceRepository` and `InvoiceRepository` |
 | `registrations` | file blocks | `model` | `Billing/BillingRepositories.g.cs`: one per package with repositories |
 | `type-handlers` | `overwrite` | `model` | `DapperTypeHandlers.g.cs`: the Dapper type handlers and `UlidGenerator` |
@@ -83,6 +85,28 @@ BillingRepositories.Register((service, implementation) => services.AddScoped(ser
 
 `DapperTypeHandlers.Register()` teaches Dapper to read `DateOnly`, `TimeOnly`, and (for SQLite, which stores them as text)
 `Guid` and `DateTimeOffset`. Call it once at startup.
+
+## Reference types
+
+An attribute typed by a reference type holds the row's code: `string` (or the code's integer type), `IReadOnlyList<string>` for a
+collection. For reading the rows in code, each type gets a record and a static class of its rows, in seed order:
+
+```csharp
+public sealed record UnitOfMeasure(string Code, string Label, decimal Factor, string? Symbol);
+
+public static partial class UnitOfMeasures
+{
+    public static readonly UnitOfMeasure Kg = new("kg", "Kilogram", 1000m, "kg");
+    // ...
+    public static IReadOnlyList<UnitOfMeasure> All { get; } = [Kg, G, Pinch];
+    public static UnitOfMeasure? Find(string code) => code switch { "kg" => Kg, /* ... */ _ => null };
+}
+```
+
+Row fields are the codes in PascalCase (`Code` in front when that does not start with a letter). With locales declared in
+`localization`, one `.resx` per locale holds `<Type>_DisplayName`, `<Type>_PluralName`, `<Type>_Description` and `<Type>_<Row>`
+(the row label) through the locale's fallback chain; the default locale's file is the neutral `ReferenceData.resx` and the others
+are satellites the SDK compiles into `fr/…resources.dll`.
 
 ## Type map
 

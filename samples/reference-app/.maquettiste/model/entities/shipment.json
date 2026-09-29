@@ -44,10 +44,10 @@
       "id": "01M355S3N74XY7BPND6XYQWH0X",
       "name": "status",
       "type": {
-        "ref": "01M1YZSXAHNTHBXBK0QRA5MQ08"
+        "ref": "01M1Z3KPK8ZXTXJ89EB1MG2HTS"
       },
       "required": true,
-      "default": "Planned",
+      "default": "PLAN",
       "description": "Lifecycle state."
     },
     {

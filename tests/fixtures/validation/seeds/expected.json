@@ -1,0 +1,262 @@
+[
+  {
+    "rule": "MQ7105",
+    "severity": "error",
+    "message": "The column for end 'other' of relation 'twinned with' names a to-many end; the links belong in a seed of the relation.",
+    "elementId": "01JVSS00000000000000000003",
+    "filePath": ".maquettiste/model/seeds/city/city.json",
+    "jsonPointer": "/columns/3",
+    "line": 11,
+    "column": 5
+  },
+  {
+    "rule": "MQ7106",
+    "severity": "error",
+    "message": "The links of relation 'partners' are stated twice: this seed has a column for its end 'partner', and the relation has seeds of its own. Keep one.",
+    "elementId": "01JVSS00000000000000000003",
+    "filePath": ".maquettiste/model/seeds/city/city.json",
+    "jsonPointer": "/columns/4",
+    "line": 12,
+    "column": 5
+  },
+  {
+    "rule": "MQ7004",
+    "severity": "error",
+    "message": "Row 01JVSS00000000000000000032, column 'population': the value does not fit int32: a string on an integer type.",
+    "elementId": "01JVSS00000000000000000032",
+    "filePath": ".maquettiste/model/seeds/city/city.json",
+    "jsonPointer": "/rows/1/values/1",
+    "line": 16,
+    "column": 62
+  },
+  {
+    "rule": "MQ7009",
+    "severity": "error",
+    "message": "Row 01JVSS00000000000000000032, column 'country': '01JVSS00000000000000000099' is not a row of a seed of entity 'Country'.",
+    "elementId": "01JVSS00000000000000000032",
+    "filePath": ".maquettiste/model/seeds/city/city.json",
+    "jsonPointer": "/rows/1/values/2",
+    "line": 16,
+    "column": 70
+  },
+  {
+    "rule": "MQ7003",
+    "severity": "error",
+    "message": "Row 01JVSS00000000000000000033, column 'country': end 'country' is required.",
+    "elementId": "01JVSS00000000000000000033",
+    "filePath": ".maquettiste/model/seeds/city/city.json",
+    "jsonPointer": "/rows/2/values/2",
+    "line": 17,
+    "column": 53
+  },
+  {
+    "rule": "MQ7003",
+    "severity": "error",
+    "message": "Row 01JVSS00000000000000000033, column 'name': the attribute 'name' is required and has no default.",
+    "elementId": "01JVSS00000000000000000033",
+    "filePath": ".maquettiste/model/seeds/city/city.json",
+    "jsonPointer": "/rows/2/values/0",
+    "line": 17,
+    "column": 54
+  },
+  {
+    "rule": "MQ7005",
+    "severity": "error",
+    "message": "The column '01JVSE00000000000000000099' names neither a field nor an end of entity 'Country'; remove the stale column.",
+    "elementId": "01JVSS00000000000000000002",
+    "filePath": ".maquettiste/model/seeds/country/country.json",
+    "jsonPointer": "/columns/2",
+    "line": 10,
+    "column": 5
+  },
+  {
+    "rule": "MQ7005",
+    "severity": "error",
+    "message": "The column 'label' is built into reference types; entity 'Country' has no such column.",
+    "elementId": "01JVSS00000000000000000002",
+    "filePath": ".maquettiste/model/seeds/country/country.json",
+    "jsonPointer": "/columns/3",
+    "line": 11,
+    "column": 5
+  },
+  {
+    "rule": "MQ7102",
+    "severity": "error",
+    "message": "Row 01JVSS00000000000000000022 has no value for the primary key of 'Country', whose values the application assigns.",
+    "elementId": "01JVSS00000000000000000022",
+    "filePath": ".maquettiste/model/seeds/country/country.json",
+    "jsonPointer": "/rows/1",
+    "line": 15,
+    "column": 5
+  },
+  {
+    "rule": "MQ7102",
+    "severity": "error",
+    "message": "Row 01JVSS00000000000000000023 repeats the primary key value of row 01JVSS00000000000000000021.",
+    "elementId": "01JVSS00000000000000000023",
+    "filePath": ".maquettiste/model/seeds/country/country.json",
+    "jsonPointer": "/rows/2",
+    "line": 16,
+    "column": 5
+  },
+  {
+    "rule": "MQ7005",
+    "severity": "error",
+    "message": "Row 01JVSS00000000000000000024 has 5 values for 4 columns.",
+    "elementId": "01JVSS00000000000000000024",
+    "filePath": ".maquettiste/model/seeds/country/country.json",
+    "jsonPointer": "/rows/3/values",
+    "line": 17,
+    "column": 53
+  },
+  {
+    "rule": "MQ7004",
+    "severity": "error",
+    "message": "Row 01JVSS00000000000000000025, column 'code': the value does not fit string: the string is longer than length 2.",
+    "elementId": "01JVSS00000000000000000025",
+    "filePath": ".maquettiste/model/seeds/country/country.json",
+    "jsonPointer": "/rows/4/values/0",
+    "line": 18,
+    "column": 54
+  },
+  {
+    "rule": "MQ7103",
+    "severity": "warning",
+    "message": "Row 01JVSS00000000000000000061 is part of a cycle of required row references, so no insert order exists; the rows keep file order.",
+    "elementId": "01JVSS00000000000000000061",
+    "filePath": ".maquettiste/model/seeds/node/node.json",
+    "jsonPointer": "/rows/0",
+    "line": 12,
+    "column": 5
+  },
+  {
+    "rule": "MQ7103",
+    "severity": "warning",
+    "message": "Row 01JVSS00000000000000000062 is part of a cycle of required row references, so no insert order exists; the rows keep file order.",
+    "elementId": "01JVSS00000000000000000062",
+    "filePath": ".maquettiste/model/seeds/node/node.json",
+    "jsonPointer": "/rows/1",
+    "line": 13,
+    "column": 5
+  },
+  {
+    "rule": "MQ7003",
+    "severity": "error",
+    "message": "Row 01JVSS00000000000000000042, column 'partner': end 'partner' is required.",
+    "elementId": "01JVSS00000000000000000042",
+    "filePath": ".maquettiste/model/seeds/partners/partners.json",
+    "jsonPointer": "/rows/1/values/1",
+    "line": 13,
+    "column": 53
+  },
+  {
+    "rule": "MQ7101",
+    "severity": "error",
+    "message": "Seed 'Shape' targets the abstract entity 'Shape'; seed one of its concrete subtypes.",
+    "elementId": "01JVSS00000000000000000001",
+    "filePath": ".maquettiste/model/seeds/shape/shape.json",
+    "jsonPointer": "/target",
+    "line": 6,
+    "column": 13
+  },
+  {
+    "rule": "MQ7005",
+    "severity": "error",
+    "message": "The column '01JVSE00000000000000000021' names neither a field nor an end of reference-type 'Unit'; remove the stale column.",
+    "elementId": "01JVSS00000000000000000005",
+    "filePath": ".maquettiste/model/seeds/unit/unit.json",
+    "jsonPointer": "/columns/4",
+    "line": 12,
+    "column": 5
+  },
+  {
+    "rule": "MQ7103",
+    "severity": "warning",
+    "message": "Row 01JVSS00000000000000000051 is part of a cycle of required row references, so no insert order exists; the rows keep file order.",
+    "elementId": "01JVSS00000000000000000051",
+    "filePath": ".maquettiste/model/seeds/unit/unit.json",
+    "jsonPointer": "/rows/0",
+    "line": 15,
+    "column": 5
+  },
+  {
+    "rule": "MQ7103",
+    "severity": "warning",
+    "message": "Row 01JVSS00000000000000000052 is part of a cycle of required row references, so no insert order exists; the rows keep file order.",
+    "elementId": "01JVSS00000000000000000052",
+    "filePath": ".maquettiste/model/seeds/unit/unit.json",
+    "jsonPointer": "/rows/1",
+    "line": 16,
+    "column": 5
+  },
+  {
+    "rule": "MQ7004",
+    "severity": "error",
+    "message": "Row 01JVSS00000000000000000053, column 'code': the string is longer than length 4.",
+    "elementId": "01JVSS00000000000000000053",
+    "filePath": ".maquettiste/model/seeds/unit/unit.json",
+    "jsonPointer": "/rows/2/values/0",
+    "line": 17,
+    "column": 54
+  },
+  {
+    "rule": "MQ7002",
+    "severity": "warning",
+    "message": "Code 'KG' of reference type Unit differs only by case from 'kg' (row 01JVSS00000000000000000051).",
+    "elementId": "01JVSS00000000000000000054",
+    "filePath": ".maquettiste/model/seeds/unit/unit.json",
+    "jsonPointer": "/rows/3/values/0",
+    "line": 18,
+    "column": 54
+  },
+  {
+    "rule": "MQ7004",
+    "severity": "error",
+    "message": "Row 01JVSS00000000000000000054, column 'code': the code does not match the pattern ^[a-z]+$.",
+    "elementId": "01JVSS00000000000000000054",
+    "filePath": ".maquettiste/model/seeds/unit/unit.json",
+    "jsonPointer": "/rows/3/values/0",
+    "line": 18,
+    "column": 54
+  },
+  {
+    "rule": "MQ7003",
+    "severity": "error",
+    "message": "Row 01JVSS00000000000000000054, column 'label': a reference row needs a label.",
+    "elementId": "01JVSS00000000000000000054",
+    "filePath": ".maquettiste/model/seeds/unit/unit.json",
+    "jsonPointer": "/rows/3/values/1",
+    "line": 18,
+    "column": 60
+  },
+  {
+    "rule": "MQ7004",
+    "severity": "error",
+    "message": "Row 01JVSS00000000000000000054, column 'factor': the value does not fit decimal: a string on a numeric type.",
+    "elementId": "01JVSS00000000000000000054",
+    "filePath": ".maquettiste/model/seeds/unit/unit.json",
+    "jsonPointer": "/rows/3/values/2",
+    "line": 18,
+    "column": 66
+  },
+  {
+    "rule": "MQ7009",
+    "severity": "error",
+    "message": "Row 01JVSS00000000000000000054, column 'base': 'zz' is not a code of reference type Unit.",
+    "elementId": "01JVSS00000000000000000054",
+    "filePath": ".maquettiste/model/seeds/unit/unit.json",
+    "jsonPointer": "/rows/3/values/3",
+    "line": 18,
+    "column": 75
+  },
+  {
+    "rule": "MQ7103",
+    "severity": "warning",
+    "message": "Row 01JVSS00000000000000000055 is part of a cycle of required row references, so no insert order exists; the rows keep file order.",
+    "elementId": "01JVSS00000000000000000055",
+    "filePath": ".maquettiste/model/seeds/unit/unit.json",
+    "jsonPointer": "/rows/4",
+    "line": 19,
+    "column": 5
+  }
+]

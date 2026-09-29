@@ -23,7 +23,7 @@ Casing (`Casing`, D26) and the inflector (`Inflector`), shared with the renderer
 - Deviations: `Inflector` gained the optional `InflectionSettings` constructor parameter (it had only the implicit parameterless
   constructor); `Casing` gained the members above. Both types stay `internal`. A plural input is left as is by `Pluralize`
   (`people`, `invoices`), and `index` pluralizes to `indices` (override with `inflection.plurals` for `indexes`). Overrides
-  are stored lowercase and take the input's case shape, so `"SalesPerson": "SalesForce"` gives `SalesPerson` → `Salesforce`
+  are stored lowercase and take the input's case shape, so `"SalesPerson": "SalesTeam"` gives `SalesPerson` → `Salesteam`
   (inner word boundaries of an override value are not kept).
 - Consumes: nothing.
 

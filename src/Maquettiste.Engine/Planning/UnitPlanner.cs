@@ -176,6 +176,9 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
             case "each enum": return model.Enums;
             case "each value object": return model.ValueObjects;
             case "each table": return model.Databases.SelectMany(d => d.Tables);
+            case "each reference type": return model.ReferenceTypes;
+            case "each seed": return model.Seeds;
+            case "each locale": return model.Locales;
         }
 
         if (!unit.For.StartsWith("select ", StringComparison.Ordinal))
@@ -315,7 +318,7 @@ internal sealed class UnitFilter
     public UnitFilter(ResolvedModel model)
     {
         _model = model;
-        foreach (var category in model.Source.Categories?.Categories ?? [])
+        foreach (var category in model.Source.CategoryTrees.SelectMany(t => t.Categories))
             _categories.TryAdd(category.Id, category);
         foreach (var table in model.Source.All<Table>())
         {
@@ -397,7 +400,7 @@ internal sealed class UnitFilter
             return table.Attribute is { } attribute ? entity + "." + attribute + "@" + table.Database : entity + "@" + table.Database;
         if (table.Relation is { } relation)
             return relation + "@" + table.Database;
-        return table.Enum is { } enumId ? enumId + "@" + table.Database : null;
+        return null;
     }
 
     private bool InDatabase(IResolvedObject? element, string database) => element switch

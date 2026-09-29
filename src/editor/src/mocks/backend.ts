@@ -8,6 +8,7 @@ import { MockRealtime } from "@/realtime/mock";
 import { MockModel } from "./model/store";
 import { MockGeneration } from "./model/generation";
 import { MockJobQueue, type JobClock } from "./model/jobs";
+import { MockLocalization } from "./model/localization";
 import type { Seed } from "./model/store";
 import { billingSeed, emptySeed, mediumSeed } from "./model/seed";
 import { truncateChangeEvent } from "./wire";
@@ -16,7 +17,7 @@ import { truncateChangeEvent } from "./wire";
  * `?mock=` scenarios. `medium` is the in-browser 200-entity model; `large` is the 5,000-entity model
  * that scripts/gen-scale-model.mjs writes (browser.ts loads it and passes it as `seed`).
  */
-export type Scenario = "conflict" | "slow" | "empty" | "medium" | "large" | "unauthenticated" | "presence" | "invalid";
+export type Scenario = "conflict" | "slow" | "empty" | "medium" | "large" | "unauthenticated" | "presence" | "invalid" | "locales";
 
 export interface MockBackendOptions {
   scenarios?: Scenario[];
@@ -34,6 +35,8 @@ export class MockBackend {
   readonly model: MockModel;
   readonly generation: MockGeneration;
   readonly jobs: MockJobQueue;
+  /** Translations, seed CSV and reference type usage; locales are declared with the `locales` scenario. */
+  readonly localization: MockLocalization;
   readonly scenarios: Set<Scenario>;
   /** Whether the model came from `options.seed` (the large mock), so no engine recording applies. */
   readonly seeded: boolean;
@@ -52,7 +55,7 @@ export class MockBackend {
     this.clock = options.clock ?? { now: () => new Date(), setTimeout: (fn, ms) => setTimeout(fn, ms) };
     this.validationDelay = options.validationDelayMs ?? 150;
     const seed = options.seed ?? (this.scenarios.has("empty") ? emptySeed() : this.scenarios.has("medium") ? mediumSeed() : billingSeed());
-    this.model = new MockModel(seed, {
+    this.model = new MockModel(this.scenarios.has("locales") ? withLocales(seed) : seed, {
       newId,
       onChanged: (changes) => {
         // E5d: each change carries the element's index row as it is now.
@@ -71,6 +74,7 @@ export class MockBackend {
       },
     });
     this.generation = new MockGeneration(this.model, newId);
+    this.localization = new MockLocalization(this.model, this.scenarios.has("locales"), newId);
     this.jobs = new MockJobQueue(
       this.generation,
       this.clock,
@@ -92,6 +96,14 @@ export class MockBackend {
         updatedUtc: this.clock.now().toISOString(),
       });
     }
+  }
+
+  /** Publishes model.changed for a translation write: no element changed, the display names of every affected locale. */
+  publishTranslations(locales: string[]): void {
+    if (locales.length === 0) return;
+    const translations = this.localization.translationsEvent(locales);
+    this.realtime.publish("model.changed", { changed: [], deleted: [], source: "editor", truncated: false, isEmpty: false, translations });
+    this.scheduleValidation();
   }
 
   scheduleValidation(): void {
@@ -116,9 +128,23 @@ export class MockBackend {
   }
 }
 
+/** The `locales` scenario's settings: en (default), fr and fr-CA falling back to fr (RT 3.2). */
+export const MOCK_LOCALIZATION = { defaultLocale: "en", locales: ["en", "fr", "fr-CA"], fallbacks: { "fr-CA": ["fr"] } };
+
+function withLocales(seed: Seed): Seed {
+  const files = seed.files.map((f) => {
+    if (f.path !== "maquettiste.json") return f;
+    const json = JSON.parse(f.text) as Record<string, unknown>;
+    return { ...f, text: JSON.stringify({ ...json, localization: MOCK_LOCALIZATION }, null, 2) + "\n" };
+  });
+  if (!files.some((f) => f.path === "maquettiste.json"))
+    files.push({ path: "maquettiste.json", text: JSON.stringify({ formatVersion: 1, localization: MOCK_LOCALIZATION }) } as (typeof files)[number]);
+  return { ...seed, files };
+}
+
 export function scenariosFrom(search: string): Scenario[] {
   const params = new URLSearchParams(search);
   const all = params.getAll("mock").flatMap((v) => v.split(","));
-  const known: Scenario[] = ["conflict", "slow", "empty", "medium", "large", "unauthenticated", "presence", "invalid"];
+  const known: Scenario[] = ["conflict", "slow", "empty", "medium", "large", "unauthenticated", "presence", "invalid", "locales"];
   return all.filter((v): v is Scenario => (known as string[]).includes(v));
 }

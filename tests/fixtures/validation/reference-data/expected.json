@@ -1,0 +1,182 @@
+[
+  {
+    "rule": "MQ7007",
+    "severity": "error",
+    "message": "The project chooses the storage strategy 'undeclared', which the project does not declare in referenceData.strategies (declared: check, lookup-table).",
+    "elementId": null,
+    "filePath": ".maquettiste/maquettiste.json",
+    "jsonPointer": "/conventions/referenceStorage/strategy",
+    "line": 6,
+    "column": 19
+  },
+  {
+    "rule": "MQ7008",
+    "severity": "error",
+    "message": "Database 'main': the options of strategy 'check' are invalid: 'schema' is not an option of the strategy.",
+    "elementId": null,
+    "filePath": ".maquettiste/maquettiste.json",
+    "jsonPointer": "/databases/main/referenceStorage/options/schema",
+    "line": 14,
+    "column": 21
+  },
+  {
+    "rule": "MQ3019",
+    "severity": "error",
+    "message": "The default of attribute 'size' does not fit reference type Size: 'xxl' is not a code of its rows.",
+    "elementId": "01JVRE00000000000000000012",
+    "filePath": ".maquettiste/model/entities/shirt.json",
+    "jsonPointer": "/attributes/1/default",
+    "line": 25,
+    "column": 18
+  },
+  {
+    "rule": "MQ7011",
+    "severity": "error",
+    "message": "validation.allowedValues of attribute 'fit' names a code that reference type Size does not have: 'zz' is not a code of its rows.",
+    "elementId": "01JVRE00000000000000000013",
+    "filePath": ".maquettiste/model/entities/shirt.json",
+    "jsonPointer": "/attributes/2/validation/allowedValues/1",
+    "line": 36,
+    "column": 11
+  },
+  {
+    "rule": "MQ7011",
+    "severity": "error",
+    "message": "validation.allowedValues of attribute 'fit' names a code that reference type Size does not have: a code of Size is a string, not a number.",
+    "elementId": "01JVRE00000000000000000013",
+    "filePath": ".maquettiste/model/entities/shirt.json",
+    "jsonPointer": "/attributes/2/validation/allowedValues/2",
+    "line": 37,
+    "column": 11
+  },
+  {
+    "rule": "MQ7006",
+    "severity": "error",
+    "message": "Attribute 'sizes' is a collection of Size, but in database 'main' the type is stored with strategy 'check' (chosen by databases.main.referenceStorage), which declares no collection support for postgresql.",
+    "elementId": "01JVRE00000000000000000014",
+    "filePath": ".maquettiste/model/entities/shirt.json",
+    "jsonPointer": "/attributes/3/collection",
+    "line": 47,
+    "column": 21
+  },
+  {
+    "rule": "MQ3019",
+    "severity": "error",
+    "message": "The default of attribute 'colors' does not fit reference type Color: a code of Color is a string, not a number.",
+    "elementId": "01JVRE00000000000000000015",
+    "filePath": ".maquettiste/model/entities/shirt.json",
+    "jsonPointer": "/attributes/4/default",
+    "line": 55,
+    "column": 18
+  },
+  {
+    "rule": "MQ7010",
+    "severity": "error",
+    "message": "Field 'Label' of reference type 'Color' uses a reserved name: code, label and description are built in.",
+    "elementId": "01JVRT00000000000000000004",
+    "filePath": ".maquettiste/model/reference-types/color.json",
+    "jsonPointer": "/attributes/0/name",
+    "line": 17,
+    "column": 15
+  },
+  {
+    "rule": "MQ7010",
+    "severity": "error",
+    "message": "Field 'owner' of reference type 'Color' is typed by an entity; a row stays one flat line, so a field is a built-in, a scalar, an enum or a reference type.",
+    "elementId": "01JVRT00000000000000000005",
+    "filePath": ".maquettiste/model/reference-types/color.json",
+    "jsonPointer": "/attributes/1/type",
+    "line": 24,
+    "column": 15
+  },
+  {
+    "rule": "MQ2002",
+    "severity": "error",
+    "message": "'ref' references '01JVRE00000000000000000001', an entity; expected an enum or value-object or scalar-type or reference-type.",
+    "elementId": "01JVRT00000000000000000005",
+    "filePath": ".maquettiste/model/reference-types/color.json",
+    "jsonPointer": "/attributes/1/type/ref",
+    "line": 25,
+    "column": 16
+  },
+  {
+    "rule": "MQ7008",
+    "severity": "error",
+    "message": "Reference type 'Color': the options of strategy 'lookup-table' are invalid: 'extra' is not an option of the strategy.",
+    "elementId": "01JVRT00000000000000000001",
+    "filePath": ".maquettiste/model/reference-types/color.json",
+    "jsonPointer": "/storage/*/options/extra",
+    "line": 33,
+    "column": 18
+  },
+  {
+    "rule": "MQ7008",
+    "severity": "error",
+    "message": "Reference type 'Color': the options of strategy 'lookup-table' are invalid: 'schema' must be of type string.",
+    "elementId": "01JVRT00000000000000000001",
+    "filePath": ".maquettiste/model/reference-types/color.json",
+    "jsonPointer": "/storage/*/options/schema",
+    "line": 34,
+    "column": 19
+  },
+  {
+    "rule": "MQ7007",
+    "severity": "error",
+    "message": "Reference type 'Color' chooses the storage strategy 'native', which the project does not declare in referenceData.strategies (declared: check, lookup-table).",
+    "elementId": "01JVRT00000000000000000001",
+    "filePath": ".maquettiste/model/reference-types/color.json",
+    "jsonPointer": "/storage/01JVRD00000000000000000001/strategy",
+    "line": 38,
+    "column": 19
+  },
+  {
+    "rule": "MQ2001",
+    "severity": "error",
+    "message": "'storage' references '01JVRD00000000000000000009', which does not exist.",
+    "elementId": "01JVRT00000000000000000001",
+    "filePath": ".maquettiste/model/reference-types/color.json",
+    "jsonPointer": "/storage/01JVRD00000000000000000009",
+    "line": 40,
+    "column": 35
+  },
+  {
+    "rule": "MQ2002",
+    "severity": "error",
+    "message": "'storage' references '01JVRE00000000000000000001', an entity; expected a database.",
+    "elementId": "01JVRT00000000000000000001",
+    "filePath": ".maquettiste/model/reference-types/color.json",
+    "jsonPointer": "/storage/01JVRE00000000000000000001",
+    "line": 43,
+    "column": 35
+  },
+  {
+    "rule": "MQ7001",
+    "severity": "error",
+    "message": "Code 's' of reference type Size is already used by row 01JVRS00000000000000000021 in seed 'ExtraSizes'.",
+    "elementId": "01JVRS00000000000000000011",
+    "filePath": ".maquettiste/model/seeds/size/size.json",
+    "jsonPointer": "/rows/0/values/0",
+    "line": 12,
+    "column": 54
+  },
+  {
+    "rule": "MQ7002",
+    "severity": "warning",
+    "message": "Code 'S' of reference type Size differs only by case from 's' (row 01JVRS00000000000000000021).",
+    "elementId": "01JVRS00000000000000000013",
+    "filePath": ".maquettiste/model/seeds/size/size.json",
+    "jsonPointer": "/rows/2/values/0",
+    "line": 14,
+    "column": 54
+  },
+  {
+    "rule": "MQ7001",
+    "severity": "error",
+    "message": "Code 'm' of reference type Size is already used by row 01JVRS00000000000000000012.",
+    "elementId": "01JVRS00000000000000000014",
+    "filePath": ".maquettiste/model/seeds/size/size.json",
+    "jsonPointer": "/rows/3/values/0",
+    "line": 15,
+    "column": 54
+  }
+]

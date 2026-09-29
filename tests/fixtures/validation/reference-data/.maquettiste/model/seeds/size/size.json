@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../.schema/v1/seed.json",
+  "kind": "seed",
+  "id": "01JVRS00000000000000000001",
+  "name": "Size",
+  "target": "01JVRT00000000000000000011",
+  "columns": [
+    "code",
+    "label"
+  ],
+  "rows": [
+    { "id": "01JVRS00000000000000000011", "values": ["s", "Small"] },
+    { "id": "01JVRS00000000000000000012", "values": ["m", "Medium"] },
+    { "id": "01JVRS00000000000000000013", "values": ["S", "Small again"] },
+    { "id": "01JVRS00000000000000000014", "values": ["m", "Medium again"] }
+  ]
+}

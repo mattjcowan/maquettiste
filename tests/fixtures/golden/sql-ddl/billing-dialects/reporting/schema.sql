@@ -72,6 +72,7 @@ CREATE TABLE dbo.payments (
     amount_currency nvarchar(3) NOT NULL,
     received_at datetimeoffset(6) NOT NULL,
     reference nvarchar(64) NULL,
+    method nvarchar(16) NULL,
     created_at datetimeoffset(6) NOT NULL,
     updated_at datetimeoffset(6) NULL,
     CONSTRAINT pk_payments PRIMARY KEY (id)

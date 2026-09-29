@@ -89,6 +89,8 @@ internal static class CanonicalCheck
 
             case JsonValueKind.Array:
             {
+                if (layout.RowPerLine || layout.TrimTrailingNulls)
+                    return false; // the node-based writer decides the row layout and the trim
                 var itemLayout = layout.Items ?? ObjectLayout.FreeForm;
                 writer.WriteStartArray();
                 if (layout.SortKey is { } sortKey)

@@ -115,13 +115,13 @@ public sealed class ModelStoreTests
     {
         await using var s = await BillingStore.OpenAsync();
         var customer = s.Doc("entity", "Customer");
-        var onDisk = BillingStore.Edit(customer, n => n["displayName"] = "Edited in VS Code");
+        var onDisk = BillingStore.Edit(customer, n => n["displayName"] = "Edited in another editor");
         s.Harness.Write("model/entities/customer.json", Encoding.UTF8.GetString(TestServices.Json.Write(JsonNode.Parse(onDisk)!, "entity.json", customer.Path)));
 
         var result = await s.Store.SaveAsync(customer.Element.Id, BillingStore.Edit(customer, n => n["displayName"] = "Mine"), customer.Hash, ChangeSource.Editor, Ct);
 
         Assert.Equal(SaveOutcome.Conflict, result.Outcome);
-        Assert.Equal("Edited in VS Code", result.Current!.Element.DisplayName);
+        Assert.Equal("Edited in another editor", result.Current!.Element.DisplayName);
         Assert.Equal(ContentHash.Of(File.ReadAllBytes(s.Harness.Model("model/entities/customer.json"))), result.Hash);
         var seen = Assert.Single(s.Notifications); // the store indexed the disk edit on the way
         Assert.Equal(ChangeSource.Disk, seen.Source);

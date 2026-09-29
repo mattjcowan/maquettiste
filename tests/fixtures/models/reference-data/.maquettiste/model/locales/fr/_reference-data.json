@@ -1,0 +1,22 @@
+{
+  "$schema": "../../../.schema/v1/locale.json",
+  "kind": "locale-shard",
+  "locale": "fr",
+  "scope": "reference-data",
+  "entries": {
+    "01JBM9S346Q3D25VT4F5V37E3S": {
+      "displayName": "Unité de mesure",
+      "pluralName": "Unités de mesure",
+      "src": {
+        "displayName": "5c1e9a02",
+        "pluralName": "0d4b7e11"
+      }
+    },
+    "01JBS3C4DWA7N36096Q14DR9GP": {
+      "label": "Kilogramme",
+      "src": {
+        "label": "a93f0d7b"
+      }
+    }
+  }
+}

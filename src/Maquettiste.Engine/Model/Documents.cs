@@ -25,7 +25,11 @@ public sealed record IndexEntry(string Id, string OwnerId, string Kind, string J
 /// <param name="JsonPointer">The pointer to the reference value (including the list index for list references).</param>
 /// <param name="Field">The JSON property name holding the reference.</param>
 /// <param name="ToId">The referenced id.</param>
-public sealed record ReferenceInfo(string FromElementId, string FromId, string JsonPointer, string Field, string ToId);
+/// <param name="Owning">Whether the referrer belongs to the referenced element (a seed's <c>target</c>): an owning reference never
+/// refuses the target's delete, which deletes the referrer with it (reference-types-seeds-localization.md section 2.7). Left out of
+/// the JSON when false.</param>
+public sealed record ReferenceInfo(string FromElementId, string FromId, string JsonPointer, string Field, string ToId,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool Owning = false);
 
 /// <summary>A summary of one element, for explorers and indexes.</summary>
 /// <param name="Id">The element id.</param>
@@ -42,6 +46,10 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// <param name="Entity">The entity a mapping maps or a table overlay applies to, when it has one (E5).</param>
 /// <param name="MemberCount">The number of members, on diagram rows (E5).</param>
 /// <param name="Ends">The relation's ends in document order, on relation rows (E5).</param>
+/// <param name="Target">The id of the entity, relation or reference type a seed holds rows for, on seed rows.</param>
+/// <param name="RowCount">The number of rows, on seed rows.</param>
+/// <param name="FieldCount">The number of user fields, on reference type rows.</param>
+/// <param name="Base">The base entity's id, on entity rows that have one (E5h: base and derived entities in related-element highlighting).</param>
 /// <remarks>
 /// The E5 members are left out of the JSON when they are <see langword="null"/>, so rows of other kinds cost nothing. Equality compares
 /// the lists by their items, so two indexes built from the same documents are equal whatever lists they hold.
@@ -52,7 +60,11 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Database = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Entity = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? MemberCount = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<RelationEndSummary>? Ends = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<RelationEndSummary>? Ends = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Target = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? RowCount = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? FieldCount = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Base = null)
 {
     /// <inheritdoc/>
     public bool Equals(ElementSummary? other) =>
@@ -70,6 +82,10 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
         && string.Equals(Database, other.Database, StringComparison.Ordinal)
         && string.Equals(Entity, other.Entity, StringComparison.Ordinal)
         && MemberCount == other.MemberCount
+        && string.Equals(Target, other.Target, StringComparison.Ordinal)
+        && RowCount == other.RowCount
+        && FieldCount == other.FieldCount
+        && string.Equals(Base, other.Base, StringComparison.Ordinal)
         && (ReferenceEquals(Ends, other.Ends) || (Ends is not null && other.Ends is not null && Ends.SequenceEqual(other.Ends)));
 
     /// <inheritdoc/>

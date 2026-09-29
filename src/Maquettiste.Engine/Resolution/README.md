@@ -149,3 +149,34 @@ benchmark model is byte-identical before and after these changes (331,184 object
   collection). `ResolveRun.Run` empties the bag when it returns or throws (`ConcurrentBag.Clear`: 4 to 8 ms for 330,000 objects,
   median 5 ms over eleven runs of a micro-benchmark); `ResolverRetentionTests` checks that a dropped resolved model is reclaimed by the next
   collection, sequential and parallel.
+
+## Reference data (RT step 3: reference-types-seeds-localization.md sections 1.4, 1.5 and 2.5)
+
+- `ResolveRun.ReferenceData.cs` resolves reference types before value objects and entities (every type exists before any field or
+  attribute resolves, so a self-referencing type works), and seeds, rows and reference usages after `FinishConceptual` (they read
+  flattened attributes and ends). The engine models intent only: a storage choice is a project strategy key or null
+  (template-defined, the default); no lookup table, CHECK, FK or native type is ever synthesized.
+- Effective choice per (type, database): the type's entry for the database id, its `*` entry, `databases.<name>.referenceStorage`,
+  `conventions.referenceStorage`, else none; `RStorageChoice.Source` is `type`, `database`, `project` or null.
+- A single-valued reference attribute maps to one column of type `reference` (`RColumn.ReferenceType`, `CodeType`, `Strategy`; the
+  code's length rides along and the native type is the code's); a collection maps to no column and no child table and is listed in
+  `REntityMapping.TemplateDefined` / `RRelationMapping.TemplateDefined` (an attribute mapping with `ignore` leaves it out). Only
+  direct attributes are listed: a reference collection inside an embedded value object is skipped silently (no column either).
+- Dependency keys (deviation from the design's wording "a reference type's `e:` key plus the `e:` keys of its seeds"): the
+  `RReferenceType` object carries its own element keys only; the seeds' keys sit on the objects that expose rows (`rows`
+  membership, each `RRow` and `RSeedRow`, `RReferenceUsage`), so a unit that reads only a type's name or code facets does not
+  re-render when a row changes. `RReferenceUsage` and `RStorageChoice` are resolved objects with their own keys for the same reason.
+- `Find(rowId)` returns the `RRow` for a reference-type row (its `RSeedRow` twin is not registered) and the `RSeedRow` otherwise.
+- `refs` maps are built lazily on first read (thread-safe) and capture only the reference types' code maps and the seed-row map;
+  `json` refuses resolved objects, so `json row.values` never follows a row reference.
+- Orders: `OrderedRows` is Kahn's algorithm over in-seed references with ties by file order (a cycle is broken at its first
+  remaining row in file order); `SeedsInOrder` sorts by (depth over cross-seed references, back edges of a cycle ignored, name, id).
+
+## One database at a time (explorer step 13, E5c and E5f)
+
+`ResolveRun.RunOneDatabase` (`ModelResolver.ResolveDatabaseAsync`, internal) resolves the conceptual layer and one database's run
+only, for the editor's table summaries and table detail (`Editor/DatabaseTables.cs`). A database run reads the conceptual layer and its
+own files; what earlier database runs add (relation dependency keys in `FinishRelationMappings`) and what runs after the databases
+(`FinishConceptual`, seeds, usages, the dependency freeze) shape no table, so they are skipped and dependency lists stay unset. The
+tables are those of `Run` (tests compare every `TableView` on the fixture model and the bench's synthetic model). Generation always
+uses the whole-model `Run`. Numbers: explorer-redesign.md section 4.5 (`bench time-tables`).

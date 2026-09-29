@@ -2,11 +2,12 @@
 // for the columns; arrow keys move, Enter or F2 edits (Enter again commits and saves), Escape
 // cancels, Tab moves right, Ctrl+Enter adds a row, Ctrl+Delete removes one. Edits go through the
 // element's draft, so the canvas card changes as you type.
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { KeyRound, Plus, Trash2 } from "lucide-react";
 import type { AttributeDoc, ElementSummary, EntityDoc, ModelJson } from "@/api/types";
-import { BUILTIN_TYPES, isBuiltin } from "@/model/model";
+import { isBuiltin } from "@/model/model";
+import { TypePicker, type TypePick } from "./TypePicker";
 import { newId } from "@/lib/ids";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,11 @@ export interface AttributeGridProps {
   attributes: AttributeDoc[];
   keyIds?: string[];
   typeOptions: ElementSummary[];
+  /** Go to definition on a type cell (F12, Ctrl/Cmd+click; inspector/definition.ts); true when handled. */
+  definition?: {
+    onKey(target: string | undefined, e: KeyboardEvent<HTMLElement>): boolean;
+    onClick(target: string | undefined, e: MouseEvent<HTMLElement>): boolean;
+  };
   diagnostics?: Diagnostic[];
   pointerBase?: string;
   onChange: (update: (json: ModelJson) => void, commit: boolean) => void;
@@ -50,8 +56,14 @@ function typeValue(a: AttributeDoc): string {
 
 function display(a: AttributeDoc, key: ColumnKey, typeOptions: ElementSummary[]): string {
   switch (key) {
-    case "type":
-      return isBuiltin(a.type) ? a.type : (typeOptions.find((t) => t.id === typeRefId(a))?.name ?? "?");
+    case "type": {
+      const many = a.collection ? "[]" : "";
+      if (isBuiltin(a.type)) return a.type + many;
+      const t = typeOptions.find((o) => o.id === typeRefId(a));
+      if (!t) return "?";
+      // A reference-typed attribute shows `→ Unit of measure` (RT 1.9).
+      return t.kind === "reference-type" ? `→ ${t.displayName || t.name}${many}` : t.name + many;
+    }
     case "default":
       return a.default === undefined ? "" : typeof a.default === "string" ? a.default : JSON.stringify(a.default);
     case "length":
@@ -85,6 +97,7 @@ export function AttributeGrid({
   pointerBase = "/attributes",
   onChange,
   withKey = true,
+  definition,
 }: AttributeGridProps) {
   const columns = useMemo(() => COLUMNS.filter((c) => withKey || c.key !== "key"), [withKey]);
   const table = useReactTable({
@@ -157,6 +170,25 @@ export function AttributeGrid({
     }, commit);
   };
 
+  const applyType = (row: number, pick: TypePick) => {
+    const id = attributes[row]?.id;
+    onChange((json) => {
+      const a = ((json as { attributes?: AttributeDoc[] }).attributes ?? []).find((x) => x.id === id);
+      if (!a) return;
+      const v = pick.value;
+      a.type = v.startsWith("ref:") ? { ref: v.slice(4) } : (v as AttributeDoc["type"]);
+      if (a.type !== "string" && a.type !== "binary") delete a.length;
+      if (a.type !== "decimal") {
+        delete a.precision;
+        delete a.scale;
+      }
+      if (pick.collection) a.collection = true;
+      else delete a.collection;
+      if (pick.required) a.required = true;
+      else delete a.required;
+    }, true);
+  };
+
   const addRow = () => {
     const id = newId();
     const used = new Set(attributes.map((a) => a.name));
@@ -214,6 +246,7 @@ export function AttributeGrid({
 
   const onCellKeyDown = (e: KeyboardEvent<HTMLElement>, row: number, col: number) => {
     if (editing) return;
+    if (columns[col]?.kind === "type" && attributes[row] && definition?.onKey(typeRefId(attributes[row]), e)) return;
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
       e.preventDefault();
       addRow();
@@ -303,7 +336,11 @@ export function AttributeGrid({
                         tabIndex={isActive && !isEditing ? 0 : -1}
                         aria-selected={isActive}
                         aria-invalid={invalid || undefined}
-                        onClick={() => setActive({ row: r, col: c })}
+                        onClick={(e) => {
+                          if (column.kind === "type" && !isEditing && definition?.onClick(typeRefId(a), e)) return;
+                          setActive({ row: r, col: c });
+                        }}
+                        title={column.kind === "type" && typeRefId(a) ? "F12 or Ctrl+click: go to the type" : undefined}
                         onDoubleClick={() => startEdit(r, c)}
                         onKeyDown={(e) => onCellKeyDown(e, r, c)}
                         className={cn(
@@ -316,25 +353,25 @@ export function AttributeGrid({
                       >
                         {isEditing ? (
                           column.kind === "type" ? (
-                            <select
-                              aria-label={`Type of ${a.name}`}
-                              className="h-6 w-full rounded-[4px] border border-input bg-surface font-mono text-12"
-                              value={editing.value}
-                              onChange={(e) => setEditing({ value: e.target.value })}
-                              onKeyDown={onEditorKeyDown}
-                              onBlur={() => commit("blur")}
-                            >
-                              {BUILTIN_TYPES.map((t) => (
-                                <option key={t} value={t}>
-                                  {t}
-                                </option>
-                              ))}
-                              {typeOptions.map((t) => (
-                                <option key={t.id} value={`ref:${t.id}`}>
-                                  {t.name}
-                                </option>
-                              ))}
-                            </select>
+                            <TypePicker
+                              label={`Type of ${a.name}`}
+                              value={typeValue(a)}
+                              collection={a.collection === true}
+                              required={a.required === true}
+                              options={typeOptions}
+                              onPick={(pick, move) => {
+                                applyType(r, pick);
+                                setEditing(null);
+                                if (move === "down") focusCell(Math.min(attributes.length - 1, r + 1), c);
+                                else if (move === "right") focusCell(r, Math.min(columns.length - 1, c + 1));
+                                else if (move === "left") focusCell(r, Math.max(0, c - 1));
+                                else focusCell(r, c);
+                              }}
+                              onCancel={(refocus) => {
+                                setEditing(null);
+                                if (refocus) focusCell(r, c);
+                              }}
+                            />
                           ) : (
                             <input
                               aria-label={`${column.label} of ${a.name}`}

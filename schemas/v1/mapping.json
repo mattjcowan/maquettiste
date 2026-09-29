@@ -102,7 +102,7 @@
             "$ref": "common.json#/$defs/id"
           },
           "storage": {
-            "enum": ["int", "string", "lookup", "embedded", "table", "json"]
+            "enum": ["int", "string", "embedded", "table", "json"]
           },
           "prefix": {
             "type": "string"

@@ -8,14 +8,15 @@ import { Background, Controls, MiniMap, ReactFlow, ReactFlowProvider, useNodesIn
 import { Download, LayoutGrid } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/menu";
 import { exportCanvas } from "@/canvas/export";
-import { useDatabaseView, usePreview, useProject } from "@/api/queries";
+import { useDatabaseTables, useDatabaseView, usePreview, useProject } from "@/api/queries";
 import type { DatabaseDoc } from "@/api/types";
 import { useEditor } from "@/state/store";
 import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
 import { Toolbar, EmptyState, Spinner } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/input";
+import { Input, Select } from "@/components/ui/input";
+import { filterTables } from "./tableList";
 import { CodeView } from "@/code";
 import { TableNode, type TableFlowNode } from "@/canvas/TableNode";
 import { ForeignKeyEdge, type ForeignKeyFlowEdge } from "@/canvas/ForeignKeyEdge";
@@ -53,7 +54,10 @@ function DatabaseCanvas() {
 
   const view = useDatabaseView(activeDatabase);
   const database = useDraftDocument(activeDatabase);
-  const [selectedTable, setSelectedTable] = useState<string | null>(null);
+  // The focused table lives in the store: the explorer's Open sets it before this screen mounts (1.3).
+  const selectedTable = useEditor(store, (s) => s.databaseTable);
+  const setSelectedTable = useCallback((key: string | null) => store.getState().setDatabaseTable(key), [store]);
+  const shownDatabase = useRef(activeDatabase);
   const [positions, setPositions] = useState<StoredPositions>({});
   const [dragging, setDragging] = useState<StoredPositions>({});
   const [measured, setMeasured] = useState<Record<string, { width: number; height: number }>>({});
@@ -61,8 +65,10 @@ function DatabaseCanvas() {
 
   useEffect(() => {
     if (activeDatabase) setPositions(loadPositions(`db.${activeDatabase}`));
-    setSelectedTable(null);
-  }, [activeDatabase]);
+    // Another database: its own tables, none focused.
+    if (shownDatabase.current && shownDatabase.current !== activeDatabase) setSelectedTable(null);
+    shownDatabase.current = activeDatabase;
+  }, [activeDatabase, setSelectedTable]);
 
   const tables = useMemo(() => view.data?.view?.tables ?? [], [view.data]);
   const nodes: TableFlowNode[] = useMemo(
@@ -105,7 +111,7 @@ function DatabaseCanvas() {
       const entityId = tables.find((t) => t.key === key)?.entityId;
       if (entityId) select([entityId]);
     },
-    [select, tables],
+    [select, tables, setSelectedTable],
   );
 
   const layout = useCallback(async () => {
@@ -157,6 +163,26 @@ function DatabaseCanvas() {
     },
     [activeDatabase, pickTable],
   );
+
+  // A table opened from the explorer or the table list: selected, its DDL shown and the canvas centred on it.
+  const centred = useRef<string | null>(null);
+  const focusTable = useCallback(
+    (key: string) => {
+      pickTable(key);
+      centred.current = key;
+      requestAnimationFrame(() => void flow.fitView({ nodes: [{ id: key }], padding: 0.4, maxZoom: 1.2 }));
+    },
+    [pickTable, flow],
+  );
+  useEffect(() => {
+    if (!selectedTable || centred.current === selectedTable || !initialized || !tables.some((t) => t.key === selectedTable)) return;
+    focusTable(selectedTable);
+  }, [selectedTable, tables, initialized, focusTable]);
+
+  // The table section (1.3): the table summaries (E5c) with a filter, capped so a 10,000-table database stays quick.
+  const summaries = useDatabaseTables(activeDatabase);
+  const [tableFilter, setTableFilter] = useState("");
+  const listed = useMemo(() => filterTables(summaries.data?.tables ?? [], tableFilter), [summaries.data, tableFilter]);
 
   const hasPack = (project.data?.packs ?? []).some((p) => p.name === "sql-ddl");
   const table = tables.find((t) => t.key === selectedTable) ?? null;
@@ -219,6 +245,32 @@ function DatabaseCanvas() {
         <span className="ml-auto text-12 text-secondary">{tables.length} tables</span>
       </Toolbar>
       <div className="flex min-h-0 flex-1">
+        <section className="flex w-56 shrink-0 flex-col border-r border-default bg-surface" aria-label="Tables" data-testid="database-tables">
+          <div className="border-b border-default p-2">
+            <Input type="search" aria-label="Filter tables" placeholder="Filter tables" value={tableFilter} onChange={(e) => setTableFilter(e.target.value)} />
+          </div>
+          <ul className="min-h-0 flex-1 overflow-auto py-1 text-12" aria-label="Table list">
+            {listed.tables.map((t) => (
+              <li key={t.key}>
+                <button
+                  type="button"
+                  className={`flex w-full items-baseline gap-2 px-3 py-0.5 text-left hover:bg-accent-subtle ${selectedTable === t.key ? "bg-accent-subtle font-medium" : ""}`}
+                  aria-current={selectedTable === t.key ? "true" : undefined}
+                  onClick={() => focusTable(t.key)}
+                  data-testid={`database-table-${t.name}`}
+                >
+                  <span className="truncate">{t.schema ? `${t.schema}.${t.name}` : t.name}</span>
+                  <span className="ml-auto shrink-0 text-11 text-secondary">{t.columnCount}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="border-t border-default px-3 py-1 text-11 text-secondary" data-testid="database-tables-count">
+            {listed.more > 0
+              ? `${listed.tables.length} of ${listed.total} shown; refine the filter`
+              : `${listed.total} ${listed.total === 1 ? "table" : "tables"}${tableFilter ? " match" : ""}`}
+          </p>
+        </section>
         <div className="relative min-w-0 flex-1" role="region" aria-label="Table diagram">
           <MarkerDefs />
           {view.isPending ? <Spinner label="Resolving tables" /> : null}

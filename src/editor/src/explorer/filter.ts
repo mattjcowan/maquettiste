@@ -1,57 +1,194 @@
-// Explorer filtering and grouping, kept pure for tests.
+// The explorer's filter state and its predicates (explorer-redesign.md 3.2). The search worker (search/engine.ts)
+// answers which rows match; the tree (explorer/tree.ts) walks the matches and their ancestors (`filteredRows`).
+// `rowPredicate` is the same test on one index row for code that has no worker at hand; the worker builds its chip
+// tests from the builders below. Scopes are named sets of chips (per user in localStorage, or for the team in
+// maquettiste.json `explorer.scopes`); the pinned filter keeps one explorer's filter across reloads.
 import type { ElementSummary } from "@/api/types";
-import { KIND_ORDER, displayName } from "@/model/model";
+import { displayName } from "@/model/model";
+import { parseQuery, termMatcher } from "@/search/query";
 
 export interface ExplorerFilter {
   text: string;
+  /** Element kinds, any of. */
+  kinds: string[];
+  /** A domain id: the domain and its sub-domains. */
+  domain: string | null;
   tags: string[];
+  /** Category-tree node ids, any of; each includes its descendants. */
   categories: string[];
   stereotypes: string[];
+  /** Only elements with validation errors. */
+  errors: boolean;
+  /** A diagram id: only its members. */
+  diagram: string | null;
 }
 
-export const emptyFilter: ExplorerFilter = { text: "", tags: [], categories: [], stereotypes: [] };
+export const emptyFilter: ExplorerFilter = {
+  text: "",
+  kinds: [],
+  domain: null,
+  tags: [],
+  categories: [],
+  stereotypes: [],
+  errors: false,
+  diagram: null,
+};
 
-export function matches(row: ElementSummary, filter: ExplorerFilter): boolean {
-  if (filter.text && !displayName(row).toLowerCase().includes(filter.text.toLowerCase())) return false;
-  if (filter.tags.length && !filter.tags.some((t) => row.tags.includes(t))) return false;
-  if (filter.categories.length && !(row.category && filter.categories.includes(row.category))) return false;
-  if (filter.stereotypes.length && !filter.stereotypes.some((s) => row.stereotypes.includes(s))) return false;
-  return true;
+/** The number of active chips (the count on the filter button). */
+export function chipCount(f: ExplorerFilter): number {
+  return f.kinds.length + (f.domain ? 1 : 0) + f.tags.length + f.categories.length + f.stereotypes.length + (f.errors ? 1 : 0) + (f.diagram ? 1 : 0);
 }
 
-export type ExplorerRow =
-  { type: "group"; key: string; label: string; count: number; collapsed: boolean } | { type: "element"; key: string; summary: ElementSummary };
+/** Whether any condition is set. */
+export function isFiltering(filter: ExplorerFilter): boolean {
+  return !!filter.text.trim() || chipCount(filter) > 0;
+}
 
-/** Rows grouped by package (packages by name, then elements without a package), kinds in explorer order. */
-export function explorerRows(rows: ElementSummary[], filter: ExplorerFilter, collapsed: Set<string>): ExplorerRow[] {
-  const packages = new Map(rows.filter((r) => r.kind === "package").map((p) => [p.id, p]));
-  const groups = new Map<string, ElementSummary[]>();
-  for (const row of rows) {
-    if (!matches(row, filter)) continue;
-    const key = row.kind === "package" ? (row.package ?? row.id) : (row.package ?? "");
-    const groupKey = row.kind === "package" ? row.id : key;
-    const list = groups.get(groupKey) ?? [];
-    list.push(row);
-    groups.set(groupKey, list);
+/** A filter read from storage or settings, with every member present and typed. */
+export function normalizeFilter(value: unknown): ExplorerFilter {
+  const v = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  const list = (x: unknown) => (Array.isArray(x) ? x.filter((s): s is string => typeof s === "string" && s.length > 0) : []);
+  const id = (x: unknown) => (typeof x === "string" && x ? x : null);
+  return {
+    text: typeof v.text === "string" ? v.text : "",
+    kinds: list(v.kinds),
+    domain: id(v.domain),
+    tags: list(v.tags),
+    categories: list(v.categories),
+    stereotypes: list(v.stereotypes),
+    errors: v.errors === true,
+    diagram: id(v.diagram),
+  };
+}
+
+// ------------------------------------------------------------------ scopes
+
+/** A named set of chips: the shape of maquettiste.json `explorer.scopes` items (text is not part of a scope). */
+export interface FilterScope {
+  name: string;
+  kinds: string[];
+  domain: string | null;
+  tags: string[];
+  stereotypes: string[];
+  categories: string[];
+  errors: boolean;
+  diagram: string | null;
+}
+
+/** The chips of a filter saved under a name. */
+export function scopeOf(name: string, f: ExplorerFilter): FilterScope {
+  return {
+    name,
+    kinds: [...f.kinds],
+    domain: f.domain,
+    tags: [...f.tags],
+    stereotypes: [...f.stereotypes],
+    categories: [...f.categories],
+    errors: f.errors,
+    diagram: f.diagram,
+  };
+}
+
+/** A scope applied: its chips replace the filter's, the search text stays. */
+export function applyScope(f: ExplorerFilter, scope: Partial<FilterScope>): ExplorerFilter {
+  const n = normalizeFilter(scope);
+  return { ...n, text: f.text };
+}
+
+/** Whether two filters carry the same chips (the scope picker marks the scope in use). */
+export function sameChips(a: ExplorerFilter, b: ExplorerFilter): boolean {
+  const same = (x: readonly string[], y: readonly string[]) => x.length === y.length && [...x].sort().join("\u0000") === [...y].sort().join("\u0000");
+  return (
+    same(a.kinds, b.kinds) &&
+    a.domain === b.domain &&
+    same(a.tags, b.tags) &&
+    same(a.categories, b.categories) &&
+    same(a.stereotypes, b.stereotypes) &&
+    a.errors === b.errors &&
+    a.diagram === b.diagram
+  );
+}
+
+// ------------------------------------------------------------------ predicate builders
+
+/** Kind: any of the kind ids; undefined when no kind is asked. */
+export function kindTest(kinds: readonly string[]): ((kind: string) => boolean) | undefined {
+  if (!kinds.length) return undefined;
+  const set = new Set(kinds);
+  return (kind) => set.has(kind);
+}
+
+/**
+ * Domain scope: a package id is in scope when it is the domain or nested under it. `parentOf` gives a package's
+ * parent package. The walk is memoized and guarded against cycles.
+ */
+export function domainTest(domain: string, parentOf: (id: string) => string | null | undefined): (pkg: string | null | undefined) => boolean {
+  const memo = new Map<string, boolean>([[domain, true]]);
+  const inScope = (pkg: string | null | undefined): boolean => {
+    if (!pkg) return false;
+    const known = memo.get(pkg);
+    if (known !== undefined) return known;
+    memo.set(pkg, false);
+    const hit = inScope(parentOf(pkg));
+    memo.set(pkg, hit);
+    return hit;
+  };
+  return inScope;
+}
+
+/** Category subtree: the chosen nodes and every descendant, from a node → parent map. */
+export function categoryScope(ids: readonly string[], parents: ReadonlyMap<string, string | null>): Set<string> {
+  const wanted = new Set(ids);
+  const out = new Set(ids);
+  for (const node of parents.keys()) {
+    for (let p: string | null | undefined = node, guard = 0; p && guard < 64; p = parents.get(p), guard++) {
+      if (wanted.has(p)) {
+        out.add(node);
+        break;
+      }
+    }
   }
-  const order = [...groups.keys()].sort((a, b) => {
-    if (a === "") return 1;
-    if (b === "") return -1;
-    return (packages.get(a)?.name ?? a).localeCompare(packages.get(b)?.name ?? b);
-  });
-  const out: ExplorerRow[] = [];
-  for (const key of order) {
-    const items = groups.get(key)!.sort((a, b) => {
-      if (a.kind === "package") return -1;
-      if (b.kind === "package") return 1;
-      const k = KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind);
-      return k !== 0 ? k : displayName(a).localeCompare(displayName(b));
-    });
-    const label = key === "" ? "Project" : (packages.get(key)?.name ?? "(unknown package)");
-    const isCollapsed = collapsed.has(key);
-    out.push({ type: "group", key: `group:${key}`, label, count: items.filter((i) => i.kind !== "package").length, collapsed: isCollapsed });
-    if (isCollapsed) continue;
-    for (const summary of items) if (summary.kind !== "package") out.push({ type: "element", key: summary.id, summary });
-  }
+  return out;
+}
+
+/** What the chip predicates need besides the rows: none of it is on an index row. */
+export interface FilterContext {
+  byId?: ReadonlyMap<string, ElementSummary>;
+  /** Category node → parent node. */
+  categoryParents?: ReadonlyMap<string, string | null>;
+  /** Elements with validation errors. */
+  errorIds?: ReadonlySet<string>;
+  /** The chosen diagram's members. */
+  diagramMembers?: ReadonlySet<string>;
+}
+
+/** The row test of a filter: the search term and every chip. */
+export function rowPredicate(filter: ExplorerFilter, ctx: FilterContext = {}): (row: ElementSummary) => boolean {
+  const match = termMatcher(parseQuery(filter.text));
+  const kind = kindTest(filter.kinds);
+  const domain = filter.domain ? domainTest(filter.domain, (id) => ctx.byId?.get(id)?.package) : undefined;
+  const categories = filter.categories.length ? categoryScope(filter.categories, ctx.categoryParents ?? new Map()) : undefined;
+  return (row) => {
+    if (match && !match(displayName(row).toLowerCase()) && !(row.displayName && match(row.displayName.toLowerCase()))) return false;
+    if (kind && !kind(row.kind)) return false;
+    if (domain && !domain(row.kind === "package" ? row.id : row.package)) return false;
+    if (filter.tags.length && !filter.tags.some((t) => row.tags.includes(t))) return false;
+    if (categories && !(row.category && categories.has(row.category))) return false;
+    if (filter.stereotypes.length && !filter.stereotypes.some((s) => row.stereotypes.includes(s))) return false;
+    if (filter.errors && !ctx.errorIds?.has(row.id)) return false;
+    if (filter.diagram && !ctx.diagramMembers?.has(row.id)) return false;
+    return true;
+  };
+}
+
+export function matches(row: ElementSummary, filter: ExplorerFilter, ctx?: FilterContext): boolean {
+  return rowPredicate(filter, ctx)(row);
+}
+
+/** The ids of the rows that match. */
+export function matchingIds(rows: Iterable<ElementSummary>, filter: ExplorerFilter, ctx?: FilterContext): string[] {
+  const test = rowPredicate(filter, ctx);
+  const out: string[] = [];
+  for (const row of rows) if (test(row)) out.push(row.id);
   return out;
 }

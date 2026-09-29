@@ -3,7 +3,7 @@
   "database": "01M34AZ3RECQSPQQX1DXTCN03G",
   "name": "main",
   "dialect": "postgresql",
-  "revision": 1,
+  "revision": 2,
   "tables": [
     {
       "key": "01M1D4CTN6F0HS5SZQC5VH8H2N@01M34AZ3RECQSPQQX1DXTCN03G",
@@ -9189,49 +9189,6 @@
       ]
     },
     {
-      "key": "01M1YZSXAHNTHBXBK0QRA5MQ08@01M34AZ3RECQSPQQX1DXTCN03G",
-      "name": "shipment_statuses",
-      "schema": "northwind",
-      "columns": [
-        {
-          "key": "id",
-          "name": "id",
-          "type": "int32",
-          "nativeType": "integer"
-        },
-        {
-          "key": "code",
-          "name": "code",
-          "type": "string",
-          "length": 7,
-          "nativeType": "varchar(7)"
-        },
-        {
-          "key": "name",
-          "name": "name",
-          "type": "string",
-          "length": 17,
-          "nativeType": "varchar(17)"
-        }
-      ],
-      "primaryKey": {
-        "key": "pk",
-        "name": "pk_shipment_statuses",
-        "columns": [
-          "id"
-        ]
-      },
-      "uniques": [
-        {
-          "key": "uq:code",
-          "name": "uq_shipment_statuses_code",
-          "columns": [
-            "code"
-          ]
-        }
-      ]
-    },
-    {
       "key": "01M1Z07H8911C6G8XMGB68QRV0@01M34AZ3RECQSPQQX1DXTCN03G",
       "name": "standing_order_lines",
       "schema": "northwind",
@@ -9646,9 +9603,12 @@
         {
           "key": "01M29DN2SH7797NZQ6X169SD1T",
           "name": "status",
-          "type": "int32",
-          "nativeType": "integer",
-          "default": 0
+          "type": "reference",
+          "length": 8,
+          "nativeType": "varchar(8)",
+          "default": "DRAFT",
+          "referenceType": "01M2JJ5Q30GQ85ZTTVZ8WV2PRS",
+          "strategy": "lookup-table"
         },
         {
           "key": "01M2X53ZQBNVDF7ARG6CHB2582",
@@ -9965,17 +9925,6 @@
             "01M2PABG7Q90DK6CTHZNFWHW3A"
           ],
           "onDelete": "set-null"
-        },
-        {
-          "key": "fk:01M29DN2SH7797NZQ6X169SD1T->01M2YW6JHEB1CVE5XWYKQ1MYBG@01M34AZ3RECQSPQQX1DXTCN03G(id)",
-          "name": "fk_products_status",
-          "columns": [
-            "01M29DN2SH7797NZQ6X169SD1T"
-          ],
-          "referencedTable": "01M2YW6JHEB1CVE5XWYKQ1MYBG@01M34AZ3RECQSPQQX1DXTCN03G",
-          "referencedColumns": [
-            "id"
-          ]
         },
         {
           "key": "fk:01M2X4CKSJ5HRPRN9S9FRWNQYT.01M2PWSXTNBTHGS6VWVP2NSQNS->01M2124S65JEY623MSBN0P9FVJ@01M34AZ3RECQSPQQX1DXTCN03G(01M2PWSXTNBTHGS6VWVP2NSQNS)",
@@ -16979,17 +16928,21 @@
         {
           "key": "01M31PGH01CBG78W89NC2GRCV6",
           "name": "from_status",
-          "type": "string",
+          "type": "reference",
           "length": 8,
           "nativeType": "varchar(8)",
-          "nullable": true
+          "nullable": true,
+          "referenceType": "01M2JJ5Q30GQ85ZTTVZ8WV2PRS",
+          "strategy": "lookup-table"
         },
         {
           "key": "01M23RBH1DCVYSB7GF6057PSGM",
           "name": "to_status",
-          "type": "string",
+          "type": "reference",
           "length": 8,
-          "nativeType": "varchar(8)"
+          "nativeType": "varchar(8)",
+          "referenceType": "01M2JJ5Q30GQ85ZTTVZ8WV2PRS",
+          "strategy": "lookup-table"
         },
         {
           "key": "01M2JKSC0TZ5EQ8T0BMMFYBX8R",
@@ -18124,9 +18077,12 @@
         {
           "key": "01M355S3N74XY7BPND6XYQWH0X",
           "name": "status",
-          "type": "int32",
-          "nativeType": "integer",
-          "default": 0
+          "type": "reference",
+          "length": 7,
+          "nativeType": "varchar(7)",
+          "default": "PLAN",
+          "referenceType": "01M1Z3KPK8ZXTXJ89EB1MG2HTS",
+          "strategy": "lookup-table"
         },
         {
           "key": "01M202QR8JQKQ7G2DW8FM4M2Y5.01M36P0JCD8FVZ00WRN0DQ1RWJ",
@@ -18405,17 +18361,6 @@
             "01M2EACDTQ5DK0E5KCNM4GSD8R"
           ],
           "onDelete": "set-null"
-        },
-        {
-          "key": "fk:01M355S3N74XY7BPND6XYQWH0X->01M1YZSXAHNTHBXBK0QRA5MQ08@01M34AZ3RECQSPQQX1DXTCN03G(id)",
-          "name": "fk_shipments_status",
-          "columns": [
-            "01M355S3N74XY7BPND6XYQWH0X"
-          ],
-          "referencedTable": "01M1YZSXAHNTHBXBK0QRA5MQ08@01M34AZ3RECQSPQQX1DXTCN03G",
-          "referencedColumns": [
-            "id"
-          ]
         }
       ],
       "indexes": [
@@ -23341,49 +23286,6 @@
             "01M2PABG7Q90DK6CTHZNFWHW3A"
           ],
           "onDelete": "cascade"
-        }
-      ]
-    },
-    {
-      "key": "01M2YW6JHEB1CVE5XWYKQ1MYBG@01M34AZ3RECQSPQQX1DXTCN03G",
-      "name": "product_statuses",
-      "schema": "northwind",
-      "columns": [
-        {
-          "key": "id",
-          "name": "id",
-          "type": "int32",
-          "nativeType": "integer"
-        },
-        {
-          "key": "code",
-          "name": "code",
-          "type": "string",
-          "length": 8,
-          "nativeType": "varchar(8)"
-        },
-        {
-          "key": "name",
-          "name": "name",
-          "type": "string",
-          "length": 12,
-          "nativeType": "varchar(12)"
-        }
-      ],
-      "primaryKey": {
-        "key": "pk",
-        "name": "pk_product_statuses",
-        "columns": [
-          "id"
-        ]
-      },
-      "uniques": [
-        {
-          "key": "uq:code",
-          "name": "uq_product_statuses_code",
-          "columns": [
-            "code"
-          ]
         }
       ]
     },

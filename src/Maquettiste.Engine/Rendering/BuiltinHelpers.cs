@@ -116,11 +116,11 @@ internal static class BuiltinHelpers
     public static readonly FrozenSet<string> Names = FrozenSet.Create(StringComparer.Ordinal,
         "pascal", "camel", "snake", "kebab", "upper_snake", "pluralize", "singularize", "type_of", "sql_quote", "sql_literal",
         "indent", "dedent", "escape_md", "escape_xml", "escape_json", "json", "has_stereotype", "has_tag", "in_category", "lookup",
-        "banner", "file");
+        "banner", "file", "row", "row_uuid", "display_name", "plural_name", "description_of", "label_of", "translate", "has_translation");
 
     /// <summary>The unit variables (engine-design.md section 8); pack helpers may not use these names either.</summary>
     public static readonly FrozenSet<string> Variables = FrozenSet.Create(StringComparer.Ordinal,
-        "model", "element", "package", "entity", "relation", "enum", "value_object", "table", "pack", "mapping", "mappings",
+        "model", "element", "package", "entity", "relation", "enum", "value_object", "table", "reference_type", "seed", "locale", "pack", "mapping", "mappings",
         "schema_diff", "hints", "data", "unit");
 
     private static readonly JavaScriptEncoder JsonEncoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
@@ -187,6 +187,9 @@ internal static class BuiltinHelpers
         Add(builtins, "has_tag", 2, 2, (c, a) => HasTag(c, a[0], AsText(a[1])));
         Add(builtins, "in_category", 2, 2, (c, a) => InCategory(c, a[0], AsText(a[1])));
         Add(builtins, "lookup", 1, 1, (c, a) => Lookup(c, AsText(a[0])));
+        Add(builtins, "row", 2, 2, (c, a) => Row(c, a[0], a[1]));
+        Add(builtins, "row_uuid", 1, 1, (c, a) => RowUuid(c, a[0]));
+        LocalizationHelpers.Register((name, min, max, body) => Add(builtins, name, min, max, body));
         Add(builtins, "banner", 1, 1, (c, a) => Banner(AsText(a[0]), c.Unit.Planned.Pack.Name, c.Unit.Planned.Unit.Id));
         Add(builtins, "file", 2, 2, (c, a) => File(c, a[0], a[1]));
 
@@ -859,11 +862,12 @@ internal static class BuiltinHelpers
             return false;
         if (string.Equals(own.Id, category, StringComparison.Ordinal) || string.Equals(own.Name, category, StringComparison.Ordinal))
             return true;
-        var tree = context.Unit.Run.Context.Model.Source?.Categories;
+        // The category's tree: the global one or a domain's (explorer-redesign.md section 1.11); a category id is unique model-wide.
+        var tree = context.Unit.Run.Context.Model.Source?.CategoryTrees.FirstOrDefault(t => t.Categories.Any(c => string.Equals(c.Id, own.Id, StringComparison.Ordinal)));
         if (tree is null)
             return false;
         context.Recorder.Record("e:" + tree.Id);
-        var byId = tree.Categories.ToDictionary(c => c.Id, StringComparer.Ordinal);
+        var byId = tree.Categories.GroupBy(c => c.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         for (var id = own.Id; id is not null && seen.Add(id) && byId.TryGetValue(id, out var node); id = node.Parent)
         {
@@ -886,6 +890,54 @@ internal static class BuiltinHelpers
 
         context.Recorder.RecordObject(found);
         return found;
+    }
+
+    /// <summary><c>row &lt;reference type&gt; "&lt;code&gt;"</c>: the type's row with that code, or null.</summary>
+    private static RRow? Row(TrackingTemplateContext context, object? type, object? code)
+    {
+        var unwrapped = TrackingTemplateContext.Unwrap(type);
+        var referenceType = unwrapped switch
+        {
+            RReferenceType t => t,
+            string id => Lookup(context, id) as RReferenceType,
+            _ => throw new RenderHelperException("MQ6006", $"`row` takes a reference type (or its id), not a {TemplateValues.TypeName(unwrapped)}."),
+        };
+        if (referenceType is null)
+            return null;
+        context.Recorder.RecordObject(referenceType);
+        context.Recorder.RecordAll(referenceType.Rows.MembershipKeys);
+        var row = referenceType.RowOf(TrackingTemplateContext.Unwrap(code));
+        if (row is not null)
+            context.Recorder.RecordObject(row);
+        return row;
+    }
+
+    /// <summary><c>row_uuid &lt;row&gt;</c>: a row's 128-bit ULID written as a UUID (big-endian, lowercase, dashed).</summary>
+    private static string RowUuid(TrackingTemplateContext context, object? row)
+    {
+        var unwrapped = TrackingTemplateContext.Unwrap(row);
+        string id;
+        switch (unwrapped)
+        {
+            case RRow r:
+                context.Recorder.RecordObject(r);
+                id = r.Id;
+                break;
+            case RSeedRow r:
+                context.Recorder.RecordObject(r);
+                id = r.Id;
+                break;
+            case string text:
+                id = text;
+                break;
+            default:
+                throw new RenderHelperException("MQ6006", $"`row_uuid` takes a row, not a {TemplateValues.TypeName(unwrapped)}.");
+        }
+
+        if (!Ulid.TryParse(id, out var ulid))
+            throw new RenderHelperException("MQ6006", $"`row_uuid`: '{id}' is not a ULID.");
+        var hex = Convert.ToHexStringLower(ulid.ToByteArray());
+        return hex[..8] + "-" + hex[8..12] + "-" + hex[12..16] + "-" + hex[16..20] + "-" + hex[20..];
     }
 
     private static string File(TrackingTemplateContext context, object? path, object? content)

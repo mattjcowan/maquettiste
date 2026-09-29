@@ -193,6 +193,12 @@ export function compile(domain) {
       types.set(name, id(`enum:${name}`));
     }
   }
+  for (const p of packages) {
+    for (const name of Object.keys(p.referenceTypes ?? {})) {
+      if (types.has(name)) throw new Error(`duplicate type ${name}`);
+      types.set(name, id(`reftype:${name}`));
+    }
+  }
   for (const name of Object.keys(project.scalarTypes ?? {})) types.set(name, id(`scalar:${name}`));
   for (const name of Object.keys(project.valueObjects ?? {})) types.set(name, id(`vo:${name}`));
   for (const p of packages) {
@@ -206,6 +212,25 @@ export function compile(domain) {
       emit("types", `model/enums/${kebab(name)}.json`, "enum.json", {
         kind: "enum", id: types.get(name), name, displayName: e.displayName ?? sentence(name), package: pkgOf(p.package, name),
         description: e.description, tags: e.tags, category: categoryOf.get(p.package), members,
+      });
+    }
+  }
+  // Reference types (no package: reference data lives in one place) and one seed each holding their rows. Rows are
+  // "<code>: <label> | <description>"; `code` is the code's length.
+  for (const p of packages) {
+    for (const [name, r] of Object.entries(p.referenceTypes ?? {})) {
+      const rows = Object.entries(r.rows).map(([code, spec]) => {
+        const [label, description] = splitDescription(String(spec));
+        if (!description) throw new Error(`reference type ${name}.${code}: missing description`);
+        return { id: id(`row:${name}.${code}`), values: [String(code), label, description] };
+      });
+      emit("types", `model/reference-types/${kebab(name)}.json`, "reference-type.json", {
+        kind: "reference-type", id: types.get(name), name, displayName: r.displayName ?? sentence(name), description: r.description,
+        tags: r.tags, category: categoryOf.get(p.package),
+        code: { id: id(`refcode:${name}`), length: r.code }, label: { id: id(`reflabel:${name}`), length: r.label ?? 64 },
+      });
+      emit("types", `model/seeds/${kebab(name)}/${kebab(name)}.json`, "seed.json", {
+        kind: "seed", id: id(`seed:${name}`), name, target: types.get(name), columns: ["code", "label", "description"], rows,
       });
     }
   }
@@ -514,6 +539,7 @@ export function compile(domain) {
     documents: out,
     stats: {
       packages: packages.length, entities: entities.size, relations: relations.length, enums: [...types.keys()].filter((t) => out.some((o) => o.schema === "enum.json" && o.doc.name === t)).length,
+      referenceTypes: out.filter((o) => o.schema === "reference-type.json").length,
       valueObjects: Object.keys(project.valueObjects ?? {}).length, scalarTypes: Object.keys(project.scalarTypes ?? {}).length, mappings: mappings.length,
       diagrams: packages.length, tables: tables.length + Object.keys(db.tables ?? {}).length, views: Object.keys(db.views ?? {}).length, sequences: sequenceId.size,
     },

@@ -1,6 +1,7 @@
 using Maquettiste.Engine;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Pipeline;
+using System.Text.Json.Nodes;
 using Maquettiste.Testing;
 
 namespace Maquettiste.Packs.Tests;
@@ -8,8 +9,9 @@ namespace Maquettiste.Packs.Tests;
 /// <summary>
 /// A temporary repo holding the billing fixture model and the example packs from <c>packs/</c>, as <c>maquettiste init</c> would
 /// lay them out (<c>db</c> committed, <c>src/Generated</c> built). The <c>dialects</c> variant adds a SQL Server database
-/// (<c>reporting</c>) and a SQLite database (<c>local</c>, with enums stored as lookup tables) next to the PostgreSQL one, so
-/// every dialect branch of the packs runs, and a <c>CreditNote</c> entity derived from <c>Invoice</c> (table per hierarchy, so a
+/// (<c>reporting</c>) and a SQLite database (<c>local</c>) next to the PostgreSQL one, so every dialect branch of the packs runs,
+/// a <c>PaymentMethod</c> reference type used by <c>Payment.method</c> (a CHECK, and a lookup table in <c>local</c>), and a
+/// <c>CreditNote</c> entity derived from <c>Invoice</c> (table per hierarchy, so a
 /// discriminator column).
 /// </summary>
 internal sealed class PackRepo : IDisposable
@@ -33,9 +35,27 @@ internal sealed class PackRepo : IDisposable
               }
             ]
           },
+          "conventions": {
+            "referenceStorage": {
+              "strategy": "check"
+            }
+          },
           "databases": {
             "local": {
-              "enumStorage": "lookup"
+              "referenceStorage": {
+                "strategy": "lookup-table"
+              }
+            }
+          },
+          "referenceData": {
+            "strategies": {
+              "check": {
+                "description": "CHECK (col IN (...codes))"
+              },
+              "lookup-table": {
+                "description": "Table keyed by code, FK from each column",
+                "collections": true
+              }
             }
           },
           "packs": {
@@ -46,6 +66,42 @@ internal sealed class PackRepo : IDisposable
               "output": "db"
             }
           }
+        }
+
+        """;
+
+    private const string PaymentMethod = """
+        {
+          "$schema": "../../.schema/v1/reference-type.json",
+          "kind": "reference-type",
+          "id": "01J92P0V2F0000000000000001",
+          "name": "PaymentMethod",
+          "description": "How a payment was made.",
+          "code": {
+            "id": "01J92P0V2F0000000000000002",
+            "length": 16
+          },
+          "label": {
+            "id": "01J92P0V2F0000000000000003",
+            "length": 64
+          }
+        }
+
+        """;
+
+    private const string PaymentMethodSeed = """
+        {
+          "$schema": "../../../.schema/v1/seed.json",
+          "kind": "seed",
+          "id": "01J92P0V2F0000000000000010",
+          "name": "PaymentMethod",
+          "target": "01J92P0V2F0000000000000001",
+          "columns": ["code", "label"],
+          "rows": [
+            { "id": "01J92P0V2F0000000000000011", "values": ["card", "Card"] },
+            { "id": "01J92P0V2F0000000000000012", "values": ["transfer", "Bank transfer"] },
+            { "id": "01J92P0V2F0000000000000013", "values": ["cash", "Cash"] }
+          ]
         }
 
         """;
@@ -87,8 +143,69 @@ internal sealed class PackRepo : IDisposable
             Repo.WriteFile(".maquettiste/model/databases/reporting/database.json", Database("01J92P0V2A0000000000000001", "reporting", "sqlserver"));
             Repo.WriteFile(".maquettiste/model/databases/local/database.json", Database("01J92P0V2A0000000000000002", "local", "sqlite"));
             Repo.WriteFile(".maquettiste/model/entities/credit-note.json", CreditNote);
+            // Reference data: Payment.method names a PaymentMethod row, stored as a CHECK by the project convention and as a
+            // lookup table in the SQLite database (the database's referenceStorage), where enums once used a lookup table.
+            Repo.WriteFile(".maquettiste/model/reference-types/payment-method.json", PaymentMethod);
+            Repo.WriteFile(".maquettiste/model/seeds/payment-method/payment-method.json", PaymentMethodSeed);
+            EditJson(".maquettiste/model/entities/payment.json", payment => payment["attributes"]!.AsArray().Add(new JsonObject
+            {
+                ["id"] = "01J92P0V2F0000000000000020",
+                ["name"] = "method",
+                ["type"] = new JsonObject { ["ref"] = "01J92P0V2F0000000000000001" },
+            }));
         }
     }
+
+    private PackRepo(string strategy)
+    {
+        Repo = new TempRepo();
+        CopyTree(Fixtures.Path("models", "reference-data", ".maquettiste"), Repo.ModelRoot);
+        foreach (var pack in Packs)
+            CopyTree(Path.Combine(Fixtures.RepoRoot, "packs", pack), Path.Combine(Repo.ModelRoot, "templates", pack));
+        const string model = ".maquettiste/model/";
+        Repo.WriteFile(model + "databases/main/database.json", Database(MainDatabaseId, "main", "postgresql"));
+        Repo.WriteFile(model + "databases/reporting/database.json", Database("01JRDD00000000000000000002", "reporting", "sqlserver"));
+        Repo.WriteFile(model + "databases/local/database.json", Database("01JRDD00000000000000000003", "local", "sqlite"));
+        EditJson(".maquettiste/maquettiste.json", settings =>
+        {
+            settings["outputs"] = JsonNode.Parse("""{ "allow": [ { "path": "db", "commit": true }, { "path": "src/Generated" } ] }""");
+            settings["packs"] = JsonNode.Parse("""{ "csharp-dapper": { "output": "src/Generated" }, "sql-ddl": { "output": "db" } }""");
+            settings["conventions"]!["referenceStorage"]!["strategy"] = strategy;
+        });
+        // The project convention chooses the strategy of UnitOfMeasure.
+        EditJson(model + "reference-types/unit-of-measure.json", type => type.AsObject().Remove("storage"));
+        if (strategy == "lookup-table")
+            return;
+        // CHECK, and native outside PostgreSQL, store single values only (collections: false): Ingredient drops its packUnits
+        // collection, and Allergen keeps lookup tables for Ingredient.allergens (native on PostgreSQL in the native variant).
+        EditJson(model + "entities/ingredient.json", entity =>
+        {
+            var attributes = entity["attributes"]!.AsArray();
+            attributes.Remove(attributes.Single(a => (string?)a!["name"] == "packUnits"));
+        });
+        EditJson(model + "seeds/ingredient/ingredient.json", seed =>
+        {
+            seed["columns"]!.AsArray().RemoveAt(5);
+            foreach (var row in seed["rows"]!.AsArray())
+                row!["values"]!.AsArray().RemoveAt(5);
+        });
+        var storage = strategy == "native"
+            ? $$"""{ "*": { "strategy": "lookup-table" }, "{{MainDatabaseId}}": { "strategy": "native" } }"""
+            : """{ "*": { "strategy": "lookup-table" } }""";
+        EditJson(model + "reference-types/allergen.json", type => type["storage"] = JsonNode.Parse(storage));
+    }
+
+    /// <summary>The id of the reference-data variants' PostgreSQL database.</summary>
+    public const string MainDatabaseId = "01JRDD00000000000000000001";
+
+    /// <summary>
+    /// The reference-data fixture with a PostgreSQL (<c>main</c>), a SQL Server (<c>reporting</c>) and a SQLite (<c>local</c>)
+    /// database, the project convention choosing the reference storage strategy: <c>lookup-table</c>, <c>check</c> or
+    /// <c>native</c>.
+    /// </summary>
+    /// <param name="strategy">The strategy key.</param>
+    /// <returns>The repo.</returns>
+    public static PackRepo ReferenceData(string strategy) => new(strategy);
 
     /// <summary>The repo.</summary>
     public TempRepo Repo { get; }
@@ -171,9 +288,9 @@ internal sealed class PackRepo : IDisposable
     /// <summary>Edits a repo JSON file in place.</summary>
     /// <param name="path">The repo-relative path.</param>
     /// <param name="edit">The edit.</param>
-    public void EditJson(string path, Action<System.Text.Json.Nodes.JsonNode> edit)
+    public void EditJson(string path, Action<JsonNode> edit)
     {
-        var node = System.Text.Json.Nodes.JsonNode.Parse(Read(path))!;
+        var node = JsonNode.Parse(Read(path))!;
         edit(node);
         Write(path, node.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }) + "\n");
     }

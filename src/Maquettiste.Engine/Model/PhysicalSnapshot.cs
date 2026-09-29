@@ -119,6 +119,12 @@ public sealed record SnapshotColumn
 
     /// <summary>The database comment.</summary>
     public string? Comment { get; init; }
+
+    /// <summary>For a reference column (<see cref="Type"/> <c>reference</c>): the reference type's id.</summary>
+    public string? ReferenceType { get; init; }
+
+    /// <summary>For a reference column: the effective storage strategy, or <see langword="null"/> for template-defined.</summary>
+    public string? Strategy { get; init; }
 }
 
 /// <summary>A primary key or unique constraint in a snapshot.</summary>

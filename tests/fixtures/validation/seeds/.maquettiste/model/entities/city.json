@@ -1,0 +1,32 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JVSE00000000000000000003",
+  "name": "City",
+  "key": {
+    "attributes": [
+      "01JVSE00000000000000000031"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01JVSE00000000000000000031",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01JVSE00000000000000000032",
+      "name": "name",
+      "type": "string",
+      "length": 60,
+      "required": true
+    },
+    {
+      "id": "01JVSE00000000000000000033",
+      "name": "population",
+      "type": "int32"
+    }
+  ]
+}

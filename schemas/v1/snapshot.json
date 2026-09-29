@@ -60,7 +60,9 @@
                 "computed",
                 "computedStored",
                 "collation",
-                "comment"
+                "comment",
+                "referenceType",
+                "strategy"
               ],
               "properties": {
                 "key": {
@@ -72,7 +74,15 @@
                   "minLength": 1
                 },
                 "type": {
-                  "$ref": "common.json#/$defs/builtinType"
+                  "description": "A built-in type, or reference for a column typed by a reference type (its code facets ride along).",
+                  "anyOf": [
+                    {
+                      "$ref": "common.json#/$defs/builtinType"
+                    },
+                    {
+                      "const": "reference"
+                    }
+                  ]
                 },
                 "length": {
                   "$ref": "common.json#/$defs/length"
@@ -114,6 +124,13 @@
                 },
                 "comment": {
                   "type": "string"
+                },
+                "referenceType": {
+                  "$ref": "common.json#/$defs/id"
+                },
+                "strategy": {
+                  "type": "string",
+                  "minLength": 1
                 }
               },
               "required": ["key", "name", "type"],

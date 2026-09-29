@@ -1,7 +1,8 @@
 // The Entities canvas model (phase2-design.md 4.8), kept free of React so it can be unit tested:
 // which elements a view shows, where each card goes, how a relation edge attaches, how positions
 // are written back into a diagram, and what "Add related to depth N" adds.
-import type { DiagramDoc, DiagramMember, RelationDoc } from "@/api/types";
+import type { DiagramDoc, DiagramMember, ElementSummary, RelationDoc } from "@/api/types";
+import { indexPatchOf } from "@/api/indexPatch";
 import type { LayoutEdge, LayoutNode } from "./layout";
 
 export const NODE_WIDTH = 240;
@@ -26,6 +27,7 @@ interface IndexRow {
   id: string;
   kind: string;
   package?: string | null;
+  ends?: readonly { entity: string }[];
 }
 
 /**
@@ -33,6 +35,9 @@ interface IndexRow {
  * view shows every entity of the package and every relation (edges are later kept only when both
  * ends are on the canvas).
  */
+/** "All of <domain>" (explorer-redesign.md 1.6) is offered for a domain of at most this many entities, and shows at most this many. */
+export const ALL_OF_CAP = 300;
+
 export function viewElements(
   view: CanvasView | null,
   rows: readonly IndexRow[],
@@ -40,10 +45,14 @@ export function viewElements(
 ): { entityIds: string[]; relationIds: string[] } {
   if (!view) return { entityIds: [], relationIds: [] };
   if (view.type === "package") {
-    return {
-      entityIds: rows.filter((r) => r.kind === "entity" && r.package === view.id).map((r) => r.id),
-      relationIds: rows.filter((r) => r.kind === "relation").map((r) => r.id),
-    };
+    const entityIds = rows.filter((r) => r.kind === "entity" && r.package === view.id).map((r) => r.id).slice(0, ALL_OF_CAP);
+    const shown = new Set(entityIds);
+    // A relation shows when both its ends are cards (the index row's `ends`); a row without ends (an older server) is
+    // kept and the canvas drops an edge whose ends are not cards.
+    const relationIds = rows
+      .filter((r) => r.kind === "relation" && (!r.ends?.length || r.ends.every((e) => shown.has(e.entity))))
+      .map((r) => r.id);
+    return { entityIds, relationIds };
   }
   const kinds = new Map(rows.map((r) => [r.id, r.kind]));
   const entityIds: string[] = [];
@@ -209,4 +218,103 @@ export function applySelectChanges(current: readonly string[], changes: readonly
     }
   }
   return changed ? next : null;
+}
+
+// ------------------------------------------------------------------ the explorer and the canvas in step (EX 3.5, step 10)
+
+/** The MIME type of explorer rows dragged onto the canvas: a JSON array of element ids. */
+export const ELEMENTS_MIME = "application/x-maquettiste-elements";
+
+/** Relations by entity and ends by relation, from the index (E5 relation ends): no document loads. */
+export interface RelationLookup {
+  relationsOf(entityId: string): readonly string[];
+  endsOf(relationId: string): readonly string[] | undefined;
+}
+
+const relationLookups = new WeakMap<readonly unknown[], RelationLookup & { ends: Map<string, string[]> }>();
+
+/**
+ * Relation ends by relation, relations by entity, from the index rows; memoized per rows array. An array patched
+ * from a memoized one without touching a relation (api/indexPatch.ts) keeps the previous lookup.
+ */
+export function relationLookup(rows: readonly Pick<IndexRow, "id" | "kind" | "ends">[]): RelationLookup {
+  const cached = relationLookups.get(rows);
+  if (cached) return cached;
+  const patch = indexPatchOf(rows as readonly ElementSummary[]);
+  const previous = patch ? relationLookups.get(patch.from) : undefined;
+  if (patch && previous && !patch.upserts.some((u) => u.kind === "relation" || previous.ends.has(u.id)) && !patch.deleted.some((id) => previous.ends.has(id))) {
+    relationLookups.set(rows, previous);
+    return previous;
+  }
+  const lookup = buildRelationLookup(rows);
+  relationLookups.set(rows, lookup);
+  return lookup;
+}
+
+function buildRelationLookup(rows: readonly Pick<IndexRow, "id" | "kind" | "ends">[]): RelationLookup & { ends: Map<string, string[]> } {
+  const relations = new Map<string, string[]>();
+  const ends = new Map<string, string[]>();
+  for (const r of rows) {
+    if (r.kind !== "relation" || !r.ends) continue;
+    const list = r.ends.map((e) => e.entity);
+    ends.set(r.id, list);
+    for (const e of new Set(list)) {
+      const bucket = relations.get(e) ?? [];
+      bucket.push(r.id);
+      relations.set(e, bucket);
+    }
+  }
+  return { relationsOf: (id) => relations.get(id) ?? [], endsOf: (id) => ends.get(id), ends };
+}
+
+/** The entities within `depth` relation hops of the start entities (the start entities included). */
+export function relatedWithin(start: readonly string[], depth: number, lookup: RelationLookup): string[] {
+  const seen = new Set(start);
+  let frontier = [...start];
+  for (let level = 0; level < depth && frontier.length; level++) {
+    const next: string[] = [];
+    for (const id of frontier)
+      for (const rel of lookup.relationsOf(id))
+        for (const end of lookup.endsOf(rel) ?? [])
+          if (!seen.has(end)) {
+            seen.add(end);
+            next.push(end);
+          }
+    frontier = next;
+  }
+  return [...seen];
+}
+
+/**
+ * The members to append to a diagram for entities and relations added from the explorer (drop, Add to diagram, Add
+ * with related): the entities not yet on it, placed in a grid from `at` (or in columns right of the existing cards),
+ * the relations asked for, and every relation whose ends are then all on the diagram.
+ */
+export function planMembers(input: {
+  members: readonly DiagramMember[];
+  entities: readonly string[];
+  relations?: readonly string[];
+  lookup: RelationLookup;
+  at?: Point;
+}): DiagramMember[] {
+  const present = new Set(input.members.map((m) => m.element));
+  const fresh = [...new Set(input.entities)].filter((id) => !present.has(id));
+  let origin = input.at;
+  if (!origin) {
+    const placed = input.members.filter((m) => m.x !== undefined || m.y !== undefined);
+    origin = placed.length ? { x: Math.max(...placed.map((m) => m.x ?? 0)) + GRID.x, y: Math.min(...placed.map((m) => m.y ?? 0)) } : { x: 0, y: 0 };
+  }
+  const columns = Math.max(1, Math.min(3, Math.ceil(Math.sqrt(fresh.length))));
+  const out: DiagramMember[] = fresh.map((element, i) => ({
+    element,
+    x: Math.round(origin.x + (i % columns) * GRID.x),
+    y: Math.round(origin.y + Math.floor(i / columns) * GRID.y),
+  }));
+  const onDiagram = new Set([...present, ...fresh]);
+  const relations = new Set<string>();
+  for (const r of input.relations ?? []) if (!present.has(r)) relations.add(r);
+  for (const e of fresh)
+    for (const r of input.lookup.relationsOf(e)) if (!present.has(r) && (input.lookup.endsOf(r) ?? []).every((x) => onDiagram.has(x))) relations.add(r);
+  for (const r of relations) out.push({ element: r });
+  return out;
 }

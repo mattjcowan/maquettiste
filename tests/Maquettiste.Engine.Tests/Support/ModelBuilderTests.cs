@@ -61,7 +61,7 @@ public sealed class ModelBuilderTests
         b.Table("invoices", main).OverlayFor(invoice).Overlay(invoice.AttrId("number"), nativeType: "citext");
         b.Mapping(main, party).Inheritance(InheritanceStrategy.Tph).Discriminator("party");
         b.Mapping(main, customer).Table(legacy);
-        b.Mapping(main, invoice).Storage("status", StorageKind.Lookup);
+        b.Mapping(main, invoice).Storage("status", StorageKind.String);
         b.Mapping(main, tagged).Shape(RelationShape.Promoted);
         b.Settings(s => s with { Name = "Billing", Outputs = new OutputSettings { Allow = [new OutputRoot { Path = "db", Commit = true }] } });
 

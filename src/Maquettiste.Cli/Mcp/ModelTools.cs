@@ -220,6 +220,160 @@ internal sealed class ModelTools(ModelStore store, GenerationService generation,
         return FromOutcome(result.Outcome, result, null);
     }, ct);
 
+    /// <summary>The localization settings and completeness (getLocalizationStatus).</summary>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The status.</returns>
+    [McpServerTool(Name = "localization_status", Title = "Localization status", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("The default locale, the declared locales and, per translated locale, its fallback chain and per shard the expected, translated, missing and stale counts (as GET /api/localization).")]
+    public Task<CallToolResult> LocalizationStatus(CancellationToken ct = default) => GuardAsync(async () =>
+        Ok(await _store.GetLocalizationStatusAsync(ct).ConfigureAwait(false)), ct);
+
+    /// <summary>Translation entries of one locale (getTranslations).</summary>
+    /// <param name="locale">The locale.</param>
+    /// <param name="owner">An owner element id.</param>
+    /// <param name="shard">A shard repo path.</param>
+    /// <param name="missing">Only the entries that need work, paged.</param>
+    /// <param name="cursor">The cursor of the page.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The entries.</returns>
+    [McpServerTool(Name = "get_translations", Title = "Get translations", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("Translation entries of one locale: id, owner, field (displayName, pluralName, label, description), source text, translation, effective text, state (translated, missing, stale, fallback), shard and shardHash (pass the hashes as expected to set_translations). Filter by owner or shard; missing=true pages the entries that need work, 200 at a time, with a cursor.")]
+    public Task<CallToolResult> GetTranslations(
+        [Description("A declared locale other than the default, for example fr; required.")] string? locale = null,
+        [Description("Only the entries of this element and its sub-elements (seed rows belong to their seed).")] string? owner = null,
+        [Description("Only the entries of this shard (its repo path).")] string? shard = null,
+        [Description("Only the entries that are missing, fallback or stale, paged.")] bool missing = false,
+        [Description("The cursor from the previous page.")] string? cursor = null,
+        CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (string.IsNullOrEmpty(locale))
+            return BadRequest("locale is required.");
+        if (!await _store.IsTranslatedLocaleAsync(locale, ct).ConfigureAwait(false))
+            return Problem("not-found", 404, $"'{locale}' is not a declared locale other than the default.");
+        return Ok(await _store.GetTranslationRowsAsync(locale, owner, shard, missing, cursor, ct).ConfigureAwait(false));
+    }, ct);
+
+    /// <summary>Writes translations of one locale (putTranslations).</summary>
+    /// <param name="locale">The locale.</param>
+    /// <param name="entries">The edits.</param>
+    /// <param name="expected">Shard path to the hash read.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The result.</returns>
+    [McpServerTool(Name = "set_translations", Title = "Set translations", Destructive = true, Idempotent = true, OpenWorld = false)]
+    [Description("Writes, removes (value null) or confirms (confirm true: the default text changed but the translation still holds) translations of one locale in one atomic save. entries: [{\"id\",\"field\",\"value\",\"confirm\"}]; expected: {\"<shard path>\": \"<shardHash from get_translations>\"}. A changed shard is a conflict (nothing written); an unknown id or field is invalid.")]
+    public Task<CallToolResult> SetTranslations(
+        [Description("A declared locale other than the default; required.")] string? locale = null,
+        [Description("The edits: [{id, field, value (text or null), confirm?}]; required.")] JsonElement? entries = null,
+        [Description("Shard repo path to the shardHash read with get_translations.")] JsonElement? expected = null,
+        CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (string.IsNullOrEmpty(locale))
+            return BadRequest("locale is required.");
+        if (entries is not { ValueKind: JsonValueKind.Array } list)
+            return BadRequest("entries is required: an array of {id, field, value, confirm?}.");
+        if (!await _store.IsTranslatedLocaleAsync(locale, ct).ConfigureAwait(false))
+            return Problem("not-found", 404, $"'{locale}' is not a declared locale other than the default.");
+        var edits = new List<TranslationEdit>();
+        foreach (var entry in list.EnumerateArray())
+        {
+            if (entry.ValueKind != JsonValueKind.Object || !entry.TryGetProperty("id", out var id) || !entry.TryGetProperty("field", out var field)
+                || id.ValueKind != JsonValueKind.String || field.ValueKind != JsonValueKind.String)
+                return BadRequest("Each entry needs an id and a field.");
+            var value = entry.TryGetProperty("value", out var v) ? v : default;
+            if (value.ValueKind is not (JsonValueKind.String or JsonValueKind.Null or JsonValueKind.Undefined))
+                return BadRequest($"The value of {id.GetString()}/{field.GetString()} must be a string or null.");
+            var confirm = entry.TryGetProperty("confirm", out var c) && c.ValueKind == JsonValueKind.True;
+            edits.Add(new TranslationEdit(id.GetString()!, field.GetString()!, value.ValueKind == JsonValueKind.String ? value.GetString() : null, confirm));
+        }
+
+        var hashes = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (expected is { ValueKind: JsonValueKind.Object } map)
+        {
+            foreach (var property in map.EnumerateObject())
+                hashes[property.Name] = property.Value.GetString() ?? "";
+        }
+
+        var result = await _store.SaveTranslationsAsync(locale, edits, hashes, ChangeSource.Cli, ct).ConfigureAwait(false);
+        var body = new { outcome = result.Outcome switch { SaveOutcome.Saved => "saved", SaveOutcome.Conflict => "conflict", _ => "invalid" }, hashes = result.ShardHashes, diagnostics = result.Diagnostics };
+        return result.Outcome switch
+        {
+            SaveOutcome.Saved => Ok(body),
+            SaveOutcome.Conflict => Problem("conflict", 409, "A shard changed since it was read; nothing was written. hashes holds the current hashes.", body: Node(body)),
+            _ => Problem("invalid", 422, "The translations are not valid; nothing was written. See diagnostics.", body: Node(body)),
+        };
+    }, ct);
+
+    /// <summary>A seed's rows as CSV (exportSeedCsv).</summary>
+    /// <param name="id">The seed id.</param>
+    /// <param name="bom">Byte order mark and CRLF.</param>
+    /// <param name="locales">Locales whose label and description columns are added.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The CSV text.</returns>
+    [McpServerTool(Name = "export_seed_csv", Title = "Export seed CSV", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("A seed's rows as CSV text: @id, then @code, @label, @description for a reference type, then attribute names and end roles, then @label:<locale> and @description:<locale> for each requested locale.")]
+    public Task<CallToolResult> ExportSeedCsv(
+        [Description("The seed id; required.")] string? id = null,
+        [Description("Adds a byte order mark and CRLF line ends, for spreadsheet programs.")] bool bom = false,
+        [Description("Translated locales whose label and description columns are added.")] string[]? locales = null,
+        CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (string.IsNullOrEmpty(id))
+            return BadRequest("id is required.");
+        var text = await _store.ExportSeedCsvAsync(id, bom, locales ?? [], ct).ConfigureAwait(false);
+        return text is null ? NotFound("seed", id) : Text(text, isError: false);
+    }, ct);
+
+    /// <summary>Previews or applies a CSV import into a seed (importSeedCsv).</summary>
+    /// <param name="id">The seed id.</param>
+    /// <param name="csv">The CSV text.</param>
+    /// <param name="mode">merge or replace.</param>
+    /// <param name="apply">Applies instead of previewing.</param>
+    /// <param name="expectedHash">The seed hash read.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The preview.</returns>
+    [McpServerTool(Name = "import_seed_csv", Title = "Import seed CSV", Destructive = true, OpenWorld = false)]
+    [Description("Imports CSV rows into a seed: rows match by @id, else by @code for a reference type, else are new. mode merge (default) updates and adds; replace also removes rows the file leaves out, except rows other seeds reference (blocked). A dry run (the default) returns the preview (added, changed with before and after, removed, blocked, ignoredHeaders); apply true writes it with expectedHash.")]
+    public Task<CallToolResult> ImportSeedCsv(
+        [Description("The seed id; required.")] string? id = null,
+        [Description("The CSV text, with a header line; required.")] string? csv = null,
+        [Description("merge (default) or replace.")] string? mode = null,
+        [Description("true writes the import; false or absent only previews it.")] bool apply = false,
+        [Description("The seed's hash from get_element; a changed seed is a conflict.")] string? expectedHash = null,
+        CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (string.IsNullOrEmpty(id))
+            return BadRequest("id is required.");
+        if (csv is null)
+            return BadRequest("csv is required.");
+        if (mode is not (null or "" or "merge" or "replace"))
+            return BadRequest($"mode must be merge or replace, not '{mode}'.");
+        ImportResult? result;
+        try
+        {
+            result = await _store.ImportSeedCsvAsync(id, csv, mode == "replace", !apply, expectedHash, ChangeSource.Cli, ct).ConfigureAwait(false);
+        }
+        catch (FormatException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+
+        return result is null ? NotFound("seed", id) : FromOutcome(result.Outcome, result.Preview, null);
+    }, ct);
+
+    /// <summary>The attributes typed by a reference type (getReferenceTypeUsage).</summary>
+    /// <param name="id">The reference type id.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The usages.</returns>
+    [McpServerTool(Name = "reference_type_usage", Title = "Reference type usage", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("Every attribute typed by a reference type: attribute, owner, domain (the owner's package), collection, required and the effective storage choice per database.")]
+    public Task<CallToolResult> ReferenceTypeUsage([Description("The reference type id; required.")] string? id = null, CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (string.IsNullOrEmpty(id))
+            return BadRequest("id is required.");
+        var usage = await _store.GetReferenceTypeUsageAsync(id, ct).ConfigureAwait(false);
+        return usage is null ? NotFound("reference type", id) : Ok(usage);
+    }, ct);
+
     /// <summary>Where an element is used (getReferences).</summary>
     /// <param name="id">The element id.</param>
     /// <param name="ct">Cancellation.</param>

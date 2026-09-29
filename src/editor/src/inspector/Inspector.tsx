@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { TranslationsSection } from "@/l10n/TranslationsSection";
 import { CircleAlert, Loader2, Trash2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { applyBatchResult, applySaveResult, keys, useIndex, useProject, useReferences } from "@/api/queries";
+import { applyBatchResult, applySaveResult, keys, loadElement, useIndex, useProject, useReferences } from "@/api/queries";
 import * as endpoints from "@/api/endpoints";
 import type { ElementKind, EntityDoc, ModelJson, ReferenceInfo, StereotypeDoc } from "@/api/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,6 +14,7 @@ import { CodeView } from "@/code";
 import { useEditor } from "@/state/store";
 import { displayName, KIND_LABELS } from "@/model/model";
 import { indexLookup } from "@/model/index";
+import { commonDomain } from "@/model/vocabularies";
 import { clone } from "@/lib/json";
 import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
@@ -44,7 +46,7 @@ export function Inspector() {
   return <ElementInspector key={selection[0]} id={selection[0]} />;
 }
 
-function statusBadge(status: string | undefined, saving: boolean) {
+export function statusBadge(status: string | undefined, saving: boolean) {
   if (saving || status === "saving")
     return (
       <Badge>
@@ -138,6 +140,7 @@ function ElementInspector({ id }: { id: string }) {
         <TabsContent value="properties" className="overflow-auto p-3">
           <div className="flex flex-col gap-4">
             <CommonFields {...props} />
+            <TranslationsSection id={id} kind={kind} />
             {kind === "entity" ? <EntityFields {...props} /> : null}
             {kind === "relation" ? <RelationFields {...props} /> : null}
             {kind === "value-object" || kind === "stereotype" ? <AttributesOnlyFields {...props} /> : null}
@@ -210,7 +213,7 @@ function JsonTab({ json, onChange }: { json: ModelJson; onChange: (json: ModelJs
   );
 }
 
-function References({ id }: { id: string }) {
+export function References({ id }: { id: string }) {
   const refs = useReferences(id);
   const index = useIndex();
   const lookup = indexLookup(index.data);
@@ -303,7 +306,11 @@ function BulkInspector({ ids }: { ids: string[] }) {
   const lookup = indexLookup(index.data);
   const rows = ids.map((id) => lookup.byId.get(id)).filter((r): r is NonNullable<typeof r> => !!r);
   const kinds = [...new Set(rows.map((r) => r.kind))];
-  const vocab = useVocabularies(kinds.length === 1 ? kinds[0] : "entity");
+  const domain = commonDomain(
+    rows.map((r) => (r.kind === "package" ? r.id : r.package)),
+    index.data ?? [],
+  );
+  const vocab = useVocabularies(kinds.length === 1 ? kinds[0] : "entity", domain);
   const [stereotype, setStereotype] = useState("");
   const [tag, setTag] = useState("");
   const [busy, setBusy] = useState(false);
@@ -312,7 +319,7 @@ function BulkInspector({ ids }: { ids: string[] }) {
     setBusy(true);
     try {
       await drafts.flushAll();
-      const docs = await Promise.all(ids.map((id) => queryClient.fetchQuery({ queryKey: keys.element(id), queryFn: () => endpoints.getElement(id) })));
+      const docs = await Promise.all(ids.map((id) => queryClient.fetchQuery({ queryKey: keys.element(id), queryFn: () => loadElement(id) })));
       const after = docs.map((d) => {
         const json = clone(d.json as ModelJson);
         mutate(json);

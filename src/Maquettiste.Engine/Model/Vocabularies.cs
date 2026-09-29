@@ -4,12 +4,19 @@ using System.Text.Json;
 
 namespace Maquettiste.Engine.Model;
 
-/// <summary>The tag vocabulary (<c>model/vocabularies/tags.json</c>).</summary>
+/// <summary>A tag vocabulary: the global one (<c>model/vocabularies/tags.json</c>) or a domain's (<see cref="Package"/>).</summary>
 public sealed record TagVocabulary : Element
 {
     /// <inheritdoc/>
     [JsonIgnore]
     public override ElementKind Kind => ElementKind.TagVocabulary;
+
+    /// <summary>
+    /// The domain the vocabulary is scoped to (that domain and the domains nested under it), or <see langword="null"/> for the global
+    /// one. At most one vocabulary of each kind per scope (MQ1009).
+    /// </summary>
+    [ElementRef(ElementKind.Package)]
+    public string? Package { get; init; }
 
     /// <summary>When <see langword="true"/>, undeclared tags are errors (MQ2006); otherwise info.</summary>
     public bool Strict { get; init; }
@@ -33,12 +40,19 @@ public sealed record TagDefinition
     public string? Color { get; init; }
 }
 
-/// <summary>The category tree (<c>model/vocabularies/categories.json</c>): a flat list, a tree through <see cref="Category.Parent"/>.</summary>
+/// <summary>A category tree, global (<c>model/vocabularies/categories.json</c>) or a domain's: a flat list, a tree through <see cref="Category.Parent"/>.</summary>
 public sealed record CategoryTree : Element
 {
     /// <inheritdoc/>
     [JsonIgnore]
     public override ElementKind Kind => ElementKind.CategoryTree;
+
+    /// <summary>
+    /// The domain the vocabulary is scoped to (that domain and the domains nested under it), or <see langword="null"/> for the global
+    /// one. At most one vocabulary of each kind per scope (MQ1009).
+    /// </summary>
+    [ElementRef(ElementKind.Package)]
+    public string? Package { get; init; }
 
     /// <summary>Every category.</summary>
     public IReadOnlyList<Category> Categories { get; init; } = [];

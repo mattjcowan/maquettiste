@@ -30,7 +30,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     /// lowering one would let the file vanish from generation without an error.
     /// </summary>
     private static readonly FrozenSet<string> FixedSeverityRules =
-        new[] { "MQ1001", "MQ1002", "MQ1004", "MQ1006", "MQ1007", "MQ1009" }.ToFrozenSet(StringComparer.Ordinal);
+        new[] { "MQ1001", "MQ1002", "MQ1004", "MQ1006", "MQ1007", "MQ1009", "MQ7012" }.ToFrozenSet(StringComparer.Ordinal);
 
     private readonly ReferenceWalker _walker = new();
 
@@ -64,6 +64,11 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         }
 
         var extensions = new ExtensionSet(model, wholeModel ? diagnostics : null);
+        if (wholeModel)
+        {
+            diagnostics.AddRange(ReferenceDataRules.CheckSettings(model));
+            diagnostics.AddRange(LocalizationRules.Check(model));
+        }
 
         // JavaScript rules: one pool per validation (engine-design.md section 10).
         var needScripts = model.RuleScripts.Count > 0 && (scope.IncludeScriptRules || NamesRules(targets));
@@ -141,9 +146,9 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         {
             if (!ReferenceEquals(model.GetDocument(doc.Element.Id), doc))
                 continue; // a duplicate id (MQ1004)
-            if (doc.Element is TagVocabulary && model.Tags?.Id != doc.Element.Id)
-                continue; // a second vocabulary (MQ1009)
-            if (doc.Element is CategoryTree && model.Categories?.Id != doc.Element.Id)
+            if (doc.Element is TagVocabulary tags && model.TagVocabularyOf(tags.Package)?.Id != doc.Element.Id)
+                continue; // a second vocabulary in its scope (MQ1009)
+            if (doc.Element is CategoryTree tree && model.CategoryTreeOf(tree.Package)?.Id != doc.Element.Id)
                 continue;
             list.Add(doc);
         }
@@ -187,13 +192,32 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         return active.Where(d => selected.Contains(d.Element.Id)).ToList();
     }
 
+    /// <summary>Every vocabulary, and every document whose vocabulary chain contains <paramref name="scope"/>.</summary>
+    /// <param name="model">The model.</param>
+    /// <param name="scope">A package id, or <see langword="null"/> for the global scope (every document).</param>
+    /// <returns>The documents.</returns>
+    private static IEnumerable<ElementDocument> VocabularyDependents(ModelSnapshot model, string? scope)
+    {
+        foreach (var doc in model.Documents)
+        {
+            if (doc.Element is TagVocabulary or CategoryTree || scope is null
+                || model.VocabularyChain(BuiltinRules.VocabularyScope(doc.Element)).Contains(scope))
+                yield return doc;
+        }
+    }
+
+    private static bool HasDomainVocabularies(ModelSnapshot model) =>
+        model.TagVocabularies.Any(v => v.Package is not null) || model.CategoryTrees.Any(t => t.Package is not null);
+
     /// <summary>
     /// The files whose diagnostics can change with a document although they do not reference it: cross-file conflicts are reported
     /// on every file after the ordinally first, so the other participants must be validated with it. They are the files sharing a
     /// scoped name (MQ3001) or a physical name (MQ4002), the other mappings of the same target and database and the other overlays of
     /// the same synthesized table (MQ4004), the other compositions of the same child (MQ3016), the relations whose navigations land
     /// in the same inheritance hierarchy (MQ3009), an entity's descendants (MQ3007), and for a mapping the relations and relation
-    /// mappings whose foreign key binding depends on it (MQ4009, MQ4011).
+    /// mappings whose foreign key binding depends on it (MQ4009, MQ4011); for a tag vocabulary or category tree every vocabulary and
+    /// every element whose chain sees its scope (MQ2005, MQ2006, MQ2008, MQ3021), and for a package, when a domain vocabulary exists,
+    /// every element under it (a move changes their chains).
     /// </summary>
     /// <param name="context">The validation context.</param>
     /// <param name="document">The document in scope.</param>
@@ -202,6 +226,29 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     {
         var model = context.Model;
         var element = document.Element;
+        if (element is Seed seed)
+        {
+            // Codes and keys are unique across a target's seeds (MQ7001, MQ7002, MQ7102); a relation seed makes entity seeds that
+            // state the same links invalid (MQ7106).
+            foreach (var peer in context.SeedsOf(seed.Target))
+            {
+                if (model.GetDocument(peer.Id) is { } peerDocument)
+                    yield return peerDocument;
+            }
+
+            if (model.Get<Relation>(seed.Target) is { } seededRelation)
+            {
+                foreach (var end in seededRelation.Ends)
+                {
+                    foreach (var reference in model.ReferencesTo(end.Id))
+                    {
+                        if (reference.Field == "columns" && model.GetDocument(reference.FromElementId) is { } holder)
+                            yield return holder;
+                    }
+                }
+            }
+        }
+
         foreach (var (key, _) in ValidationContext.NameKeys(element))
         {
             foreach (var peer in context.WithName(key))
@@ -216,6 +263,18 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
 
         switch (element)
         {
+            case TagVocabulary or CategoryTree:
+                // A vocabulary decides MQ2005, MQ2006 and MQ2008 on every element whose chain sees its scope, and MQ3021 and MQ1009
+                // on the other vocabularies; tags are not references, so none of them is a referrer.
+                foreach (var peer in VocabularyDependents(model, ModelIndexer.PackageOf(element)))
+                    yield return peer;
+                break;
+            case Package when HasDomainVocabularies(model):
+                // Moving a domain changes the chain of every element under it (MQ2006, MQ2008) and the enclosing domains of its
+                // vocabularies (MQ3021).
+                foreach (var peer in VocabularyDependents(model, element.Id))
+                    yield return peer;
+                break;
             case Table table when ValidationContext.OverlayTarget(table) is { } overlayTarget:
                 foreach (var peer in context.OverlaysOf(overlayTarget))
                     yield return peer;
@@ -424,7 +483,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
 
     /// <summary>
     /// Applies <c>validation.rules</c>: a severity override, or <c>off</c>. MQ1xxx ignore <c>off</c>; the MQ1xxx errors that leave a
-    /// file out of the snapshot (MQ1001, MQ1002, MQ1004, MQ1006, MQ1007, MQ1009) ignore every setting.
+    /// file out of the snapshot (MQ1001, MQ1002, MQ1004, MQ1006, MQ1007, MQ1009, and MQ7012, a retired option refused at load) ignore every setting.
     /// </summary>
     internal static List<Diagnostic> ApplySettings(ProjectSettings settings, List<Diagnostic> diagnostics)
     {

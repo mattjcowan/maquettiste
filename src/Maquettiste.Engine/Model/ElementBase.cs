@@ -65,6 +65,8 @@ public abstract record ElementBase
 [JsonDerivedType(typeof(TagVocabulary))]
 [JsonDerivedType(typeof(CategoryTree))]
 [JsonDerivedType(typeof(Stereotype))]
+[JsonDerivedType(typeof(ReferenceType))]
+[JsonDerivedType(typeof(Seed))]
 public abstract record Element : ElementBase
 {
     /// <summary>

@@ -22,7 +22,10 @@ section 7.1). This folder describes its data model; `tools/build-model.mjs` turn
 
 ## Grammar
 
-A package file has `package` (the identifier), `displayName`, `description`, `enums`, `entities`, `relations` and `diagram`.
+A package file has `package` (the identifier), `displayName`, `description`, `enums`, `referenceTypes`, `entities`, `relations` and
+`diagram`. A reference type has `description`, `code` (the code's length), optional `label` (the label's length, 64 by default)
+and `rows`, one `<code>: <label> | <description>` per row; it becomes `model/reference-types/<name>.json` and one seed,
+`model/seeds/<name>/<name>.json`, holding its rows. An attribute names it like any type, and its default is a code.
 Every element and attribute needs a description; the build fails without one.
 
 **Attributes** are one line: `name: <type>[!] [flags] | description`.

@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Locale shard",
+  "description": "The translations of one locale for one domain (a package), for the elements with no package (root) or for the reference data.",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "kind",
+    "locale",
+    "scope",
+    "entries"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "kind": {
+      "const": "locale-shard"
+    },
+    "locale": {
+      "$ref": "common.json#/$defs/locale"
+    },
+    "scope": {
+      "description": "The package id, root or reference-data.",
+      "anyOf": [
+        {
+          "$ref": "common.json#/$defs/id"
+        },
+        {
+          "enum": ["root", "reference-data"]
+        }
+      ]
+    },
+    "entries": {
+      "description": "Translations keyed by element or sub-element id.",
+      "type": "object",
+      "propertyNames": {
+        "$ref": "common.json#/$defs/id"
+      },
+      "additionalProperties": {
+        "title": "Translation entry",
+        "type": "object",
+        "x-order": ["displayName", "pluralName", "label", "description", "src"],
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "pluralName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "$ref": "common.json#/$defs/description"
+          },
+          "src": {
+            "description": "Each translated field's 8-hex SHA-256 prefix of the default-locale text it was translated from.",
+            "type": "object",
+            "x-order": ["displayName", "pluralName", "label", "description"],
+            "properties": {
+              "displayName": {
+                "$ref": "#/$defs/hash"
+              },
+              "pluralName": {
+                "$ref": "#/$defs/hash"
+              },
+              "label": {
+                "$ref": "#/$defs/hash"
+              },
+              "description": {
+                "$ref": "#/$defs/hash"
+              }
+            },
+            "additionalProperties": false,
+            "default": {}
+          }
+        },
+        "additionalProperties": false,
+        "minProperties": 1
+      },
+      "default": {}
+    }
+  },
+  "required": ["kind", "locale", "scope"],
+  "additionalProperties": false,
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}$"
+    }
+  }
+}

@@ -58,6 +58,44 @@ registers the server for the current user only.
 Start `claude` in the repository, approve the project server when asked (or check with `/mcp`), and ask for a model change:
 the skill tells the agent to use the `mcp__maquettiste__*` tools and to fall back to file edits only without them.
 
+### From the Docker image (no .NET on the machine)
+
+The image `mattjcowan/maquettiste` carries the CLI (`/usr/local/bin/maquettiste`), so a machine with only Docker can run the
+server. Register it by hand in the repository's `.mcp.json`, with the repository's absolute path on the left of `:/repo`:
+
+```json
+{
+  "mcpServers": {
+    "maquettiste": {
+      "type": "stdio",
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-v", "/Users/you/src/your-repo:/repo", "-w", "/repo",
+               "mattjcowan/maquettiste:<tag>", "maquettiste", "mcp"]
+    }
+  }
+}
+```
+
+- `-i` keeps stdin open (the JSON-RPC stream); do not add `-t`, a terminal would mix control characters into stdout.
+- No `--repo`: `-w /repo` makes the mounted folder the current directory, and the server finds the repository there.
+- On Linux add `"--user", "1000:1000"` (your `id -u`:`id -g`, as numbers: the file is not run through a shell) after `--rm`,
+  or the server runs as the image's user (UID 1654) and cannot write the model files. Docker Desktop on macOS maps file
+  ownership to the Mac user, so the entry above is complete there (not verified here).
+- Claude Code expands `${VAR}` in `.mcp.json`, so `"${PWD}:/repo"` works when `claude` is started in the repository; a literal
+  path is the safer choice for a committed file.
+- Each client session starts a fresh container (about 0.7 s to `initialize` on the Linux machine it was measured on); the
+  index and plan cache lives in the container, so the first `plan` of a session is a cold one.
+
+`maquettiste init --mcp` writes the `maquettiste` command form, not this one; write the Docker entry yourself (or replace the
+entry `init` wrote). The same form works for `claude mcp add`:
+
+```sh
+claude mcp add maquettiste -- docker run -i --rm -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste mcp
+```
+
+Checked on Linux (Docker Engine, amd64) with a stdio client over `docker run -i --rm --user ... maquettiste mcp`: `initialize`
+in 0.7 s, `tools/list` with 18 tools, `validate` in 55 ms, the container removed on exit.
+
 ### In this repository
 
 The root `.mcp.json` runs the CLI from source against `tmp/billing`, the gitignored copy of the billing fixture that
@@ -111,6 +149,12 @@ the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.We
 | `delete_element` | deleteElement | `id`, `expectedHash`, `resolution` (`refuse` default, or `remove-references`) | the save result |
 | `apply_batch` | applyBatch | `operations` (the batch's `operations` array, or the whole `{ "operations": [...] }` body) | the batch result, all or nothing |
 | `get_references` | getReferences | `id` | where the element is used |
+| `localization_status` | getLocalizationStatus | | `defaultLocale`, `declared`, and per translated locale its `chain` and per shard `expected`, `translated`, `missing`, `stale` |
+| `get_translations` | getTranslations | `locale`, `owner` or `shard` (optional), `missing` (the entries that need work, 200 per page), `cursor` | `{ entries, cursor }`: per field the `source`, `translation`, `effective` text, `state` (`translated`, `missing`, `stale`, `fallback`), `shard` and `shardHash` |
+| `set_translations` | putTranslations | `locale`, `entries` (`[{ id, field, value, confirm? }]`, `value` null removes), `expected` (`{ "<shard path>": "<shardHash>" }`) | `{ outcome, hashes, diagnostics }`; a changed shard is `conflict`, an unknown id or field `invalid` |
+| `export_seed_csv` | exportSeedCsv | `id` of a seed, `bom` (byte order mark and CRLF), `locales` (adds `@label:<locale>` and `@description:<locale>`) | the CSV text: `@id`, then `@code`, `@label`, `@description` for a reference type, then attribute names and end roles |
+| `import_seed_csv` | importSeedCsv | `id`, `csv`, `mode` (`merge` default, or `replace`), `apply` (false: a dry run), `expectedHash` | the preview: `added`, `changed` (before and after), `removed`, `blocked` (rows other seeds reference, kept), `ignoredHeaders`, `applied`, `hash` |
+| `reference_type_usage` | getReferenceTypeUsage | `id` of a reference type | `usages`: attribute, owner, domain, collection, required and the effective storage per database |
 | `validate` | validate | `elementIds` (optional scope), `includeReferrers`, `includeScriptRules` | the report: diagnostics with rule ids, file, JSON pointer, line and column; counts |
 | `get_database_view` | getDatabaseView | `id` of a database | the resolved physical view |
 | `list_packs` | (part of getProject) | | pack manifests and their diagnostics |
@@ -124,6 +168,16 @@ the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.We
 
 Documents may be passed as JSON objects or as strings holding one. Writes are recorded as `ChangeSource.Cli`.
 
+The reference data and localization tools are `localization_status`, `get_translations`, `set_translations`,
+`export_seed_csv`, `import_seed_csv` and `reference_type_usage`; the kinds `reference-type` and `seed` work with every
+element tool, `get_model_index` (`kind`) and `get_schema`.
+
+Reference types and seeds are elements: `get_element`, `create_element`, `save_element` and `apply_batch` handle them. Translations
+live in locale shards, not in element files: read them with `get_translations`, then pass the `shardHash` values you read as
+`expected` to `set_translations`, which writes every entry in one atomic save (reference-types-seeds-localization.md section 3.9).
+`import_seed_csv` previews unless `apply` is true; applying saves the seed with `expectedHash` and then the translations of the
+`@label:<locale>` and `@description:<locale>` columns.
+
 ### Semantics
 
 - **Hashes.** `get_element` and `get_settings` return the file's `hash` (the API's ETag). `save_element`, `delete_element`,
@@ -135,6 +189,8 @@ Documents may be passed as JSON objects or as strings holding one. Writes are re
   sent, so both versions are in hand to merge and retry with the new hash.
 - **Referenced deletes.** `delete_element` refuses while other elements reference the element (`referenced`, with `referrers`),
   unless `resolution` is `remove-references`, which clears optional references; a required reference then makes the delete `invalid`.
+  Owning references do not count: deleting an entity, relation or reference type deletes its seeds and every translation of its
+  nodes in the same save, and only references from other elements (including cells of other seeds that name its rows) refuse it.
 - **Batches** are all or nothing: when one operation fails nothing is written, and `items` says which failed and why.
 - **Validation on write.** A save, create, delete or batch is validated on the candidate model; only errors the change introduces
   refuse it (`invalid`, with `diagnostics`).

@@ -1,0 +1,45 @@
+{
+  "$schema": ".schema/v1/maquettiste.json",
+  "formatVersion": 1,
+  "name": "reference-data",
+  "conventions": {
+    "referenceStorage": {
+      "strategy": "lookup-table"
+    }
+  },
+  "localization": {
+    "defaultLocale": "en",
+    "locales": [
+      "en",
+      "fr",
+      "fr-CA"
+    ],
+    "fallbacks": {
+      "fr-CA": [
+        "fr"
+      ]
+    }
+  },
+  "referenceData": {
+    "strategies": {
+      "check": {
+        "description": "CHECK (col IN (...codes))"
+      },
+      "lookup-table": {
+        "description": "Table keyed by code, FK from each column",
+        "collections": true,
+        "options": {
+          "schema": {
+            "type": "string"
+          }
+        }
+      },
+      "native": {
+        "collections": {
+          "*": false,
+          "postgresql": true
+        }
+      }
+    }
+  }
+}

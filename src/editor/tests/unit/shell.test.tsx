@@ -3,7 +3,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeAll, describe, expect, it } from "vitest";
 import { App } from "@/app/App";
-import { emptyFilter, explorerRows, matches } from "@/explorer/filter";
+import { emptyFilter, isFiltering, matches, matchingIds } from "@/explorer/filter";
 import type { ElementSummary } from "@/api/types";
 import { useMockApi } from "./harness";
 
@@ -47,13 +47,11 @@ describe("explorer filter", () => {
     expect(matches(rows[1], { ...emptyFilter, stereotypes: ["S1"] })).toBe(true);
   });
 
-  it("groups rows by package and hides a collapsed group's rows", () => {
-    const open = explorerRows(rows, emptyFilter, new Set());
-    expect(open.filter((r) => r.type === "element").length).toBeGreaterThanOrEqual(2);
-    const group = open.find((r) => r.type === "group")!;
-    expect(group.label).toBe("Billing");
-    const closed = explorerRows(rows, emptyFilter, new Set([group.key.replace(/^group:/, "")]));
-    expect(closed.length).toBeLessThan(open.length);
+  it("says whether a filter is set and lists the matching ids", () => {
+    expect(isFiltering(emptyFilter)).toBe(false);
+    expect(isFiltering({ ...emptyFilter, text: "  " })).toBe(false);
+    expect(isFiltering({ ...emptyFilter, tags: ["pii"] })).toBe(true);
+    expect(matchingIds(rows, { ...emptyFilter, text: "i" })).toEqual(["P", "A"]);
   });
 });
 
@@ -64,8 +62,14 @@ describe("shell", () => {
     window.history.replaceState(null, "", "/generate");
     render(<App services={api.services} />);
     const explorer = await screen.findByRole("complementary", { name: "Explorer" });
-    await waitFor(() => expect(within(explorer).getByText("Invoice")).toBeTruthy(), { timeout: 5000 });
-    expect(screen.getByRole("navigation", { name: "Workspaces" })).toBeTruthy();
+    // One explorer at a time, under a header that names it; domains start collapsed.
+    expect(within(explorer).getByRole("heading", { name: "Domain model" })).toBeTruthy();
+    await waitFor(() => expect(within(explorer).getByRole("tree", { name: "Domain model" })).toBeTruthy(), { timeout: 5000 });
+    await act(async () => {
+      await userEvent.type(within(explorer).getByLabelText("Search the model"), "Invoice");
+    });
+    await waitFor(() => expect(within(explorer).getByTestId("explorer-row-Invoice")).toBeTruthy(), { timeout: 5000 });
+    expect(screen.getByRole("navigation", { name: "Explorers" })).toBeTruthy();
     expect(screen.getByRole("complementary", { name: "Inspector" })).toBeTruthy();
     expect(screen.getByTestId("bottom-panel")).toBeTruthy();
     expect(document.querySelectorAll("[data-region]").length).toBeGreaterThanOrEqual(5);
@@ -75,7 +79,11 @@ describe("shell", () => {
     window.history.replaceState(null, "", "/generate");
     render(<App services={api.services} />);
     const explorer = await screen.findByRole("complementary", { name: "Explorer" });
-    const invoice = await within(explorer).findByText("Invoice", undefined, { timeout: 5000 });
+    await within(explorer).findByRole("tree", { name: "Domain model" }, { timeout: 5000 });
+    await act(async () => {
+      await userEvent.type(within(explorer).getByLabelText("Search the model"), "Invoice");
+    });
+    const invoice = await within(explorer).findByTestId("explorer-row-Invoice", undefined, { timeout: 5000 });
     await act(async () => {
       await userEvent.click(invoice);
     });

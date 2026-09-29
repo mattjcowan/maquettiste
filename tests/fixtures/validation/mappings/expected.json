@@ -22,7 +22,7 @@
   {
     "rule": "MQ4009",
     "severity": "error",
-    "message": "Storage 'lookup' does not fit attribute 'name' (string); valid: none.",
+    "message": "Storage 'embedded' does not fit attribute 'name' (string); valid: none.",
     "elementId": "01JMAP00000000000000000001",
     "filePath": ".maquettiste/model/mappings/customer-in-main.json",
     "jsonPointer": "/attributes/0/storage",

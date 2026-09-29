@@ -1,0 +1,27 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JRDE00000000000000000001",
+  "name": "Recipe",
+  "key": {
+    "attributes": [
+      "01JRDE00000000000000000011"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01JRDE00000000000000000011",
+      "name": "code",
+      "type": "string",
+      "length": 32,
+      "required": true
+    },
+    {
+      "id": "01JRDE00000000000000000012",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "required": true
+    }
+  ]
+}

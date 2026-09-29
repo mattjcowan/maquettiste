@@ -1,0 +1,33 @@
+{
+  "$schema": "../../.schema/v1/reference-type.json",
+  "kind": "reference-type",
+  "id": "01JVST00000000000000000001",
+  "name": "Unit",
+  "code": {
+    "id": "01JVST00000000000000000002",
+    "length": 4,
+    "pattern": "^[a-z]+$"
+  },
+  "label": {
+    "id": "01JVST00000000000000000003",
+    "length": 32
+  },
+  "attributes": [
+    {
+      "id": "01JVST00000000000000000004",
+      "name": "factor",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "required": true
+    },
+    {
+      "id": "01JVST00000000000000000005",
+      "name": "base",
+      "type": {
+        "ref": "01JVST00000000000000000001"
+      },
+      "required": true
+    }
+  ]
+}

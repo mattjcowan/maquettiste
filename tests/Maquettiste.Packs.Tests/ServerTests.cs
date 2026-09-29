@@ -3,7 +3,7 @@ namespace Maquettiste.Packs.Tests;
 /// <summary>
 /// Runs the sql-ddl output on real PostgreSQL and SQL Server servers: the schema script with the seed twice, and the migration
 /// chain across model changes (added indexed and defaulted columns, a new relation closing a foreign-key cycle, a renamed and
-/// retyped column, a changed foreign key, a new lookup row, a dropped column with a default), plus the schema script and first
+/// retyped column, a changed foreign key, a new reference row, a dropped column with a default), plus the schema script and first
 /// migration of a model with a foreign-key cycle. The scripts go through the servers' own clients in running Docker containers,
 /// so the test project needs no database providers. Each test skips unless its container is named in the environment:
 /// <c>MAQUETTISTE_TEST_POSTGRES_CONTAINER</c> (user <c>postgres</c>), or <c>MAQUETTISTE_TEST_SQLSERVER_CONTAINER</c> with
@@ -35,6 +35,7 @@ public sealed class ServerTests
         ModelChanges.ChangeCustomer(repo);
         ModelChanges.AddFeaturedInvoice(repo);
         ModelChanges.AddDisputedStatus(repo);
+        ModelChanges.AddVoucherMethod(repo);
         await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
         ModelChanges.RemovePriority(repo);
         await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);

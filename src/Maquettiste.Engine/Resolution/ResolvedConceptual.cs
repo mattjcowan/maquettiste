@@ -71,6 +71,9 @@ public sealed class REntity : RElement
 
     /// <summary>The relation this entity was promoted from.</summary>
     public RRelation? PromotedFrom { get; internal set; }
+
+    /// <summary>The seeds whose target is the entity, by (name, id).</summary>
+    public RList<RSeed> Seeds { get; internal set; } = RList<RSeed>.Empty;
 }
 
 /// <summary>A resolved primary key.</summary>
@@ -170,6 +173,9 @@ public sealed class RAttribute : RElement
 
     /// <summary>The stereotype that adds a virtual attribute.</summary>
     public RStereotype? FromStereotype { get; internal set; }
+
+    /// <summary>How the attribute uses a reference type, when its type is one; otherwise <see langword="null"/>.</summary>
+    public RReferenceUsage? Reference { get; internal set; }
 }
 
 /// <summary>A resolved derivation.</summary>
@@ -204,7 +210,7 @@ public sealed class RValidation
 /// <summary>A resolved attribute type.</summary>
 public sealed class RType
 {
-    /// <summary><c>builtin</c>, <c>enum</c>, <c>value-object</c> or <c>scalar</c>.</summary>
+    /// <summary><c>builtin</c>, <c>enum</c>, <c>value-object</c>, <c>scalar</c> or <c>reference</c>.</summary>
     public string Kind { get; internal set; } = "builtin";
 
     /// <summary>The keyword or the referenced type's name.</summary>
@@ -221,6 +227,9 @@ public sealed class RType
 
     /// <summary>The custom scalar type, when <see cref="Kind"/> is <c>scalar</c>.</summary>
     public RScalarType? Scalar { get; internal set; }
+
+    /// <summary>The reference type, when <see cref="Kind"/> is <c>reference</c> (<see cref="Builtin"/> is then the code's type).</summary>
+    public RReferenceType? ReferenceType { get; internal set; }
 }
 
 /// <summary>A resolved enum.</summary>
@@ -319,6 +328,9 @@ public sealed class RRelation : RElement
 
     /// <summary>Mappings by database name.</summary>
     public IReadOnlyDictionary<string, RRelationMapping> Mappings { get; internal set; } = FrozenDictionary<string, RRelationMapping>.Empty;
+
+    /// <summary>The seeds whose target is the relation, by (name, id).</summary>
+    public RList<RSeed> Seeds { get; internal set; } = RList<RSeed>.Empty;
 }
 
 /// <summary>A resolved relation end.</summary>
@@ -369,6 +381,12 @@ public sealed class RRelationMapping
 
     /// <summary>The generated entity, for the <c>promoted</c> shape.</summary>
     public REntity? PromotedEntity { get; internal set; }
+
+    /// <summary>
+    /// Collection attributes typed by a reference type: the resolver maps them to no column and no table, and the templates realize
+    /// them as the effective storage strategy calls for (junction table, array column, JSON).
+    /// </summary>
+    public IReadOnlyList<RAttribute> TemplateDefined { get; internal set; } = [];
 }
 
 /// <summary>A resolved navigation property.</summary>
@@ -425,6 +443,9 @@ public sealed class REntityMapping
 
     /// <summary>Join paths by navigation name.</summary>
     public IReadOnlyDictionary<string, RJoinPath> Joins { get; internal set; } = FrozenDictionary<string, RJoinPath>.Empty;
+
+    /// <summary>Collection attributes typed by a reference type, which no column or table stores: the templates realize them.</summary>
+    public IReadOnlyList<RAttribute> TemplateDefined { get; internal set; } = [];
 }
 
 /// <summary>One attribute path mapped to a column.</summary>
