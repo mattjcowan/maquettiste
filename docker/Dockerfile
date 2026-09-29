@@ -20,12 +20,13 @@ COPY global.json Directory.Build.props Directory.Packages.props .editorconfig ./
 COPY schemas/v1 schemas/v1
 COPY src/Maquettiste.Engine src/Maquettiste.Engine
 COPY docker/closure docker/closure
-# PD24: one package version per engine build, <Directory.Build.props version>.b<12 hex of the engine's inputs>, so an upgraded image
+# PD24: one package version per engine build, <Directory.Build.props version> plus b<12 hex of the engine's inputs> (as a further
+# prerelease segment, or as the prerelease label when the version has none), so an upgraded image
 # never compiles the functions against an engine the persistent NuGet cache (/data/nuget) already holds under the same version.
 RUN base=$(dotnet msbuild src/Maquettiste.Engine -getProperty:PackageVersion) \
  && sum=$(find src/Maquettiste.Engine schemas/v1 Directory.Build.props Directory.Packages.props -type f \
           -not -path '*/bin/*' -not -path '*/obj/*' | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -c1-12) \
- && echo "$base.b$sum" > /engine.version \
+ && case "$base" in *-*) echo "$base.b$sum" ;; *) echo "$base-b$sum" ;; esac > /engine.version \
  && dotnet pack src/Maquettiste.Engine -c Release -o /feed -p:Version="$(cat /engine.version)" \
  && dotnet restore docker/closure/closure.csproj -p:EngineVersion="$(cat /engine.version)" \
       --packages /tmp/pkgs --source /feed --source https://api.nuget.org/v3/index.json \
@@ -44,7 +45,7 @@ COPY packs/sql-ddl packs/sql-ddl
 COPY packs/csharp-dapper packs/csharp-dapper
 COPY skills/maquettiste-modeling skills/maquettiste-modeling
 COPY src/Maquettiste.Cli src/Maquettiste.Cli
-RUN dotnet publish src/Maquettiste.Cli -c Release -o /cli -p:UseAppHost=false -p:Version="$(cat /engine.version)" \
+RUN dotnet publish src/Maquettiste.Cli -c Release -o /cli -p:UseAppHost=false \
  && rm -f /cli/*.pdb \
  && echo "maquettiste: cli $(du -sh /cli | cut -f1)"
 

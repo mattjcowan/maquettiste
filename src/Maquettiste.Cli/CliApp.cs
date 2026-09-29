@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using Maquettiste.Cli.Commands;
@@ -188,7 +189,7 @@ public sealed class CliApp(CliEnvironment environment)
             {
                 if (line.Positionals.Count > 0)
                     throw new UsageException("--version takes no command.");
-                await _environment.Out.WriteLineAsync(EngineVersion.Value).ConfigureAwait(false);
+                await _environment.Out.WriteLineAsync(VersionLine()).ConfigureAwait(false);
                 return Program.ExitCodes.Success;
             }
 
@@ -268,5 +269,17 @@ public sealed class CliApp(CliEnvironment environment)
         };
         var jobs = line.Int("--jobs", 1);
         return new GlobalContext(_environment, line, verbosity, progress, jobs);
+    }
+
+    /// <summary>
+    /// The product version (the package version the build was given, without its build metadata) with the engine's contract version
+    /// and the model format beside it: "maquettiste 0.1.0 (engine contract 1.0.0, model format 1)".
+    /// </summary>
+    /// <returns>The line <c>--version</c> prints.</returns>
+    public static string VersionLine()
+    {
+        var informational = typeof(CliApp).Assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        var product = string.IsNullOrEmpty(informational) ? typeof(CliApp).Assembly.GetName().Version?.ToString(3) ?? "0.0.0" : informational.Split('+')[0];
+        return $"maquettiste {product} (engine contract {EngineVersion.Value}, model format {EngineVersion.FormatVersion})";
     }
 }

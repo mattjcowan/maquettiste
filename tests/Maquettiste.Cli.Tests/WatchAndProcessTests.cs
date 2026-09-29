@@ -88,7 +88,9 @@ public sealed class ProcessTests
         using var repo = CliRepo.Billing();
         var version = await RunProcessAsync(repo.RepoRoot, "--version");
         Assert.Equal(0, version.Code);
-        Assert.Equal(Engine.EngineVersion.Value + "\n", version.Out);
+        Assert.Equal(CliApp.VersionLine() + "\n", version.Out);
+        Assert.StartsWith("maquettiste 0.", version.Out, StringComparison.Ordinal);
+        Assert.Contains("engine contract " + Engine.EngineVersion.Value, version.Out, StringComparison.Ordinal);
 
         var generate = await RunProcessAsync(repo.RepoRoot, "generate", "--cache-dir", repo.CacheDirectory);
         Assert.True(generate.Code == 0, generate.Error);

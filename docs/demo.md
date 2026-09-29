@@ -62,7 +62,7 @@ The image carries the CLI (`/usr/local/bin/maquettiste`), so the Mac needs nothi
 
 ```zsh
 maquettiste() { docker run --rm $([ -t 0 ] && echo -it) --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:demo maquettiste "$@"; }
-maquettiste --version                    # 1.0.0
+maquettiste --version                    # maquettiste 0.1.0 (engine contract 1.0.0, model format 1)
 ```
 
 - Run it from the repository root: the container sees only the folder you are in (mounted at `/repo`).
@@ -509,7 +509,7 @@ minutes when you do it by hand.
 
 | Step | Result | Time |
 | --- | --- | --- |
-| `maquettiste --version` / `init` | `1.0.0`; 4 lines, project named `repo` | 0.5 s / 0.65 s |
+| `maquettiste --version` / `init` | `maquettiste 0.1.0 (engine contract 1.0.0, model format 1)`; 4 lines | 0.5 s / 0.65 s |
 | `compose up` to `/api/health` 200, first boot | succeeded | 4.9 s |
 | 1.1 First-run panel, New domain Shop | created, "No problems" | 0.5 s |
 | 1.2 New enum from Shop's menu, four members with codes | saved, Domain preset to Shop | 3.5 s |

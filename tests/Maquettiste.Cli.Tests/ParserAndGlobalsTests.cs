@@ -34,11 +34,13 @@ public sealed class ParserAndGlobalsTests
     public void Plan_letters_follow_the_design(FileChangeKind kind, char letter) => Assert.Equal(letter, GenerateCommand.Letter(kind));
 
     [Fact]
-    public async Task Version_prints_the_engine_version()
+    public async Task Version_prints_the_product_and_engine_contract_versions()
     {
         var result = await CliRepo.RunInAsync(Path.GetTempPath(), Ct, "--version");
         Assert.Equal(0, result.ExitCode);
-        Assert.Equal(EngineVersion.Value + "\n", result.Out);
+        Assert.Equal(CliApp.VersionLine() + "\n", result.Out);
+        Assert.StartsWith("maquettiste 0.", result.Out, StringComparison.Ordinal);
+        Assert.Contains("engine contract " + EngineVersion.Value + ", model format " + EngineVersion.FormatVersion, result.Out, StringComparison.Ordinal);
     }
 
     [Fact]
