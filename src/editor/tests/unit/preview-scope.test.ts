@@ -2,6 +2,8 @@
 // default, the remembered one while it is in scope; partials preview through a unit that includes them; a scope
 // mismatch reads as a sentence, not the raw render error.
 import { describe, expect, it } from "vitest";
+import * as endpoints from "@/api/endpoints";
+import { useMockApi } from "./harness";
 import { mismatchText, noFilesText, pickElement, previewUnit, scopeCandidates, scopeMismatch, unitScope } from "@/workspaces/generate/previewScope";
 
 const index = [
@@ -95,5 +97,32 @@ describe("scopeMismatch", () => {
     expect(mismatchText(unitScope("each locale"))).toBe("This template renders one locale; pick a locale to preview it.");
     expect(scopeMismatch(scope, [{ rule: "MQ6006", message: "The variable or function `entity` was not found" }])).toBeNull();
     expect(scopeMismatch(unitScope("model"), raw)).toBeNull();
+  });
+
+  it("shows MQ6026, the server's out-of-scope refusal, as it is", () => {
+    const message = "This template expects an entity (unit 'entity' is 'each entity'), not 'Currency' (reference-type); pick one.";
+    expect(scopeMismatch(unitScope("each entity"), [{ rule: "MQ6026", message }])).toBe(message);
+    expect(scopeMismatch(unitScope("model"), [{ rule: "MQ6026", message }])).toBe(message);
+  });
+});
+
+describe("the mock server's preview refusal (MQ6026)", () => {
+  const api = useMockApi();
+
+  it("answers an element outside the unit's scope with MQ6026 and no files, and renders one inside it", async () => {
+    const index = await endpoints.getModelIndex();
+    const packs = await endpoints.listPacks();
+    const pack = packs.find((p) => p.units.some((u) => u.for === "each entity"))!;
+    const unit = pack.units.find((u) => u.for === "each entity")!;
+    const enumRow = index.find((r) => r.kind === "enum")!;
+    const refused = await endpoints.previewTemplate({ pack: pack.name, unit: unit.id, elementId: enumRow.id });
+    expect(refused.files).toEqual([]);
+    expect(refused.diagnostics.map((d) => [d.rule, d.jsonPointer])).toEqual([["MQ6026", `/units/${pack.units.indexOf(unit)}/for`]]);
+    expect(scopeMismatch(unitScope(unit.for), refused.diagnostics)).toContain(`not '${enumRow.name}' (enum)`);
+    // The picker offers only the unit's kind, so its first candidate renders.
+    const first = scopeCandidates(unitScope(unit.for), index, [])[0];
+    const rendered = await endpoints.previewTemplate({ pack: pack.name, unit: unit.id, elementId: first.id });
+    expect(rendered.diagnostics.filter((d) => d.rule === "MQ6026")).toEqual([]);
+    expect(api.backend).toBeTruthy();
   });
 });

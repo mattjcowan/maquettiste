@@ -1,14 +1,18 @@
-// The Rows tab (reference-types-seeds-localization.md 4.4): a virtualized grid over all the type's seeds, `code`
+// The Rows grid (reference-types-seeds-localization.md 4.4), for every seed target: a reference type's Rows tab and
+// the Seed data tab of an entity or a relation. A virtualized grid over all the target's seeds, the first column
 // frozen on the left, errors as a red cell outline with the diagnostic as tooltip, and the SPEC section 14
 // spreadsheet keys (rowsModel.gridAction). Every edit goes through the seed's draft, so it saves like any element
 // and undoes; tab-separated paste writes cells and adds rows past the end; CSV import previews, then applies as one
-// save; CSV export downloads the seed.
+// save; CSV export downloads the seed. Import CSV and Export CSV sit in the grid's header. A relation-end column's
+// cell is a row of the far entity's seeds, edited with a picker; a description cell is a text area (Shift+Enter adds a
+// line); locale label and description columns belong to reference types.
 import { rowHeight } from "@/design/density";
 import { useCallback, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Download, Plus, Upload } from "lucide-react";
 import { useElements, useValidation } from "@/api/queries";
 import type { Diagnostic, ModelJson, ReferenceTypeDoc, SeedDoc } from "@/api/types";
+import type { AppServices } from "@/app/context";
 import { useServices } from "@/app/context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,12 +45,20 @@ import {
   pasteMatrix,
   setCells,
   toTsv,
+  withSeedColumns,
   withTranslatedLabels,
+  ONE_LOCALE_HINT,
+  type EndOption,
+  type TranslatedField,
   type GridAction,
+  type GridColumn,
   type GridRow,
 } from "./rowsModel";
 
-const WIDTH: Record<string, number> = { code: 128, label: 200 };
+const NO_LOCALES: string[] = [];
+const NO_OPTIONS: ReadonlyMap<string, EndOption[]> = new Map();
+
+const WIDTH: Record<string, number> = { code: 128, label: 200, description: 240 };
 const POINTER = /^\/rows\/(\d+)(?:\/values\/(\d+))?$/;
 
 interface Cell {
@@ -54,35 +66,88 @@ interface Cell {
   col: number;
 }
 
+/** A reference type's Rows tab: code, label and description, the user fields, and label and description columns per shown locale. */
 export function RowsTab({ typeId, seeds, onTab, onFocusSearch }: { typeId: string; seeds: string[]; onTab(index: number): void; onFocusSearch(): void }) {
   const services = useServices();
-  const { store, drafts } = services;
   const type = useDraftDocument(typeId).json as unknown as ReferenceTypeDoc | undefined;
+  const columns = useMemo(() => (type ? gridColumns(type) : null), [type]);
+  if (!type || !columns) return <Spinner />;
+  return (
+    <SeedGrid
+      name={type.name}
+      columns={columns}
+      seeds={seeds}
+      localized
+      createSeed={() => createSeed(services, type)}
+      onTab={onTab}
+      onFocusSearch={onFocusSearch}
+    />
+  );
+}
+
+export interface SeedGridProps {
+  /** The target's name: the grid's label, and the seed listed first (RT 1.2: the seed named after the type). */
+  name: string;
+  /** The target's columns; null while they load. */
+  columns: GridColumn[] | null;
+  seeds: string[];
+  /** Label and description columns per locale (reference types: their rows' labels and descriptions are translated). */
+  localized?: boolean;
+  /** Also show the columns a seed lists that the target no longer offers (entity and relation seeds). */
+  keepStoredColumns?: boolean;
+  /** Relation-end columns: entity id → the rows its picker lists. */
+  endOptions?: ReadonlyMap<string, EndOption[]>;
+  /** The seed new rows go to when the target has none. */
+  createSeed(): Promise<string | null>;
+  onTab?(index: number): void;
+  onFocusSearch?(): void;
+}
+
+export function SeedGrid({
+  name,
+  columns: baseColumns,
+  seeds,
+  localized = false,
+  keepStoredColumns = false,
+  endOptions = NO_OPTIONS,
+  createSeed: makeSeed,
+  onTab,
+  onFocusSearch,
+}: SeedGridProps) {
+  const services: AppServices = useServices();
+  const { store, drafts } = services;
   const loaded = useElements(seeds);
   const draftMap = useEditor(store, (s) => s.drafts);
   const validation = useValidation();
   const seedDocs = useMemo(() => {
     const docs = seeds.map((id) => (draftMap[id]?.json ?? loaded.byId.get(id)?.json) as unknown as SeedDoc | undefined).filter((s): s is SeedDoc => !!s);
     // The seed named after the type first (RT 1.2), then by name: the grid's order is stable.
-    return docs.sort((a, b) => Number(b.name === type?.name) - Number(a.name === type?.name) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
-  }, [seeds, draftMap, loaded.byId, type?.name]);
-  // RT 4.4: with two or more locales, one translated label column per locale, edited into the locale's shard.
-  const l10n = useLocalization();
+    return docs.sort((a, b) => Number(b.name === name) - Number(a.name === name) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  }, [seeds, draftMap, loaded.byId, name]);
+  // RT 4.4: with two or more locales, a translated label and description column per locale, edited into the locale's shard.
+  const localization = useLocalization();
+  const l10n = useMemo(
+    () => ({ ...localization, locales: localized ? localization.locales : NO_LOCALES, enabled: localized && localization.enabled }),
+    [localization, localized],
+  );
   const combine = useCallback(
     (results: { data?: { entries: TranslationEntry[] } }[]) => {
       const out = new Map<string, Map<string, string>>();
+      const descriptions = new Map<string, Map<string, string>>();
       const entries = new Map<string, TranslationEntry>();
       l10n.locales.forEach((locale, li) => {
         const map = new Map<string, string>();
+        const described = new Map<string, string>();
         out.set(locale, map);
+        descriptions.set(locale, described);
         for (let si = 0; si < seeds.length; si++)
           for (const e of results[li * seeds.length + si]?.data?.entries ?? []) {
-            if (e.field !== "label") continue;
-            entries.set(`${locale}|${e.id}`, e);
-            if (e.translation !== null) map.set(e.id, e.translation);
+            if (e.field !== "label" && e.field !== "description") continue;
+            entries.set(`${locale}|${e.field}|${e.id}`, e);
+            if (e.translation !== null) (e.field === "label" ? map : described).set(e.id, e.translation);
           }
       });
-      return { out, entries };
+      return { out, descriptions, entries };
     },
     [l10n.locales, seeds.length],
   );
@@ -96,8 +161,11 @@ export function RowsTab({ typeId, seeds, onTab, onFocusSearch }: { typeId: strin
   const { effective: contentLocale } = useContentLocale();
   const [allLocales, setAllLocales] = useState(false);
   const shown = useMemo(() => shownLocales(l10n.locales, contentLocale, allLocales), [l10n.locales, contentLocale, allLocales]);
-  const columns = useMemo(() => (type ? [...gridColumns(type), ...localeColumns(shown)] : []), [type, shown]);
-  const rows = useMemo(() => withTranslatedLabels(gridRows(seedDocs), labels.out), [seedDocs, labels]);
+  const columns = useMemo(
+    () => (baseColumns ? [...(keepStoredColumns ? withSeedColumns(baseColumns, seedDocs) : baseColumns), ...localeColumns(shown)] : []),
+    [baseColumns, keepStoredColumns, seedDocs, shown],
+  );
+  const rows = useMemo(() => withTranslatedLabels(gridRows(seedDocs), labels.out, labels.descriptions), [seedDocs, labels]);
   const primary = seedDocs[0] ?? null;
 
   const errors = useMemo(() => {
@@ -131,7 +199,7 @@ export function RowsTab({ typeId, seeds, onTab, onFocusSearch }: { typeId: strin
   const ROW_H = useMemo(() => rowHeight(), []);
   const virtualizer = useVirtualizer({ count: rows.length, getScrollElement: () => scrollRef.current, estimateSize: () => ROW_H, overscan: 20 });
 
-  if (!type || loaded.pending) return <Spinner />;
+  if (!baseColumns || loaded.pending) return <Spinner />;
 
   const range = {
     r0: Math.min(active.row, anchor.row),
@@ -160,7 +228,7 @@ export function RowsTab({ typeId, seeds, onTab, onFocusSearch }: { typeId: strin
     virtualizer.scrollToIndex(next.row, { align: "auto" });
   };
   /** The seed new rows go to: the primary one, created on first use. */
-  const targetSeed = async (): Promise<string | null> => primary?.id ?? (await createSeed(services, type));
+  const targetSeed = async (): Promise<string | null> => primary?.id ?? (await makeSeed());
 
   const insertBelow = async () => {
     const row = rows[active.row];
@@ -179,17 +247,20 @@ export function RowsTab({ typeId, seeds, onTab, onFocusSearch }: { typeId: strin
     closing.current = true;
     const row = rows[active.row];
     const column = columns[active.col];
-    if (editing && row && column?.locale) void writeLabel(column.locale, row.id, editing.value);
+    if (editing && row && column?.locale) void writeTranslation(column.locale, column.field ?? "label", row.id, editing.value);
     else if (editing && row && column) editSeed(row.seed, (s) => setCells(s, row.id, { [column.key]: parseCell(editing.value, column) }));
     setEditing(null);
     goTo({ row: active.row + (move === "down" ? 1 : 0), col: active.col + (move === "right" ? 1 : move === "left" ? -1 : 0) });
     focusGrid();
   };
 
-  const writeLabel = async (locale: string, rowId: string, value: string) => {
-    const entry = labels.entries.get(`${locale}|${rowId}`);
+  const writeTranslation = async (locale: string, field: TranslatedField, rowId: string, value: string) => {
+    // A row with no description yet has no description entry: the label's entry names the same shard and its hash.
+    const own = labels.entries.get(`${locale}|${field}|${rowId}`);
+    const label = labels.entries.get(`${locale}|label|${rowId}`);
+    const entry = own ?? (label ? { ...label, field, translation: null } : undefined);
     if (!entry || value === (entry.translation ?? "")) return;
-    const result = await writeTranslations(services.queryClient, locale, [{ id: rowId, field: "label", value }], [entry]);
+    const result = await writeTranslations(services.queryClient, locale, [{ id: rowId, field, value }], [entry]);
     if (!result.ok) store.getState().notify(result.message, "error");
   };
 
@@ -202,7 +273,9 @@ export function RowsTab({ typeId, seeds, onTab, onFocusSearch }: { typeId: strin
         if (rows[active.row]) setEditing({ value: formatCell(rows[active.row].values[columns[active.col].key]) }, true);
         return;
       case "type":
-        if (rows[active.row]) setEditing({ value: action.text }, true);
+        // An end cell opens its picker on the current row; typed text is no row id.
+        if (rows[active.row])
+          setEditing({ value: columns[active.col]?.end ? formatCell(rows[active.row].values[columns[active.col].key]) : action.text }, true);
         return;
       case "commit":
         commit(action.move);
@@ -255,10 +328,10 @@ export function RowsTab({ typeId, seeds, onTab, onFocusSearch }: { typeId: strin
         findRef.current?.focus();
         return;
       case "tab":
-        onTab(action.index);
+        onTab?.(action.index);
         return;
       case "focus-search":
-        onFocusSearch();
+        onFocusSearch?.();
         return;
     }
   };
@@ -281,8 +354,20 @@ export function RowsTab({ typeId, seeds, onTab, onFocusSearch }: { typeId: strin
     const seedId = row?.seed ?? (await targetSeed());
     if (!seedId) return;
     let added = 0;
-    editSeed(seedId, (s) => void (added = pasteMatrix(s, columns, { row: row ? row.index : 0, col: active.col }, matrix, newId).added.length));
-    if (added) store.getState().notify(`Pasted ${matrix.length} ${matrix.length === 1 ? "row" : "rows"}, ${added} new.`);
+    let unmatched = 0;
+    editSeed(seedId, (s) => {
+      const result = pasteMatrix(s, columns, { row: row ? row.index : 0, col: active.col }, matrix, newId, endOptions);
+      added = result.added.length;
+      unmatched = result.unmatched;
+    });
+    if (unmatched)
+      store
+        .getState()
+        .notify(
+          `Pasted ${matrix.length} ${matrix.length === 1 ? "row" : "rows"}; ${unmatched} end ${unmatched === 1 ? "cell matched" : "cells matched"} no row of the far entity and kept ${unmatched === 1 ? "its" : "their"} value.`,
+          "error",
+        );
+    else if (added) store.getState().notify(`Pasted ${matrix.length} ${matrix.length === 1 ? "row" : "rows"}, ${added} new.`);
   };
 
   const onFind = () => {
@@ -309,6 +394,18 @@ export function RowsTab({ typeId, seeds, onTab, onFocusSearch }: { typeId: strin
         <Button size="sm" variant="ghost" onClick={() => void insertBelow()}>
           <Plus /> Add row
         </Button>
+        <Button size="sm" variant="ghost" disabled={!primary} onClick={() => setImporting(true)} title={`Import a CSV file into ${primary?.name ?? name}`}>
+          <Upload /> Import CSV
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={!primary}
+          title={`Download ${primary?.name ?? name} as a CSV file`}
+          onClick={() => primary && void exportCsv(primary).catch((e: Error) => store.getState().notify(e.message, "error"))}
+        >
+          <Download /> Export CSV
+        </Button>
         <div className="flex-1" />
         <Input
           ref={findRef}
@@ -330,7 +427,7 @@ export function RowsTab({ typeId, seeds, onTab, onFocusSearch }: { typeId: strin
           scrollRef.current = el;
         }}
         role="grid"
-        aria-label={`Rows of ${type.name}`}
+        aria-label={`Rows of ${name}`}
         aria-rowcount={rows.length + 1}
         aria-colcount={columns.length}
         aria-activedescendant={editing ? undefined : activeId}
@@ -418,7 +515,59 @@ export function RowsTab({ typeId, seeds, onTab, onFocusSearch }: { typeId: strin
                           }}
                           onDoubleClick={() => run({ type: "edit" })}
                         >
-                          {isActive && editing ? (
+                          {isActive && editing && c.end ? (
+                            <select
+                              autoFocus
+                              aria-label={`${c.label} of row ${r + 1}`}
+                              className="h-6 w-full rounded-[4px] border border-input bg-surface px-1 text-12"
+                              value={editing.value}
+                              onChange={(e) => setEditing({ value: e.target.value })}
+                              onKeyDown={(e) => {
+                                const action = gridAction(e, true);
+                                if (!action) return;
+                                e.preventDefault();
+                                e.stopPropagation();
+                                run(action);
+                              }}
+                              onBlur={() => {
+                                if (closing.current) closing.current = false;
+                                else commit("none");
+                              }}
+                            >
+                              <option value="">(none)</option>
+                              {(endOptions.get(c.end) ?? []).map((o) => (
+                                <option key={o.id} value={o.id}>
+                                  {o.label}
+                                </option>
+                              ))}
+                              {editing.value && !(endOptions.get(c.end) ?? []).some((o) => o.id === editing.value) ? (
+                                <option value={editing.value}>{editing.value}</option>
+                              ) : null}
+                            </select>
+                          ) : isActive && editing && c.multiline ? (
+                            <textarea
+                              autoFocus
+                              aria-label={`${c.label} of row ${r + 1}`}
+                              title="Shift+Enter adds a line"
+                              onFocus={(e) => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)}
+                              rows={1}
+                              className="block h-6 w-full resize-none overflow-y-auto rounded-[4px] border border-input bg-surface px-1 text-12 leading-5"
+                              value={editing.value}
+                              onChange={(e) => setEditing({ value: e.target.value })}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && e.shiftKey) return; // a new line in the text
+                                const action = gridAction(e, true);
+                                if (!action) return;
+                                e.preventDefault();
+                                e.stopPropagation();
+                                run(action);
+                              }}
+                              onBlur={() => {
+                                if (closing.current) closing.current = false;
+                                else commit("none");
+                              }}
+                            />
+                          ) : isActive && editing ? (
                             <input
                               autoFocus
                               aria-label={`${c.label} of row ${r + 1}`}
@@ -438,7 +587,9 @@ export function RowsTab({ typeId, seeds, onTab, onFocusSearch }: { typeId: strin
                               }}
                             />
                           ) : c.locale && row.values[c.key] === undefined ? (
-                            <span className="italic text-secondary">{labels.entries.get(`${c.locale}|${row.id}`)?.effective ?? ""}</span>
+                            <span className="italic text-secondary">{labels.entries.get(`${c.locale}|${c.field ?? "label"}|${row.id}`)?.effective ?? ""}</span>
+                          ) : c.end && row.values[c.key] !== undefined ? (
+                            (endOptions.get(c.end)?.find((o) => o.id === row.values[c.key])?.label ?? formatCell(row.values[c.key]))
                           ) : (
                             formatCell(row.values[c.key])
                           )}
@@ -465,6 +616,11 @@ export function RowsTab({ typeId, seeds, onTab, onFocusSearch }: { typeId: strin
             </span>
           ))}
         </span>
+        {localized && localization.isSuccess && !localization.enabled ? (
+          <span className="whitespace-nowrap" data-testid="rows-locale-hint">
+            {ONE_LOCALE_HINT}
+          </span>
+        ) : null}
         {l10n.enabled && l10n.locales.length ? (
           <label className="flex items-center gap-1 whitespace-nowrap">
             <input type="checkbox" checked={allLocales} onChange={(e) => setAllLocales(e.target.checked)} data-testid="rows-all-locales" />
@@ -474,17 +630,6 @@ export function RowsTab({ typeId, seeds, onTab, onFocusSearch }: { typeId: strin
         <span className="hidden flex-1 truncate md:inline">
           Enter edits · Tab moves · Ctrl+Enter inserts · Ctrl+D duplicates · Ctrl+Delete deletes · Alt+Up/Down moves
         </span>
-        <Button size="sm" variant="ghost" disabled={!primary} onClick={() => setImporting(true)}>
-          <Upload /> Import CSV
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={!primary}
-          onClick={() => primary && void exportCsv(primary).catch((e: Error) => store.getState().notify(e.message, "error"))}
-        >
-          <Download /> Export CSV
-        </Button>
       </footer>
       {primary ? <ImportCsvDialog open={importing} onOpenChange={setImporting} seed={primary} /> : null}
     </div>

@@ -33,6 +33,8 @@ export function Rail() {
   const { openWorkspace } = useEditorNavigation();
   const show = (view: SidebarView, home: Workspace) => {
     store.getState().setSidebar(view);
+    // A hidden explorer comes back when its rail icon is clicked (the rail is the explorer's edge).
+    if (store.getState().explorerCollapsed) store.getState().toggle("explorer", false);
     if (store.getState().workspace !== home) openWorkspace(home);
   };
   return (

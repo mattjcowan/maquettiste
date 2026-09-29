@@ -259,6 +259,24 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
       if (text === null) return problem(404, "not-found", `No seed has the id ${params.id}.`) as never;
       return new HttpResponse(text, { headers: { "Content-Type": "text/csv; charset=utf-8" } }) as never;
     }),
+    http.post("/api/seeds/csv", async ({ request }) => {
+      const q = new URL(request.url).searchParams;
+      const mode = q.get("mode") ?? "merge";
+      if (mode !== "merge" && mode !== "replace") return problem(400, "bad-request", `mode must be 'merge' or 'replace', not '${mode}'.`);
+      const body = await jsonBody(request);
+      if (!body.ok) return body.response;
+      const files = body.value.files as { seed?: unknown; content?: unknown; hash?: unknown }[] | undefined;
+      if (!Array.isArray(files) || !files.length || files.some((f) => typeof f.seed !== "string" || typeof f.content !== "string"))
+        return problem(400, "bad-request", "files (each with seed and content) is required.");
+      try {
+        const typed = files.map((f) => ({ seed: f.seed as string, content: f.content as string, hash: typeof f.hash === "string" ? f.hash : null }));
+        const result = l10n.importSeedsCsv(typed, mode === "replace", q.get("dryRun") !== "false");
+        if (!result) return problem(404, "not-found", `No seed has the id ${typed.map((f) => f.seed).join(", ")}.`);
+        return HttpResponse.json(result.body as never, { status: result.status as 200 });
+      } catch (error) {
+        return problem(400, "bad-request", (error as Error).message);
+      }
+    }),
     http.post("/api/seeds/{id}/csv", async ({ params, request }) => {
       const q = new URL(request.url).searchParams;
       const mode = q.get("mode") ?? "merge";
@@ -444,6 +462,9 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
         const text = template && overlay?.[template];
         return HttpResponse.json(text === undefined || text === null ? saved : { ...saved, files: saved.files.map((f, i) => (i === 0 ? { ...f, text } : f)) });
       }
+      // MQ6026 before any recorded answer: an element outside the unit's scope never renders (engine: UnitPlanner).
+      const outOfScope = generation.previewScope(pack, unit, elementId ?? null);
+      if (outOfScope) return HttpResponse.json(outOfScope);
       const rec = replayable(recorded, "previewTemplate", pristine(), (r) => mentions(r, unit) && (!elementId || mentions(r, elementId)));
       if (rec) return answer(rec) as never;
       const result = generation.preview(pack, unit, elementId ?? null);

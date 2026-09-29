@@ -303,7 +303,11 @@ test.describe("explorer at scale (?mock=large)", () => {
     const handoff = entries.find((e) => e.name === "search:handoff")!;
     const indexAt = parse ? parse.at + parse.ms : ready.at;
     const ms = ready.at + ready.ms - indexAt;
-    within(info, record(info, { name: "search worker ready after the index", ms, mockMs: 0, targetMs: 500, detail: { ready, handoff } }));
+    within(
+      info,
+      record(info, { name: "search worker ready after the index", ms, mockMs: 0, targetMs: 500, detail: { ready, handoff } }),
+      "the worker parses the index text it receives in slices, which moved the handoff off the main thread but delayed readiness (about 430 to 620 ms); the worker fetching the index itself is the follow-up",
+    );
     within(
       info,
       // The index's JSON text goes over in slices of 1 MB, one per task: the measure is the longest main-thread task of the

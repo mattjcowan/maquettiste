@@ -2,7 +2,8 @@
 # One file per reference type (reference-types-seeds-localization.md section 1.6): a sealed record with the code, the label, the
 # row description when a seed lists one and the single-valued and collection user fields, then a static class with one field
 # per row, All (seed order) and Find (by code). Attributes typed by a reference type hold its code (type_of: string, or the
-# code's integer type), so the record is for reading reference data in code, not for mapping columns.
+# code's integer type, or Guid for a uuid code), so the record is for reading reference data in code, not for mapping columns.
+# A Guid is no constant, so a uuid code is written new Guid("...") and Find compares the rows in turn.
 include "_csharp.scriban"
 rt = reference_type
 name = type_name(rt)
@@ -11,6 +12,7 @@ if rows_class == name
   rows_class = name + "Rows"
 end
 code_type = type_of rt.code.type "csharp"
+uuid_code = rt.code.type == "uuid"
 has_description = false
 for r in rt.rows
   if r.description
@@ -25,6 +27,11 @@ func row_member(r)
     ret "Code" + $n
   end
   ret cs_ident $n
+end
+
+# A C# literal of a row's code.
+func code_literal(code)
+  ret uuid_code ? "new Guid(" + (json code) + ")" : (json code)
 end
 
 # A C# literal of a cell for a field.
@@ -54,6 +61,8 @@ func cs_literal(v, f)
       ret (json v) + "L"
     when "int16", "int32", "bool", "string", "text", "ulid"
       ret json v
+    when "uuid"
+      ret "new Guid(" + (json v) + ")"
   end
   ret "default /* " + (json v | string.replace "*/" "* /") + " */"
 end
@@ -72,7 +81,7 @@ namespace {{ pack.params.namespace }};
 public static partial class {{ rows_class }}
 {
 {{- for r in rt.rows }}
-{{ doc(r.description, "    ") }}    public static readonly {{ name }} {{ row_member(r) }} = new({{ json r.code }}, {{ json r.label }}
+{{ doc(r.description, "    ") }}    public static readonly {{ name }} {{ row_member(r) }} = new({{ code_literal(r.code) }}, {{ json r.label }}
 {{- if has_description }}, {{ r.description ? (json r.description) : "null" }}{{ end }}
 {{- for f in rt.attributes }}, {{ cs_literal(r.values[f.name], f) }}{{ end }});
 {{- end }}
@@ -81,6 +90,18 @@ public static partial class {{ rows_class }}
     public static IReadOnlyList<{{ name }}> All { get; } = [{{ for r in rt.rows }}{{ for.first ? "" : ", " }}{{ row_member(r) }}{{ end }}];
 
     /// <summary>The row with a code, or null.</summary>
+{{- if uuid_code }}
+    public static {{ name }}? Find({{ code_type }} code)
+    {
+        foreach (var row in All)
+        {
+            if (row.Code == code)
+                return row;
+        }
+
+        return null;
+    }
+{{- else }}
     public static {{ name }}? Find({{ code_type }} code) => code switch
     {
 {{- for r in rt.rows }}
@@ -88,4 +109,5 @@ public static partial class {{ rows_class }}
 {{- end }}
         _ => null,
     };
+{{- end }}
 }

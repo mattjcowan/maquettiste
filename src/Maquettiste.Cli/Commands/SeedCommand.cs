@@ -81,7 +81,7 @@ internal static class SeedCommand
 
     private static async Task<int> ExportAsync(GlobalContext context, ModelStore store, ElementSummary seed, CancellationToken ct)
     {
-        var locales = context.Line.Values("--locale");
+        var locales = context.Line.Values("--locale").Select(L10nCommand.LocaleArgument).ToList();
         foreach (var locale in locales)
         {
             if (!await store.IsTranslatedLocaleAsync(locale, ct).ConfigureAwait(false))

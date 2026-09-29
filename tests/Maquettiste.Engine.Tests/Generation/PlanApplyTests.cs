@@ -226,5 +226,24 @@ public sealed class PlanApplyTests
         Assert.Contains(missing.Diagnostics, d => d.Rule == "MQ6001");
     }
 
+    [Fact]
+    public async Task Preview_outside_the_units_scope_is_MQ6026_not_a_render_error()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic");
+        var customer = (await f.Store.GetSnapshotAsync(GenerationFixture.Ct)).All<Engine.Model.Entity>().Single(e => e.Name == "Customer");
+
+        var none = await f.Service.PreviewAsync("basic", "entity", null, GenerationFixture.Ct);
+        Assert.Empty(none.Files);
+        var expects = Assert.Single(none.Diagnostics);
+        Assert.Equal("MQ6026", expects.Rule);
+        Assert.StartsWith("This template expects an entity", expects.Message, StringComparison.Ordinal);
+        Assert.Equal("/units/0/for", expects.JsonPointer);
+
+        var model = await f.Service.PreviewAsync("basic", "index", customer.Id, GenerationFixture.Ct);
+        Assert.Equal("MQ6026", Assert.Single(model.Diagnostics).Rule);
+        Assert.Contains("without an element", model.Diagnostics[0].Message, StringComparison.Ordinal);
+        Assert.NotEmpty((await f.Service.PreviewAsync("basic", "index", null, GenerationFixture.Ct)).Files);
+    }
+
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 }

@@ -4,6 +4,7 @@
 // overrides (storage, prefix, ignore) and designed-table native types are applied; the output is
 // plausible, not the engine's exact result, and the mocks' hashes and names are never compared
 // with real ones.
+import { conventionOf, placesEntity } from "@/model/databaseMapping";
 import type { ColumnView, DatabaseView, ForeignKeyView, TableView } from "@/api/types";
 
 type Json = Record<string, unknown>;
@@ -186,11 +187,28 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
   const enumStorage = String(conventions.enumStorage ?? "int");
   const defaultStringLength = typeof conventions.defaultStringLength === "number" ? conventions.defaultStringLength : 255;
   const defaultSchema = typeof db.defaultSchema === "string" ? db.defaultSchema : null;
-  const packages = new Set((db.packages as string[] | undefined) ?? []);
+  // What the database holds (D46): its byConvention (a file without it: every entity, or its packages') plus the
+  // entities a mapping names, less the ignored ones.
+  const convention = conventionOf(db as { byConvention?: string; packages?: string[] });
+  const parentOf = (id: string) => {
+    const parent = input.docs.get(id)?.parent;
+    return typeof parent === "string" ? parent : null;
+  };
 
   const all = [...input.docs.values()];
+  const entityMapping = new Map(all.filter((d) => d.kind === "mapping" && d.database === databaseId && d.entity).map((d) => [String(d.entity), d]));
   const entities = all
-    .filter((d) => d.kind === "entity" && d.abstract !== true && (packages.size === 0 || packages.has(String(d.package))))
+    .filter(
+      (d) =>
+        d.kind === "entity" &&
+        d.abstract !== true &&
+        placesEntity(
+          convention,
+          typeof d.package === "string" ? d.package : null,
+          entityMapping.get(String(d.id)) as { ignore?: boolean } | undefined,
+          parentOf,
+        ),
+    )
     .sort((a, b) => String(a.name).localeCompare(String(b.name)));
   const entityIds = new Set(entities.map((e) => String(e.id)));
   const stereotypes = new Map(all.filter((d) => d.kind === "stereotype").map((s) => [String(s.key), s]));

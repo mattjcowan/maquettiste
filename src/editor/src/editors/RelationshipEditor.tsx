@@ -10,6 +10,8 @@ import { ElementLink } from "./EntityEditor";
 import { relationMappingRows, type RelationMappingLike, type RelationShape } from "./inheritance";
 import { EDITOR_TAB_LABELS } from "@/model/labels";
 import { References } from "@/inspector/Inspector";
+import type { RelationDoc } from "@/api/types";
+import { SeedDataTab } from "./SeedDataTab";
 import { AttributesOnlyFields, RelationFields } from "@/inspector/fields";
 import { domIdOf, EditorLayout, MarkChips, NameAndDomain, useCodeGenerationTab, useEditorContext, type EditorContext } from "./EditorFrame";
 
@@ -21,6 +23,8 @@ export function RelationshipEditor({ id }: { id: string }) {
 
 function RelationshipBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeof EditorLayout>[0]["draft"] }) {
   const codeGeneration = useCodeGenerationTab(ctx);
+  const index = useIndex();
+  const seeded = ((ctx.json as RelationDoc).attributes ?? []).length > 0 || (index.data ?? []).some((r) => r.kind === "seed" && r.target === ctx.id);
   // The shared forms use `id` only for their field ids: give them the editor's prefix.
   const form = { ...ctx, id: domIdOf(ctx.id) };
   return (
@@ -37,6 +41,9 @@ function RelationshipBody({ ctx, draft }: { ctx: EditorContext; draft: Parameter
       tabs={[
         { value: "attributes", label: EDITOR_TAB_LABELS.attributes, content: <AttributesOnlyFields {...form} /> },
         { value: "mappings", label: EDITOR_TAB_LABELS.mappings, content: <RelationMappingsTab id={ctx.id} /> },
+        // A relation's own rows: its links, with the relation's attributes (the links of a relation without
+        // attributes are the end columns of its entities' seeds).
+        ...(seeded ? [{ value: "seed-data", label: EDITOR_TAB_LABELS.seedData, content: <SeedDataTab id={ctx.id} />, fill: true }] : []),
         codeGeneration,
         { value: "references", label: EDITOR_TAB_LABELS.references, content: <References id={ctx.id} /> },
       ]}

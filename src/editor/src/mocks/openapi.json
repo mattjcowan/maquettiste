@@ -3630,6 +3630,122 @@
         }
       }
     },
+    "/api/seeds/csv": {
+      "post": {
+        "tags": [
+          "reference-data"
+        ],
+        "operationId": "importSeedsCsv",
+        "summary": "Preview or apply CSV imports into several seeds as one change",
+        "description": "The editor's Import seed data…: one CSV per seed, each read as `POST /api/seeds/{id}/csv` reads one. `?dryRun=true`\n(the default) previews every file; applying saves every changed seed in one all-or-nothing change (a stale `hash` or a\nnew error in any seed writes none: 409 or 422 with the diagnostics on the file concerned), then writes the files'\n`@label:<locale>` and `@description:<locale>` translations. Two files for one seed are a 400.\n",
+        "x-maquettiste-role": "editor",
+        "parameters": [
+          {
+            "name": "mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "merge",
+                "replace"
+              ],
+              "default": "merge"
+            }
+          },
+          {
+            "name": "dryRun",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "files"
+                ],
+                "properties": {
+                  "files": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "seed",
+                        "content"
+                      ],
+                      "properties": {
+                        "seed": {
+                          "type": "string",
+                          "description": "The seed id."
+                        },
+                        "content": {
+                          "type": "string",
+                          "description": "The CSV text."
+                        },
+                        "hash": {
+                          "type": "string",
+                          "description": "The seed hash read for the preview; the current one when absent."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One preview (or result) per file, in request order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeedsImportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "A seed changed since its preview; nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeedsImportResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The imports make the model invalid; the file concerned carries the diagnostics and nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeedsImportResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/reference-types/{id}/usage": {
       "parameters": [
         {
@@ -4264,7 +4380,7 @@
         ],
         "operationId": "previewTemplate",
         "summary": "Render one unit against one element, with no writes",
-        "description": "The Database workspace's DDL preview calls `sql-ddl`/`table` with a resolved table key (`<entityId>@<databaseId>`\nfor a synthesized entity table, a table file's id for a designed one) and `sql-ddl`/`schema` with a database id.\nThe unit renders even when its `where` filter would not plan it. A model with errors returns the errors and no\nfiles.\nWith `unitOverride`, `overlay` or `parameters` the unit renders with unsaved text (generation-ui.md section 5.2): the\npack loads even when disabled, the sandbox limits apply and the render has a deadline of `limits.scriptTimeoutMs` x 4\n(MQ6007 when it is hit). Unsaved text is code the server runs, so such a request needs the maintainer role (403 below\nit). Nothing is written.\n",
+        "description": "The Database workspace's DDL preview calls `sql-ddl`/`table` with a resolved table key (`<entityId>@<databaseId>`\nfor a synthesized entity table, a table file's id for a designed one) and `sql-ddl`/`schema` with a database id.\nThe unit renders even when its `where` filter would not plan it. A model with errors returns the errors and no\nfiles. An element outside the unit's scope (another kind than its `each`, one its selector does not return, an\nelement for a `model` unit, or none for an element unit) returns MQ6026 and no files, before anything renders\n(pointer `/units/<i>/for` of the pack's `pack.json`).\nWith `unitOverride`, `overlay` or `parameters` the unit renders with unsaved text (generation-ui.md section 5.2): the\npack loads even when disabled, the sandbox limits apply and the render has a deadline of `limits.scriptTimeoutMs` x 4\n(MQ6007 when it is hit). Unsaved text is code the server runs, so such a request needs the maintainer role (403 below\nit). Nothing is written.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "GenerationService.PreviewAsync(pack, unit, elementId, options)",
         "parameters": [
@@ -4341,6 +4457,26 @@
                       ],
                       "readKeys": [],
                       "elapsedMs": 4
+                    }
+                  },
+                  "outOfScope": {
+                    "summary": "An entity unit asked for a reference type",
+                    "value": {
+                      "files": [],
+                      "diagnostics": [
+                        {
+                          "rule": "MQ6026",
+                          "severity": "error",
+                          "message": "This template expects an entity (unit 'entity' is 'each entity'), not 'Currency' (reference-type); pick one.",
+                          "elementId": "01J92P0V0FJ23CGSNKM7P1W5V9",
+                          "filePath": ".maquettiste/templates/csharp-dapper/pack.json",
+                          "jsonPointer": "/units/0/for",
+                          "line": null,
+                          "column": null
+                        }
+                      ],
+                      "readKeys": [],
+                      "elapsedMs": 1
                     }
                   }
                 }
@@ -5908,6 +6044,14 @@
               "string",
               "null"
             ]
+          },
+          "projectKey": {
+            "description": "A stable identity of the checkout the host serves (the first 16 hex digits of the SHA-256 of its full root path), so the editor keeps per-project browser state (page state) apart for two projects with one name and across a rename. Not a secret and not a path. An older server leaves it out (the editor then keys by `name`); null from the MCP `get_project` tool, which serves no editor.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9a-f]{16}$"
           }
         }
       },
@@ -7318,6 +7462,20 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Diagnostic"
+            }
+          }
+        }
+      },
+      "SeedsImportResult": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportPreview"
             }
           }
         }
@@ -13156,6 +13314,7 @@
           "schemas",
           "quoting",
           "maxIdentifierLength",
+          "byConvention",
           "packages",
           "properties",
           "generation",
@@ -13288,6 +13447,14 @@
           "maxIdentifierLength": {
             "type": "integer",
             "minimum": 1
+          },
+          "byConvention": {
+            "description": "Which entities map here by convention: all, the entities of packages (and their sub-packages; none when packages is empty), or none. Mapping elements add or ignore single entities either way. Absent (files written before 0.3.0): every entity when packages is empty, else the entities of packages.",
+            "enum": [
+              "all",
+              "packages",
+              "none"
+            ]
           },
           "packages": {
             "$ref": "#/components/schemas/idList",
@@ -14975,7 +15142,8 @@
                   "string",
                   "int16",
                   "int32",
-                  "int64"
+                  "int64",
+                  "uuid"
                 ],
                 "default": "string"
               },

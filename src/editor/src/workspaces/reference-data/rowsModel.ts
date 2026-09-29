@@ -1,8 +1,8 @@
 // The Rows grid's model (reference-types-seeds-localization.md 2.1 and 4.4): the grid's columns from the reference
-// type (the built-in code and label, then the user fields), its rows over the type's seeds, the edits as pure
+// type (the built-in code, label and description, then the user fields), its rows over the type's seeds, the edits as pure
 // functions over a seed document (so every edit goes through the seed's draft, saves like any element and undoes),
 // the tab-separated clipboard and the keyboard map. Pure and tested alone.
-import type { AttributeDoc, ReferenceTypeDoc, SeedDoc } from "@/api/types";
+import type { AttributeDoc, ReferenceTypeDoc, RelationDoc, RelationEndDoc, SeedDoc } from "@/api/types";
 import { isBuiltin } from "@/model/model";
 
 export interface GridColumn {
@@ -14,8 +14,15 @@ export interface GridColumn {
   type: string;
   collection: boolean;
   required: boolean;
-  /** A translated label column (`@label:<locale>`, RT 4.4): its cells are the locale's shard, never the seed. */
+  /** A translated label or description column (`@label:<locale>`, `@description:<locale>`, RT 4.4): its cells are the
+   *  locale's shard, never the seed. */
   locale?: string;
+  /** The translated field of a locale column. */
+  field?: TranslatedField;
+  /** Text that may span lines (the row description): its editor is a text area, where Shift+Enter adds a line. */
+  multiline?: boolean;
+  /** A relation-end column: the entity whose rows its cells name (a row id, picked from that entity's seeds). */
+  end?: string;
 }
 
 export interface GridRow {
@@ -28,7 +35,13 @@ export interface GridRow {
 
 type SeedRow = NonNullable<SeedDoc["rows"]>[number];
 
-/** The grid's columns: code (frozen on the left), label, then the user fields in order. */
+/** The row fields a locale translates. */
+export type TranslatedField = "label" | "description";
+
+/** The built-in columns of every reference type's rows, in grid order; a new seed lists them all. */
+export const BUILTIN_COLUMNS = ["code", "label", "description"] as const;
+
+/** The grid's columns: code (frozen on the left), label, description, then the user fields in order. */
 export function gridColumns(type: Pick<ReferenceTypeDoc, "code" | "label" | "attributes">): GridColumn[] {
   const fields = ((type.attributes ?? []) as AttributeDoc[]).map((a) => ({
     key: a.id,
@@ -41,11 +54,11 @@ export function gridColumns(type: Pick<ReferenceTypeDoc, "code" | "label" | "att
   return [
     { key: "code", label: "code", builtin: true, type: type.code?.type ?? "string", collection: false, required: true },
     { key: "label", label: "label", builtin: true, type: "string", collection: false, required: true },
+    { key: "description", label: "description", builtin: true, type: "text", collection: false, required: false, multiline: true },
     ...fields,
   ];
 }
 
-/** One translated label column per locale (RT 4.4 "inline localization"), after the type's own columns. */
 /**
  * The locales whose label column the Rows grid shows (RT 4.4): the content locale in effect only (none for the default
  * locale), or every translated locale with "All locales" on.
@@ -62,30 +75,45 @@ export function labelCompleteness(rows: readonly { id: string }[], translated: R
   return Math.floor((done * 100) / rows.length);
 }
 
+/** Per locale (RT 4.4 "inline localization"), a translated label column and a translated description column beside it,
+ *  after the type's own columns. */
 export function localeColumns(locales: readonly string[]): GridColumn[] {
-  return locales.map((locale) => ({
-    key: `@label:${locale}`,
-    label: `label (${locale})`,
-    builtin: true,
-    type: "string",
-    collection: false,
-    required: false,
-    locale,
-  }));
+  return locales.flatMap((locale) =>
+    (["label", "description"] as const).map((field) => ({
+      key: `@${field}:${locale}`,
+      label: `${field} (${locale})`,
+      builtin: true,
+      type: field === "label" ? "string" : "text",
+      collection: false,
+      required: false,
+      locale,
+      field,
+      ...(field === "description" ? { multiline: true } : {}),
+    })),
+  );
 }
 
-/** Rows with the translated labels in their locale columns (`labels`: locale → row id → text). */
-export function withTranslatedLabels(rows: readonly GridRow[], labels: ReadonlyMap<string, ReadonlyMap<string, string>>): GridRow[] {
-  if (labels.size === 0) return rows as GridRow[];
+type Translations = ReadonlyMap<string, ReadonlyMap<string, string>>;
+
+/** Rows with the translations in their locale columns (`labels`, `descriptions`: locale → row id → text). */
+export function withTranslatedLabels(rows: readonly GridRow[], labels: Translations, descriptions: Translations = new Map()): GridRow[] {
+  if (labels.size === 0 && descriptions.size === 0) return rows as GridRow[];
   return rows.map((r) => {
     const values = { ...r.values };
-    for (const [locale, map] of labels) {
-      const text = map.get(r.id);
-      if (text !== undefined) values[`@label:${locale}`] = text;
-    }
+    for (const [field, byLocale] of [
+      ["label", labels],
+      ["description", descriptions],
+    ] as const)
+      for (const [locale, map] of byLocale) {
+        const text = map.get(r.id);
+        if (text !== undefined) values[`@${field}:${locale}`] = text;
+      }
     return { ...r, values };
   });
 }
+
+/** The hint the Rows grid's status bar shows while the project declares one locale only. */
+export const ONE_LOCALE_HINT = "Declare a second locale under Settings › Locales to translate labels and descriptions.";
 
 /** The rows of every seed of the type, in (seed order given, file order). */
 export function gridRows(seeds: readonly SeedDoc[]): GridRow[] {
@@ -102,6 +130,7 @@ export function gridRows(seeds: readonly SeedDoc[]): GridRow[] {
 }
 
 const NUMERIC = new Set(["int16", "int32", "int64", "decimal", "float", "double"]);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** A cell as text: codes and plain values as written, collections `;`-joined, objects as compact JSON. */
 export function formatCell(value: unknown): string {
@@ -121,6 +150,8 @@ export function parseCell(text: string, column: Pick<GridColumn, "type" | "colle
       .map((s) => s.trim())
       .filter(Boolean);
   if (NUMERIC.has(column.type) && /^-?\d+(\.\d+)?$/.test(raw)) return Number(raw);
+  // A uuid is stored in its canonical form (MQ7013): lowercase, hyphenated.
+  if (column.type === "uuid" && UUID.test(raw)) return raw.toLowerCase();
   if (column.type === "bool" && (raw === "true" || raw === "false")) return raw === "true";
   return text;
 }
@@ -254,6 +285,8 @@ export interface PasteResult {
   /** Row ids the paste changed, then the ids of the rows it added. */
   changed: string[];
   added: string[];
+  /** End cells whose text named no row of the far entity (by id or by the label the grid shows): left as they were. */
+  unmatched: number;
 }
 
 /**
@@ -266,8 +299,9 @@ export function pasteMatrix(
   at: { row: number; col: number },
   matrix: readonly (readonly string[])[],
   newId: () => string,
+  endOptions?: ReadonlyMap<string, readonly EndOption[]>,
 ): PasteResult {
-  const result: PasteResult = { changed: [], added: [] };
+  const result: PasteResult = { changed: [], added: [], unmatched: 0 };
   matrix.forEach((cells, r) => {
     const index = at.row + r;
     let id = seed.rows?.[index]?.id;
@@ -279,7 +313,23 @@ export function pasteMatrix(
     const values: Record<string, unknown> = {};
     cells.forEach((text, c) => {
       const column = columns[at.col + c];
-      if (column) values[column.key] = parseCell(text, column);
+      if (!column) return;
+      if (column.end) {
+        // An end cell holds a row id: a pasted id or a pasted label (what the grid shows) of the far entity's rows.
+        const wanted = text.trim();
+        if (!wanted) values[column.key] = null;
+        else {
+          const options = endOptions?.get(column.end) ?? [];
+          const match =
+            options.find((o) => o.id === wanted) ??
+            options.find((o) => o.label === wanted) ??
+            options.find((o) => o.label.toLowerCase() === wanted.toLowerCase());
+          if (match) values[column.key] = match.id;
+          else result.unmatched++;
+        }
+        return;
+      }
+      values[column.key] = parseCell(text, column);
     });
     setCells(seed, id, values);
   });
@@ -344,4 +394,94 @@ export function gridAction(e: KeyLike, editing: boolean, at?: { col: number; col
   if (e.key === "/") return { type: "focus-search" };
   if (e.key.length === 1 && !mod && !e.altKey) return { type: "type", text: e.key };
   return null;
+}
+
+// ------------------------------------------------------------------ entity and relation seeds
+
+/** A to-one end an entity's seed can hold a column for, with the relation it belongs to. */
+export interface SeedEnd {
+  relation: string;
+  end: RelationEndDoc;
+}
+
+const endColumn = (end: RelationEndDoc, nameOf: (id: string) => string | undefined): GridColumn => ({
+  key: end.id,
+  label: end.role || nameOf(end.entity) || end.entity,
+  builtin: false,
+  type: "end",
+  collection: false,
+  required: (end.min ?? 0) >= 1,
+  end: end.entity,
+});
+
+const attributeColumn = (a: AttributeDoc): GridColumn => ({
+  key: a.id,
+  label: a.name,
+  builtin: false,
+  type: isBuiltin(a.type) ? a.type : "reference",
+  collection: a.collection === true,
+  required: a.required === true,
+});
+
+/**
+ * The ends an entity's seed can name, as the engine resolves seed columns (MQ7105, MQ7106): of each two-ended
+ * relation whose other end is the entity or one of its bases, the far end when it is to-one, unless the relation has
+ * seeds of its own (its links then live there). A self relation can offer both of its ends.
+ */
+export function entitySeedEnds(lineage: ReadonlySet<string>, relations: readonly RelationDoc[], hasSeeds: (relation: string) => boolean): SeedEnd[] {
+  const out: SeedEnd[] = [];
+  for (const relation of relations) {
+    const ends = relation.ends ?? [];
+    if (ends.length !== 2 || hasSeeds(relation.id)) continue;
+    ends.forEach((end, i) => {
+      if (lineage.has(ends[1 - i].entity) && end.max === 1) out.push({ relation: relation.id, end });
+    });
+  }
+  return out;
+}
+
+/** An entity seed's columns: its attributes (the bases' first, as the engine flattens them), then its to-one ends. */
+export function entityGridColumns(attributes: readonly AttributeDoc[], ends: readonly SeedEnd[], nameOf: (id: string) => string | undefined): GridColumn[] {
+  return [...attributes.map(attributeColumn), ...ends.map((e) => endColumn(e.end, nameOf))];
+}
+
+/** A relation seed's columns: both ends (every link names both), then the relation's attributes. */
+export function relationGridColumns(relation: Pick<RelationDoc, "ends" | "attributes">, nameOf: (id: string) => string | undefined): GridColumn[] {
+  return [...(relation.ends ?? []).map((e) => endColumn(e, nameOf)), ...((relation.attributes ?? []) as AttributeDoc[]).map(attributeColumn)];
+}
+
+/** The columns with any column a seed lists that the target no longer offers, so no stored cell is hidden. */
+export function withSeedColumns(columns: readonly GridColumn[], seeds: readonly Pick<SeedDoc, "columns">[]): GridColumn[] {
+  const known = new Set(columns.map((c) => c.key));
+  const extra: GridColumn[] = [];
+  for (const seed of seeds)
+    for (const key of seed.columns ?? [])
+      if (!known.has(key)) {
+        known.add(key);
+        extra.push({ key, label: key, builtin: false, type: "string", collection: false, required: false });
+      }
+  return [...columns, ...extra];
+}
+
+/** A row an end cell can name. */
+export interface EndOption {
+  id: string;
+  label: string;
+}
+
+/**
+ * The rows of an entity's seeds as an end picker lists them: each labelled by its first two non-empty cells (the
+ * product reads no column name as special), else by its id; in seed order.
+ */
+export function endRowOptions(seeds: readonly SeedDoc[]): EndOption[] {
+  return gridRows(seeds).map((row) => {
+    const seed = seeds.find((s) => s.id === row.seed);
+    const cells = (seed?.columns ?? []).map((c) => formatCell(row.values[c])).filter((t) => t !== "");
+    return { id: row.id, label: cells.slice(0, 2).join(" · ") || row.id };
+  });
+}
+
+/** A new seed document for a target: named after it, listing the given columns (the caller checks there is one). */
+export function newSeedDocument(id: string, target: { id: string; name: string }, columns: readonly string[]): SeedDoc {
+  return { kind: "seed", id, name: target.name, target: target.id, columns: [...columns], rows: [] } as unknown as SeedDoc;
 }

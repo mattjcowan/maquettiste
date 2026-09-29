@@ -1,16 +1,19 @@
 // The Reference data screen's writes: a new reference type with its first seed in one batch, a new seed for a type
 // that has none, and the CSV import applied as one save of the seed (RT 2.3) that undo reverses.
 import type { AppServices } from "@/app/context";
-import type { ElementDocument, ModelJson, ReferenceTypeDoc, SeedDoc } from "@/api/types";
+import type { ElementDocument, ModelJson, ReferenceTypeDoc, SeedDoc, StorageChoice } from "@/api/types";
 import * as endpoints from "@/api/endpoints";
 import { applyBatchResult, applySaveResult, keys, loadElement } from "@/api/queries";
 import { newId } from "@/lib/ids";
 import { clone } from "@/lib/json";
+import { BUILTIN_COLUMNS } from "./rowsModel";
 
 export interface NewReferenceTypeInput {
   name: string;
   displayName: string;
   category: string | null;
+  /** The type's storage choice ("Stored as"), or none to inherit. */
+  storage?: Record<string, StorageChoice>;
 }
 
 const failure = (items: { outcome: string; diagnostics: { message: string }[] }[], outcome: string) => {
@@ -32,8 +35,9 @@ export async function createReferenceType(
     ...(input.category ? { category: input.category } : {}),
     code: { id: newId() },
     label: { id: newId() },
+    ...(input.storage ? { storage: input.storage } : {}),
   } as unknown as ModelJson;
-  const seed = { kind: "seed", id: newId(), name: input.name, target: type.id, columns: ["code", "label"], rows: [] } as unknown as ModelJson;
+  const seed = { kind: "seed", id: newId(), name: input.name, target: type.id, columns: [...BUILTIN_COLUMNS], rows: [] } as unknown as ModelJson;
   const result = await endpoints.applyBatch({
     operations: [
       { op: "create", element: type as never },
@@ -55,7 +59,7 @@ export async function createReferenceType(
 
 /** A seed for a type that has none yet (rows added in the grid need one). */
 export async function createSeed(services: AppServices, type: Pick<ReferenceTypeDoc, "id" | "name">): Promise<string | null> {
-  const seed = { kind: "seed", id: newId(), name: type.name, target: type.id, columns: ["code", "label"], rows: [] } as unknown as ModelJson;
+  const seed = { kind: "seed", id: newId(), name: type.name, target: type.id, columns: [...BUILTIN_COLUMNS], rows: [] } as unknown as ModelJson;
   const result = await endpoints.createElement(seed);
   if (result.outcome !== "saved") {
     services.store.getState().notify(`The rows could not be created: ${result.diagnostics[0]?.message ?? result.outcome}`, "error");

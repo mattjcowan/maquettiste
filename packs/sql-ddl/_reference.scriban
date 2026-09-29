@@ -70,9 +70,12 @@ func code_list(rt, db)
   ret $s
 end
 
-# The SQL type of a code or a label: string (with its length), int16, int32 or int64.
+# The SQL type of a code or a label: string (with its length), int16, int32, int64 or uuid (the dialect's UUID type: uuid on
+# PostgreSQL, uniqueidentifier on SQL Server, TEXT on SQLite, char(36) elsewhere; its codes are quoted literals like strings).
 func ref_sql_type(kind, length, d)
   case kind
+    when "uuid"
+      ret d == "postgresql" ? "uuid" : (d == "sqlserver" ? "uniqueidentifier" : (d == "sqlite" ? "TEXT" : "char(36)"))
     when "int16"
       ret d == "sqlite" ? "INTEGER" : "smallint"
     when "int32"

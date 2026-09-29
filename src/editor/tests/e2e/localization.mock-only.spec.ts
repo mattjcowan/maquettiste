@@ -164,18 +164,30 @@ test("the Rows grid shows the content locale's label column, every locale with A
   await page.keyboard.press("Tab");
   await page.keyboard.type("Kilogram");
   await page.keyboard.press("Enter");
-  // Once the seed is saved, the French cell shows the fallback (the default label) muted.
-  await expect(rows.locator('[data-cell="0:2"]')).toHaveText("Kilogram");
-  await rows.locator('[data-cell="0:2"]').click();
+  // Columns: code, label, description, then per locale its label and its description. Once the seed is saved, the
+  // French label cell shows the fallback (the default label) muted.
+  await expect(rows.getByRole("columnheader", { name: "description (fr)", exact: true })).toBeVisible();
+  await expect(rows.locator('[data-cell="0:3"]')).toHaveText("Kilogram");
+  await rows.locator('[data-cell="0:3"]').click();
   await page.keyboard.type("Kilogramme");
   await page.keyboard.press("Enter");
-  await expect(rows.locator('[data-cell="0:2"]')).toHaveText("Kilogramme");
   await expect(rows.locator('[data-cell="0:3"]')).toHaveText("Kilogramme");
+  await expect(rows.locator('[data-cell="0:5"]')).toHaveText("Kilogramme");
+  // The French description sits beside the French label, written to the same shard.
+  await rows.locator('[data-cell="0:4"]').click();
+  await page.keyboard.type("Mille grammes");
+  await page.keyboard.press("Enter");
+  await expect(rows.locator('[data-cell="0:4"]')).toHaveText("Mille grammes");
   const written = await page.evaluate(async () => {
     const r = await fetch("/api/localization/fr/entries?missing=false");
     const body = (await r.json()) as { entries: { field: string; translation: string | null; shard: string }[] };
-    return body.entries.find((e) => e.field === "label" && e.translation === "Kilogramme");
+    return ["label", "description"].map((field) =>
+      body.entries.find((e) => e.field === field && e.translation === (field === "label" ? "Kilogramme" : "Mille grammes")),
+    );
   });
-  expect(written?.shard).toMatch(/\/locales\/fr\/_reference-data\.json$/);
+  expect(written.map((e) => e?.shard)).toEqual([
+    expect.stringMatching(/\/locales\/fr\/_reference-data\.json$/),
+    expect.stringMatching(/\/locales\/fr\/_reference-data\.json$/),
+  ]);
   await axe(page, '[data-testid="reference-data"]');
 });

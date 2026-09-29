@@ -6,6 +6,10 @@ The data layer of a B2B wholesale distributor, modeled in Maquettiste and genera
 8 value objects, 5 scalar types, 23 enums, 2 reference types, 439 relations, one PostgreSQL 16 database (`main`, schema `northwind`) with
 table overlays, a designed table, a view and three sequences, and one subject-area diagram per package.
 
+The database file `main` has no `byConvention` member on purpose: it keeps the rule from before 0.3.0 (every entity, or the
+entities of its `packages`), and `generate --check` proves that such models still generate byte-identical output. A new
+database made in the editor states its convention (`none`, the picked domains, or `all`; engine-design.md D46).
+
 ## Layout
 
 ```
@@ -67,8 +71,8 @@ node samples/reference-app/tools/seed.mjs --url http://127.0.0.1:8093 --compare 
 docker compose -f docker/compose.yaml --project-directory tmp/nw-seed down -v
 ```
 
-`empty-editor.sh` runs the editor as the image's user (UID 1654) and opens the copy to it with ACLs (or `chmod` where
-`setfacl` is missing); over your own repository, export `MAQUETTISTE_UID` and `MAQUETTISTE_GID` instead (docker/README.md).
+`empty-editor.sh` exports `MAQUETTISTE_UID` and `MAQUETTISTE_GID` (your own ids unless you set them) so the editor writes
+the copy as you, with no ACLs or `chmod` (docker/README.md explains the image's user rule).
 
 `seed.mjs` saves `maquettiste.json` through `PUT /api/project/settings`, then posts 31 batches to `POST /api/model/batch`
 (vocabularies, packages, types, database objects, entities per package, relations per package, table overlays, mappings,
@@ -96,7 +100,9 @@ samples/reference-app/tools/gate2.sh                 # all steps, then stops the
 samples/reference-app/tools/gate2.sh prepare seed    # or one step at a time: prepare seed walk check build ddl down
 ```
 
-The editor listens on 127.0.0.1:8097 (`MAQUETTISTE_PORT`); the walk edits the model, so rerun from `prepare`.
+The editor listens on 127.0.0.1:8097 (`MAQUETTISTE_PORT`); the walk edits the model, so rerun from `prepare`. The editor writes as
+you (the same user rule as `empty-editor.sh`); if `check` finds files owned by someone else it names a few in a warning
+and hands them back before going on.
 
 ## What the model exercises
 

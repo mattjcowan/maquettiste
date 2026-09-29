@@ -13,6 +13,7 @@ import type {
   GenerationRequest,
   GenerationResult,
   PlanResult,
+  PackManifest,
   PlanUnit,
   PreviewResult,
   RenderedFile,
@@ -207,10 +208,19 @@ export class MockGeneration {
     return units;
   }
 
+  /** The MQ6026 refusal of a preview whose element is outside the unit's scope, or null (also for an unknown pack or unit). */
+  previewScope(pack: string, unit: string, elementId: string | null): PreviewResult | null {
+    const manifest = this.model.packs.find((p) => p.name === pack);
+    const outOfScope = manifest && manifest.units.some((u) => u.id === unit) ? this.outOfScope(manifest, unit, elementId) : null;
+    return outOfScope ? { files: [], diagnostics: [outOfScope], readKeys: [], elapsedMs: 0 } : null;
+  }
+
   preview(pack: string, unit: string, elementId: string | null): PreviewResult | { problem: string } {
     const manifest = this.model.packs.find((p) => p.name === pack);
     if (!manifest) return { problem: `No pack named '${pack}' is installed.` };
     if (!manifest.units.some((u) => u.id === unit)) return { problem: `Pack '${pack}' has no unit '${unit}'.` };
+    const outOfScope = this.outOfScope(manifest, unit, elementId);
+    if (outOfScope) return { files: [], diagnostics: [outOfScope], readKeys: [], elapsedMs: 0 };
     const errors = this.model.validate().diagnostics.filter((d) => d.severity === "error");
     if (errors.length) return { files: [], diagnostics: errors, readKeys: [], elapsedMs: 0 };
     const found = this.renderUnits([pack]).find((u) => u.unit === unit && u.elementId === elementId);
@@ -230,6 +240,35 @@ export class MockGeneration {
     const template = manifest.units.find((u) => u.id === unit)?.template ?? `${unit}.scriban`;
     const readKeys = [`e:${elementId ?? "model"}`, "s:conventions", `t:${pack}/${template}`].sort();
     return { files: found.files, diagnostics: [], readKeys, elapsedMs: 3 };
+  }
+
+  /** MQ6026 as the engine words it: a model unit given an element, or an `each <kind>` unit given another kind. */
+  private outOfScope(manifest: PackManifest, unit: string, elementId: string | null): Diagnostic | null {
+    const index = manifest.units.findIndex((u) => u.id === unit);
+    const scope = manifest.units[index]?.for ?? "";
+    const doc = elementId ? this.model.docs().get(elementId) : undefined;
+    const got = doc ? `'${String(doc.name)}' (${String(doc.kind)})` : "";
+    let message: string | null = null;
+    if (scope === "model") {
+      if (elementId) message = `Unit '${unit}' renders once for the whole model; preview it without an element (got ${got || `'${elementId}'`}).`;
+    } else if (scope.startsWith("each ") && !["each table", "each locale"].includes(scope)) {
+      const noun = scope.slice("each ".length);
+      const article = /^[aeiou]/.test(noun) ? "an" : "a";
+      if (!elementId) message = `This template expects ${article} ${noun} (unit '${unit}' is '${scope}'); pick one.`;
+      else if (doc && String(doc.kind).replace(/-/g, " ") !== noun)
+        message = `This template expects ${article} ${noun} (unit '${unit}' is '${scope}'), not ${got}; pick one.`;
+    }
+    if (!message) return null;
+    return {
+      rule: "MQ6026",
+      severity: "error",
+      message,
+      elementId,
+      filePath: `.maquettiste/templates/${manifest.name}/pack.json`,
+      jsonPointer: `/units/${index}/for`,
+      line: null,
+      column: null,
+    };
   }
 
   private planFiles(packs: string[], roots: RootSelection): { units: RenderUnit[]; files: Map<string, PlannedFile> } {

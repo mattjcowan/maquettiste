@@ -17,7 +17,7 @@ public sealed class ContractTests
         var operations = Contract.Operations.Select(o => (o.Verb, o.Path)).Order().ToList();
 
         Assert.Equal(operations, handlers);
-        Assert.Equal(54, operations.Count); // the phase 2 subset of S16 (phase2-design.md section 3.7), E5b, E5c and E5f, reference-types-seeds-localization.md section 3.9, and the branding icon's upload and read
+        Assert.Equal(55, operations.Count); // the phase 2 subset of S16 (phase2-design.md section 3.7), E5b, E5c and E5f, reference-types-seeds-localization.md section 3.9, the branding icon's upload and read, and the several-seed CSV import
     }
 
     [Fact]

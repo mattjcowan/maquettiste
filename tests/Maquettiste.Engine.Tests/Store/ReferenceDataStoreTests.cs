@@ -307,6 +307,43 @@ public sealed class ReferenceDataStoreTests
         Assert.Equal(("MQ7104", DiagnosticSeverity.Warning, "/rows"), (d.Rule, d.Severity, d.JsonPointer));
     }
 
+    [Fact]
+    public async Task A_uuid_code_is_a_uuid_in_canonical_form()
+    {
+        const string Batch = "01JRDW00000000000000000001";
+        var (h, store) = await OpenAsync(harness =>
+        {
+            File.WriteAllText(harness.Model("model/reference-types/batch.json"),
+                "{\n  \"$schema\": \"../../.schema/v1/reference-type.json\",\n  \"kind\": \"reference-type\",\n  \"id\": \"" + Batch
+                + "\",\n  \"name\": \"Batch\",\n  \"code\": {\n    \"id\": \"01JRDW00000000000000000002\",\n    \"type\": \"uuid\"\n  },\n  \"label\": {\n    \"id\": \"01JRDW00000000000000000003\"\n  }\n}\n");
+            Directory.CreateDirectory(harness.Model("model/seeds/batch"));
+            File.WriteAllText(harness.Model("model/seeds/batch/batch.json"),
+                "{\n  \"$schema\": \"../../../.schema/v1/seed.json\",\n  \"kind\": \"seed\",\n  \"id\": \"01JRDW00000000000000000010\",\n  \"name\": \"Batch\",\n  \"target\": \""
+                + Batch + "\",\n  \"columns\": [\n    \"code\",\n    \"label\"\n  ],\n  \"rows\": [\n"
+                + "    { \"id\": \"01JRDW00000000000000000011\", \"values\": [\"0190a3b4-5c6d-7e8f-9a0b-1c2d3e4f5a6b\", \"First\"] },\n"
+                + "    { \"id\": \"01JRDW00000000000000000012\", \"values\": [\"0190A3B4-5C6D-7E8F-9A0B-1C2D3E4F5A6C\", \"Upper\"] },\n"
+                + "    { \"id\": \"01JRDW00000000000000000013\", \"values\": [\"batch-3\", \"Not a UUID\"] },\n"
+                + "    { \"id\": \"01JRDW00000000000000000014\", \"values\": [42, \"A number\"] }\n  ]\n}\n");
+        });
+        using var _ = h;
+        await using var __ = store;
+
+        var report = await store.ValidateAsync(ValidationScope.All, Ct);
+
+        var found = WithoutCompleteness(report).Select(d => (d.Rule, d.JsonPointer ?? "", d.Severity)).ToList();
+        Assert.Equal(
+            new[]
+            {
+                ("MQ7013", "/rows/1/values/0", DiagnosticSeverity.Error),
+                ("MQ7013", "/rows/2/values/0", DiagnosticSeverity.Error),
+                ("MQ7004", "/rows/3/values/0", DiagnosticSeverity.Error),
+            },
+            found);
+        var upper = Assert.Single(report.Diagnostics, d => d.JsonPointer == "/rows/1/values/0");
+        Assert.Contains("write it as '0190a3b4-5c6d-7e8f-9a0b-1c2d3e4f5a6c'", upper.Message, StringComparison.Ordinal);
+        Assert.Equal("uuid", store.Current!.Get<ReferenceType>(Batch)!.Code.Type);
+    }
+
     /// <summary>The fixture translates a few texts only: its per-shard completeness infos (MQ7204, MQ7206) are left out here.</summary>
     private static List<Diagnostic> WithoutCompleteness(ValidationReport report) =>
         [.. report.Diagnostics.Where(d => d.Rule is not ("MQ7204" or "MQ7206"))];

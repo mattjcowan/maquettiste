@@ -19,9 +19,10 @@ namespace Maquettiste.Functions;
 /// <param name="Extensions">The extension schemas.</param>
 /// <param name="Git">The git status, or <see langword="null"/> outside a git checkout.</param>
 /// <param name="IconHash">The content hash of the icon <c>GET /api/project/branding/icon</c> serves, or <see langword="null"/> without one.</param>
+/// <param name="ProjectKey">A stable identity of the served checkout (<see cref="ProjectEndpoints.KeyOf"/>), which the editor keys its page state by.</param>
 public sealed record ProjectInfo(string Name, int FormatVersion, string EngineVersion, string Mode, ProjectSettings Settings, string SettingsHash,
     IReadOnlyList<ElementSummary> Databases, IReadOnlyList<PackManifest> Packs, IReadOnlyList<Diagnostic> PackDiagnostics,
-    IReadOnlyList<ExtensionSchema> Extensions, GitSummary? Git, string? IconHash = null);
+    IReadOnlyList<ExtensionSchema> Extensions, GitSummary? Git, string? IconHash = null, string? ProjectKey = null);
 
 /// <summary><c>GET /api/project</c> and <c>GET</c>, <c>PUT /api/project/settings</c>.</summary>
 public static class ProjectEndpoints
@@ -52,8 +53,20 @@ public static class ProjectEndpoints
         var name = snapshot.Settings.Name is { Length: > 0 } n ? n : Path.GetFileName(settings.Engine.RepoRoot);
         return Api.Json(new ProjectInfo(name, snapshot.Settings.FormatVersion, Engine.EngineVersion.Value, EditorSettings.ModeOf(auth.VariablesFor(context)),
             snapshot.Settings, snapshot.SettingsHash, [.. snapshot.Summaries().Where(s => s.Kind == "database")], packs.Packs, packs.Diagnostics,
-            [.. snapshot.Extensions.Select(e => e.Schema)], status, icon?.Hash));
+            [.. snapshot.Extensions.Select(e => e.Schema)], status, icon?.Hash, KeyOf(settings.Engine.RepoRoot)));
     });
+
+    /// <summary>The first 16 hex digits of the SHA-256 of the full root path: the same checkout keeps its key across a rename of
+    /// <c>settings.name</c>, and two checkouts with one name get two keys.</summary>
+    /// <param name="repoRoot">The repository root.</param>
+    /// <returns>16 lowercase hex digits.</returns>
+    public static string KeyOf(string repoRoot)
+    {
+        ArgumentNullException.ThrowIfNull(repoRoot);
+        var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(repoRoot));
+        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(full));
+        return Convert.ToHexStringLower(hash)[..16];
+    }
 
     /// <summary>The canonical <c>maquettiste.json</c> with its hash as ETag (E3).</summary>
     /// <param name="context">The request.</param>

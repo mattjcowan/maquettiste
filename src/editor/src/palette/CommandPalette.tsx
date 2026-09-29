@@ -5,13 +5,15 @@
 // worker and search/rank.ts decide the order.
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Command } from "cmdk";
-import { useIndex } from "@/api/queries";
+import { useIndex, useProject } from "@/api/queries";
 import type { ElementKind, ElementSummary } from "@/api/types";
 import { useServices } from "@/app/context";
 import { KindIcon } from "@/app/icons";
 import { useEditorNavigation } from "@/app/navigation";
 import { useUndoRedo } from "@/app/shortcuts";
 import { useEditor, WORKSPACES } from "@/state/store";
+import { PANEL_KEYS, PANEL_NAMES, PANELS } from "@/state/layout";
+import { forgetPage, projectPageId } from "@/state/pageState";
 import { GO_TO_SCREEN, KIND_LABELS, SCREEN_LABELS } from "@/model/labels";
 import { searchClient, useSearchRows, useSearchVersion } from "@/search/client";
 import type { SearchHit } from "@/search/engine";
@@ -37,6 +39,8 @@ interface LocalItem {
   label: string;
   /** Other words it answers to ("screen Mappings"). */
   alias?: string;
+  /** Its keyboard shortcut, shown on the right. */
+  keys?: string;
   run(): void;
 }
 
@@ -69,6 +73,8 @@ function useCommands(close: () => void): LocalItem[] {
   const { openWorkspace } = useEditorNavigation();
   const { undo, redo } = useUndoRedo();
   const domainNow = useCurrentDomain();
+  const project = useProject().data;
+  const pageId = project ? projectPageId(project) : null;
   return useMemo(() => {
     const run = (action: () => void) => () => {
       close();
@@ -121,12 +127,26 @@ function useCommands(close: () => void): LocalItem[] {
         run: run(() => s().requestNew({ kind, domain: startDomain(kind, domainNow()) })),
       })),
       { value: "cmd:quick-open", label: "Quick open", alias: "Go to file", run: run(() => s().setQuickOpen(true)) },
-      { value: "cmd:explorer", label: "Toggle explorer", run: run(() => s().toggle("explorer")) },
-      { value: "cmd:inspector", label: "Toggle inspector", run: run(() => s().toggle("inspector")) },
-      { value: "cmd:bottom", label: "Toggle bottom panel", run: run(() => s().toggle("bottom")) },
+      ...PANELS.map((panel) => ({
+        value: `cmd:${panel}`,
+        label: `Toggle ${PANEL_NAMES[panel]}`,
+        alias: `hide show ${PANEL_NAMES[panel]} panel`,
+        keys: PANEL_KEYS[panel].label,
+        run: run(() => s().toggle(panel)),
+      })),
+      { value: "cmd:reset-layout", label: "Reset layout", alias: "panels default sizes", run: run(() => s().resetLayout()) },
+      {
+        value: "cmd:reset-page-state",
+        label: "Reset layout and page state",
+        alias: "forget tabs expanded rows explorer selection",
+        run: run(() => {
+          s().resetLayout();
+          forgetPage(store, pageId);
+        }),
+      },
     );
     return list;
-  }, [store, theme, canApply, openWorkspace, undo, redo, close, domainNow]);
+  }, [store, theme, canApply, openWorkspace, undo, redo, close, domainNow, pageId]);
 }
 
 function SearchDialog({ mode }: { mode: Mode }) {
@@ -311,6 +331,7 @@ function ResultItem({ row, onSelect }: { row: Row; onSelect: () => void }) {
       <Command.Item value={row.value} className={itemClass} onSelect={onSelect}>
         <span className="truncate">{row.local.label}</span>
         {row.group === "Screens" ? <span className="ml-auto text-[11px] text-secondary">Screen</span> : null}
+        {row.local.keys ? <span className="ml-auto font-mono text-[11px] text-secondary">{row.local.keys}</span> : null}
       </Command.Item>
     );
   const hit = row.hit!;

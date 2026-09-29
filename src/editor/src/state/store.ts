@@ -9,6 +9,7 @@ import { emptyHistory, travel, visit, type NavHistory } from "./history";
 import { activate, activeTab, emptyEditorTabs, pinElement, type EditorTabsState } from "@/editors/tabs";
 import { emptyFilter, normalizeFilter, scopeOf, type ExplorerFilter, type FilterScope } from "@/explorer/filter";
 import type { CreateKind } from "@/explorer/create";
+import { DEFAULT_LAYOUT, clearLayout, readLayout, writeLayout, type Layout, type Panel } from "./layout";
 
 export type PaletteCommand = "plan" | "apply" | "new-entity";
 
@@ -79,6 +80,8 @@ export interface GenerationState {
   packFocus: { pack: string; unit?: string; parameter?: string; file?: string } | null;
   /** The New pack dialog is open (explorer header, palette). */
   newPack: boolean;
+  /** The packs ticked for the next plan; null: the enabled packs. Kept in the page state. */
+  chosenPacks: string[] | null;
 }
 
 /** What the sidebar shows: one explorer (explorer-redesign.md 1.0), or Generate's packs and targets. */
@@ -133,6 +136,12 @@ export interface EditorState {
   explorerCollapsed: boolean;
   inspectorCollapsed: boolean;
   bottomCollapsed: boolean;
+  /** The editor tab strip is hidden (the editors still show; a slim strip brings it back). */
+  tabsCollapsed: boolean;
+  /** The top bar's secondary controls are hidden. */
+  topbarCollapsed: boolean;
+  /** The Settings tab last shown: Settings opens on it when the address names none. */
+  settingsTab: string | null;
   bottomTab: BottomTab;
   theme: ThemeChoice;
   paletteOpen: boolean;
@@ -192,7 +201,10 @@ export interface EditorActions {
   setActiveDiagram(id: string | null): void;
   setActiveDatabase(id: string | null): void;
   setBottomTab(tab: BottomTab): void;
-  toggle(panel: "explorer" | "inspector" | "bottom", collapsed?: boolean): void;
+  toggle(panel: Panel, collapsed?: boolean): void;
+  /** Every panel open, the default sizes, no pinned second explorer; the saved layout is cleared. */
+  resetLayout(): void;
+  setSettingsTab(tab: string | null): void;
   setTheme(theme: ThemeChoice): void;
   setPaletteOpen(open: boolean): void;
   setQuickOpen(open: boolean): void;
@@ -234,21 +246,16 @@ function initialTheme(): ThemeChoice {
 
 const EXPLORER_IDS: ExplorerId[] = ["domain-model", "reference-data", "databases", "diagrams"];
 
-/** An explorer's expanded rows survive a reload (explorer-redesign.md 3.3), per browser, the first 2,000 keys. */
-const EXPANDED_LIMIT = 2000;
-const expandedKey = (id: ExplorerId) => `mq.explorer.expanded.${id}`;
-export function saveExpanded(id: ExplorerId, expanded: ReadonlySet<string>): void {
-  local.setJson(expandedKey(id), [...expanded].slice(0, EXPANDED_LIMIT));
-}
+/** The keys of the explorer state before page state (0.2.0): read by nothing, removed on the first page-state write, so
+ * one project's expansions and active explorer never open another project (pageState.ts keeps them per project). */
+export const LEGACY_EXPLORER_KEYS: readonly string[] = ["mq.explorer.active", ...EXPLORER_IDS.map((id) => `mq.explorer.expanded.${id}`)];
 
 function initialExplorer(): ExplorerSlice {
-  const active = local.get("mq.explorer.active");
   const pinned = local.get("mq.explorer.pinned");
   const view = (id: ExplorerId): ExplorerView => {
     const pinnedFilter = local.getJson<unknown>(`mq.explorer.filter.${id}`);
-    const expanded = local.getJson<unknown[]>(expandedKey(id));
     return {
-      expanded: new Set(Array.isArray(expanded) ? expanded.filter((k): k is string => typeof k === "string").slice(0, EXPANDED_LIMIT) : []),
+      expanded: new Set<string>(),
       filter: pinnedFilter ? normalizeFilter(pinnedFilter) : emptyFilter,
       pinnedFilter: !!pinnedFilter,
       scroll: 0,
@@ -257,7 +264,8 @@ function initialExplorer(): ExplorerSlice {
   const scopes = local.getJson<unknown[]>("mq.explorer.scopes");
   const favorites = local.getJson<unknown[]>("mq.favorites");
   return {
-    active: (SIDEBAR_VIEWS as string[]).includes(active ?? "") ? (active as SidebarView) : "domain-model",
+    // The active explorer and the expansions are page state (pageState.ts), restored per project before the shell draws.
+    active: "domain-model",
     pinned: (EXPLORER_IDS as string[]).includes(pinned ?? "") ? (pinned as ExplorerId) : null,
     followSelection: true,
     // On by default (1.9): only an explicit "0" turns it off.
@@ -289,7 +297,7 @@ function initialRecent(): string[] {
 }
 
 export function createEditorStore(): EditorStore {
-  const layout = local.getJson<{ explorer?: number; inspector?: number; bottom?: number }>("mq.layout") ?? {};
+  const layout = readLayout();
   return createStore<EditorState & EditorActions>()((set, get) => ({
     workspace: "entities",
     explorer: initialExplorer(),
@@ -300,12 +308,15 @@ export function createEditorStore(): EditorStore {
     activeDatabase: null,
     explorerItem: null,
     databaseTable: null,
-    explorerSize: layout.explorer ?? 280,
-    inspectorSize: layout.inspector ?? 360,
-    bottomSize: layout.bottom ?? 220,
-    explorerCollapsed: false,
-    inspectorCollapsed: false,
-    bottomCollapsed: false,
+    explorerSize: layout.explorerSize,
+    inspectorSize: layout.inspectorSize,
+    bottomSize: layout.bottomSize,
+    explorerCollapsed: layout.collapsed.explorer,
+    inspectorCollapsed: layout.collapsed.inspector,
+    bottomCollapsed: layout.collapsed.bottom,
+    tabsCollapsed: layout.collapsed.tabs,
+    topbarCollapsed: layout.collapsed.topbar,
+    settingsTab: null,
     bottomTab: "problems",
     theme: initialTheme(),
     paletteOpen: false,
@@ -327,12 +338,11 @@ export function createEditorStore(): EditorStore {
     output: [],
     diff: null,
     connection: "disconnected",
-    generation: { planJob: null, planId: null, applyJob: null, packTabs: [], packTab: null, packPane: {}, packFocus: null, newPack: false },
+    generation: { planJob: null, planId: null, applyJob: null, packTabs: [], packTab: null, packPane: {}, packFocus: null, newPack: false, chosenPacks: null },
 
     // Another screen shows in the centre area: the editor tabs stay open behind it.
     setWorkspace: (workspace) => set((s) => ({ workspace, editors: s.workspace === workspace ? s.editors : activate(s.editors, null) })),
     setSidebar: (active) => {
-      local.set("mq.explorer.active", active);
       const pinned = get().explorer.pinned === active ? null : get().explorer.pinned;
       set({ explorer: { ...get().explorer, active, pinned } });
     },
@@ -411,6 +421,22 @@ export function createEditorStore(): EditorStore {
       const key = `${panel}Collapsed` as const;
       set({ [key]: collapsed ?? !get()[key] } as Partial<EditorState>);
     },
+    resetLayout: () => {
+      clearLayout();
+      const d = DEFAULT_LAYOUT;
+      set({
+        explorerSize: d.explorerSize,
+        inspectorSize: d.inspectorSize,
+        bottomSize: d.bottomSize,
+        explorerCollapsed: false,
+        inspectorCollapsed: false,
+        bottomCollapsed: false,
+        tabsCollapsed: false,
+        topbarCollapsed: false,
+        explorer: { ...get().explorer, pinned: null },
+      });
+    },
+    setSettingsTab: (tab) => set({ settingsTab: tab }),
     setTheme: (theme) => {
       local.set("mq.theme", theme);
       set({ theme });
@@ -466,9 +492,67 @@ export function createEditorStore(): EditorStore {
   }));
 }
 
-/** Persists panel sizes per browser. */
-export function saveLayout(state: Pick<EditorState, "explorerSize" | "inspectorSize" | "bottomSize">): void {
-  local.setJson("mq.layout", { explorer: state.explorerSize, inspector: state.inspectorSize, bottom: state.bottomSize });
+type LayoutFields = Pick<
+  EditorState,
+  | "explorerSize"
+  | "inspectorSize"
+  | "bottomSize"
+  | "explorerCollapsed"
+  | "inspectorCollapsed"
+  | "bottomCollapsed"
+  | "tabsCollapsed"
+  | "topbarCollapsed"
+  | "explorer"
+>;
+
+/** The layout part of the editor state. */
+export function layoutOf(state: LayoutFields): Layout {
+  return {
+    collapsed: {
+      explorer: state.explorerCollapsed,
+      inspector: state.inspectorCollapsed,
+      bottom: state.bottomCollapsed,
+      tabs: state.tabsCollapsed,
+      topbar: state.topbarCollapsed,
+    },
+    explorerSize: state.explorerSize,
+    inspectorSize: state.inspectorSize,
+    bottomSize: state.bottomSize,
+    pinned: state.explorer.pinned,
+  };
+}
+
+/** Persists the layout per browser. */
+export function saveLayout(state: LayoutFields): void {
+  writeLayout(layoutOf(state));
+}
+
+/** Keeps the saved layout in step with the store: a panel opening or closing (or the pinned explorer) is written at
+ * once, a resize `delay` ms after the last move. Returns the unsubscribe. */
+export function watchLayout(store: EditorStore, delay = 300): () => void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const sizes = (s: LayoutFields) => `${s.explorerSize},${s.inspectorSize},${s.bottomSize}`;
+  const shape = (s: LayoutFields) => JSON.stringify(layoutOf({ ...s, explorerSize: 0, inspectorSize: 0, bottomSize: 0 }));
+  const unsubscribe = store.subscribe((state, previous) => {
+    if (shape(state) !== shape(previous)) {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      saveLayout(state);
+    } else if (sizes(state) !== sizes(previous)) {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        saveLayout(store.getState());
+      }, delay);
+    }
+  });
+  return () => {
+    if (timer) {
+      clearTimeout(timer);
+      saveLayout(store.getState());
+    }
+    unsubscribe();
+  };
 }
 
 export function useEditor<T>(store: EditorStore, selector: (state: EditorState & EditorActions) => T): T {

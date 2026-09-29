@@ -148,7 +148,8 @@ public sealed class CliApp(CliEnvironment environment)
                                   --from empty|sql-ddl|csharp-dapper
           bench                 Run the synthetic benchmark
                                   --out <dir>, --seed, --entities, --relations, --enums, --fanout, --keep,
-                                  --baseline <file>, --max-regression <percent>, --format text|json, --no-example-packs
+                                  --baseline <file>, --max-regression <percent>, --format text|json, --no-example-packs,
+                                  --advisory-budgets (budgets reported only; the regression gate decides)
           l10n status           Default locale, declared locales, completeness per locale and shard (--format text|json)
           l10n export <locale>  Translations as XLIFF 2.1 or CSV: --format xliff|csv, --out <file>
           l10n import <locale> <file>

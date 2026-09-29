@@ -48,6 +48,28 @@ public sealed class LocalizationTests
         Assert.Equal(["en", "de-CH", "es", "fr", "fr-CA", "pt", "pt-BR", "zh", "zh-Hant", "zh-Hant-TW"], LocaleChains.Ordered(settings));
     }
 
+    [Theory]
+    [InlineData("zh_cn", "zh-CN")]
+    [InlineData(" zh_hant_tw ", "zh-Hant-TW")]
+    [InlineData("EN", "en")]
+    [InlineData("fr-ca", "fr-CA")]
+    [InlineData("es-419", "es-419")]
+    [InlineData("de-CH-1996", "de-CH-1996")]
+    public void Locale_tags_normalize_like_the_editor(string typed, string tag)
+    {
+        Assert.Equal(tag, LocaleChains.Normalize(typed));
+        Assert.True(LocaleChains.IsLanguageTag(LocaleChains.Normalize(typed)));
+    }
+
+    [Fact]
+    public void MQ7201_says_how_to_write_a_tag()
+    {
+        var findings = LocaleChains.Check(Settings(["en", "zh_CN", "not a tag"], null, ["entity"]));
+
+        Assert.Contains(findings, f => f.Message == "The locale 'zh_CN' is not a BCP 47 language tag. Use 'zh-CN': language-REGION with a hyphen, such as zh-CN, or a language alone, such as fr.");
+        Assert.Contains(findings, f => f.Message == "The locale 'not a tag' is not a BCP 47 language tag. Use language-REGION with a hyphen, such as zh-CN, or a language alone, such as fr.");
+    }
+
     [Fact]
     public void Settings_findings_are_MQ7201()
     {

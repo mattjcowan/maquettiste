@@ -22,6 +22,8 @@ export interface PickerItem {
   label: string;
   /** The element's name when the label is its display name. */
   detail?: string;
+  /** A reference type's effective storage ("check"), shown beside its name. */
+  storage?: string;
   kind: ElementKind | "builtin";
 }
 
@@ -32,6 +34,7 @@ export interface PickerGroup {
 }
 
 const RECENT_LIMIT = 5;
+const NO_STORAGE: ReadonlyMap<string, string> = new Map();
 let recent: string[] = [];
 
 /** Remembers a pick for the Recent section (this window only). */
@@ -56,8 +59,16 @@ function rank(item: PickerItem, term: string): number {
   return -1;
 }
 
-/** The sections with their matching items, prefix matches first, then A to Z; empty sections are left out. */
-export function pickerGroups(options: readonly ElementSummary[], query: string, recentValues: readonly string[] = recent): PickerGroup[] {
+/**
+ * The sections with their matching items, prefix matches first, then A to Z; empty sections are left out. `storage`
+ * gives reference types their effective storage (by id), which the item shows beside its name.
+ */
+export function pickerGroups(
+  options: readonly ElementSummary[],
+  query: string,
+  recentValues: readonly string[] = recent,
+  storage: ReadonlyMap<string, string> = NO_STORAGE,
+): PickerGroup[] {
   const term = query.trim().toLowerCase();
   const items: PickerItem[] = [
     ...BUILTIN_TYPES.map((t) => ({ value: t, label: t, kind: "builtin" as const })),
@@ -66,6 +77,7 @@ export function pickerGroups(options: readonly ElementSummary[], query: string, 
       label: o.displayName || o.name,
       detail: o.displayName && o.displayName !== o.name ? o.name : undefined,
       kind: o.kind,
+      ...(o.kind === "reference-type" && storage.has(o.id) ? { storage: storage.get(o.id) } : {}),
     })),
   ];
   const byValue = new Map(items.map((i) => [i.value, i]));

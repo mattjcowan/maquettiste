@@ -23,6 +23,7 @@ import { References } from "@/inspector/Inspector";
 import { setOptional, useVocabularies } from "@/inspector/fields";
 import { domIdOf, EditorLayout, MarkChips, NameAndDomain, useCodeGenerationTab, useEditorContext, type EditorContext } from "./EditorFrame";
 import { baseChain, relatedOf } from "./related";
+import { SeedDataTab } from "./SeedDataTab";
 import { fieldSources, inHierarchy, inheritanceRows, SOURCE_LABELS, STRATEGY_LABELS, type InheritanceStrategy } from "./inheritance";
 
 type Rec = Record<string, unknown>;
@@ -105,7 +106,7 @@ function EntityBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<type
           disabled: !hierarchy,
           title: hierarchy ? undefined : "This entity has no base entity and no entity derives from it.",
         },
-        { value: "seed-data", label: EDITOR_TAB_LABELS.seedData, content: <SeedDataTab id={ctx.id} /> },
+        { value: "seed-data", label: EDITOR_TAB_LABELS.seedData, content: <SeedDataTab id={ctx.id} />, fill: true },
         { value: "references", label: EDITOR_TAB_LABELS.references, content: <References id={ctx.id} /> },
         codeGeneration,
       ]}
@@ -654,20 +655,5 @@ function InheritanceTab({ id, json }: EditorContext) {
         )}
       </section>
     </div>
-  );
-}
-
-function SeedDataTab({ id }: { id: string }) {
-  const index = useIndex();
-  const { seeds } = relatedOf(index.data, id);
-  if (!seeds.length) return <EmptyState title="No seed data">No seed data targets this entity.</EmptyState>;
-  return (
-    <ul className="flex flex-col gap-0.5" data-testid="editor-seeds">
-      {seeds.map((s) => (
-        <li key={s.id}>
-          <ElementLink summary={s} secondary={s.rowCount != null ? `${s.rowCount} row${s.rowCount === 1 ? "" : "s"}` : undefined} pin={false} />
-        </li>
-      ))}
-    </ul>
   );
 }

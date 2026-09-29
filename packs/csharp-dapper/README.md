@@ -88,7 +88,7 @@ BillingRepositories.Register((service, implementation) => services.AddScoped(ser
 
 ## Reference types
 
-An attribute typed by a reference type holds the row's code: `string` (or the code's integer type), `IReadOnlyList<string>` for a
+An attribute typed by a reference type holds the row's code: `string` (or the code's integer type, or `Guid` for a uuid code), `IReadOnlyList<string>` for a
 collection. For reading the rows in code, each type gets a record and a static class of its rows, in seed order:
 
 ```csharp

@@ -9,6 +9,11 @@ name: bench
 # self-hosted runner through the dispatch input for numbers that mean something. The baseline is only comparable on the machine
 # class that produced it (see bench/README.md): when the cores, --jobs, OS, architecture, GC mode or runtime overrides differ from
 # the baseline's, the harness skips the regression gate (the report says why) instead of failing, and this workflow warns.
+#
+# CI baseline (bench/README.md): the dispatch input record-ci-baseline runs the bench on the runner with --advisory-budgets and
+# uploads its report as the bench-baseline-ci artifact (baseline-ci.json); commit it as bench/baseline-ci.json. When that file is
+# committed, every run compares against it with the 10% regression gate and --advisory-budgets, and the step is binding. Without
+# it the older run applies: bench/baseline.json (a developer machine's), absolute budgets, advisory on the shared runner.
 
 on:
   push:
@@ -24,9 +29,14 @@ on:
         required: false
         default: "8"
       max-regression:
-        description: "Allowed regression against bench/baseline.json, in percent"
+        description: "Allowed regression against the baseline, in percent"
         required: false
         default: "10"
+      record-ci-baseline:
+        description: "Record bench/baseline-ci.json on this runner (uploaded as the bench-baseline-ci artifact; commit it to enable the gate)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -64,25 +74,32 @@ jobs:
           (lscpu || sysctl -a | grep machdep.cpu) 2>/dev/null | head -20 || true
           free -m 2>/dev/null || true
 
-      # SPEC section 13's 10% regression gate needs bench/baseline.json. The harness fails (exit 4) on a --baseline path that does
-      # not exist, so the gate is only passed when the file is committed; until then the run is flagged, not silently green.
+      # The mode: record the CI baseline (dispatch input), gate against the committed CI baseline (binding), or the older run
+      # against bench/baseline.json with the absolute budgets, advisory on a shared runner (warned about below).
       - name: Baseline
         id: baseline
+        env:
+          RECORD: ${{ inputs.record-ci-baseline && 'true' || 'false' }}
         run: |
-          if [ -f bench/baseline.json ]; then
-            echo "args=--baseline bench/baseline.json" >> "$GITHUB_OUTPUT"
+          if [ "$RECORD" = true ]; then
+            echo "args=--advisory-budgets" >> "$GITHUB_OUTPUT"
+            echo "report=bench/results/baseline-ci.json" >> "$GITHUB_OUTPUT"
+            echo "binding=true" >> "$GITHUB_OUTPUT"
+          elif [ -f bench/baseline-ci.json ]; then
+            echo "args=--baseline bench/baseline-ci.json --advisory-budgets" >> "$GITHUB_OUTPUT"
+            echo "report=bench/results/report.json" >> "$GITHUB_OUTPUT"
+            echo "binding=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::warning file=bench/baseline.json::No bench/baseline.json is committed: the 10% regression gate (SPEC section 13) does not run. Commit a reference-machine report to enable it."
-            echo "args=" >> "$GITHUB_OUTPUT"
+            echo "::warning file=bench/baseline-ci.json::No bench/baseline-ci.json is committed: the absolute budgets are advisory on this runner and the 10% regression gate only runs against bench/baseline.json on its own machine class. Run this workflow with record-ci-baseline and commit the artifact to make the gate binding."
+            if [ -f bench/baseline.json ]; then echo "args=--baseline bench/baseline.json" >> "$GITHUB_OUTPUT"; else echo "args=" >> "$GITHUB_OUTPUT"; fi
+            echo "report=bench/results/report.json" >> "$GITHUB_OUTPUT"
+            echo "binding=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Gate 1 and bench/baseline.json were recorded with --no-example-packs (bench/README.md): the example packs add the
-      # sql-ddl schema unit, one 9 MB file for the 10,005-table database, which alone costs about 3 s of the incremental run.
-      # On a shared runner the absolute Section 13 budgets are advisory (they are recorded for a developer-class machine): the
-      # numbers are kept in the report below and the step does not fail the release. A runner-recorded baseline with the 10%
-      # regression gate is the way to make this binding on CI.
+      # Gate 1 and both baselines are recorded with --no-example-packs (bench/README.md): the example packs add the sql-ddl schema
+      # unit, one 9 MB file for the 10,005-table database, which alone costs about 3 s of the incremental run.
       - name: Benchmark
-        continue-on-error: true
+        continue-on-error: ${{ steps.baseline.outputs.binding != 'true' }}
         run: >
           dotnet run --project bench/Maquettiste.Bench --configuration Release --no-build --
           --jobs ${{ inputs.jobs || '8' }}
@@ -90,18 +107,27 @@ jobs:
           ${{ steps.baseline.outputs.args }}
           --max-regression ${{ inputs.max-regression || '10' }}
           --out "${{ runner.temp }}/maquettiste-bench"
-          --report bench/results/report.json
+          --report ${{ steps.baseline.outputs.report }}
 
       - name: Regression gate
         if: always()
         run: |
-          if [ -f bench/results/report.json ] && grep -q '"regressionGateSkipped"' bench/results/report.json; then
-            reason=$(sed -n 's/.*"regressionGateSkipped": "\(.*\)",\{0,1\}$/\1/p' bench/results/report.json)
-            echo "::warning file=bench/baseline.json::Regression gate skipped: ${reason}"
+          report="${{ steps.baseline.outputs.report }}"
+          if [ -f "$report" ] && grep -q '"regressionGateSkipped"' "$report"; then
+            reason=$(sed -n 's/.*"regressionGateSkipped": "\(.*\)",\{0,1\}$/\1/p' "$report")
+            echo "::warning::Regression gate skipped: ${reason}"
           fi
 
+      - name: Upload the CI baseline
+        if: always() && inputs.record-ci-baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-baseline-ci
+          path: bench/results/baseline-ci.json
+          if-no-files-found: error
+
       - name: Upload report
-        if: always()
+        if: always() && !inputs.record-ci-baseline
         uses: actions/upload-artifact@v4
         with:
           name: bench-report

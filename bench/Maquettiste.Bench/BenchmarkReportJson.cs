@@ -26,6 +26,8 @@ public static class BenchmarkReportJson
             w.WriteStartObject();
             w.WriteNumber("formatVersion", FormatVersion);
             w.WriteBoolean("passed", report.Passed);
+            if (report.AdvisoryBudgets)
+                w.WriteBoolean("advisoryBudgets", true);
             w.WriteStartObject("model");
             w.WriteNumber("seed", report.Seed);
             w.WriteNumber("entities", report.Entities);
@@ -214,6 +216,8 @@ public static class BenchmarkReportJson
         Line($"");
         foreach (var note in report.Notes)
             Line($"Note: {note}");
+        if (report.AdvisoryBudgets)
+            Line($"Budgets are advisory (--advisory-budgets): the regression gate, the check run and the determinism cross-check decide.");
         Line($"Result: {(report.Passed ? "PASS" : "FAIL")}");
         return s.ToString();
     }

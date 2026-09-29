@@ -210,6 +210,26 @@ public sealed class BenchmarkHarnessTests
     }
 
     [Fact]
+    public void Advisory_budgets_are_reported_but_only_the_regression_gate_and_the_checks_decide()
+    {
+        var over = new BenchmarkReport([], TimeSpan.FromSeconds(50), TimeSpan.FromSeconds(1), 100_000, 4, 8, "test",
+            [new BudgetResult(BenchmarkHarness.Render, 40, 55, false)], []) { CheckOutcome = "Succeeded", OutputsMatch = true };
+        var advisory = over with { AdvisoryBudgets = true };
+
+        Assert.False(over.Passed);
+        Assert.True(advisory.Passed);
+        Assert.False((advisory with { Regressions = [new RegressionResult(BenchmarkHarness.Render, 40, 55, 37.5, false)] }).Passed);
+        Assert.False((advisory with { OutputsMatch = false }).Passed);
+        var json = System.Text.Encoding.UTF8.GetString(BenchmarkReportJson.Write(advisory));
+        Assert.Contains("\"advisoryBudgets\": true", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("advisoryBudgets", System.Text.Encoding.UTF8.GetString(BenchmarkReportJson.Write(over)), StringComparison.Ordinal);
+
+        Assert.True(Program.TryParse(["--advisory-budgets", "--baseline", "bench/baseline-ci.json"], out var options, out _, out _, out _));
+        Assert.True(options.AdvisoryBudgets);
+        Assert.False(new BenchmarkOptions().AdvisoryBudgets);
+    }
+
+    [Fact]
     public async Task Work_folders_the_benchmark_did_not_create_are_never_deleted()
     {
         using var temp = new TempFolder();

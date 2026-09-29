@@ -39,7 +39,7 @@ internal static class BenchCommand
     public static async Task<int> RunAsync(GlobalContext context, CancellationToken ct)
     {
         context.Line.Expect("bench", 1, "--out", "--seed", "--entities", "--relations", "--enums", "--fanout", "--keep", "--baseline", "--max-regression", "--format",
-            "--no-example-packs");
+            "--no-example-packs", "--advisory-budgets");
         var format = context.Line.Choice("--format", "text", "text", "json");
         var defaults = new BenchmarkOptions();
 
@@ -68,6 +68,7 @@ internal static class BenchCommand
             Jobs = context.Jobs ?? defaults.Jobs,
             OutputDirectory = outDir,
             Keep = context.Line.Has("--keep"),
+            AdvisoryBudgets = context.Line.Has("--advisory-budgets"),
             BaselinePath = context.Line.Value("--baseline") is { } baseline ? Path.GetFullPath(baseline, cwd) : null,
             MaxRegressionPercent = context.Line.Number("--max-regression") ?? defaults.MaxRegressionPercent,
             OneShotCommand = OneShotSelf(),

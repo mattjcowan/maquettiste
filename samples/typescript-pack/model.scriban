@@ -34,7 +34,7 @@ export const {{ camel e.name }}Values = [{{ values | array.join ", " }}] as cons
 {{- end -}}
 {{-
 # One module per reference type: the union of its codes in row order (string while it has no rows), and the codes as a
-# const array for zod. Rows are data, so a new row changes only this module.
+# const array for zod. A uuid code stays a string, with a comment that says so. Rows are data, so a new row changes only this module.
 for rt in model.reference_types
   name = pascal rt.name
   values = []
@@ -47,6 +47,8 @@ for rt in model.reference_types
 {{ banner "//" }}
 
 {{ if rt.description }}/** {{ rt.description | string.strip }} */
+{{ end -}}
+{{ if rt.code.type == "uuid" }}// The codes are UUIDs in canonical form (lowercase, hyphenated), held as strings.
 {{ end -}}
 export type {{ name }} = {{ values.size > 0 ? (values | array.join " | ") : "string" }};
 

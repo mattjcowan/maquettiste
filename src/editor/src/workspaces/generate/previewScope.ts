@@ -111,6 +111,9 @@ export function previewUnit(
 
 /** The friendly message for a render that ran with an element outside the unit's scope (the scope variable is missing). */
 export function scopeMismatch(scope: UnitScope, diagnostics: readonly { rule: string; message: string }[]): string | null {
+  // MQ6026: the server checked the element against the unit's scope before rendering; its text is already a sentence.
+  const outOfScope = diagnostics.find((d) => d.rule === "MQ6026");
+  if (outOfScope) return outOfScope.message;
   if (scope.once || !scope.variable) return null;
   const variable = scope.variable;
   const missing = diagnostics.some((d) => d.rule === "MQ6006" && new RegExp("[`'\"]" + variable + "[`'\"] was not found").test(d.message));

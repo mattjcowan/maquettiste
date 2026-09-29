@@ -81,6 +81,11 @@ public sealed class ProjectAndModelTests
         Assert.Equal(["csharp-dapper", "sql-ddl"], project["packs"]!.AsArray().Select(p => p!["name"]!.GetValue<string>()));
         Assert.Equal("retention", project["extensions"]!.AsArray().Single()!["name"]!.GetValue<string>());
         Assert.Null(project["git"]); // the temp copy is not a git checkout
+        // The page-state key: stable for one checkout, apart for another checkout with the same name.
+        var key = project["projectKey"]!.GetValue<string>();
+        Assert.Matches("^[0-9a-f]{16}$", key);
+        Assert.Equal(key, ProjectEndpoints.KeyOf(host.RepoRoot + Path.DirectorySeparatorChar));
+        Assert.NotEqual(key, ProjectEndpoints.KeyOf(host.RepoRoot + "-clone"));
         Recorder.Json("project.json", response);
     }
 

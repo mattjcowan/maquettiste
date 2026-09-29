@@ -65,10 +65,10 @@ internal static class L10nCommand
 
             return verb switch
             {
-                "export" => await ExportAsync(context, store, line.Positionals[2], format!, ct).ConfigureAwait(false),
-                "import" => await ImportAsync(context, store, line.Positionals[2], line.Positionals[3], json, ct).ConfigureAwait(false),
+                "export" => await ExportAsync(context, store, LocaleArgument(line.Positionals[2]), format!, ct).ConfigureAwait(false),
+                "import" => await ImportAsync(context, store, LocaleArgument(line.Positionals[2]), line.Positionals[3], json, ct).ConfigureAwait(false),
                 "prune" => await PruneAsync(context, store, json, ct).ConfigureAwait(false),
-                _ => await SetDefaultCommand.RunAsync(context, store, status, line.Positionals[2], json, ct).ConfigureAwait(false),
+                _ => await SetDefaultCommand.RunAsync(context, store, status, LocaleArgument(line.Positionals[2]), json, ct).ConfigureAwait(false),
             };
         }
     }
@@ -315,6 +315,16 @@ internal static class L10nCommand
         SaveOutcome.Conflict => "conflict",
         _ => "invalid",
     };
+
+    /// <summary>A locale argument as the editor takes it (zh_cn is zh-CN); one that stays malformed is a usage error that says how to write it.</summary>
+    /// <param name="typed">The argument.</param>
+    /// <returns>The normalized tag.</returns>
+    internal static string LocaleArgument(string typed)
+    {
+        var tag = LocaleChains.Normalize(typed);
+        return LocaleChains.IsLanguageTag(tag) ? tag
+            : throw new UsageException($"'{typed}' is not a BCP 47 language tag. {LocaleChains.TagAdvice(typed)}");
+    }
 
     /// <summary>A locale argument that names no translated locale is a usage error (exit 4).</summary>
     internal static Task<int> NotTranslatedAsync(GlobalContext context, string locale) =>

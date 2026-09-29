@@ -310,6 +310,44 @@ public sealed class ModelWriteTests
     }
 
     [Fact]
+    public async Task A_new_database_holds_only_what_is_mapped_to_it()
+    {
+        await using var host = EditorHost.Create();
+        var body = new JsonObject { ["kind"] = "database", ["name"] = "archive", ["dialect"] = "sqlite", ["byConvention"] = "none" };
+
+        var created = await host.SendJsonAsync("POST", "/api/model/elements", body);
+
+        Assert.Equal(201, created.Status);
+        Contract.AssertResponse(created, "/api/model/elements");
+        var id = created.Json["id"]!.GetValue<string>();
+        var empty = await host.GetAsync("/api/databases/" + id + "/view");
+        Assert.Equal(200, empty.Status);
+        Assert.Empty(empty.Json["view"]!["tables"]!.AsArray());
+        var main = await host.GetAsync("/api/databases/" + EditorHost.MainDatabaseId + "/view");
+        Assert.Contains(main.Json["view"]!["tables"]!.AsArray(), t => t!["name"]!.GetValue<string>() == "customers");
+
+        var (json, hash) = await LoadAsync(host, id);
+        Assert.Equal("none", json["byConvention"]!.GetValue<string>());
+        json["byConvention"] = "packages";
+        json["packages"] = new JsonArray(EditorHost.BillingPackageId);
+        var saved = await host.SendJsonAsync("PUT", "/api/model/elements/" + id, json, r => r.IfMatch(hash));
+        Assert.True(saved.Status is 200, saved.Json.ToJsonString());
+        var mapped = await host.GetAsync("/api/databases/" + id + "/view");
+        Assert.Contains(mapped.Json["view"]!["tables"]!.AsArray(), t => t!["name"]!.GetValue<string>() == "customers");
+    }
+
+    [Fact]
+    public async Task A_bad_byConvention_value_is_422()
+    {
+        await using var host = EditorHost.Create();
+
+        var response = await host.SendJsonAsync("POST", "/api/model/elements", """{ "kind": "database", "name": "x", "dialect": "sqlite", "byConvention": "some" }""");
+
+        Assert.Equal(422, response.Status);
+        Assert.Equal("MQ1002", response.Json["diagnostics"]![0]!["rule"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task A_database_view_of_a_model_with_errors_is_null_with_the_errors()
     {
         await using var host = EditorHost.Create();

@@ -53,7 +53,7 @@ export function useEditorNavigation() {
       const s = store.getState();
       if (workspace === "entities") return s.activeDiagram;
       if (workspace === "database") return s.activeDatabase;
-      if (workspace === "settings") return parseLocation(location.pathname, location.search).settingsTab;
+      if (workspace === "settings") return parseLocation(location.pathname, location.search).settingsTab ?? s.settingsTab;
       return null;
     },
     [store, location],
@@ -132,6 +132,16 @@ export function useEditorNavigation() {
         s.select([summary.id], { pointer });
         if (s.workspace !== "reference-data") openWorkspace("reference-data");
         else select([summary.id], pointer);
+        return;
+      }
+      // The seed of an entity or a relation is edited on that element's Seed data tab (its Rows grid).
+      if (summary.kind === "seed" && (target?.kind === "entity" || target?.kind === "relation")) {
+        const kind = target.kind;
+        if (s.workspace === "settings" || s.workspace === "reference-data" || s.workspace === "generate") {
+          s.select([target.id], { pointer: null });
+          openWorkspace("entities");
+        } else select([target.id], null);
+        s.updateEditors((e) => openTab(setView(e, kind, "seed-data"), { id: target.id, kind }, { pin: true }));
         return;
       }
       // A domain's own vocabulary lives on the domain editor's Tags or Categories tab (1.11).
@@ -219,5 +229,16 @@ export function useEditorNavigation() {
     [reveal, store],
   );
 
-  return { openWorkspace, openDiagram, openDatabase, openSettings, select, reveal, goTo, travel, openEditor };
+  /** Edit seed data: the entity's or relation's editor, pinned, on its Seed data tab. */
+  const openSeedData = useCallback(
+    (summary: ElementSummary) => {
+      if (summary.kind !== "entity" && summary.kind !== "relation") return;
+      const kind = summary.kind;
+      reveal(summary);
+      store.getState().updateEditors((e) => openTab(setView(e, kind, "seed-data"), { id: summary.id, kind }, { pin: true }));
+    },
+    [reveal, store],
+  );
+
+  return { openWorkspace, openDiagram, openDatabase, openSettings, select, reveal, goTo, travel, openEditor, openSeedData };
 }

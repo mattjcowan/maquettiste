@@ -167,7 +167,7 @@ the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.We
 | `get_model_index` | getModelIndex | `kind`, `package` (id or name), `tag`, `category`, `stereotype`, `query` (name contains, ignoring case), all optional, AND | element summaries |
 | `get_element` | getElement | `id` | the document: `json` (canonical), `hash`, `path`, the typed element, the sidecar text |
 | `save_element` | saveElement | `id`, `element` (whole document), `expectedHash` | the save result (new `hash`, changes) |
-| `create_element` | createElement | `element` (an id is assigned when absent) | the save result with the new `id` |
+| `create_element` | createElement | `element` (an id is assigned when absent) | the save result with the new `id`; write a database with `byConvention` (`none`, `packages` or `all`): without it a database with no `packages` takes every entity (the rule from before 0.3.0) |
 | `delete_element` | deleteElement | `id`, `expectedHash`, `resolution` (`refuse` default, or `remove-references`) | the save result |
 | `apply_batch` | applyBatch | `operations` (the batch's `operations` array, or the whole `{ "operations": [...] }` body) | the batch result, all or nothing |
 | `get_references` | getReferences | `id` | where the element is used |
@@ -178,7 +178,7 @@ the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.We
 | `import_seed_csv` | importSeedCsv | `id`, `csv`, `mode` (`merge` default, or `replace`), `apply` (false: a dry run), `expectedHash` | the preview: `added`, `changed` (before and after), `removed`, `blocked` (rows other seeds reference, kept), `ignoredHeaders`, `applied`, `hash` |
 | `reference_type_usage` | getReferenceTypeUsage | `id` of a reference type | `usages`: attribute, owner, domain, collection, required and the effective storage per database |
 | `validate` | validate | `elementIds` (optional scope), `includeReferrers`, `includeScriptRules` | the report: diagnostics with rule ids, file, JSON pointer, line and column; counts |
-| `get_database_view` | getDatabaseView | `id` of a database | the resolved physical view |
+| `get_database_view` | getDatabaseView | `id` of a database | the resolved physical view: the tables of the entities mapped to it (by its `byConvention` setting and its `packages`, or one by one by mapping elements, less the ignored ones), with columns, keys, indexes and foreign keys, views and sequences; a new database with nothing mapped has no tables |
 | `list_packs` | (part of getProject) | | pack manifests and their diagnostics |
 | `get_settings` | getSettings | | `maquettiste.json`: typed settings, canonical `json`, `hash` |
 | `save_settings` | saveSettings | `settings` (whole document), `expectedHash` | the save result |
@@ -196,7 +196,7 @@ the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.We
 | `move_pack_file` | movePackFile | `pack`, `from`, `to`, `expectedHash`, `updateUnits`, `expectedPackHash` | the move result; `updateUnits` rewrites the units and scripts that name the file |
 | `delete_pack_file` | deletePackFile | `pack`, `path`, `expectedHash` | the delete result; refused while a unit names the file or a template includes it |
 | `get_template_context` | getTemplateContext | `pack`, `unit` | what the unit's templates can use: the globals, the members of the model and of the scope's records, the helpers |
-| `preview_unit` | previewTemplate | `pack`, `unit`, `elementId`, `overlay` (path to unsaved text), `unitOverride` | each rendered file's output path and text, the diagnostics and the keys the render read; nothing is written |
+| `preview_unit` | previewTemplate | `pack`, `unit`, `elementId`, `overlay` (path to unsaved text), `unitOverride` | each rendered file's output path and text, the diagnostics and the keys the render read; nothing is written; an element outside the unit's scope (none for an `each` unit, another kind, one its selector does not return, any for a `model` unit) renders nothing and returns MQ6026, which names the kind the template expects |
 | `unit_paths` | unitPaths | `pack`, `unit`, `elementIds`, `limit` | how many elements the unit covers and the output paths it renders, with their root and whether the writer allows them |
 | `get_pack_outputs` | getPackOutputs | `pack` | the files the pack's manifests record: path, unit, element, root, mode and state on disk (intact, edited, missing) |
 | `explain_unit` | getPlanUnit, explainUnit | `planId` and `key` (a unit of a stored plan), or `pack`, `unit`, `elementId` (any unit and element) | the reason (`new`, `forced`, `inputs`, `outputs`, `unchanged`, or why it does not run: `pack-disabled`, `not-selected`, `scope`, `filter`, `skip-hint`, `selector`, `root-not-selected`, ...), the causes and a one-sentence summary |

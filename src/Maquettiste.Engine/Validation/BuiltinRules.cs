@@ -31,6 +31,7 @@ internal static partial class BuiltinRules
                 break;
             case Entity entity:
                 CheckEntity(context, entity, report);
+                MappingRules.CheckEntityPlacement(context, entity, report);
                 break;
             case ValueObject valueObject:
                 CheckValueObject(context, valueObject, report);
@@ -46,6 +47,7 @@ internal static partial class BuiltinRules
                 break;
             case Database database:
                 CheckDatabase(context, database, report);
+                MappingRules.CheckConventionPackages(database, report);
                 break;
             case Table table:
                 PhysicalRules.CheckTable(context, table, report);

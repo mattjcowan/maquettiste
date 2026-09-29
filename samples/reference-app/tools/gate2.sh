@@ -10,7 +10,7 @@
 # seed     tools/seed.mjs: the whole model through POST /api/model/batch, validate, compare with build-model.mjs
 # walk     Playwright project live, src/editor/tests/e2e/gate2.spec.ts: open an entity, add an attribute in the grid, rename
 #          a relation in the inspector, plan all packs, open a diff, apply, applyResult.outcome == succeeded
-# check    stop the editor, hand the files back to the caller; the walk's edits are in the model and in both packs' output;
+# check    stop the editor (its files are already the caller's; any other owner is named); the walk's edits are in the model and in both packs' output;
 #          maquettiste validate; generate --check (committed root db/main equals the CLI's output); the built root
 #          Generated/ equals what the CLI generates into a second copy (diff -r)
 # build    dotnet build tmp/gate2/src/ReferenceApp.Data -c Release -warnaserror
@@ -49,9 +49,14 @@ cli() {
   dotnet "$dll" "$@"
 }
 
-# Files the editor wrote belong to UID 1654; give the whole copy back to the caller (no sudo, no ACLs needed).
+# The editor runs as the caller (the image's user rule, tools/empty-editor.sh), so every file it wrote is already the caller's.
+# A file owned by anyone else means the rule did not apply: name it, then hand it back so the later steps can still run.
 reclaim() {
   [ -d "$dir" ] || return 0
+  foreign="$(find "$dir" ! -user "$(id -u)" -print 2>/dev/null | head -5)"
+  [ -z "$foreign" ] && return 0
+  echo "gate2: warning: files not owned by $(id -u) (the image's user rule did not apply), for example:" >&2
+  echo "$foreign" | sed 's/^/  /' >&2
   docker run --rm --user 0 -v "$dir:/p" --entrypoint sh "$MAQUETTISTE_IMAGE" -c "chown -R $(id -u):$(id -g) /p"
 }
 

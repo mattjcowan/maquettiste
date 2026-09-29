@@ -658,13 +658,19 @@ public sealed partial class ModelStore : IAsyncDisposable
     /// </summary>
     private async Task ValidateAsync(ChangePlan plan, ModelSnapshot before, CancellationToken ct)
     {
-        if (plan.Candidate is not { } candidate || plan.ChangedIds.Count == 0)
+        if (plan.Candidate is not { } candidate)
+            return;
+        // A deleted database or mapping is not among the changed ids, but the entities it placed are revisited (7.2a); they are in the
+        // baseline too, so their pre-existing errors never block the delete.
+        var placements = FormerPlacements([.. plan.ChangeByElement.Keys.Order(StringComparer.Ordinal)], before, candidate).Distinct(StringComparer.Ordinal).ToList();
+        if (plan.ChangedIds.Count == 0 && placements.Count == 0)
             return;
         // Files that referenced a changed element or sub-element before the change are validated too: a reference the change broke
         // (a seed row or code gone) no longer shows in the candidate's index.
-        var scope = plan.ChangedIds.Concat(FormerReferrers(plan.ChangedIds, before, candidate)).Distinct(StringComparer.Ordinal).ToList();
+        var scope = plan.ChangedIds.Concat(FormerReferrers(plan.ChangedIds, before, candidate)).Concat(placements)
+            .Distinct(StringComparer.Ordinal).ToList();
         var report = await _services.Validator.ValidateAsync(candidate, new ValidationScope(scope, IncludeReferrers: true), null, ct).ConfigureAwait(false);
-        var existing = plan.ChangedIds.Where(id => before.TryGetEntry(id, out _)).ToList();
+        var existing = plan.ChangedIds.Concat(placements).Distinct(StringComparer.Ordinal).Where(id => before.TryGetEntry(id, out _)).ToList();
         var baseline = existing.Count > 0
             ? await _services.Validator.ValidateAsync(before, new ValidationScope(existing, IncludeReferrers: true), null, ct).ConfigureAwait(false)
             : ValidationReport.From([]);
@@ -684,6 +690,34 @@ public sealed partial class ModelStore : IAsyncDisposable
                 known[key] = count - 1;
             else
                 outcome.Fail(SaveOutcome.Invalid);
+        }
+    }
+
+    /// <summary>
+    /// The entities whose MQ4012 a change may have altered through what the model had before it (engine-design 7.2a): every entity
+    /// when a database changed or went, and the entity a changed or deleted mapping named before (a mapping retargeted from A to B
+    /// revisits A; B is in the scope through the validator's peers). The candidate's own elements cover the rest.
+    /// </summary>
+    private static IEnumerable<string> FormerPlacements(IReadOnlyList<string> changedIds, ModelSnapshot before, ModelSnapshot candidate)
+    {
+        var everyEntity = false;
+        foreach (var id in changedIds)
+        {
+            switch (before.GetDocument(id)?.Element)
+            {
+                case Database:
+                    everyEntity = true;
+                    break;
+                case Mapping { Entity: { } entity } when candidate.GetDocument(entity) is { Element: Entity }:
+                    yield return entity;
+                    break;
+            }
+        }
+
+        if (everyEntity)
+        {
+            foreach (var entity in candidate.All<Entity>())
+                yield return entity.Id;
         }
     }
 

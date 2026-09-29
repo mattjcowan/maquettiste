@@ -6,7 +6,8 @@ namespace Maquettiste.Engine.Model;
 
 /// <summary>
 /// A named set of rows that attributes use as their type (<c>model/reference-types/</c>; reference-types-seeds-localization.md
-/// section 1). Two built-in fields, <see cref="Code"/> and <see cref="Label"/>, any number of user fields, and rows held in seeds.
+/// section 1). Two built-in fields, <see cref="Code"/> and <see cref="Label"/>, the row description every row may carry, any number
+/// of user fields, and rows held in seeds.
 /// </summary>
 public sealed record ReferenceType : Element
 {
@@ -33,7 +34,8 @@ public sealed record ReferenceCode
     /// <summary>The field's id, which translations key on.</summary>
     public required string Id { get; init; }
 
-    /// <summary>The code's logical type: <c>string</c>, <c>int16</c>, <c>int32</c> or <c>int64</c>.</summary>
+    /// <summary>The code's logical type: <c>string</c>, <c>int16</c>, <c>int32</c>, <c>int64</c> or <c>uuid</c> (written in its canonical
+    /// lowercase hyphenated form, MQ7013).</summary>
     public string Type { get; init; } = "string";
 
     /// <summary>The maximum length of a string code.</summary>

@@ -205,7 +205,8 @@ export class MockLocalization {
   }
 
   /** The localizable nodes: every element's display name, its plural name and description when it has them, and every
-   * seed row's label; each placed in its shard by the RT 3.1 rule. */
+   * seed row's label and description (a row's description may be translated with no default text, as in the engine);
+   * each placed in its shard by the RT 3.1 rule. */
   private nodes(): Node[] {
     const out: Node[] = [];
     const docs = this.model.docs();
@@ -226,9 +227,20 @@ export class MockLocalization {
       if (typeof json.description === "string") node("description", json.description);
       if (row.kind === "seed" && Array.isArray(json.columns)) {
         const at = (json.columns as string[]).indexOf("label");
+        const described = (json.columns as string[]).indexOf("description");
         for (const r of (json.rows as Json[] | undefined) ?? []) {
           const label = at >= 0 ? ((r.values as unknown[] | undefined)?.[at] ?? null) : null;
+          const description = described >= 0 ? ((r.values as unknown[] | undefined)?.[described] ?? null) : null;
           out.push({ id: String(r.id), owner: row.id, field: "label", source: typeof label === "string" ? label : null, kind: "reference-row", stem });
+          if (target?.kind === "reference-type")
+            out.push({
+              id: String(r.id),
+              owner: row.id,
+              field: "description",
+              source: typeof description === "string" ? description : null,
+              kind: "reference-row",
+              stem,
+            });
         }
       }
     }
@@ -258,7 +270,8 @@ export class MockLocalization {
   }
 
   status(): Json {
-    const nodes = this.nodes().filter((n) => this.required(n));
+    // Completeness expects a row's description only when the row has one (the engine's ExpectedFields).
+    const nodes = this.nodes().filter((n) => this.required(n) && !(n.kind === "reference-row" && n.field === "description" && n.source === null));
     const locales = this.declared
       .filter((l) => this.isTranslated(l))
       .map((locale) => {
@@ -473,6 +486,31 @@ export class MockLocalization {
       ];
     });
     return writeCsv([["@id", ...columns.map((c) => this.columnName(c)), ...wanted.flatMap((l) => [`@label:${l}`, `@description:${l}`])], ...rows], bom);
+  }
+
+  /**
+   * Several seed CSV imports as one change (POST /api/seeds/csv): every file is previewed first; applying writes none when a
+   * seed changed since its preview (409) or any file has an error (422), else every seed.
+   */
+  importSeedsCsv(
+    files: readonly { seed: string; content: string; hash?: string | null }[],
+    replace: boolean,
+    dryRun: boolean,
+  ): { status: number; body: { items: ImportPreviewBody[] } } | null {
+    const seen = new Set<string>();
+    for (const f of files) {
+      const doc = this.model.get(f.seed);
+      if (!doc || (doc.json as Json).kind !== "seed") return null;
+      if (seen.has(f.seed)) throw new Error(`Two files import into seed '${String((doc.json as Json).name)}'; send one file per seed.`);
+      seen.add(f.seed);
+    }
+    const items = files.map((f) => this.importSeedCsv(f.seed, f.content, replace, true, null)!.body);
+    if (dryRun) return { status: 200, body: { items } };
+    if (files.some((f) => f.hash && this.model.get(f.seed)!.hash !== f.hash)) return { status: 409, body: { items } };
+    if (items.some((i) => i.diagnostics.some((d) => d.severity === "error"))) return { status: 422, body: { items } };
+    const applied = files.map((f) => this.importSeedCsv(f.seed, f.content, replace, false, f.hash ?? null)!);
+    const failed = applied.find((a) => a.status !== 200);
+    return { status: failed?.status ?? 200, body: { items: applied.map((a) => a.body) } };
   }
 
   /** A seed CSV import: rows match by @id, else @code; merge or replace; applied with the seed's hash. */

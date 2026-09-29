@@ -1,11 +1,15 @@
 // The attribute grid's Type cell editor (reference-types-seeds-localization.md 4.5): a searchable drop-down list
 // with sections (Recent, Built-in, Custom types, Enums, Reference data, Value objects) and one ranked search across
-// them, with the Many (collection) and Required toggles beside it. Focus stays in the search box: arrows move the
+// them, with the Many (collection) and Required toggles beside it. A reference type shows its effective storage beside
+// its name ("Country · check"), read from the type and the project settings while a query client is at hand. Focus stays in the search box: arrows move the
 // highlight, Enter picks and moves down, Tab picks and moves right, Escape cancels, Alt+M and Alt+R flip the toggles.
-import { useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useContext, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import type { ElementSummary } from "@/api/types";
+import { QueryClientContext } from "@tanstack/react-query";
+import { useElements, useSettings } from "@/api/queries";
+import type { ElementSummary, ReferenceTypeDoc, StorageChoice } from "@/api/types";
 import { cn } from "@/lib/cn";
+import { storageLabel } from "@/workspaces/reference-data/storageChoices";
 import { flatItems, pickerGroups, rememberPick } from "./typePicker";
 
 export interface TypePick {
@@ -26,13 +30,37 @@ export interface TypePickerProps {
   onCancel(refocus: boolean): void;
 }
 
-export function TypePicker({ value, collection, required, options, label, onPick, onCancel }: TypePickerProps) {
+const NO_STORAGE: ReadonlyMap<string, string> = new Map();
+
+export function TypePicker(props: TypePickerProps) {
+  const client = useContext(QueryClientContext);
+  return client ? <StoredTypePicker {...props} /> : <PickerList {...props} storage={NO_STORAGE} />;
+}
+
+/** The effective storage of the reference types among the options, by id (the documents are read in one batch). */
+function StoredTypePicker(props: TypePickerProps) {
+  const ids = useMemo(() => props.options.filter((o) => o.kind === "reference-type").map((o) => o.id), [props.options]);
+  const docs = useElements(ids);
+  const settings = useSettings();
+  const storage = useMemo(() => {
+    const project = (settings.data?.json as { conventions?: { referenceStorage?: StorageChoice } } | undefined)?.conventions?.referenceStorage;
+    const out = new Map<string, string>();
+    for (const id of ids) {
+      const doc = docs.byId.get(id)?.json as unknown as ReferenceTypeDoc | undefined;
+      if (doc) out.set(id, storageLabel(doc.storage as Record<string, StorageChoice> | undefined, project));
+    }
+    return out;
+  }, [ids, docs.byId, settings.data]);
+  return <PickerList {...props} storage={storage} />;
+}
+
+function PickerList({ value, collection, required, options, label, onPick, onCancel, storage }: TypePickerProps & { storage: ReadonlyMap<string, string> }) {
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [many, setMany] = useState(collection);
   const [req, setReq] = useState(required);
-  const groups = useMemo(() => pickerGroups(options, query), [options, query]);
+  const groups = useMemo(() => pickerGroups(options, query, undefined, storage), [options, query, storage]);
   const items = useMemo(() => flatItems(groups), [groups]);
   const [active, setActive] = useState(() =>
     Math.max(
@@ -133,6 +161,7 @@ export function TypePicker({ value, collection, required, options, label, onPick
                         >
                           <span className="truncate font-mono">{item.label}</span>
                           {item.detail ? <span className="truncate text-11 text-secondary">{item.detail}</span> : null}
+                          {item.storage ? <span className="ml-auto shrink-0 text-11 text-secondary">· {item.storage}</span> : null}
                         </div>
                       );
                     })}

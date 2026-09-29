@@ -517,6 +517,7 @@ public sealed class DatabaseBuilder : ElementBuilder<DatabaseBuilder>
     private readonly Dialect _dialect;
     private readonly List<DbSchema> _schemas = [];
     private readonly List<string> _packages = [];
+    private ConventionMapping? _byConvention;
     private string? _defaultSchema;
     private Maquettiste.Engine.Model.Quoting _quoting = Maquettiste.Engine.Model.Quoting.Reserved;
 
@@ -560,6 +561,15 @@ public sealed class DatabaseBuilder : ElementBuilder<DatabaseBuilder>
         return this;
     }
 
+    /// <summary>Sets which entities the database takes by convention (<c>byConvention</c>).</summary>
+    /// <param name="value">The setting.</param>
+    /// <returns>This builder.</returns>
+    public DatabaseBuilder ByConvention(ConventionMapping value)
+    {
+        _byConvention = value;
+        return this;
+    }
+
     /// <inheritdoc/>
     protected override Element CreateElement() => new Database
     {
@@ -569,6 +579,7 @@ public sealed class DatabaseBuilder : ElementBuilder<DatabaseBuilder>
         DefaultSchema = _defaultSchema,
         Schemas = [.. _schemas],
         Quoting = _quoting,
+        ByConvention = _byConvention,
         Packages = [.. _packages],
     };
 }

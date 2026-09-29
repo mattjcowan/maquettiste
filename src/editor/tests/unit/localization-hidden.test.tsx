@@ -42,6 +42,6 @@ describe("with two or more locales", () => {
     const toggle = screen.getByRole("button", { name: /Translations/ });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByTestId("explorer-locale-chip")).toBeNull();
-    expect(localeColumns(["fr", "fr-CA"]).map((c) => c.key)).toEqual(["@label:fr", "@label:fr-CA"]);
+    expect(localeColumns(["fr", "fr-CA"]).map((c) => c.key)).toEqual(["@label:fr", "@description:fr", "@label:fr-CA", "@description:fr-CA"]);
   });
 });

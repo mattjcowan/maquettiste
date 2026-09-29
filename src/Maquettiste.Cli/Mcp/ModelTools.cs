@@ -416,7 +416,7 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     /// <param name="ct">Cancellation.</param>
     /// <returns>The view.</returns>
     [McpServerTool(Name = "get_database_view", Title = "Database view", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("The resolved physical view of one database: tables (from entities, relations and overlays) with columns, keys, indexes and foreign keys, views and sequences, as generation sees them.")]
+    [Description("The resolved physical view of one database: tables (from the entities mapped to it, by its byConvention setting or by mapping elements, their relations and overlays) with columns, keys, indexes and foreign keys, views and sequences, as generation sees them.")]
     public Task<CallToolResult> GetDatabaseView([Description("The database element id; required.")] string? id = null, CancellationToken ct = default) => GuardAsync(async () =>
     {
         if (string.IsNullOrEmpty(id))

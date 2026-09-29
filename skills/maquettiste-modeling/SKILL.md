@@ -64,7 +64,8 @@ clobber a concurrent edit or leave a dangling id.
    and `elementId`). Packs are files: `get_pack`, `list_pack_files`, `read_pack_file`, `write_pack_file` (with
    `expectedHash`, `new` to create), `move_pack_file`, `delete_pack_file`, `save_pack` (pack.json), `save_pack_settings`
    (`packs.<pack>` of the settings), `new_pack` (from `empty` or a starter), `get_template_context`, `preview_unit`
-   (with `overlay` for unsaved text; writes nothing), `unit_paths` and `get_pack_outputs`.
+   (with `overlay` for unsaved text; writes nothing; an element outside the unit's scope returns MQ6026 naming the kind
+   the template expects, and no files), `unit_paths` and `get_pack_outputs`.
 
 Every model read rescans the model folder and settings reads and saves check the file on disk, so edits made outside the server are seen; the resource `maquettiste://conventions`
 and the prompt `modeling-conventions` carry this text.
@@ -87,6 +88,12 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
 - Names are PascalCase for entities and camelCase for attributes; table and column names come from the project's
   conventions (plural snake_case by default), overridable per element.
 - `displayName`, `pluralName` and `description` feed generated UI and documentation; keep them meaningful.
+- A database holds only what is mapped to it: `byConvention` on the database file is `all`, `packages` (the domains
+  listed in `packages`, with their sub-domains) or `none`; a mapping file adds one entity (or ignores one) either way. Write
+  `byConvention` on every new database (`none` unless asked); a file without it keeps the older rule (every entity when
+  `packages` is empty). MQ4012 (info) names an entity that lands in no database; MQ4013 (warning) a `packages` list that
+  `all` or `none` does not use. Never add a database or a mapping just to silence MQ4012: which entities become tables,
+  and how, is the user's decision.
 - Reference data (units, countries, statuses that grow) is a reference type with its rows in a seed; an entity's
   starting rows are a seed of that entity. Deleting an element deletes its seeds and translations in the same save.
 - The engine creates no table or column for reference data on its own: the packs decide the physical form, from the

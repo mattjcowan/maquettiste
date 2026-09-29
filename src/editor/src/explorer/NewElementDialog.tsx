@@ -65,6 +65,8 @@ function NewElementDialog({ kind, domain, presetSource, forest }: { kind: Create
   const [home, setHome] = useState(domain ?? "");
   const [base, setBase] = useState("string");
   const [dialect, setDialect] = useState<string>("postgresql");
+  const [convention, setConvention] = useState<"none" | "pick" | "all">("none");
+  const [picked, setPicked] = useState<string[]>([]);
   const entities = [...forest.byId.values()].filter((r) => r.kind === "entity").sort((a, b) => a.name.localeCompare(b.name));
   const inDomain = (id: string) => !home || forest.byId.get(id)?.package === home;
   const firstEntity = entities.find((e) => e.id === presetSource) ?? entities.find((e) => inDomain(e.id)) ?? entities[0];
@@ -124,6 +126,8 @@ function NewElementDialog({ kind, domain, presetSource, forest }: { kind: Create
           domain: takesDomain(kind) ? home || null : null,
           base,
           dialect,
+          convention,
+          packages: picked,
           source,
           target,
           sourceName: forest.byId.get(source)?.name,
@@ -188,6 +192,39 @@ function NewElementDialog({ kind, domain, presetSource, forest }: { kind: Create
                 ))}
               </Select>
             </Field>
+          ) : null}
+          {kind === "database" ? (
+            <>
+              <Field
+                label="Map domains by convention"
+                htmlFor="new-element-convention"
+                hint="What this database holds; entities can also be mapped one by one later."
+              >
+                <Select id="new-element-convention" value={convention} onChange={(e) => setConvention(e.target.value as "none" | "pick" | "all")}>
+                  <option value="none">None</option>
+                  <option value="pick">Pick domains</option>
+                  <option value="all">All domains</option>
+                </Select>
+              </Field>
+              {convention === "pick" ? (
+                <fieldset className="flex max-h-40 flex-col gap-1 overflow-auto" data-testid="new-database-domains" aria-label="Domains mapped by convention">
+                  {choices.length ? (
+                    choices.map((c) => (
+                      <label key={c.id} className="flex h-6 items-center gap-2 text-12">
+                        <input
+                          type="checkbox"
+                          checked={picked.includes(c.id)}
+                          onChange={(e) => setPicked((p) => (e.target.checked ? [...p, c.id] : p.filter((x) => x !== c.id)))}
+                        />
+                        {c.path}
+                      </label>
+                    ))
+                  ) : (
+                    <p className="text-12 text-secondary">No domains yet.</p>
+                  )}
+                </fieldset>
+              ) : null}
+            </>
           ) : null}
           {kind === "database" ? (
             <Field label="Dialect" htmlFor="new-element-dialect">

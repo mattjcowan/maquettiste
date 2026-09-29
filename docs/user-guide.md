@@ -18,8 +18,9 @@ A project lives under a `.maquettiste/` folder in a repository. It holds:
 - **Reference data**: reference types, sets of rows managed as data (units of measure, countries), each with a code
   and a label, usable as the type of an attribute.
 - **Seed data**: rows an element starts with (an entity's initial rows, a reference type's rows).
-- **Databases**: the physical side. Tables that follow the naming conventions are **mapped automatically**; a table
-  that differs has a **customised mapping** (an override file).
+- **Databases**: the physical side. A database holds only what is mapped to it: the domains it takes **by
+  convention** (all of them, the ones you pick, or none) and the entities mapped to it one by one. Tables of mapped
+  entities follow the naming conventions; a table that differs has a **customised mapping** (an override file).
 - **Diagrams**: saved views of the canvas. A diagram only remembers which elements it shows and where.
 - **Templates**: the packs that turn all of the above into files (SQL, C#, TypeScript, docs).
 
@@ -39,6 +40,39 @@ The editor is laid out like an IDE:
 | Center | The current screen: the canvas, a grid or an editor |
 | Right | The inspector: the properties of what you are working on, editable (see below); none on Settings and Reference data |
 | Bottom | Problems (live validation), generation output, and a diff viewer |
+
+### Hiding panels, and what the editor remembers
+
+Every panel hides and comes back, so a crowded screen can get the room it needs. Each has a button in its header, a
+command in the palette (Toggle explorer, Toggle inspector, Toggle bottom panel, Toggle editor tabs, Toggle top bar
+controls) and a shortcut:
+
+| Panel | Shortcut |
+| --- | --- |
+| Explorer (the sidebar) | Alt+Shift+E |
+| Inspector | Alt+Shift+P |
+| Bottom panel | Alt+Shift+J |
+| Editor tabs | Alt+Shift+O |
+| Top bar controls (git status, content locale, undo and redo, theme, live status, user) | Alt+Shift+H |
+
+The shortcuts use the physical key (Option+Shift on a Mac) and do nothing while you type in a field; Escape never
+closes a panel. A hidden panel leaves a slim edge where it was (a thin strip beside the rail, at the right edge, or
+along the top of the centre area; the bottom panel keeps its tab row, the top bar its button): click it to bring the
+panel back. Clicking an explorer on the rail also brings the sidebar back.
+
+The layout (which panels are open, the sidebar, inspector and bottom panel sizes, and a second explorer pinned beside
+the first) is kept in this browser and comes back when you open the editor again. **Reset layout** in the command
+palette opens every panel at its default size and unpins the second explorer; it leaves the page state below as it
+is. **Reset layout and page state** does the same and also forgets this project's page state: the explorer, the
+expanded rows, the selections, the editor tabs, the Generate packs and the Settings tab go back to their defaults. A layout saved by 0.2.0 (panel sizes only) is read and kept.
+
+The page state is kept per project in this browser (by the checkout the editor serves, so two projects with one name
+stay apart and renaming a project keeps it) and restored on reload: the explorer showing, each explorer's
+expanded rows and selection, the open editor tabs and the active one, the packs ticked on the Generate screen, and
+the Settings tab Settings opens on. The address still says which screen, diagram or database and which selection
+shows, and wins where the two differ, so a shared link opens what it names.
+The page state belongs to the project's name, so renaming the project starts from a fresh one. Both are kept in this
+browser only: another browser, or a private window, opens with the default layout and nothing open.
 
 ### The rail: one explorer at a time
 
@@ -146,21 +180,35 @@ database shows on the Database screen at once. The explorers remember which rows
   Rows tab has it), plus **Add to favorites**. When the explorer is collapsed or shows another
   view, the screen shows the same list on its left (with a flat **A to Z** option). Ctrl+1 to Ctrl+4 pick a tab and `/`
   focuses the type search. For the selected type, four tabs; the tab you pick stays when you select another type:
-  - **Fields**: the built-in `code` and `label` (names fixed; code's type, length and pattern editable), then your own
-    fields in the attribute grid.
-  - **Rows**: a spreadsheet over the type's rows. Arrows move; Enter or F2 edits, Enter commits and moves down, Tab
+  - **Fields**: the built-in `code`, `label` and `description` (names fixed; code's type, length and pattern editable,
+    label's length editable; the description is text of any length), then your own fields in the attribute grid. A code
+    is a string by default, or an integer (`int16`, `int32`, `int64`) or a `uuid`; a uuid code is written lowercase with
+    hyphens (the grid lowercases what you type; error MQ7013 reports any other form). Label and description are marked
+    as translated: each locale can translate them.
+  - **Rows**: the columns are code, label, description, then your fields. A description may span lines: while you edit
+    it, Shift+Enter adds a line. With one declared locale the status bar says how to translate labels and descriptions
+    (declare a second locale under Settings › Locales); with two or more, each locale's label and description columns
+    sit side by side.
+    The grid is a spreadsheet over the type's rows. Arrows move; Enter or F2 edits, Enter commits and moves down, Tab
     commits and moves right, Esc cancels; Ctrl+Enter inserts a row below, Ctrl+D duplicates one (with an empty code),
     Delete clears cells, Ctrl+Delete deletes rows, Alt+Up and Alt+Down move rows; Shift+arrows select a range, Ctrl+C
     copies it as tab-separated text and Ctrl+V pastes such text, adding rows past the end; Ctrl+F finds; Ctrl+1 to
     Ctrl+4 switch tabs; `/` goes to the type search. **Import CSV** shows what a file adds, changes and removes before
-    you apply it as one change you can undo; **Export CSV** downloads the rows (`@id`, `@code`, `@label`, then the
-    fields by name).
+    you apply it as one change you can undo; **Export CSV** downloads the rows (`@id`, `@code`, `@label`,
+    `@description`, then the fields by name).
   - **Used by**: every attribute whose type is this reference type, with its Many and Required badges; click one to go to it.
   - **Storage**: per database, the storage strategy in effect and where it comes from, and an override chosen from the
     strategies the project declares in Settings (`referenceData.strategies`) or **Template-defined** (the packs decide).
 
+  **New reference type** asks for the name, display name, category and **Stored as**: Template-defined or one of the
+  strategies the project declares (the example packs' `lookup-table`, `check` and `native` read Lookup table, Check
+  constraint and Native type, where the dialect has one). Check constraint is preselected when the project declares it;
+  the choice applies to every database, and the Storage tab overrides it per database.
+
   To use a reference type as an attribute's type, open the attribute's **Type** cell: the list has sections (Recent,
-  Built-in, Custom types, Enums, Reference data, Value objects) and one search across them. **Many** (Alt+M) makes the
+  Built-in, Custom types, Enums, Reference data, Value objects) and one search across them. Each reference type shows
+  how it is stored beside its name, for example `Country · check` (`template` when the packs decide; `+1` when one
+  database is set otherwise). **Many** (Alt+M) makes the
   attribute a collection of codes and **Required** (Alt+R) makes it required; the cell then shows `→ Unit of measure`.
 - **Domains, tags and categories**: opening a domain row (Enter, a double click, or the row menu's Open) opens the
   **domain editor**: General, then the domain's own **Tags** and **Categories**. Tags and categories exist globally
@@ -177,8 +225,31 @@ database shows on the Database screen at once. The explorers remember which rows
   and the attribute mapped onto the column (once the entity is expanded; a collapsed folder shows "n related").
   Enter or a double click on a table opens its screen with that table focused. The screen shows table diagrams per
   database, a Tables list with a filter (the first 300 matches), a dialect selector, and a live DDL preview for the
-  selected table. The database row's menu opens **Mappings**: an entity and its table side by side, where names mapped automatically are muted
-  and customised ones are highlighted.
+  selected table. The database row's menu opens **Mappings**: an entity and its table side by side, where names mapped automatically are
+  muted and customised ones are highlighted.
+
+  **What a database holds.** Entities are not turned into tables on their own: a database holds only what is mapped to
+  it, and how an entity becomes a table is yours to say. There is no default database either; every database, the first
+  one included, holds what its own mapping says, and an entity may land in several databases or in none.
+
+  - **A new database starts empty.** New database asks **Map domains by convention**: **None** (the default), **Pick
+    domains** or **All domains**. With None, the Databases explorer shows "Nothing is mapped here yet" under it and
+    generation makes no tables for it.
+  - **Mapping domains.** **Map to database…** on a domain (several selected domains at once if you like) adds it to the
+    database's convention list; its sub-domains come with it, and their entities get tables named by the naming
+    conventions. A database whose convention is already All domains has nothing to add.
+  - **Mapping entities.** **Map to database…** on one or more entities maps each one by itself, whatever the convention
+    says, with a mapping element (the entity's Mappings tab and the database's Mappings screen show it). A mapping is also
+    where a table that differs from the conventions is described (a **customised mapping**: another table name, other
+    column names, an inheritance strategy, an ignored attribute), and a mapping marked ignore keeps the entity out of that database.
+  - **The Mapping section.** Select the database in the Databases explorer: its inspector form has a **Mapping**
+    section with the convention (None, Picked domains, All domains), the domains checklist, and the entities mapped one by
+    one.
+  - **Databases made before 0.3.0** have no convention written in their file and keep the old rule: every entity, or the
+    entities of the domains their file lists. The Mapping section says "By convention: all domains (unspecified)" (or
+    lists the domains), and **Make explicit** writes that choice into the file; generated output does not change.
+  - An entity that lands in no database is reported in Problems as MQ4012 (info, only once the model has a database); a
+    domain list that the convention does not use (All or None) is MQ4013 (warning).
 - **Diagrams**: the saved diagrams outside the domains.
 - **Seed data**: an entity's or a relationship's initial rows, in its editor's **Seed data** tab and in the domain's
   Seed data folder; a reference type's rows are its Rows tab. A seed lists its columns once and holds one row per line,
@@ -186,11 +257,41 @@ database shows on the Database screen at once. The explorers remember which rows
   row's **code**. A seed belongs to its element: deleting the element deletes its seeds and its translations in the same
   change, and removing an attribute drops its column. A delete is refused only while other elements point at the element
   or at its rows.
+
+  **Editing seed data.** An entity's **Seed data** tab is the same Rows grid as a reference type's Rows tab. With no seed
+  yet it offers **New seed**: nothing is created until you ask, and the seed lists every column the grid shows, so its
+  CSV export doubles as a template. The columns are the entity's attributes (a base entity's first), then one per
+  to-one relationship end (a relationship with seeds of its own keeps its links there). An end cell names a row of the
+  other entity's seed data: Enter opens a picker over those rows, labelled by their first two filled cells. A
+  relationship that has attributes has the same tab, with both ends first. The keys are the Rows tab's: Enter or F2
+  edits, Tab moves right, Ctrl+Enter inserts a row, Ctrl+D duplicates, Ctrl+Delete deletes the selected rows,
+  Alt+Up/Down moves them, Ctrl+C copies, pasting tab-separated cells adds rows past the end, Ctrl+Z undoes. Every seed
+  grid's header has **Import CSV** (paste or pick a file, preview what it adds, changes and removes, then apply it as
+  one change you can undo) and **Export CSV** (the seed as `<seed name>.csv`). In the Domain model explorer, an entity's
+  Seed data child opens this tab, and the entity's menu has **Edit seed data** and **Import seed CSV…** (which creates
+  the seed first when there is none).
+
+  **All seed data at once.** The Reference data explorer's header menu (…) has **Export all seed data**, which
+  downloads `seed-data.zip` with one CSV per seed of the model, named after the seed (`<name>.<id>.csv` when two seeds
+  share a name); a domain's menu in the Domain model explorer has **Export this domain's seed data**, the same for the
+  seeds whose entity, reference type or relation sits in that domain or its sub-domains (`<domain> seed data.zip`).
+  Both menus have **Import seed data…**, which takes such a ZIP or several CSV files, matches each file to the seed its
+  name names, previews every seed's changes, then imports them together as one change and one undo step. Files that
+  match no seed are listed and skipped; no seed is written when one of the files has an error or a seed changed since
+  the preview.
 - **Generate**: Plan renders every template unit and shows what would change, grouped by unit with the reason each
   renders (see "How the plan explains itself" below); pick a file to see its diff; Apply writes the plan. Generation runs as a job and reports progress; the run history stays in the panel. The Generate
   explorer and the pack editor (below) show and change what each pack does.
-- **Settings**: **General** (below), the vocabularies (Tags, Categories, Stereotypes), the naming conventions, and
-  **Locales** (below).
+- **Settings**: the project's settings, one tab each; the tab you left is the one Settings opens on next time.
+  - **General**: the project's name and branding (below).
+  - **Tags**, **Categories**, **Stereotypes**: the global vocabularies (a domain's own are on its editor's tabs).
+  - **Conventions**: the naming conventions, for the project (every database) or for one database picked at the top;
+    they name the tables and columns of the entities mapped to a database, and never decide which entities that is.
+  - **Locales**: the content locales (see "Translating the model in the editor").
+  - **Type maps, outputs, formatters**: the output allowlist (`outputs.allow`), the type maps, the formatters and the
+    packs, shown read-only; edit `maquettiste.json` to change them.
+  - **Explorer**: your preferences in this browser (Highlight related elements), your saved scopes and the team scopes
+    from `maquettiste.json`.
 - **Settings › General** names and brands the project; none of it changes generated output.
   - **Project name**: the name in the top bar, `name` in `maquettiste.json` (the field `maquettiste init --name` writes).
     The top bar follows as you type; Save writes it.
@@ -377,7 +478,8 @@ Alt+4:
   and the line above the preview says so; a file no unit uses previews through the first unit, also said there. When
   the model has no element of the unit's kind the preview says so ("The model has no reference type to preview this
   template with."), and a render outside the unit's scope reads "This template renders one reference type; pick a
-  reference type to preview it" instead of the template engine's error. The preview renders that unit for that
+  reference type to preview it" instead of the template engine's error (the server checks the same: a preview for an
+  element outside the unit's scope returns MQ6026, which names the kind the template expects, and no files). The preview renders that unit for that
   element with the text you have not saved yet, about 300 ms after you stop typing. The output path it would write shows above the rendered text, and its
   diagnostics are listed above it and marked in the editor at their line. Nothing is written by a preview.
   **Save** (or Ctrl+S) writes the file under `.maquettiste/templates/<pack>/` with the version you opened; a template
@@ -468,7 +570,8 @@ folders as you. Two variables override the choice when you need to:
 `maquettiste` is the same engine without the editor: it creates the project, checks it and generates the code, which is
 what a CI job and a terminal need. `maquettiste --help` lists every option; exit codes are 0 success, 1 validation or read errors,
 2 drift (or a `--check` preview that would change something), 3 hand-edit conflicts (or, for the `l10n` and `seed` verbs, a file
-that changed while the command ran), 4 an internal or usage error (a refused write, or an argument that names no locale or seed).
+that changed while the command ran), 4 an internal or usage error (a refused write, or an argument that names no locale or seed). A locale argument is read as
+the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cannot be read exits 4 and says how to write it.
 
 | Command | What it does |
 | --- | --- |

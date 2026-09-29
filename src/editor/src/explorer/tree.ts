@@ -5,6 +5,7 @@
 // chain. Element children that the index answers (relationships, relation ends, seed data, mappings) are built on
 // demand by `childKeys`; children that need a document (attributes, enum members, a table's columns) are added by
 // `documentChildren` and `tableChildren` once it is loaded.
+import { EMPTY_DATABASE_HINT } from "@/model/databaseMapping";
 import type { Diagnostic, ElementDocument, ElementSummary, ExplorerFolder, TableSummary, TableView } from "@/api/types";
 import type { AttributeDoc } from "@/api/types";
 import { attributesOf, typeLabel } from "@/model/model";
@@ -1239,6 +1240,21 @@ export function buildForest(input: TreeInput): Forest {
     });
     if (!loaded) node.pending = true;
     if (loaded?.stale) node.stale = true;
+    if (loaded && !tables && !views && !sequences && !mappings.length) {
+      const hint: TreeNode = {
+        key: `${db.id}/empty`,
+        type: "item",
+        explorer: "databases",
+        label: EMPTY_DATABASE_HINT,
+        tooltip: EMPTY_DATABASE_HINT,
+        icon: "info",
+        home: false,
+        errors: 0,
+        sort: "",
+        children: [],
+      };
+      children.push(add(hint));
+    }
     return attach(node, children);
   });
   databaseNodes.sort(byLabel);

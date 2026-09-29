@@ -262,6 +262,20 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 yield return peer;
         }
 
+        // MQ4012 on an entity depends on every database's convention, on the entity's mappings and on the package chain.
+        if (element is Database || (element is Package && model.All<Database>().Any(d => d.ByConvention is null ? d.Packages.Count > 0 : d.ByConvention == ConventionMapping.Packages)))
+        {
+            foreach (var entity in model.All<Entity>())
+            {
+                if (model.GetDocument(entity.Id) is { } peer)
+                    yield return peer;
+            }
+        }
+        else if (element is Mapping { Entity: { } mappedEntity } && model.GetDocument(mappedEntity) is { Element: Entity } mappedDocument)
+        {
+            yield return mappedDocument;
+        }
+
         switch (element)
         {
             case TagVocabulary or CategoryTree:

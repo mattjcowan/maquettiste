@@ -8,6 +8,7 @@ import * as endpoints from "@/api/endpoints";
 import type { ElementDocument, ModelJson } from "@/api/types";
 import { useServices } from "@/app/context";
 import { newId } from "@/lib/ids";
+import { conventionOf, mapDomains, takesPackage } from "@/model/databaseMapping";
 
 const clone = <T>(v: T): T => structuredClone(v);
 
@@ -46,6 +47,60 @@ export function useExplorerActions() {
       store.getState().notify(`Moved ${ids.length === 1 ? "1 element" : `${ids.length} elements`}.`);
     },
     [edit, store],
+  );
+
+  /**
+   * Map to database… (D46): domains join the database's convention list; an entity gets a mapping element for the
+   * database (an ignoring one stops ignoring), unless the convention already takes it. `existing` finds the mapping.
+   */
+  const mapToDatabase = useCallback(
+    async (
+      database: { id: string; name: string },
+      targets: readonly { id: string; kind: string; name: string }[],
+      existing: (entityId: string) => { id: string } | undefined,
+      packageOf: (entityId: string) => string | null | undefined,
+      parentOf: (packageId: string) => string | null | undefined,
+    ) => {
+      const databaseDoc = await qc.fetchQuery(elementQuery(database.id));
+      const convention = conventionOf((databaseDoc?.json ?? {}) as { byConvention?: string; packages?: string[] });
+      const taken = (entityId: string) => takesPackage(convention, packageOf(entityId), parentOf);
+      const domains = targets.filter((t) => t.kind === "package").map((t) => t.id);
+      let changed = 0;
+      if (domains.length) {
+        let added = false;
+        await edit(database.id, (json) => {
+          added = mapDomains(json, domains);
+        });
+        if (added) changed += domains.length;
+      }
+      for (const entity of targets.filter((t) => t.kind === "entity")) {
+        const mapping = existing(entity.id);
+        if (mapping) {
+          const current = await qc.fetchQuery(elementQuery(mapping.id));
+          if ((current?.json as { ignore?: boolean } | undefined)?.ignore) {
+            await edit(mapping.id, (json) => void delete json.ignore);
+            changed++;
+          }
+          continue;
+        }
+        if (taken(entity.id)) continue;
+        const json = { kind: "mapping", id: newId(), name: `${entity.name} in ${database.name}`, database: database.id, entity: entity.id };
+        const result = await endpoints.createElement(json as unknown as ModelJson);
+        if (result.outcome === "saved") {
+          applySaveResult(qc, result);
+          store.getState().pushUndo({
+            label: `Map ${entity.name}`,
+            ids: [json.id],
+            before: [null],
+            after: [clone(result.current!.json as ModelJson)],
+            afterHashes: [result.hash],
+          });
+          changed++;
+        } else store.getState().notify(`${entity.name} was not mapped: ${result.diagnostics[0]?.message ?? result.outcome}`, "error");
+      }
+      store.getState().notify(changed ? `Mapped to ${database.name}.` : `Already mapped to ${database.name}.`);
+    },
+    [edit, qc, store],
   );
 
   /** Deletes elements, refusing any that is still referenced (the inspector's delete clears references). */
@@ -114,5 +169,5 @@ export function useExplorerActions() {
     [qc, drafts, store],
   );
 
-  return { rename, move, remove, duplicate };
+  return { rename, move, mapToDatabase, remove, duplicate };
 }

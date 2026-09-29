@@ -7,7 +7,8 @@
 #   MAQUETTISTE_EDITOR_TOKEN=<token> node samples/reference-app/tools/seed.mjs --url http://127.0.0.1:<port> --compare <project dir>
 #
 # Environment: MAQUETTISTE_IMAGE (default mattjcowan/maquettiste:dev), MAQUETTISTE_PORT (default 8080),
-# MAQUETTISTE_EDITOR_TOKEN (required: the container sees the host as a remote peer), COMPOSE_PROJECT_NAME (default nw-seed).
+# MAQUETTISTE_EDITOR_TOKEN (required: the container sees the host as a remote peer), COMPOSE_PROJECT_NAME (default nw-seed),
+# MAQUETTISTE_UID/MAQUETTISTE_GID (default: the caller's ids; the user the editor runs as).
 # Stop with: docker compose -f docker/compose.yaml --project-directory <project dir> down -v
 set -eu
 [ $# -eq 1 ] || { echo "usage: $0 <project dir>" >&2; exit 2; }
@@ -20,7 +21,8 @@ COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-nw-seed}"
 export MAQUETTISTE_IMAGE COMPOSE_PROJECT_NAME MAQUETTISTE_EDITOR_TOKEN
 
 if [ -d "$project/.maquettiste" ]; then
-  # Files the editor wrote belong to UID 1654; stop the previous run and delete them as root inside a container.
+  # Stop the previous run, then delete what it wrote as root inside a container: an image older than the user rule wrote as
+  # UID 1654, which the caller cannot delete without sudo.
   docker compose -f "$repo/docker/compose.yaml" --project-directory "$project" down -v >/dev/null 2>&1 || true
   docker run --rm --user 0 -v "$project:/p" --entrypoint sh "$MAQUETTISTE_IMAGE" -c 'rm -rf /p/.maquettiste /p/db /p/src'
 fi
@@ -34,13 +36,9 @@ cat > "$project/.maquettiste/maquettiste.json" <<'EOF'
   "name": "reference-app"
 }
 EOF
-if [ "$(uname)" = Linux ]; then
-  if command -v setfacl >/dev/null 2>&1; then
-    chmod -R u+rwX,go+rX "$project"
-    setfacl -R -m "u:1654:rwX,d:u:1654:rwX,u:$(id -u):rwX,d:u:$(id -u):rwX" "$project"
-  else
-    chmod -R a+rwX "$project"
-  fi
-fi
+# The editor runs as the caller (docker/entrypoint.sh: MAQUETTISTE_UID, else the owner of .maquettiste/), so what it writes
+# stays the caller's: no ACLs, no chmod.
+MAQUETTISTE_UID="${MAQUETTISTE_UID:-$(id -u)}" MAQUETTISTE_GID="${MAQUETTISTE_GID:-$(id -g)}"
+export MAQUETTISTE_UID MAQUETTISTE_GID
 docker compose -f "$repo/docker/compose.yaml" --project-directory "$project" up -d --wait
 echo "empty-editor: editor on http://127.0.0.1:${MAQUETTISTE_PORT:-8080} (Host maquettiste.localhost) over $project"

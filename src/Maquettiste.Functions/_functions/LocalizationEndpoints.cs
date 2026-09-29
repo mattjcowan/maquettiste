@@ -199,6 +199,40 @@ public static class LocalizationEndpoints
         }
     });
 
+    /// <summary>Previews or applies CSV imports into several seeds as one change (Import seed data…).</summary>
+    /// <param name="mode"><c>merge</c> (default) or <c>replace</c>.</param>
+    /// <param name="dryRun">Only preview (default true).</param>
+    /// <param name="context">The request.</param>
+    /// <param name="store">The model store.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>200, 409, 422, 404 or 400.</returns>
+    [HttpPost("/api/seeds/csv")]
+    public static Task<IResult> ImportSeeds(string? mode, string? dryRun, HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(store);
+        if (Api.Require(context, "editor") is { } forbidden)
+            return forbidden;
+        if (mode is not (null or "" or "merge" or "replace"))
+            return Api.BadRequest($"mode must be 'merge' or 'replace', not '{mode}'.");
+        var (request, error) = await Api.ReadJsonAsync<SeedsImportRequest>(context.Request, null, ct).ConfigureAwait(false);
+        if (error is not null)
+            return error;
+        if (request!.Files is not { Count: > 0 } files || files.Any(f => string.IsNullOrEmpty(f.Seed) || f.Content is null))
+            return Api.BadRequest("files (each with seed and content) is required.");
+        try
+        {
+            var result = await store.ImportSeedCsvBatchAsync([.. files.Select(f => new SeedCsvFile(f.Seed!, f.Content!, f.Hash))], mode == "replace", dryRun != "false", ChangeSource.Editor, ct).ConfigureAwait(false);
+            if (result is null)
+                return Api.NotFound("seed", string.Join(", ", files.Select(f => f.Seed)));
+            return Api.Json(new { items = result.Items }, Api.StatusOf(result.Outcome));
+        }
+        catch (FormatException ex)
+        {
+            return Api.BadRequest(ex.Message);
+        }
+    });
+
     /// <summary>The attributes typed by a reference type, with their effective storage per database.</summary>
     /// <param name="id">The reference type id.</param>
     /// <param name="context">The request.</param>
@@ -245,3 +279,13 @@ public sealed record TranslationWriteResult(string Outcome, IReadOnlyDictionary<
 /// <param name="Format"><c>xliff</c> or <c>csv</c>.</param>
 /// <param name="Content">The file text.</param>
 public sealed record FileImportRequest(string? Format, string? Content);
+
+/// <summary>One file of a several-seed import.</summary>
+/// <param name="Seed">The seed id.</param>
+/// <param name="Content">The CSV text.</param>
+/// <param name="Hash">The seed hash read for the preview.</param>
+public sealed record SeedFileRequest(string? Seed, string? Content, string? Hash);
+
+/// <summary>The body of a several-seed import.</summary>
+/// <param name="Files">One CSV per seed.</param>
+public sealed record SeedsImportRequest(IReadOnlyList<SeedFileRequest>? Files);

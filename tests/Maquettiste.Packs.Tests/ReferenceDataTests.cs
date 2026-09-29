@@ -39,6 +39,72 @@ public sealed class ReferenceDataTests
         Assert.Contains("<value>Unité de mesure</value>", repo.Read("src/Generated/ReferenceData/ReferenceData.fr.resx"), StringComparison.Ordinal);
     }
 
+    private const string FirstBatch = "0190a3b4-5c6d-7e8f-9a0b-1c2d3e4f5a6b";
+
+    /// <summary>Adds the reference type Batch, coded by uuid, with two rows, and the optional attribute Ingredient.batch.</summary>
+    private static void AddUuidCodedType(PackRepo repo)
+    {
+        const string model = ".maquettiste/model/";
+        repo.Write(model + "reference-types/batch.json",
+            """{ "$schema": "../../.schema/v1/reference-type.json", "kind": "reference-type", "id": "01JRDW00000000000000000001", "name": "Batch", "code": { "id": "01JRDW00000000000000000002", "type": "uuid" }, "label": { "id": "01JRDW00000000000000000003", "length": 40 } }""" + "\n");
+        repo.Write(model + "seeds/batch/batch.json",
+            """{ "$schema": "../../../.schema/v1/seed.json", "kind": "seed", "id": "01JRDW00000000000000000010", "name": "Batch", "target": "01JRDW00000000000000000001", "columns": ["code", "label"], "rows": [ { "id": "01JRDW00000000000000000011", "values": ["0190a3b4-5c6d-7e8f-9a0b-1c2d3e4f5a6b", "First"] }, { "id": "01JRDW00000000000000000012", "values": ["0190a3b4-5c6d-7e8f-9a0b-1c2d3e4f5a6c", "Second"] } ] }""" + "\n");
+        repo.EditJson(model + "entities/ingredient.json", entity => entity["attributes"]!.AsArray().Add(
+            JsonNode.Parse("""{ "id": "01JRDW00000000000000000020", "name": "batch", "type": { "ref": "01JRDW00000000000000000001" } }""")));
+    }
+
+    [Fact]
+    public async Task A_uuid_code_keys_the_lookup_table_with_each_dialects_uuid_type()
+    {
+        using var repo = PackRepo.ReferenceData("lookup-table");
+        AddUuidCodedType(repo);
+        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+
+        Assert.Contains("code uuid NOT NULL", repo.Read("db/main/seed.sql"), StringComparison.Ordinal);
+        Assert.Contains("code uniqueidentifier NOT NULL", repo.Read("db/reporting/seed.sql"), StringComparison.Ordinal);
+        Assert.Contains("code TEXT NOT NULL", repo.Read("db/local/seed.sql"), StringComparison.Ordinal);
+        Assert.Contains("'" + FirstBatch + "'", repo.Read("db/main/seed.sql"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_uuid_code_is_checked_as_quoted_literals_and_is_a_guid_in_csharp()
+    {
+        using var repo = PackRepo.ReferenceData("check");
+        AddUuidCodedType(repo);
+        await repo.GenerateCleanlyAsync(packs: ["sql-ddl", "csharp-dapper"]);
+
+        var main = repo.Read("db/main/schema.sql") + repo.Read("db/main/seed.sql");
+        Assert.Contains("batch uuid", main, StringComparison.Ordinal);
+        Assert.Contains("CHECK (batch IN ('0190a3b4-5c6d-7e8f-9a0b-1c2d3e4f5a6b', '0190a3b4-5c6d-7e8f-9a0b-1c2d3e4f5a6c'))", main, StringComparison.Ordinal);
+        var reporting = repo.Read("db/reporting/schema.sql") + repo.Read("db/reporting/seed.sql");
+        Assert.Contains("batch uniqueidentifier", reporting, StringComparison.Ordinal);
+        Assert.Contains("N'" + FirstBatch + "'", reporting, StringComparison.Ordinal);
+        var batch = repo.Read("src/Generated/ReferenceData/Batch.g.cs");
+        Assert.Contains("public sealed record Batch(Guid Code, string Label);", batch, StringComparison.Ordinal);
+        Assert.Contains("= new(new Guid(\"" + FirstBatch + "\"), \"First\");", batch, StringComparison.Ordinal);
+        Assert.Contains("public static Batch? Find(Guid code)", batch, StringComparison.Ordinal);
+        Assert.Contains("public Guid? Batch { get; set; }", repo.Read("src/Generated/Ingredient.g.cs"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_typescript_sample_keeps_a_uuid_code_a_string_and_says_so()
+    {
+        using var repo = PackRepo.ReferenceData("lookup-table");
+        AddUuidCodedType(repo);
+        PackRepo.CopyTree(Path.Combine(Fixtures.RepoRoot, "samples", "typescript-pack"), Path.Combine(repo.Repo.ModelRoot, "templates", "typescript"));
+        repo.EditJson(".maquettiste/maquettiste.json", settings =>
+        {
+            settings["outputs"]!["allow"]!.AsArray().Add(JsonNode.Parse("""{ "path": "web" }"""));
+            settings["packs"]!["typescript"] = JsonNode.Parse("""{ "output": "web" }""");
+        });
+        await repo.GenerateCleanlyAsync(packs: ["typescript"]);
+
+        var batch = repo.Read("web/batch.ts");
+        Assert.Contains("// The codes are UUIDs in canonical form (lowercase, hyphenated), held as strings.", batch, StringComparison.Ordinal);
+        Assert.Contains("export type Batch = '" + FirstBatch + "' | ", batch, StringComparison.Ordinal);
+        Assert.DoesNotContain("UUIDs", repo.Read("web/unit-of-measure.ts"), StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task A_strategy_key_the_strategy_map_does_not_know_stops_the_unit()
     {

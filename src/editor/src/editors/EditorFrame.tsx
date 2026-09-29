@@ -37,6 +37,8 @@ export interface EditorSubTab {
   disabled?: boolean;
   /** The trigger's tooltip, such as why the tab is disabled. */
   title?: string;
+  /** The content fills the tab and scrolls itself (the Seed data grid): no padding, no outer scroll. */
+  fill?: boolean;
 }
 
 /** The DOM id prefix of an editor's fields: distinct from the inspector's when both show one element. */
@@ -127,7 +129,7 @@ export function EditorLayout({
           ))}
         </TabsList>
         {list.map((t) => (
-          <TabsContent key={t.value} value={t.value} className="min-h-0 flex-1 overflow-auto p-2">
+          <TabsContent key={t.value} value={t.value} className={t.fill ? "flex min-h-0 flex-1 flex-col" : "min-h-0 flex-1 overflow-auto p-2"}>
             {t.content}
           </TabsContent>
         ))}

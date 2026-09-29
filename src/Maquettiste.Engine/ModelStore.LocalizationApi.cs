@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine.Loading;
 using Maquettiste.Engine.Localization;
 using Maquettiste.Engine.Model;
 
@@ -77,6 +78,17 @@ public sealed record ImportPreview(int Added, IReadOnlyList<JsonObject> Changed,
 /// <param name="Preview">The preview.</param>
 /// <param name="Outcome">The outcome.</param>
 public sealed record ImportResult(ImportPreview Preview, SaveOutcome Outcome);
+
+/// <summary>One file of a several-seed CSV import.</summary>
+/// <param name="Seed">The seed id.</param>
+/// <param name="Content">The CSV text.</param>
+/// <param name="Hash">The seed hash read for the preview, or <see langword="null"/> for the current one.</param>
+public sealed record SeedCsvFile(string Seed, string Content, string? Hash);
+
+/// <summary>The outcome of a several-seed CSV import: one preview per file, in request order.</summary>
+/// <param name="Items">The previews (applied ones carry <c>applied</c> and the new hash).</param>
+/// <param name="Outcome">Saved, or why nothing was written.</param>
+public sealed record SeedBatchImportResult(IReadOnlyList<ImportPreview> Items, SaveOutcome Outcome);
 
 /// <summary>One attribute typed by a reference type, as <c>GET /api/reference-types/{id}/usage</c> lists it.</summary>
 /// <param name="Attribute">The attribute id.</param>
@@ -268,6 +280,104 @@ public sealed partial class ModelStore
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
         if (snapshot.Get<Element>(seedId) is not Seed seed || snapshot.GetDocument(seedId) is not { } document)
             return null;
+        var plan = PlanSeedImport(snapshot, seed, document, csv, replace);
+        var preview = plan.Preview;
+        if (dryRun || (plan.Json is null && plan.Translations.Count == 0))
+            return new ImportResult(preview, SaveOutcome.Saved);
+
+        var hash = document.Hash;
+        if (plan.Json is { } json)
+        {
+            var saved = await SaveAsync(seedId, Encoding.UTF8.GetBytes(json.ToJsonString()), expectedHash ?? document.Hash, source, ct).ConfigureAwait(false);
+            if (saved.Outcome != SaveOutcome.Saved)
+                return new ImportResult(preview with { Diagnostics = saved.Diagnostics }, saved.Outcome);
+            hash = saved.Hash;
+        }
+
+        return await WriteImportTranslationsAsync(preview, hash, seedId, plan.Translations, source, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Previews or applies CSV imports into several seeds at once (the editor's Import seed data…). Each file is read as
+    /// <see cref="ImportSeedCsvAsync"/> reads one; applying saves every changed seed in one all-or-nothing change (a stale hash or a
+    /// new error in any seed writes none of them), then writes the translations the files carry.
+    /// </summary>
+    /// <param name="files">The seeds and their CSV text, each with the hash read for its preview (or <see langword="null"/>).</param>
+    /// <param name="replace">Replace (else merge).</param>
+    /// <param name="dryRun">Only preview.</param>
+    /// <param name="source">Who makes the change.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>One preview per file in request order and the outcome, or <see langword="null"/> when a file names no seed.</returns>
+    /// <exception cref="FormatException">A CSV is malformed or has no <c>@id</c> header, or two files name one seed.</exception>
+    public async Task<SeedBatchImportResult?> ImportSeedCsvBatchAsync(IReadOnlyList<SeedCsvFile> files, bool replace, bool dryRun, ChangeSource source, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(files);
+        var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
+        var plans = new List<(SeedCsvFile File, ElementDocument Document, SeedImportPlan Plan)>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var file in files)
+        {
+            if (snapshot.Get<Element>(file.Seed) is not Seed seed || snapshot.GetDocument(file.Seed) is not { } document)
+                return null;
+            if (!seen.Add(seed.Id))
+                throw new FormatException($"Two files import into seed '{seed.Name}'; send one file per seed.");
+            plans.Add((file, document, PlanSeedImport(snapshot, seed, document, file.Content, replace)));
+        }
+
+        var previews = plans.Select(p => p.Plan.Preview).ToList();
+        if (dryRun || plans.All(p => p.Plan.Json is null && p.Plan.Translations.Count == 0))
+            return new SeedBatchImportResult(previews, SaveOutcome.Saved);
+
+        var changes = new List<PlannedChange>();
+        var changedAt = new List<int>();
+        for (var i = 0; i < plans.Count; i++)
+        {
+            if (plans[i].Plan.Json is not { } json)
+                continue;
+            if (!TryParseRequest(Encoding.UTF8.GetBytes(json.ToJsonString()), plans[i].File.Seed, out var node, out var invalid))
+            {
+                previews[i] = previews[i] with { Diagnostics = invalid.Diagnostics };
+                return new SeedBatchImportResult(previews, invalid.Outcome);
+            }
+
+            changes.Add(new PlannedChange(BatchOp.Update, plans[i].File.Seed, plans[i].File.Hash ?? plans[i].Document.Hash, node, DeleteResolution.Refuse));
+            changedAt.Add(i);
+        }
+
+        var hashes = plans.Select(p => (string?)p.Document.Hash).ToList();
+        if (changes.Count > 0)
+        {
+            var batch = await ExecuteAsync(changes, source, ct).ConfigureAwait(false);
+            for (var j = 0; j < changedAt.Count; j++)
+            {
+                var item = batch.Items[j];
+                if (batch.Outcome != SaveOutcome.Saved)
+                    previews[changedAt[j]] = previews[changedAt[j]] with { Diagnostics = item.Diagnostics };
+                else
+                    hashes[changedAt[j]] = item.Hash;
+            }
+
+            if (batch.Outcome != SaveOutcome.Saved)
+                return new SeedBatchImportResult(previews, batch.Outcome);
+        }
+
+        var outcome = SaveOutcome.Saved;
+        for (var i = 0; i < plans.Count; i++)
+        {
+            var written = await WriteImportTranslationsAsync(previews[i], hashes[i], plans[i].File.Seed, plans[i].Plan.Translations, source, ct).ConfigureAwait(false);
+            previews[i] = written.Preview;
+            if (written.Outcome != SaveOutcome.Saved && outcome == SaveOutcome.Saved)
+                outcome = written.Outcome;
+        }
+
+        return new SeedBatchImportResult(previews, outcome);
+    }
+
+    /// <summary>A seed import worked out against a snapshot: the preview, the seed's new JSON when its rows change, the translations.</summary>
+    private sealed record SeedImportPlan(ImportPreview Preview, JsonObject? Json, List<(string Locale, string Id, string Field, string Value)> Translations);
+
+    private SeedImportPlan PlanSeedImport(ModelSnapshot snapshot, Seed seed, ElementDocument document, string csv, bool replace)
+    {
         var table = Csv.Read(csv);
         if (table.Count == 0)
             throw new FormatException("The CSV is empty; the first line must be the header.");
@@ -366,7 +476,7 @@ public sealed partial class ModelStore
             {
                 if (seen.Contains(i))
                     continue;
-                var referrers = snapshot.ReferencesTo(rows[i].Id).Where(r => r.FromElementId != seedId && !r.Owning).ToList();
+                var referrers = snapshot.ReferencesTo(rows[i].Id).Where(r => r.FromElementId != seed.Id && !r.Owning).ToList();
                 if (referrers.Count > 0)
                     blocked.Add(new JsonObject { ["id"] = rows[i].Id, ["referrers"] = new JsonArray([.. referrers.Select(r => (JsonNode)new JsonObject { ["element"] = r.FromElementId, ["pointer"] = r.JsonPointer })]) });
                 else
@@ -380,25 +490,22 @@ public sealed partial class ModelStore
             Blocked = blocked,
         };
         var seedChanges = newRows.Count > 0 || removed.Count > 0 || changed.Any(c => !c.ContainsKey("locale"));
-        if (dryRun || (!seedChanges && translations.Count == 0))
-            return new ImportResult(preview, SaveOutcome.Saved);
+        if (!seedChanges)
+            return new SeedImportPlan(preview, null, translations);
+        var json = JsonNode.Parse(document.Json.GetRawText())!.AsObject();
+        var array = new JsonArray();
+        foreach (var (row, i) in rows.Select((r, i) => (r, i)).Where(p => !removed.Contains(p.i)).Select(p => (p.r, p.i)))
+            array.Add(RowNode(row.Id, row.Cells));
+        foreach (var row in newRows)
+            array.Add(RowNode(row.Id, row.Cells));
+        json["rows"] = array;
+        return new SeedImportPlan(preview, json, translations);
+    }
 
-        var hash = document.Hash;
-        if (seedChanges)
-        {
-            var json = JsonNode.Parse(document.Json.GetRawText())!.AsObject();
-            var array = new JsonArray();
-            foreach (var (row, i) in rows.Select((r, i) => (r, i)).Where(p => !removed.Contains(p.i)).Select(p => (p.r, p.i)))
-                array.Add(RowNode(row.Id, row.Cells));
-            foreach (var row in newRows)
-                array.Add(RowNode(row.Id, row.Cells));
-            json["rows"] = array;
-            var saved = await SaveAsync(seedId, Encoding.UTF8.GetBytes(json.ToJsonString()), expectedHash ?? document.Hash, source, ct).ConfigureAwait(false);
-            if (saved.Outcome != SaveOutcome.Saved)
-                return new ImportResult(preview with { Diagnostics = saved.Diagnostics }, saved.Outcome);
-            hash = saved.Hash;
-        }
-
+    /// <summary>Writes an applied import's translations, one save per locale, and completes its preview.</summary>
+    private async Task<ImportResult> WriteImportTranslationsAsync(ImportPreview preview, string? hash, string seedId,
+        List<(string Locale, string Id, string Field, string Value)> translations, ChangeSource source, CancellationToken ct)
+    {
         var shardHashes = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var group in translations.GroupBy(t => t.Locale, StringComparer.Ordinal))
         {

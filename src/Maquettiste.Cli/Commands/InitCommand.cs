@@ -10,12 +10,19 @@ using Maquettiste.Engine.Writing;
 namespace Maquettiste.Cli.Commands;
 
 /// <summary>
-/// <c>maquettiste init [--pack sql-ddl|csharp-dapper|none] [--hooks] [--mcp] [--skill] [--agent-setup] [--docker &lt;image&gt;]</c> (engine-design.md section 16; SPEC sections 4, 11, 12 and 17).
+/// <c>maquettiste init [--pack sql-ddl|csharp-dapper|none] [--name &lt;name&gt;] [--hooks] [--mcp] [--skill] [--agent-setup]
+/// [--docker &lt;image&gt;]</c> (engine-design.md section 16; SPEC sections 4, 11, 12 and 17).
+/// <para>
 /// Creates <c>.maquettiste/</c> with the phase 1 folders, <c>maquettiste.json</c> (format 1, output roots <c>db</c> committed and
 /// <c>src/Generated</c> built), the JSON schemas in <c>.schema/v1/</c>, the starter pack, and a <c>.gitignore</c> block for the built
-/// roots and <c>.maquettiste/.cache/</c>. Idempotent: existing files are kept, except <c>.schema/v1</c>, which is refreshed, and the
-/// <c>.gitignore</c> block, which is rewritten in place. <c>--mcp</c> registers <c>maquettiste mcp</c> in <c>.mcp.json</c>, <c>--skill</c>
-/// installs the modeling skill under <c>.claude/skills/</c>, <c>--agent-setup</c> does both, and <c>--docker &lt;image&gt;</c> registers a <c>./mcp.sh</c> wrapper that runs the server in that image (<see cref="AgentSetup"/>).
+/// roots and <c>.maquettiste/.cache/</c>. The project is named by <c>--name</c>, else as <see cref="ProjectName"/> derives it.
+/// </para>
+/// <para>
+/// Idempotent: existing files are kept, except <c>.schema/v1</c>, which is refreshed, and the <c>.gitignore</c> block, which is
+/// rewritten in place. <c>--hooks</c> installs the post-checkout and post-merge hooks; <c>--mcp</c> registers <c>maquettiste mcp</c> in
+/// <c>.mcp.json</c>; <c>--skill</c> installs the modeling skill under <c>.claude/skills/</c>; <c>--agent-setup</c> does both; and
+/// <c>--docker &lt;image&gt;</c> registers a <c>./mcp.sh</c> wrapper that runs the server in that image (<see cref="AgentSetup"/>).
+/// </para>
 /// </summary>
 internal static class InitCommand
 {
@@ -394,7 +401,9 @@ internal static class InitCommand
         return json.Write(settings, "maquettiste.json", "maquettiste.json");
     }
 
-    /// <summary>The built roots (<c>commit</c> false) of the settings file; the defaults when it cannot be read.</summary>
+    /// <summary>The built roots (<c>commit</c> false) of the settings file; the default built root when the file cannot be read.</summary>
+    /// <param name="settingsPath">The settings file.</param>
+    /// <returns>The repo-relative roots.</returns>
     private static IReadOnlyList<string> BuiltRoots(string settingsPath)
     {
         try

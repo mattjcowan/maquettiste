@@ -1,8 +1,9 @@
-// The Fields tab (reference-types-seeds-localization.md 4.3): the built-in code and label pinned at the top (their
-// names fixed; code's type, length and pattern and label's length editable), then the user fields in the entity
+// The Fields tab (reference-types-seeds-localization.md 4.3): the built-in code, label and description pinned at the top
+// (their names fixed; code's type, length and pattern and label's length editable; the description is text of any
+// length; label and description are marked as translated per locale), then the user fields in the entity
 // attribute grid, whose type picker offers built-ins, custom types, enums and reference types (not value objects or
 // entities, so a row stays one flat line, RS2).
-import { Lock } from "lucide-react";
+import { Languages, Lock } from "lucide-react";
 import type { ModelJson, ReferenceTypeDoc } from "@/api/types";
 import { AttributeGrid } from "@/inspector/AttributeGrid";
 import { useDefinition } from "@/inspector/definition";
@@ -13,7 +14,7 @@ import { SectionTitle, Spinner } from "@/components/ui/misc";
 import { useEditor } from "@/state/store";
 import { useServices } from "@/app/context";
 
-const CODE_TYPES = ["string", "int16", "int32", "int64"] as const;
+const CODE_TYPES = ["string", "int16", "int32", "int64", "uuid"] as const;
 const FIELD_KINDS = ["scalar-type", "enum", "reference-type"] as const;
 
 type Builtin = "code" | "label";
@@ -50,10 +51,32 @@ export function FieldsTab({ typeId }: { typeId: string }) {
             <th className="px-1.5">Type</th>
             <th className="w-20 px-1.5">Len</th>
             <th className="px-1.5">Pattern</th>
+            <th className="w-24 px-1.5">Translated</th>
           </tr>
         </thead>
         <tbody>
-          {(["code", "label"] as const).map((field) => {
+          {(["code", "label", "description"] as const).map((field) => {
+            if (field === "description")
+              return (
+                <tr key={field} className="border-t border-default" data-testid="builtin-description">
+                  <th scope="row" className={`${cell} text-left font-normal`}>
+                    <span className="inline-flex items-center gap-1 font-mono">
+                      <Lock className="size-3 text-secondary" aria-label="built-in, name fixed" />
+                      description
+                    </span>
+                  </th>
+                  <td className={cell}>
+                    <span className="font-mono">text</span>
+                  </td>
+                  <td className={`${cell} text-right font-mono text-secondary`} aria-label="Length of description">
+                    any
+                  </td>
+                  <td className={`${cell} text-11 text-secondary`}>Optional, one per row; may span lines.</td>
+                  <td className={cell}>
+                    <Translated />
+                  </td>
+                </tr>
+              );
             const f = (type[field] ?? {}) as { type?: string; length?: number; pattern?: string };
             return (
               <tr key={field} className="border-t border-default" data-testid={`builtin-${field}`}>
@@ -102,6 +125,7 @@ export function FieldsTab({ typeId }: { typeId: string }) {
                     />
                   ) : null}
                 </td>
+                <td className={cell}>{field === "label" ? <Translated /> : <span className="text-11 text-secondary">no</span>}</td>
               </tr>
             );
           })}
@@ -121,5 +145,15 @@ export function FieldsTab({ typeId }: { typeId: string }) {
         }}
       />
     </div>
+  );
+}
+
+/** The marker of a built-in field whose text is translated per locale (a row's label and description). */
+function Translated() {
+  return (
+    <span className="inline-flex items-center gap-1 text-11 text-secondary" title="Translated per locale under Settings › Locales">
+      <Languages className="size-3" aria-hidden />
+      yes
+    </span>
   );
 }

@@ -85,6 +85,16 @@ them) the GC heap count and the runtime-overriding `DOTNET_` variables. Otherwis
 class (a CI runner) should record its own baseline before relying on the gate. `bench.yml` passes `--baseline` only when the file
 exists and otherwise emits a `::warning::`; an explicit `--baseline` path that does not exist fails the run.
 
+**`bench/baseline-ci.json`** is the CI runner's own baseline (round 7). Record it with the `bench` workflow's dispatch input
+`record-ci-baseline` (on the runner the tag runs use, default `ubuntu-latest`): the run uses `--advisory-budgets`, writes its report
+as `baseline-ci.json` and uploads it as the `bench-baseline-ci` artifact; download it and commit it as `bench/baseline-ci.json`.
+Once that file is committed, tag runs compare against it with the 10% regression gate and `--advisory-budgets`, and the step
+fails the workflow on a regression, a drift in the check run or a determinism mismatch. `--advisory-budgets` keeps the absolute
+budgets in the report but lets only the regression gate, the check run and the determinism cross-check decide; without it (on a
+developer machine, and in tag runs until `baseline-ci.json` exists) the budgets stay binding in the harness, and `bench.yml` keeps
+that older run advisory (`continue-on-error`). Re-record the CI baseline when the runner image's machine class changes (the
+harness then skips the gate and says why).
+
 ## The synthetic model (seed 42 by default)
 
 50 packages; 5,000 entities (8 to 20 attributes, 10% in two-level hierarchies stored TPT, `audited` and `soft-delete` on 30% of

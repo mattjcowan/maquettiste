@@ -184,6 +184,44 @@ public sealed class LocalizationEndpointTests
     }
 
     [Fact]
+    public async Task Several_seed_imports_preview_together_and_apply_all_or_nothing()
+    {
+        await using var host = EditorHost.CreateReferenceData();
+        const string Allergen = "01JRDA00000000000000000010";
+        var units = new JsonObject { ["seed"] = UnitSeed, ["content"] = "@code,@label,factor\nmg,Milligram,0.001\n" };
+        var allergens = new JsonObject { ["seed"] = Allergen, ["content"] = "@code,@label\nsesame,Sesame\n" };
+        JsonObject Body(params JsonObject[] files) => new() { ["files"] = new JsonArray([.. files.Select(f => (JsonNode)f.DeepClone())]) };
+
+        var preview = await host.SendJsonAsync("POST", "/api/seeds/csv", Body(units, allergens));
+        var staleAllergens = (JsonObject)allergens.DeepClone();
+        staleAllergens["hash"] = new string('0', 64);
+        var stale = await host.SendJsonAsync("POST", "/api/seeds/csv?dryRun=false", Body(units, staleAllergens));
+        var unitsAfterStale = await host.GetAsync("/api/model/elements/" + UnitSeed);
+        var noFactor = new JsonObject { ["seed"] = UnitSeed, ["content"] = "@code,@label\nmg,Milligram\n" };
+        var invalid = await host.SendJsonAsync("POST", "/api/seeds/csv?dryRun=false", Body(noFactor, allergens));
+        var allergensAfterInvalid = await host.GetAsync("/api/model/elements/" + Allergen);
+        var applied = await host.SendJsonAsync("POST", "/api/seeds/csv?dryRun=false", Body(units, allergens));
+        var twice = await host.SendJsonAsync("POST", "/api/seeds/csv", Body(units, units));
+        var empty = await host.SendJsonAsync("POST", "/api/seeds/csv", new JsonObject { ["files"] = new JsonArray() });
+
+        Assert.Equal(200, preview.Status);
+        Contract.AssertResponse(preview, "/api/seeds/csv");
+        Assert.Equal([1, 1], preview.Json["items"]!.AsArray().Select(i => i!["added"]!.GetValue<int>()));
+        Assert.Equal(409, stale.Status);
+        Contract.AssertResponse(stale, "/api/seeds/csv");
+        Assert.Equal(3, unitsAfterStale.Json["json"]!["rows"]!.AsArray().Count); // the unit seed was not written either
+        Assert.Equal(422, invalid.Status);
+        Assert.Contains(invalid.Json["items"]![0]!["diagnostics"]!.AsArray(), d => d!["rule"]!.GetValue<string>() == "MQ7003");
+        Assert.Equal(3, allergensAfterInvalid.Json["json"]!["rows"]!.AsArray().Count); // the valid file was not written either
+        Assert.Equal(200, applied.Status);
+        Assert.All(applied.Json["items"]!.AsArray(), i => Assert.True(i!["applied"]!.GetValue<bool>()));
+        Assert.Equal(4, (await host.GetAsync("/api/model/elements/" + UnitSeed)).Json["json"]!["rows"]!.AsArray().Count);
+        Assert.Equal(4, (await host.GetAsync("/api/model/elements/" + Allergen)).Json["json"]!["rows"]!.AsArray().Count);
+        Assert.Equal(400, twice.Status);
+        Assert.Equal(400, empty.Status);
+    }
+
+    [Fact]
     public async Task Seed_csv_import_previews_merges_by_code_applies_with_translations_replaces_and_answers_409()
     {
         await using var host = EditorHost.CreateReferenceData();

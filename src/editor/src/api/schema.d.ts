@@ -595,6 +595,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/seeds/csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview or apply CSV imports into several seeds as one change
+         * @description The editor's Import seed data…: one CSV per seed, each read as `POST /api/seeds/{id}/csv` reads one. `?dryRun=true`
+         *     (the default) previews every file; applying saves every changed seed in one all-or-nothing change (a stale `hash` or a
+         *     new error in any seed writes none: 409 or 422 with the diagnostics on the file concerned), then writes the files'
+         *     `@label:<locale>` and `@description:<locale>` translations. Two files for one seed are a 400.
+         */
+        post: operations["importSeedsCsv"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/reference-types/{id}/usage": {
         parameters: {
             query?: never;
@@ -768,7 +791,9 @@ export interface paths {
          * @description The Database workspace's DDL preview calls `sql-ddl`/`table` with a resolved table key (`<entityId>@<databaseId>`
          *     for a synthesized entity table, a table file's id for a designed one) and `sql-ddl`/`schema` with a database id.
          *     The unit renders even when its `where` filter would not plan it. A model with errors returns the errors and no
-         *     files.
+         *     files. An element outside the unit's scope (another kind than its `each`, one its selector does not return, an
+         *     element for a `model` unit, or none for an element unit) returns MQ6026 and no files, before anything renders
+         *     (pointer `/units/<i>/for` of the pack's `pack.json`).
          *     With `unitOverride`, `overlay` or `parameters` the unit renders with unsaved text (generation-ui.md section 5.2): the
          *     pack loads even when disabled, the sandbox limits apply and the render has a deadline of `limits.scriptTimeoutMs` x 4
          *     (MQ6007 when it is hit). Unsaved text is code the server runs, so such a request needs the maintainer role (403 below
@@ -1287,6 +1312,8 @@ export interface components {
             git: components["schemas"]["GitSummary"] | null;
             /** @description The content hash of the icon `GET /api/project/branding/icon` serves (use it to refresh the icon), or null without a usable one. An older server leaves it out. */
             iconHash?: string | null;
+            /** @description A stable identity of the checkout the host serves (the first 16 hex digits of the SHA-256 of its full root path), so the editor keeps per-project browser state (page state) apart for two projects with one name and across a rename. Not a secret and not a path. An older server leaves it out (the editor then keys by `name`); null from the MCP `get_project` tool, which serves no editor. */
+            projectKey?: string | null;
         };
         GitSummary: {
             /** @description `null` on a detached head. */
@@ -1624,6 +1651,9 @@ export interface components {
                 [key: string]: components["schemas"]["Hash"];
             };
             diagnostics: components["schemas"]["Diagnostic"][];
+        };
+        SeedsImportResult: {
+            items: components["schemas"]["ImportPreview"][];
         };
         /** @description What an import adds, changes and removes, and the diagnostics. */
         ImportPreview: {
@@ -3232,6 +3262,11 @@ export interface components {
              */
             quoting?: "always" | "reserved" | "never";
             maxIdentifierLength?: number;
+            /**
+             * @description Which entities map here by convention: all, the entities of packages (and their sub-packages; none when packages is empty), or none. Mapping elements add or ignore single entities either way. Absent (files written before 0.3.0): every entity when packages is empty, else the entities of packages.
+             * @enum {unknown}
+             */
+            byConvention?: "all" | "packages" | "none";
             /** @default [] */
             packages?: components["schemas"]["idList"];
             /** @default {} */
@@ -3711,7 +3746,7 @@ export interface components {
                  * @default string
                  * @enum {unknown}
                  */
-                type?: "string" | "int16" | "int32" | "int64";
+                type?: "string" | "int16" | "int32" | "int64" | "uuid";
                 length?: components["schemas"]["length"];
                 pattern?: string;
                 displayName?: string;
@@ -5297,6 +5332,63 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImportPreview"];
+                };
+            };
+        };
+    };
+    importSeedsCsv: {
+        parameters: {
+            query?: {
+                mode?: "merge" | "replace";
+                dryRun?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    files: {
+                        /** @description The seed id. */
+                        seed: string;
+                        /** @description The CSV text. */
+                        content: string;
+                        /** @description The seed hash read for the preview; the current one when absent. */
+                        hash?: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description One preview (or result) per file, in request order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedsImportResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            /** @description A seed changed since its preview; nothing was written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedsImportResult"];
+                };
+            };
+            /** @description The imports make the model invalid; the file concerned carries the diagnostics and nothing was written. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedsImportResult"];
                 };
             };
         };

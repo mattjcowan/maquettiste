@@ -238,6 +238,65 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
         }
     }
 
+    /// <summary>
+    /// Why a preview cannot render a unit for an element (MQ6026): the unit's scope, or its selector, does not cover the element. A
+    /// template rendered outside its scope reads a scope variable that is not there and fails with a raw script error instead.
+    /// </summary>
+    /// <param name="model">The resolved model.</param>
+    /// <param name="pack">The loaded pack.</param>
+    /// <param name="unit">The unit.</param>
+    /// <param name="element">The element, or <see langword="null"/> for a model-scope preview.</param>
+    /// <param name="scripts">The sandbox factory, for selectors.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The sentence, or <see langword="null"/> when the element is in scope (or the selector fails, which the render reports).</returns>
+    internal static string? OutOfScope(ResolvedModel model, LoadedPack pack, PackUnit unit, IResolvedObject? element,
+        IScriptSandboxFactory scripts, CancellationToken ct)
+    {
+        if (string.Equals(unit.For, "model", StringComparison.Ordinal))
+        {
+            return element is null ? null
+                : $"Unit '{unit.Id}' renders once for the whole model; preview it without an element (got {Describe(element)}, {element.Kind}).";
+        }
+
+        var selector = unit.For.StartsWith("select ", StringComparison.Ordinal);
+        if (!selector && !unit.For.StartsWith("each ", StringComparison.Ordinal))
+            return null;
+        var noun = selector ? "an element its selector returns" : Article(unit.For["each ".Length..]);
+        if (element is null)
+            return $"This template expects {noun} (unit '{unit.Id}' is '{unit.For}'); pick one.";
+
+        var parameters = pack.Parameters.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal);
+        var diagnostics = new List<Diagnostic>();
+        IScriptSandboxPool? pool = null;
+        IScriptSandboxPool? Pool()
+        {
+            try
+            {
+                return pool ??= scripts.CreatePool(pack.Scripts, model.Settings.Limits, 1, ct);
+            }
+            catch (Exception ex) when (ScriptDiagnostic(ex) is { } diagnostic)
+            {
+                diagnostics.Add(diagnostic);
+                return null;
+            }
+        }
+
+        try
+        {
+            var candidates = Candidates(model, pack, unit, parameters, Pool, pack.RelativePath + "/pack.json", "/units", diagnostics, ct);
+            if (diagnostics.Count > 0 || candidates.Any(c => c is not null && string.Equals(c.Id, element.Id, StringComparison.Ordinal)))
+                return null;
+            return $"This template expects {noun} (unit '{unit.Id}' is '{unit.For}'), not {Describe(element)} ({element.Kind}); pick one.";
+        }
+        finally
+        {
+            pool?.Dispose();
+        }
+    }
+
+    /// <summary>"reference type" to "a reference type", "entity" to "an entity".</summary>
+    private static string Article(string noun) => ("aeiou".Contains(noun[0], StringComparison.Ordinal) ? "an " : "a ") + noun;
+
     /// <summary>Each set clause of a where filter alone, with its pack.json name and value.</summary>
     private static IEnumerable<(string? Name, string Value, UnitWhere Where)> Clauses(UnitWhere where)
     {

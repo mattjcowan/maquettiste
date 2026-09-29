@@ -140,6 +140,24 @@ public sealed class ReferenceDataResolutionTests
     }
 
     [Fact]
+    public async Task A_uuid_code_types_its_reference_columns_with_the_dialects_uuid_type()
+    {
+        var model = await ResolveAsync(prepare: repo => EditFile(repo, "model/reference-types/unit-of-measure.json", n =>
+        {
+            n["code"]!["type"] = "uuid";
+            n["code"]!.AsObject().Remove("length");
+            n["code"]!.AsObject().Remove("pattern");
+        }));
+
+        Assert.Equal("uuid", Type(model, UnitOfMeasure).Code.Type);
+        var main = model.Db("main").Table("ingredients").Column("default_unit");
+        var reporting = model.Db("reporting").Table("ingredients").Column("default_unit");
+        Assert.Equal(("reference", "uuid", (int?)null), (main.Type, main.CodeType, main.Length));
+        Assert.Equal(("uuid", "uuid"), (main.NativeType, reporting.CodeType));
+        Assert.Equal("text", reporting.NativeType); // the sqlite dialect map
+    }
+
+    [Fact]
     public async Task A_single_reference_attribute_maps_to_one_reference_column_and_a_collection_to_none()
     {
         var model = await ResolveAsync();

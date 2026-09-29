@@ -81,10 +81,12 @@ function PlanScreen() {
   const history = useJobs();
   const packs = useMemo(() => project.data?.packs ?? [], [project.data]);
   const enabled = useMemo(() => packs.filter((p) => project.data?.settings.packs[p.name]?.enabled !== false).map((p) => p.name), [packs, project.data]);
-  const [chosen, setChosen] = useState<string[] | null>(null);
+  // The ticked packs live in the store, so the page state (state/pageState.ts) keeps them across a reload.
+  const chosen = generation.chosenPacks;
+  const setChosen = (next: string[]) => store.getState().setGeneration({ chosenPacks: next });
   const [roots, setRoots] = useState<RootSelection>("all");
   const [busy, setBusy] = useState(false);
-  const selectedPacks = chosen ?? enabled;
+  const selectedPacks = chosen ? chosen.filter((name) => packs.some((p) => p.name === name)) : enabled;
   const running = [planJob.data, applyJob.data].find((j) => j && !isFinished(j)) ?? null;
 
   useEffect(() => {

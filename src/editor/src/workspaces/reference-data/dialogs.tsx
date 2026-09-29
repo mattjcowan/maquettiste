@@ -1,8 +1,9 @@
-// The Reference data screen's dialogs: New reference type (name, display name, category; RT 4.5 "without leaving
-// the entity" reuses it) and Import CSV (RT 2.3): pick or paste a file, preview what it adds, changes and removes,
+// The Reference data screen's dialogs: New reference type (name, display name, category and "Stored as", the type's
+// storage choice, preselecting a check constraint; RT 4.5 "without leaving the entity" reuses it) and Import CSV (RT 2.3): pick or paste a file, preview what it adds, changes and removes,
 // then apply it as one save of the seed.
 import { useState } from "react";
-import type { ElementDocument, SeedDoc } from "@/api/types";
+import { useSettings } from "@/api/queries";
+import type { ElementDocument, SeedDoc, StorageChoice } from "@/api/types";
 import * as endpoints from "@/api/endpoints";
 import { useServices } from "@/app/context";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,8 @@ import { IDENTIFIER } from "@/model/model";
 import { applyCsvImport, createReferenceType, currentSeed } from "./actions";
 import { previewSummary, type PreviewSummary } from "./csvPreview";
 import type { CategoryInfo } from "./listModel";
+import { preselectedStorage, storageFor, storageOptions, type DeclaredStrategies } from "./storageChoices";
+import { applySeedImport, previewSeedImport, readImportFiles, type SeedImportItem } from "./seedBundle";
 
 export function NewReferenceTypeDialog({
   open,
@@ -28,6 +31,12 @@ export function NewReferenceTypeDialog({
   const [name, setName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [category, setCategory] = useState("");
+  const settings = useSettings();
+  const project = settings.data?.json as
+    { conventions?: { referenceStorage?: StorageChoice }; referenceData?: { strategies?: DeclaredStrategies } } | undefined;
+  const strategies = project?.referenceData?.strategies ?? {};
+  const [storedAs, setStoredAs] = useState<string | null>(null);
+  const stored = storedAs ?? preselectedStorage(strategies, project?.conventions?.referenceStorage);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const valid = IDENTIFIER.test(name);
@@ -40,7 +49,7 @@ export function NewReferenceTypeDialog({
             e.preventDefault();
             if (!valid || busy) return;
             setBusy(true);
-            const result = await createReferenceType(services, { name, displayName, category: category || null });
+            const result = await createReferenceType(services, { name, displayName, category: category || null, storage: storageFor(stored, strategies) });
             setBusy(false);
             if (!result.ok) {
               setError(result.reason);
@@ -49,6 +58,7 @@ export function NewReferenceTypeDialog({
             setName("");
             setDisplayName("");
             setCategory("");
+            setStoredAs(null);
             setError(null);
             onCreated(result.id);
           }}
@@ -71,6 +81,23 @@ export function NewReferenceTypeDialog({
               {categories.map((c) => (
                 <option key={c.value} value={c.value}>
                   {c.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field
+            label="Stored as"
+            htmlFor="new-reference-type-storage"
+            hint={
+              Object.keys(strategies).length
+                ? "For every database; the Storage tab overrides it per database."
+                : "The project declares no storage strategies (Settings, referenceData.strategies), so the templates decide."
+            }
+          >
+            <Select id="new-reference-type-storage" value={stored} onChange={(e) => setStoredAs(e.target.value)} data-testid="new-reference-type-storage">
+              {storageOptions(strategies).map((o) => (
+                <option key={o.value} value={o.value} title={o.title}>
+                  {o.label}
                 </option>
               ))}
             </Select>
@@ -235,5 +262,132 @@ function PreviewView({ summary }: { summary: PreviewSummary }) {
         </p>
       ))}
     </div>
+  );
+}
+
+/**
+ * Import seed data…: a ZIP of CSVs (as Export all seed data writes it) or several CSV files, each matched to a seed by
+ * its file name; the preview lists every seed's dry run, then Apply imports them all as one undo step.
+ */
+export function ImportSeedsDialog({ open, onOpenChange }: { open: boolean; onOpenChange(open: boolean): void }) {
+  const services = useServices();
+  const [files, setFiles] = useState<File[]>([]);
+  const [mode, setMode] = useState<"merge" | "replace">("merge");
+  const [preview, setPreview] = useState<{ items: SeedImportItem[]; skipped: string[] } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const reset = () => {
+    setFiles([]);
+    setPreview(null);
+    setError(null);
+  };
+  const run = async (work: () => Promise<void>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await work();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const changing = preview?.items.filter((i) => i.summary.canApply).length ?? 0;
+  const blocked = preview?.items.some((i) => i.summary.errors.length) ?? false;
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) reset();
+        onOpenChange(o);
+      }}
+    >
+      <DialogContent
+        title="Import seed data"
+        description="A ZIP of CSV files (as Export all seed data writes it) or several CSV files. Each file goes to the seed its name names (<seed>.csv). Preview first: applying is one step you can undo."
+      >
+        <div className="flex flex-col gap-2">
+          <Field label="ZIP or CSV files" htmlFor="import-seeds-files">
+            <Input
+              id="import-seeds-files"
+              type="file"
+              multiple
+              accept=".zip,.csv,application/zip,text/csv"
+              onChange={(e) => {
+                setFiles([...(e.target.files ?? [])]);
+                setPreview(null);
+              }}
+            />
+          </Field>
+          <Field label="Mode" htmlFor="import-seeds-mode" hint="Merge updates and adds; Replace also removes rows missing from a seed's file.">
+            <Select
+              id="import-seeds-mode"
+              value={mode}
+              onChange={(e) => {
+                setMode(e.target.value as "merge" | "replace");
+                setPreview(null);
+              }}
+            >
+              <option value="merge">Merge</option>
+              <option value="replace">Replace</option>
+            </Select>
+          </Field>
+          {preview ? (
+            <div className="flex max-h-72 flex-col gap-2 overflow-auto" data-testid="seeds-preview">
+              {preview.items.length === 0 ? <p className="text-12 text-secondary">No file matches a seed.</p> : null}
+              {preview.items.map((i) => (
+                <div key={i.seed.id} className="flex flex-col gap-1">
+                  <p className="text-12 font-semibold">
+                    {i.seed.name} <span className="font-normal text-secondary">← {i.file}</span>
+                  </p>
+                  <PreviewView summary={i.summary} />
+                </div>
+              ))}
+              {preview.skipped.map((m) => (
+                <p key={m} className="text-12 text-secondary">
+                  Skipped {m}
+                </p>
+              ))}
+            </div>
+          ) : null}
+          {error ? (
+            <p role="alert" className="text-12 text-danger">
+              {error}
+            </p>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button
+              disabled={!files.length || busy}
+              onClick={() =>
+                run(async () => {
+                  setPreview(await previewSeedImport(services, await readImportFiles(files), mode));
+                })
+              }
+            >
+              Preview
+            </Button>
+            <Button
+              variant="primary"
+              disabled={!changing || blocked || busy}
+              onClick={() =>
+                run(async () => {
+                  const result = await applySeedImport(services, preview!.items, mode);
+                  if (!result.ok) {
+                    setError(result.reason);
+                    return;
+                  }
+                  services.store.getState().notify(`Imported seed data into ${result.applied} ${result.applied === 1 ? "seed" : "seeds"}.`);
+                  reset();
+                  onOpenChange(false);
+                })
+              }
+            >
+              Apply
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -19,6 +19,7 @@ import type { PackPane } from "@/state/store";
 import { packRows, packTotals, type PackDetails, type PackRow } from "./explorerModel";
 import { openPackTab } from "./packTabs";
 import { NewPackDialog } from "./NewPackDialog";
+import { PanelToggle } from "@/app/panels";
 
 const PANE: Partial<Record<PackRow["kind"], PackPane>> = {
   units: "units",
@@ -126,6 +127,7 @@ export function GenerateExplorer() {
             <Plus className="size-3.5" />
           </Button>
         </Tooltip>
+        <PanelToggle panel="explorer" />
       </header>
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
         <div role="tree" aria-label="Packs" className="relative" style={{ height: virtualizer.getTotalSize() }} onKeyDown={onKeyDown}>

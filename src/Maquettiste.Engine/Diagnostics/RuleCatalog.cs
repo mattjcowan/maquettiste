@@ -75,6 +75,8 @@ public static class RuleCatalog
         new("MQ4009", E, "Mapping option invalid for the element."),
         new("MQ4010", E, "View body missing for the database's dialect."),
         new("MQ4011", E, "Relation between bound tables names no foreign key or junction end binding."),
+        new("MQ4012", I, "An entity lands in no database: no database takes its domain by convention and no mapping names it."),
+        new("MQ4013", W, "A database lists convention packages that its byConvention setting does not use."),
 
         new("MQ5001", E, "Property fails its extension schema."),
         new("MQ5002", E, "Validation rule script error."),
@@ -106,6 +108,7 @@ public static class RuleCatalog
         new("MQ6023", E, "A project parameter value fails the pack's parameter schema."),
         new("MQ6024", W, "A project parameter value names a parameter the pack does not declare."),
         new("MQ6025", W, "A pack file that no unit reaches does not parse."),
+        new("MQ6026", E, "A preview names an element outside its unit's scope."),
 
         new("MQ7001", E, "Duplicate code in a reference type, across all its seeds."),
         new("MQ7002", W, "Two codes of one reference type differ only by case."),
@@ -119,6 +122,7 @@ public static class RuleCatalog
         new("MQ7010", E, "Invalid reference type field: code type, field type or reserved field name."),
         new("MQ7011", E, "An allowedValues entry on a reference-typed attribute names a code that is not in the type's rows."),
         new("MQ7012", E, "The enum lookup-table storage option ('lookup') is retired: convert the enum to a reference type, whose storage strategy then decides the lookup table."),
+        new("MQ7013", E, "A uuid code is not a UUID in canonical form: 8-4-4-4-12 lowercase hexadecimal digits with hyphens."),
 
         new("MQ7101", E, "A seed targets an abstract entity."),
         new("MQ7102", E, "A seed key cell is missing, or two rows of one target share a key value."),

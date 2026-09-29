@@ -1,5 +1,5 @@
 // A mock backend behind msw/node plus the app's services wired to it, for integration tests.
-import { afterAll, afterEach, beforeAll } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach } from "vitest";
 import { createApiClient, setApiClient } from "@/api/client";
 import { createServices, type AppServices } from "@/app/context";
 import { resetLoaders } from "@/api/queries";
@@ -19,6 +19,11 @@ export function useMockApi(options: MockBackendOptions = {}) {
   beforeAll(() => {
     mock.server.listen({ onUnhandledRequest: "error" });
     setApiClient(createApiClient(NODE_BASE_URL));
+  });
+  // Each test starts with fresh services: a page state (state/pageState.ts) a previous test's shell saved on its way
+  // out must not be restored into it.
+  beforeEach(() => {
+    for (const key of Object.keys(localStorage)) if (key.startsWith("mq.page.")) localStorage.removeItem(key);
   });
   afterEach(() => {
     mock.server.close();

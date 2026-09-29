@@ -12,6 +12,7 @@ import { useUndoRedo } from "./shortcuts";
 import { LocaleSwitcher } from "@/l10n/LocaleSwitcher";
 import { LocalizationSync } from "@/l10n/queries";
 import { useBrandingView } from "./branding";
+import { PanelToggle } from "./panels";
 
 const THEME_ICON = { system: Monitor, light: Sun, dark: Moon } as const;
 
@@ -25,6 +26,8 @@ export function TopBar() {
   const canRedo = useEditor(store, (s) => s.redo.length > 0);
   const { undo, redo } = useUndoRedo();
   const git = project.data?.git;
+  // The secondary controls (git status, content locale, undo and redo, theme, live status, user) hide together.
+  const hidden = useEditor(store, (s) => s.topbarCollapsed);
   const branding = useBrandingView();
   const ThemeIcon = THEME_ICON[theme];
   const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
@@ -50,7 +53,7 @@ export function TopBar() {
             {branding.name}
           </h1>
         </Tooltip>
-        {git ? (
+        {git && !hidden ? (
           <span className="flex items-center gap-1 text-12 text-secondary" data-testid="git-status">
             <GitBranch className="size-3.5" aria-hidden />
             <span>{git.branch ?? "detached"}</span>
@@ -70,45 +73,50 @@ export function TopBar() {
         <Kbd>{isMac ? "⌘K" : "Ctrl K"}</Kbd>
       </button>
 
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1" data-testid="topbar-controls">
         <LocalizationSync />
-        <LocaleSwitcher />
-        <Tooltip content="Undo (Ctrl+Z)">
-          <Button variant="ghost" size="icon" aria-label="Undo" disabled={!canUndo} onClick={() => void undo()}>
-            <Undo2 />
-          </Button>
-        </Tooltip>
-        <Tooltip content="Redo (Ctrl+Shift+Z)">
-          <Button variant="ghost" size="icon" aria-label="Redo" disabled={!canRedo} onClick={() => void redo()}>
-            <Redo2 />
-          </Button>
-        </Tooltip>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label={`Theme: ${theme}`} data-testid="theme-menu">
-              <ThemeIcon />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Theme</DropdownMenuLabel>
-            <DropdownMenuRadioGroup value={theme} onValueChange={(v) => store.getState().setTheme(v as ThemeChoice)}>
-              <DropdownMenuRadioItem value="system">System</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="light">Light</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="dark">Dark</DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <span className="ml-2 flex items-center gap-2 text-12 text-secondary" data-testid="connection">
-          <span
-            aria-hidden
-            className={cn("size-2 rounded-full", connection === "connected" ? "bg-success" : connection === "disconnected" ? "bg-danger" : "bg-warning")}
-          />
-          <span className="sr-only">Live updates: </span>
-          <span>{connection === "connected" ? "Live" : connection}</span>
-        </span>
-        <span className="ml-2 text-12 font-medium" data-testid="user">
-          {session.data?.user.displayName ?? ""}
-        </span>
+        {hidden ? null : (
+          <>
+            <LocaleSwitcher />
+            <Tooltip content="Undo (Ctrl+Z)">
+              <Button variant="ghost" size="icon" aria-label="Undo" disabled={!canUndo} onClick={() => void undo()}>
+                <Undo2 />
+              </Button>
+            </Tooltip>
+            <Tooltip content="Redo (Ctrl+Shift+Z)">
+              <Button variant="ghost" size="icon" aria-label="Redo" disabled={!canRedo} onClick={() => void redo()}>
+                <Redo2 />
+              </Button>
+            </Tooltip>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label={`Theme: ${theme}`} data-testid="theme-menu">
+                  <ThemeIcon />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Theme</DropdownMenuLabel>
+                <DropdownMenuRadioGroup value={theme} onValueChange={(v) => store.getState().setTheme(v as ThemeChoice)}>
+                  <DropdownMenuRadioItem value="system">System</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="light">Light</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="dark">Dark</DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <span className="ml-2 flex items-center gap-2 text-12 text-secondary" data-testid="connection">
+              <span
+                aria-hidden
+                className={cn("size-2 rounded-full", connection === "connected" ? "bg-success" : connection === "disconnected" ? "bg-danger" : "bg-warning")}
+              />
+              <span className="sr-only">Live updates: </span>
+              <span>{connection === "connected" ? "Live" : connection}</span>
+            </span>
+            <span className="ml-2 text-12 font-medium" data-testid="user">
+              {session.data?.user.displayName ?? ""}
+            </span>
+          </>
+        )}
+        <PanelToggle panel="topbar" className="ml-1" />
       </div>
     </header>
   );

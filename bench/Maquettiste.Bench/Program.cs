@@ -17,6 +17,7 @@ public static class Program
     public const string Usage =
         "usage: Maquettiste.Bench [--out <dir>] [--jobs 8] [--seed 42] [--entities 5000] [--relations 20000] [--enums 500] [--fanout <n>]\n" +
         "                         [--keep] [--baseline <file>] [--max-regression 10] [--format text|json] [--report <file>] [--no-example-packs]\n" +
+        "                         [--advisory-budgets]\n" +
         "                         [--cli <maquettiste executable> | --no-one-shot]\n" +
         "       Maquettiste.Bench write-model --out <dir> [options]   (the explorer's large mock model; see WriteModel.Usage)\n" +
         "       Maquettiste.Bench time-tables --model <dir> [--jobs 8] [--rounds 3]   (E5c and E5f timings; edits the model)\n";
@@ -124,6 +125,7 @@ public static class Program
                 case "--enums": if (Int(1) is { } enums) model = model with { Enums = enums }; else return Fail(arg, out error); break;
                 case "--fanout": if (Int(1) is { } fanout) model = model with { Fanout = fanout }; else return Fail(arg, out error); break;
                 case "--keep": options = options with { Keep = true }; break;
+                case "--advisory-budgets": options = options with { AdvisoryBudgets = true }; break;
                 case "--no-example-packs": model = model with { IncludeExamplePacks = false }; break;
                 case "--cli": options = options with { OneShotCommand = [Value() ?? ""] }; break;
                 case "--no-one-shot": options = options with { OneShotCommand = null }; break;

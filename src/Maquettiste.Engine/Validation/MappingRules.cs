@@ -2,9 +2,50 @@ using Maquettiste.Engine.Model;
 
 namespace Maquettiste.Engine.Validation;
 
-/// <summary>Mapping rules: MQ4004 (two mappings for one target), MQ4009 (option invalid for the element), MQ4011 (bound relations).</summary>
+/// <summary>
+/// Mapping rules: MQ4004 (two mappings for one target), MQ4009 (option invalid for the element), MQ4011 (bound relations),
+/// MQ4012 (an entity in no database), MQ4013 (convention packages a database does not use).
+/// </summary>
 internal static class MappingRules
 {
+    /// <summary>MQ4012: an entity that no database holds, when the model has a database (a conceptual-only model is fine).</summary>
+    /// <param name="context">The validation context.</param>
+    /// <param name="entity">The entity.</param>
+    /// <param name="report">The report.</param>
+    public static void CheckEntityPlacement(ValidationContext context, Entity entity, Report report)
+    {
+        var any = false;
+        foreach (var database in context.Model.All<Database>())
+        {
+            any = true;
+            var mappings = context.MappingsOf(database.Id, entity.Id);
+            var mapping = mappings.Length > 0 ? mappings[0].Element as Mapping : null;
+            if (Resolution.DatabaseScope.Places(context.Model, database, entity.Package, mapping))
+                return;
+        }
+
+        if (any)
+        {
+            report.Add("MQ4012",
+                $"'{entity.Name}' lands in no database: no database takes its domain by convention and no mapping names it; map it from the entity's or the domain's menu (Map to database).",
+                "");
+        }
+    }
+
+    /// <summary>MQ4013: a database lists packages although <c>byConvention</c> is <c>all</c> or <c>none</c>, so the list is not used.</summary>
+    /// <param name="database">The database.</param>
+    /// <param name="report">The report.</param>
+    public static void CheckConventionPackages(Database database, Report report)
+    {
+        if (database.Packages.Count > 0 && database.ByConvention is ConventionMapping.All or ConventionMapping.None)
+        {
+            var value = database.ByConvention == ConventionMapping.All ? "all" : "none";
+            report.Add("MQ4013",
+                $"byConvention is '{value}', so the packages listed here are not used; set byConvention to 'packages' or clear the list.",
+                "/packages");
+        }
+    }
+
     /// <summary>Checks a mapping file.</summary>
     /// <param name="context">The validation context.</param>
     /// <param name="mapping">The mapping.</param>

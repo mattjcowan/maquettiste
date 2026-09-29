@@ -75,6 +75,7 @@ describe("New actions (1.8)", () => {
       id: expect.any(String),
       name: "main",
       dialect: "sqlite",
+      byConvention: "none",
     });
     expect(buildElement("diagram", { name: "Overview", domain: "d1" }, ids)).toMatchObject({ kind: "diagram", package: "d1" });
     const relation = buildElement(
@@ -116,11 +117,13 @@ describe("All of a domain (1.6)", () => {
 });
 
 describe("explorer state across a reload (3.3)", () => {
-  it("restores an explorer's expanded rows and opens the New dialog through the store", async () => {
-    const { createEditorStore, saveExpanded } = await import("@/state/store");
-    saveExpanded("domain-model", new Set(["billing", "billing/entity"]));
+  it("reads no global expansion (page state is per project) and opens the New dialog through the store", async () => {
+    const { createEditorStore } = await import("@/state/store");
+    localStorage.setItem("mq.explorer.expanded.domain-model", JSON.stringify(["billing", "billing/entity"]));
+    localStorage.setItem("mq.explorer.active", "diagrams");
     const store = createEditorStore();
-    expect([...store.getState().explorer.views["domain-model"].expanded]).toEqual(["billing", "billing/entity"]);
+    expect(store.getState().explorer.views["domain-model"].expanded.size).toBe(0);
+    expect(store.getState().explorer.active).toBe("domain-model");
     expect(store.getState().explorer.views.databases.expanded.size).toBe(0);
     store.getState().requestNew({ kind: "enum", domain: "billing" });
     expect(store.getState().newElement).toEqual({ kind: "enum", domain: "billing" });

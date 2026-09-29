@@ -11,6 +11,7 @@ import { ReferencesPanel } from "@/references/ReferencesPanel";
 import { useEditor, type BottomTab } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { useServices } from "./context";
+import { PANEL_KEYS } from "@/state/layout";
 
 function OutputPanel() {
   const { store } = useServices();
@@ -76,6 +77,9 @@ export function BottomPanel() {
             size="icon-sm"
             className="mr-2"
             aria-label={collapsed ? "Expand the bottom panel" : "Collapse the bottom panel"}
+            title={`${collapsed ? "Show" : "Hide"} the bottom panel (${PANEL_KEYS.bottom.label})`}
+            aria-expanded={!collapsed}
+            data-testid={collapsed ? "show-bottom" : "hide-bottom"}
             onClick={() => store.getState().toggle("bottom")}
           >
             {collapsed ? <ChevronUp /> : <ChevronDown />}

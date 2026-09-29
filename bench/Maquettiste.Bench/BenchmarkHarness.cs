@@ -184,6 +184,7 @@ public static class BenchmarkHarness
         var report = new BenchmarkReport(cold.Timings, coldTotal, incrementalTotal, cold.FilesWritten, Environment.ProcessorCount, options.Jobs,
             RuntimeInformation.OSDescription, budgets, notes)
         {
+            AdvisoryBudgets = options.AdvisoryBudgets,
             Seed = model.Seed,
             Entities = model.Entities,
             Relations = model.Relations,

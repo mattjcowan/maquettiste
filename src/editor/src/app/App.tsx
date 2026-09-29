@@ -1,7 +1,7 @@
 // The editor shell (SPEC Section 14, phase2-design.md 4.8): top bar, workspace rail, explorer,
 // the active workspace, the inspector and the bottom panel, with resizable, collapsible regions
 // in the F6 focus order rail → explorer → center → inspector → bottom.
-import { Component, lazy, Suspense, useEffect, useRef, type ComponentType, type ReactNode } from "react";
+import { Component, lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, useLocation } from "react-router";
 import { Explorer } from "@/explorer/Explorer";
@@ -14,7 +14,11 @@ import { Splitter } from "@/components/ui/splitter";
 import { Spinner } from "@/components/ui/misc";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { applyTheme, followSystemTheme } from "@/design/theme";
-import { saveLayout, useEditor, type EditorState, type Workspace } from "@/state/store";
+import { useEditor, watchLayout, type EditorState, type Workspace } from "@/state/store";
+import { LIMITS } from "@/state/layout";
+import { projectPageId, readPage, restorePage, watchPage } from "@/state/pageState";
+import { useProject } from "@/api/queries";
+import { EdgeToggle, PanelHeader } from "./panels";
 import { Banners, Notices } from "./Banners";
 import { BottomPanel } from "./BottomPanel";
 import { Breadcrumbs } from "./Breadcrumbs";
@@ -40,11 +44,7 @@ const WORKSPACE_VIEWS: Record<Workspace, ComponentType> = {
   settings: named(() => import("@/workspaces/settings/SettingsWorkspace"), "SettingsWorkspace"),
 };
 
-export const LIMITS = {
-  explorer: { min: 240, max: 480 },
-  inspector: { min: 320, max: 560 },
-  bottom: { min: 120, max: 600 },
-} as const;
+export { LIMITS };
 
 export function App({ services, basename }: { services: AppServices; basename?: string }) {
   return (
@@ -52,7 +52,9 @@ export function App({ services, basename }: { services: AppServices; basename?: 
       <ServicesProvider services={services}>
         <TooltipProvider delayDuration={400}>
           <BrowserRouter basename={basename}>
-            <Shell />
+            <PageStateGate>
+              <Shell />
+            </PageStateGate>
           </BrowserRouter>
         </TooltipProvider>
       </ServicesProvider>
@@ -91,6 +93,7 @@ function useLocationSync(): void {
     if (parsed.diagram !== null && parsed.diagram !== s.activeDiagram) s.setActiveDiagram(parsed.diagram);
     if (parsed.database !== null && parsed.database !== s.activeDatabase) s.setActiveDatabase(parsed.database);
     if (parsed.selection.join(",") !== s.selection.join(",")) s.select(parsed.selection);
+    if (parsed.settingsTab !== null && parsed.settingsTab !== s.settingsTab) s.setSettingsTab(parsed.settingsTab);
   }, [location.pathname, location.search, store]);
 }
 
@@ -102,19 +105,49 @@ function useThemeSync(): void {
   useEffect(() => followSystemTheme(() => store.getState().theme), [store]);
 }
 
-/** Persists panel sizes (mq.layout) a moment after the last resize. */
+/** Persists the layout (mq.layout: open panels and sizes, and the pinned explorer) per browser. */
 function useLayoutPersistence(): void {
   const { store } = useServices();
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () =>
-      store.subscribe((state, previous) => {
-        if (state.explorerSize === previous.explorerSize && state.inspectorSize === previous.inspectorSize && state.bottomSize === previous.bottomSize) return;
-        if (timer.current) clearTimeout(timer.current);
-        timer.current = setTimeout(() => saveLayout(store.getState()), 300);
-      }),
-    [store],
-  );
+  useEffect(() => watchLayout(store), [store]);
+}
+
+/** Restores the project's page state (pageState.ts) before the shell draws, then keeps it saved. The project's key
+ * (`projectKey`, else its name) is the key, so the shell waits for the project, at most a few seconds: without it the
+ * shell draws as before, and the state is restored when the project arrives. Nothing is watched (so nothing is written)
+ * for a project whose page state has not been read. */
+function PageStateGate({ children }: { children: ReactNode }) {
+  const { store } = useServices();
+  const project = useProject();
+  const location = useLocation();
+  const [waited, setWaited] = useState(false);
+  const [restored, setRestored] = useState<string | null>(null);
+  const restoredFor = useRef<string | null>(null);
+  const where = useRef(location);
+  useLayoutEffect(() => {
+    where.current = location;
+  }, [location]);
+  const key = project.data ? projectPageId(project.data) : null;
+  const name = project.data?.name;
+  useEffect(() => {
+    const timer = setTimeout(() => setWaited(true), 3000);
+    return () => clearTimeout(timer);
+  }, []);
+  useLayoutEffect(() => {
+    if (!key || restoredFor.current === key) return;
+    restoredFor.current = key;
+    const page = readPage(key, name);
+    if (page) restorePage(store, page, parseLocation(where.current.pathname, where.current.search).workspace);
+    setRestored(key);
+  }, [key, name, store]);
+  useEffect(() => (key && restored === key ? watchPage(store, key) : undefined), [store, key, restored]);
+  const ready = restored !== null || waited || project.isError;
+  if (!ready)
+    return (
+      <div className="flex h-dvh items-center justify-center bg-app" data-testid="shell-loading">
+        <Spinner />
+      </div>
+    );
+  return children;
 }
 
 function Shell() {
@@ -134,7 +167,8 @@ function Shell() {
   const explorerCollapsed = useEditor(store, (s) => s.explorerCollapsed);
   // The inspector follows the active context; Settings and Reference data have none (their screen is the panel).
   const inspectorContext = useInspectorContext();
-  const inspectorCollapsed = useEditor(store, (s) => s.inspectorCollapsed) || inspectorContext.mode === "none";
+  const inspectorHidden = useEditor(store, (s) => s.inspectorCollapsed);
+  const inspectorCollapsed = inspectorHidden || inspectorContext.mode === "none";
   const bottomCollapsed = useEditor(store, (s) => s.bottomCollapsed);
   const resize = (patch: Partial<EditorState>) => store.setState(patch);
   const View = WORKSPACE_VIEWS[workspace];
@@ -146,6 +180,7 @@ function Shell() {
       <TopBar />
       <div className="flex min-h-0 flex-1">
         <Rail />
+        {explorerCollapsed ? <EdgeToggle panel="explorer" side="left" /> : null}
         {!explorerCollapsed && (
           <>
             <aside
@@ -237,10 +272,14 @@ function Shell() {
               className="flex min-h-0 shrink-0 flex-col border-l border-default bg-surface"
               style={{ width: inspectorSize }}
             >
-              <Inspector context={inspectorContext} />
+              <PanelHeader panel="inspector" title="Inspector" />
+              <div className="flex min-h-0 flex-1 flex-col">
+                <Inspector context={inspectorContext} />
+              </div>
             </aside>
           </>
         )}
+        {inspectorHidden && inspectorContext.mode !== "none" ? <EdgeToggle panel="inspector" side="right" /> : null}
       </div>
       <Notices />
       <CommandPalette />

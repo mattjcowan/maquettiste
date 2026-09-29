@@ -28,6 +28,8 @@ writes a 10,001-row seed. The domain-vocabulary rules MQ2008 (a tag or category 
 MQ3021 (a domain vocabulary repeats a key or name of the global or an enclosing vocabulary), and MQ1009 per scope, are tested with
 `ModelBuilder` in `DomainVocabularyTests`, including the scope a save validates. MQ7012 (the retired enum `lookup` storage) is a
 load-time rule: a file that sets it is not schema-valid and cannot be a fixture here, so it is tested in `SchemaValidationTests`.
+MQ4012 (an entity in no database, info) and MQ4013 (convention packages that `byConvention` does not use) are tested with
+`ModelBuilder` in `ExplicitMappingTests`, including the files a scoped validation revisits.
 
 `ValidationFixtureTests` compares each report with `expected.json`; run the tests with `MAQUETTISTE_UPDATE_GOLDEN=1` to rewrite
 them, then review the diff. The tests also pin the set of rule ids per family, so a rewrite cannot silently drop a rule.

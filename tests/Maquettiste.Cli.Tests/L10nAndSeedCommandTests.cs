@@ -61,6 +61,20 @@ public sealed class L10nAndSeedCommandTests
     }
 
     [Fact]
+    public async Task Locale_arguments_are_normalized_like_the_editor_and_a_malformed_one_says_how_to_write_it()
+    {
+        using var repo = CliRepo.ReferenceData();
+
+        var underscored = await repo.RunAsync("l10n", "export", "fr_ca", "--format", "csv");
+        var malformed = await repo.RunAsync("l10n", "export", "fr.ca");
+
+        Assert.Equal(0, underscored.ExitCode);
+        Assert.StartsWith("id,field,source,translation,state,shard\n", underscored.Out, StringComparison.Ordinal);
+        Assert.Equal(4, malformed.ExitCode);
+        Assert.Contains("'fr.ca' is not a BCP 47 language tag. Use language-REGION with a hyphen, such as zh-CN", malformed.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Import_previews_added_changed_and_stale_confirmed_then_applies_with_apply()
     {
         using var repo = CliRepo.ReferenceData();

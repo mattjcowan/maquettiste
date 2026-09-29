@@ -193,6 +193,18 @@ public sealed class PackAuthoringTests
     }
 
     [Fact]
+    public async Task A_selector_units_preview_refuses_an_element_the_selector_does_not_return()
+    {
+        await using var repo = EditorRepo.Create();
+        var result = await repo.Service.PreviewAsync("sql-ddl", "schema", EditorRepo.CustomerId, null, Ct);
+        Assert.Empty(result.Files);
+        var diagnostic = Assert.Single(result.Diagnostics);
+        Assert.Equal("MQ6026", diagnostic.Rule);
+        Assert.Equal(EditorRepo.CustomerId, diagnostic.ElementId);
+        Assert.Contains("(entity); pick one.", diagnostic.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_newer_preview_on_the_same_connection_cancels_the_older_one_on_the_server()
     {
         await using var repo = EditorRepo.Create();

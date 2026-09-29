@@ -29,9 +29,32 @@ public sealed record Database : Element
     /// <summary>The identifier length limit; <see langword="null"/> uses the dialect's (PostgreSQL 63, SQL Server 128, MySQL 64, Oracle 128, SQLite none).</summary>
     public int? MaxIdentifierLength { get; init; }
 
-    /// <summary>Ids of the packages whose entities (and sub-packages') map here; empty means every package (D6).</summary>
+    /// <summary>
+    /// Which entities map here by convention (D6, D46): <see cref="ConventionMapping.All"/> every entity,
+    /// <see cref="ConventionMapping.Packages"/> the entities of <see cref="Packages"/> (none when it is empty),
+    /// <see cref="ConventionMapping.None"/> none. <see langword="null"/> (a file written before the member existed) keeps the
+    /// original rule: every entity when <see cref="Packages"/> is empty, else its packages'. A mapping element places a single
+    /// entity whatever this says, and <c>ignore</c> removes one.
+    /// </summary>
+    public ConventionMapping? ByConvention { get; init; }
+
+    /// <summary>Ids of the packages whose entities (and sub-packages') map here by convention; see <see cref="ByConvention"/>.</summary>
     [ElementRef(ElementKind.Package)]
     public IReadOnlyList<string> Packages { get; init; } = [];
+}
+
+/// <summary>Which entities a database takes by convention (D46).</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<ConventionMapping>))]
+public enum ConventionMapping
+{
+    /// <summary>Every entity: <c>all</c>.</summary>
+    [JsonStringEnumMemberName("all")] All,
+
+    /// <summary>The entities of the database's <c>packages</c> and their sub-packages: <c>packages</c>.</summary>
+    [JsonStringEnumMemberName("packages")] Packages,
+
+    /// <summary>None; only mapping elements place entities here: <c>none</c>.</summary>
+    [JsonStringEnumMemberName("none")] None,
 }
 
 /// <summary>A schema inside a database.</summary>

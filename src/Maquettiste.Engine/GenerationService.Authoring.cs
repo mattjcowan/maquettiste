@@ -96,7 +96,7 @@ public sealed partial class GenerationService
         try
         {
             slot = await EnterPreviewAsync(timeout.Token).ConfigureAwait(false);
-            (session, failure) = await OpenUnitAsync(pack, unitId, null, options, timeout.Token).ConfigureAwait(false);
+            (session, failure) = await OpenUnitAsync(pack, unitId, null, options, timeout.Token, checkScope: false).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {

@@ -24,6 +24,11 @@ export type MenuActionId =
   | "search-in-domain"
   | "favorite"
   | "move"
+  | "map-to-database"
+  | "edit-seed-data"
+  | "import-seed-csv"
+  | "export-seeds"
+  | "import-seeds"
   | "rename"
   | "delete"
   | `type:${TypeActionId}`;
@@ -79,6 +84,9 @@ function single(t: MenuTarget): MenuItem[] {
           item("expand-all", "Expand all"),
           item("rename", "Rename"),
           item("move", "Move to domain…"),
+          item("map-to-database", "Map to database…", true),
+          item("export-seeds", "Export this domain's seed data"),
+          item("import-seeds", "Import seed data…"),
           item("delete", "Delete", false, true),
         ]
       : [item("expand-all", "Expand all")];
@@ -98,7 +106,8 @@ function single(t: MenuTarget): MenuItem[] {
     ].sort((a, b) => Number(!!a.danger) - Number(!!b.danger));
   if (t.kind === "entity") {
     out.push(item("add-to-diagram", "Add to diagram", true), item("add-with-related", "Add with related…", true), item("show-on-canvas", "Show on canvas"));
-    out.push(item("where-used", "Where used"));
+    out.push(item("where-used", "Where used"), item("map-to-database", "Map to database…", true));
+    out.push(item("edit-seed-data", "Edit seed data"), item("import-seed-csv", "Import seed CSV…"));
     if (t.linked) out.push(item("go-to-table", "Go to table"));
   } else if (t.kind === "relation")
     out.push(item("add-to-diagram", "Add to diagram", true), item("go-to-ends", "Go to ends"), item("where-used", "Where used"));

@@ -8,6 +8,7 @@ import { useIndex } from "@/api/queries";
 import { cn } from "@/lib/cn";
 import { useServices } from "@/app/context";
 import { KindIcon } from "@/app/icons";
+import { EdgeToggle, PanelToggle } from "@/app/panels";
 import { useEditor, type Workspace } from "@/state/store";
 import { indexLookup } from "@/model/index";
 import { displayName } from "@/model/model";
@@ -27,7 +28,10 @@ export function EditorTabBar({ workspace }: { workspace: Workspace }) {
   const drafts = useEditor(store, (s) => s.drafts);
   const index = useIndex();
   const lookup = indexLookup(index.data);
+  const collapsed = useEditor(store, (s) => s.tabsCollapsed);
   if (!editors.tabs.length) return null;
+  // Hidden: a slim strip along the top of the centre area brings the tabs back.
+  if (collapsed) return <EdgeToggle panel="tabs" side="top" />;
   const update = store.getState().updateEditors;
   const shown = activeTab(editors);
   const closeOnMiddle = (tab: EditorTab) => (e: MouseEvent) => {
@@ -111,6 +115,9 @@ export function EditorTabBar({ workspace }: { workspace: Workspace }) {
           <Crosshair className="size-3.5" aria-hidden /> Follow selection
         </button>
       ) : null}
+      <div className="flex shrink-0 items-center border-l border-default px-1">
+        <PanelToggle panel="tabs" />
+      </div>
     </div>
   );
 }

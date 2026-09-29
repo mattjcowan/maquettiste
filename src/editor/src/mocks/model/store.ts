@@ -789,6 +789,7 @@ export class MockModel {
     const settings = this.projectSettings();
     return {
       name: settings.name ?? "project",
+      projectKey: "0123456789abcdef",
       formatVersion: settings.formatVersion,
       engineVersion: "1.0.0",
       mode: "local",

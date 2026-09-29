@@ -174,3 +174,56 @@ export function AddRelatedDialog({
     </Dialog>
   );
 }
+
+/** Map to database… (D46): the database the selected domains or entities are mapped to. */
+export function MapToDatabaseDialog({
+  databases,
+  count,
+  onClose,
+  onMap,
+}: {
+  databases: readonly { id: string; name: string }[] | null;
+  count: number;
+  onClose: () => void;
+  onMap: (database: { id: string; name: string }) => void;
+}) {
+  const [target, setTarget] = useState("");
+  if (!databases) return null;
+  const chosen = databases.find((d) => d.id === target) ?? databases[0];
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent title={count === 1 ? "Map to database" : `Map ${count} elements to database`}>
+        <form
+          className="flex flex-col gap-2"
+          data-testid="map-to-database-dialog"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (chosen) onMap(chosen);
+          }}
+        >
+          {databases.length ? (
+            <Field label="Database" htmlFor="map-to-database-target" hint="A domain joins the database's convention list; an entity gets a mapping element.">
+              <Select id="map-to-database-target" value={chosen?.id ?? ""} onChange={(e) => setTarget(e.target.value)}>
+                {databases.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : (
+            <p className="text-12 text-secondary">Create a database first.</p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button type="button" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" disabled={!chosen} data-testid="map-to-database-apply">
+              Map
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

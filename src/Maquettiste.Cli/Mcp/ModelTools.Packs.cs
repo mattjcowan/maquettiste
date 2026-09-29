@@ -117,7 +117,7 @@ internal sealed partial class ModelTools
 
     /// <summary>Previews one unit (previewTemplate).</summary>
     [McpServerTool(Name = "preview_unit", Title = "Preview unit", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Renders one unit of a pack for one element with no writes and returns each file's output path and text, the diagnostics and the keys the render read. overlay (pack-relative path to unsaved text), unitOverride (an unsaved unit with the same id) and parameters render unsaved work; a disabled pack previews too. A render that does not finish within limits.scriptTimeoutMs x 4 fails with MQ6007.")]
+    [Description("Renders one unit of a pack for one element with no writes and returns each file's output path and text, the diagnostics and the keys the render read. overlay (pack-relative path to unsaved text), unitOverride (an unsaved unit with the same id) and parameters render unsaved work; a disabled pack previews too. A render that does not finish within limits.scriptTimeoutMs x 4 fails with MQ6007. An element outside the unit's scope (none for an each unit, another kind, one a selector does not return, any for a model unit) renders nothing and returns MQ6026, which names the kind the template expects.")]
     public Task<CallToolResult> PreviewUnit(
         [Description("The pack name; required.")] string? pack = null,
         [Description("The unit id; required.")] string? unit = null,

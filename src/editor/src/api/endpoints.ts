@@ -369,6 +369,18 @@ export async function importSeedCsv(
   return { ...record<ImportPreview>(data, error, response), status: response.status };
 }
 
+/** Several seed CSV imports as one change: previews every file, or applies them all or none (409 stale, 422 invalid). */
+export async function importSeedsCsv(
+  files: readonly { seed: string; content: string; hash?: string }[],
+  options: { mode?: "merge" | "replace"; dryRun?: boolean } = {},
+): Promise<{ items: ImportPreview[]; status: number }> {
+  const { data, error, response } = await api().POST("/api/seeds/csv", {
+    params: { query: { mode: options.mode ?? "merge", dryRun: options.dryRun ?? true } },
+    body: { files: files.map((f) => ({ seed: f.seed, content: f.content, ...(f.hash ? { hash: f.hash } : {}) })) },
+  });
+  return { ...record<{ items: ImportPreview[] }>(data, error, response), status: response.status };
+}
+
 /** Every attribute typed by a reference type, with its owner and the effective storage per database. */
 export async function getReferenceTypeUsage(id: string): Promise<ReferenceTypeUsage> {
   const { data, response } = await api().GET("/api/reference-types/{id}/usage", { params: { path: { id } } });

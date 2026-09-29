@@ -321,12 +321,11 @@ internal sealed partial class DatabaseRun
 
     private void ComputePlacements()
     {
-        var scope = ScopePackages();
         foreach (var entity in _run.EntityOrder)
         {
             var source = _run.EntitySource(entity.Id)!;
             var mapping = _run.MappingOf(_db.Id, entity.Id);
-            if (mapping is { Ignore: true } || (scope is not null && !InScope(source.Package, scope)))
+            if (!DatabaseScope.Places(_run.Model, _db, source.Package, mapping))
                 continue;
             var placement = new Placement(entity, source, mapping);
             _placements[entity.Id] = placement;
@@ -385,20 +384,6 @@ internal sealed partial class DatabaseRun
         for (var x = from; x is not null && seen.Add(x); x = x.Base)
         {
             if (ReferenceEquals(x, target))
-                return true;
-        }
-
-        return false;
-    }
-
-    private HashSet<string>? ScopePackages() => _db.Packages.Count == 0 ? null : new HashSet<string>(_db.Packages, StringComparer.Ordinal);
-
-    private bool InScope(string? packageId, HashSet<string> scope)
-    {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        for (var id = packageId; id is not null && seen.Add(id); id = _run.Model.Get<Package>(id)?.Parent)
-        {
-            if (scope.Contains(id))
                 return true;
         }
 

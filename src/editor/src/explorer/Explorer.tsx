@@ -34,7 +34,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/menu";
-import { saveExpanded, useEditor } from "@/state/store";
+import { useEditor } from "@/state/store";
+import { PanelToggle } from "@/app/panels";
+import { pageChanged } from "@/state/pageState";
 import { EXPLORER_LABELS } from "@/model/labels";
 import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
@@ -78,7 +80,10 @@ import { RowMenu, type RowMenuState } from "./RowMenu";
 import { menuFor, isMovable, type MenuActionId, type MenuTarget } from "./menus";
 import { useTreeKeyboard, type KeyRow, type TreeAction } from "./useTreeKeyboard";
 import { useExplorerActions } from "./actions";
-import { AddRelatedDialog, DeleteDialog, MoveDialog } from "./dialogs";
+import { AddRelatedDialog, DeleteDialog, MapToDatabaseDialog, MoveDialog } from "./dialogs";
+import { ImportCsvDialog, ImportSeedsDialog } from "@/workspaces/reference-data/dialogs";
+import { exportAllSeeds } from "@/workspaces/reference-data/seedBundle";
+import { createTargetSeed } from "@/workspaces/reference-data/seedTargets";
 import { CREATE_LABELS, domainOfKey, EXPLORER_CREATE, startDomain, type CreateKind } from "./create";
 import { CreateButtons } from "./NewElementDialog";
 import { addToDiagram } from "@/workspaces/entities/actions";
@@ -314,7 +319,32 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   const referenceFlat = useEditor(store, (s) => s.explorer.referenceFlat);
   const followSelection = useEditor(store, (s) => s.explorer.followSelection);
   const pinnedId = useEditor(store, (s) => s.explorer.pinned);
-  const { reveal, select, openDatabase, openWorkspace, openDiagram, openEditor } = useEditorNavigation();
+  const { reveal, select, openDatabase, openWorkspace, openDiagram, openEditor, openSeedData } = useEditorNavigation();
+  const [importingSeeds, setImportingSeeds] = useState(false);
+  const [importingCsv, setImportingCsv] = useState<{ id: string; name: string } | null>(null);
+  const exportSeeds = (domain?: { id: string; name: string }) =>
+    void exportAllSeeds(services, domain)
+      .then((n) =>
+        store
+          .getState()
+          .notify(
+            n
+              ? `Exported ${n} ${n === 1 ? "seed" : "seeds"} to ${domain ? `${domain.name} seed data.zip` : "seed-data.zip"}.`
+              : domain
+                ? `${domain.name} has no seed data yet.`
+                : "The model has no seed data yet.",
+          ),
+      )
+      .catch((e: Error) => store.getState().notify(e.message, "error"));
+  /** Import seed CSV… on an entity: into its seed (New seed first when it has none), shown on its Seed data tab. */
+  const importSeedCsv = async (entity: ElementSummary) => {
+    const existing = (indexRows ?? []).filter((r) => r.kind === "seed" && r.target === entity.id).sort((a, b) => a.name.localeCompare(b.name));
+    const seed = existing.find((r) => r.name === entity.name) ?? existing[0];
+    const id = seed?.id ?? (await createTargetSeed(services, entity.id));
+    if (!id) return;
+    openSeedData(entity);
+    setImportingCsv({ id, name: seed?.name ?? entity.name });
+  };
   const canvasMembers = useCanvasMembers();
   const [addingRelated, setAddingRelated] = useState<string[] | null>(null);
   const actions = useExplorerActions();
@@ -325,6 +355,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   const [renaming, setRenaming] = useState<string | null>(null);
   const [loading, setLoading] = useState<ReadonlySet<string>>(new Set());
   const [moving, setMoving] = useState<string[] | null>(null);
+  const [mappingTo, setMappingTo] = useState<string[] | null>(null);
   const [deleting, setDeleting] = useState<string[] | null>(null);
   const [dropKey, setDropKey] = useState<string | null>(null);
   const dragged = useRef<string[]>([]);
@@ -363,9 +394,10 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
     bump();
   }, []);
 
-  // Expansion survives a reload (3.3): saved whenever the rows change outside filter mode.
+  // Expansion survives a reload (3.3) as page state, per project: announced whenever the rows change outside filter mode.
   useEffect(() => {
-    if (!cache.current.filtering) saveExpanded(id, view.expanded);
+    if (cache.current.filtering) return;
+    pageChanged();
   }, [version, id, view]);
 
   // Each forest the tree commits, patched or built (the scale project times model.changed → tree updated with it).
@@ -867,6 +899,23 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       case "move":
         setMoving(ids);
         break;
+      case "map-to-database":
+        if (ids.length) setMappingTo(ids);
+        break;
+      case "edit-seed-data":
+        if (ids[0] && forest.byId.has(ids[0])) openSeedData(forest.byId.get(ids[0]) as ElementSummary);
+        break;
+      case "import-seed-csv":
+        if (ids[0] && forest.byId.has(ids[0])) void importSeedCsv(forest.byId.get(ids[0]) as ElementSummary);
+        break;
+      case "export-seeds": {
+        const domain = ids[0] ? forest.byId.get(ids[0]) : undefined;
+        exportSeeds(domain ? { id: domain.id, name: domain.name } : undefined);
+        break;
+      }
+      case "import-seeds":
+        setImportingSeeds(true);
+        break;
       case "rename":
         setRenaming(key);
         break;
@@ -1070,6 +1119,8 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         highlight={highlight}
         referenceFlat={referenceFlat}
         onCollapseAll={collapseAll}
+        onExportSeeds={() => exportSeeds()}
+        onImportSeeds={() => setImportingSeeds(true)}
         onNew={(kind) => {
           const key = selection[0] && forest ? forest.place.get(selection[0]) : undefined;
           const current = forest && key && forest.nodes.get(key)?.explorer === id ? domainOfKey(forest, key) : null;
@@ -1166,6 +1217,32 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       />
       {forest ? (
         <>
+          <ImportSeedsDialog open={importingSeeds} onOpenChange={setImportingSeeds} />
+          {importingCsv ? <ImportCsvDialog open onOpenChange={(o) => !o && setImportingCsv(null)} seed={importingCsv} /> : null}
+          <MapToDatabaseDialog
+            databases={
+              mappingTo
+                ? [...forest.byId.values()]
+                    .filter((r) => r.kind === "database")
+                    .map((r) => ({ id: r.id, name: r.name }))
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                : null
+            }
+            count={mappingTo?.length ?? 0}
+            onClose={() => setMappingTo(null)}
+            onMap={(database) => {
+              const ids = mappingTo ?? [];
+              setMappingTo(null);
+              const rows = [...forest.byId.values()];
+              void actions.mapToDatabase(
+                database,
+                ids.map((x) => ({ id: x, kind: forest.byId.get(x)?.kind ?? "", name: forest.byId.get(x)?.name ?? x })),
+                (entity) => rows.find((r) => r.kind === "mapping" && r.database === database.id && r.entity === entity),
+                (entity) => forest.byId.get(entity)?.package,
+                (pkg) => forest.byId.get(pkg)?.package,
+              );
+            }}
+          />
           <MoveDialog
             forest={forest}
             ids={moving}
@@ -1218,6 +1295,8 @@ function ExplorerHeader(props: {
   referenceFlat: boolean;
   onCollapseAll: () => void;
   onNew: (kind: CreateKind) => void;
+  onExportSeeds: () => void;
+  onImportSeeds: () => void;
 }) {
   const { store } = useServices();
   const others = EXPLORERS.filter((e) => e !== props.id);
@@ -1276,8 +1355,20 @@ function ExplorerHeader(props: {
               Types A to Z (no categories)
             </DropdownMenuCheckboxItem>
           ) : null}
+          {props.id === "reference-data" ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={props.onExportSeeds} data-testid="export-all-seeds">
+                Export all seed data
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={props.onImportSeeds} data-testid="import-seeds">
+                Import seed data…
+              </DropdownMenuItem>
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
+      {props.pinned ? null : <PanelToggle panel="explorer" />}
     </header>
   );
 }

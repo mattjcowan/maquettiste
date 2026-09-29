@@ -266,7 +266,7 @@ public sealed partial class GenerationService
 
     /// <summary>Prepares a unit for rendering with any unsaved text; the diagnostics say why it cannot be.</summary>
     private async Task<(UnitSession? Session, IReadOnlyList<Diagnostic> Failure)> OpenUnitAsync(string pack, string unitId, string? elementId,
-        PreviewOptions? options, CancellationToken ct)
+        PreviewOptions? options, CancellationToken ct, bool checkScope = true)
     {
         if (options?.UnitOverride is { } overridden && !string.Equals(overridden.Id, unitId, StringComparison.Ordinal))
             throw new ArgumentException($"unitOverride.id '{overridden.Id}' must equal the unit '{unitId}'.", nameof(options));
@@ -291,6 +291,12 @@ public sealed partial class GenerationService
         var element = elementId is null ? null : prepared.Resolved.Find(elementId);
         if (elementId is not null && element is null)
             return (null, [RuleCatalog.Create("MQ6017", $"Element '{elementId}' is not in the resolved model.", elementId)]);
+
+        if (checkScope && UnitPlanner.OutOfScope(prepared.Resolved, loaded, unit, element, _services.Scripts, ct) is { } outOfScope)
+        {
+            var index = loaded.Manifest.Units.ToList().FindIndex(u => string.Equals(u.Id, unit.Id, StringComparison.Ordinal));
+            return (null, [RuleCatalog.Create("MQ6026", outOfScope, elementId, loaded.RelativePath + "/pack.json", index < 0 ? null : $"/units/{index}/for")]);
+        }
 
         var overlay = options?.Overlay ?? new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var path in overlay.Keys)

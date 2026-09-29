@@ -34,6 +34,39 @@ public static partial class LocaleChains
     /// <returns><see langword="true"/> when well formed.</returns>
     public static bool IsLanguageTag(string? tag) => tag is { Length: > 0 } && Bcp47().IsMatch(tag);
 
+    /// <summary>
+    /// A typed locale in canonical BCP 47 case, as the editor normalizes it: an underscore becomes a hyphen, the language is lowercase, a
+    /// script Titlecase, a region uppercase (zh_cn to zh-CN, zh_hant_tw to zh-Hant-TW); other subtags lowercase.
+    /// </summary>
+    /// <param name="tag">The tag as typed.</param>
+    /// <returns>The normalized tag (not necessarily well formed: check it with <see cref="IsLanguageTag"/>).</returns>
+    public static string Normalize(string tag)
+    {
+        ArgumentNullException.ThrowIfNull(tag);
+        var parts = tag.Trim().Replace('_', '-').Split('-');
+        for (var i = 0; i < parts.Length; i++)
+        {
+            var p = parts[i];
+            parts[i] = i == 0 ? p.ToLowerInvariant()
+                : i == 1 && p.Length == 4 && p.All(char.IsAsciiLetter) ? char.ToUpperInvariant(p[0]) + p[1..].ToLowerInvariant()
+                : p.Length == 2 && p.All(char.IsAsciiLetter) ? p.ToUpperInvariant()
+                : p.ToLowerInvariant();
+        }
+
+        return string.Join('-', parts);
+    }
+
+    /// <summary>How to write a locale, appended to every "not a BCP 47 tag" message.</summary>
+    /// <param name="tag">The tag as written.</param>
+    /// <returns>The advice, naming the normalized tag when it is well formed and differs.</returns>
+    public static string TagAdvice(string? tag)
+    {
+        var normalized = tag is null ? null : Normalize(tag);
+        var suggestion = normalized is not null && !string.Equals(normalized, tag, StringComparison.Ordinal) && IsLanguageTag(normalized)
+            ? $"Use '{normalized}': " : "Use ";
+        return suggestion + "language-REGION with a hyphen, such as zh-CN, or a language alone, such as fr.";
+    }
+
     /// <summary>The declared locales in unit order: the default first, then ordinal; empty without a <c>localization</c> block.</summary>
     /// <param name="settings">The settings, or <see langword="null"/>.</param>
     /// <returns>The locales.</returns>
@@ -85,11 +118,11 @@ public static partial class LocaleChains
         var findings = new List<(string, string)>();
         const string root = "/localization";
         if (!IsLanguageTag(settings.DefaultLocale))
-            findings.Add(($"The default locale '{settings.DefaultLocale}' is not a BCP 47 language tag.", root + "/defaultLocale"));
+            findings.Add(($"The default locale '{settings.DefaultLocale}' is not a BCP 47 language tag. {TagAdvice(settings.DefaultLocale)}", root + "/defaultLocale"));
         for (var i = 0; i < settings.Locales.Count; i++)
         {
             if (!IsLanguageTag(settings.Locales[i]))
-                findings.Add(($"The locale '{settings.Locales[i]}' is not a BCP 47 language tag.", root + "/locales/" + Str(i)));
+                findings.Add(($"The locale '{settings.Locales[i]}' is not a BCP 47 language tag. {TagAdvice(settings.Locales[i])}", root + "/locales/" + Str(i)));
         }
 
         if (!settings.Locales.Contains(settings.DefaultLocale, StringComparer.Ordinal))

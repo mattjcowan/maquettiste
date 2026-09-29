@@ -25,6 +25,7 @@ import { useElements, useIndex } from "@/api/queries";
 import { indexLookup } from "@/model/index";
 import { categoryOptions, markDomainOf, tagOptions, vocabulariesOnChain } from "@/model/vocabularies";
 import { AttributeGrid } from "./AttributeGrid";
+import { DatabaseMappingSection } from "./DatabaseMapping";
 import type { Diagnostic } from "@/api/types";
 import { GROUP_LABELS, KIND_LABELS } from "@/model/labels";
 
@@ -756,6 +757,7 @@ export function DatabaseFields({ id, json, edit, flush }: FormProps) {
           ))}
         </Select>
       </Field>
+      <DatabaseMappingSection id={id} json={json as unknown as Rec} edit={(u) => edit((j) => u(j as unknown as Rec))} flush={flush} />
     </div>
   );
 }

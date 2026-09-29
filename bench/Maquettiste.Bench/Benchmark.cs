@@ -113,6 +113,13 @@ public sealed record BenchmarkOptions
     public double MaxRegressionPercent { get; init; } = 10;
 
     /// <summary>
+    /// Whether the absolute SPEC section 13 budgets are reported without deciding the result (<c>--advisory-budgets</c>): on a shared CI
+    /// runner the budgets, recorded for a developer-class machine, mean little, and the regression gate against a baseline recorded on
+    /// that runner (<c>bench/baseline-ci.json</c>) is the binding check. Developer machines keep the budgets binding (the default).
+    /// </summary>
+    public bool AdvisoryBudgets { get; init; }
+
+    /// <summary>
     /// The command that starts a fresh <c>maquettiste</c> process (the program and its leading arguments), for the one-shot figure:
     /// the harness appends <c>--repo &lt;repo&gt; --cache-dir &lt;cache&gt; --jobs &lt;n&gt; generate --quiet</c> and runs it over the
     /// pipelined repo, once after the one-entity edit and once with nothing changed (<see cref="BenchmarkReport.OneShotEdit"/>,
@@ -283,14 +290,17 @@ public sealed record BenchmarkReport(
     /// <summary>The baseline the report was compared with, if any.</summary>
     public string? Baseline { get; init; }
 
+    /// <summary>Whether the budgets were reported only (<see cref="BenchmarkOptions.AdvisoryBudgets"/>): they do not decide <see cref="Passed"/>.</summary>
+    public bool AdvisoryBudgets { get; init; }
+
     /// <summary>Comparisons with the baseline; empty without one.</summary>
     public IReadOnlyList<RegressionResult> Regressions { get; init; } = [];
 
     /// <summary>
-    /// Whether every budget and every regression check passed, the check run found no drift, and the stage-barrier and pipelined
+    /// Whether every budget (unless <see cref="AdvisoryBudgets"/>) and every regression check passed, the check run found no drift, and the stage-barrier and pipelined
     /// cold runs wrote identical manifests (<see cref="OutputsMatch"/>; SPEC section 21 gate 1 requires byte-identical output).
     /// </summary>
-    public bool Passed => Budgets.All(b => b.Pass) && Regressions.All(r => r.Pass) && CheckOutcome == "Succeeded" && OutputsMatch;
+    public bool Passed => (AdvisoryBudgets || Budgets.All(b => b.Pass)) && Regressions.All(r => r.Pass) && CheckOutcome == "Succeeded" && OutputsMatch;
 }
 
 /// <summary>The machine and runtime a benchmark report was measured on (the <c>machine</c> section of a report file).</summary>

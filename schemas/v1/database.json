@@ -20,6 +20,7 @@
     "schemas",
     "quoting",
     "maxIdentifierLength",
+    "byConvention",
     "packages",
     "properties",
     "generation",
@@ -139,6 +140,10 @@
     "maxIdentifierLength": {
       "type": "integer",
       "minimum": 1
+    },
+    "byConvention": {
+      "description": "Which entities map here by convention: all, the entities of packages (and their sub-packages; none when packages is empty), or none. Mapping elements add or ignore single entities either way. Absent (files written before 0.3.0): every entity when packages is empty, else the entities of packages.",
+      "enum": ["all", "packages", "none"]
     },
     "packages": {
       "$ref": "common.json#/$defs/idList",

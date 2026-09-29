@@ -9,7 +9,7 @@ namespace Maquettiste.Engine.Validation;
 
 /// <summary>
 /// Rules on reference types, their use as attribute types and seeds (reference-types-seeds-localization.md sections 1.7 and 2.4):
-/// MQ7001 to MQ7012, MQ7101 to MQ7106, and the MQ3019 extension (a default code outside the rows). Pure functions of the model;
+/// MQ7001 to MQ7013, MQ7101 to MQ7106, and the MQ3019 extension (a default code outside the rows). Pure functions of the model;
 /// each diagnostic lands in the file where the fix belongs, and a finding across seeds of one target on the later one in
 /// (seed name, seed id, file order).
 /// </summary>
@@ -21,7 +21,22 @@ internal static class ReferenceDataRules
     /// <summary>The file size above which a seed is bulk data (MQ7104).</summary>
     internal const int MaxBytes = 5 * 1024 * 1024;
 
-    private static readonly string[] CodeTypes = ["string", "int16", "int32", "int64"];
+    private static readonly string[] CodeTypes = ["string", "int16", "int32", "int64", "uuid"];
+
+    /// <summary>Whether a code type is held as a JSON number (the integer code types); string and uuid codes are JSON strings.</summary>
+    internal static bool IsIntegerCode(string codeType) => codeType is "int16" or "int32" or "int64";
+
+    /// <summary>
+    /// Why the text of a uuid code is not a UUID in canonical form (MQ7013), or <see langword="null"/> when it is: 8-4-4-4-12
+    /// hexadecimal digits with hyphens, lowercase, so codes compare and render the same everywhere.
+    /// </summary>
+    internal static string? UuidCodeProblem(string text)
+    {
+        if (!Guid.TryParseExact(text, "D", out var uuid))
+            return $"'{text}' is not a UUID (8-4-4-4-12 hexadecimal digits with hyphens)";
+        var canonical = uuid.ToString("D");
+        return string.Equals(text, canonical, StringComparison.Ordinal) ? null : $"'{text}' is not in canonical form; write it as '{canonical}'";
+    }
 
     private static readonly string[] Keywords = ["code", "label", "description"];
 
@@ -38,7 +53,7 @@ internal static class ReferenceDataRules
     public static void CheckReferenceType(ValidationContext context, ReferenceType type, Report report)
     {
         if (!CodeTypes.Contains(type.Code.Type, StringComparer.Ordinal))
-            report.Add("MQ7010", $"The code of reference type '{type.Name}' has the type '{type.Code.Type}'; a code is a string, int16, int32 or int64.", "/code/type", type.Code.Id);
+            report.Add("MQ7010", $"The code of reference type '{type.Name}' has the type '{type.Code.Type}'; a code is a string, int16, int32, int64 or uuid.", "/code/type", type.Code.Id);
         if (type.Code.Pattern is { } pattern && AttributeRules.MatchesPattern("", pattern) is null)
             report.Add("MQ7010", $"The code pattern of reference type '{type.Name}' is not a valid regular expression.", "/code/pattern", type.Code.Id);
 
@@ -207,11 +222,13 @@ internal static class ReferenceDataRules
     /// <summary>Why a value is not a code of a type's rows, or <see langword="null"/> when it is.</summary>
     private static string? CodeProblem(ValidationContext context, ReferenceType type, JsonElement value)
     {
-        var integer = type.Code.Type != "string";
+        var integer = IsIntegerCode(type.Code.Type);
         if (integer ? value.ValueKind != JsonValueKind.Number : value.ValueKind != JsonValueKind.String)
             return $"a code of {type.Name} is {(integer ? "an integer" : "a string")}, not {Describe(value)}";
         if (context.ReferenceData.RowOf(type.Id, value) is null)
-            return $"'{ReferenceDataIndex.CodeKey(value)}' is not a code of its rows";
+            return type.Code.Type == "uuid" && UuidCodeProblem(value.GetString()!) is { } uuid
+                ? uuid
+                : $"'{ReferenceDataIndex.CodeKey(value)}' is not a code of its rows";
         return null;
     }
 
@@ -425,6 +442,8 @@ internal static class ReferenceDataRules
                 if (isNull)
                     return ("MQ7003", "a reference row needs a code");
                 var type = (ReferenceType)target;
+                if (type.Code.Type == "uuid" && cell.ValueKind == JsonValueKind.String && UuidCodeProblem(cell.GetString()!) is { } uuid)
+                    return ("MQ7013", uuid);
                 var keyword = CodeTypes.Contains(type.Code.Type, StringComparer.Ordinal) ? type.Code.Type : "string";
                 if (AttributeRules.Fits(keyword, cell, type.Code.Length, null, null) is { } reason)
                     return ("MQ7004", reason);
@@ -475,7 +494,7 @@ internal static class ReferenceDataRules
                 return ("MQ7004", "a collection cell is an array of codes");
             foreach (var code in attribute.Collection ? [.. cell.EnumerateArray()] : new[] { cell })
             {
-                var integer = referenceType.Code.Type != "string";
+                var integer = IsIntegerCode(referenceType.Code.Type);
                 if (integer ? code.ValueKind != JsonValueKind.Number : code.ValueKind != JsonValueKind.String)
                     return ("MQ7004", $"a code of {referenceType.Name} is {(integer ? "an integer" : "a string")}, not {Describe(code)}");
                 if (context.ReferenceData.RowOf(referenceType.Id, code) is null)
