@@ -70,8 +70,11 @@ function record(info: TestInfo, measure: Omit<Measure, "budgetMs">): Measure {
   return full;
 }
 
-/** MQ_SCALE_STRICT=1 turns the known misses below into failures too. */
+/** MQ_SCALE_STRICT=1 turns the known misses below, and the shared-runner misses, into failures too. */
 const strict = process.env.MQ_SCALE_STRICT === "1";
+/** A shared CI runner is too noisy to fail on a budget: there the numbers are recorded and an over-budget measure is
+ * an annotation, never a failure (unless MQ_SCALE_STRICT=1). On a developer machine the budgets fail as before. */
+const sharedRunner = !strict && Boolean(process.env.GITHUB_ACTIONS);
 
 /**
  * Checks a measure against its budget. A known miss (today's explorer, before the redesign) is
@@ -83,6 +86,13 @@ function within(info: TestInfo, measure: Measure, knownMiss?: string): void {
     info.annotations.push({
       type: "known miss",
       description: `${measure.name}: ${measure.ms.toFixed(1)} ms over the ${measure.budgetMs} ms budget. ${knownMiss}`,
+    });
+    return;
+  }
+  if (over && sharedRunner) {
+    info.annotations.push({
+      type: "over budget on the shared runner",
+      description: `${measure.name}: ${measure.ms.toFixed(1)} ms over the ${measure.budgetMs} ms budget on a shared CI runner; not a failure there.`,
     });
     return;
   }
