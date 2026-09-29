@@ -10,7 +10,7 @@ What the audience sees, in three even parts, inside a partner team's existing Ty
 3. **Claude Code over MCP** (5 min): `init --mcp --skill`, then two prompts that change and question the model.
 
 Plus one minute of slack. Every command is for **macOS zsh** on the demo Mac (Apple silicon, Docker Desktop). The
-walkthrough was rehearsed end to end on a Linux (WSL2, amd64, Docker Engine) machine with `mattjcowan/maquettiste:demo`
+walkthrough was rehearsed end to end on a Linux (WSL2, amd64, Docker Engine) machine with `mattjcowan/maquettiste:0.1.0`
 built from this tree: first on 2026-09-28, then again on 2026-09-29 after the editor was rebuilt, from an empty model,
 with every CLI and MCP step run from the image. The timings in [Rehearsal record](#rehearsal-record) come from there.
 Steps marked **(not verified on a Mac)** ran only on Linux; steps marked **(not verified)** did not run at all.
@@ -24,158 +24,88 @@ export REPO=~/src/partner-service    # adjust
 
 ## Before the talk (Mac)
 
-Do all of this the day before, then once more (only B5) 15 minutes before 10:30.
+One image, one tag, one compose file. Do this the day before, then only step 4 fifteen minutes before 10:30.
 
-### B1. Get the image
-
-The image is `mattjcowan/maquettiste`. The compose file takes its tag from `MAQUETTISTE_IMAGE` (default
-`mattjcowan/maquettiste:latest`), so any tag works; this walkthrough uses `mattjcowan/maquettiste:demo`.
-
-**(a) A released tag.** Once you have pushed a version tag, the publish workflow builds linux/amd64 and linux/arm64 and
-pushes both registries. Pull one and give it the demo tag:
+**1. Pull the image** (published for arm64 and amd64):
 
 ```zsh
-docker pull ghcr.io/mattjcowan/maquettiste:<version>      # or docker.io/mattjcowan/maquettiste:<version>
-docker tag ghcr.io/mattjcowan/maquettiste:<version> mattjcowan/maquettiste:demo
+docker pull mattjcowan/maquettiste:0.1.0
 ```
 
-(or skip the tag and `export MAQUETTISTE_IMAGE=ghcr.io/mattjcowan/maquettiste:<version>` in every shell below).
-**(not verified)**: nothing has been published.
-
-**(b) Build it locally from the clone** (native arm64 on the M4):
+**2. The `maquettiste` command.** The image carries the CLI, so the Mac needs nothing else. Put this in `~/.zshrc`
+(then `source ~/.zshrc`); it runs every command in a throwaway container over the folder you are in:
 
 ```zsh
-cd $MQ && git pull && docker build -f docker/Dockerfile -t mattjcowan/maquettiste:demo .
-```
-
-A cold build (`--no-cache`) took **70 s** on the rehearsal machine with the three base images already present. A
-first build on the Mac also downloads them (`mcr.microsoft.com/dotnet/sdk:10.0`, `node:22-bookworm-slim`,
-`mattjcowan/static-site-hosting:0.2.0`, about 0.9 GB each unpacked) plus the .NET SDK 10.0.109 and npm packages, so
-allow 5 to 10 minutes on a normal connection; the M4 compiles faster than the rehearsal machine. The base images have
-arm64 variants (checked for `static-site-hosting:0.2.0`). Check: `docker image inspect mattjcowan/maquettiste:demo --format '{{.Architecture}}'`
-prints `arm64`.
-
-### B2. Get the `maquettiste` CLI (from the image)
-
-The image carries the CLI (`/usr/local/bin/maquettiste`), so the Mac needs nothing but Docker. Add this function to
-`~/.zshrc` (then `source ~/.zshrc`); it runs every `maquettiste` command in a throwaway container over the current folder:
-
-```zsh
-maquettiste() { docker run --rm $([ -t 0 ] && echo -it) --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:demo maquettiste "$@"; }
+maquettiste() { docker run --rm $([ -t 0 ] && echo -it) -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:0.1.0 maquettiste "$@"; }
 maquettiste --version                    # maquettiste 0.1.0 (engine contract 1.0.0, model format 1)
 ```
 
-- Run it from the repository root: the container sees only the folder you are in (mounted at `/repo`).
-- `--user` makes the files the CLI writes yours on Linux; Docker Desktop maps ownership to the Mac user anyway, so it is
-  harmless there **(not verified on a Mac)**.
-- `-it` is added only at a terminal, so Ctrl+C stops `--watch` and scripts still work.
-- Each command pays a container start, about 0.5 s on the rehearsal machine: `--version` 0.5 s, `generate` and
-  `generate --check` 1.5 s each, against 0.7 s for the native tool. Allow for it in the timings of part 2.
-- `--watch` inside the container relies on Docker Desktop forwarding file events from the Mac into its VM **(not
-  verified on a Mac)**; on Linux a model save regenerated in 0.5 s. If it does not react on the Mac, use the fallback.
-
-**Fallback: the .NET tool (needs any .NET 10 SDK on the Mac).** Pack the tool in a container, so the Mac does not need
-the pinned SDK 10.0.109, then install it globally from the folder (and `unfunction maquettiste` in that shell):
-
-```zsh
-cd $MQ
-docker run --rm -v "$PWD:/src" -w /src mcr.microsoft.com/dotnet/sdk:10.0 bash -c \
-  'curl -fsSL https://dot.net/v1/dotnet-install.sh | bash -s -- --version 10.0.109 --install-dir /usr/share/dotnet --no-path >/dev/null \
-   && dotnet pack src/Maquettiste.Cli -c Release -o /src/tmp/cli-feed'
-dotnet tool install -g Maquettiste.Cli --add-source $MQ/tmp/cli-feed --prerelease
-export PATH="$PATH:$HOME/.dotnet/tools"    # add to ~/.zshrc if missing
-maquettiste --version
-```
-
-The pack took 70 s here (most of it installing SDK 10.0.109 in the container). With SDK 10.0.109 on the Mac,
-`dotnet pack src/Maquettiste.Cli -c Release -o tmp/cli-feed` does the same in about 25 s. The feed holds an `osx-arm64`
-package. If `--add-source` is refused because of package source mapping, add `--configfile` with a config that lists
-only that folder. Once a version is published to NuGet, `dotnet tool install -g Maquettiste.Cli --prerelease` is enough
-**(not verified)**. With the tool, `init --mcp` writes a `.mcp.json` Claude Code can start directly (see 3.1).
-
-### B3. Docker Desktop checklist (macOS)
-
-- [ ] Docker Desktop is running, and Settings > Resources > File sharing includes the folder that holds `$REPO` (the
-      defaults include `/Users`, so a repository under your home folder is fine; `/Volumes/...` or other roots must be
-      added).
-- [ ] Port 8080 is free: `lsof -nP -iTCP:8080 -sTCP:LISTEN` prints nothing. If not, see [Troubleshooting](#troubleshooting).
-- [ ] File ownership. The container runs as UID 1654 (`app`). On Linux the bind mounts need ACLs for that UID, and files
-      it writes belong to 1654 (docker/README.md, docker/smoke.sh). Docker Desktop for Mac maps ownership itself: files
-      the editor writes (model JSON, output applied from the Generate workspace) show up owned by your Mac user, so no
-      ACLs are needed. The CLI function (B2) runs as your UID anyway. **(not verified on a Mac)**: after B5, run
-      `ls -ln $REPO/.maquettiste/model/*/` and check the owner is your UID (`id -u`), not 1654.
-- [ ] `openssl rand -hex 24` works (it does on stock macOS).
-
-### B4. Prepare the partner repository
+**3. Prepare the repository.** In the partner repository, on a branch of its own:
 
 ```zsh
 cd $REPO
-git switch -c maquettiste-demo          # everything the demo writes stays on this branch
-git status --short                      # clean
-npm ls zod typescript                   # the TypeScript pack's schemas need zod 3.23 or later
-npm install zod@^3.23 --save            # only if zod is missing
-```
-
-- zod 4 was not tried: the generated schemas use `z.string().uuid()`, `.date()` and `.datetime({ offset: true })`, which
-  zod 4 keeps as deprecated forms **(not verified)**. If the repository uses zod 4 and `tsc` complains, set the pack's
-  `zod` parameter to `false` (step 2.5) and skip the schema part.
-- Check `tsconfig.json`: with `"moduleResolution": "NodeNext"` (or `Node16`) the default `importExtension` `.js` is right;
-  with `"bundler"`, set `"importExtension": ""` in step 2.4.
-- The TypeScript pack writes `src/generated/`. If the repository already has that folder, use another one (for example
-  `src/model`) everywhere below.
-
-Then do a full dry run of this walkthrough on a throwaway copy (`cp -R $REPO /tmp/demo-copy`), and reset with
-[Reset the demo repository](#reset-the-demo-repository).
-
-### B5. Start the editor over the repository (15 minutes before)
-
-`init` must run **before** `compose up`: the compose file bind-mounts `./.maquettiste`, and Docker creates a missing
-mount folder itself.
-
-```zsh
-cd $REPO
-maquettiste init                         # writes .maquettiste/, the sql-ddl pack and a .gitignore block
+git switch -c maquettiste-demo
+maquettiste init                         # writes .maquettiste/ (settings, schemas, the sql-ddl pack) and a .gitignore block
 maquettiste validate                     # Validation passed: 0 errors, 0 warnings, 0 infos.
+git clone --depth 1 git@github.com:mattjcowan/maquettiste.git /tmp/maquettiste   # only for the TypeScript pack sample (part 2)
+export MQ=/tmp/maquettiste
 ```
 
-`init` prints `created .maquettiste/maquettiste.json`, `wrote .maquettiste/.schema/v1/ (26 schemas)`, `wrote
-.maquettiste/templates/sql-ddl/ (12 files)`, `updated .gitignore (maquettiste block)`. It names the project (the name the
-editor's top bar shows) from `--name <name>`, else the `name` of the repository's `package.json` (an `@scope/` prefix
-dropped), else the repository name of the git remote `origin`, else the folder, which inside the container is `/repo`.
-A partner repository cloned from a remote, or with a named `package.json`, gets its own name, so the earlier `sed`
-that renamed `repo` is no longer needed; if the top bar still
-says `repo`, run `maquettiste init --name partner-service` on a fresh `.maquettiste/` (the name is written only when
-`maquettiste.json` is created). **Re-check on the Mac** with an image built after this change: the rehearsed image
-predates it. The model is empty; part 1 builds it in the editor. If the editor misbehaves, the
-[fallback](#fallback-the-model-without-the-editor) writes the same model without it.
+`init` names the project from `package.json` `name`, else the git remote, else the folder; `maquettiste init --name Acme`
+on a fresh `.maquettiste/` sets it by hand. Then save this as `maquettiste.compose.yaml` in the repository root (it is
+the image's compose file with the tag pinned; the model folder and the repository are mounted, nothing else):
 
-Start the editor with a token (Docker Desktop's port forwarding makes the browser a remote peer, so expect the sign-in
-page):
+```yaml
+services:
+  maquettiste:
+    image: mattjcowan/maquettiste:0.1.0
+    ports: ["127.0.0.1:8080:8080"]
+    volumes:
+      - maquettiste-host:/data                                      # the editor's own state (users, keys, index cache)
+      - ./.maquettiste:/data/sites/maquettiste.localhost/data       # the model
+      - ./:/repo                                                    # the repository: generated files land here
+    environment:
+      MAQUETTISTE_REPO_ROOT: /repo
+      MAQUETTISTE_EDITOR_TOKEN: ${MAQUETTISTE_EDITOR_TOKEN:-}
+volumes:
+  maquettiste-host:
+```
+
+`init` must run before the first `compose up`: compose creates a missing mount folder itself, and then the editor
+starts on a project with no settings.
+
+**4. Start the editor** (15 minutes before the talk):
 
 ```zsh
+cd $REPO
 export MAQUETTISTE_EDITOR_TOKEN=$(openssl rand -hex 24)
 echo $MAQUETTISTE_EDITOR_TOKEN | pbcopy   # paste it on the sign-in page
-MAQUETTISTE_IMAGE=mattjcowan/maquettiste:demo docker compose -f $MQ/docker/compose.yaml --project-directory . up -d
+docker compose -f maquettiste.compose.yaml up -d
 until curl -fsS -H 'Host: maquettiste.localhost:8080' http://127.0.0.1:8080/api/health >/dev/null; do sleep 1; done; echo ready
 ```
 
-Expected: `Container <repo>-maquettiste-1 Started`, then `ready` (4.9 s on first boot on the rehearsal machine, 1.2 s on
-a restart; the log says a first functions build can take up to a minute). Open **http://maquettiste.localhost:8080** in
-the browser; on "Sign in to Maquettiste" paste the token into **Editor token** and click **Sign in**. You see the
-project name in the top bar, the **DOMAIN MODEL** explorer on the left, and in the centre the first-run panel **Start
-the model** with New domain, New entity, New enum, New value object, New custom type, New reference type, New diagram
-and New database. Leave it like that for the talk.
+Open **http://maquettiste.localhost:8080**, paste the token into **Editor token**, **Sign in**. You see the project name in
+the top bar, the **Domain model** explorer on the left and, in the centre, the first-run panel **Start the model** with New
+domain, New entity, New enum, New reference type, New diagram and New database. Leave it there for the talk.
 
-Also before the talk: a second terminal tab in `$REPO` for `--watch`, the repository open in a code editor, Claude Code
-logged in (`claude --version`), and the browser zoomed to 125% for Zoom.
+**5. Three checks, once, the day before:**
 
-Fallback: if the editor will not start, `docker compose -f $MQ/docker/compose.yaml --project-directory . logs | tail -20`
-names the reason (a volume from an older image: add `down -v` and `up -d` again). If it still fails, write the model with
-the [fallback](#fallback-the-model-without-the-editor) and run parts 2 and 3 without the editor.
+- `ls -ln .maquettiste/model` shows your own UID as the owner (Docker Desktop maps ownership to the Mac user).
+- In a second terminal, `maquettiste generate --watch`, then save something in the editor: it regenerates within a
+  second. If it does not react, Docker Desktop is not forwarding file events; run `maquettiste generate` by hand in
+  part 2 instead.
+- Claude Code in `$REPO` with the `.mcp.json` from step 3.1 lists 24 tools under `/mcp`.
+
+Also before the talk: a second terminal tab in `$REPO`, the repository open in a code editor, Claude Code logged in,
+the browser zoomed to 125% for Zoom, and port 8080 free (`lsof -nP -iTCP:8080 -sTCP:LISTEN` prints nothing).
+
+To stop and restart: `docker compose -f maquettiste.compose.yaml down` and `up -d` again (add `down -v` to also drop the
+editor's own state). Alternatives that are not needed for the talk (building the image locally, the CLI as a .NET tool
+from NuGet, zod and tsconfig notes) are in the [appendix](#appendix-alternatives-not-needed-for-the-talk).
 
 ## 1. Model in the editor (7 minutes)
 
-Everything is created in the editor, from the empty model B5 left. The rail on the left holds, top to bottom,
+Everything is created in the editor, from the empty model step 3 left. The rail on the left holds, top to bottom,
 **Domain model**, **Reference data**, **Databases**, **Diagrams** and **Generate**, with **Settings** (gear) and
 **Account** at its foot; the sidebar shows one explorer at a time. Every New dialog starts its **Domain** picker on the
 current domain (the row you right-clicked, else the selected element's domain), so everything below lands in Shop.
@@ -196,7 +126,7 @@ Optional if time allows: select the Order card and open the inspector's **JSON**
 ### Fallback: the model without the editor
 
 If the editor misbehaves, or time runs short, write the same model as files and through the editor's API. On the empty
-model of B5, first the domain, the diagram, the enum and the database (canonical form, so no MQ1003 warnings):
+model of step 3, first the domain, the diagram, the enum and the database (canonical form, so no MQ1003 warnings):
 
 ```zsh
 mkdir -p .maquettiste/model/{packages,diagrams,enums,databases/main}
@@ -327,7 +257,7 @@ nothing is written. Without the editor at all, Claude Code over MCP (part 3) can
 | 2.7 (1 min) | `maquettiste generate --check --progress none; echo $?` then, in the editor, change Customer `name` Len 120 to 150 (Ctrl+P, `Customer`, Enter; double-click the Len cell of `name`, `150`, Enter), and run the check again | First `Outcome: Succeeded`, `0`. Then `Drift: committed output does not match the model; run maquettiste generate and commit the result (exit 2).` with `A db/main/migrations/0002.sql`, `M db/main/schema.sql`, `M db/main/shop/tables/customers.sql`, `M src/generated/customer.schema.ts`, an `error MQ6018` line (the schema snapshot of database 'main' is stale: the next `generate` writes it), and `2`. This is the CI gate. (A hand edit of a generated file gives `MQ6009 Hand edit` and exit 3.) |
 | 2.8 (1 min) | Second tab: `maquettiste generate --watch --progress none`. In the editor, on Customer's Attributes tab, **Add attribute** `phone` (string, Len 40). Ctrl+C when done. | `[watch] initial run: ...` with the pending drift applied, then after the edit `M src/generated/customer.ts`, `M src/generated/customer.schema.ts`, `A db/main/migrations/0003.sql`, `M db/...` within half a second of the save (0.36 s measured). |
 
-Commands for 2.4 (copy the pack, then replace `.maquettiste/maquettiste.json`; `name` is the one `init` gave in B5):
+Commands for 2.4 (copy the pack, then replace `.maquettiste/maquettiste.json`; `name` is the one `init` gave in step 3):
 
 ```zsh
 cp -R $MQ/samples/typescript-pack .maquettiste/templates/typescript
@@ -408,7 +338,7 @@ cat > .mcp.json <<'EOF'
     "maquettiste": {
       "type": "stdio",
       "command": "docker",
-      "args": ["run", "-i", "--rm", "-v", "${PWD}:/repo", "-w", "/repo", "mattjcowan/maquettiste:demo", "maquettiste", "mcp"]
+      "args": ["run", "-i", "--rm", "-v", "${PWD}:/repo", "-w", "/repo", "mattjcowan/maquettiste:0.1.0", "maquettiste", "mcp"]
     }
   }
 }
@@ -429,7 +359,7 @@ answers above.
 every URL and `curl`:
 
 ```zsh
-MAQUETTISTE_PORT=8090 MAQUETTISTE_IMAGE=mattjcowan/maquettiste:demo docker compose -f $MQ/docker/compose.yaml --project-directory . up -d
+MAQUETTISTE_PORT=8090 docker compose -f maquettiste.compose.yaml up -d
 # open http://maquettiste.localhost:8090 ; curl with -H 'Host: maquettiste.localhost:8090' http://127.0.0.1:8090/...
 ```
 
@@ -442,7 +372,7 @@ that is not the editor, use the `maquettiste.localhost` URL.
 **The token.** The sign-in page appears whenever the container sees the browser as a remote peer (always under Docker
 Desktop). The token is whatever `MAQUETTISTE_EDITOR_TOKEN` held at `up`; a new shell loses it. `echo $MAQUETTISTE_EDITOR_TOKEN`,
 and if it is empty, set a new one and recreate the container (`... up -d` with the variable set; the model is untouched).
-"Your editor session ended" means the token changed: sign in again. Logs: `docker compose -f $MQ/docker/compose.yaml --project-directory . logs | grep -i "peer\|token"`.
+"Your editor session ended" means the token changed: sign in again. Logs: `docker compose -f maquettiste.compose.yaml logs | grep -i "peer\|token"`.
 
 **An element landed in "Not in a domain".** It was created with nothing selected: set **Domain** in its editor, or
 right-click it › **Move to domain…**. Right-click **Shop** for New actions and the picker starts on Shop.
@@ -450,14 +380,14 @@ right-click it › **Move to domain…**. Right-click **Shop** for New actions a
 **The top bar says `repo`.** `init` found no `package.json` name and no git remote and fell back to the container's
 folder `/repo`: set `"name"` in `.maquettiste/maquettiste.json` (then `maquettiste format`) and reload the page.
 
-**Generated files owned by someone else.** On the Mac, files should belong to you (B3). If `ls -ln` shows UID 1654,
-remove them through a container: `docker run --rm --user 0 -v "$PWD:/w" --entrypoint rm mattjcowan/maquettiste:demo -rf /w/<path>`.
+**Generated files owned by someone else.** On the Mac, files should belong to you (step 5). If `ls -ln` shows UID 1654,
+remove them through a container: `docker run --rm --user 0 -v "$PWD:/w" --entrypoint rm mattjcowan/maquettiste:0.1.0 -rf /w/<path>`.
 
-**`maquettiste: command not found`.** The function of B2 is not defined in this shell: `source ~/.zshrc`. With the .NET
+**`maquettiste: command not found`.** The function of step 2 is not defined in this shell: `source ~/.zshrc`. With the .NET
 tool fallback, `export PATH="$PATH:$HOME/.dotnet/tools"`; Claude Code inherits the PATH of the shell that starts it.
 
 **`Access to the path '/repo/...' is denied`.** A `docker run` without `--user` on Linux: the container's UID 1654 cannot
-write the repository. Use the function of B2, which passes `--user "$(id -u):$(id -g)"`.
+write the repository. Use the function of step 2, which passes `--user "$(id -u):$(id -g)"`.
 
 **`generate` exits 3 (hand edit).** Somebody edited a generated file: `maquettiste generate --hand-edits overwrite`.
 
@@ -471,12 +401,12 @@ file changes live (it did on Linux; **not verified on a Mac**).
 
 ```zsh
 cd $REPO
-docker compose -f $MQ/docker/compose.yaml --project-directory . down -v   # the editor and its host volume
+docker compose -f maquettiste.compose.yaml down -v   # the editor and its host volume
 git checkout -- . && git clean -fd -- .maquettiste .mcp.json .claude db src/generated
 git status --short                                                       # clean again
 ```
 
-Then start again at B5. To redo only parts 2 and 3 on the same model, commit after part 1
+Then start again at step 3. To redo only parts 2 and 3 on the same model, commit after part 1
 (`git add .maquettiste && git commit -m "Demo model"`) during rehearsal, and reset to that commit instead.
 
 ### WSL rehearsal notes
@@ -502,7 +432,7 @@ Engine - Community", not Docker Desktop), so it behaves like Linux, not like the
 
 ### Re-rehearsal, 2026-09-29
 
-Linux (WSL2, amd64, Docker Engine), image `mattjcowan/maquettiste:demo` built from the final tree, every CLI command
+Linux (WSL2, amd64, Docker Engine), image `mattjcowan/maquettiste:0.1.0` built from the final tree, every CLI command
 from the image as the user (`--user 1000:1000`), the editor on port 8094, a fresh repository. Part 1 was driven by a
 Playwright script that follows the steps above click for click, so its times are machine times: allow the table's
 minutes when you do it by hand.
@@ -535,7 +465,7 @@ macOS or Docker Desktop.
 
 ### First rehearsal, 2026-09-28
 
-Linux (WSL2, amd64, Docker Engine 29.6.1), image `mattjcowan/maquettiste:demo` from the tree of that day, CLI
+Linux (WSL2, amd64, Docker Engine 29.6.1), image `mattjcowan/maquettiste:0.1.0` from the tree of that day, CLI
 1.0.0-alpha.1 packed from it. The editor steps then used starter files, since superseded by part 1 above.
 
 | Step | Result | Time |
@@ -590,3 +520,20 @@ header's **+** button, not clicked in rehearsal) (the starter files are now only
 starts on the current domain (all four entities landed in Shop); `generate` prints each progress stage once, in order,
 and `--check` prints no write stage; `maquettiste format` exists; and Claude's answer to 3.4 named the next migration
 correctly.
+
+## Appendix: alternatives (not needed for the talk)
+
+**Build the image locally** instead of pulling (native arm64, 5 to 10 minutes on a first build):
+`git clone git@github.com:mattjcowan/maquettiste.git && cd maquettiste && docker build -f docker/Dockerfile -t mattjcowan/maquettiste:0.1.0 .`
+
+**The CLI as a .NET tool** (needs the .NET 10 SDK; NuGet has 0.1.0): `dotnet tool install -g Maquettiste.Cli --version 0.1.0`,
+then `export PATH="$PATH:$HOME/.dotnet/tools"` and `unfunction maquettiste` in a shell that defined the Docker function.
+Each Docker command pays a container start of about half a second; the native tool does not.
+
+**zod and tsconfig.** The TypeScript pack's schemas need zod 3.23 or later (`npm ls zod`); zod 4 keeps the used forms as
+deprecated ones, and if `tsc` complains set the pack's `zod` parameter to `false`. With `"moduleResolution": "bundler"` set
+the pack's `importExtension` to `""`; with `NodeNext` the default `.js` is right. The pack writes `src/generated/`; pick
+another folder if that one exists.
+
+**Port 8080 taken.** Change the `ports` line of `maquettiste.compose.yaml` to `"127.0.0.1:8090:8080"` and open
+http://maquettiste.localhost:8090.
