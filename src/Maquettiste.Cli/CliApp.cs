@@ -130,7 +130,8 @@ public sealed class CliApp(CliEnvironment environment)
 
         Commands:
           init                  Create .maquettiste/, the schema files, a starter pack and .gitignore entries
-                                  --pack sql-ddl|csharp-dapper|none (default sql-ddl), --hooks
+                                  --pack sql-ddl|csharp-dapper|none (default sql-ddl), --hooks,
+                                  --mcp (.mcp.json), --skill (.claude/skills), --agent-setup (both)
           validate              Validate the model and packs
                                   --format text|json|sarif, --output <file>
           generate              Incremental generation
@@ -143,6 +144,7 @@ public sealed class CliApp(CliEnvironment environment)
           bench                 Run the synthetic benchmark
                                   --out <dir>, --seed, --entities, --relations, --enums, --fanout, --keep,
                                   --baseline <file>, --max-regression <percent>, --format text|json, --no-example-packs
+          mcp                   Serve the model to agents over the Model Context Protocol (stdio; see docs/mcp.md)
 
         Global options:
           --repo <dir>          The repo root (default: nearest ancestor holding .maquettiste/maquettiste.json, else the current directory)
@@ -191,6 +193,7 @@ public sealed class CliApp(CliEnvironment environment)
                 "migrate" => await MigrateCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "pack" => await PackNewCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "bench" => await BenchCommand.RunAsync(context, ct).ConfigureAwait(false),
+                "mcp" => await McpCommand.RunAsync(context, ct).ConfigureAwait(false),
                 _ => throw new UsageException($"Unknown command '{command}'. Run 'maquettiste --help'."),
             };
         }

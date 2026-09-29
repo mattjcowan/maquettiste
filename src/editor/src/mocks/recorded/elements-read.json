@@ -1,0 +1,498 @@
+{
+  "elements": [
+    {
+      "element": {
+        "kind": "entity",
+        "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+        "abstract": false,
+        "base": null,
+        "key": {
+          "attributes": [
+            "01J92P0V11B0FJNJV9V21CSEM1"
+          ],
+          "strategy": "database-identity"
+        },
+        "alternateKeys": [],
+        "attributes": [
+          {
+            "type": "int64",
+            "required": true,
+            "default": null,
+            "defaultExpression": null,
+            "length": null,
+            "precision": null,
+            "scale": null,
+            "collection": false,
+            "unique": false,
+            "indexed": false,
+            "readOnly": false,
+            "immutable": false,
+            "derived": null,
+            "sensitive": null,
+            "validation": null,
+            "order": null,
+            "id": "01J92P0V11B0FJNJV9V21CSEM1",
+            "name": "id",
+            "displayName": null,
+            "pluralName": null,
+            "description": null,
+            "tags": [],
+            "category": null,
+            "stereotypes": [],
+            "properties": {},
+            "generation": {},
+            "source": null
+          },
+          {
+            "type": {
+              "ref": "01J92P0V0304M76KA84NE4D1TE"
+            },
+            "required": true,
+            "default": null,
+            "defaultExpression": null,
+            "length": null,
+            "precision": null,
+            "scale": null,
+            "collection": false,
+            "unique": false,
+            "indexed": false,
+            "readOnly": false,
+            "immutable": false,
+            "derived": null,
+            "sensitive": null,
+            "validation": null,
+            "order": null,
+            "id": "01J92P0V129V290HSYZV50YA63",
+            "name": "amount",
+            "displayName": null,
+            "pluralName": null,
+            "description": null,
+            "tags": [],
+            "category": null,
+            "stereotypes": [],
+            "properties": {},
+            "generation": {},
+            "source": null
+          },
+          {
+            "type": "datetimeoffset",
+            "required": true,
+            "default": null,
+            "defaultExpression": null,
+            "length": null,
+            "precision": null,
+            "scale": null,
+            "collection": false,
+            "unique": false,
+            "indexed": false,
+            "readOnly": false,
+            "immutable": false,
+            "derived": null,
+            "sensitive": null,
+            "validation": null,
+            "order": null,
+            "id": "01J92P0V138GR963610SFWWY86",
+            "name": "receivedAt",
+            "displayName": null,
+            "pluralName": null,
+            "description": null,
+            "tags": [],
+            "category": null,
+            "stereotypes": [],
+            "properties": {},
+            "generation": {},
+            "source": null
+          },
+          {
+            "type": "string",
+            "required": false,
+            "default": null,
+            "defaultExpression": null,
+            "length": 64,
+            "precision": null,
+            "scale": null,
+            "collection": false,
+            "unique": false,
+            "indexed": false,
+            "readOnly": false,
+            "immutable": false,
+            "derived": null,
+            "sensitive": null,
+            "validation": null,
+            "order": null,
+            "id": "01J92P0V14NH6GF73G93R3E22D",
+            "name": "reference",
+            "displayName": null,
+            "pluralName": null,
+            "description": null,
+            "tags": [],
+            "category": null,
+            "stereotypes": [],
+            "properties": {},
+            "generation": {},
+            "source": null
+          }
+        ],
+        "$schema": "../../.schema/v1/entity.json",
+        "id": "01J92P0V0HEGSC6MW92CST5KA6",
+        "name": "Payment",
+        "displayName": null,
+        "pluralName": null,
+        "description": null,
+        "tags": [],
+        "category": "01J92P0V06TYE8P8990AV35A8K",
+        "stereotypes": [
+          "audited"
+        ],
+        "properties": {},
+        "generation": {},
+        "source": null
+      },
+      "path": ".maquettiste/model/entities/payment.json",
+      "hash": "3fcf3563828b7a5a112b376bcb440d466ceb092c72798d2f96c3be34aac8c43d",
+      "dependencyHash": "606f06552152382422adeccec20add2d2e850ab7b2cac7228d40c83de3216013",
+      "json": {
+        "$schema": "../../.schema/v1/entity.json",
+        "kind": "entity",
+        "id": "01J92P0V0HEGSC6MW92CST5KA6",
+        "name": "Payment",
+        "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+        "stereotypes": [
+          "audited"
+        ],
+        "category": "01J92P0V06TYE8P8990AV35A8K",
+        "key": {
+          "attributes": [
+            "01J92P0V11B0FJNJV9V21CSEM1"
+          ],
+          "strategy": "database-identity"
+        },
+        "attributes": [
+          {
+            "id": "01J92P0V11B0FJNJV9V21CSEM1",
+            "name": "id",
+            "type": "int64",
+            "required": true
+          },
+          {
+            "id": "01J92P0V129V290HSYZV50YA63",
+            "name": "amount",
+            "type": {
+              "ref": "01J92P0V0304M76KA84NE4D1TE"
+            },
+            "required": true
+          },
+          {
+            "id": "01J92P0V138GR963610SFWWY86",
+            "name": "receivedAt",
+            "type": "datetimeoffset",
+            "required": true
+          },
+          {
+            "id": "01J92P0V14NH6GF73G93R3E22D",
+            "name": "reference",
+            "type": "string",
+            "length": 64
+          }
+        ]
+      },
+      "sidecarText": null
+    },
+    {
+      "element": {
+        "kind": "entity",
+        "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+        "abstract": false,
+        "base": null,
+        "key": {
+          "attributes": [
+            "01J92P0V0Q9EK961M5HAQ3C5MY"
+          ],
+          "strategy": "uuid-v7"
+        },
+        "alternateKeys": [],
+        "attributes": [
+          {
+            "type": "uuid",
+            "required": true,
+            "default": null,
+            "defaultExpression": null,
+            "length": null,
+            "precision": null,
+            "scale": null,
+            "collection": false,
+            "unique": false,
+            "indexed": false,
+            "readOnly": false,
+            "immutable": false,
+            "derived": null,
+            "sensitive": null,
+            "validation": null,
+            "order": null,
+            "id": "01J92P0V0Q9EK961M5HAQ3C5MY",
+            "name": "id",
+            "displayName": null,
+            "pluralName": null,
+            "description": null,
+            "tags": [],
+            "category": null,
+            "stereotypes": [],
+            "properties": {},
+            "generation": {},
+            "source": null
+          },
+          {
+            "type": "string",
+            "required": true,
+            "default": null,
+            "defaultExpression": null,
+            "length": 32,
+            "precision": null,
+            "scale": null,
+            "collection": false,
+            "unique": true,
+            "indexed": false,
+            "readOnly": false,
+            "immutable": false,
+            "derived": null,
+            "sensitive": null,
+            "validation": null,
+            "order": null,
+            "id": "01J92P0V0R3VSP7D5238DTNZX1",
+            "name": "number",
+            "displayName": null,
+            "pluralName": null,
+            "description": null,
+            "tags": [],
+            "category": null,
+            "stereotypes": [],
+            "properties": {},
+            "generation": {},
+            "source": null
+          },
+          {
+            "type": "date",
+            "required": true,
+            "default": null,
+            "defaultExpression": null,
+            "length": null,
+            "precision": null,
+            "scale": null,
+            "collection": false,
+            "unique": false,
+            "indexed": true,
+            "readOnly": false,
+            "immutable": false,
+            "derived": null,
+            "sensitive": null,
+            "validation": null,
+            "order": null,
+            "id": "01J92P0V0SNXS6PZ42VDK42HP9",
+            "name": "issuedOn",
+            "displayName": null,
+            "pluralName": null,
+            "description": null,
+            "tags": [],
+            "category": null,
+            "stereotypes": [],
+            "properties": {},
+            "generation": {},
+            "source": null
+          },
+          {
+            "type": {
+              "ref": "01J92P0V0304M76KA84NE4D1TE"
+            },
+            "required": false,
+            "default": null,
+            "defaultExpression": null,
+            "length": null,
+            "precision": null,
+            "scale": null,
+            "collection": false,
+            "unique": false,
+            "indexed": false,
+            "readOnly": false,
+            "immutable": false,
+            "derived": null,
+            "sensitive": null,
+            "validation": null,
+            "order": null,
+            "id": "01J92P0V0T6EA0XM025XQX8GBW",
+            "name": "total",
+            "displayName": null,
+            "pluralName": null,
+            "description": null,
+            "tags": [],
+            "category": null,
+            "stereotypes": [],
+            "properties": {},
+            "generation": {},
+            "source": null
+          },
+          {
+            "type": {
+              "ref": "01J92P0V05WQDH2GZG539D9VG1"
+            },
+            "required": true,
+            "default": "Draft",
+            "defaultExpression": null,
+            "length": null,
+            "precision": null,
+            "scale": null,
+            "collection": false,
+            "unique": false,
+            "indexed": false,
+            "readOnly": false,
+            "immutable": false,
+            "derived": null,
+            "sensitive": null,
+            "validation": null,
+            "order": null,
+            "id": "01J92P0V0VB1Z49SWERMAGR4TV",
+            "name": "status",
+            "displayName": null,
+            "pluralName": null,
+            "description": null,
+            "tags": [],
+            "category": null,
+            "stereotypes": [],
+            "properties": {},
+            "generation": {},
+            "source": null
+          },
+          {
+            "type": "text",
+            "required": false,
+            "default": null,
+            "defaultExpression": null,
+            "length": null,
+            "precision": null,
+            "scale": null,
+            "collection": false,
+            "unique": false,
+            "indexed": false,
+            "readOnly": false,
+            "immutable": false,
+            "derived": null,
+            "sensitive": null,
+            "validation": null,
+            "order": null,
+            "id": "01J92P0V0WKRGKH7YBKA2V30NC",
+            "name": "notes",
+            "displayName": null,
+            "pluralName": null,
+            "description": null,
+            "tags": [],
+            "category": null,
+            "stereotypes": [],
+            "properties": {},
+            "generation": {},
+            "source": null
+          }
+        ],
+        "$schema": "../../.schema/v1/entity.json",
+        "id": "01J92P0V0FJ23CGSNKM7P1W5V7",
+        "name": "Invoice",
+        "displayName": null,
+        "pluralName": null,
+        "description": {
+          "file": "invoice.md"
+        },
+        "tags": [
+          "billing"
+        ],
+        "category": "01J92P0V06TYE8P8990AV35A8K",
+        "stereotypes": [
+          "aggregate-root",
+          "audited",
+          "soft-delete"
+        ],
+        "properties": {
+          "retentionDays": 3650
+        },
+        "generation": {},
+        "source": null
+      },
+      "path": ".maquettiste/model/entities/invoice.json",
+      "hash": "4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73",
+      "dependencyHash": "2bb293bd02aa400817ba26da376c49e5df22efb82909dad133922768a407a9c7",
+      "json": {
+        "$schema": "../../.schema/v1/entity.json",
+        "kind": "entity",
+        "id": "01J92P0V0FJ23CGSNKM7P1W5V7",
+        "name": "Invoice",
+        "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+        "description": {
+          "file": "invoice.md"
+        },
+        "stereotypes": [
+          "aggregate-root",
+          "audited",
+          "soft-delete"
+        ],
+        "tags": [
+          "billing"
+        ],
+        "category": "01J92P0V06TYE8P8990AV35A8K",
+        "key": {
+          "attributes": [
+            "01J92P0V0Q9EK961M5HAQ3C5MY"
+          ],
+          "strategy": "uuid-v7"
+        },
+        "attributes": [
+          {
+            "id": "01J92P0V0Q9EK961M5HAQ3C5MY",
+            "name": "id",
+            "type": "uuid",
+            "required": true
+          },
+          {
+            "id": "01J92P0V0R3VSP7D5238DTNZX1",
+            "name": "number",
+            "type": "string",
+            "length": 32,
+            "required": true,
+            "unique": true
+          },
+          {
+            "id": "01J92P0V0SNXS6PZ42VDK42HP9",
+            "name": "issuedOn",
+            "type": "date",
+            "required": true,
+            "indexed": true
+          },
+          {
+            "id": "01J92P0V0T6EA0XM025XQX8GBW",
+            "name": "total",
+            "type": {
+              "ref": "01J92P0V0304M76KA84NE4D1TE"
+            }
+          },
+          {
+            "id": "01J92P0V0VB1Z49SWERMAGR4TV",
+            "name": "status",
+            "type": {
+              "ref": "01J92P0V05WQDH2GZG539D9VG1"
+            },
+            "required": true,
+            "default": "Draft"
+          },
+          {
+            "id": "01J92P0V0WKRGKH7YBKA2V30NC",
+            "name": "notes",
+            "type": "text"
+          }
+        ],
+        "properties": {
+          "retentionDays": 3650
+        }
+      },
+      "sidecarText": "# Invoice\n\nA bill issued to a customer. Its number is assigned when it is issued and never reused.\n"
+    }
+  ],
+  "missing": [
+    "01J92P0V0FJ23CGSNKM7P1W5V9"
+  ]
+}

@@ -3,7 +3,10 @@ name: editor
 # The editor SPA (phase2-design.md sections 4 and 9): install, generated-code drift check, lint, type check,
 # Vitest (store, drafts and undo, client, mock contract suite, realtime cache patching, token contrast, shell,
 # the site scripts), the production build and site zip, and Playwright: the mock project against the mock
-# build (vite preview) and the dev smoke spec against the Vite dev server, both started by the config.
+# build (vite preview) and the dev smoke spec against the Vite dev server, both started by the config. Then the
+# `scale` project: the 5,000-entity model (bench write-model, packed by scripts/gen-scale-model.mjs, cached on
+# the inputs of the generator so a hit skips .NET) opened with ?mock=large, timing the explorer-redesign.md 4.5
+# targets; its report (scale-timings.json per test) is uploaded on every run.
 
 on:
   push:
@@ -14,6 +17,7 @@ on:
       - "tests/fixtures/models/billing/**"
       - "packs/sql-ddl/**"
       - "packs/csharp-dapper/**"
+      - "bench/Maquettiste.Bench/**"
       - ".github/workflows/editor.yml"
   pull_request:
     paths:
@@ -23,6 +27,7 @@ on:
       - "tests/fixtures/models/billing/**"
       - "packs/sql-ddl/**"
       - "packs/csharp-dapper/**"
+      - "bench/Maquettiste.Bench/**"
       - ".github/workflows/editor.yml"
   workflow_dispatch:
 
@@ -36,7 +41,7 @@ defaults:
 jobs:
   spa:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -69,6 +74,32 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
+          path: |
+            src/editor/playwright-report
+            src/editor/test-results
+          if-no-files-found: ignore
+      - name: Cache the large mock model (?mock=large)
+        id: scale-model
+        uses: actions/cache@v4
+        with:
+          path: src/editor/src/mocks/data/large.json.gz
+          key: mock-large-${{ hashFiles('bench/Maquettiste.Bench/**', 'src/Maquettiste.Engine/**', 'schemas/v1/**', 'src/editor/scripts/gen-scale-model.mjs', 'Directory.Packages.props', 'global.json') }}
+      - uses: actions/setup-dotnet@v4
+        if: steps.scale-model.outputs.cache-hit != 'true'
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+      - name: Generate the large mock model (bench write-model, then pack)
+        if: steps.scale-model.outputs.cache-hit != 'true'
+        run: npm run gen:scale
+      - name: Playwright scale project (explorer-redesign.md 4.5 targets on ?mock=large)
+        run: npm run e2e:scale
+      - name: Upload the scale report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-scale-report
           path: |
             src/editor/playwright-report
             src/editor/test-results

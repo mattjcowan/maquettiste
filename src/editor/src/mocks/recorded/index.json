@@ -19,7 +19,8 @@
     "hash": "f16685927cccf1f96a99dd454a0ca4b1dd7dcf63b4828cbec48172cc0337ee3a",
     "path": ".maquettiste/model/databases/main/sequences/invoice-number-seq.json",
     "category": null,
-    "stereotypes": []
+    "stereotypes": [],
+    "database": "01J92P0V1QRN2181XM2ZWE02W4"
   },
   {
     "id": "01J92P0V1T0J6RH4MY9H81NYB4",
@@ -30,7 +31,9 @@
     "hash": "ae8e25b09c4545bea2c0a6e43207c1dcc0994210ff290f46790c4abc9774ea13",
     "path": ".maquettiste/model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json",
     "category": null,
-    "stereotypes": []
+    "stereotypes": [],
+    "database": "01J92P0V1QRN2181XM2ZWE02W4",
+    "entity": "01J92P0V0FJ23CGSNKM7P1W5V7"
   },
   {
     "id": "01J92P0V1YZ4YP352KD1A50FXS",
@@ -41,7 +44,8 @@
     "hash": "35aba475e981a066643711a0eb737a20437d3cc1ad186128c2d2e18a17745ae3",
     "path": ".maquettiste/model/databases/main/views/outstanding-invoices.json",
     "category": null,
-    "stereotypes": []
+    "stereotypes": [],
+    "database": "01J92P0V1QRN2181XM2ZWE02W4"
   },
   {
     "id": "01J92P0V2164SDBW687ZV6E1MV",
@@ -52,7 +56,8 @@
     "hash": "a29e751129658af7503fb429afb3b382538a96bd8adee116e98b08a17152840c",
     "path": ".maquettiste/model/diagrams/billing-overview.json",
     "category": null,
-    "stereotypes": []
+    "stereotypes": [],
+    "memberCount": 8
   },
   {
     "id": "01J92P0V0ETQKXXP951CMMNHH3",
@@ -145,7 +150,9 @@
     "hash": "84db9d2e788aa2a538cb1df016c3613dc7e0c886317630b3d85fb5808d9b8318",
     "path": ".maquettiste/model/mappings/invoice-in-main.json",
     "category": null,
-    "stereotypes": []
+    "stereotypes": [],
+    "database": "01J92P0V1QRN2181XM2ZWE02W4",
+    "entity": "01J92P0V0FJ23CGSNKM7P1W5V7"
   },
   {
     "id": "01J92P0V1ZYK32MC97T5NBB5Y5",
@@ -156,7 +163,8 @@
     "hash": "8c48c6fb141cdf1f9fe1f2b05904923d9717a46d8bc778649eea71adb2fa1086",
     "path": ".maquettiste/model/mappings/settles-in-main.json",
     "category": null,
-    "stereotypes": []
+    "stereotypes": [],
+    "database": "01J92P0V1QRN2181XM2ZWE02W4"
   },
   {
     "id": "01J92P0V01KDRN8GX5PGYCNKSX",
@@ -189,7 +197,17 @@
     "hash": "f9fdc699d65150052e25ef459180736b24a44f97c69cbefd09c9d12897fd36e9",
     "path": ".maquettiste/model/relations/contains.json",
     "category": null,
-    "stereotypes": []
+    "stereotypes": [],
+    "ends": [
+      {
+        "entity": "01J92P0V0FJ23CGSNKM7P1W5V7",
+        "role": "invoice"
+      },
+      {
+        "entity": "01J92P0V0GWFR78HZH0P8Z3GY7",
+        "role": "lines"
+      }
+    ]
   },
   {
     "id": "01J92P0V1ACKN3G6TK3NJDTM82",
@@ -200,7 +218,17 @@
     "hash": "0fe924f4bb4e9746c7b91d1c725561de6d24205348d9fb8fdf360921644dffc6",
     "path": ".maquettiste/model/relations/places.json",
     "category": null,
-    "stereotypes": []
+    "stereotypes": [],
+    "ends": [
+      {
+        "entity": "01J92P0V0ETQKXXP951CMMNHH3",
+        "role": "customer"
+      },
+      {
+        "entity": "01J92P0V0FJ23CGSNKM7P1W5V7",
+        "role": "invoices"
+      }
+    ]
   },
   {
     "id": "01J92P0V1CC98R0RRCAV73SGF4",
@@ -211,7 +239,17 @@
     "hash": "9394a133c8f98f739403a1633b5a7f3574d2dcca180e9866f4bff7431cf6eb63",
     "path": ".maquettiste/model/relations/refers-to.json",
     "category": null,
-    "stereotypes": []
+    "stereotypes": [],
+    "ends": [
+      {
+        "entity": "01J92P0V0GWFR78HZH0P8Z3GY7",
+        "role": "lines"
+      },
+      {
+        "entity": "01J92P0V0JR8BE8253SKT29ZG7",
+        "role": "product"
+      }
+    ]
   },
   {
     "id": "01J92P0V1DKHD5Q02DV6S5M53D",
@@ -222,7 +260,17 @@
     "hash": "b994eb5e34a181ddca89341232c603c326753e35e0dcc9e20970d8b4fcafe168",
     "path": ".maquettiste/model/relations/settles.json",
     "category": null,
-    "stereotypes": []
+    "stereotypes": [],
+    "ends": [
+      {
+        "entity": "01J92P0V0HEGSC6MW92CST5KA6",
+        "role": "payments"
+      },
+      {
+        "entity": "01J92P0V0FJ23CGSNKM7P1W5V7",
+        "role": "invoices"
+      }
+    ]
   },
   {
     "id": "01J92P0V04TDYE2C73WMNXVDBV",

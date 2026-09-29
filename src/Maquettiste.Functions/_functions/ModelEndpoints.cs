@@ -7,19 +7,48 @@ namespace Maquettiste.Functions;
 /// <summary>The model: the index, elements with <c>If-Match</c>, atomic batches and references (phase2-design.md section 3.7).</summary>
 public static class ModelEndpoints
 {
-    /// <summary>Summaries of every element.</summary>
+    /// <summary>
+    /// Summaries of every element, with the index's hash as ETag and <c>Cache-Control: no-cache</c> (E5e): a request whose
+    /// <c>If-None-Match</c> names the current tag gets 304 with no body.
+    /// </summary>
     /// <param name="context">The request.</param>
     /// <param name="store">The model store.</param>
     /// <param name="ct">Cancellation.</param>
-    /// <returns>200 with the summaries.</returns>
+    /// <returns>200 with the summaries, or 304.</returns>
     [HttpGet("/api/model/index")]
     public static Task<IResult> Index(HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(store);
         var index = await store.GetIndexAsync(ct).ConfigureAwait(false);
-        context.Response.Headers.CacheControl = "no-store";
+        var tag = ModelReads.IndexTag(index);
+        Api.SetETag(context, tag);
+        context.Response.Headers.CacheControl = "no-cache";
+        if (Api.TryReadTag(context.Request.Headers.IfNoneMatch.ToString(), out var seen) && seen == tag)
+            return Results.StatusCode(StatusCodes.Status304NotModified);
         return Api.Json(index);
+    });
+
+    /// <summary>The documents of up to 200 element or sub-element ids, from one snapshot (E5b).</summary>
+    /// <param name="context">The request.</param>
+    /// <param name="store">The model store.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>200 with the documents and the ids that matched nothing, or 400.</returns>
+    [HttpPost("/api/model/elements/read")]
+    public static Task<IResult> Read(HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(store);
+        var (request, error) = await Api.ReadJsonAsync<ElementReadRequest>(context.Request, null, ct).ConfigureAwait(false);
+        if (error is not null)
+            return error;
+        if (request!.Ids is not { } ids)
+            return Api.BadRequest("ids is required.");
+        if (ids.Count > ModelReads.MaxReadIds)
+            return Api.BadRequest($"At most {ModelReads.MaxReadIds} ids can be read at once; {ids.Count} were given.");
+        if (ids.Any(id => !Api.IsUlid(id)))
+            return Api.BadRequest("ids must be element or sub-element ids (uppercase ULIDs).");
+        return Api.Json(await store.ReadElementsAsync(ids, ct).ConfigureAwait(false));
     });
 
     /// <summary>Creates an element; a missing top-level id is assigned by the engine.</summary>
@@ -174,3 +203,7 @@ public static class ModelEndpoints
         return Api.Json(result, Api.StatusOf(result.Outcome));
     }
 }
+
+/// <summary>The body of <c>POST /api/model/elements/read</c> (E5b).</summary>
+/// <param name="Ids">Element or sub-element ids, at most 200.</param>
+public sealed record ElementReadRequest(IReadOnlyList<string>? Ids);

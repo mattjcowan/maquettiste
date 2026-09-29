@@ -24,7 +24,7 @@ internal sealed class CommandLine
     private static readonly HashSet<string> FlagOptions = new(StringComparer.Ordinal)
     {
         "--version", "--help", "--quiet", "--no-color", "--hooks", "--force", "--watch", "--dry-run", "--diff", "--check", "--keep", "--no-wait",
-        "--no-example-packs",
+        "--no-example-packs", "--mcp", "--skill", "--agent-setup",
     };
 
     /// <summary>Short aliases.</summary>

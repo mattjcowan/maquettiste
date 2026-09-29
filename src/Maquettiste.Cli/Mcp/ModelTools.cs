@@ -1,0 +1,654 @@
+using System.ComponentModel;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Maquettiste.Engine;
+using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine.Json;
+using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Pipeline;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+
+namespace Maquettiste.Cli.Mcp;
+
+/// <summary>
+/// The tools of <c>maquettiste mcp</c> (docs/mcp.md): thin wrappers over <see cref="ModelStore"/> and <see cref="GenerationService"/>
+/// with the semantics and JSON bodies of the editor API operations (docs/api/openapi.yaml), so an agent and the editor see one model.
+/// </summary>
+/// <remarks>
+/// A tool's success is one text block holding the operation's JSON body, serialized with <see cref="JsonSerializerDefaults.Web"/> like
+/// the API's. A failure is a tool error (<see cref="CallToolResult.IsError"/>) whose text is a problem object: the API's
+/// <c>code</c>, <c>status</c> and <c>title</c>, plus the body the API returns with that status (diagnostics, the disk version,
+/// referrers, stale units). Every read starts with a stat rescan of the model folder, so edits made behind the server (by the agent's
+/// own file tools, git or the editor) are seen. Writes are recorded as <see cref="ChangeSource.Cli"/>. Cancellation of a request
+/// cancels the engine call; a cancelled request gets no result, as the protocol requires.
+/// </remarks>
+/// <param name="store">The model store.</param>
+/// <param name="generation">The generation service over <paramref name="store"/>.</param>
+/// <param name="repoRoot">The repo root, for the project name when the settings have none.</param>
+/// <param name="log">Where an internal failure is reported, one line each (standard error, never the protocol stream).</param>
+internal sealed class ModelTools(ModelStore store, GenerationService generation, string repoRoot, TextWriter log)
+{
+    private readonly TextWriter _log = log ?? throw new ArgumentNullException(nameof(log));
+    private readonly ModelStore _store = store ?? throw new ArgumentNullException(nameof(store));
+    private readonly GenerationService _generation = generation ?? throw new ArgumentNullException(nameof(generation));
+    private readonly string _repoRoot = repoRoot ?? throw new ArgumentNullException(nameof(repoRoot));
+    private readonly SchemaRegistry _schemas = new();
+
+    /// <summary>The options bodies are written with: <see cref="JsonSerializerDefaults.Web"/> and nothing else, as the API's.</summary>
+    public JsonSerializerOptions JsonOptions { get; } = new(JsonSerializerDefaults.Web);
+
+    /// <summary>The project: name, versions, settings with their hash, databases, packs and extension schemas (getProject).</summary>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The project.</returns>
+    [McpServerTool(Name = "get_project", Title = "Project", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("The project: name, format and engine versions, settings and their hash, databases, template packs (with pack diagnostics) and extension schemas. Start here.")]
+    public Task<CallToolResult> GetProject(CancellationToken ct) => GuardAsync(async () =>
+    {
+        var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var packs = await _generation.GetPacksAsync(ct).ConfigureAwait(false);
+        var name = snapshot.Settings.Name is { Length: > 0 } n ? n : Path.GetFileName(_repoRoot);
+        return Ok(new ProjectInfo(name, snapshot.Settings.FormatVersion, EngineVersion.Value, "local", snapshot.Settings, snapshot.SettingsHash,
+            [.. snapshot.Summaries().Where(s => s.Kind == "database")], packs.Packs, packs.Diagnostics, [.. snapshot.Extensions.Select(e => e.Schema)], null));
+    }, ct);
+
+    /// <summary>The element summaries, filtered (getModelIndex).</summary>
+    /// <param name="kind">A kind name.</param>
+    /// <param name="package">A package id or name.</param>
+    /// <param name="tag">A tag.</param>
+    /// <param name="category">A category.</param>
+    /// <param name="stereotype">A stereotype.</param>
+    /// <param name="query">A name fragment.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The matching summaries, in index order.</returns>
+    [McpServerTool(Name = "get_model_index", Title = "Model index", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("Summaries of the top-level elements (id, kind, name, package, tags, category, stereotypes, hash, path). Every filter is optional and they combine with AND.")]
+    public Task<CallToolResult> GetModelIndex(
+        [Description("Only this kind, for example entity, relation, enum, value-object, scalar-type, package, database, table, view, sequence, mapping, diagram.")] string? kind = null,
+        [Description("Only elements directly in this package, by package id or package name.")] string? package = null,
+        [Description("Only elements with this tag.")] string? tag = null,
+        [Description("Only elements in this category.")] string? category = null,
+        [Description("Only elements with this stereotype.")] string? stereotype = null,
+        [Description("Only elements whose name contains this text, ignoring case.")] string? query = null,
+        CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var index = await _store.GetIndexAsync(ct).ConfigureAwait(false);
+        HashSet<string>? packages = null;
+        if (!string.IsNullOrEmpty(package))
+        {
+            packages = new HashSet<string>(StringComparer.Ordinal) { package };
+            foreach (var summary in index)
+            {
+                if (summary.Kind == "package" && string.Equals(summary.Name, package, StringComparison.OrdinalIgnoreCase))
+                    packages.Add(summary.Id);
+            }
+        }
+
+        IEnumerable<ElementSummary> result = index;
+        if (!string.IsNullOrEmpty(kind))
+            result = result.Where(s => string.Equals(s.Kind, kind, StringComparison.Ordinal));
+        if (packages is not null)
+            result = result.Where(s => s.Package is not null && packages.Contains(s.Package));
+        if (!string.IsNullOrEmpty(tag))
+            result = result.Where(s => s.Tags.Contains(tag, StringComparer.Ordinal));
+        if (!string.IsNullOrEmpty(category))
+            result = result.Where(s => string.Equals(s.Category, category, StringComparison.Ordinal));
+        if (!string.IsNullOrEmpty(stereotype))
+            result = result.Where(s => s.Stereotypes.Contains(stereotype, StringComparer.Ordinal));
+        if (!string.IsNullOrEmpty(query))
+            result = result.Where(s => s.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
+        return Ok(result.ToList());
+    }, ct);
+
+    /// <summary>One element's document and hash (getElement).</summary>
+    /// <param name="id">The element id.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The document.</returns>
+    [McpServerTool(Name = "get_element", Title = "Get element", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("One element: its canonical JSON document (json), its hash (pass it as expectedHash to save or delete), its path, the typed element and its Markdown sidecar text.")]
+    public Task<CallToolResult> GetElement([Description("The element id (a ULID); required.")] string? id = null, CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (string.IsNullOrEmpty(id))
+            return BadRequest("id is required.");
+        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var document = await _store.GetElementAsync(id, ct).ConfigureAwait(false);
+        return document is null ? NotFound("element", id) : Ok(document);
+    }, ct);
+
+    /// <summary>Saves an element if its file still has the expected hash (saveElement).</summary>
+    /// <param name="id">The element id.</param>
+    /// <param name="element">The whole document.</param>
+    /// <param name="expectedHash">The hash the caller read.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The save result.</returns>
+    [McpServerTool(Name = "save_element", Title = "Save element", Destructive = true, Idempotent = true, OpenWorld = false)]
+    [Description("Replaces an element with a whole document if the file still has expectedHash. A conflict writes nothing and returns the disk version (current, hash) and the submitted document; an invalid document returns the diagnostics. A rename moves the file in the same save.")]
+    public Task<CallToolResult> SaveElement(
+        [Description("The element id; the id in the document must be the same; required.")] string? id = null,
+        [Description("The whole element document (the json from get_element, edited); required.")] JsonElement? element = null,
+        [Description("The hash returned by get_element (or by the last save); required.")] string? expectedHash = null,
+        CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (string.IsNullOrEmpty(id))
+            return BadRequest("id is required.");
+        if (string.IsNullOrEmpty(expectedHash))
+            return Problem("precondition-required", 428, "expectedHash is required: read the element with get_element first.");
+        if (DocumentBytes(element) is not { } body)
+            return BadRequest("element is required: a JSON object (the whole element document).");
+        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var result = await _store.SaveAsync(id, body, expectedHash, ChangeSource.Cli, ct).ConfigureAwait(false);
+        return FromOutcome(result.Outcome, result, element);
+    }, ct);
+
+    /// <summary>Creates an element (createElement).</summary>
+    /// <param name="element">The document.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The save result.</returns>
+    [McpServerTool(Name = "create_element", Title = "Create element", Destructive = false, OpenWorld = false)]
+    [Description("Creates an element from a whole document; an id is assigned when the document has none. Returns the id, the hash and what changed, or the diagnostics.")]
+    public Task<CallToolResult> CreateElement(
+        [Description("The element document, for example {\"kind\":\"entity\",\"name\":\"Coupon\",\"package\":\"<package id>\",\"attributes\":[...]}. Use get_schema for the fields of a kind; required.")] JsonElement? element = null,
+        CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (DocumentBytes(element) is not { } body)
+            return BadRequest("element is required: a JSON object (the whole element document).");
+        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var result = await _store.CreateAsync(body, ChangeSource.Cli, ct).ConfigureAwait(false);
+        return FromOutcome(result.Outcome, result, null);
+    }, ct);
+
+    /// <summary>Deletes an element (deleteElement).</summary>
+    /// <param name="id">The element id.</param>
+    /// <param name="expectedHash">The hash the caller read.</param>
+    /// <param name="resolution">What to do with references.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The delete result.</returns>
+    [McpServerTool(Name = "delete_element", Title = "Delete element", Destructive = true, OpenWorld = false)]
+    [Description("Deletes an element if its file still has expectedHash. While other elements reference it, the delete is refused (code referenced, with the referrers) unless resolution is remove-references, which clears optional references (a required one makes the delete invalid).")]
+    public Task<CallToolResult> DeleteElement(
+        [Description("The element id; required.")] string? id = null,
+        [Description("The hash returned by get_element; required.")] string? expectedHash = null,
+        [Description("refuse (default) or remove-references.")] string? resolution = null,
+        CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (string.IsNullOrEmpty(id))
+            return BadRequest("id is required.");
+        DeleteResolution mode;
+        switch (resolution)
+        {
+            case null or "" or "refuse":
+                mode = DeleteResolution.Refuse;
+                break;
+            case "remove-references":
+                mode = DeleteResolution.RemoveReferences;
+                break;
+            default:
+                return BadRequest($"resolution must be 'refuse' or 'remove-references', not '{resolution}'.");
+        }
+
+        if (string.IsNullOrEmpty(expectedHash))
+            return Problem("precondition-required", 428, "expectedHash is required: read the element with get_element first.");
+        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var result = await _store.DeleteAsync(id, expectedHash, mode, ChangeSource.Cli, ct).ConfigureAwait(false);
+        return FromOutcome(result.Outcome, result, null);
+    }, ct);
+
+    /// <summary>Applies creates, updates and deletes all or nothing (applyBatch).</summary>
+    /// <param name="operations">The operations.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The batch result.</returns>
+    [McpServerTool(Name = "apply_batch", Title = "Apply batch", Destructive = true, OpenWorld = false)]
+    [Description("Applies several operations all or nothing. Each operation is {\"op\":\"create\",\"element\":{...}}, {\"op\":\"update\",\"id\":...,\"expectedHash\":...,\"element\":{...}} or {\"op\":\"delete\",\"id\":...,\"expectedHash\":...}. An element may appear in one operation only. When one fails nothing is written and the result says which and why.")]
+    public Task<CallToolResult> ApplyBatch(
+        [Description("The operations, applied in order; required.")] JsonElement? operations = null,
+        CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (operations is not { ValueKind: JsonValueKind.Array or JsonValueKind.Object or JsonValueKind.String } ops)
+            return BadRequest("operations is required: an array of operations (or a batch document with an operations array).");
+        var batchJson = ops.ValueKind == JsonValueKind.String ? ops.GetString() ?? string.Empty : ops.GetRawText();
+        var trimmed = batchJson.TrimStart();
+        var body = trimmed.StartsWith('{') ? batchJson : "{\"operations\":" + batchJson + "}";
+        var parsed = _store.ParseBatch(Encoding.UTF8.GetBytes(body));
+        if (parsed.Batch is null)
+            return Problem("invalid", 422, "The batch is not valid.", body: Node(parsed));
+        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var result = await _store.ApplyBatchAsync(parsed.Batch, ChangeSource.Cli, ct).ConfigureAwait(false);
+        return FromOutcome(result.Outcome, result, null);
+    }, ct);
+
+    /// <summary>Where an element is used (getReferences).</summary>
+    /// <param name="id">The element id.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The references.</returns>
+    [McpServerTool(Name = "get_references", Title = "Where used", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("Every reference to an element: the referring element id, the referring (sub-)element id, the JSON pointer and field in the referring document, and the referenced id.")]
+    public Task<CallToolResult> GetReferences([Description("The element id; required.")] string? id = null, CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (string.IsNullOrEmpty(id))
+            return BadRequest("id is required.");
+        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        if (await _store.GetElementAsync(id, ct).ConfigureAwait(false) is null)
+            return NotFound("element", id);
+        return Ok(await _store.GetReferencesAsync(id, ct).ConfigureAwait(false));
+    }, ct);
+
+    /// <summary>Validates the model or a scope (validate).</summary>
+    /// <param name="elementIds">The scope.</param>
+    /// <param name="includeReferrers">Whether to include referrers.</param>
+    /// <param name="includeScriptRules">Whether to run JavaScript rules.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The report.</returns>
+    [McpServerTool(Name = "validate", Title = "Validate", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("Validates the whole model, or only some elements. Returns the diagnostics (rule id such as MQ3001, severity, message, element id, file path, JSON pointer, line and column) and the error, warning and info counts.")]
+    public Task<CallToolResult> Validate(
+        [Description("Only these element ids (and, by default, the elements that reference them); omit for the whole model.")] string[]? elementIds = null,
+        [Description("Whether to include the elements that reference the scope (default true).")] bool includeReferrers = true,
+        [Description("Whether to run the project's JavaScript rules (default true).")] bool includeScriptRules = true,
+        CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (elementIds is not null && elementIds.Any(id => !IsUlid(id)))
+            return BadRequest("elementIds must be element ids (uppercase ULIDs).");
+        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var scope = new ValidationScope(elementIds, includeReferrers, includeScriptRules);
+        return Ok(await _store.ValidateAsync(scope, ct).ConfigureAwait(false));
+    }, ct);
+
+    /// <summary>A database's physical view (getDatabaseView).</summary>
+    /// <param name="id">The database id.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The view.</returns>
+    [McpServerTool(Name = "get_database_view", Title = "Database view", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("The resolved physical view of one database: tables (from entities, relations and overlays) with columns, keys, indexes and foreign keys, views and sequences, as generation sees them.")]
+    public Task<CallToolResult> GetDatabaseView([Description("The database element id; required.")] string? id = null, CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (string.IsNullOrEmpty(id))
+            return BadRequest("id is required.");
+        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var document = await _store.GetElementAsync(id, ct).ConfigureAwait(false);
+        if (document is null)
+            return NotFound("database", id);
+        if (document.Element.Id != id || document.Element.KindName != "database")
+            return NotFound("database", id, "not-a-database");
+        return Ok(await _generation.GetDatabaseViewAsync(id, ct).ConfigureAwait(false));
+    }, ct);
+
+    /// <summary>The template packs (part of getProject).</summary>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The packs and their diagnostics.</returns>
+    [McpServerTool(Name = "list_packs", Title = "Template packs", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("The template packs under .maquettiste/templates/ with their manifests (units, output roots, options) and the diagnostics of loading them.")]
+    public Task<CallToolResult> ListPacks(CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        return Ok(await _generation.GetPacksAsync(ct).ConfigureAwait(false));
+    }, ct);
+
+    /// <summary>Reads <c>maquettiste.json</c> (getSettings).</summary>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The settings document.</returns>
+    [McpServerTool(Name = "get_settings", Title = "Project settings", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("The project settings (.maquettiste/maquettiste.json): the typed settings, the canonical JSON (json) and its hash for save_settings.")]
+    public Task<CallToolResult> GetSettings(CancellationToken ct = default) => GuardAsync(async () =>
+        Ok(await _store.GetSettingsAsync(ct).ConfigureAwait(false)), ct);
+
+    /// <summary>Saves <c>maquettiste.json</c> (saveSettings).</summary>
+    /// <param name="settings">The whole settings document.</param>
+    /// <param name="expectedHash">The hash the caller read.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The save result.</returns>
+    [McpServerTool(Name = "save_settings", Title = "Save project settings", Destructive = true, Idempotent = true, OpenWorld = false)]
+    [Description("Replaces the project settings with a whole document if the file still has expectedHash. A conflict writes nothing and returns the disk version; an invalid document returns the diagnostics.")]
+    public Task<CallToolResult> SaveSettings(
+        [Description("The whole settings document (the json from get_settings, edited); required.")] JsonElement? settings = null,
+        [Description("The hash returned by get_settings; required.")] string? expectedHash = null,
+        CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (string.IsNullOrEmpty(expectedHash))
+            return Problem("precondition-required", 428, "expectedHash is required: read the settings with get_settings first.");
+        if (DocumentBytes(settings) is not { } body)
+            return BadRequest("settings is required: a JSON object (the whole maquettiste.json document).");
+        var result = await _store.SaveSettingsAsync(body, expectedHash, ChangeSource.Cli, ct).ConfigureAwait(false);
+        return FromOutcome(result.Outcome, result, settings);
+    }, ct);
+
+    /// <summary>Plans generation (startPlan, run to completion).</summary>
+    /// <param name="packs">Pack names.</param>
+    /// <param name="force">Whether to ignore the unit cache.</param>
+    /// <param name="roots">Which roots.</param>
+    /// <param name="handEdits">A hand-edit policy.</param>
+    /// <param name="jobs">Parallelism.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The plan result, without the per-unit list.</returns>
+    [McpServerTool(Name = "plan", Title = "Plan generation", ReadOnly = false, Destructive = false, OpenWorld = false)]
+    [Description("Plans generation without touching the repository: renders what changed and stores the plan. Returns the outcome and the plan (id, packs, file changes with their actions, diagnostics). Read diffs with get_plan_diff, then apply with apply_plan.")]
+    public Task<CallToolResult> Plan(
+        [Description("Only these packs (default: every enabled pack).")] string[]? packs = null,
+        [Description("Render every unit, ignoring the unit cache.")] bool force = false,
+        [Description("all (default), committed or built.")] string? roots = null,
+        [Description("fail, overwrite or skip: overrides the project's hand-edit policy.")] string? handEdits = null,
+        [Description("Parallelism for this run (at least 1).")] int? jobs = null,
+        CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (jobs is < 1)
+            return BadRequest("jobs must be at least 1.");
+        var rootSelection = roots switch
+        {
+            null or "" or "all" => RootSelection.All,
+            "committed" => RootSelection.Committed,
+            "built" => RootSelection.Built,
+            _ => (RootSelection?)null,
+        };
+        if (rootSelection is null)
+            return BadRequest($"roots must be all, committed or built, not '{roots}'.");
+        HandEditPolicy? policy;
+        switch (handEdits)
+        {
+            case null or "":
+                policy = null;
+                break;
+            case "fail":
+                policy = HandEditPolicy.Fail;
+                break;
+            case "overwrite":
+                policy = HandEditPolicy.Overwrite;
+                break;
+            case "skip":
+                policy = HandEditPolicy.Skip;
+                break;
+            default:
+                return BadRequest($"handEdits must be fail, overwrite or skip, not '{handEdits}'.");
+        }
+
+        var request = new GenerationRequest
+        {
+            Mode = GenerationMode.Apply,
+            Packs = packs is { Length: > 0 } ? packs : null,
+            Force = force,
+            Jobs = jobs,
+            HandEdits = policy,
+            Roots = rootSelection.Value,
+            IncludeDiffs = false,
+            StageBarriers = false,
+            Lock = LockMode.Wait,
+        };
+        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var result = await _generation.PlanAsync(request, null, ct).ConfigureAwait(false);
+        var summary = result with { Plan = result.Plan is null ? null : result.Plan with { Units = [] } };
+        if (summary.Plan is null)
+            return FromRun(summary.Outcome, summary, ct);
+        return Ok(summary);
+    }, ct);
+
+    /// <summary>A stored plan (getPlan).</summary>
+    /// <param name="planId">The plan id.</param>
+    /// <param name="units">Whether to include the per-unit list.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The plan.</returns>
+    [McpServerTool(Name = "get_plan", Title = "Get plan", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("A stored plan: its request, packs, file changes and diagnostics (and, with units, every planned unit and output).")]
+    public Task<CallToolResult> GetPlan(
+        [Description("The plan id returned by plan; required.")] string? planId = null,
+        [Description("Include the per-unit list (large).")] bool units = false,
+        CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (string.IsNullOrEmpty(planId))
+            return BadRequest("planId is required.");
+        var plan = IsUlid(planId) ? await _generation.GetPlanAsync(planId, ct).ConfigureAwait(false) : null;
+        if (plan is null)
+            return NotFound("plan", planId);
+        return Ok(units ? plan : plan with { Units = [] });
+    }, ct);
+
+    /// <summary>The unified diff of one file in a stored plan (getPlanDiff).</summary>
+    /// <param name="planId">The plan id.</param>
+    /// <param name="path">The repo-relative path.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The diff text.</returns>
+    [McpServerTool(Name = "get_plan_diff", Title = "Plan diff", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("The unified diff of one file of a stored plan (the path as it appears in the plan's changes), without rendering again.")]
+    public Task<CallToolResult> GetPlanDiff(
+        [Description("The plan id returned by plan; required.")] string? planId = null,
+        [Description("The repo-relative path of a file in the plan's changes, with / separators; required.")] string? path = null,
+        CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (string.IsNullOrEmpty(planId))
+            return BadRequest("planId is required.");
+        if (string.IsNullOrEmpty(path))
+            return BadRequest("path is required.");
+        if (!IsUlid(planId))
+            return NotFound("plan", planId);
+        var diff = await _generation.GetPlanDiffAsync(planId, path, ct).ConfigureAwait(false);
+        if (diff is null)
+            return Problem("not-found", 404, $"Plan {planId} has no file {path}.");
+        return new CallToolResult { Content = [new TextContentBlock { Text = diff }] };
+    }, ct);
+
+    /// <summary>Applies a stored plan (startApply, run to completion).</summary>
+    /// <param name="planId">The plan id.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The apply result.</returns>
+    [McpServerTool(Name = "apply_plan", Title = "Apply plan", Destructive = true, OpenWorld = false)]
+    [Description("Writes a stored plan's files without rendering again. Refused with code stale, writing nothing, when the model, the templates or a planned file changed since the plan (plan again). Returns the files written and deleted.")]
+    public Task<CallToolResult> ApplyPlan([Description("The plan id returned by plan; required.")] string? planId = null, CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (!IsUlid(planId))
+            return BadRequest("planId must be a plan id (an uppercase ULID).");
+        if (await _generation.GetPlanAsync(planId, ct).ConfigureAwait(false) is null)
+            return NotFound("plan", planId);
+        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var result = await _generation.ApplyAsync(planId, null, ct).ConfigureAwait(false);
+        return result.Outcome == RunOutcome.Succeeded ? Ok(result) : FromRun(result.Outcome, result, ct);
+    }, ct);
+
+    /// <summary>The JSON schema of a kind or document.</summary>
+    /// <param name="kind">The kind or document name.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The schema and the schemas it references.</returns>
+    [McpServerTool(Name = "get_schema", Title = "JSON schema", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("The JSON schema (draft 2020-12) of an element kind or document, with the schema files it references (common.json) and, for an element kind, the project's extension schemas that apply to it (extensions: each constrains the element's properties object), so documents built for create_element, save_element, apply_batch or save_settings are valid.")]
+    public Task<CallToolResult> GetSchema(
+        [Description("An element kind (entity, relation, enum, value-object, scalar-type, package, database, table, view, sequence, mapping, diagram, stereotype, tag-vocabulary, category-tree) or a document (maquettiste for the settings, batch, pack, extension); required.")] string? kind = null,
+        CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (string.IsNullOrEmpty(kind))
+            return BadRequest("kind is required.");
+        var elementKind = KindInfo.TryGet(kind, out var info) ? info : null;
+        var file = elementKind is not null ? elementKind.SchemaFile
+            : kind.EndsWith(".json", StringComparison.Ordinal) ? kind
+            : kind + ".json";
+        if (file is null || !_schemas.FileNames.Contains(file, StringComparer.Ordinal))
+        {
+            var known = string.Join(", ", KindInfo.All.Select(k => k.Name).Concat(_schemas.FileNames.Select(f => f[..^5])).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
+            return Problem("not-found", 404, $"No schema is named '{kind}'.", "Known names: " + known + ".");
+        }
+
+        var result = new JsonObject { ["name"] = kind, ["file"] = file, ["schema"] = SchemaNode(file) };
+        var references = new JsonObject();
+        var pending = new Queue<string>([file]);
+        var seen = new HashSet<string>(StringComparer.Ordinal) { file };
+        while (pending.TryDequeue(out var current))
+        {
+            foreach (var referenced in ReferencedFiles(current))
+            {
+                if (seen.Add(referenced))
+                {
+                    references[referenced] = SchemaNode(referenced);
+                    pending.Enqueue(referenced);
+                }
+            }
+        }
+
+        result["references"] = references;
+        if (elementKind is not null)
+        {
+            // The project's extension schemas constrain `properties` too; the loader applies them on every save.
+            var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+            var extensions = snapshot.Extensions.Select(e => e.Schema)
+                .Where(e => e.AppliesTo.Kinds.Contains(elementKind.Name, StringComparer.Ordinal))
+                .Select(e => new { e.Name, e.Description, e.AppliesTo, e.Properties, e.Required, e.SchemaPath });
+            result["extensions"] = JsonSerializer.SerializeToNode(extensions.ToList(), JsonOptions);
+        }
+
+        return Text(result.ToJsonString(JsonOptions), isError: false);
+    }, ct);
+
+    private JsonNode SchemaNode(string file) => JsonNode.Parse(_schemas.GetFileBytes(file).Span)!;
+
+    private IEnumerable<string> ReferencedFiles(string file)
+    {
+        var text = Encoding.UTF8.GetString(_schemas.GetFileBytes(file).Span);
+        foreach (var name in _schemas.FileNames)
+        {
+            if (name != file && text.Contains("\"" + name, StringComparison.Ordinal))
+                yield return name;
+        }
+    }
+
+    private CallToolResult Ok<T>(T value) => Text(JsonSerializer.Serialize(value, JsonOptions), isError: false);
+
+    private static CallToolResult Text(string text, bool isError) => new() { Content = [new TextContentBlock { Text = text }], IsError = isError ? true : null };
+
+    private JsonObject? Node<T>(T value) => JsonSerializer.SerializeToNode(value, JsonOptions) as JsonObject;
+
+    /// <summary>A problem: the API's code, status and title, an optional detail, and the fields of the API's body for that status.</summary>
+    private CallToolResult Problem(string code, int status, string title, string? detail = null, JsonObject? body = null)
+    {
+        var problem = new JsonObject { ["code"] = code, ["status"] = status, ["title"] = title };
+        if (detail is not null)
+            problem["detail"] = detail;
+        if (body is not null)
+        {
+            foreach (var (name, value) in body.ToList())
+            {
+                if (!problem.ContainsKey(name))
+                {
+                    body.Remove(name);
+                    problem[name] = value;
+                }
+            }
+        }
+
+        return Text(problem.ToJsonString(JsonOptions), isError: true);
+    }
+
+    /// <summary>The <c>bad-request</c> problem for an argument the server's binder would reject (see <see cref="McpServerSetup.ArgumentProblem"/>).</summary>
+    /// <param name="detail">Which argument and why.</param>
+    /// <returns>The tool error.</returns>
+    internal CallToolResult ArgumentError(string detail) => BadRequest(detail);
+
+    private CallToolResult BadRequest(string detail) => Problem("bad-request", 400, "The request is not valid.", detail);
+
+    private CallToolResult NotFound(string what, string? id, string code = "not-found") => Problem(code, 404, $"No {what} has the id {id}.");
+
+    /// <summary>A save, create, delete or batch result: the body when saved, else the problem for the outcome with the body's fields.</summary>
+    private CallToolResult FromOutcome<T>(SaveOutcome outcome, T result, JsonElement? submitted)
+    {
+        if (outcome == SaveOutcome.Saved)
+            return Ok(result);
+        var body = Node(result);
+        if (outcome == SaveOutcome.Conflict && submitted is { } mine && body is not null)
+            body["submitted"] = JsonNode.Parse(mine.ValueKind == JsonValueKind.String ? mine.GetString() ?? "null" : mine.GetRawText());
+        return outcome switch
+        {
+            SaveOutcome.Conflict => Problem("conflict", 409, "The file changed on disk since it was read; nothing was written. current and hash are the disk version; submitted is yours.", body: body),
+            SaveOutcome.Invalid => Problem("invalid", 422, "The change is not valid; nothing was written. See diagnostics.", body: body),
+            SaveOutcome.NotFound => Problem("not-found", 404, "No such element.", body: body),
+            SaveOutcome.Referenced => Problem("referenced", 409, "Other elements reference this element; nothing was deleted. See referrers, or pass resolution remove-references.", body: body),
+            _ => Problem("internal", 500, "Unexpected outcome.", body: body),
+        };
+    }
+
+    /// <summary>A plan or apply that did not succeed: the problem for the run outcome with the result's fields.</summary>
+    private CallToolResult FromRun<T>(RunOutcome outcome, T result, CancellationToken ct)
+    {
+        if (outcome == RunOutcome.Cancelled)
+            ct.ThrowIfCancellationRequested();
+        var body = Node(result);
+        return outcome switch
+        {
+            RunOutcome.Stale => Problem("stale", 409, "The plan is stale: its inputs or planned files changed since it was made; nothing was written. Plan again.", body: body),
+            RunOutcome.Invalid => Problem("invalid", 422, "The model or the templates have errors; nothing was written. See diagnostics.", body: body),
+            RunOutcome.Conflicts => Problem("conflicts", 409, "Generated files were edited by hand; see the changes and the hand-edit policy.", body: body),
+            RunOutcome.Drift => Problem("drift", 409, "Generated files are stale, missing or orphaned.", body: body),
+            RunOutcome.Busy => Problem("busy", 503, "Another generation run holds the run lock.", body: body),
+            RunOutcome.Cancelled => Problem("cancelled", 409, "The run was cancelled.", body: body),
+            _ => Problem("failed", 500, "The run failed.", body: body),
+        };
+    }
+
+    /// <summary>Runs a tool body and turns an exception into a problem; a cancelled request stays cancelled.</summary>
+    /// <remarks>
+    /// Only the tool's own argument checks answer <c>bad-request</c>; an exception from the engine is the server's failure, so it
+    /// is <c>internal</c> and one line goes to the log (as the API's handler logs it).
+    /// </remarks>
+    private async Task<CallToolResult> GuardAsync(Func<Task<CallToolResult>> body, CancellationToken ct, [CallerMemberName] string tool = "")
+    {
+        try
+        {
+            return await body().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return Problem("model-unavailable", 503, "The model folder cannot be read.", e.Message);
+        }
+#pragma warning disable CA1031 // A tool never crashes the server: any other failure is the internal problem with its message.
+        catch (Exception e)
+#pragma warning restore CA1031
+        {
+            var name = typeof(ModelTools).GetMethod(tool)?.GetCustomAttribute<McpServerToolAttribute>()?.Name ?? tool;
+            await _log.WriteLineAsync($"maquettiste mcp: {name} failed: {e.GetType().FullName}: {e.Message}".AsMemory(), CancellationToken.None).ConfigureAwait(false);
+            await _log.FlushAsync(CancellationToken.None).ConfigureAwait(false);
+            return Problem("internal", 500, "The server failed to answer this request.", e.Message);
+        }
+    }
+
+    /// <summary>The UTF-8 bytes of a document argument: a JSON object, or a string holding one.</summary>
+    private static byte[]? DocumentBytes(JsonElement? document)
+    {
+        var text = document?.ValueKind switch
+        {
+            JsonValueKind.Object => document.Value.GetRawText(),
+            JsonValueKind.String => document.Value.GetString(),
+            _ => null,
+        };
+        return text is null || !text.TrimStart().StartsWith('{') ? null : Encoding.UTF8.GetBytes(text);
+    }
+
+    /// <summary>Whether a value is an uppercase ULID (26 Crockford base-32 characters).</summary>
+    private static bool IsUlid([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] string? value)
+    {
+        if (value is not { Length: 26 })
+            return false;
+        foreach (var c in value)
+        {
+            if (!(c is >= '0' and <= '9' || c is >= 'A' and <= 'Z' && c is not ('I' or 'L' or 'O' or 'U')))
+                return false;
+        }
+
+        return true;
+    }
+}
+
+/// <summary>The body of <c>get_project</c>: the editor API's <c>ProjectInfo</c> (getProject).</summary>
+/// <param name="Name">The project name.</param>
+/// <param name="FormatVersion">The model format version.</param>
+/// <param name="EngineVersion">The engine version.</param>
+/// <param name="Mode">Always <c>local</c>.</param>
+/// <param name="Settings">The typed settings.</param>
+/// <param name="SettingsHash">The settings file hash.</param>
+/// <param name="Databases">The database summaries.</param>
+/// <param name="Packs">The pack manifests.</param>
+/// <param name="PackDiagnostics">The diagnostics of loading the packs.</param>
+/// <param name="Extensions">The extension schemas.</param>
+/// <param name="Git">Always <see langword="null"/> (the MCP server does not read git).</param>
+internal sealed record ProjectInfo(string Name, int FormatVersion, string EngineVersion, string Mode, ProjectSettings Settings, string SettingsHash,
+    IReadOnlyList<ElementSummary> Databases, IReadOnlyList<PackManifest> Packs, IReadOnlyList<Diagnostic> PackDiagnostics,
+    IReadOnlyList<ExtensionSchema> Extensions, object? Git);

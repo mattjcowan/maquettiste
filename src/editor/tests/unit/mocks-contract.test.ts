@@ -68,6 +68,71 @@ describe("mock contract", () => {
     await call("get", "/api/jobs", "/api/jobs");
   });
 
+  it("answers the explorer-at-scale additions (E5 to E5e) in contract shape", async () => {
+    // E5: the index rows carry relation ends, diagram member counts and physical owners.
+    const first = await call("get", "/api/model/index", "/api/model/index");
+    const rows = first.payload as Json[];
+    const relation = rows.find((r) => r.kind === "relation")!;
+    expect((relation.ends as Json[]).length).toBe(2);
+    expect(rows.find((r) => r.id === IDS.overview)!.memberCount).toBeGreaterThan(0);
+    for (const row of rows.filter((r) => r.kind === "table" || r.kind === "mapping")) expect(typeof row.database).toBe("string");
+    expect(rows.find((r) => r.id === IDS.invoice)).not.toHaveProperty("ends");
+    // E5e: an ETag, no-cache, and 304 for a matching If-None-Match.
+    const tag = first.response.headers.get("ETag")!;
+    expect(tag).toMatch(/^"[0-9a-f]{64}"$/);
+    expect(first.response.headers.get("Cache-Control")).toBe("no-cache");
+    const again = await call("get", "/api/model/index", "/api/model/index", undefined, { "If-None-Match": tag });
+    expect(again.status).toBe(304);
+    // Weak and bare tags match too, as Api.TryReadTag reads them; the element read does the same.
+    expect((await call("get", "/api/model/index", "/api/model/index", undefined, { "If-None-Match": `W/${tag}` })).status).toBe(304);
+    expect((await call("get", "/api/model/index", "/api/model/index", undefined, { "If-None-Match": tag.slice(1, -1) })).status).toBe(304);
+    const element = await call("get", `/api/model/elements/${IDS.invoice}`, "/api/model/elements/{id}");
+    const elementTag = element.response.headers.get("ETag")!;
+    const weakElement = await call("get", `/api/model/elements/${IDS.invoice}`, "/api/model/elements/{id}", undefined, { "If-None-Match": `W/${elementTag}` });
+    expect(weakElement.status).toBe(304);
+    // E5b: many documents in one request, each once, with the missing ids.
+    const unknown = "01J92P0V0FJ23CGSNKM7P1W5V9";
+    const read = await call("post", "/api/model/elements/read", "/api/model/elements/read", { ids: [IDS.payment, unknown, IDS.invoice, IDS.payment] });
+    expect(((read.payload as Json).elements as { element: Json }[]).map((d) => d.element.id)).toEqual([IDS.payment, IDS.invoice]);
+    expect((read.payload as Json).missing).toEqual([unknown]);
+    const tooMany = await call("post", "/api/model/elements/read", "/api/model/elements/read", { ids: Array(201).fill(IDS.invoice) });
+    expect(tooMany.status).toBe(400);
+    // The contract's Ulid starts with 0..7 (Api.IsUlid), so a "Z..." id is a 400, not a missing id.
+    const notUlid = await call("post", "/api/model/elements/read", "/api/model/elements/read", { ids: ["Z".repeat(26)] });
+    expect(notUlid.status).toBe(400);
+    // E5c: the table list without columns.
+    const database = rows.find((r) => r.kind === "database")!;
+    const tables = await call("get", `/api/databases/${database.id}/tables`, "/api/databases/{id}/tables");
+    expect((tables.payload as Json).partial).toBe(false);
+    expect(((tables.payload as Json).tables as Json[]).length).toBeGreaterThan(0);
+    const notADatabase = await call("get", `/api/databases/${IDS.invoice}/tables`, "/api/databases/{id}/tables");
+    expect(notADatabase.status).toBe(404);
+  });
+
+  it("answers table summaries on a model with errors with partial: true, leaving out the broken entity's table", async () => {
+    const database = mock.backend.model.index().find((e) => e.kind === "database")!;
+    mock.backend.model.externalEdit(IDS.payment, (json) => {
+      delete json.key;
+    });
+    const { payload } = await call("get", `/api/databases/${database.id}/tables`, "/api/databases/{id}/tables");
+    const result = payload as { partial: boolean; tables: { entityId: string | null }[] };
+    expect(result.partial).toBe(true);
+    expect(result.tables.map((t) => t.entityId)).not.toContain(IDS.payment);
+    expect(result.tables.map((t) => t.entityId)).toContain(IDS.invoice);
+  });
+
+  it("publishes model.changed with each change's new index row (E5d), in contract shape", async () => {
+    mock.backend.model.externalEdit(IDS.invoice, (json) => {
+      json.name = "Bill";
+    });
+    const event = mock.backend.realtime.published.filter((e) => e.event === "model.changed").at(-1)!;
+    const validate = validatorAt("/webhooks/model.changed/post/requestBody/content/application~1json/schema");
+    expect(validate(event.payload), JSON.stringify(validate.errors?.slice(0, 3))).toBe(true);
+    const change = (event.payload as { changed: { id: string; hash: string; summary: Json }[] }).changed[0];
+    expect(change.summary.name).toBe("Bill");
+    expect(change.summary.hash).toBe(change.hash);
+  });
+
   it("saves with If-Match and answers 409 with the current document on a stale hash", async () => {
     const { payload: doc } = await call("get", `/api/model/elements/${IDS.invoice}`, "/api/model/elements/{id}");
     const { json, hash } = doc as { json: Json; hash: string };

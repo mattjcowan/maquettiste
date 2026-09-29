@@ -1,0 +1,72 @@
+{
+  "tables": [
+    {
+      "key": "01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4",
+      "name": "customers",
+      "schema": "billing",
+      "origin": "synthesized",
+      "entityId": "01J92P0V0ETQKXXP951CMMNHH3",
+      "relationId": null,
+      "isJunction": false,
+      "isLookup": false,
+      "columnCount": 6
+    },
+    {
+      "key": "01J92P0V0GWFR78HZH0P8Z3GY7@01J92P0V1QRN2181XM2ZWE02W4",
+      "name": "invoice_lines",
+      "schema": "billing",
+      "origin": "synthesized",
+      "entityId": "01J92P0V0GWFR78HZH0P8Z3GY7",
+      "relationId": null,
+      "isJunction": false,
+      "isLookup": false,
+      "columnCount": 7
+    },
+    {
+      "key": "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4",
+      "name": "invoices",
+      "schema": "billing",
+      "origin": "synthesized",
+      "entityId": "01J92P0V0FJ23CGSNKM7P1W5V7",
+      "relationId": null,
+      "isJunction": false,
+      "isLookup": false,
+      "columnCount": 11
+    },
+    {
+      "key": "01J92P0V1DKHD5Q02DV6S5M53D@01J92P0V1QRN2181XM2ZWE02W4",
+      "name": "payment_invoice",
+      "schema": "billing",
+      "origin": "synthesized",
+      "entityId": null,
+      "relationId": "01J92P0V1DKHD5Q02DV6S5M53D",
+      "isJunction": true,
+      "isLookup": false,
+      "columnCount": 4
+    },
+    {
+      "key": "01J92P0V0HEGSC6MW92CST5KA6@01J92P0V1QRN2181XM2ZWE02W4",
+      "name": "payments",
+      "schema": "billing",
+      "origin": "synthesized",
+      "entityId": "01J92P0V0HEGSC6MW92CST5KA6",
+      "relationId": null,
+      "isJunction": false,
+      "isLookup": false,
+      "columnCount": 7
+    },
+    {
+      "key": "01J92P0V0JR8BE8253SKT29ZG7@01J92P0V1QRN2181XM2ZWE02W4",
+      "name": "products",
+      "schema": "billing",
+      "origin": "synthesized",
+      "entityId": "01J92P0V0JR8BE8253SKT29ZG7",
+      "relationId": null,
+      "isJunction": false,
+      "isLookup": false,
+      "columnCount": 6
+    }
+  ],
+  "diagnostics": [],
+  "partial": false
+}

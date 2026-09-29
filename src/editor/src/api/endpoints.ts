@@ -6,7 +6,9 @@ import type {
   BatchParseResult,
   BatchRequest,
   BatchResult,
+  DatabaseTablesResult,
   DatabaseViewResult,
+  ElementReadResult,
   ElementDocument,
   ElementSummary,
   GenerationPlan,
@@ -79,6 +81,15 @@ export async function getElement(id: string): Promise<ElementDocument> {
   return must(data, response);
 }
 
+/** The most ids one `readElements` call takes (E5b). */
+export const MAX_READ_IDS = 200;
+
+/** E5b: up to 200 element or sub-element documents from one snapshot; unknown ids come back in `missing`. */
+export async function readElements(ids: string[]): Promise<ElementReadResult> {
+  const { data, response } = await api().POST("/api/model/elements/read", { body: { ids } });
+  return must(data, response);
+}
+
 export async function createElement(json: NewModelDocument | ModelJson): Promise<SaveResult> {
   const { data, error, response } = await api().POST("/api/model/elements", { body: json as NewModelDocument });
   return record<SaveResult>(data, error, response);
@@ -133,6 +144,12 @@ export async function saveDiagram(id: string, json: ModelJson, hash: string): Pr
 
 export async function getDatabaseView(id: string): Promise<DatabaseViewResult> {
   const { data, response } = await api().GET("/api/databases/{id}/view", { params: { path: { id } } });
+  return must(data, response);
+}
+
+/** E5c: the table list of one database without columns; `partial` on a model with errors. */
+export async function getDatabaseTables(id: string): Promise<DatabaseTablesResult> {
+  const { data, response } = await api().GET("/api/databases/{id}/tables", { params: { path: { id } } });
   return must(data, response);
 }
 

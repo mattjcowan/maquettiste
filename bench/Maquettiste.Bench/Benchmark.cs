@@ -34,6 +34,42 @@ public sealed record SyntheticModelOptions
     /// embedded in the bench assembly are written; while they are skeletons, nothing is.
     /// </summary>
     public bool IncludeExamplePacks { get; init; } = true;
+
+    /// <summary>
+    /// Package nesting depth (explorer-redesign.md section 5): 1 keeps the packages flat (the benchmark model); more nests them
+    /// breadth first, up to <see cref="DomainWidth"/> children per package, so the explorer has parents to show.
+    /// </summary>
+    public int DomainDepth { get; init; } = 1;
+
+    /// <summary>Children per package when <see cref="DomainDepth"/> is more than 1.</summary>
+    public int DomainWidth { get; init; } = 4;
+
+    /// <summary>Diagrams (subject areas), spread round robin over the packages; 0 writes none (the benchmark model).</summary>
+    public int Diagrams { get; init; }
+
+    /// <summary>The fewest entities on a diagram.</summary>
+    public int DiagramMinSize { get; init; } = 20;
+
+    /// <summary>The most entities on a diagram (capped at the entity count).</summary>
+    public int DiagramMaxSize { get; init; } = 300;
+
+    /// <summary>Schemas per database; 0 leaves the databases without schemas (the benchmark model).</summary>
+    public int Schemas { get; init; }
+
+    /// <summary>Designed tables (tables no entity owns), spread over the databases.</summary>
+    public int DesignedTables { get; init; }
+
+    /// <summary>Designed views, spread over the databases.</summary>
+    public int Views { get; init; }
+
+    /// <summary>Sequences, spread over the databases.</summary>
+    public int Sequences { get; init; }
+
+    /// <summary>Lookup-style entities (reference data: a code, a name, a sort order and many more attributes), spread over the packages.</summary>
+    public int Lookups { get; init; }
+
+    /// <summary>Attributes per lookup entity, the key included.</summary>
+    public int LookupAttributes { get; init; } = 40;
 }
 
 /// <summary>Benchmark options (the <c>maquettiste bench</c> flags).</summary>

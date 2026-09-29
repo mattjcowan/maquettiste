@@ -34,6 +34,7 @@ public static class EditorSetup
         services.AddSingleton(settings.Engine);
         services.AddSingleton(sp => new ModelStore(sp.GetRequiredService<EngineOptions>()));
         services.AddSingleton(sp => new GenerationService(sp.GetRequiredService<ModelStore>(), sp.GetRequiredService<EngineOptions>()));
+        services.AddSingleton(sp => new DatabaseTables(sp.GetRequiredService<GenerationService>()));
         services.AddSingleton(sp => new JobQueue(sp.GetRequiredService<GenerationService>(), sp.GetRequiredService<EngineOptions>(), capacity: 16));
         services.AddSingleton<EditorAuth>();
         services.AddSingleton<EditorEvents>();

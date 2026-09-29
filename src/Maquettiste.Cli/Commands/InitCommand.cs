@@ -10,11 +10,12 @@ using Maquettiste.Engine.Writing;
 namespace Maquettiste.Cli.Commands;
 
 /// <summary>
-/// <c>maquettiste init [--pack sql-ddl|csharp-dapper|none] [--hooks]</c> (engine-design.md section 16; SPEC sections 4, 11, 12 and 17).
+/// <c>maquettiste init [--pack sql-ddl|csharp-dapper|none] [--hooks] [--mcp] [--skill] [--agent-setup]</c> (engine-design.md section 16; SPEC sections 4, 11, 12 and 17).
 /// Creates <c>.maquettiste/</c> with the phase 1 folders, <c>maquettiste.json</c> (format 1, output roots <c>db</c> committed and
 /// <c>src/Generated</c> built), the JSON schemas in <c>.schema/v1/</c>, the starter pack, and a <c>.gitignore</c> block for the built
 /// roots and <c>.maquettiste/.cache/</c>. Idempotent: existing files are kept, except <c>.schema/v1</c>, which is refreshed, and the
-/// <c>.gitignore</c> block, which is rewritten in place.
+/// <c>.gitignore</c> block, which is rewritten in place. <c>--mcp</c> registers <c>maquettiste mcp</c> in <c>.mcp.json</c>, <c>--skill</c>
+/// installs the modeling skill under <c>.claude/skills/</c>, <c>--agent-setup</c> does both (<see cref="AgentSetup"/>).
 /// </summary>
 internal static class InitCommand
 {
@@ -40,7 +41,7 @@ internal static class InitCommand
     /// <returns>The exit code.</returns>
     public static async Task<int> RunAsync(GlobalContext context, CancellationToken ct)
     {
-        context.Line.Expect("init", 1, "--pack", "--hooks");
+        context.Line.Expect("init", 1, "--pack", "--hooks", "--mcp", "--skill", "--agent-setup");
         var pack = context.Line.Choice("--pack", "sql-ddl", "sql-ddl", "csharp-dapper", "none");
         var repo = context.RepoRoot(search: false);
         if (!Directory.Exists(repo))
@@ -121,6 +122,10 @@ internal static class InitCommand
 
         if (context.Line.Has("--hooks"))
             await InstallHooksAsync(files, repo, report, ct).ConfigureAwait(false);
+        if (context.Line.Has("--mcp") || context.Line.Has("--agent-setup"))
+            await AgentSetup.WriteMcpConfigAsync(files, repo, report, ct).ConfigureAwait(false);
+        if (context.Line.Has("--skill") || context.Line.Has("--agent-setup"))
+            await AgentSetup.WriteSkillAsync(files, repo, report, ct).ConfigureAwait(false);
 
         foreach (var line in report)
             context.Info(line);

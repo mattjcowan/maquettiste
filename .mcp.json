@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "maquettiste": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "src/Maquettiste.Cli",
+        "-c",
+        "Release",
+        "--",
+        "--repo",
+        "tmp/billing",
+        "mcp"
+      ]
+    }
+  }
+}

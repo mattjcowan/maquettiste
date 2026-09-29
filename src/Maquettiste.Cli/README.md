@@ -3,10 +3,10 @@
 **Owner:** W9 CLI. See docs/engineering/engine-design.md sections 16 and 18.
 
 The `maquettiste` dotnet tool: a hand-written parser (D27), `init`, `validate`, `generate`, `migrate` (stub), `pack new`, `bench`,
-console progress and exit codes. Consumes `ModelStore`, `GenerationService`, the internal `GenerationWatcher` (watch hook),
+`mcp` (the Model Context Protocol server, docs/mcp.md), console progress and exit codes. Consumes `ModelStore`, `GenerationService`, the internal `GenerationWatcher` (watch hook),
 `SarifWriter`, `SchemaRegistry`/`CanonicalJson` (init, pack new), `OutputPathPolicy` (every CLI write) and `BenchmarkHarness`.
 Tests: `tests/Maquettiste.Cli.Tests/` (in-process runs over temporary repos built from `tests/fixtures/models/billing`, plus one
-test that runs the built tool as a process).
+test that runs the built tool as a process, and `Mcp*Tests` that drive `maquettiste mcp` as a process through the SDK's client).
 
 ## Install
 
@@ -56,6 +56,8 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
 | `GuardedFiles.cs` | every file or folder the CLI writes goes through `IOutputPathPolicy.CheckEngineWrite` first |
 | `StarterPacks.cs` | the embedded example packs (`Maquettiste.Cli.Packs/<pack>/<path>`) and built-in stand-ins |
 | `Commands/*.cs` | one class per command |
+| `Mcp/McpServerSetup.cs` | `maquettiste mcp`: the server options (tools, the `maquettiste://conventions` resource and `modeling-conventions` prompt from the embedded `skills/maquettiste-modeling/SKILL.md`, instructions) |
+| `Mcp/ModelTools.cs` | the MCP tools: thin wrappers over `ModelStore` and `GenerationService` with the editor API's bodies and problem codes (docs/mcp.md) |
 
 ## Behavior
 
@@ -84,6 +86,10 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
   is written, so stray markers never cause user lines to be dropped.
   `--hooks` writes `post-checkout` and `post-merge` hooks (mode 755) that run `maquettiste generate --roots built --quiet` and never
   fail git; a hook that init did not write is kept; without a `.git` folder the hooks are skipped with a message.
+  `--mcp` registers `maquettiste mcp` in `.mcp.json` (merged, an existing `maquettiste` entry kept; `dotnet tool run maquettiste mcp`
+  when the local tool manifest lists the command), `--skill` writes the embedded modeling skill to
+  `.claude/skills/maquettiste-modeling/SKILL.md` (refreshed on each run), `--agent-setup` does both (`Commands/AgentSetup.cs`,
+  docs/mcp.md). Both are `WriteTarget.Setup` writes; the engine's setup allow-list names the two paths.
 - **validate:** model diagnostics (`ModelStore.ValidateAsync`, load diagnostics included) plus pack-load diagnostics, sorted;
   `--format text` (one `path(line,col): severity rule: message` line per diagnostic), `json` (`schemas/v1/diagnostics.json`) or
   `sarif` (`SarifWriter`). `--output <file>` writes through the project's output path policy, so the file must lie under an
@@ -135,6 +141,11 @@ the render of the changed units and the writes; the 2 s incremental budget is me
 see `bench/README.md`, "One-shot CLI"). They apply to this process only; a host embedding the engine keeps its own settings.
 
 ## Deviations and notes
+
+- `maquettiste mcp` (docs/mcp.md) uses the `ModelContextProtocol` 2.2.0 package without a generic host (`McpServer.Create` over
+  a `StreamServerTransport` on `CliEnvironment.OpenStandardInput`/`OpenStandardOutput`). Its plan and apply run to completion in
+  the call rather than through the editor's `JobQueue`; the bodies are the jobs' `planResult` and `applyResult`. The SDK's client
+  does not send `notifications/cancelled` when a call's token is cancelled, so the cancellation test sends it itself.
 
 - The example packs `packs/sql-ddl` and `packs/csharp-dapper` are still empty (W10), so nothing is embedded yet; `init` and `pack
   new --from` then use small built-in stand-ins (`StarterPacks.Fallback`: one `CREATE TABLE` per table; for C#, one partial record

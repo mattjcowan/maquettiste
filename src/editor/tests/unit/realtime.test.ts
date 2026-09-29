@@ -4,6 +4,8 @@ import * as endpoints from "@/api/endpoints";
 import { keys } from "@/api/queries";
 import { MockRealtime } from "@/realtime/mock";
 import { connectRealtime } from "@/realtime/sync";
+import { newId } from "@/lib/ids";
+import { MAX_EVENT_BYTES } from "@/mocks/wire";
 import { IDS, useMockApi } from "./harness";
 
 const settle = () => new Promise((r) => setTimeout(r, 20));
@@ -70,6 +72,28 @@ describe("realtime cache patching", () => {
     await settle();
     expect(queryClient.getQueryState(keys.index)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(keys.element(IDS.invoice))?.isInvalidated).toBe(true);
+    stop();
+  });
+
+  it("cuts a large model.changed to 200 KB with truncated set, and the editor refetches the index", async () => {
+    const { queryClient, stop } = connect();
+    await queryClient.fetchQuery({ queryKey: keys.index, queryFn: endpoints.getModelIndex });
+    const before = api.backend.realtime.published.length;
+    const operations = Array.from({ length: 1000 }, (_, i) => ({
+      op: "create",
+      element: { kind: "package", id: newId(), name: `BulkPackage${i}`, description: "A package created in bulk to make a large change set." },
+    }));
+    const result = api.backend.model.batch({ operations });
+    expect(result.status).toBe(200);
+    const events = api.backend.realtime.published.slice(before).filter((e) => e.event === "model.changed");
+    expect(events).toHaveLength(1);
+    const payload = events[0]!.payload as { changed: unknown[]; deleted: unknown[]; truncated: boolean };
+    expect(new TextEncoder().encode(JSON.stringify(payload)).length).toBeLessThanOrEqual(MAX_EVENT_BYTES);
+    expect(payload.truncated).toBe(true);
+    expect(payload.changed.length).toBeGreaterThan(0);
+    expect(payload.changed.length).toBeLessThan(1000);
+    await settle();
+    expect(queryClient.getQueryState(keys.index)?.isInvalidated).toBe(true);
     stop();
   });
 

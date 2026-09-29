@@ -159,8 +159,7 @@ internal static class ModelIndexer
             foreach (var (id, entry) in walk.Entries)
                 clean &= entries.TryAdd(id, entry);
             references.AddRange(walk.References);
-            summaries.Add(new ElementSummary(element.Id, element.KindName, element.Name, PackageOf(element), element.Tags, doc.Hash, doc.Path,
-                element.Category, element.Stereotypes));
+            summaries.Add(Summarize(element, doc.Hash, doc.Path));
         }
 
         var referencesTo = Group(references, static r => r.ToId);
@@ -374,8 +373,7 @@ internal static class ModelIndexer
             if (addedSet.Contains(d))
             {
                 var element = documents[d].Element;
-                summaries.Add(new ElementSummary(element.Id, element.KindName, element.Name, PackageOf(element), element.Tags, documents[d].Hash, documents[d].Path,
-                    element.Category, element.Stereotypes));
+                summaries.Add(Summarize(element, documents[d].Hash, documents[d].Path));
                 continue;
             }
 
@@ -397,6 +395,35 @@ internal static class ModelIndexer
             Walks = walks,
             Patched = true,
         };
+    }
+
+    /// <summary>The index row of an element (E4 and E5 members included).</summary>
+    private static ElementSummary Summarize(Element element, string hash, string path) =>
+        new(element.Id, element.KindName, element.Name, PackageOf(element), element.Tags, hash, path, element.Category, element.Stereotypes,
+            DisplayName: element.DisplayName,
+            Database: element switch
+            {
+                Table t => t.Database,
+                View v => v.Database,
+                Sequence q => q.Database,
+                Mapping m => m.Database,
+                _ => null,
+            },
+            Entity: element switch
+            {
+                Mapping m => m.Entity,
+                Table t => t.Entity,
+                _ => null,
+            },
+            MemberCount: element is Diagram diagram ? diagram.Members.Count : null,
+            Ends: element is Relation relation ? EndsOf(relation) : null);
+
+    private static RelationEndSummary[] EndsOf(Relation relation)
+    {
+        var ends = new RelationEndSummary[relation.Ends.Count];
+        for (var i = 0; i < ends.Length; i++)
+            ends[i] = new RelationEndSummary(relation.Ends[i].Entity, relation.Ends[i].Role);
+        return ends;
     }
 
     private static string? PackageOf(Element element) => element switch

@@ -58,6 +58,8 @@ public static class Program
                     CurrentDirectory = Environment.CurrentDirectory,
                     GetEnvironmentVariable = Environment.GetEnvironmentVariable,
                     ErrorIsTerminal = !Console.IsErrorRedirected,
+                    OpenStandardInput = Console.OpenStandardInput,
+                    OpenStandardOutput = Console.OpenStandardOutput,
                 };
                 return await new CliApp(environment).RunAsync(args, cts.Token).ConfigureAwait(false);
             }

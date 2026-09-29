@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Maquettiste.Engine.Model;
 
@@ -36,8 +37,50 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// <param name="Path">The repo-relative file path.</param>
 /// <param name="Category">The id of the element's category-tree node, when it has one (E4: the explorer's category filter).</param>
 /// <param name="Stereotypes">The element's stereotype keys, in application order (E4: the explorer's stereotype filter).</param>
+/// <param name="DisplayName">The element's display name, when it has one (E5: search and the explorer's label).</param>
+/// <param name="Database">The owning database's id, on table, view, sequence and mapping rows (E5).</param>
+/// <param name="Entity">The entity a mapping maps or a table overlay applies to, when it has one (E5).</param>
+/// <param name="MemberCount">The number of members, on diagram rows (E5).</param>
+/// <param name="Ends">The relation's ends in document order, on relation rows (E5).</param>
+/// <remarks>
+/// The E5 members are left out of the JSON when they are <see langword="null"/>, so rows of other kinds cost nothing. Equality compares
+/// the lists by their items, so two indexes built from the same documents are equal whatever lists they hold.
+/// </remarks>
 public sealed record ElementSummary(string Id, string Kind, string Name, string? Package, IReadOnlyList<string> Tags, string Hash, string Path,
-    string? Category, IReadOnlyList<string> Stereotypes);
+    string? Category, IReadOnlyList<string> Stereotypes,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DisplayName = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Database = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Entity = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? MemberCount = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<RelationEndSummary>? Ends = null)
+{
+    /// <inheritdoc/>
+    public bool Equals(ElementSummary? other) =>
+        other is not null
+        && string.Equals(Id, other.Id, StringComparison.Ordinal)
+        && string.Equals(Kind, other.Kind, StringComparison.Ordinal)
+        && string.Equals(Name, other.Name, StringComparison.Ordinal)
+        && string.Equals(Package, other.Package, StringComparison.Ordinal)
+        && Tags.SequenceEqual(other.Tags, StringComparer.Ordinal)
+        && string.Equals(Hash, other.Hash, StringComparison.Ordinal)
+        && string.Equals(Path, other.Path, StringComparison.Ordinal)
+        && string.Equals(Category, other.Category, StringComparison.Ordinal)
+        && Stereotypes.SequenceEqual(other.Stereotypes, StringComparer.Ordinal)
+        && string.Equals(DisplayName, other.DisplayName, StringComparison.Ordinal)
+        && string.Equals(Database, other.Database, StringComparison.Ordinal)
+        && string.Equals(Entity, other.Entity, StringComparison.Ordinal)
+        && MemberCount == other.MemberCount
+        && (ReferenceEquals(Ends, other.Ends) || (Ends is not null && other.Ends is not null && Ends.SequenceEqual(other.Ends)));
+
+    /// <inheritdoc/>
+    public override int GetHashCode() => HashCode.Combine(
+        StringComparer.Ordinal.GetHashCode(Id), StringComparer.Ordinal.GetHashCode(Hash), StringComparer.Ordinal.GetHashCode(Path));
+}
+
+/// <summary>One end of a relation, on the relation's index row (E5).</summary>
+/// <param name="Entity">The id of the entity at this end.</param>
+/// <param name="Role">The end's role name.</param>
+public sealed record RelationEndSummary(string Entity, string Role);
 
 /// <summary>A loaded extension schema file.</summary>
 /// <param name="Schema">The extension.</param>

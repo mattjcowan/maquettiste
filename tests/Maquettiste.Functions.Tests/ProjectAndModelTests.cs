@@ -125,7 +125,7 @@ public sealed class ProjectAndModelTests
 
         Assert.Equal(200, response.Status);
         Contract.AssertResponse(response, "/api/model/index");
-        Assert.Equal("no-store", response.Headers.CacheControl.ToString());
+        Assert.Equal("no-cache", response.Headers.CacheControl.ToString()); // E5e: kept, revalidated with the ETag
         var invoice = response.Json.AsArray().Single(e => e!["id"]!.GetValue<string>() == EditorHost.InvoiceId)!;
         Assert.Equal(["aggregate-root", "audited", "soft-delete"], invoice["stereotypes"]!.AsArray().Select(s => s!.GetValue<string>()));
         Assert.Equal(host.Store.Current!.Documents.Count, response.Json.AsArray().Count);

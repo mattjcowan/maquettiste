@@ -42,6 +42,9 @@ public sealed class EventTests
         Contract.AssertEvent("model.changed", changed.Payload);
         Assert.Equal("editor", changed.Payload["source"]!.GetValue<string>());
         Assert.Equal(saved.Json["hash"]!.GetValue<string>(), changed.Payload["changed"]![0]!["hash"]!.GetValue<string>());
+        var summary = changed.Payload["changed"]![0]!["summary"]!; // E5d: the new index row rides along
+        Assert.Equal(EditorHost.InvoiceId, summary["id"]!.GetValue<string>());
+        Assert.Equal(saved.Json["hash"]!.GetValue<string>(), summary["hash"]!.GetValue<string>());
         var validated = Assert.Single(host.Published("validation.completed"));
         Contract.AssertEvent("validation.completed", validated.Payload);
         Assert.Equal(0, validated.Payload["errors"]!.GetValue<int>());

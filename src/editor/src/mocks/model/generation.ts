@@ -4,6 +4,7 @@
 // when the model or a planned path changed since planning, and otherwise writes the planned bytes.
 import type {
   ApplyResult,
+  DatabaseTablesResult,
   DatabaseView,
   DatabaseViewResult,
   Diagnostic,
@@ -84,6 +85,61 @@ export class MockGeneration {
     const settings = this.model.projectSettings();
     const view = resolveDatabase({ docs, conventions: settings.conventions as Json, databaseConventions: settings.databases as Record<string, Json> }, id);
     return { view, diagnostics: [] };
+  }
+
+  private tablesCache: { version: number; results: Map<string, DatabaseTablesResult> } | null = null;
+
+  /**
+   * E5c: the table list of one database without columns. Unlike databaseView it answers on a model
+   * with errors: it resolves anyway and leaves out the tables whose owning elements have errors
+   * (the entity, relation, table file, or the target of a broken mapping or overlay), with
+   * partial: true. Answers are cached per model version.
+   */
+  databaseTables(id: string): DatabaseTablesResult | null {
+    const docs = this.model.docs();
+    const db = docs.get(id);
+    if (!db || db.kind !== "database") return null;
+    if (this.tablesCache?.version !== this.model.version) this.tablesCache = { version: this.model.version, results: new Map() };
+    const cached = this.tablesCache.results.get(id);
+    if (cached) return cached;
+    const diagnostics = this.model.validate().diagnostics;
+    const errors = diagnostics.filter((d) => d.severity === "error");
+    const failed = new Set<string>();
+    for (const error of errors) {
+      if (!error.elementId) continue;
+      const owner = this.model.owner(error.elementId)?.id ?? error.elementId;
+      failed.add(owner);
+      const doc = docs.get(owner);
+      if (doc && (doc.kind === "mapping" || doc.kind === "table"))
+        for (const key of ["entity", "relation", "table"]) if (typeof doc[key] === "string") failed.add(doc[key] as string);
+    }
+    let view: DatabaseView | null = null;
+    if (!failed.has(id)) {
+      try {
+        const settings = this.model.projectSettings();
+        view = resolveDatabase({ docs, conventions: settings.conventions as Json, databaseConventions: settings.databases as Record<string, Json> }, id);
+      } catch {
+        view = null; // a shape the mock resolver cannot take while the model has errors
+      }
+    }
+    const tables = (view?.tables ?? [])
+      .filter(
+        (t) => !(t.entityId && failed.has(t.entityId)) && !(t.relationId && failed.has(t.relationId)) && !failed.has(t.key) && !failed.has(t.key.split("@")[0]),
+      )
+      .map((t) => ({
+        key: t.key,
+        name: t.name,
+        schema: t.schema,
+        origin: t.origin,
+        entityId: t.entityId,
+        relationId: t.relationId,
+        isJunction: t.isJunction,
+        isLookup: t.isLookup,
+        columnCount: t.columns.length,
+      }));
+    const result: DatabaseTablesResult = { tables, diagnostics, partial: errors.length > 0 };
+    this.tablesCache.results.set(id, result);
+    return result;
   }
 
   private views(): DatabaseView[] {

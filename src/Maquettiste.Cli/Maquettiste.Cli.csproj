@@ -9,7 +9,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>maquettiste</ToolCommandName>
     <PackageId>Maquettiste.Cli</PackageId>
-    <Description>The maquettiste command-line tool: init, validate, generate, migrate, pack new and bench.</Description>
+    <Description>The maquettiste command-line tool: init, validate, generate, migrate, pack new, bench and mcp.</Description>
     <PackageTags>maquettiste;codegen;cli</PackageTags>
   </PropertyGroup>
 
@@ -47,6 +47,10 @@
 
 
   <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../Maquettiste.Engine/Maquettiste.Engine.csproj" />
     <!-- Built without the runtime identifier of a ReadyToRun pack: the bench is an executable the CLI uses as a library. -->
     <ProjectReference Include="../../bench/Maquettiste.Bench/Maquettiste.Bench.csproj" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained" />
@@ -57,6 +61,11 @@
   <ItemGroup>
     <EmbeddedResource Include="../../packs/sql-ddl/**/*" LogicalName="Maquettiste.Cli.Packs/sql-ddl/%(RecursiveDir)%(Filename)%(Extension)" Link="Packs/sql-ddl/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
     <EmbeddedResource Include="../../packs/csharp-dapper/**/*" LogicalName="Maquettiste.Cli.Packs/csharp-dapper/%(RecursiveDir)%(Filename)%(Extension)" Link="Packs/csharp-dapper/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+  </ItemGroup>
+
+  <!-- The modeling conventions maquettiste mcp serves as a resource and a prompt (docs/mcp.md). -->
+  <ItemGroup>
+    <EmbeddedResource Include="../../skills/maquettiste-modeling/SKILL.md" LogicalName="Maquettiste.Cli.Skills/maquettiste-modeling/SKILL.md" Link="Skills/maquettiste-modeling/SKILL.md" WithCulture="false" />
   </ItemGroup>
 
   <ItemGroup>

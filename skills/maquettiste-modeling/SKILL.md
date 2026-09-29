@@ -26,15 +26,45 @@ an id, never a name. The schemas are in `.maquettiste/.schema/v1/` and each file
 Templates live in `.maquettiste/templates/<pack>/` (pack.json, *.scriban, helpers.js). Project settings, output
 roots and conventions are in `.maquettiste/maquettiste.json`.
 
-## Workflow
+## Preferred: the MCP tools
 
-1. Change the JSON files (keep them canonical; the next save by the tool rewrites them anyway).
+When the `maquettiste` MCP server is connected (in Claude Code its tools show up as `mcp__maquettiste__<tool>`; it is
+`maquettiste mcp`, registered by `maquettiste init --mcp`, see docs/mcp.md), use its tools instead of editing the JSON
+files: every write goes through the same validated, hash-checked path as the editor, so a save can never half-apply,
+clobber a concurrent edit or leave a dangling id.
+
+1. Find: `get_project`, then `get_model_index` (filter by `kind`, `package`, `tag`, `category`, `stereotype`, `query`)
+   for ids; `get_references` for where an element is used; `get_database_view` for a database's tables and columns.
+2. Read: `get_schema` for the kind before building a document (its `extensions` constrain `properties`); `get_element` returns the document (`json`) and its `hash`.
+3. Change: `save_element` (the whole edited document plus `expectedHash` = the hash you read), `create_element`,
+   `delete_element`, or `apply_batch` for several changes that must land together (all or nothing).
+   - `conflict`: the file changed since you read it; nothing was written. Merge your change into `current` and retry with
+     its `hash`. Never retry blindly with the new hash and your old document.
+   - `invalid`: nothing was written; fix what `diagnostics` name (rule id, JSON pointer).
+   - `referenced` (delete): the `referrers` list who points at it; fix them first, or pass
+     `resolution: "remove-references"` when the references are optional.
+   - Renaming an attribute or element is a plain save of the new `name`: references are ids, so nothing else changes
+     (an element rename also moves its file).
+4. Check: a successful save already returns `diagnostics`; `validate` (optionally scoped by `elementIds`) checks the model.
+5. Generate: `plan` (stores a plan, touches nothing), `get_plan` / `get_plan_diff` for the files that matter, then
+   `apply_plan` with the plan id. `stale` means the inputs changed since the plan: plan again. `list_packs`,
+   `get_settings` and `save_settings` (with `expectedHash`) cover the packs and `maquettiste.json`.
+
+Every model read rescans the model folder and settings reads and saves check the file on disk, so edits made outside the server are seen; the resource `maquettiste://conventions`
+and the prompt `modeling-conventions` carry this text.
+
+## Fallback: editing the files
+
+Without the server (or for bulk mechanical edits the tools do not cover), edit the files directly:
+
+1. Change the JSON files (keep them canonical; the next save by the tool rewrites them anyway). New elements need a new
+   ULID `id` (uppercase, 26 characters); references are ids.
 2. `maquettiste validate` (exit 1 on errors; `--format sarif` for annotations). Fix dangling ids first.
 3. `maquettiste generate --dry-run --diff` to see what would change, then `maquettiste generate`.
 4. `maquettiste generate --check` is what CI runs: it fails on stale, missing, orphaned or hand-edited output.
 
-If the editor is open on the repository, it picks up file changes live through its watcher. Prefer small,
-reviewable changes: one element per file makes the diff the review.
+If the editor or the MCP server is running on the repository, it picks up file changes (the editor live through its
+watcher, the server on its next call). Prefer small, reviewable changes: one element per file makes the diff the review.
 
 ## Conventions worth knowing
 

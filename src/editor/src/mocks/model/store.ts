@@ -11,6 +11,7 @@ import type {
   Diagnostic,
   ElementDocument,
   ElementKind,
+  ElementReadResult,
   ElementSummary,
   ExtensionSchema,
   PackManifest,
@@ -28,7 +29,8 @@ import { clone, jsonEqual } from "@/lib/json";
 import { schemaValidator, describeErrors } from "../contract";
 import { referencesOf, subElementIds, type Ref } from "./refs";
 import { typedElement } from "./typed";
-import { diagnosticKey, validateModel, type ModelEntry } from "./validate";
+import { applyRules, diagnosticKey, validateModel, type ModelEntry } from "./validate";
+import { ModelIndex } from "./modelIndex";
 import { applyCase } from "./physical";
 
 type Json = Record<string, unknown>;
@@ -132,12 +134,70 @@ export class MockModel {
     return [...this.entries.values()].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)).map((e) => summary(e));
   }
 
+  private tagCache: { version: number; tag: string } | null = null;
+
+  /**
+   * E5e: the index's ETag, built like the engine's ModelReads.IndexTag: a hash of the index format and every
+   * row's id, hash and path in index order, computed once per model version.
+   */
+  indexTag(): string {
+    if (this.tagCache?.version === this.version) return this.tagCache.tag;
+    const rows = this.index();
+    const parts = [INDEX_FORMAT, String(rows.length)];
+    for (const row of rows) parts.push(row.id, row.hash, row.path);
+    const tag = sha256Hex(parts.join("\n"));
+    this.tagCache = { version: this.version, tag };
+    return tag;
+  }
+
+  /** E5b: the documents of up to 200 ids, each once, in the order its first id was asked for. */
+  readElements(ids: readonly string[]): ElementReadResult {
+    const elements: ElementDocument[] = [];
+    const missing: string[] = [];
+    const seen = new Set<string>();
+    for (const id of ids) {
+      const entry = this.owner(id);
+      if (!entry) missing.push(id);
+      else if (!seen.has(entry.id)) {
+        seen.add(entry.id);
+        elements.push(this.document(entry));
+      }
+    }
+    return { elements, missing };
+  }
+
+  /** The index row of one element, or undefined when it is gone (E5d). */
+  summaryOf(id: string): ElementSummary | undefined {
+    const entry = this.entries.get(id);
+    return entry ? summary(entry) : undefined;
+  }
+
   /** The entry that holds an id (an element or one of its sub-elements). */
   owner(id: string): Entry | undefined {
     const direct = this.entries.get(id);
     if (direct) return direct;
-    for (const entry of this.entries.values()) if (subElementIds(entry.json).includes(id)) return entry;
-    return undefined;
+    const owner = this.derived().ownerOf(id);
+    return owner === undefined ? undefined : this.entries.get(owner);
+  }
+
+  private derivedState: ModelIndex | null = null;
+  private derivedVersion = -1;
+
+  /**
+   * The owner map, reverse references, name scopes and per-entry diagnostics, synced to the
+   * current entries once per model version (explorer-redesign.md section 5 item 4).
+   */
+  private derived(): ModelIndex {
+    this.derivedState ??= new ModelIndex(this.extensions);
+    if (this.derivedVersion !== this.version) {
+      this.derivedState.sync(this.entries);
+      this.derivedVersion = this.version;
+    }
+    return this.derivedState;
+  }
+
+  private rules(): Record<string, string> {
+    return ((this.settingsJson.validation as Json | undefined)?.rules as Record<string, string> | undefined) ?? {};
   }
 
   document(entry: Entry): ElementDocument {
@@ -163,13 +223,12 @@ export class MockModel {
   references(id: string): ReferenceInfo[] | null {
     const target = this.owner(id);
     if (!target) return null;
-    const ids = new Set([target.id, ...subElementIds(target.json)]);
-    if (target.id !== id) {
-      ids.clear();
-      ids.add(id);
-    }
+    const ids = new Set(target.id !== id ? [id] : [target.id, ...subElementIds(target.json)]);
     const out: ReferenceInfo[] = [];
-    for (const entry of this.sortedEntries()) {
+    const from = [...this.derived().referrersOf(ids)]
+      .flatMap((r) => this.entries.get(r) ?? [])
+      .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    for (const entry of from) {
       if (entry.id === target.id) continue;
       for (const ref of referencesOf(entry.json))
         if (ids.has(ref.toId)) out.push({ fromElementId: entry.id, fromId: ref.fromId, jsonPointer: ref.pointer, field: ref.field, toId: ref.toId });
@@ -183,29 +242,36 @@ export class MockModel {
 
   // ---------------------------------------------------------------- validation
 
+  /** Validates any set of entries from scratch (the full, non-incremental rules). */
   diagnosticsOf(entries: Iterable<Entry | ModelEntry>): Diagnostic[] {
     const list = [...entries].map((e) => ({ id: e.id, path: e.path, json: e.json }));
-    const rules = ((this.settingsJson.validation as Json | undefined)?.rules as Record<string, string> | undefined) ?? {};
-    return validateModel({ entries: list, extensions: this.extensions, rules });
+    return validateModel({ entries: list, extensions: this.extensions, rules: this.rules() });
+  }
+
+  /** Every diagnostic of the current model, from the incrementally maintained per-entry results. */
+  private currentDiagnostics(): Diagnostic[] {
+    return applyRules(this.derived().diagnostics(), this.rules());
   }
 
   validate(scope: ValidationScope = {}): ValidationReport {
-    let diagnostics = this.diagnosticsOf(this.entries.values());
+    let diagnostics = this.currentDiagnostics();
     if (scope.elementIds) {
       const wanted = new Set<string>();
       for (const id of scope.elementIds) {
         const owner = this.owner(id);
         if (owner) wanted.add(owner.id);
       }
-      if (scope.includeReferrers !== false)
-        for (const entry of this.entries.values()) if (referencesOf(entry.json).some((r) => wanted.has(this.owner(r.toId)?.id ?? r.toId))) wanted.add(entry.id);
+      if (scope.includeReferrers !== false) {
+        const index = this.derived();
+        for (const r of index.referrersOf([...wanted].flatMap((w) => index.idsHeldBy(w)))) wanted.add(r);
+      }
       diagnostics = diagnostics.filter((d) => d.elementId !== null && wanted.has(d.elementId));
     }
     return report(diagnostics);
   }
 
   hasErrors(): boolean {
-    return this.diagnosticsOf(this.entries.values()).some((d) => d.severity === "error");
+    return this.currentDiagnostics().some((d) => d.severity === "error");
   }
 
   // ---------------------------------------------------------------- writes
@@ -264,13 +330,22 @@ export class MockModel {
   }
 
   /** Errors the candidate introduces (compared with the current model), and every diagnostic of `ids`. */
+  /**
+   * The errors a candidate state introduces and the candidate's diagnostics of `ids`. Only the
+   * entries the difference can affect are re-checked: the index moves to the candidate and back.
+   */
   private check(candidate: Map<string, Entry>, ids: string[]): { introduced: Diagnostic[]; all: Diagnostic[] } {
+    const index = this.derived();
+    const rules = this.rules();
+    const affected = index.sync(candidate);
+    for (const id of ids) affected.add(id);
+    const after = applyRules(index.diagnosticsFor(affected), rules);
+    index.sync(this.entries);
     const before = new Set(
-      this.diagnosticsOf(this.entries.values())
+      applyRules(index.diagnosticsFor(affected), rules)
         .filter((d) => d.severity === "error")
         .map(diagnosticKey),
     );
-    const after = this.diagnosticsOf(candidate.values());
     const introduced = after.filter((d) => d.severity === "error" && !before.has(diagnosticKey(d)));
     const scope = new Set(ids);
     return { introduced, all: after.filter((d) => d.elementId !== null && scope.has(d.elementId)) };
@@ -717,7 +792,24 @@ export function summary(e: Entry): ElementSummary {
     stereotypes: (json.stereotypes as string[] | undefined) ?? [],
     hash: e.hash,
     path: e.path,
+    ...e5(json),
   };
+}
+
+/** The index format hashed into the index tag; the engine's ModelReads.IndexFormat. */
+export const INDEX_FORMAT = "maquettiste-index/e5";
+
+/** The E5 members of an index row, present only for the kinds that carry them (as the engine writes them). */
+function e5(json: Json): Partial<ElementSummary> {
+  const out: Partial<ElementSummary> = {};
+  if (typeof json.displayName === "string") out.displayName = json.displayName;
+  const kind = json.kind;
+  if ((kind === "table" || kind === "view" || kind === "sequence" || kind === "mapping") && typeof json.database === "string") out.database = json.database;
+  if ((kind === "table" || kind === "mapping") && typeof json.entity === "string") out.entity = json.entity;
+  if (kind === "diagram") out.memberCount = Array.isArray(json.members) ? json.members.length : 0;
+  if (kind === "relation" && Array.isArray(json.ends))
+    out.ends = (json.ends as Json[]).map((end) => ({ entity: String(end.entity ?? ""), role: String(end.role ?? "") }));
+  return out;
 }
 
 export function report(diagnostics: Diagnostic[]): ValidationReport {

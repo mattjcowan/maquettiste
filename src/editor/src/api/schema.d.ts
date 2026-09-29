@@ -110,11 +110,38 @@ export interface paths {
         };
         /**
          * Summaries of every element
-         * @description One summary per top-level element (sub-elements such as attributes and relation ends are not listed). The explorer, the command palette and every canvas start from this list.
+         * @description One summary per top-level element (sub-elements such as attributes and relation ends are not listed). The explorer,
+         *     the command palette and every canvas start from this list.
+         *
+         *     E5e: the response carries an `ETag`, a hash of every row's id, file hash and path and of the index format, so it
+         *     changes exactly when a row does, across server restarts too. A request whose `If-None-Match` names it gets 304 with no
+         *     body. `Cache-Control: no-cache` lets the browser keep the index and revalidate it on every use.
          */
         get: operations["getModelIndex"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/model/elements/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Up to 200 elements in one request
+         * @description E5b: the documents of up to 200 element or sub-element ids, read from one model snapshot, for diagram and inspector
+         *     loads (one request per chunk of ids instead of one per element). Each document comes back once, in the order its first
+         *     id was asked for; ids that match nothing are listed in `missing`. More than 200 ids is `bad-request`.
+         */
+        post: operations["readElements"];
         delete?: never;
         options?: never;
         head?: never;
@@ -296,6 +323,37 @@ export interface paths {
          *     with errors returns `view: null` and the diagnostics.
          */
         get: operations["getDatabaseView"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/databases/{id}/tables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description An element or sub-element id (uppercase ULID).
+                 * @example 01J92P0V0FJ23CGSNKM7P1W5V7
+                 */
+                id: components["parameters"]["ElementId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The table list of one database, without columns
+         * @description E5c: a projection of the resolved database for the explorer's Databases and Mappings sections, table-name search and
+         *     the coverage line: every table's key, name, schema, origin, entity or relation and column count, without the columns.
+         *     Unlike `/view` it answers on a model with errors: the tables whose owning elements are valid come back, the rest are
+         *     left out, `partial` is true and the diagnostics say why. The editor keeps the last complete list per database and
+         *     shows it with a stale badge while a response is partial. The server resolves the model once per model version and
+         *     answers every database from that resolve.
+         */
+        get: operations["getDatabaseTables"];
         put?: never;
         post?: never;
         delete?: never;
@@ -877,6 +935,11 @@ export interface components {
         ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype";
         /** @enum {string} */
         ChangeSource: "editor" | "disk" | "cli" | "engine";
+        /**
+         * @description One index row. The E5 members are optional: a server without E5 leaves them out, and an E5 server leaves each one out
+         *     when it does not apply to the row's kind (or, for `displayName`, when the element has none), so they cost nothing on
+         *     rows that do not carry them.
+         */
         ElementSummary: {
             id: components["schemas"]["Ulid"];
             kind: components["schemas"]["ElementKind"];
@@ -890,6 +953,30 @@ export interface components {
             stereotypes: string[];
             hash: components["schemas"]["Hash"];
             path: components["schemas"]["RepoPath"];
+            /** @description The element's display name, when it has one (E5). Search matches it and the explorer shows it as the label. */
+            displayName?: string;
+            /** @description The owning database's id, on table, view, sequence and mapping rows (E5). */
+            database?: components["schemas"]["Ulid"];
+            /** @description The entity a mapping maps or a table overlay applies to, on mapping and table rows that have one (E5). */
+            entity?: components["schemas"]["Ulid"];
+            /** @description The number of members, on diagram rows (E5). */
+            memberCount?: number;
+            /** @description The relation's ends in document order, on relation rows (E5). */
+            ends?: components["schemas"]["RelationEndSummary"][];
+        };
+        RelationEndSummary: {
+            entity: components["schemas"]["Ulid"];
+            role: string;
+        };
+        ElementReadRequest: {
+            /** @description Element or sub-element ids, at most 200. A sub-element id reads the document that holds it; each document comes back once. */
+            ids: components["schemas"]["Ulid"][];
+        };
+        ElementReadResult: {
+            /** @description The documents, in the order their first id was asked for, each once. */
+            elements: components["schemas"]["ElementDocument"][];
+            /** @description The ids no element or sub-element has, in request order. */
+            missing: string[];
         };
         /** @description A canonical model file (`schemas/v1/<kind>.json`), chosen by `kind`. */
         ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"];
@@ -954,6 +1041,13 @@ export interface components {
             kind: components["schemas"]["ElementKind"];
             path: components["schemas"]["RepoPath"];
             hash: components["schemas"]["Hash"];
+            /**
+             * @description The element's index row as the model holds it when the event is sent (E5d), so the editor patches its index in place.
+             *     An E5d server sends it on every change of `model.changed`, except for an element deleted again before the event went
+             *     out (the next event lists it in `deleted`). Its `hash` can be newer than the change's when a later write followed; the
+             *     summary is the current one. Absent from an older server's events, which the editor answers by refetching the index.
+             */
+            summary?: components["schemas"]["ElementSummary"];
         };
         ChangeSet: {
             changed: components["schemas"]["ElementChange"][];
@@ -1040,6 +1134,31 @@ export interface components {
         DatabaseViewResult: {
             view: components["schemas"]["DatabaseView"] | null;
             diagnostics: components["schemas"]["Diagnostic"][];
+        };
+        DatabaseTablesResult: {
+            /** @description The tables that resolve, in the resolver's order (the same order as `DatabaseView.tables`). */
+            tables: components["schemas"]["TableSummary"][];
+            /** @description Every validation and resolution diagnostic, sorted. */
+            diagnostics: components["schemas"]["Diagnostic"][];
+            /**
+             * @description The model has errors, so tables whose owning elements have errors (the entity, the relation, the enum of a lookup
+             *     table, the table file or overlay, a mapping of the entity or relation, or the database itself) are left out, and the
+             *     rest may change when the errors are fixed. False when the list is complete.
+             */
+            partial: boolean;
+        };
+        TableSummary: {
+            /** @description As `TableView.key`. */
+            key: string;
+            name: string;
+            schema: string | null;
+            /** @enum {string} */
+            origin: "synthesized" | "designed" | "imported";
+            entityId: components["schemas"]["Ulid"] | null;
+            relationId: components["schemas"]["Ulid"] | null;
+            isJunction: boolean;
+            isLookup: boolean;
+            columnCount: number;
         };
         DatabaseView: {
             id: components["schemas"]["Ulid"];
@@ -1285,7 +1404,7 @@ export interface components {
             updatedUtc: string;
         };
         /**
-         * @description `model.changed` to every connection: the engine's ChangeSet (cut to 200 KB, `truncated` then true). An `ElementChange` carries only id, kind, path and hash, so a change the editor did not make itself (an unknown id or a changed hash) cannot be patched into the index; the editor refetches `GET /api/model/index`.
+         * @description `model.changed` to every connection: the engine's ChangeSet (cut to 200 KB, `truncated` then true). With E5d each `ElementChange` carries the element's new `summary`, so the editor patches its index in place (and removes the rows of `deleted`); a change without a summary (an older server) or a truncated set makes it refetch `GET /api/model/index` with `If-None-Match`.
          * @example {
          *       "changed": [
          *         {
@@ -2551,6 +2670,10 @@ export interface components {
          * @example "4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73"
          */
         ETag: string;
+        /** @description The index's hash as a strong ETag (E5e). */
+        IndexETag: string;
+        /** @description `no-cache`: the client may keep the response but revalidates it with `If-None-Match` before each use (E5e). */
+        NoCache: "no-cache";
     };
     pathItems: never;
 }
@@ -2801,7 +2924,9 @@ export interface operations {
     getModelIndex: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "If-None-Match"?: components["parameters"]["IfNoneMatch"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -2810,12 +2935,58 @@ export interface operations {
             /** @description The index. */
             200: {
                 headers: {
+                    ETag: components["headers"]["IndexETag"];
+                    "Cache-Control": components["headers"]["NoCache"];
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["ElementSummary"][];
                 };
             };
+            /** @description The index still has the ETag given in `If-None-Match` (E5e). */
+            304: {
+                headers: {
+                    ETag: components["headers"]["IndexETag"];
+                    "Cache-Control": components["headers"]["NoCache"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["ModelUnavailable"];
+        };
+    };
+    readElements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "ids": [
+                 *         "01J92P0V0FJ23CGSNKM7P1W5V7",
+                 *         "01J92P0V1BWHG0REWKSTR292RS"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["ElementReadRequest"];
+            };
+        };
+        responses: {
+            /** @description The documents and the ids that matched nothing. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElementReadResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             503: components["responses"]["ModelUnavailable"];
         };
@@ -3261,6 +3432,34 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DatabaseViewResult"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getDatabaseTables: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description An element or sub-element id (uppercase ULID).
+                 * @example 01J92P0V0FJ23CGSNKM7P1W5V7
+                 */
+                id: components["parameters"]["ElementId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tables that resolve, the diagnostics, and whether the list is partial. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatabaseTablesResult"];
                 };
             };
             401: components["responses"]["Unauthenticated"];

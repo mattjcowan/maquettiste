@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Maquettiste.Engine;
 using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine.Model;
 using Microsoft.Extensions.Logging;
 using StaticSiteHost.Functions;
 
@@ -45,14 +48,19 @@ public sealed class EditorEvents
     /// <summary>Whether the last attempt to load the model failed (the model folder cannot be read).</summary>
     public bool LoadFailed { get; set; }
 
-    /// <summary>Publishes <c>model.changed</c> (the change set cut to 200 KB) to every connection, then signals the validation loop.</summary>
+    /// <summary>
+    /// Publishes <c>model.changed</c> to every connection, each change with the element's index row as the model holds it now (E5d), cut
+    /// to 200 KB (<c>truncated</c> then true), then signals the validation loop.
+    /// </summary>
     /// <param name="set">What changed.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>A task.</returns>
     public async ValueTask OnModelChangedAsync(ChangeSet set, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(set);
-        await _realtime.PublishAsync("model.changed", set.TruncateTo(Api.MaxEventBytes), Api.JsonOptions, ct).ConfigureAwait(false);
+        var cut = set.TruncateTo(Api.MaxEventBytes);
+        var index = cut.Changed.Count == 0 ? [] : await _store.GetIndexAsync(ct).ConfigureAwait(false);
+        await _realtime.PublishAsync("model.changed", ModelChangedEvent.Create(cut, index, Api.MaxEventBytes), Api.JsonOptions, ct).ConfigureAwait(false);
         SignalValidation();
     }
 
@@ -311,4 +319,75 @@ public sealed class PresenceRegistry
 
         return removed;
     }
+}
+
+/// <summary>One change of <c>model.changed</c>: the engine's <see cref="ElementChange"/> plus the element's index row (E5d).</summary>
+/// <param name="Id">The element id.</param>
+/// <param name="Kind">The kind name.</param>
+/// <param name="Path">The repo-relative file path.</param>
+/// <param name="Hash">The new file hash.</param>
+/// <param name="Summary">The element's index row now, or <see langword="null"/> (left out) when it was deleted again before the event went out.</param>
+public sealed record SummarizedChange(string Id, string Kind, string Path, string Hash,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ElementSummary? Summary);
+
+/// <summary>The <c>model.changed</c> payload: the engine's <see cref="ChangeSet"/> shape with a summary on each change (E5d).</summary>
+/// <param name="Changed">Changed and added elements.</param>
+/// <param name="Deleted">Ids of deleted elements.</param>
+/// <param name="Source">What caused the change.</param>
+/// <param name="Truncated">Whether items were dropped to fit the size limit; the receiver refetches the index.</param>
+public sealed record ModelChangedEvent(IReadOnlyList<SummarizedChange> Changed, IReadOnlyList<string> Deleted, ChangeSource Source, bool Truncated)
+{
+    /// <summary>Whether nothing changed (the engine's <see cref="ChangeSet.IsEmpty"/>, kept in the payload).</summary>
+    public bool IsEmpty => Changed.Count == 0 && Deleted.Count == 0;
+
+    /// <summary>
+    /// Builds the payload of a change set already cut to <paramref name="maxJsonBytes"/>: each change gets its row from
+    /// <paramref name="index"/>, then trailing items are dropped (and <see cref="Truncated"/> set) while the payload is over the limit.
+    /// </summary>
+    /// <param name="set">The change set.</param>
+    /// <param name="index">The index now.</param>
+    /// <param name="maxJsonBytes">The size limit.</param>
+    /// <returns>The payload.</returns>
+    public static ModelChangedEvent Create(ChangeSet set, IReadOnlyList<ElementSummary> index, int maxJsonBytes)
+    {
+        ArgumentNullException.ThrowIfNull(set);
+        ArgumentNullException.ThrowIfNull(index);
+        var rows = new Dictionary<string, ElementSummary?>(set.Changed.Count, StringComparer.Ordinal);
+        foreach (var change in set.Changed)
+            rows[change.Id] = null;
+        if (rows.Count > 0)
+        {
+            foreach (var summary in index)
+            {
+                if (rows.ContainsKey(summary.Id))
+                    rows[summary.Id] = summary;
+            }
+        }
+
+        var changed = set.Changed.Select(c => new SummarizedChange(c.Id, c.Kind, c.Path, c.Hash, rows[c.Id])).ToArray();
+        var full = new ModelChangedEvent(changed, set.Deleted, set.Source, set.Truncated);
+        if (Size(full) <= maxJsonBytes)
+            return full;
+
+        var total = changed.Length + set.Deleted.Count;
+        int lo = 0, hi = total;
+        while (lo < hi)
+        {
+            var mid = (lo + hi + 1) / 2;
+            if (Size(full.Take(mid)) <= maxJsonBytes)
+                lo = mid;
+            else
+                hi = mid - 1;
+        }
+
+        return full.Take(lo);
+    }
+
+    private ModelChangedEvent Take(int count) => new(
+        [.. Changed.Take(Math.Min(count, Changed.Count))],
+        [.. Deleted.Take(Math.Max(0, count - Changed.Count))],
+        Source,
+        true);
+
+    private static int Size(ModelChangedEvent value) => JsonSerializer.SerializeToUtf8Bytes(value, Api.JsonOptions).Length;
 }

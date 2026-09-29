@@ -445,12 +445,26 @@ paths:
       tags: [model]
       operationId: getModelIndex
       summary: Summaries of every element
-      description: One summary per top-level element (sub-elements such as attributes and relation ends are not listed). The explorer, the command palette and every canvas start from this list.
+      description: |
+        One summary per top-level element (sub-elements such as attributes and relation ends are not listed). The explorer,
+        the command palette and every canvas start from this list.
+
+        E5e: the response carries an `ETag`, a hash of every row's id, file hash and path and of the index format, so it
+        changes exactly when a row does, across server restarts too. A request whose `If-None-Match` names it gets 304 with no
+        body. `Cache-Control: no-cache` lets the browser keep the index and revalidate it on every use.
       x-maquettiste-role: viewer
       x-maquettiste-engine: ModelStore.GetIndexAsync
+      x-engine-addition: E5e ModelReads.IndexTag(summaries)
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatch'
       responses:
         '200':
           description: The index.
+          headers:
+            ETag:
+              $ref: '#/components/headers/IndexETag'
+            Cache-Control:
+              $ref: '#/components/headers/NoCache'
           content:
             application/json:
               schema:
@@ -492,6 +506,11 @@ paths:
                       stereotypes: []
                       hash: f9fdc699d65150052e25ef459180736b24a44f97c69cbefd09c9d12897fd36e9
                       path: .maquettiste/model/relations/contains.json
+                      ends:
+                      - entity: 01J92P0V0FJ23CGSNKM7P1W5V7
+                        role: invoice
+                      - entity: 01J92P0V0GWFR78HZH0P8Z3GY7
+                        role: lines
                     - id: 01J92P0V1QRN2181XM2ZWE02W4
                       kind: database
                       name: main
@@ -510,6 +529,47 @@ paths:
                       stereotypes: []
                       hash: a29e751129658af7503fb429afb3b382538a96bd8adee116e98b08a17152840c
                       path: .maquettiste/model/diagrams/billing-overview.json
+                      memberCount: 8
+        '304':
+          description: The index still has the ETag given in `If-None-Match` (E5e).
+          headers:
+            ETag:
+              $ref: '#/components/headers/IndexETag'
+            Cache-Control:
+              $ref: '#/components/headers/NoCache'
+        '503':
+          $ref: '#/components/responses/ModelUnavailable'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /api/model/elements/read:
+    post:
+      tags: [model]
+      operationId: readElements
+      summary: Up to 200 elements in one request
+      description: |
+        E5b: the documents of up to 200 element or sub-element ids, read from one model snapshot, for diagram and inspector
+        loads (one request per chunk of ids instead of one per element). Each document comes back once, in the order its first
+        id was asked for; ids that match nothing are listed in `missing`. More than 200 ids is `bad-request`.
+      x-maquettiste-role: viewer
+      x-engine-addition: E5b ModelStore.ReadElementsAsync(ids)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ElementReadRequest'
+            example:
+              ids: [01J92P0V0FJ23CGSNKM7P1W5V7, 01J92P0V1BWHG0REWKSTR292RS]
+      responses:
+        '200':
+          description: The documents and the ids that matched nothing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ElementReadResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '503':
           $ref: '#/components/responses/ModelUnavailable'
         '401':
@@ -2057,6 +2117,34 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
 
+  /api/databases/{id}/tables:
+    parameters:
+      - $ref: '#/components/parameters/ElementId'
+    get:
+      tags: [databases]
+      operationId: getDatabaseTables
+      summary: The table list of one database, without columns
+      description: |
+        E5c: a projection of the resolved database for the explorer's Databases and Mappings sections, table-name search and
+        the coverage line: every table's key, name, schema, origin, entity or relation and column count, without the columns.
+        Unlike `/view` it answers on a model with errors: the tables whose owning elements are valid come back, the rest are
+        left out, `partial` is true and the diagnostics say why. The editor keeps the last complete list per database and
+        shows it with a stale badge while a response is partial. The server resolves the model once per model version and
+        answers every database from that resolve.
+      x-maquettiste-role: viewer
+      x-engine-addition: E5c DatabaseTables.GetAsync(databaseId)
+      responses:
+        '200':
+          description: The tables that resolve, the diagnostics, and whether the list is partial.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatabaseTablesResult'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
   /api/generate/plan:
     post:
       tags: [generation]
@@ -2756,6 +2844,16 @@ components:
         type: string
         pattern: '^"[0-9a-f]{64}"$'
       example: '"4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73"'
+    IndexETag:
+      description: The index's hash as a strong ETag (E5e).
+      schema:
+        type: string
+        pattern: '^"[0-9a-f]{64}"$'
+    NoCache:
+      description: '`no-cache`: the client may keep the response but revalidates it with `If-None-Match` before each use (E5e).'
+      schema:
+        type: string
+        const: no-cache
 
   responses:
     BadRequest:
@@ -3370,7 +3468,11 @@ components:
       enum: [editor, disk, cli, engine]
     ElementSummary:
       x-engine-record: Maquettiste.Engine.Model.ElementSummary
-      x-engine-addition: E4 adds `category` and `stereotypes`
+      x-engine-addition: E4 adds `category` and `stereotypes`; E5 adds `displayName`, `database`, `entity`, `memberCount` and `ends` (explorer-redesign.md section 4.1)
+      description: |
+        One index row. The E5 members are optional: a server without E5 leaves them out, and an E5 server leaves each one out
+        when it does not apply to the row's kind (or, for `displayName`, when the element has none), so they cost nothing on
+        rows that do not carry them.
       type: object
       required: [id, kind, name, package, tags, category, stereotypes, hash, path]
       properties:
@@ -3403,6 +3505,62 @@ components:
           $ref: '#/components/schemas/Hash'
         path:
           $ref: '#/components/schemas/RepoPath'
+        displayName:
+          type: string
+          description: The element's display name, when it has one (E5). Search matches it and the explorer shows it as the label.
+        database:
+          description: The owning database's id, on table, view, sequence and mapping rows (E5).
+          $ref: '#/components/schemas/Ulid'
+        entity:
+          description: The entity a mapping maps or a table overlay applies to, on mapping and table rows that have one (E5).
+          $ref: '#/components/schemas/Ulid'
+        memberCount:
+          type: integer
+          minimum: 0
+          description: The number of members, on diagram rows (E5).
+        ends:
+          type: array
+          description: The relation's ends in document order, on relation rows (E5).
+          items:
+            $ref: '#/components/schemas/RelationEndSummary'
+    RelationEndSummary:
+      x-engine-addition: E5
+      x-engine-record: Maquettiste.Engine.Model.RelationEndSummary
+      type: object
+      required: [entity, role]
+      properties:
+        entity:
+          $ref: '#/components/schemas/Ulid'
+        role:
+          type: string
+    ElementReadRequest:
+      x-engine-addition: E5b
+      type: object
+      required: [ids]
+      additionalProperties: false
+      properties:
+        ids:
+          type: array
+          maxItems: 200
+          description: Element or sub-element ids, at most 200. A sub-element id reads the document that holds it; each document comes back once.
+          items:
+            $ref: '#/components/schemas/Ulid'
+    ElementReadResult:
+      x-engine-addition: E5b
+      x-engine-record: Maquettiste.Engine.ElementReadResult
+      type: object
+      required: [elements, missing]
+      properties:
+        elements:
+          type: array
+          description: The documents, in the order their first id was asked for, each once.
+          items:
+            $ref: '#/components/schemas/ElementDocument'
+        missing:
+          type: array
+          description: The ids no element or sub-element has, in request order.
+          items:
+            type: string
     ModelDocument:
       description: A canonical model file (`schemas/v1/<kind>.json`), chosen by `kind`.
       oneOf:
@@ -3523,6 +3681,7 @@ components:
           description: The referenced id (an element or a sub-element).
     ElementChange:
       x-engine-record: Maquettiste.Engine.ElementChange
+      x-engine-addition: E5d adds `summary` on `model.changed`
       type: object
       required: [id, kind, path, hash]
       properties:
@@ -3534,6 +3693,13 @@ components:
           $ref: '#/components/schemas/RepoPath'
         hash:
           $ref: '#/components/schemas/Hash'
+        summary:
+          description: |
+            The element's index row as the model holds it when the event is sent (E5d), so the editor patches its index in place.
+            An E5d server sends it on every change of `model.changed`, except for an element deleted again before the event went
+            out (the next event lists it in `deleted`). Its `hash` can be newer than the change's when a later write followed; the
+            summary is the current one. Absent from an older server's events, which the editor answers by refetching the index.
+          $ref: '#/components/schemas/ElementSummary'
     ChangeSet:
       x-engine-record: Maquettiste.Engine.ChangeSet
       type: object
@@ -3729,6 +3895,59 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Diagnostic'
+    DatabaseTablesResult:
+      x-engine-addition: E5c
+      x-engine-record: Maquettiste.Engine.DatabaseTablesResult
+      type: object
+      required: [tables, diagnostics, partial]
+      properties:
+        tables:
+          type: array
+          description: The tables that resolve, in the resolver's order (the same order as `DatabaseView.tables`).
+          items:
+            $ref: '#/components/schemas/TableSummary'
+        diagnostics:
+          type: array
+          description: Every validation and resolution diagnostic, sorted.
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+        partial:
+          type: boolean
+          description: |
+            The model has errors, so tables whose owning elements have errors (the entity, the relation, the enum of a lookup
+            table, the table file or overlay, a mapping of the entity or relation, or the database itself) are left out, and the
+            rest may change when the errors are fixed. False when the list is complete.
+    TableSummary:
+      x-engine-addition: E5c
+      x-engine-record: Maquettiste.Engine.TableSummary
+      type: object
+      required: [key, name, schema, origin, entityId, relationId, isJunction, isLookup, columnCount]
+      properties:
+        key:
+          type: string
+          description: As `TableView.key`.
+        name:
+          type: string
+        schema:
+          type: [string, 'null']
+        origin:
+          type: string
+          enum: [synthesized, designed, imported]
+        entityId:
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+        relationId:
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+        isJunction:
+          type: boolean
+        isLookup:
+          type: boolean
+        columnCount:
+          type: integer
+          minimum: 0
     DatabaseView:
       x-engine-addition: E1
       x-engine-record: Maquettiste.Engine.DatabaseView
@@ -4270,7 +4489,7 @@ components:
 
     # ---------------------------------------------------------------- realtime payloads
     RealtimeModelChanged:
-      description: '`model.changed` to every connection: the engine''s ChangeSet (cut to 200 KB, `truncated` then true). An `ElementChange` carries only id, kind, path and hash, so a change the editor did not make itself (an unknown id or a changed hash) cannot be patched into the index; the editor refetches `GET /api/model/index`.'
+      description: '`model.changed` to every connection: the engine''s ChangeSet (cut to 200 KB, `truncated` then true). With E5d each `ElementChange` carries the element''s new `summary`, so the editor patches its index in place (and removes the rows of `deleted`); a change without a summary (an older server) or a truncated set makes it refetch `GET /api/model/index` with `If-None-Match`.'
       allOf:
         - $ref: '#/components/schemas/ChangeSet'
       example:

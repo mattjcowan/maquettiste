@@ -17,7 +17,8 @@ public static class Program
     public const string Usage =
         "usage: Maquettiste.Bench [--out <dir>] [--jobs 8] [--seed 42] [--entities 5000] [--relations 20000] [--enums 500] [--fanout <n>]\n" +
         "                         [--keep] [--baseline <file>] [--max-regression 10] [--format text|json] [--report <file>] [--no-example-packs]\n" +
-        "                         [--cli <maquettiste executable> | --no-one-shot]\n";
+        "                         [--cli <maquettiste executable> | --no-one-shot]\n" +
+        "       Maquettiste.Bench write-model --out <dir> [options]   (the explorer's large mock model; see WriteModel.Usage)\n";
 
     /// <summary>Runs the benchmark.</summary>
     /// <param name="args">The arguments.</param>
@@ -32,6 +33,8 @@ public static class Program
         };
 
         ArgumentNullException.ThrowIfNull(args);
+        if (args.Length > 0 && args[0] == WriteModel.Verb)
+            return await WriteModel.RunAsync(args[1..], Console.Out, Console.Error, cancel.Token).ConfigureAwait(false);
         if (args.Length > 0 && args[0] == OneShotGenerate.Verb)
             return await OneShotGenerate.RunAsync(args[1..], cancel.Token).ConfigureAwait(false);
 

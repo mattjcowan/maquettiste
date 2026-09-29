@@ -9,6 +9,7 @@ import type { paths, Problem } from "@/api/types";
 import type { MockBackend } from "./backend";
 import { baselineHandlers } from "./baseline";
 import { mentions, recordings, replayable, type Recording } from "./recorded";
+import { isUlid, readTag } from "./wire";
 
 type Json = Record<string, unknown>;
 
@@ -22,7 +23,7 @@ function etag(hash: string): Record<string, string> {
 }
 
 function ifMatch(request: Request): string | null {
-  return request.headers.get("If-Match");
+  return readTag(request.headers.get("If-Match"));
 }
 
 async function jsonBody(request: Request): Promise<{ ok: true; value: Json } | { ok: false; response: HttpResponse<Problem> }> {
@@ -47,7 +48,7 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
   // plan, diff, preview and database-view operations while the model is still that fixture, and
   // the in-house resolver answers once it has been edited (phase2-design.md 4.4).
   const seedVersion = model.version;
-  const fixtureSeed = !backend.scenarios.has("empty") && !backend.scenarios.has("large");
+  const fixtureSeed = !backend.seeded && !backend.scenarios.has("empty") && !backend.scenarios.has("medium");
   const pristine = () => ({ pristine: fixtureSeed && model.version === seedVersion });
   const answer = (r: Recording) =>
     /json/.test(r.contentType)
@@ -145,7 +146,22 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
       const { status, body: result } = model.saveSettings(body.ok ? body.value : (null as unknown as Json), hash);
       return HttpResponse.json(result, { status, headers: result.hash && status === 200 ? etag(result.hash) : {} });
     }),
-    http.get("/api/model/index", () => HttpResponse.json(model.index(), { headers: { "Cache-Control": "no-store" } })),
+    http.get("/api/model/index", ({ request }) => {
+      // E5e: the ETag of the index, 304 on a matching If-None-Match, kept by the browser with no-cache.
+      const tag = model.indexTag();
+      const headers = { ...etag(tag), "Cache-Control": "no-cache" };
+      if (readTag(request.headers.get("If-None-Match")) === tag) return new HttpResponse(null, { status: 304, headers }) as never;
+      return HttpResponse.json(model.index(), { headers });
+    }),
+    http.post("/api/model/elements/read", async ({ request }) => {
+      const body = await jsonBody(request);
+      if (!body.ok) return body.response;
+      const ids = body.value.ids;
+      if (!Array.isArray(ids)) return problem(400, "bad-request", "ids is required.");
+      if (ids.length > 200) return problem(400, "bad-request", `At most 200 ids can be read at once; ${ids.length} were given.`);
+      if (!ids.every(isUlid)) return problem(400, "bad-request", "ids must be element or sub-element ids (uppercase ULIDs).");
+      return HttpResponse.json(model.readElements(ids as string[]));
+    }),
     http.post("/api/model/elements", async ({ request }) => {
       const body = await jsonBody(request);
       if (!body.ok) return body.response;
@@ -157,8 +173,7 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
     http.get("/api/model/elements/{id}", ({ params, request }) => {
       const doc = model.get(params.id);
       if (!doc) return problem(404, "not-found", `No element has the id ${params.id}.`);
-      const none = request.headers.get("If-None-Match");
-      if (none && none.replace(/"/g, "") === doc.hash) return new HttpResponse(null, { status: 304, headers: etag(doc.hash) });
+      if (readTag(request.headers.get("If-None-Match")) === doc.hash) return new HttpResponse(null, { status: 304, headers: etag(doc.hash) });
       return HttpResponse.json(doc, { headers: { ...etag(doc.hash), "Cache-Control": "no-store" } });
     }),
     http.put("/api/model/elements/{id}", ({ params, request }) => saveLike(params.id, request, false) as never),
@@ -202,6 +217,16 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
       const rec = replayable(recorded, "getDatabaseView", pristine(), (r) => mentions(r, params.id));
       if (rec) return answer(rec) as never;
       const result = generation.databaseView(params.id);
+      if (!result)
+        return model.entries.has(params.id)
+          ? problem(404, "not-a-database", `${params.id} is not a database.`)
+          : problem(404, "not-found", `No element has the id ${params.id}.`);
+      return HttpResponse.json(result);
+    }),
+    http.get("/api/databases/{id}/tables", ({ params }) => {
+      const rec = replayable(recorded, "getDatabaseTables", pristine(), (r) => mentions(r, params.id));
+      if (rec) return answer(rec) as never;
+      const result = generation.databaseTables(params.id);
       if (!result)
         return model.entries.has(params.id)
           ? problem(404, "not-a-database", `${params.id} is not a database.`)

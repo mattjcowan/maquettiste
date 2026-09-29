@@ -8,9 +8,15 @@ import { MockRealtime } from "@/realtime/mock";
 import { MockModel } from "./model/store";
 import { MockGeneration } from "./model/generation";
 import { MockJobQueue, type JobClock } from "./model/jobs";
-import { billingSeed, emptySeed, largeSeed } from "./model/seed";
+import type { Seed } from "./model/store";
+import { billingSeed, emptySeed, mediumSeed } from "./model/seed";
+import { truncateChangeEvent } from "./wire";
 
-export type Scenario = "conflict" | "slow" | "empty" | "large" | "unauthenticated" | "presence" | "invalid";
+/**
+ * `?mock=` scenarios. `medium` is the in-browser 200-entity model; `large` is the 5,000-entity model
+ * that scripts/gen-scale-model.mjs writes (browser.ts loads it and passes it as `seed`).
+ */
+export type Scenario = "conflict" | "slow" | "empty" | "medium" | "large" | "unauthenticated" | "presence" | "invalid";
 
 export interface MockBackendOptions {
   scenarios?: Scenario[];
@@ -19,6 +25,8 @@ export interface MockBackendOptions {
   clock?: JobClock;
   /** Quiet period before validation.completed (the functions use 750 ms). */
   validationDelayMs?: number;
+  /** The model to start from; when absent the scenario picks one (empty, medium or the billing fixture). */
+  seed?: Seed;
 }
 
 export class MockBackend {
@@ -27,6 +35,8 @@ export class MockBackend {
   readonly generation: MockGeneration;
   readonly jobs: MockJobQueue;
   readonly scenarios: Set<Scenario>;
+  /** Whether the model came from `options.seed` (the large mock), so no engine recording applies. */
+  readonly seeded: boolean;
   readonly presence = new Map<string, PresenceEntry>();
   private validationTimer: unknown = null;
   private readonly clock: JobClock;
@@ -36,15 +46,23 @@ export class MockBackend {
 
   constructor(options: MockBackendOptions = {}) {
     this.scenarios = new Set(options.scenarios ?? []);
+    this.seeded = options.seed !== undefined;
     this.realtime = options.realtime ?? new MockRealtime();
     const newId = options.newId ?? randomId;
     this.clock = options.clock ?? { now: () => new Date(), setTimeout: (fn, ms) => setTimeout(fn, ms) };
     this.validationDelay = options.validationDelayMs ?? 150;
-    const seed = this.scenarios.has("empty") ? emptySeed() : this.scenarios.has("large") ? largeSeed() : billingSeed();
+    const seed = options.seed ?? (this.scenarios.has("empty") ? emptySeed() : this.scenarios.has("medium") ? mediumSeed() : billingSeed());
     this.model = new MockModel(seed, {
       newId,
       onChanged: (changes) => {
-        this.realtime.publish("model.changed", changes);
+        // E5d: each change carries the element's index row as it is now.
+        const changed = changes.changed.map((c) => {
+          const summary = this.model.summaryOf(c.id);
+          return summary ? { ...c, summary } : c;
+        });
+        // The host cuts the event to 200 KB and sets truncated (EditorEvents.OnModelChangedAsync).
+        const event = truncateChangeEvent({ ...changes, changed });
+        this.realtime.publish("model.changed", { ...event, isEmpty: event.changed.length === 0 && event.deleted.length === 0 });
         this.scheduleValidation();
       },
       onSettingsChanged: (hash) => {
@@ -101,6 +119,6 @@ export class MockBackend {
 export function scenariosFrom(search: string): Scenario[] {
   const params = new URLSearchParams(search);
   const all = params.getAll("mock").flatMap((v) => v.split(","));
-  const known: Scenario[] = ["conflict", "slow", "empty", "large", "unauthenticated", "presence", "invalid"];
+  const known: Scenario[] = ["conflict", "slow", "empty", "medium", "large", "unauthenticated", "presence", "invalid"];
   return all.filter((v): v is Scenario => (known as string[]).includes(v));
 }

@@ -9,7 +9,7 @@ namespace Maquettiste.Bench.Synthetic;
 /// (70% one to many, 15% many to many, 10% with attributes, 5% one to one), enums, value objects, scalar types, three databases
 /// and mappings. Pure and deterministic: the same options give the same records in the same order.
 /// </summary>
-internal sealed class SyntheticModel
+internal sealed partial class SyntheticModel
 {
     private const double HierarchyShare = 0.10;
     private const double StereotypeShare = 0.30;
@@ -86,6 +86,7 @@ internal sealed class SyntheticModel
             throw new ArgumentException("The synthetic model needs at least 1 package, 2 entities, 1 enum, 1 value object and 1 scalar type.");
         if (o.Fanout is < 1)
             throw new ArgumentException("The fanout must be at least 1 file per entity.");
+        ValidateScaleShape(o);
         var pairs = Pairs(o.Entities);
         if (o.Relations > pairs)
             throw new ArgumentException(string.Create(CultureInfo.InvariantCulture,
@@ -104,6 +105,7 @@ internal sealed class SyntheticModel
         BuildEntities();
         BuildRelations();
         BuildDatabasesAndMappings();
+        BuildScaleShape();
         EditTarget = _entities[MiddleStandalone()];
         Settings = BuildSettings();
     }
@@ -153,7 +155,14 @@ internal sealed class SyntheticModel
         {
             var words = Vocabulary.Packages;
             var name = i < words.Length ? words[i] : words[i % words.Length] + (i / words.Length + 1).ToString(CultureInfo.InvariantCulture);
-            var package = new Package { Id = _ids.Next(), Name = name, Description = new Description { Text = "Synthetic package " + name + "." } };
+            var parent = ParentPackage(i);
+            var package = new Package
+            {
+                Id = _ids.Next(),
+                Name = name,
+                Parent = parent < 0 ? null : _packages[parent].Id,
+                Description = new Description { Text = "Synthetic package " + name + "." },
+            };
             _packages.Add(package);
             _elements.Add(package);
         }
@@ -432,6 +441,7 @@ internal sealed class SyntheticModel
     {
         var packages = _packages.Count;
         var main = new Database { Id = _ids.Next(), Name = "main", Dialect = Dialect.PostgreSql, Version = "16" };
+        main = main with { Schemas = SchemasFor(main.Dialect), DefaultSchema = _options.Schemas > 0 ? SchemaNames[0] : null };
         var reporting = new Database
         {
             Id = _ids.Next(),
@@ -440,6 +450,7 @@ internal sealed class SyntheticModel
             Version = "2022",
             Packages = [.. _packages.Take(Math.Max(1, packages / 5)).Select(p => p.Id)],
         };
+        reporting = reporting with { Schemas = SchemasFor(reporting.Dialect), DefaultSchema = _options.Schemas > 0 ? SchemaNames[0] : null };
         var edge = new Database
         {
             Id = _ids.Next(),
