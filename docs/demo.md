@@ -36,7 +36,7 @@ docker pull mattjcowan/maquettiste:0.1.0
 (then `source ~/.zshrc`); it runs every command in a throwaway container over the folder you are in:
 
 ```zsh
-maquettiste() { docker run --rm $([ -t 0 ] && echo -it) -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:0.1.0 maquettiste "$@"; }
+maquettiste() { docker run --rm $([ -t 0 ] && echo -it) --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:0.1.0 maquettiste "$@"; }
 maquettiste --version                    # maquettiste 0.1.0 (engine contract 1.0.0, model format 1)
 ```
 
@@ -78,6 +78,7 @@ starts on a project with no settings.
 
 ```zsh
 cd $REPO
+chmod -R a+rwX .maquettiste && chmod a+rwX . src   # the editor runs as user 1654 inside the container and must write here
 export MAQUETTISTE_EDITOR_TOKEN=$(openssl rand -hex 24)
 echo $MAQUETTISTE_EDITOR_TOKEN | pbcopy   # paste it on the sign-in page
 docker compose -f maquettiste.compose.yaml up -d
@@ -90,7 +91,10 @@ domain, New entity, New enum, New reference type, New diagram and New database. 
 
 **5. Three checks, once, the day before:**
 
-- `ls -ln .maquettiste/model` shows your own UID as the owner (Docker Desktop maps ownership to the Mac user).
+- `ls -ln .maquettiste/model` shows the owner of what the editor wrote. With Docker Desktop's VirtioFS file sharing the
+  container's user is not mapped to you: the CLI function passes `--user` for that reason, and the `chmod` above lets the
+  editor write; the generated files then belong to 1654 but stay readable and buildable. With gRPC FUSE file sharing
+  (Docker Desktop › Settings › General) ownership is mapped and neither is needed.
 - In a second terminal, `maquettiste generate --watch`, then save something in the editor: it regenerates within a
   second. If it does not react, Docker Desktop is not forwarding file events; run `maquettiste generate` by hand in
   part 2 instead.
