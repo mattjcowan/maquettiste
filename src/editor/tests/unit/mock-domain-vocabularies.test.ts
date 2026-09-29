@@ -19,7 +19,12 @@ const entries: ModelEntry[] = [
   entry("01J92P0V0000000000000000B1", { kind: "tag-vocabulary", name: "tags", definitions: [{ key: "audited" }] }),
   entry("01J92P0V0000000000000000B2", { kind: "tag-vocabulary", name: "sales-tags", package: ROOT, definitions: [{ key: "pii" }, { key: "audited" }] }),
   entry("01J92P0V0000000000000000B3", { kind: "tag-vocabulary", name: "billing-tags", package: OTHER, definitions: [{ key: "ledger" }] }),
-  entry("01J92P0V0000000000000000C1", { kind: "category-tree", name: "billing-categories", package: OTHER, categories: [{ id: "01J92P0V0000000000000000C2", name: "Core" }] }),
+  entry("01J92P0V0000000000000000C1", {
+    kind: "category-tree",
+    name: "billing-categories",
+    package: OTHER,
+    categories: [{ id: "01J92P0V0000000000000000C2", name: "Core" }],
+  }),
 ];
 
 function rules(target: ModelEntry): { rule: string; message: string }[] {
@@ -37,7 +42,13 @@ function rules(target: ModelEntry): { rule: string; message: string }[] {
 
 describe("mock domain vocabularies", () => {
   it("resolves tags along the chain and reports a tag or category from outside it as MQ2008", () => {
-    const inChild = entry("01J92P0V0000000000000000D1", { kind: "entity", name: "Order", package: CHILD, tags: ["pii", "audited", "ledger", "nowhere"], category: "01J92P0V0000000000000000C2" });
+    const inChild = entry("01J92P0V0000000000000000D1", {
+      kind: "entity",
+      name: "Order",
+      package: CHILD,
+      tags: ["pii", "audited", "ledger", "nowhere"],
+      category: "01J92P0V0000000000000000C2",
+    });
     const found = rules(inChild);
     expect(found.map((d) => d.rule)).toEqual(["MQ2008", "MQ2008", "MQ2006"]);
     expect(found[0].message).toContain("domain 'Billing'");

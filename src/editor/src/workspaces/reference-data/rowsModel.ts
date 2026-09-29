@@ -63,7 +63,15 @@ export function labelCompleteness(rows: readonly { id: string }[], translated: R
 }
 
 export function localeColumns(locales: readonly string[]): GridColumn[] {
-  return locales.map((locale) => ({ key: `@label:${locale}`, label: `label (${locale})`, builtin: true, type: "string", collection: false, required: false, locale }));
+  return locales.map((locale) => ({
+    key: `@label:${locale}`,
+    label: `label (${locale})`,
+    builtin: true,
+    type: "string",
+    collection: false,
+    required: false,
+    locale,
+  }));
 }
 
 /** Rows with the translated labels in their locale columns (`labels`: locale → row id → text). */

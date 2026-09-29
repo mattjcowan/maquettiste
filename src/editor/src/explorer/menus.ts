@@ -64,7 +64,9 @@ function single(t: MenuTarget): MenuItem[] {
   if (t.type === "folder") {
     const made = folderCreate(t.kind);
     const news = made ? [create(made)] : [];
-    return t.kind && t.kind !== "package" ? [...news, item("select-all", "Select all"), item("expand-all", "Expand all")] : [...news, item("expand-all", "Expand all")];
+    return t.kind && t.kind !== "package"
+      ? [...news, item("select-all", "Select all"), item("expand-all", "Expand all")]
+      : [...news, item("expand-all", "Expand all")];
   }
   if (t.type === "domain")
     return t.element

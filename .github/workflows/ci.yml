@@ -126,7 +126,7 @@ jobs:
           mkdir -p "$work/cache"
           : > "$work/listing-${{ matrix.os }}.txt"
           # Two repos: the billing fixture as it is (one PostgreSQL database), and the variant the pack tests call "dialects"
-          # (PackRepo.BillingDialects): a SQL Server and a SQLite database with lookup enums next to it, and a derived entity.
+          # (PackRepo.BillingDialects): a SQL Server and a SQLite database storing enums as integers, and a derived entity.
           for variant in billing dialects; do
             repo="$work/$variant"
             mkdir -p "$repo"
@@ -140,7 +140,7 @@ jobs:
               model="$repo/.maquettiste/model"
               printf '%s\n' '{' '  "$schema": ".schema/v1/maquettiste.json",' '  "formatVersion": 1,' '  "name": "billing",' \
                 '  "outputs": { "allow": [ { "path": "db", "commit": true }, { "path": "src/Generated" } ] },' \
-                '  "databases": { "local": { "enumStorage": "lookup" } },' \
+                '  "databases": { "local": { "enumStorage": "int" } },' \
                 '  "packs": { "csharp-dapper": { "output": "src/Generated" }, "sql-ddl": { "output": "db" } }' '}' \
                 > "$repo/.maquettiste/maquettiste.json"
               for db in "01J92P0V2A0000000000000001 reporting sqlserver" "01J92P0V2A0000000000000002 local sqlite"; do

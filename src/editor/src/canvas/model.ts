@@ -45,13 +45,14 @@ export function viewElements(
 ): { entityIds: string[]; relationIds: string[] } {
   if (!view) return { entityIds: [], relationIds: [] };
   if (view.type === "package") {
-    const entityIds = rows.filter((r) => r.kind === "entity" && r.package === view.id).map((r) => r.id).slice(0, ALL_OF_CAP);
+    const entityIds = rows
+      .filter((r) => r.kind === "entity" && r.package === view.id)
+      .map((r) => r.id)
+      .slice(0, ALL_OF_CAP);
     const shown = new Set(entityIds);
     // A relation shows when both its ends are cards (the index row's `ends`); a row without ends (an older server) is
     // kept and the canvas drops an edge whose ends are not cards.
-    const relationIds = rows
-      .filter((r) => r.kind === "relation" && (!r.ends?.length || r.ends.every((e) => shown.has(e.entity))))
-      .map((r) => r.id);
+    const relationIds = rows.filter((r) => r.kind === "relation" && (!r.ends?.length || r.ends.every((e) => shown.has(e.entity)))).map((r) => r.id);
     return { entityIds, relationIds };
   }
   const kinds = new Map(rows.map((r) => [r.id, r.kind]));

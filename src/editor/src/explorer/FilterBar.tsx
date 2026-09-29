@@ -70,10 +70,7 @@ export function FilterBar({
   const tagVocabularies = useMemo(() => filterVocabularies("tag-vocabulary", filter.domain, rows ?? []), [rows, filter.domain]);
   const categoryVocabularies = useMemo(() => filterVocabularies("category-tree", filter.domain, rows ?? []), [rows, filter.domain]);
   const vocabularyDocs = useElements(useMemo(() => [...tagVocabularies, ...categoryVocabularies].map((v) => v.id), [tagVocabularies, categoryVocabularies]));
-  const categories = useMemo(
-    () => categoryOptions(categoryVocabularies, (v) => vocabularyDocs.byId.get(v)?.json),
-    [categoryVocabularies, vocabularyDocs],
-  );
+  const categories = useMemo(() => categoryOptions(categoryVocabularies, (v) => vocabularyDocs.byId.get(v)?.json), [categoryVocabularies, vocabularyDocs]);
   const tags = useMemo(() => {
     const declared = tagOptions(tagVocabularies, (v) => vocabularyDocs.byId.get(v)?.json).options;
     const known = new Set(declared.map((t) => t.value));

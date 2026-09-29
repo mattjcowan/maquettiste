@@ -998,7 +998,18 @@ export function buildForest(input: TreeInput): Forest {
     let group = refGroups.get(id);
     if (!group) {
       const label = input.categoryNames?.get(id) ?? id;
-      const node = add({ key: `${ROOTS["reference-data"]}/c:${id}`, type: "group", explorer: "reference-data", label, tooltip: `Category: ${label}`, icon: "category", home: true, count: 0, errors: 0, sort: label.toLowerCase() });
+      const node = add({
+        key: `${ROOTS["reference-data"]}/c:${id}`,
+        type: "group",
+        explorer: "reference-data",
+        label,
+        tooltip: `Category: ${label}`,
+        icon: "category",
+        home: true,
+        count: 0,
+        errors: 0,
+        sort: label.toLowerCase(),
+      });
       group = { node, members: [] };
       refGroups.set(id, group);
       (depth === 0 ? refTop : refGroups.get(path[depth - 1]!)!.members).push(node);
@@ -1017,7 +1028,17 @@ export function buildForest(input: TreeInput): Forest {
   });
   for (const { node, members } of refGroups.values()) attach(node, members.sort(byLabel));
   if (refGroups.size && noCategory.length) {
-    const node = add({ key: `${ROOTS["reference-data"]}/c:-`, type: "group", explorer: "reference-data", label: GROUP_LABELS.noCategory, icon: "category", home: true, count: noCategory.length, errors: 0, sort: "\uffff" });
+    const node = add({
+      key: `${ROOTS["reference-data"]}/c:-`,
+      type: "group",
+      explorer: "reference-data",
+      label: GROUP_LABELS.noCategory,
+      icon: "category",
+      home: true,
+      count: noCategory.length,
+      errors: 0,
+      sort: "\uffff",
+    });
     refTop.push(attach(node, noCategory.sort(byLabel)));
   } else refTop.push(...noCategory);
   // Rows live on the seeds (rowCount is a seed row member), so the header sums the reference types' seeds.
@@ -1715,7 +1736,8 @@ export function domainPath(forest: Forest, domain: string | null | undefined): s
 
 /** The table row above a row (a column, a key), if any. */
 export function tableOf(forest: Forest, key: string): string | undefined {
-  for (let k: string | undefined = key, guard = 0; k !== undefined && guard < 16; k = forest.parent.get(k), guard++) if (forest.nodes.get(k)?.type === "table") return k;
+  for (let k: string | undefined = key, guard = 0; k !== undefined && guard < 16; k = forest.parent.get(k), guard++)
+    if (forest.nodes.get(k)?.type === "table") return k;
   return undefined;
 }
 

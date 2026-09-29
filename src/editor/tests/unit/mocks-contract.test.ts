@@ -110,7 +110,7 @@ describe("mock contract", () => {
     // E5f: one table with its columns.
     const firstTable = ((tables.payload as Json).tables as Json[])[0] as { key: string; columnCount: number };
     const table = await call("get", `/api/databases/${database.id}/tables/${encodeURIComponent(firstTable.key)}`, "/api/databases/{id}/tables/{key}");
-    expect(((table.payload as { table: { columns: unknown[] } }).table.columns).length).toBe(firstTable.columnCount);
+    expect((table.payload as { table: { columns: unknown[] } }).table.columns.length).toBe(firstTable.columnCount);
     const missing = await call("get", `/api/databases/${database.id}/tables/no-such-table`, "/api/databases/{id}/tables/{key}");
     expect((missing.payload as { table: unknown }).table).toBeNull();
   });

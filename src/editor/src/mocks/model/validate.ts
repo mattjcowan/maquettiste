@@ -159,7 +159,15 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
   else if (typeof json.category === "string" && categories) {
     const scope = ctx.categoryScope.get(json.category) ?? "";
     if (!chain.includes(scope))
-      out.push(diag("MQ2008", "error", `Category '${json.category}' is declared in the category tree of ${scopeName(scope, ctx)}, outside this element's domain chain.`, entry, "/category"));
+      out.push(
+        diag(
+          "MQ2008",
+          "error",
+          `Category '${json.category}' is declared in the category tree of ${scopeName(scope, ctx)}, outside this element's domain chain.`,
+          entry,
+          "/category",
+        ),
+      );
   }
   // MQ2006 tags along the chain; MQ2008 a tag declared only outside it
   if (vocabulary || ctx.tagVocabularies.size > 0) {
@@ -169,7 +177,15 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
       if (seen.some((v) => v.keys.has(tag))) return;
       const outside = [...ctx.tagVocabularies].find(([, v]) => v.keys.has(tag));
       if (outside)
-        out.push(diag("MQ2008", "error", `Tag '${tag}' is declared only in the tag vocabulary of ${scopeName(outside[0], ctx)}, outside this element's domain chain.`, entry, `/tags/${i}`));
+        out.push(
+          diag(
+            "MQ2008",
+            "error",
+            `Tag '${tag}' is declared only in the tag vocabulary of ${scopeName(outside[0], ctx)}, outside this element's domain chain.`,
+            entry,
+            `/tags/${i}`,
+          ),
+        );
       else if (seen.length > 0)
         out.push(
           diag(

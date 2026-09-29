@@ -18,7 +18,8 @@
     "referenceData",
     "packs",
     "validation",
-    "limits"
+    "limits",
+    "explorer"
   ],
   "properties": {
     "$schema": {
@@ -312,6 +313,80 @@
           "type": "integer",
           "default": 64,
           "minimum": 1
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
+    "explorer": {
+      "description": "The editor's explorer. `folders` are project-defined explorer folders (explorer-redesign.md section 1.6): in each domain, an element of the folder's kind that matches its condition is listed in the first matching folder instead of its kind folder. The product gives no stereotype, tag or category a meaning of its own; the folder is only a view.",
+      "type": "object",
+      "x-order": ["folders", "scopes"],
+      "properties": {
+        "folders": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "x-order": ["label", "icon", "kind", "match"],
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "icon": {
+                "description": "An icon name from the editor's icon set; the kind's icon when absent.",
+                "type": ["string", "null"]
+              },
+              "kind": {
+                "description": "The one element kind the folder holds.",
+                "type": "string",
+                "minLength": 1
+              },
+              "match": {
+                "description": "Exactly one condition: a stereotype key, a tag key, or a category-tree node id (the node and its descendants).",
+                "type": "object",
+                "x-order": ["stereotype", "tag", "category"],
+                "properties": {
+                  "stereotype": {
+                    "type": ["string", "null"]
+                  },
+                  "tag": {
+                    "type": ["string", "null"]
+                  },
+                  "category": {
+                    "type": ["string", "null"]
+                  }
+                },
+                "minProperties": 1,
+                "maxProperties": 1,
+                "additionalProperties": false
+              }
+            },
+            "required": ["label", "kind", "match"],
+            "additionalProperties": false
+          },
+          "default": []
+        },
+        "scopes": {
+          "description": "Team scopes (explorer-redesign.md section 3.2): named sets of explorer filter chips, chosen from the scope picker beside the search box. An empty member does not filter. They change no generated output.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "x-order": ["name", "kinds", "domain", "tags", "stereotypes", "categories", "errors", "diagram"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "kinds": { "description": "Element kinds, any of.", "type": "array", "items": { "type": "string", "minLength": 1 }, "default": [] },
+              "domain": { "description": "A domain id: the domain and its sub-domains.", "type": ["string", "null"] },
+              "tags": { "description": "Tag keys, any of.", "type": "array", "items": { "type": "string", "minLength": 1 }, "default": [] },
+              "stereotypes": { "description": "Stereotype keys, any of.", "type": "array", "items": { "type": "string", "minLength": 1 }, "default": [] },
+              "categories": { "description": "Category-tree node ids, any of; each includes its descendants.", "type": "array", "items": { "type": "string", "minLength": 1 }, "default": [] },
+              "errors": { "description": "Only elements with validation errors.", "type": "boolean", "default": false },
+              "diagram": { "description": "A diagram id: only the diagram's members.", "type": ["string", "null"] }
+            },
+            "required": ["name"],
+            "additionalProperties": false
+          },
+          "default": []
         }
       },
       "additionalProperties": false,

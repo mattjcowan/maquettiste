@@ -50,10 +50,7 @@ export function ReferenceDataWorkspace() {
   const selection = useEditor(store, (s) => s.selection);
   // One list on screen (EX 1.7): while the sidebar shows the Reference data explorer, that explorer is the screen's
   // list; the screen's own list shows only when the sidebar is collapsed or shows another explorer.
-  const explorerShown = useEditor(
-    store,
-    (s) => !s.explorerCollapsed && (s.explorer.active === "reference-data" || s.explorer.pinned === "reference-data"),
-  );
+  const explorerShown = useEditor(store, (s) => !s.explorerCollapsed && (s.explorer.active === "reference-data" || s.explorer.pinned === "reference-data"));
   const { select } = useEditorNavigation();
   const items = useMemo(() => typeItems(index.data, vocab.categories), [index.data, vocab.categories]);
   const typeId = selectedType(index.data, selection);

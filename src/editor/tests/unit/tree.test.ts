@@ -372,8 +372,16 @@ describe("tree places", () => {
       row("7Q", "reference-type", "Currency", null, { category: "money" } as Partial<ElementSummary>),
       row("7P", "reference-type", "Country", null),
     ];
-    const categoryParents = new Map<string, string | null>([["measures", "general"], ["money", "general"], ["general", null]]);
-    const categoryNames = new Map([["measures", "Measures"], ["money", "Money"], ["general", "General"]]);
+    const categoryParents = new Map<string, string | null>([
+      ["measures", "general"],
+      ["money", "general"],
+      ["general", null],
+    ]);
+    const categoryNames = new Map([
+      ["measures", "Measures"],
+      ["money", "Money"],
+      ["general", "General"],
+    ]);
     const f = buildForest({ rows: [...rows, ...extra], tables, categoryParents, categoryNames });
     expect(labels(f, f.roots["reference-data"])).toEqual(["General", "No category"]);
     const general = find(f, "reference-data", "General");

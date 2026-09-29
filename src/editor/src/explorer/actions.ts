@@ -100,7 +100,13 @@ export function useExplorerActions() {
       }
       applySaveResult(qc, result);
       const copy = String(json.id);
-      s.pushUndo({ label: `Duplicate ${String(current.json.name ?? "")}`, ids: [copy], before: [null], after: [clone(json as unknown as ModelJson)], afterHashes: [result.hash] });
+      s.pushUndo({
+        label: `Duplicate ${String(current.json.name ?? "")}`,
+        ids: [copy],
+        before: [null],
+        after: [clone(json as unknown as ModelJson)],
+        afterHashes: [result.hash],
+      });
       s.select([copy]);
       s.notify(`Created ${String(json.name)}.`);
       return copy;

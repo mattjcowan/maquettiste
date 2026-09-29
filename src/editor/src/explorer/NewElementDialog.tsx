@@ -243,7 +243,12 @@ export function CreateButtons({ kinds, domain, testid }: { kinds: readonly Creat
   return (
     <div className="flex flex-wrap justify-center gap-2" data-testid={testid}>
       {kinds.map((k) => (
-        <Button key={k} size="sm" onClick={() => store.getState().requestNew({ kind: k, domain: startDomain(k, domain ?? null) })} data-testid={`${testid}-${k}`}>
+        <Button
+          key={k}
+          size="sm"
+          onClick={() => store.getState().requestNew({ kind: k, domain: startDomain(k, domain ?? null) })}
+          data-testid={`${testid}-${k}`}
+        >
           <Plus /> {CREATE_LABELS[k]}
         </Button>
       ))}

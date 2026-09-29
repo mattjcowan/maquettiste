@@ -231,7 +231,10 @@ function initialExplorer(): ExplorerSlice {
     const expanded = local.getJson<unknown[]>(expandedKey(id));
     return {
       expanded: new Set(Array.isArray(expanded) ? expanded.filter((k): k is string => typeof k === "string").slice(0, EXPANDED_LIMIT) : []),
-      filter: pinnedFilter ? normalizeFilter(pinnedFilter) : emptyFilter, pinnedFilter: !!pinnedFilter, scroll: 0 };
+      filter: pinnedFilter ? normalizeFilter(pinnedFilter) : emptyFilter,
+      pinnedFilter: !!pinnedFilter,
+      scroll: 0,
+    };
   };
   const scopes = local.getJson<unknown[]>("mq.explorer.scopes");
   const favorites = local.getJson<unknown[]>("mq.favorites");
