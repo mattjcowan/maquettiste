@@ -22,6 +22,8 @@ import {
   shardLabel,
   toggleRequire,
   translatedLocales,
+  normalizeLocaleTag,
+  localeTagProblem,
 } from "@/l10n/model";
 import { l10nKeys } from "@/l10n/queries";
 import { IDS, useMockApi } from "./harness";
@@ -229,5 +231,21 @@ describe("Rows grid locale columns", () => {
     setCells(seed, "R1", { "@label:fr": "x", label: "kilogram" });
     expect((seed as { columns: string[] }).columns).toEqual(["code", "label"]);
     expect((seed as { rows: { values: unknown[] }[] }).rows[0].values).toEqual(["kg", "kilogram"]);
+  });
+});
+
+describe("locale input normalization", () => {
+  it("normalizes as typed and says why a tag cannot be added", () => {
+    expect(normalizeLocaleTag("zh_cn")).toBe("zh-CN");
+    expect(normalizeLocaleTag("ZH_CN")).toBe("zh-CN");
+    expect(normalizeLocaleTag(" fr-ca ")).toBe("fr-CA");
+    expect(normalizeLocaleTag("zh_hant_tw")).toBe("zh-Hant-TW");
+    expect(normalizeLocaleTag("es-419")).toBe("es-419");
+    expect(normalizeLocaleTag("zh-")).toBe("zh-");
+    expect(localeTagProblem("", ["en"])).toBeNull();
+    expect(localeTagProblem("zh-CN", ["en"])).toBeNull();
+    expect(localeTagProblem("en", ["en"])).toBe("en is already a supported locale.");
+    expect(localeTagProblem("zh-", ["en"])).toContain("use language-REGION with a hyphen, such as zh-CN");
+    expect(localeTagProblem("zh cn", ["en"])).toContain("no spaces");
   });
 });

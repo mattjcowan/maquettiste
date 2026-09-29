@@ -106,7 +106,7 @@ export function PackEditor({ pack }: { pack: string }) {
   const handEdits = settings.data?.settings.handEdits;
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="pack-editor">
-      <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-0.5 border-b border-default bg-surface px-2 py-1 text-12">
+      <header className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-default bg-surface px-2 py-1 text-12">
         <h2 className="text-13 font-semibold" data-testid="pack-editor-title">
           {pack} <span className="font-normal text-secondary">{typeof json.version === "string" ? json.version : ""}</span>
         </h2>
@@ -181,6 +181,9 @@ export function PackEditor({ pack }: { pack: string }) {
             pack={pack}
             files={d.files}
             units={((json.units as { id?: string }[] | undefined) ?? []).map((u) => u.id ?? "").filter(Boolean)}
+            scopes={Object.fromEntries(
+              ((json.units as { id?: string; for?: string }[] | undefined) ?? []).filter((u) => u.id).map((u) => [u.id!, u.for ?? ""]),
+            )}
             focusFile={focus?.file}
             onDirty={setTemplatesDirty}
           />

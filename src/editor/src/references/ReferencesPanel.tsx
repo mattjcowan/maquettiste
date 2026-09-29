@@ -1,7 +1,7 @@
 // The References tab of the bottom panel (explorer-redesign.md 3.3): where an element is used, grouped by kind of the
 // referencing element, then by domain, in a virtualized list. The index answers at once (references/data.ts); the
 // server's complete list replaces it when it arrives. Clicking a row goes to that element and JSON pointer.
-import { ROW_H } from "@/design/density";
+import { rowHeight } from "@/design/density";
 import { useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -17,8 +17,6 @@ import { useEditorNavigation } from "@/app/navigation";
 import { cn } from "@/lib/cn";
 import { KIND_LABELS } from "@/model/labels";
 import { groupReferences, indexReferences, referenceCount, type SubName } from "./data";
-
-const ROW = ROW_H;
 
 export function ReferencesPanel() {
   const { store, queryClient } = useServices();
@@ -43,6 +41,7 @@ export function ReferencesPanel() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- subName reads the query cache; the list follows the data
   const rows = useMemo(() => groupReferences(server.data ?? fast, byId, subName), [server.data, fast, byId]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const ROW = useMemo(() => rowHeight(), []);
   const virtualizer = useVirtualizer({ count: rows.length, getScrollElement: () => scrollRef.current, estimateSize: () => ROW, overscan: 20 });
 
   const selected = selection.length === 1 ? selection[0] : null;

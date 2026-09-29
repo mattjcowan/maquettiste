@@ -133,6 +133,37 @@ public sealed class PackEndpointTests
     }
 
     [Fact]
+    public async Task A_newer_preview_with_the_same_client_key_answers_the_older_one_409_superseded()
+    {
+        await using var host = EditorHost.Create();
+        var loop = "{{ for a in 1..100000 }}{{ for b in 1..100000 }}{{ end }}{{ end }}";
+        var slow = new JsonObject
+        {
+            ["pack"] = "sql-ddl",
+            ["unit"] = "schema",
+            ["elementId"] = EditorHost.MainDatabaseId,
+            ["overlay"] = new JsonObject { ["schema.scriban"] = loop },
+        }.ToJsonString();
+        var quick = new JsonObject { ["pack"] = "sql-ddl", ["unit"] = "schema", ["elementId"] = EditorHost.MainDatabaseId }.ToJsonString();
+        void Client(TestRequest r) => r.Headers["X-Maquettiste-Client"] = "tab-1";
+
+        var older = host.SendJsonAsync("POST", "/api/templates/preview", slow, Client);
+        // Newer requests until the older one has ended: whichever arrives after it took the key's turn cancels it.
+        TestResponse? newer = null;
+        while (!older.IsCompleted)
+            newer = await host.SendJsonAsync("POST", "/api/templates/preview", quick, Client);
+        var superseded = await older;
+
+        Assert.Equal(409, superseded.Status);
+        Contract.AssertResponse(superseded, "/api/templates/preview");
+        Assert.Equal("superseded", superseded.Json["code"]!.GetValue<string>());
+        Assert.Equal(200, newer!.Status);
+        // A different key is not affected.
+        var other = await host.SendJsonAsync("POST", "/api/templates/preview", quick, r => r.Headers["X-Maquettiste-Client"] = "tab-2");
+        Assert.Equal(200, other.Status);
+    }
+
+    [Fact]
     public async Task A_plan_unit_carries_its_reason_and_why_not()
     {
         await using var host = EditorHost.Create();

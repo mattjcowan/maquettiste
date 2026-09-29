@@ -30,7 +30,7 @@ const load = <T>(name: string) => import(/* @vite-ignore */ path.join(scripts, n
 let tmp: string;
 let dist: string;
 let functions: string;
-const DIRECTIVES = "#:package Maquettiste.Engine@0.2.0\n#:package StaticSiteHost.Abstractions@*\n";
+const DIRECTIVES = "#:package Maquettiste.Engine@0.3.0\n#:package StaticSiteHost.Abstractions@*\n";
 
 beforeAll(() => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), "mq-pack-"));
@@ -50,8 +50,8 @@ afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 describe("pack-site.mjs", () => {
   it("stamps only the engine's #:package line", async () => {
     const { stampDirectives } = await load<PackSiteModule>("pack-site.mjs");
-    expect(stampDirectives(DIRECTIVES, "0.2.0-b0123456789ab")).toBe(
-      "#:package Maquettiste.Engine@0.2.0-b0123456789ab\n#:package StaticSiteHost.Abstractions@*\n",
+    expect(stampDirectives(DIRECTIVES, "0.3.0-b0123456789ab")).toBe(
+      "#:package Maquettiste.Engine@0.3.0-b0123456789ab\n#:package StaticSiteHost.Abstractions@*\n",
     );
     expect(stampDirectives(DIRECTIVES, null)).toBe(DIRECTIVES);
     expect(() => stampDirectives("// nothing", "2.0.0")).toThrow(/no '#:package Maquettiste.Engine/);

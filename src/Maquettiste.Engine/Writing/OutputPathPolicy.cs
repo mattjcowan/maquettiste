@@ -50,6 +50,7 @@ internal sealed class OutputPathPolicy : IOutputPathPolicy
             Path.Combine(_repoRoot, ".git", "hooks", "post-checkout"),
             Path.Combine(_repoRoot, ".git", "hooks", "post-merge"),
             Path.Combine(_repoRoot, ".mcp.json"),
+            Path.Combine(_repoRoot, "mcp.sh"),
             Path.Combine(_repoRoot, ".claude", "skills", "maquettiste-modeling", "SKILL.md"),
         ];
         _hasSettings = settings is not null;
@@ -152,7 +153,7 @@ internal sealed class OutputPathPolicy : IOutputPathPolicy
             case WriteTarget.Setup:
             {
                 if (!_setupPaths.Any(p => string.Equals(p, full, FileSystemPaths.Comparison)))
-                    return Refuse(full, null, "setup writes are limited to .gitignore, the post-checkout and post-merge hooks, .mcp.json and .claude/skills/maquettiste-modeling/SKILL.md");
+                    return Refuse(full, null, "setup writes are limited to .gitignore, the post-checkout and post-merge hooks, .mcp.json, mcp.sh and .claude/skills/maquettiste-modeling/SKILL.md");
                 try
                 {
                     var realRepo = FileSystemPaths.RealPath(_repoRoot);

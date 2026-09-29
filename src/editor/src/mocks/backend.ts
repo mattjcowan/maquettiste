@@ -81,7 +81,7 @@ export class MockBackend {
     });
     this.generation = new MockGeneration(this.model, newId);
     this.packs = new MockPacks(this.model);
-    this.packAuthoring = new MockPackAuthoring(this.model, this.generation);
+    this.packAuthoring = new MockPackAuthoring(this.model, this.generation, (pack) => this.packs.registrations(pack));
     this.localization = new MockLocalization(this.model, this.scenarios.has("locales"), newId);
     this.jobs = new MockJobQueue(
       this.generation,

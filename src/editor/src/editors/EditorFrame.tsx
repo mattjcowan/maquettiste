@@ -23,7 +23,8 @@ import { useDraftDocument } from "@/inspector/useDraft";
 import { markDomainOf } from "@/model/vocabularies";
 import { ChipsEditor, setOptional, TextField, useVocabularies, type FormProps } from "@/inspector/fields";
 import { applicableExtensions, SchemaForm } from "@/inspector/SchemaForm";
-import { statusBadge } from "@/inspector/Inspector";
+import { statusBadge, useInspectorContext } from "@/inspector/Inspector";
+import { showsElement } from "@/inspector/context";
 import { setView, type EditorKind } from "./tabs";
 
 type Rec = Record<string, unknown>;
@@ -141,7 +142,8 @@ function HeaderFields({ id, kind, json, doc, edit, flush }: EditorContext) {
   const { store } = useServices();
   // RT 3.10 places Translations in the inspector: the editor shows the section only while the inspector does not
   // show this element, so its inputs never appear twice.
-  const inInspector = useEditor(store, (st) => !st.inspectorCollapsed && st.selection.length === 1 && st.selection[0] === id);
+  const context = useInspectorContext();
+  const inInspector = useEditor(store, (st) => !st.inspectorCollapsed) && showsElement(context, id);
   const rec = json as Rec;
   const dom = domIdOf(id);
   const description = rec.description;

@@ -89,5 +89,7 @@ COPY --chmod=755 docker/maquettiste.sh /usr/local/bin/maquettiste
 # Server GC with dynamic adaptation and tiered PGO off: the settings the incremental generation budget was measured under (PD23).
 ENV MAQUETTISTE_MODE=local MAQUETTISTE_REPO_ROOT=/repo MAQUETTISTE_CACHE_DIR=/data/maquettiste/cache \
     DOTNET_gcServer=1 DOTNET_GCDynamicAdaptationMode=0 DOTNET_TieredPGO=0
+# Runs as app by default. Started as root with MAQUETTISTE_UID/MAQUETTISTE_GID (compose does), the entrypoint hands /data and
+# /home/app to that user and drops to it with the base image's setpriv (util-linux), so a bind-mounted model is written as the host user.
 USER app
 ENTRYPOINT ["/opt/maquettiste/entrypoint.sh"]

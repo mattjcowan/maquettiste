@@ -43,6 +43,7 @@ export class MockPackAuthoring {
   constructor(
     private readonly model: MockModel,
     private readonly generation: MockGeneration,
+    private readonly registrations: (pack: string) => S["ScriptRegistration"][] = () => [],
   ) {}
 
   private unit(pack: string, unit: string): S["PackUnit"] | null {
@@ -106,7 +107,9 @@ export class MockPackAuthoring {
     variables.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     const members: Record<string, S["TemplateMember"][]> = { model: MODEL_MEMBERS };
     if (unit.for.startsWith("each ")) members.element = unit.for === "each table" ? TABLE_MEMBERS : ELEMENT_MEMBERS;
-    return { pack, unit: unitId, scope: unit.for, variables, members, helpers: HELPERS };
+    const registrations = this.registrations(pack);
+    const helpers = [...new Set([...HELPERS, ...registrations.filter((r) => r.kind === "helper").map((r) => r.name)])].sort();
+    return { pack, unit: unitId, scope: unit.for, variables, members, helpers, registrations };
   }
 
   explain(request: S["ExplainRequest"]): S["ExplainResult"] | null {

@@ -73,8 +73,8 @@ public sealed class FullRunTests
 
         // No run journal is left behind, and the unit state is in the cache folder, outside the repo.
         Assert.False(repo.Repo.Exists(".maquettiste/.cache/journal.jsonl"));
-        Assert.True(File.Exists(Path.Combine(repo.Options.CacheDirectory, "units", "e2e.v3.bin")));
-        Assert.True(File.Exists(Path.Combine(repo.Options.CacheDirectory, "units", "billing-demo.v3.bin")));
+        Assert.True(File.Exists(Path.Combine(repo.Options.CacheDirectory, "units", "e2e.v4.bin")));
+        Assert.True(File.Exists(Path.Combine(repo.Options.CacheDirectory, "units", "billing-demo.v4.bin")));
 
         // Per-stage timings and progress: every stage reports, and the render and write stages count units and files.
         var stages = Enum.GetValues<PipelineStage>();

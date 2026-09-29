@@ -6,14 +6,16 @@ using Maquettiste.Engine.Pipeline;
 namespace Maquettiste.Engine.Planning;
 
 /// <summary>
-/// Stores unit states in <c>CacheDirectory/units/&lt;pack&gt;.v3.bin</c> (W6; engine-design.md section 11; the file is named after
+/// Stores unit states in <c>CacheDirectory/units/&lt;pack&gt;.v4.bin</c> (W6; engine-design.md section 11; the file is named after
 /// the format). The file is a cache: a missing, truncated or foreign file (other magic, format or engine version) loads as empty, which
 /// only means every unit of the pack renders again (and the explanation says <c>state-reset</c>, <see cref="WasReset"/>). Layout
-/// (format 3): <c>MQUS</c>, format, engine version, then the string table (count, then each distinct read key and static-parts text
+/// (format 4): <c>MQUS</c>, format, engine version, then the string table (count, then each distinct read key and static-parts text
 /// once, length-prefixed UTF-8, in first-use order), then the state count and per state its key, input hash, read keys (7-bit encoded
 /// indexes into the table), outputs (path, manifest hash, length, last-write ticks), the per-key hashes (a 7-bit count, zero or the
-/// read key count, then 16 bytes each, generation-ui.md section 4.2) and the static parts (a 7-bit table index plus one, zero for
-/// none); strings are length-prefixed UTF-8. Saving deletes the format 2 file (<c>.v1.bin</c>).
+/// read key count, then 16 bytes each, generation-ui.md section 4.2), the static parts (a 7-bit table index plus one, zero for
+/// none) and the element names (a 7-bit count, then per named element key its position among the read keys and the table index of
+/// its label, <c>Name (kind)</c>, positions ascending; format 4, so a cause can name a deleted element); strings are length-prefixed
+/// UTF-8. Saving deletes the files of formats 2 and 3 (<c>.v1.bin</c>, <c>.v3.bin</c>).
 /// States are written sorted by key. Read keys repeat across units (every unit of an entity reads that entity's keys), so the table
 /// keeps the file small and the decoded states share one string per distinct key.
 /// </summary>
@@ -26,7 +28,7 @@ namespace Maquettiste.Engine.Planning;
 /// <param name="paths">The engine-write guard (<see cref="WriteTarget.Cache"/>).</param>
 internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy paths) : IUnitStateStore
 {
-    private const int Format = 3;
+    private const int Format = 4;
     private static ReadOnlySpan<byte> Magic => "MQUS"u8;
 
     private readonly EngineFiles _files = new(paths, WriteTarget.Cache);
@@ -50,7 +52,7 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
             if (!File.Exists(file))
             {
                 // A state file of the previous format and no file of this one: every unit renders, and says why.
-                _reset[pack] = File.Exists(LegacyFileOf(pack));
+                _reset[pack] = LegacyFilesOf(pack).Any(File.Exists);
                 return FrozenDictionary<string, UnitState>.Empty;
             }
 
@@ -88,8 +90,11 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
         var file = FileOf(pack);
         _last.TryRemove(file, out var previous);
         _reset.TryRemove(pack, out _);
-        if (File.Exists(LegacyFileOf(pack)))
-            _files.Delete(LegacyFileOf(pack));
+        foreach (var legacy in LegacyFilesOf(pack))
+        {
+            if (File.Exists(legacy))
+                _files.Delete(legacy);
+        }
         if (states.Count == 0)
         {
             _files.Delete(file);
@@ -138,6 +143,11 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
     /// <returns>The absolute path.</returns>
     internal string LegacyFileOf(string pack) => Path.Combine(Folder, SafeName(pack) + ".v1.bin");
 
+    /// <summary>The state files of earlier formats (2, named <c>.v1.bin</c>, and 3); deleted when the pack's states are next saved.</summary>
+    /// <param name="pack">The pack name.</param>
+    /// <returns>The absolute paths.</returns>
+    internal IEnumerable<string> LegacyFilesOf(string pack) => [LegacyFileOf(pack), Path.Combine(Folder, SafeName(pack) + ".v3.bin")];
+
     /// <summary>A file-name-safe form of a pack name.</summary>
     /// <param name="pack">The pack name.</param>
     /// <returns>The name, or <c>x-</c> plus 16 hex characters of its hash.</returns>
@@ -175,6 +185,39 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
             return index;
         }
 
+        // The element names after the static parts: count, then (position among the read keys, label table index), positions ascending.
+        int[] WriteNames(ByteWriter writer, UnitState state)
+        {
+            if (state.Names is not { Count: > 0 } names)
+            {
+                writer.WriteVarInt(0);
+                return [];
+            }
+
+            var positions = new List<int>();
+            var labels = new List<int>();
+            var k = 0;
+            foreach (var key in state.ReadKeys)
+            {
+                if (names.TryGetValue(key, out var label))
+                {
+                    positions.Add(k);
+                    labels.Add(IndexOf(label));
+                }
+
+                k++;
+            }
+
+            writer.WriteVarInt(positions.Count);
+            for (var i = 0; i < positions.Count; i++)
+            {
+                writer.WriteVarInt(positions[i]);
+                writer.WriteVarInt(labels[i]);
+            }
+
+            return [.. labels];
+        }
+
         // States decoded from a file (the skipped units of an incremental run: nearly all of them) carry their keys as indexes into
         // that file's table: each old index is looked up once and remembered, so the new table is built in the same first-use order
         // without hashing every key of every state.
@@ -183,6 +226,7 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
         var ranges = indexed is null ? null : new (int Start, int Length)[ordered.Count];
         var hashStarts = indexed is null ? null : new int[ordered.Count];
         var partIndexes = indexed is null ? null : new int[ordered.Count];
+        var nameIndexes = indexed is null ? null : new int[ordered.Count][];
         body.WriteInt32(ordered.Count);
         for (var s = 0; s < ordered.Count; s++)
         {
@@ -223,6 +267,16 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
                     same = state.StaticParts is null;
                 }
 
+                // The element names' labels are table indexes too: each must keep its index.
+                for (var n = 0; same && n < tableKeys.NameIndexes.Length; n++)
+                {
+                    var old = tableKeys.NameIndexes[n];
+                    var index = remap[old];
+                    if (index < 0)
+                        remap[old] = index = IndexOf(tableKeys.Table[old]);
+                    same = index == old;
+                }
+
                 if (same)
                 {
                     body.WriteBytes(tableKeys.Source.AsSpan(tableKeys.Start, tableKeys.Length));
@@ -231,6 +285,7 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
                         stateIndexes[s] = olds; // unchanged indexes; the array is never modified
                         ranges![s] = (start, body.Length - start);
                         partIndexes![s] = partsIndex;
+                        nameIndexes![s] = tableKeys.NameIndexes;
                         hashStarts![s] = System.Runtime.InteropServices.MemoryMarshal.TryGetArray(state.KeyHashes, out var segment)
                             && ReferenceEquals(segment.Array, tableKeys.Source) && segment.Count > 0
                             ? start + (segment.Offset - tableKeys.Start)
@@ -282,6 +337,8 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
             var parts = state.StaticParts is null ? -1 : IndexOf(state.StaticParts);
             partIndexes?[s] = parts;
             body.WriteVarInt(parts + 1);
+            var labelIndexes = WriteNames(body, state);
+            nameIndexes?[s] = labelIndexes;
 
             if (ranges is not null)
                 ranges[s] = (start, body.Length - start);
@@ -304,9 +361,10 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
             {
                 var state = ordered[s];
                 var (start, length) = ranges![s];
-                var keys = new TableKeys(keyTable, stateIndexes![s], bytes, head.Length + start, length, partIndexes![s]);
+                var keys = new TableKeys(keyTable, stateIndexes![s], bytes, head.Length + start, length, partIndexes![s]) { NameIndexes = nameIndexes![s] };
                 var copy = new UnitState(state.Key, state.InputHash, keys, state.Outputs)
                 {
+                    Names = state.Names,
                     KeyHashes = hashStarts![s] < 0 ? default : new ReadOnlyMemory<byte>(bytes, head.Length + hashStarts[s], keys.Count * KeyHashes.Size),
                     StaticParts = partIndexes[s] < 0 ? null : keyTable[partIndexes[s]],
                 };
@@ -356,9 +414,20 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
                     throw new EndOfStreamException();
                 stream.Position = hashStart + hashLength;
                 var partsIndex = Index(reader, strings.Length + 1) - 1;
-                var keys = new TableKeys(strings, indexes, bytes, start, (int)stream.Position - start, partsIndex);
+                var positions = new int[Index(reader, indexes.Length + 1)];
+                var labels = new int[positions.Length];
+                for (var n = 0; n < positions.Length; n++)
+                {
+                    positions[n] = Index(reader, indexes.Length);
+                    labels[n] = Index(reader, strings.Length);
+                    if (n > 0 && positions[n] <= positions[n - 1])
+                        throw new FormatException("Invalid name position.");
+                }
+
+                var keys = new TableKeys(strings, indexes, bytes, start, (int)stream.Position - start, partsIndex) { NameIndexes = labels };
                 var state = new UnitState(key, inputHash, keys, outputs)
                 {
+                    Names = positions.Length == 0 ? null : new TableNames(strings, indexes, positions, labels),
                     KeyHashes = hashLength == 0 ? default : new ReadOnlyMemory<byte>(bytes, hashStart, hashLength),
                     StaticParts = partsIndex < 0 ? null : strings[partsIndex],
                 };
@@ -491,6 +560,9 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
         /// <summary>The shared key table.</summary>
         public string[] Table => table;
 
+        /// <summary>The table indexes of the state's element name labels, in record order.</summary>
+        public int[] NameIndexes { get; init; } = [];
+
         /// <summary>The indexes into <see cref="Table"/>.</summary>
         public int[] Indexes => indexes;
 
@@ -524,6 +596,55 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
             foreach (var index in indexes)
                 yield return table[index];
         }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    /// <summary>A decoded state's element names, built into a dictionary on first use (a plan explanation reads few of them).</summary>
+    /// <param name="table">The file's string table.</param>
+    /// <param name="keys">The state's read keys as table indexes.</param>
+    /// <param name="positions">The named keys' positions among the read keys.</param>
+    /// <param name="labels">Their labels as table indexes.</param>
+    internal sealed class TableNames(string[] table, int[] keys, int[] positions, int[] labels) : IReadOnlyDictionary<string, string>
+    {
+        private Dictionary<string, string>? _names;
+
+        private Dictionary<string, string> Names
+        {
+            get
+            {
+                if (_names is null)
+                {
+                    var names = new Dictionary<string, string>(positions.Length, StringComparer.Ordinal);
+                    for (var n = 0; n < positions.Length; n++)
+                        names[table[keys[positions[n]]]] = table[labels[n]];
+                    _names = names;
+                }
+
+                return _names;
+            }
+        }
+
+        /// <inheritdoc/>
+        public string this[string key] => Names[key];
+
+        /// <inheritdoc/>
+        public IEnumerable<string> Keys => Names.Keys;
+
+        /// <inheritdoc/>
+        public IEnumerable<string> Values => Names.Values;
+
+        /// <inheritdoc/>
+        public int Count => positions.Length;
+
+        /// <inheritdoc/>
+        public bool ContainsKey(string key) => Names.ContainsKey(key);
+
+        /// <inheritdoc/>
+        public bool TryGetValue(string key, [System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out string value) => Names.TryGetValue(key, out value);
+
+        /// <inheritdoc/>
+        public IEnumerator<KeyValuePair<string, string>> GetEnumerator() => Names.GetEnumerator();
 
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }

@@ -11,7 +11,8 @@ newer image it redeploys it and prunes the old engine package (phase2-design.md 
     # open http://maquettiste.localhost:8080
 
 The compose file binds `127.0.0.1:8080` only, mounts `./.maquettiste` as the site's data folder (the model) and `./` as the
-output root (`/repo`), and keeps the host's own state in the `maquettiste-host` volume.
+output root (`/repo`), and keeps the host's own state in the `maquettiste-host` volume. It works unchanged under Docker and
+under Podman (`podman compose` or `podman-compose` with the same arguments); see File ownership.
 
 Stop with `docker compose -f <maquettiste>/docker/compose.yaml --project-directory . down` (add `-v` to drop the host volume;
 the model and generated files stay in your repository).
@@ -26,8 +27,11 @@ image's .NET runtime). Given a command, the entrypoint runs it instead of the ed
 
     docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:latest maquettiste generate --check
 
-`--user` keeps the files it writes yours on Linux (the CLI works under any UID). docs/user-guide.md "The command line" has the
-commands and a shell function; docs/mcp.md has the `.mcp.json` entry that runs `maquettiste mcp` from the image.
+`--user` keeps the files it writes yours under Docker (the CLI works under any UID); under rootless Podman leave it out or
+use `--userns=keep-id` instead. docs/user-guide.md "The command line" has the
+commands and a shell function. For agents, `maquettiste init --mcp --docker mattjcowan/maquettiste:<tag>` writes `mcp.sh`, a
+wrapper that runs `maquettiste mcp` in the image as you, and registers it in `.mcp.json` (`"type": "stdio"`,
+`"command": "./mcp.sh"`); the server's messages go to `.maquettiste/.cache/mcp.log` (docs/mcp.md).
 
 ## Never delete the site
 
@@ -35,18 +39,29 @@ Never delete or rename the site `maquettiste.localhost` in the host's management
 `.maquettiste/`, and static-site-hosting 0.2.0 deletes a site folder recursively, model included. Recovery is
 `git checkout -- .maquettiste`; uncommitted model edits are lost.
 
-## File ownership on Linux
+## File ownership
 
-The container runs as UID 1654 (`app`). The two bind mounts must be writable by it without changing their owner. Grant your own
-UID default entries too, or you cannot edit or delete the files and folders the editor creates (they are owned by 1654, mode 755):
+The compose file starts the container as root, and the entrypoint picks the user the editor runs as from the owner of the
+mounted `.maquettiste/` folder. When that owner is you (Docker on Linux, Docker on the Mac, whose file sharing shows your
+files as your uid), it hands its own volume (`/data`, never the bind mounts) and `/home/app` to you and runs the editor as you
+(`setpriv`, from the base image). When the owner is root (rootless Podman, whose root inside the container is you outside it
+and whose other uids cannot write the mounts; or a folder Docker created itself because `init` did not run), it stays root and
+logs `staying root`. No `chmod`, ACL or variable is needed in either case. Two variables override the choice:
 
-    setfacl -R -m "u:1654:rwX,d:u:1654:rwX,u:$(id -u):rwX,d:u:$(id -u):rwX" .maquettiste <output roots, such as db src/Generated>
+- `MAQUETTISTE_UID`: the user id to run as; `0` keeps root. Empty or unset means the folder's owner.
+- `MAQUETTISTE_GID`: the group id; empty means the folder's group (`MAQUETTISTE_GID=0` with another user is refused).
 
-`setfacl` comes with the `acl` package. Without ACLs, remove container-owned files as root inside a container:
+With plain `docker run`, pass `--user 0:0` for the same behavior. Given a command (the CLI form) the same rule applies to the
+mounted working directory (`-w /repo`), so what the command writes belongs to the mount's owner; with nothing mounted it runs
+as the image's user, UID 1654 (`app`), as it does when the image starts as `app` (without `--user 0:0`).
+
+Remove files an earlier image left owned by 1654 as root inside a container:
 
     docker run --rm --user 0 -v "$PWD:/w" --entrypoint rm mattjcowan/maquettiste:latest -rf /w/<path>
 
-Docker Desktop on macOS and Windows maps ownership itself; no ACLs are needed there.
+`docker/smoke.sh` checks the default run as 1654, a run with `MAQUETTISTE_UID` set to the host user (saves come out owned by
+that user), a command started as root over a host-owned folder (it runs as the host user), and a run started as root with no
+variables over a root-owned model folder, as rootless Podman shows it (the editor stays root and its saves succeed).
 
 ## Who is "local" (no sign-in)
 

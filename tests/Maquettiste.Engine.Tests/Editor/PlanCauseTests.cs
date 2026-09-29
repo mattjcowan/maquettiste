@@ -6,7 +6,7 @@ using static Maquettiste.Engine.Tests.Editor.EditorRepo;
 namespace Maquettiste.Engine.Tests.Editor;
 
 /// <summary>
-/// The plan's causes from unit state format 3 (generation-ui.md section 4.2): each change names the key or static part that changed,
+/// The plan's causes from unit state format 4 (generation-ui.md section 4.2): each change names the key or static part that changed,
 /// the same at any parallelism, and a state file of the previous format gives every unit <c>new</c> with <c>state-reset</c>.
 /// </summary>
 public sealed class PlanCauseTests
@@ -55,9 +55,42 @@ public sealed class PlanCauseTests
 
         // A state file of the previous format: every unit is new with the single cause state-reset.
         var units = Path.Combine(repo.Repo.CacheDirectory, "units");
-        File.Move(Path.Combine(units, "sql-ddl.v3.bin"), Path.Combine(units, "sql-ddl.v1.bin"));
+        File.Move(Path.Combine(units, "sql-ddl.v4.bin"), Path.Combine(units, "sql-ddl.v1.bin"));
         var reset = (await repo.Service.PlanAsync(SqlDdl, null, Ct)).Plan!;
         Assert.All(reset.Units, u => Assert.Equal(("new", "state-reset", 1), (u.Reason, u.Causes.Single().Kind, u.CauseCount)));
+    }
+
+    [Fact]
+    public async Task A_deleted_element_is_named_by_the_name_it_had_at_the_last_render()
+    {
+        await using var repo = Create();
+        await PlanAndApplyAsync(repo);
+        var store = new UnitStateStore(repo.Repo.Options, new Maquettiste.Engine.Writing.OutputPathPolicy(repo.Repo.Options, null));
+        var states = await store.LoadAsync("sql-ddl", Ct);
+        var key = "e:" + CustomerId;
+        var stored = states.Values.First(s => s.ReadKeys.Contains(key));
+        Assert.NotNull(stored.Names);
+        Assert.Equal("Customer (entity)", stored.Names[key]);
+        Assert.All(stored.Names.Keys, k => Assert.StartsWith("e:", k, StringComparison.Ordinal));
+
+        // The model no longer has it (nameOf answers null): the cause still names it.
+        var unit = new PlanUnit(stored.Key, "changed", [.. stored.ReadKeys.Where(k => k != key)], false, []);
+        var (reason, causes) = Maquettiste.Engine.Generation.PlanExplainer.Explain(unit, stored, false, repo.Repo.RepoRoot, id => id != CustomerId, nameOf: _ => null);
+        Assert.Equal("inputs", reason);
+        Assert.Contains(causes, c => (c.Kind, c.Key, c.Detail) == ("absent", key, "Customer (entity) was deleted"));
+    }
+
+    [Fact]
+    public async Task A_check_plan_gives_its_units_the_check_reason()
+    {
+        await using var repo = Create();
+        await PlanAndApplyAsync(repo);
+        var check = (await repo.Service.PlanAsync(SqlDdl with { Mode = GenerationMode.Check }, null, Ct)).Plan!;
+        Assert.NotEmpty(check.Units);
+        Assert.All(check.Units.Where(u => !u.Skipped), u => Assert.Equal(("check", 0), (u.Reason, u.CauseCount)));
+        Assert.Contains(check.Units, u => !u.Skipped);
+        var dryRun = (await repo.Service.PlanAsync(SqlDdl, null, Ct)).Plan!;
+        Assert.DoesNotContain(dryRun.Units, u => u.Reason == "check");
     }
 
     [Fact]

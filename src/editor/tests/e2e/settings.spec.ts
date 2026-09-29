@@ -5,7 +5,8 @@ import { expect, test } from "./fixtures";
 test("vocabularies and conventions", async ({ page }) => {
   await page.goto("/settings");
   const settings = page.getByTestId("settings-workspace");
-  await expect(settings.getByRole("tab", { name: "Tags" })).toHaveAttribute("aria-selected", "true");
+  await expect(settings.getByRole("tab", { name: "General" })).toHaveAttribute("aria-selected", "true");
+  await settings.getByRole("tab", { name: "Tags" }).click();
   await expect(settings.getByRole("textbox", { name: "Key of tag 1" })).toHaveValue("billing");
 
   await settings.getByRole("tab", { name: "Categories" }).click();

@@ -5,7 +5,7 @@ import { Component, lazy, Suspense, useEffect, useRef, type ComponentType, type 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, useLocation } from "react-router";
 import { Explorer } from "@/explorer/Explorer";
-import { Inspector } from "@/inspector/Inspector";
+import { Inspector, useInspectorContext } from "@/inspector/Inspector";
 import { EditorArea, EditorTabBar } from "@/editors/EditorTabs";
 import { CommandPalette, QuickOpen } from "@/palette/CommandPalette";
 import { NewElementHost } from "@/explorer/NewElementDialog";
@@ -23,6 +23,7 @@ import { parseLocation } from "./navigation";
 import { Rail } from "./Rail";
 import { GenerateExplorer } from "@/workspaces/generate/GenerateExplorer";
 import { useGlobalShortcuts } from "./shortcuts";
+import { BrandingSync } from "./branding";
 import { TopBar } from "./TopBar";
 import { SCREEN_LABELS } from "@/model/labels";
 
@@ -131,7 +132,9 @@ function Shell() {
   const inspectorSize = useEditor(store, (s) => s.inspectorSize);
   const bottomSize = useEditor(store, (s) => s.bottomSize);
   const explorerCollapsed = useEditor(store, (s) => s.explorerCollapsed);
-  const inspectorCollapsed = useEditor(store, (s) => s.inspectorCollapsed);
+  // The inspector follows the active context; Settings and Reference data have none (their screen is the panel).
+  const inspectorContext = useInspectorContext();
+  const inspectorCollapsed = useEditor(store, (s) => s.inspectorCollapsed) || inspectorContext.mode === "none";
   const bottomCollapsed = useEditor(store, (s) => s.bottomCollapsed);
   const resize = (patch: Partial<EditorState>) => store.setState(patch);
   const View = WORKSPACE_VIEWS[workspace];
@@ -139,6 +142,7 @@ function Shell() {
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-app text-primary" data-testid="shell">
       <Banners />
+      <BrandingSync />
       <TopBar />
       <div className="flex min-h-0 flex-1">
         <Rail />
@@ -233,7 +237,7 @@ function Shell() {
               className="flex min-h-0 shrink-0 flex-col border-l border-default bg-surface"
               style={{ width: inspectorSize }}
             >
-              <Inspector />
+              <Inspector context={inspectorContext} />
             </aside>
           </>
         )}

@@ -17,7 +17,7 @@ internal sealed class CommandLine
     private static readonly HashSet<string> ValueOptions = new(StringComparer.Ordinal)
     {
         "--repo", "--cache-dir", "--jobs", "--progress", "--verbosity", "--format", "--output", "--pack", "--roots", "--hand-edits",
-        "--from", "--out", "--locale", "--mode", "--name", "--seed", "--entities", "--relations", "--enums", "--fanout", "--baseline", "--max-regression",
+        "--from", "--out", "--docker", "--locale", "--mode", "--name", "--seed", "--entities", "--relations", "--enums", "--fanout", "--baseline", "--max-regression",
     };
 
     /// <summary>Options that are flags.</summary>

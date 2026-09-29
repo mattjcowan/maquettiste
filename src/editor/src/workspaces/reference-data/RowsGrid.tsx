@@ -3,7 +3,7 @@
 // spreadsheet keys (rowsModel.gridAction). Every edit goes through the seed's draft, so it saves like any element
 // and undoes; tab-separated paste writes cells and adds rows past the end; CSV import previews, then applies as one
 // save; CSV export downloads the seed.
-import { ROW_H } from "@/design/density";
+import { rowHeight } from "@/design/density";
 import { useCallback, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Download, Plus, Upload } from "lucide-react";
@@ -128,6 +128,7 @@ export function RowsTab({ typeId, seeds, onTab, onFocusSearch }: { typeId: strin
   const gridRef = useRef<HTMLDivElement>(null);
   const findRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const ROW_H = useMemo(() => rowHeight(), []);
   const virtualizer = useVirtualizer({ count: rows.length, getScrollElement: () => scrollRef.current, estimateSize: () => ROW_H, overscan: 20 });
 
   if (!type || loaded.pending) return <Spinner />;

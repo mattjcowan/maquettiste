@@ -1,5 +1,5 @@
 #!/bin/sh
-# The Maquettiste image's entrypoint (phase2-design.md section 6.2). Runs as app (UID 1654):
+# The Maquettiste image's entrypoint (phase2-design.md section 6.2). Runs as app (UID 1654), or as the user picked below:
 #   1. checks the host volume is writable and defaults MAQUETTISTE_LOCAL_PEERS to the container's gateway;
 #   2. decides whether the bundled site zip must be deployed (a new volume, or an image newer than the last deploy);
 #   3. seeds a deploy key into the host's apikeys.json while the host is stopped (host 0.2.0 has no bootstrap key; PD20);
@@ -7,7 +7,79 @@
 #   5. deploys the zip through the host's own API when needed;
 #   6. waits for the host and exits with its status.
 # Given a command (docker run <image> maquettiste ...), it runs that command instead.
+#
+# Started as root (compose's user: "0:0", or docker run --user 0:0), with or without a command, it picks the user to run as:
+#   - MAQUETTISTE_UID (and MAQUETTISTE_GID) when set and not empty; MAQUETTISTE_UID=0 means stay root;
+#   - otherwise the owner of the bind-mounted folder: the model folder for the editor, else the working directory (docker run
+#     -w /repo) for a command. Owned by root (rootless Podman maps the host user to root; or a folder Docker created itself), it
+#     stays root; owned by anyone else (Docker Desktop's file sharing, Linux), it runs as that owner, so the files it writes are
+#     the owner's;
+#   - with nothing mounted, the image's app user (1654).
+# Before it drops to a user other than root it hands /data (bind mounts under it excepted) and /home/app to that user, then
+# re-runs itself as that user with setpriv.
 set -eu
+
+log() { printf 'maquettiste: %s\n' "$*"; }
+
+model_dir=/data/sites/maquettiste.localhost/data
+
+if [ "$(id -u)" = 0 ]; then
+  is_mount() { awk -v p="$1" '$5 == p { found = 1 } END { exit !found }' /proc/self/mountinfo; }
+  probe=
+  if is_mount "$model_dir"; then probe="$model_dir"
+  elif [ "$#" -gt 0 ]; then
+    # The nearest mount point at or above the working directory (docker run -v "$PWD:/repo" -w /repo).
+    dir="$PWD"
+    while [ "$dir" != / ]; do
+      if is_mount "$dir"; then probe="$dir"; break; fi
+      dir=$(dirname "$dir")
+    done
+  fi
+  uid="${MAQUETTISTE_UID:-}"
+  gid="${MAQUETTISTE_GID:-}"
+  if [ -n "$uid" ]; then
+    from="MAQUETTISTE_UID"
+    if [ -z "$gid" ]; then
+      if [ "$uid" = 0 ]; then gid=0; elif [ -n "$probe" ]; then gid=$(stat -c '%g' "$probe"); else gid="$uid"; fi
+    fi
+  elif [ -n "$probe" ]; then
+    from="the owner of $probe"
+    uid=$(stat -c '%u' "$probe")
+    [ -n "$gid" ] || gid=$(stat -c '%g' "$probe")
+  else
+    from="the image's app user (nothing mounted to take the owner from)"
+    uid=1654
+    [ -n "$gid" ] || gid=1654
+  fi
+  case "$uid$gid" in
+    *[!0-9]*) log "MAQUETTISTE_UID and MAQUETTISTE_GID must be numbers (got '$uid' and '$gid')"; exit 1 ;;
+  esac
+  export HOME=/home/app
+  if [ "$uid" = 0 ]; then
+    # Rootless Podman: root in the container is the host user outside it, and any other uid could not write the mount.
+    if [ "$from" = MAQUETTISTE_UID ]; then why="MAQUETTISTE_UID=0"; else why="$from is root, as under rootless Podman"; fi
+    [ "$#" -gt 0 ] || log "staying root: $why"
+  else
+    if [ "$gid" = 0 ] && [ -n "${MAQUETTISTE_GID:-}" ]; then
+      log "MAQUETTISTE_GID=0: the editor does not run with the root group; use the host user's group id (id -g)"
+      exit 1
+    fi
+    # The mount points under /data (the bind-mounted model) keep their owner: their files belong to the host.
+    set_owner() {
+      set --
+      for mount in $(awk '$5 ~ "^/data/" { print $5 }' /proc/self/mountinfo); do
+        set -- "$@" -path "$mount" -prune -o
+      done
+      find /data /home/app "$@" \( ! -user "$uid" -o ! -group "$gid" \) -exec chown -h "$uid:$gid" {} +
+    }
+    # A command (docker run --user 0:0 <image> maquettiste ...) runs as that user too, so nothing it writes is owned by root;
+    # the volume is handed over only for the editor or when MAQUETTISTE_UID asks for it.
+    if [ "$#" = 0 ] || [ -n "${MAQUETTISTE_UID:-}" ]; then set_owner; fi
+    [ "$#" -gt 0 ] || log "running as $uid:$gid: $from"
+    export USER=app LOGNAME=app
+    exec setpriv --reuid="$uid" --regid="$gid" --clear-groups -- "$0" "$@"
+  fi
+fi
 
 # A command runs instead of the editor host: docker run --rm <image> maquettiste generate (docker/maquettiste.sh). With no
 # arguments (compose, docker run <image>) the image starts the editor as before.
@@ -19,8 +91,6 @@ state=/data/maquettiste
 sites=/data/sites
 site_dir="$sites/$site"
 port=8080
-
-log() { printf 'maquettiste: %s\n' "$*"; }
 
 # ---------------------------------------------------------------- 1. volume and local peers
 mkdir -p "$state/cache" "$site_dir" 2>/dev/null || true

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { TranslationsSection } from "@/l10n/TranslationsSection";
 import { CircleAlert, Loader2, Trash2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { applyBatchResult, applySaveResult, keys, loadElement, useIndex, useProject, useReferences } from "@/api/queries";
+import { applyBatchResult, applySaveResult, keys, loadElement, useIndex, usePack, useProject, useReferences } from "@/api/queries";
 import * as endpoints from "@/api/endpoints";
 import type { ElementKind, EntityDoc, ModelJson, ReferenceInfo, StereotypeDoc } from "@/api/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -32,18 +32,104 @@ import {
   type FormProps,
 } from "./fields";
 import { applicableExtensions, SchemaForm } from "./SchemaForm";
+import { emptyTitle, inspectorContext, type InspectorContext } from "./context";
 
-export function Inspector() {
+/** The inspector's context from the store (see ./context): the pieces are stable references, the context is derived. */
+export function useInspectorContext(): InspectorContext {
   const { store } = useServices();
-  const selection = useEditor(store, (s) => s.selection);
-  if (selection.length === 0)
+  const workspace = useEditor(store, (s) => s.workspace);
+  const active = useEditor(store, (s) => s.explorer.active);
+  const editors = useEditor(store, (s) => s.editors);
+  const generation = useEditor(store, (s) => s.generation);
+  const selectionBy = useEditor(store, (s) => s.selectionBy);
+  const index = useIndex();
+  const exists = useMemo(() => {
+    if (!index.data) return undefined;
+    const byId = indexLookup(index.data).byId;
+    return (id: string) => byId.has(id);
+  }, [index.data]);
+  // A deleted element (here, in another session, or by an undo of its create) leaves every explorer's selection.
+  useEffect(() => {
+    if (exists) store.getState().pruneSelection(exists);
+  }, [exists, store]);
+  return useMemo(
+    () => inspectorContext({ workspace, explorer: { active }, editors, generation, selectionBy, exists }),
+    [workspace, active, editors, generation, selectionBy, exists],
+  );
+}
+
+export function Inspector({ context }: { context: InspectorContext }) {
+  if (context.mode === "none") return null;
+  if (context.mode === "pack") return <PackInspector key={context.pack} pack={context.pack} unit={context.unit} />;
+  if (context.mode === "empty")
     return (
-      <section aria-label="Inspector" className="h-full bg-surface">
-        <EmptyState title="Nothing selected">Select an element in the explorer or on the canvas to see and edit its properties.</EmptyState>
+      <section
+        aria-label="Inspector"
+        className="flex h-full flex-col items-center justify-center gap-1 bg-surface p-2 text-center"
+        data-testid="inspector-empty"
+      >
+        <h2 className="text-13 font-medium text-primary" data-testid="inspector-title">
+          {emptyTitle(context)}
+        </h2>
+        <p className="max-w-md text-12 text-secondary">
+          {context.noun === "a pack" ? "Its units and output folder show here." : "Its properties show here, ready to edit."}
+        </p>
       </section>
     );
-  if (selection.length > 1) return <BulkInspector ids={selection} />;
-  return <ElementInspector key={selection[0]} id={selection[0]} />;
+  if (context.ids.length > 1) return <BulkInspector ids={context.ids} />;
+  return <ElementInspector key={context.ids[0]} id={context.ids[0]} />;
+}
+
+/** The Generate screen's context: the open pack, or the unit a tree row focused. */
+function PackInspector({ pack, unit }: { pack: string; unit: string | null }) {
+  const doc = usePack(pack);
+  const units = ((doc.data?.document?.units as Record<string, unknown>[] | undefined) ?? []).filter((u) => typeof u.id === "string");
+  const row = unit ? units.find((u) => u.id === unit) : undefined;
+  const title = row ? `${pack}/${unit}` : pack;
+  const text = (v: unknown) => (typeof v === "string" && v ? v : "none");
+  return (
+    <section aria-label={`Inspector: ${title}`} className="flex h-full min-h-0 flex-col bg-surface" data-testid="inspector">
+      <header className="flex flex-col gap-0.5 border-b border-default px-2 py-1">
+        <h2 className="truncate text-14 font-semibold" data-testid="inspector-title">
+          {title}
+        </h2>
+        <p className="truncate font-mono text-11 text-secondary">{row ? "unit" : "pack"}</p>
+      </header>
+      {doc.isPending ? (
+        <Spinner label="Loading pack" />
+      ) : !doc.data ? (
+        <EmptyState title="This pack could not be read">{doc.error ? String((doc.error as Error).message) : null}</EmptyState>
+      ) : (
+        <dl className="grid grid-cols-[max-content_1fr] gap-x-2 gap-y-0.5 overflow-auto p-2 text-12" data-testid="pack-inspector">
+          {row ? (
+            <>
+              <dt className="text-secondary">Template</dt>
+              <dd className="truncate font-mono">{text(row.template)}</dd>
+              <dt className="text-secondary">Renders</dt>
+              <dd className="truncate font-mono">{text(row.for)}</dd>
+              <dt className="text-secondary">Output</dt>
+              <dd className="break-all font-mono">{text(row.output)}</dd>
+              <dt className="text-secondary">Mode</dt>
+              <dd>{text(row.mode)}</dd>
+            </>
+          ) : (
+            <>
+              <dt className="text-secondary">Enabled</dt>
+              <dd>{doc.data.enabled ? "yes" : "no"}</dd>
+              <dt className="text-secondary">Output</dt>
+              <dd className="break-all font-mono">{doc.data.output}</dd>
+              <dt className="text-secondary">Units</dt>
+              <dd>{units.map((u) => String(u.id)).join(", ") || "none"}</dd>
+              <dt className="text-secondary">Files</dt>
+              <dd>{doc.data.files.length}</dd>
+              <dt className="text-secondary">Problems</dt>
+              <dd>{doc.data.diagnostics.length}</dd>
+            </>
+          )}
+        </dl>
+      )}
+    </section>
+  );
 }
 
 export function statusBadge(status: string | undefined, saving: boolean) {
@@ -83,6 +169,8 @@ function ElementInspector({ id }: { id: string }) {
     });
   }, [focus, id]);
 
+  // The index is loaded and has no row: the element was deleted; its cached document is never shown or edited.
+  if (index.data && !summary) return <EmptyState title="This element no longer exists">It was deleted.</EmptyState>;
   if (element.isPending && !json) return <Spinner label="Loading element" />;
   if (element.error && !json) return <EmptyState title="This element could not be loaded">{String((element.error as Error).message)}</EmptyState>;
   if (!json || !kind) return null;

@@ -433,6 +433,7 @@ public sealed partial class ModelStore : IAsyncDisposable
         if (!changes.IsEmpty)
             notifications.Add(changes);
         var saved = _current!;
+        RemoveUnnamedUploads(before.Settings.Branding.Icon, saved.Settings.Branding.Icon);
         return new SettingsSaveResult(SaveOutcome.Saved, saved.SettingsHash, SettingsDocumentOf(saved.Settings, repoPath, saved.SettingsHash, bytes), Sorted(introduced));
     }
 

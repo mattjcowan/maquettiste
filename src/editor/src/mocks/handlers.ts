@@ -3,6 +3,7 @@
 // editor uses. They also apply the sign-in gate's request rules the SPA must satisfy (415 for a
 // POST or PUT under /api/ that is not application/json, 428 without If-Match), so the client's
 // behaviour is exercised in mock mode too.
+import { sha256Hex } from "@/lib/sha256";
 import type { components } from "@/api/schema";
 import { createOpenApiHttp } from "openapi-msw";
 import { delay, http as rawHttp, HttpResponse, type HttpHandler } from "msw";
@@ -148,6 +149,50 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
       // updateSettings declares no 400: a body that is not JSON fails the schema (422).
       const { status, body: result } = model.saveSettings(body.ok ? body.value : (null as unknown as Json), hash);
       return HttpResponse.json(result, { status, headers: result.hash && status === 200 ? etag(result.hash) : {} });
+    }),
+    http.post("/api/project/branding/icon", async ({ request }) => {
+      const body = await jsonBody(request);
+      if (!body.ok) return body.response;
+      const { contentType, data } = body.value as { contentType?: string; data?: string };
+      if (contentType !== "image/svg+xml" && contentType !== "image/png")
+        return problem(400, "bad-request", "The request is not valid.", "contentType must be image/svg+xml or image/png.");
+      let binary: string;
+      try {
+        binary = atob(data ?? "");
+      } catch {
+        return problem(400, "bad-request", "The request is not valid.", "data is not base64.");
+      }
+      if (binary.length > 512 * 1024) return problem(413, "too-large", "The icon is too large.", "An icon may be at most 512 KB.");
+      const removed: string[] = [];
+      let stored = data ?? "";
+      if (contentType === "image/png") {
+        if (!binary.startsWith("\x89PNG\r\n\x1a\n")) return problem(422, "invalid-icon", "The icon cannot be used.", "The file is not a PNG image.");
+      } else {
+        const text = new TextDecoder().decode(Uint8Array.from(binary, (c) => c.charCodeAt(0)));
+        if (!/<svg[\s>]/.test(text) || !text.includes("http://www.w3.org/2000/svg"))
+          return problem(422, "invalid-icon", "The icon cannot be used.", "The root element is not <svg> in the SVG namespace.");
+        let clean = text;
+        if (/<script[\s>]/i.test(clean)) {
+          removed.push("a <script> element");
+          clean = clean.replace(/<script[\s\S]*?<\/script>/gi, "");
+        }
+        const handler = /\s(on[a-z]+)="[^"]*"/i.exec(clean);
+        if (handler) {
+          removed.push(`an event handler attribute '${handler[1]}'`);
+          clean = clean.replace(/\son[a-z]+="[^"]*"/gi, "");
+        }
+        stored = btoa(String.fromCharCode(...new TextEncoder().encode(clean)));
+      }
+      const hash = sha256Hex(stored);
+      const icon = `branding/icon-${hash.slice(0, 12)}.${contentType === "image/png" ? "png" : "svg"}`;
+      model.brandingIcons.set(icon, { contentType, data: stored, hash });
+      return HttpResponse.json({ icon, contentType, hash, removed });
+    }),
+    http.get("/api/project/branding/icon", () => {
+      const icon = model.brandingIcon();
+      if (!icon) return problem(404, "not-found", "The project has no icon.");
+      const bytes = Uint8Array.from(atob(icon.data), (c) => c.charCodeAt(0));
+      return new HttpResponse(bytes, { headers: { "Content-Type": icon.contentType, ...etag(icon.hash), "Cache-Control": "no-cache" } }) as never;
     }),
     http.get("/api/model/index", ({ request }) => {
       // E5e: the ETag of the index, 304 on a matching If-None-Match, kept by the browser with no-cache.

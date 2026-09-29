@@ -37,7 +37,7 @@ The editor is laid out like an IDE:
 | Rail | The explorers: Domain model, Reference data, Databases, Diagrams and Generate; Settings and the account menu at the bottom |
 | Sidebar | The explorer the rail selected: a tree with a "Search the model" box, filterable by tag, category and stereotype |
 | Center | The current screen: the canvas, a grid or an editor |
-| Right | The inspector: every property of the selected element, editable |
+| Right | The inspector: the properties of what you are working on, editable (see below); none on Settings and Reference data |
 | Bottom | Problems (live validation), generation output, and a diff viewer |
 
 ### The rail: one explorer at a time
@@ -49,6 +49,14 @@ and back. A second explorer can stay open beside the first: the explorer header'
 **Unpin**), a per-browser preference. The header also offers **Collapse all** and **Highlight related elements**: with it
 on, selecting an entity tints the relationships, tables and columns that belong to it, and a collapsed folder shows
 "n related".
+
+The inspector follows what is active, never an element selected somewhere you have left. Each explorer keeps its own
+selection: after a rail switch the inspector shows that explorer's selection, or "Select an element in Diagrams" (the
+explorer's name) when it has none, and switching back brings the earlier one back. While an element editor tab shows in
+the centre, the inspector shows that tab's element. On **Generate** it shows the open pack, or the unit a pack tree row
+opened ("Select a pack in Generate" on Plan). **Settings** and **Reference data** have no inspector: those screens are
+their own panel. Going to an element from one of them (a translation queue's "Open element", a where-used row) opens
+the Domain model screen with the element selected.
 
 ### Search and filters
 
@@ -181,7 +189,24 @@ database shows on the Database screen at once. The explorers remember which rows
 - **Generate**: Plan renders every template unit and shows what would change, grouped by unit with the reason each
   renders (see "How the plan explains itself" below); pick a file to see its diff; Apply writes the plan. Generation runs as a job and reports progress; the run history stays in the panel. The Generate
   explorer and the pack editor (below) show and change what each pack does.
-- **Settings**: the vocabularies (Tags, Categories, Stereotypes), the naming conventions, and **Locales** (below).
+- **Settings**: **General** (below), the vocabularies (Tags, Categories, Stereotypes), the naming conventions, and
+  **Locales** (below).
+- **Settings › General** names and brands the project; none of it changes generated output.
+  - **Project name**: the name in the top bar, `name` in `maquettiste.json` (the field `maquettiste init --name` writes).
+    The top bar follows as you type; Save writes it.
+  - **Icon**: an SVG or a PNG of at most 512 KB, shown in the top bar, the browser tab and the sign-in page; without one
+    the M mark is used. Upload stores it under a new name, `.maquettiste/branding/icon-<hash>.svg` (or `.png`), so the
+    saved icon stays until you save; Save points `branding.icon` at it and removes the uploads it no longer names, and
+    Discard keeps the saved icon. An SVG is stored without its scripts, event handlers and external references (the page lists what was
+    removed). **Use the default mark** goes back to the M.
+  - **Primary color**: one per theme, `branding.colors.light` and `.dark`, as `#rrggbb` (or `#rgb`). The accent, focus
+    rings and selection follow it, and it is also a text color and the fill behind button text. A color with less than
+    4.5:1 contrast against the theme's surfaces gets a warning (below 4.5:1 accent text is hard to read, below 3:1 the
+    accent, focus rings and selection are hard to see), and so does one whose button text reaches less than 4.5:1; the
+    warning states the ratios. **Reset** goes back to the built-in accent.
+  - The rules: MQ8001 for a color that is not hex, MQ8002 for an icon that names no `.svg` or `.png` file under
+    `branding/`, MQ8003 for an icon that is not a safe SVG or a PNG of at most 512 KB. A save that breaks one is refused
+    with the message; a hand edit shows it in Problems.
 
 ## Generation: how the model becomes files
 
@@ -239,8 +264,9 @@ hand-written code that is created once and then left alone).
 2. **Templates** (Alt+3): pick a file on the left; the middle pane is the template. The line above it says which units
    use it.
 3. On the right, the **preview** renders a unit for one element with your unsaved text, a moment after you stop
-   typing: pick the **Unit** and the **Element**, read the output path and the text it would write, and any error is
-   marked at its line. A preview writes nothing.
+   typing: pick the **Unit** and one of the unit's elements (the picker lists only its kind: entities for an `each
+   entity` unit, reference types for `each reference type`, locales for `each locale`), read the output path and the
+   text it would write, and any error is marked at its line. A preview writes nothing.
 4. **Save** (Ctrl+S) writes the file under `.maquettiste/templates/<pack>/`, where git sees it.
 5. Back on **Plan**, **Plan** shows every file the change touches; **Apply plan** writes them.
 
@@ -331,7 +357,7 @@ Alt+4:
 
 - **Units**: a grid of the units, edited in place: id, scope, filter, template, output path, write mode, formatter.
   Beside each output pattern the grid shows how it reads, the path it gives for an **Example element** (chosen in the
-  toolbar), and how many files the unit plans. When two elements would get the same path the cell says MQ6020; a
+  toolbar, one of the unit's own elements, the first until you pick another, kept per unit), and how many files the unit plans. When two elements would get the same path the cell says MQ6020; a
   path outside every allowed root says MQ6019. The side panel explains the focused field and the row's scope in plain
   words. Ctrl+Enter adds a unit, Ctrl+D duplicates it, Ctrl+Delete removes it, Alt+Up and Alt+Down reorder, Ctrl+S
   saves `pack.json` (every member the grid does not show is kept). When the file changed on disk since you opened
@@ -344,9 +370,15 @@ Alt+4:
   the tab's own dot says some file is unsaved. In the middle, the file in a code editor with Scriban colouring (the
   `{{ }}`, `{{- -}}` and `{{~ ~}}` blocks, keywords, strings, comments, pipes and the functions after them; text outside
   the blocks stays plain); the line above it says which units use the file, directly or through includes. On the
-  right, the **preview**: pick a **Unit** (the ones that use the file come first) and an **Element** from the unit's
-  scope ("First in scope" by default), and the preview renders that unit for that element with the text you have not
-  saved yet, about 300 ms after you stop typing. The output path it would write shows above the rendered text, and its
+  right, the **preview**: pick a **Unit** (the ones that use the file come first) and one of its elements. The picker
+  lists only elements of the unit's scope kind (each entity: entities; each reference type: reference types; each
+  locale: locales; each table, and a `select` scope: the elements the unit plans; `model`: none, it renders once),
+  starts on the first and remembers your choice per unit. A partial previews through the first unit that includes it,
+  and the line above the preview says so; a file no unit uses previews through the first unit, also said there. When
+  the model has no element of the unit's kind the preview says so ("The model has no reference type to preview this
+  template with."), and a render outside the unit's scope reads "This template renders one reference type; pick a
+  reference type to preview it" instead of the template engine's error. The preview renders that unit for that
+  element with the text you have not saved yet, about 300 ms after you stop typing. The output path it would write shows above the rendered text, and its
   diagnostics are listed above it and marked in the editor at their line. Nothing is written by a preview.
   **Save** (or Ctrl+S) writes the file under `.maquettiste/templates/<pack>/` with the version you opened; a template
   that does not parse is still saved and its MQ6003 error marked. When the file changed on disk since you opened it
@@ -365,6 +397,12 @@ shows anywhere: no switcher, no Translations section, no locale columns.
   supported locales, each locale's fallbacks (for example `fr-CA` falls back to `fr`; left empty, a locale falls back to
   its shorter tag, then to the default) and which kinds count for completeness (none checked: every translatable field).
   Save writes the `localization` block of maquettiste.json. "Declare locales" starts the block when there is none.
+  The new-locale field corrects a tag as you type it: an underscore becomes a hyphen, the language turns lowercase, a
+  script Titlecase and the region uppercase (`zh_cn` becomes `zh-CN`, `zh_hant_tw` becomes `zh-Hant-TW`). **Add locale**
+  stays in place; while the tag cannot be added, the reason shows beside it ("use language-REGION with a hyphen, such as
+  zh-CN, or a language alone, such as fr", or "already a supported locale"), and Save stays off while the block has a
+  problem MQ7201 would report. The CLI's `l10n` verbs and hand edits of `maquettiste.json` are not corrected this way:
+  write `zh-CN` there.
 - With two or more locales, the same tab shows the **completeness matrix**: one row per domain (plus Not in a domain and
   Reference data), one column per locale, the percent translated in each cell (stale translations count as not done).
   A cell opens the **translation queue** for that locale and domain: the default text on the left, the translation on
@@ -411,7 +449,19 @@ docker compose -f docker/compose.yaml --project-directory tmp/billing down -v
 ```
 
 To run it over your own repository, use `docker/compose.yaml` with your repository as the project directory, as
-SPEC.md Section 4 describes.
+SPEC.md Section 4 describes; it works unchanged under Docker and under Podman:
+
+```
+MAQUETTISTE_IMAGE=mattjcowan/maquettiste:<tag> docker compose -f <maquettiste>/docker/compose.yaml --project-directory . up -d
+```
+
+The container starts as root and looks at who owns the mounted `.maquettiste/` folder. When it is you (Docker on Linux or
+on the Mac), the editor hands its own volume to you and runs as you, so the model and the generated files stay yours. When it
+is root (rootless Podman, whose root inside the container is you outside it), the editor stays root, which writes your
+folders as you. Two variables override the choice when you need to:
+
+- `MAQUETTISTE_UID`: the user id to run as (`id -u`); `0` keeps root.
+- `MAQUETTISTE_GID`: the group id to run as (`id -g`); defaults to the folder's group.
 
 ## The command line
 
@@ -422,7 +472,7 @@ that changed while the command ran), 4 an internal or usage error (a refused wri
 
 | Command | What it does |
 | --- | --- |
-| `maquettiste init` | Creates `.maquettiste/` (`maquettiste.json`, the JSON schemas for editor completion, the `sql-ddl` starter pack) and a `.gitignore` block. `--pack csharp-dapper` or `--pack none` picks another starter; `--mcp`, `--skill` and `--agent-setup` register the agent server (docs/mcp.md). The project is named by `--name <name>`, else the `name` of `package.json`, else the git remote's repository name, else the folder name (so a repository mounted at `/repo` in the image keeps its real name). Running it again keeps what is there. |
+| `maquettiste init` | Creates `.maquettiste/` (`maquettiste.json`, the JSON schemas for editor completion, the `sql-ddl` starter pack) and a `.gitignore` block. `--pack csharp-dapper` or `--pack none` picks another starter; `--mcp`, `--skill` and `--agent-setup` register the agent server, and `--mcp --docker <image>` registers a `./mcp.sh` wrapper that runs it from the image (docs/mcp.md). The project is named by `--name <name>`, else the `name` of `package.json`, else the git remote's repository name, else the folder name (so a repository mounted at `/repo` in the image keeps its real name). Running it again keeps what is there. |
 | `maquettiste validate` | Validates the model and the packs; `--format sarif` for code-scanning tools. |
 | `maquettiste generate` | Renders the packs into the output roots of `maquettiste.json`, incrementally: only units whose inputs changed re-render. Prints one line per file (`A` added, `M` modified, `D` deleted, `K` kept). A generated file edited by hand stops the run (exit 3); `--hand-edits overwrite` replaces it. |
 | `maquettiste generate --check` | Renders without writing and exits 2 when the committed output differs from the model: the CI gate. |
@@ -451,10 +501,10 @@ The editor image carries the CLI, so a machine with only Docker needs nothing el
 make it the working directory:
 
 ```sh
-docker run --rm -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste init
-docker run --rm -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste generate
-docker run --rm -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste generate --check
-docker run --rm -it -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste generate --watch
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste init
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste generate
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste generate --check
+docker run --rm -it --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste generate --watch
 ```
 
 A shell function saves typing (`-it` only when you are at a terminal, so it also works in scripts and CI):
@@ -463,15 +513,21 @@ A shell function saves typing (`-it` only when you are at a terminal, so it also
 maquettiste() { docker run --rm $([ -t 0 ] && echo -it) --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste "$@"; }
 ```
 
-**File ownership.** The image runs as UID 1654. On Linux, add `--user "$(id -u):$(id -g)"` (as the function does): the
-CLI then writes the model and the generated files as you, and they stay yours. Without it the run fails on a repository
-UID 1654 cannot write, with "Access to the path ... is denied". Docker Desktop on macOS maps file ownership to the Mac
-user, so `--user` is harmless there and the files are yours either way (not verified here). The CLI works under any
-UID: when the image's own folders are not writable it keeps its cache in the container's `/tmp` for that run.
+**File ownership.** The image runs as UID 1654. Add `--user "$(id -u):$(id -g)"` (as the function does): the CLI then
+writes the model and the generated files as you, and they stay yours. Without it the run fails on a repository UID 1654
+cannot write, with "Access to the path ... is denied" (Linux) or "Permission denied" (the Mac, whose
+Docker file sharing does not map the container's user). The CLI works under any
+UID: when the image's own folders are not writable it keeps its cache in the container's `/tmp` for that run. Under rootless
+Podman, leave `--user` out (root in the container is you outside it) or replace it with `--userns=keep-id`.
 
 **Order with the editor.** Run `init` before `docker compose ... up`. The compose file bind-mounts `./.maquettiste`; when
 the folder does not exist yet, Docker creates it empty (owned by root on Linux) and the editor starts on a project with no
 `maquettiste.json`.
+
+**Agents from the image.** `maquettiste init --mcp --docker mattjcowan/maquettiste:<tag>` (through the function above)
+writes `mcp.sh`, a wrapper that runs `maquettiste mcp` in the image as you over the repository, and registers it in
+`.mcp.json` as `{"type": "stdio", "command": "./mcp.sh", "args": []}`. The server's messages go to
+`.maquettiste/.cache/mcp.log`. docs/mcp.md has the details.
 
 ## Translations, seed CSV and reference data over the API
 

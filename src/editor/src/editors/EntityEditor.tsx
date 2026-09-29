@@ -237,7 +237,7 @@ function KeyControl({ id, json, edit, flush }: EditorContext) {
                       <Trash2 />
                     </Button>
                   </div>
-                  <div className="flex flex-wrap gap-x-3">
+                  <div className="flex flex-wrap gap-x-2">
                     {attributes.map((a) => (
                       <CheckboxField
                         key={a.id}

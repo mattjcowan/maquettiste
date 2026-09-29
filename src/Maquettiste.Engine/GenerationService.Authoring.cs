@@ -7,6 +7,7 @@ using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Planning;
 using Maquettiste.Engine.Rendering;
+using Maquettiste.Engine.Scripting;
 using Maquettiste.Engine.Resolution;
 
 namespace Maquettiste.Engine;
@@ -62,7 +63,11 @@ public sealed record TemplateMember(string Name, string Type);
 /// <param name="Members">Member lists by variable (<c>model</c>, <c>element</c>), ordinal.</param>
 /// <param name="Helpers">The built-in helpers, ordinal.</param>
 public sealed record TemplateContextResult(string Pack, string Unit, string Scope, IReadOnlyList<TemplateVariable> Variables,
-    IReadOnlyDictionary<string, IReadOnlyList<TemplateMember>> Members, IReadOnlyList<string> Helpers);
+    IReadOnlyDictionary<string, IReadOnlyList<TemplateMember>> Members, IReadOnlyList<string> Helpers)
+{
+    /// <summary>What the pack's own scripts register, by kind then name; its helpers are also in <see cref="Helpers"/>.</summary>
+    public IReadOnlyList<ScriptRegistration> Registrations { get; init; } = [];
+}
 
 public sealed partial class GenerationService
 {
@@ -302,7 +307,10 @@ public sealed partial class GenerationService
         var members = new SortedDictionary<string, IReadOnlyList<TemplateMember>>(StringComparer.Ordinal) { ["model"] = MembersOf(typeof(ResolvedModel)) };
         if (elementType is not null)
             members["element"] = MembersOf(elementType);
-        return new TemplateContextResult(pack, unitId, unit.For, variables, members, [.. BuiltinHelpers.Names.Order(StringComparer.Ordinal)]);
+        var registrations = document.Registrations;
+        var helpers = BuiltinHelpers.Names.Concat(registrations.Where(r => r.Kind == ScriptRegistrationKind.Helper).Select(r => r.Name))
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal);
+        return new TemplateContextResult(pack, unitId, unit.For, variables, members, [.. helpers]) { Registrations = registrations };
     }
 
     private static Type? ScopeType(string scope) => scope switch

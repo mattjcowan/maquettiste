@@ -46,6 +46,62 @@ internal static class AgentSetup
         };
     }
 
+    /// <summary>The repo-relative path of the Docker wrapper that <c>init --mcp --docker</c> writes.</summary>
+    public const string DockerWrapperPath = "mcp.sh";
+
+    /// <summary>The line that marks a wrapper maquettiste wrote, so a re-run refreshes it and never replaces someone else's script.</summary>
+    public const string DockerWrapperMarker = "# maquettiste-mcp-wrapper";
+
+    /// <summary>Returns the server entry of the Docker form: the repository's <c>./mcp.sh</c>, which runs the server in the image.</summary>
+    /// <returns>The entry.</returns>
+    public static JsonObject DockerServerEntry() => new()
+    {
+        ["type"] = "stdio",
+        ["command"] = "./" + DockerWrapperPath,
+        ["args"] = new JsonArray(),
+    };
+
+    /// <summary>Whether an image reference is safe to write into the wrapper unquoted: a name, an optional tag and an optional digest.</summary>
+    /// <param name="image">The reference, such as <c>mattjcowan/maquettiste:0.2.0</c>.</param>
+    /// <returns><see langword="true"/> when it is usable.</returns>
+    public static bool IsImageReference(string image) =>
+        image.Length is > 0 and <= 255 && char.IsAsciiLetterOrDigit(image[0])
+        && image.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-' or '/' or ':' or '@');
+
+    /// <summary>
+    /// Returns the wrapper script: it finds docker (an MCP client may start it with a short PATH), runs <c>maquettiste mcp</c> in the image
+    /// as the calling user over this folder, keeps stdout for the protocol and appends the server's messages to
+    /// <c>.maquettiste/.cache/mcp.log</c>. The engine cache lives in <c>.maquettiste/.cache/cli</c> so it survives the container.
+    /// </summary>
+    /// <param name="image">The image reference (checked by <see cref="IsImageReference"/>).</param>
+    /// <returns>The script (LF line endings).</returns>
+    public static string DockerWrapper(string image) => $$"""
+        #!/bin/sh
+        {{DockerWrapperMarker}} (written by maquettiste init --mcp --docker; docs/mcp.md)
+        # Runs the maquettiste MCP server in Docker for an MCP client started in this folder. Stdout carries the protocol only; the
+        # server's messages go to .maquettiste/.cache/mcp.log. MAQUETTISTE_IMAGE overrides the image, MAQUETTISTE_DOCKER the docker path.
+        set -eu
+        cd "$(dirname "$0")"
+        image="${MAQUETTISTE_IMAGE:-{{image}}}"
+        docker="${MAQUETTISTE_DOCKER:-}"
+        if [ -z "$docker" ]; then
+          docker=$(command -v docker 2>/dev/null || true)
+        fi
+        if [ -z "$docker" ]; then
+          for candidate in /usr/local/bin/docker /opt/homebrew/bin/docker "$HOME/.docker/bin/docker"             /Applications/Docker.app/Contents/Resources/bin/docker /usr/bin/docker; do
+            if [ -x "$candidate" ]; then docker="$candidate"; break; fi
+          done
+        fi
+        mkdir -p .maquettiste/.cache
+        if [ -z "$docker" ]; then
+          echo "mcp.sh: docker not found; set MAQUETTISTE_DOCKER to its path" >> .maquettiste/.cache/mcp.log
+          echo "mcp.sh: docker not found; set MAQUETTISTE_DOCKER to its path" >&2
+          exit 127
+        fi
+        exec "$docker" run -i --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo           -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli "$image" maquettiste mcp 2>> .maquettiste/.cache/mcp.log
+
+        """.Replace("\r\n", "\n", StringComparison.Ordinal);
+
     /// <summary>
     /// Adds the <c>maquettiste</c> server to an existing <c>.mcp.json</c> text, keeping every other entry and member in order.
     /// </summary>
@@ -118,17 +174,25 @@ internal static class AgentSetup
         return new UTF8Encoding(false).GetBytes(reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal));
     }
 
-    /// <summary>Registers the server in <c>.mcp.json</c>; an entry named <c>maquettiste</c> that is already there is kept as is.</summary>
+    /// <summary>
+    /// Registers the server in <c>.mcp.json</c>; an entry named <c>maquettiste</c> that is already there is kept as is. With an image, the
+    /// entry runs <c>./mcp.sh</c>, which this writes (executable) unless a script maquettiste did not write is already there.
+    /// </summary>
     /// <param name="files">The guarded writer.</param>
     /// <param name="repo">The repository root.</param>
+    /// <param name="dockerImage">The image of the Docker form (<c>--docker</c>), or <see langword="null"/> for the installed tool.</param>
     /// <param name="report">The report lines.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>A task.</returns>
-    public static async Task WriteMcpConfigAsync(GuardedFiles files, string repo, List<string> report, CancellationToken ct)
+    public static async Task WriteMcpConfigAsync(GuardedFiles files, string repo, string? dockerImage, List<string> report, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(files);
+        ArgumentNullException.ThrowIfNull(report);
+        if (dockerImage is not null)
+            await WriteDockerWrapperAsync(files, repo, dockerImage, report, ct).ConfigureAwait(false);
         var path = Path.Combine(repo, ".mcp.json");
         var existing = File.Exists(path) ? await File.ReadAllTextAsync(path, ct).ConfigureAwait(false) : null;
-        var entry = ServerEntry(await UsesLocalToolAsync(repo, ct).ConfigureAwait(false));
+        var entry = dockerImage is null ? ServerEntry(await UsesLocalToolAsync(repo, ct).ConfigureAwait(false)) : DockerServerEntry();
         var problem = WithServer(existing, entry, out var updated);
         if (problem is not null)
         {
@@ -143,7 +207,32 @@ internal static class AgentSetup
         }
 
         var outcome = await files.WriteAsync(WriteTarget.Setup, path, new UTF8Encoding(false).GetBytes(updated), overwrite: true, ct).ConfigureAwait(false);
-        report.Add((outcome == WriteOutcome.Created ? "created" : "updated") + $" .mcp.json (server {ServerName}: {entry["command"]} {string.Join(' ', entry["args"]!.AsArray().Select(a => a!.GetValue<string>()))})");
+        report.Add((outcome == WriteOutcome.Created ? "created" : "updated") + $" .mcp.json (server {ServerName}: " + string.Join(' ', entry["args"]!.AsArray().Select(a => a!.GetValue<string>()).Prepend((string)entry["command"]!)) + ")");
+    }
+
+    private static async Task WriteDockerWrapperAsync(GuardedFiles files, string repo, string image, List<string> report, CancellationToken ct)
+    {
+        var path = Path.Combine(repo, DockerWrapperPath);
+        var mine = !File.Exists(path) || (await File.ReadAllTextAsync(path, ct).ConfigureAwait(false)).Contains(DockerWrapperMarker, StringComparison.Ordinal);
+        var outcome = await files.WriteAsync(WriteTarget.Setup, path, new UTF8Encoding(false).GetBytes(DockerWrapper(image)), overwrite: mine, ct).ConfigureAwait(false);
+        if (outcome == WriteOutcome.Kept && !mine)
+        {
+            report.Add($"kept {DockerWrapperPath}: a script maquettiste did not write; move it away and run init --mcp --docker again");
+            return;
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead
+                | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        }
+
+        report.Add(outcome switch
+        {
+            WriteOutcome.Created => $"created {DockerWrapperPath} (runs maquettiste mcp in {image}; log in .maquettiste/.cache/mcp.log)",
+            WriteOutcome.Updated => $"updated {DockerWrapperPath} (runs maquettiste mcp in {image})",
+            _ => $"kept {DockerWrapperPath} (current)",
+        });
     }
 
     /// <summary>Installs (or refreshes) the modeling skill; the file tracks the installed tool's version, like the schemas.</summary>

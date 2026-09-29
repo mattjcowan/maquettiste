@@ -116,6 +116,8 @@ export interface EditorState {
   workspace: Workspace;
   explorer: ExplorerSlice;
   selection: string[];
+  /** Each sidebar view's own selection (the inspector follows the active one): the last selection made while it showed. */
+  selectionBy: Partial<Record<SidebarView, string[]>>;
   /** Problem navigation: the element and JSON pointer to reveal in the inspector. */
   focus: { id: string; pointer: string | null } | null;
   activeDiagram: string | null;
@@ -183,6 +185,8 @@ export interface EditorActions {
   /** Announces an in-place change to a view's expansion. */
   touchExplorer(): void;
   select(ids: string[], focus?: { pointer: string | null }): void;
+  /** Drops ids that no longer exist from the selection and from every explorer's remembered selection (after a delete). */
+  pruneSelection(exists: (id: string) => boolean): void;
   setExplorerItem(key: string | null): void;
   setDatabaseTable(key: string | null): void;
   setActiveDiagram(id: string | null): void;
@@ -290,6 +294,7 @@ export function createEditorStore(): EditorStore {
     workspace: "entities",
     explorer: initialExplorer(),
     selection: [],
+    selectionBy: {},
     focus: null,
     activeDiagram: null,
     activeDatabase: null,
@@ -373,9 +378,28 @@ export function createEditorStore(): EditorStore {
       // tree row never grows the strip and shifts the tree under the pointer between the two clicks of a double click.
       set({
         selection: ids,
+        selectionBy: { ...get().selectionBy, [get().explorer.active]: ids },
         explorerItem: null,
         focus: ids.length === 1 && focus ? { id: ids[0], pointer: focus.pointer } : null,
         history: visit(get().history, ids),
+      });
+    },
+    pruneSelection: (exists) => {
+      const s = get();
+      let changed = false;
+      const selectionBy: EditorState["selectionBy"] = {};
+      for (const [view, ids] of Object.entries(s.selectionBy) as [SidebarView, string[]][]) {
+        const kept = ids.filter(exists);
+        if (kept.length !== ids.length) changed = true;
+        selectionBy[view] = kept.length === ids.length ? ids : kept;
+      }
+      const selection = s.selection.filter(exists);
+      if (selection.length !== s.selection.length) changed = true;
+      if (!changed) return;
+      set({
+        selectionBy,
+        selection: selection.length === s.selection.length ? s.selection : selection,
+        focus: s.focus && !exists(s.focus.id) ? null : s.focus,
       });
     },
     setActiveDiagram: (id) => set({ activeDiagram: id }),
@@ -397,7 +421,7 @@ export function createEditorStore(): EditorStore {
     travel: (direction) => {
       const next = travel(get().history, direction);
       if (!next?.current) return null;
-      set({ history: next, selection: next.current, focus: null });
+      set({ history: next, selection: next.current, selectionBy: { ...get().selectionBy, [get().explorer.active]: next.current }, focus: null });
       return next.current;
     },
     showReferences: (id) => set({ references: id, ...(id ? { bottomTab: "references" as const, bottomCollapsed: false } : {}) }),

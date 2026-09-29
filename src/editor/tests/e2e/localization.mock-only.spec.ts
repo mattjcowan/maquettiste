@@ -126,7 +126,15 @@ test("Settings › Locales: adding a locale saves maquettiste.json and shows it 
   await openEditor(page, "/?mock=locales");
   await page.getByTestId("rail-settings").click();
   await page.getByRole("tab", { name: "Locales" }).click();
-  await page.getByLabel("New locale (BCP 47 tag)").fill("de");
+  // An underscore and any case normalize as typed (zh_cn → zh-CN); the button stays, and a bad tag says why inline.
+  const field = page.getByLabel("New locale (BCP 47 tag)");
+  await field.pressSequentially("zh_cn");
+  await expect(field).toHaveValue("zh-CN");
+  await expect(page.getByRole("button", { name: "Add locale" })).toBeEnabled();
+  await field.fill("zh-C");
+  await expect(page.getByRole("button", { name: "Add locale" })).toBeDisabled();
+  await expect(page.getByTestId("locale-add-problem")).toContainText("use language-REGION with a hyphen");
+  await field.fill("de");
   await page.getByRole("button", { name: "Add locale" }).click();
   await page.getByTestId("save-locales").click();
   await expect(page.getByTestId("notice")).toContainText("Locales saved.");

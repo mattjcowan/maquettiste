@@ -1,3 +1,4 @@
+using Maquettiste.Engine;
 using System.Net;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -12,7 +13,10 @@ namespace Maquettiste.Functions;
 /// </summary>
 public static class SignInGate
 {
-    private const string PageSecurityPolicy = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'";
+    private const string PageSecurityPolicy = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self'";
+
+    /// <summary>The project icon, read by the sign-in page and the browser tab before anyone signs in.</summary>
+    private const string IconPath = "/api/project/branding/icon";
 
     /// <summary>Runs on every request to the site except <c>/_host/*</c> and <c>/healthz</c>, which the host answers first.</summary>
     /// <param name="context">The request.</param>
@@ -61,7 +65,8 @@ public static class SignInGate
 
         // 3. Anonymous paths go on without a user; a wrong bearer token is refused everywhere else, even from a local peer.
         var anonymous = (HttpMethods.IsGet(method) && path.Equals("/api/health", StringComparison.OrdinalIgnoreCase))
-            || ((HttpMethods.IsGet(method) || HttpMethods.IsPost(method)) && path.Equals("/api/session", StringComparison.OrdinalIgnoreCase));
+            || ((HttpMethods.IsGet(method) || HttpMethods.IsPost(method)) && path.Equals("/api/session", StringComparison.OrdinalIgnoreCase))
+            || ((HttpMethods.IsGet(method) || HttpMethods.IsHead(method)) && path.Equals(IconPath, StringComparison.OrdinalIgnoreCase));
         if (wrongBearer && !anonymous)
         {
             await Write(context, Api.Problem("bad-token", "The editor token is not valid.", StatusCodes.Status401Unauthorized)).ConfigureAwait(false);
@@ -112,9 +117,10 @@ public static class SignInGate
     /// <param name="status">The status code.</param>
     /// <param name="error">A message to show, or <see langword="null"/>.</param>
     /// <returns>A task.</returns>
-    public static Task WriteSignInPage(HttpContext context, int status, string? error)
+    public static async Task WriteSignInPage(HttpContext context, int status, string? error)
     {
         ArgumentNullException.ThrowIfNull(context);
+        var (icon, light, dark) = await BrandingOf(context).ConfigureAwait(false);
         var returnUrl = context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase) ? "/" : context.Request.Path + context.Request.QueryString;
         context.Response.StatusCode = status;
         context.Response.ContentType = "text/html; charset=utf-8";
@@ -129,20 +135,23 @@ public static class SignInGate
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <title>Sign in to Maquettiste</title>
             <style>
-            :root { color-scheme: light dark; --bg: #f6f7f9; --panel: #ffffff; --text: #1a1d23; --muted: #5b6472; --border: #7d8694; --accent: #2f6fdb; }
-            @media (prefers-color-scheme: dark) { :root { --bg: #0f1115; --panel: #171a21; --text: #e6e8ec; --muted: #a1a9b6; --border: #6b7482; --accent: #4c8df6; } }
-            body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, sans-serif; }
-            form { width: min(360px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 24px; }
-            h1 { font-size: 20px; margin: 0 0 8px; }
-            p { color: var(--muted); margin: 0 0 16px; }
+            :root { color-scheme: light dark; --bg: #f6f7f9; --panel: #ffffff; --text: #1a1d23; --muted: #5b6472; --border: #7d8694; --accent: {{light ?? "#2f6fdb"}}; --on-accent: {{OnAccent(light, "#ffffff")}}; }
+            @media (prefers-color-scheme: dark) { :root { --bg: #0f1115; --panel: #171a21; --text: #e6e8ec; --muted: #a1a9b6; --border: #6b7482; --accent: {{dark ?? "#4c8df6"}}; --on-accent: {{OnAccent(dark, "#ffffff")}}; } }
+            body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--text); font: 13px/1.5 system-ui, sans-serif; }
+            form { width: min(360px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+            h1 { font-size: 16px; margin: 0 0 4px; }
+            p { color: var(--muted); margin: 0 0 12px; }
             label { display: block; font-weight: 600; margin-bottom: 4px; }
-            input { box-sizing: border-box; width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: inherit; font: inherit; }
-            button { margin-top: 16px; width: 100%; padding: 8px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; }
+            input { box-sizing: border-box; width: 100%; height: 28px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: inherit; font: inherit; }
+            button { margin-top: 12px; width: 100%; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: var(--accent); color: var(--on-accent); font: inherit; font-weight: 600; }
+            .icon { display: block; width: 28px; height: 28px; margin-bottom: 8px; }
             .error { color: #c0392b; }
+            @media (pointer: coarse) { input, button { height: 44px; } }
             </style>
             </head>
             <body>
             <form method="post" action="/api/session">
+            {{icon}}
             <h1>Sign in to Maquettiste</h1>
             <p>This editor is not on your machine's loopback address, so it needs the editor token (MAQUETTISTE_EDITOR_TOKEN).</p>
             {{message}}
@@ -154,7 +163,47 @@ public static class SignInGate
             </body>
             </html>
             """;
-        return HttpMethods.IsHead(context.Request.Method) ? Task.CompletedTask : context.Response.WriteAsync(html, context.RequestAborted);
+        if (!HttpMethods.IsHead(context.Request.Method))
+            await context.Response.WriteAsync(html, context.RequestAborted).ConfigureAwait(false);
+    }
+
+    /// <summary>The project's icon tag and primary colors for the sign-in page; none when the model cannot be read.</summary>
+    private static async Task<(string Icon, string? Light, string? Dark)> BrandingOf(HttpContext context)
+    {
+        if (context.RequestServices?.GetService(typeof(ModelStore)) is not ModelStore store)
+            return ("", null, null);
+        try
+        {
+            var snapshot = await store.GetSnapshotAsync(context.RequestAborted).ConfigureAwait(false);
+            var colors = snapshot.Settings.Branding.Colors;
+            var icon = await store.ReadBrandingIconAsync(context.RequestAborted).ConfigureAwait(false);
+            var tag = icon is null ? "" : $"<img class=\"icon\" src=\"{IconPath}?v={icon.Hash[..12]}\" alt=\"\">";
+            return (tag, Color(colors.Light), Color(colors.Dark));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            return ("", null, null);
+        }
+    }
+
+    /// <summary>A branding color that passes MQ8001, lowercased; anything else is dropped so it cannot reach the style sheet.</summary>
+    private static string? Color(string? value) =>
+        value is { Length: 4 or 7 } && value[0] == '#' && value.AsSpan(1).ContainsAnyExcept("0123456789abcdefABCDEF") is false ? value.ToLowerInvariant() : null;
+
+    /// <summary>The text color on the accent: dark on a light accent, else the default.</summary>
+    private static string OnAccent(string? accent, string fallback)
+    {
+        if (accent is null)
+            return fallback;
+        var hex = accent.Length == 4 ? string.Concat(accent[1], accent[1], accent[2], accent[2], accent[3], accent[3]) : accent[1..];
+        double Channel(int i)
+        {
+            var c = Convert.ToInt32(hex.Substring(i, 2), 16) / 255.0;
+            return c <= 0.04045 ? c / 12.92 : Math.Pow((c + 0.055) / 1.055, 2.4);
+        }
+
+        var luminance = 0.2126 * Channel(0) + 0.7152 * Channel(2) + 0.0722 * Channel(4);
+        return (1.05 / (luminance + 0.05)) >= ((luminance + 0.05) / 0.0556) ? "#ffffff" : "#0f1115";
     }
 
     /// <summary>Whether an <c>Origin</c> header names this request's own origin, <c>&lt;scheme&gt;://&lt;Host&gt;</c>.</summary>

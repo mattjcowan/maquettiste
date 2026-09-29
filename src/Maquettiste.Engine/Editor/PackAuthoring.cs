@@ -12,6 +12,7 @@ using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Planning;
 using Maquettiste.Engine.Rendering;
+using Maquettiste.Engine.Scripting;
 using Maquettiste.Engine.Writing;
 
 namespace Maquettiste.Engine;
@@ -55,7 +56,11 @@ public sealed record PackParameterInfo(string Name, JsonElement? Default, JsonEl
 /// <param name="Files">The folder's files, ordinal by path.</param>
 /// <param name="Diagnostics">Load diagnostics, MQ6019 for output paths, MQ6003 and MQ6025 for template parse errors.</param>
 public sealed record PackDocument(string Name, bool Enabled, string Output, string Hash, JsonElement? Document, IReadOnlyList<PackParameterInfo> Parameters,
-    IReadOnlyList<PackFileInfo> Files, IReadOnlyList<Diagnostic> Diagnostics);
+    IReadOnlyList<PackFileInfo> Files, IReadOnlyList<Diagnostic> Diagnostics)
+{
+    /// <summary>What the pack's own scripts register (helpers, selectors, filters, transforms, rules), by kind then name; empty when they fail.</summary>
+    public IReadOnlyList<ScriptRegistration> Registrations { get; init; } = [];
+}
 
 /// <summary>A pack file's text with its ETag.</summary>
 /// <param name="Path">The pack-relative path.</param>

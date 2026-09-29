@@ -220,7 +220,7 @@ public sealed class IncrementalTests
         Assert.Equal(invariant.CommittedManifest("basic"), turkish.CommittedManifest("basic"));
         // Unit states hold input hashes and read keys (culture-free); only the recorded mtimes differ between the two repos.
         static string States(GenerationFixture f) => string.Join("\n", Engine.Planning.UnitStateStore
-            .Decode(File.ReadAllBytes(Path.Combine(f.Repo.CacheDirectory, "units", "basic.v3.bin")))!.Values.OrderBy(v => v.Key, StringComparer.Ordinal)
+            .Decode(File.ReadAllBytes(Path.Combine(f.Repo.CacheDirectory, "units", "basic.v4.bin")))!.Values.OrderBy(v => v.Key, StringComparer.Ordinal)
             .Select(v => v.Key + " " + v.InputHash + " " + string.Join(",", v.ReadKeys) + " " + string.Join(",", v.Outputs.Select(o => o.Path + "=" + o.ManifestHash))));
         Assert.Equal(States(invariant), States(turkish));
     }

@@ -157,6 +157,33 @@ const BCP47 = /^[A-Za-z]{2,3}(?:-[A-Za-z]{4})?(?:-(?:[A-Za-z]{2}|\d{3}))?(?:-(?:
 
 export const isLocaleTag = (tag: string) => BCP47.test(tag);
 
+/**
+ * A typed locale in canonical BCP 47 case, as the user types it: an underscore becomes a hyphen, the language is
+ * lowercase, a script Titlecase, a region uppercase (zh_cn → zh-CN, zh_hant_tw → zh-Hant-TW); other subtags lowercase.
+ */
+export function normalizeLocaleTag(input: string): string {
+  const parts = input.trim().replace(/_/g, "-").split("-");
+  return parts
+    .map((p, i) => {
+      if (i === 0) return p.toLowerCase();
+      if (/^[A-Za-z]{4}$/.test(p) && i === 1) return p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
+      if (/^[A-Za-z]{2}$/.test(p)) return p.toUpperCase();
+      return p.toLowerCase();
+    })
+    .join("-");
+}
+
+/** Why a typed locale cannot be added yet (shown under the field), or null when it can (or nothing is typed). */
+export function localeTagProblem(tag: string, declared: readonly string[]): string | null {
+  if (!tag) return null;
+  if (!isLocaleTag(tag)) {
+    if (/\s/.test(tag)) return "A locale has no spaces: use language-REGION with a hyphen, such as zh-CN, or a language alone, such as fr.";
+    return `'${tag}' is not a BCP 47 tag: use language-REGION with a hyphen, such as zh-CN, or a language alone, such as fr.`;
+  }
+  if (declared.includes(tag)) return `${tag} is already a supported locale.`;
+  return null;
+}
+
 /** The settings' problems as MQ7201 would name them, so Save stays off until they are fixed. */
 export function localizationProblems(l: LocalizationSettings): string[] {
   const out: string[] = [];

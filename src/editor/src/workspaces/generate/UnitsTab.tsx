@@ -209,8 +209,8 @@ export function UnitsTab({ pack, document, hash, files, focusUnit, onDirty }: Pr
           pack={pack}
           unit={current}
           saved={current ? saved.get(str(current.id)) : undefined}
-          value={examples[scope] ?? ""}
-          onChange={(id) => setExamples({ ...examples, [scope]: id })}
+          value={examples[str(current?.id)] ?? ""}
+          onChange={(id) => setExamples({ ...examples, [str(current?.id)]: id })}
         />
         <span className="ml-auto" />
         {dirty ? <Badge tone="warning">unsaved</Badge> : null}
@@ -298,7 +298,7 @@ export function UnitsTab({ pack, document, hash, files, focusUnit, onDirty }: Pr
                   files={files}
                   selected={i === row}
                   idError={unitIdError(draft, i, str(unit.id))}
-                  example={examples[str(unit.for)] ?? null}
+                  example={examples[str(unit.id)] ?? null}
                   onFocus={(f) => {
                     setRow(i);
                     setField(f);
@@ -354,17 +354,18 @@ function ExamplePicker({ pack, unit, saved, value, onChange }: { pack: string; u
   const paths = useUnitPaths(pack, unit ?? {}, saved);
   const index = useIndex();
   const names = useMemo(() => new Map((index.data ?? []).map((e) => [e.id, e.displayName ?? e.name])), [index.data]);
+  // The unit's own planned elements: always of its scope; the first until one is picked (kept per unit).
   const ids = [...new Set((paths.data?.paths ?? []).map((p) => p.elementId).filter((x): x is string => !!x))];
   return (
     <Select
       id="example-element"
       className="h-6 w-56 text-12"
-      value={value}
+      value={value && ids.includes(value) ? value : (ids[0] ?? "")}
       onChange={(e) => onChange(e.target.value)}
       disabled={!ids.length}
       data-testid="example-element"
     >
-      <option value="">{ids.length ? "First in scope" : "No element (runs once)"}</option>
+      {ids.length ? null : <option value="">No element (runs once)</option>}
       {ids.map((id) => (
         <option key={id} value={id}>
           {names.get(id) ?? id}

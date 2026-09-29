@@ -116,6 +116,69 @@ public sealed class McpCommandTests
     }
 }
 
+/// <summary>The end of stdin right after the requests (<c>echo request | maquettiste mcp</c>).</summary>
+public sealed class McpEndOfInputTests
+{
+    [Fact]
+    public async Task Answers_every_request_read_before_stdin_ended_then_exits_0()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var billing = CliRepo.Billing();
+        var requests = """
+            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"echo","version":"1"}}}
+            {"jsonrpc":"2.0","method":"notifications/initialized"}
+            {"jsonrpc":"2.0","id":"two","method":"tools/call","params":{"name":"get_project","arguments":{}}}
+            """;
+        var stdout = new MemoryStream();
+        var environment = new CliEnvironment
+        {
+            Out = TextWriter.Null,
+            Error = new SharedWriter(),
+            CurrentDirectory = billing.RepoRoot,
+            OpenStandardInput = () => new MemoryStream(System.Text.Encoding.UTF8.GetBytes(requests)),
+            OpenStandardOutput = () => stdout,
+        };
+
+        // The last request has no newline (echo -n): the end of input completes it.
+        Assert.Equal(0, await new CliApp(environment).RunAsync(["--repo", billing.RepoRoot, "--cache-dir", billing.CacheDirectory, "mcp"], ct));
+        var answers = System.Text.Encoding.UTF8.GetString(stdout.ToArray()).Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => System.Text.Json.Nodes.JsonNode.Parse(line)!).ToList();
+        Assert.Equal(2, answers.Count);
+        var initialize = Assert.Single(answers, a => a["id"]?.ToJsonString() == "1");
+        Assert.NotNull(initialize["result"]?["serverInfo"]);
+        var project = Assert.Single(answers, a => a["id"]?.ToJsonString() == "\"two\"");
+        Assert.Contains("billing", (string)project["result"]!["content"]![0]!["text"]!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_cancelled_request_does_not_hold_the_end_of_input()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var input = """
+            {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{}}
+            {"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":7}}
+            """;
+        var stdio = new Maquettiste.Cli.Mcp.DrainingStdio(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(input)), new MemoryStream());
+        var buffer = new byte[4096];
+        while (await stdio.Input.ReadAsync(buffer, ct) > 0)
+        {
+        }
+
+        Assert.Equal(0, stdio.PendingCount);
+
+        // A response written in chunks answers its request; the end of input then comes at once.
+        var pending = new Maquettiste.Cli.Mcp.DrainingStdio(new MemoryStream("{\"jsonrpc\":\"2.0\",\"id\":\"x\",\"method\":\"ping\"}\n"u8.ToArray()), new MemoryStream());
+        Assert.True(await pending.Input.ReadAsync(buffer, ct) > 0);
+        Assert.Equal(1, pending.PendingCount);
+        var end = pending.Input.ReadAsync(buffer, ct).AsTask();
+        await Task.Delay(50, ct);
+        Assert.False(end.IsCompleted);
+        await pending.Output.WriteAsync("{\"jsonrpc\":\"2.0\",\"id\":\"x\","u8.ToArray(), ct);
+        await pending.Output.WriteAsync("\"result\":{}}\n"u8.ToArray(), ct);
+        Assert.Equal(0, await end.WaitAsync(TimeSpan.FromSeconds(10), ct));
+    }
+}
+
 /// <summary>The read tools return the editor API's bodies.</summary>
 public sealed class McpReadTests
 {

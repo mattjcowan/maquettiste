@@ -88,3 +88,38 @@ test("edit a template, preview it, save it, and meet a concurrent change", async
   await expect(page.getByTestId("code-text-scriban")).toHaveText("-- changed again\n", { useInnerText: false });
   await expect(bar).toBeHidden();
 });
+
+test("the preview renders only elements of the unit's scope, and a partial through a unit that includes it", async ({ page }) => {
+  await page.goto("/generate");
+  await workspace(page, "Generate");
+  await page.getByRole("tree", { name: "Packs" }).getByTestId("pack-row-p:csharp-dapper").getByText("csharp-dapper", { exact: true }).click();
+  await expect(page.getByTestId("pack-editor")).toBeVisible();
+  await page.keyboard.press("Alt+3");
+  const tab = page.getByTestId("templates-tab");
+  const files = tab.getByRole("navigation", { name: "Pack files" });
+  const element = page.getByTestId("preview-element");
+
+  // An entity template: the picker lists entities only, the first chosen.
+  await files.getByRole("button", { name: "entity.scriban", exact: true }).click();
+  await expect(page.getByTestId("preview-unit")).toHaveValue("entity");
+  await expect(element.locator("option", { hasText: /^Invoice$/ })).toHaveCount(1);
+  await expect(element).not.toHaveValue("");
+  await expect(page.getByTestId("preview-text").first()).not.toBeEmpty();
+
+  // The reference type template never renders for the entity picked above: the fixture has no reference type, so
+  // the preview says so instead of a raw MQ6006.
+  await files.getByRole("button", { name: "reference-type.scriban", exact: true }).click();
+  await expect(page.getByTestId("preview-unit")).toHaveValue("reference-type");
+  await expect(element.locator("option", { hasText: /^Invoice$/ })).toHaveCount(0);
+  await expect(page.getByTestId("preview-scope")).toHaveText("The model has no reference type to preview this template with.");
+  await expect(page.getByTestId("template-preview")).not.toContainText("MQ6006");
+
+  // Enums list enums only.
+  await files.getByRole("button", { name: "enum.scriban", exact: true }).click();
+  await expect(page.getByTestId("preview-unit")).toHaveValue("enum");
+  await expect(element.locator("option", { hasText: /^Invoice$/ })).toHaveCount(0);
+
+  // A partial previews through the first unit that includes it, and says so.
+  await files.getByRole("button", { name: /^_shared\.scriban/ }).click();
+  await expect(page.getByTestId("preview-note")).toContainText("is a partial: previewing unit");
+});

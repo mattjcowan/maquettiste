@@ -700,6 +700,7 @@ internal sealed class WriteRun
             {
                 KeyHashes = rendered.KeyHashes.Length == readKeys.Count * Planning.KeyHashes.Size ? rendered.KeyHashes : default,
                 StaticParts = rendered.Unit.StaticParts,
+                Names = rendered.Names,
             };
         }
 

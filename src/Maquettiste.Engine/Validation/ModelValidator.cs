@@ -68,6 +68,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         {
             diagnostics.AddRange(ReferenceDataRules.CheckSettings(model));
             diagnostics.AddRange(LocalizationRules.Check(model));
+            diagnostics.AddRange(BrandingRules.Check(model, options.EffectiveModelRoot));
         }
 
         // JavaScript rules: one pool per validation (engine-design.md section 10).

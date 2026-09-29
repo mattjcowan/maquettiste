@@ -184,6 +184,12 @@ public sealed record UnitState(string Key, string InputHash, IReadOnlyList<strin
 
     /// <summary>The static parts at render time (<see cref="PlannedUnit.StaticParts"/>), or <see langword="null"/>.</summary>
     public string? StaticParts { get; init; }
+
+    /// <summary>
+    /// The label (<c>Name (kind)</c>) of each element key (<c>e:&lt;id&gt;</c>) read, at render time (unit state format 4), so a cause can
+    /// name an element the model no longer has ("Customer (entity) was deleted"); <see langword="null"/> when not recorded.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? Names { get; init; }
 }
 
 /// <summary>A unit skipped because its inputs and outputs are unchanged.</summary>
@@ -219,6 +225,9 @@ public sealed record RenderedUnit(
 {
     /// <summary>Each read key's current hash, truncated to 16 bytes, in <see cref="ReadKeys"/> order (see <see cref="UnitState.KeyHashes"/>).</summary>
     public ReadOnlyMemory<byte> KeyHashes { get; init; }
+
+    /// <summary>The labels of the element keys read (see <see cref="UnitState.Names"/>).</summary>
+    public IReadOnlyDictionary<string, string>? Names { get; init; }
 }
 
 /// <summary>The output root that contains a file.</summary>

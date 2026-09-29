@@ -1,5 +1,5 @@
 // The Settings workspace (phase2-design.md 4.8; owner decision 7: phase 2 edits conventions and
-// vocabularies only). The global tags and categories (vocabularies/VocabularyEditors; a domain's own are on the domain editor), stereotypes (list and form), conventions for the project and per database, locales (l10n/LocalesSettings),
+// vocabularies only; General (name and branding) came with the 2026-09-29 live test). The global tags and categories (vocabularies/VocabularyEditors; a domain's own are on the domain editor), stereotypes (list and form), conventions for the project and per database, locales (l10n/LocalesSettings),
 // saved through PUT /api/project/settings with the inherited value as placeholder. Type maps,
 // output allowlist and formatters are read-only.
 import { useEffect, useMemo, useState } from "react";
@@ -28,16 +28,18 @@ import { keptConventionsDraft, rebaseConventions, type ConventionsDraft } from "
 import { TYPE_KINDS } from "@/model/model";
 import { LocalesSettings } from "@/l10n/LocalesSettings";
 import { CategoryTreeEditor, TagVocabularyEditor } from "@/vocabularies/VocabularyEditors";
+import { GeneralSettings } from "./GeneralSettings";
 
-const TABS = ["tags", "categories", "stereotypes", "conventions", "locales", "project", "explorer"] as const;
+const TABS = ["general", "tags", "categories", "stereotypes", "conventions", "locales", "project", "explorer"] as const;
 
 export function SettingsWorkspace() {
   const location = useLocation();
   const { openSettings } = useEditorNavigation();
-  const tab = parseLocation(location.pathname, location.search).settingsTab ?? "tags";
+  const tab = parseLocation(location.pathname, location.search).settingsTab ?? "general";
   return (
     <Tabs value={tab} onValueChange={(v) => openSettings(v)} className="flex h-full min-h-0 flex-col bg-app" data-testid="settings-workspace">
       <TabsList aria-label="Settings" className="bg-surface">
+        <TabsTrigger value="general">General</TabsTrigger>
         <TabsTrigger value="tags">Tags</TabsTrigger>
         <TabsTrigger value="categories">Categories</TabsTrigger>
         <TabsTrigger value="stereotypes">Stereotypes</TabsTrigger>
@@ -48,7 +50,9 @@ export function SettingsWorkspace() {
       </TabsList>
       {TABS.map((t) => (
         <TabsContent key={t} value={t} className="overflow-auto p-2">
-          {t === "tags" ? (
+          {t === "general" ? (
+            <GeneralSettings />
+          ) : t === "tags" ? (
             <TagVocabularyEditor scope={null} />
           ) : t === "categories" ? (
             <CategoryTreeEditor scope={null} />

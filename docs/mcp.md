@@ -16,7 +16,8 @@ maquettiste --repo path/to/repo --cache-dir /tmp/mq-cache mcp
 The repository is `--repo`, else the nearest ancestor of the current directory holding `.maquettiste/maquettiste.json`. The index and
 plan cache is `--cache-dir`, else `$MAQUETTISTE_CACHE_DIR`, else the user cache folder, so the server shares plans and unit state with
 `maquettiste generate` on the same repo. Without a model the command exits 1 with a message on stderr. Stdout carries JSON-RPC
-messages only; the start line and any error go to stderr. The server stops (exit 0) when the client closes stdin, or on Ctrl+C.
+messages only; the start line and any error go to stderr. The server stops (exit 0) when the client closes stdin, after answering
+every request it read before the end (so `echo '<request>' | maquettiste mcp` prints the answer), or on Ctrl+C.
 
 ## Claude Code setup
 
@@ -47,7 +48,7 @@ maquettiste init --skill           # .claude/skills/maquettiste-modeling/SKILL.m
 ```
 
 When the repository's local tool manifest lists the `maquettiste` command, the entry is `"command": "dotnet"`,
-`"args": ["tool", "run", "maquettiste", "mcp"]` instead, so the pinned version runs. There is no `--repo`: the client starts
+`"args": ["tool", "run", "maquettiste", "mcp"]` instead, so the pinned version runs. Every entry `init` writes names its transport, `"type": "stdio"`; an entry an older version wrote without it is kept as it is, so delete that entry and run `init --mcp` again to get the current form. There is no `--repo`: the client starts
 the server in the project folder, the server finds the repository from there, and the file can be committed. Other servers
 and members of an existing `.mcp.json` are kept in order; an existing `maquettiste` entry is never replaced; a file that is not
 a JSON object (not valid JSON, duplicate keys, or an `mcpServers` that is not an object) is left alone with a hint and exit 0. `init --skill` writes the skill that ships with
@@ -61,40 +62,61 @@ the skill tells the agent to use the `mcp__maquettiste__*` tools and to fall bac
 ### From the Docker image (no .NET on the machine)
 
 The image `mattjcowan/maquettiste` carries the CLI (`/usr/local/bin/maquettiste`), so a machine with only Docker can run the
-server. Register it by hand in the repository's `.mcp.json`, with the repository's absolute path on the left of `:/repo`:
+server. `init` writes the setup for it:
+
+```sh
+maquettiste init --mcp --docker mattjcowan/maquettiste:<tag>     # add --skill for the modeling skill
+# created mcp.sh (runs maquettiste mcp in mattjcowan/maquettiste:<tag>; log in .maquettiste/.cache/mcp.log)
+# created .mcp.json (server maquettiste: ./mcp.sh)
+```
+
+`.mcp.json` then registers the wrapper as a project server:
 
 ```json
 {
   "mcpServers": {
     "maquettiste": {
       "type": "stdio",
-      "command": "docker",
-      "args": ["run", "-i", "--rm", "-v", "/Users/you/src/your-repo:/repo", "-w", "/repo",
-               "mattjcowan/maquettiste:<tag>", "maquettiste", "mcp"]
+      "command": "./mcp.sh",
+      "args": []
     }
   }
 }
 ```
 
-- `-i` keeps stdin open (the JSON-RPC stream); do not add `-t`, a terminal would mix control characters into stdout.
-- No `--repo`: `-w /repo` makes the mounted folder the current directory, and the server finds the repository there.
-- On Linux add `"--user", "1000:1000"` (your `id -u`:`id -g`, as numbers: the file is not run through a shell) after `--rm`,
-  or the server runs as the image's user (UID 1654) and cannot write the model files. Docker Desktop on macOS maps file
-  ownership to the Mac user, so the entry above is complete there (not verified here).
-- Claude Code expands `${VAR}` in `.mcp.json`, so `"${PWD}:/repo"` works when `claude` is started in the repository; a literal
-  path is the safer choice for a committed file.
-- Each client session starts a fresh container (about 0.7 s to `initialize` on the Linux machine it was measured on); the
-  index and plan cache lives in the container, so the first `plan` of a session is a cold one.
-
-`maquettiste init --mcp` writes the `maquettiste` command form, not this one; write the Docker entry yourself (or replace the
-entry `init` wrote). The same form works for `claude mcp add`:
+and `mcp.sh` (executable, safe to commit) runs, from its own folder:
 
 ```sh
-claude mcp add maquettiste -- docker run -i --rm -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste mcp
+docker run -i --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo \
+  -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli mattjcowan/maquettiste:<tag> maquettiste mcp 2>> .maquettiste/.cache/mcp.log
+```
+
+- `-i` keeps stdin open (the JSON-RPC stream); there is no `-t`, a terminal would mix control characters into stdout.
+- `--user` runs the server as you, so the model files it writes are yours: right under Docker, on Linux and on the Mac.
+  Under rootless Podman (`MAQUETTISTE_DOCKER=podman`), root in the container is already you and any other uid cannot write
+  the mounted folder: remove `--user "$(id -u):$(id -g)"` from `mcp.sh`, or replace it with `--userns=keep-id`. A later
+  `init --docker` rewrites the script, so repeat the edit after one.
+- No `--repo` and no absolute path: the script mounts its own folder, and the server finds the repository there. The file works
+  for everyone who clones the repository.
+- Stdout carries the protocol only; the server's messages (its start line, errors) are appended to `.maquettiste/.cache/mcp.log`,
+  which `init` keeps out of git. Look there first when the client reports the server as failed.
+- An MCP client may start the script with a short `PATH` (an app started from the Dock); the script looks for `docker` on the
+  `PATH`, then in the usual install folders (`/usr/local/bin`, `/opt/homebrew/bin`, `~/.docker/bin`, the Docker app bundle).
+  `MAQUETTISTE_DOCKER` names it explicitly; `MAQUETTISTE_IMAGE` overrides the image without editing the file.
+- The index and plan cache lives in `.maquettiste/.cache/cli`, so it survives the container of each session.
+- A re-run with another tag (`init --docker mattjcowan/maquettiste:<new tag>`; `--docker` implies `--mcp`) refreshes the script
+  and keeps the entry. A `mcp.sh` that `init` did not write is never replaced, and an existing `maquettiste` entry in `.mcp.json` is
+  kept (remove it to switch forms).
+
+Without the script, the same command works for `claude mcp add` (for the current user only):
+
+```sh
+claude mcp add maquettiste -- docker run -i --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste mcp
 ```
 
 Checked on Linux (Docker Engine, amd64) with a stdio client over `docker run -i --rm --user ... maquettiste mcp`: `initialize`
-in 0.7 s, `tools/list` with 18 tools, `validate` in 55 ms, the container removed on exit.
+in 0.7 s, `tools/list` with 18 tools (image 0.1.0; the published 0.2.0 image lists 24, the current source 38), `validate` in 55 ms, the container removed on exit. The wrapper's shape (arguments, stderr
+to the log, stdout untouched) is covered by the CLI tests.
 
 ### In this repository
 
@@ -112,7 +134,7 @@ Create the copy first with `docker/dev-billing.sh`, or without Docker, then buil
 ```sh
 mkdir -p tmp/billing && cp -r tests/fixtures/models/billing/.maquettiste tmp/billing/
 dotnet build src/Maquettiste.Cli -c Release
-claude                               # then /mcp shows maquettiste connected with 18 tools
+claude                               # then /mcp shows maquettiste connected with 38 tools
 ```
 
 A headless check that needs no approval prompt (an explicit `--mcp-config` is trusted):

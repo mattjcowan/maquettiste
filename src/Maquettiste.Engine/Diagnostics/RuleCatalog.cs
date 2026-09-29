@@ -138,6 +138,10 @@ public static class RuleCatalog
         new("MQ7209", E, "One id in two shards of one locale; the ordinally first path applies."),
         new("MQ7210", W, "A shard whose locale differs from its folder, or whose scope differs from its path; it applies to its declared locale and scope."),
         new("MQ7211", W, "A plural name on a to-one relation end, or its translation; it is never read."),
+
+        new("MQ8001", E, "A branding color that is not a hex color (#rrggbb or #rgb)."),
+        new("MQ8002", E, "The branding icon is not an .svg or .png file under branding/ in the model folder, or the file does not exist."),
+        new("MQ8003", E, "The branding icon is not a safe SVG (scripts, event handlers, external references) or a PNG of at most 512 KB."),
     ];
 
     private static readonly FrozenDictionary<string, RuleInfo> ById = Rules.ToFrozenDictionary(r => r.Id, StringComparer.Ordinal);

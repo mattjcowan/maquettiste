@@ -30,6 +30,8 @@ import type {
   TranslationWrite,
   TranslationWriteResult,
   SettingsJson,
+  BrandingIconSaved,
+  BrandingIconUpload,
   SettingsSaveResult,
   ValidationReport,
   ValidationScope,
@@ -76,6 +78,14 @@ export async function saveSettings(json: SettingsJson, hash: string): Promise<Se
     body: json,
   });
   return record<SettingsSaveResult>(data, error, response);
+}
+
+/** The project icon (anonymous; the ETag is ProjectInfo.iconHash, so add ?v=<hash> to refresh it). */
+export const BRANDING_ICON_URL = "/api/project/branding/icon";
+
+export async function uploadBrandingIcon(body: BrandingIconUpload): Promise<BrandingIconSaved> {
+  const { data, response } = await api().POST("/api/project/branding/icon", { body });
+  return must(data, response);
 }
 
 export async function getModelIndex(): Promise<ElementSummary[]> {

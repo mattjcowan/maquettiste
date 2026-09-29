@@ -45,6 +45,27 @@ async function searchReady(page: Page, tables = false): Promise<void> {
       .toBe("explorer:prebuilt");
 }
 
+/** Resolves when the canvas has the same nodes at the same places over two animation frames and the page has an idle period. */
+async function canvasIdle(page: Page): Promise<void> {
+  const layout = () =>
+    page.evaluate(() =>
+      Array.from(document.querySelectorAll(".react-flow__node"), (n) => `${n.getAttribute("data-id")}@${(n as HTMLElement).style.transform}`).join("|"),
+    );
+  let previous = "";
+  await expect
+    .poll(
+      async () => {
+        const now = await layout();
+        const still = now === previous && now !== "";
+        previous = now;
+        return still;
+      },
+      { timeout: 30_000, intervals: [100] },
+    )
+    .toBe(true);
+  await page.evaluate(() => new Promise<void>((resolve) => requestIdleCallback(() => resolve(), { timeout: 5_000 })));
+}
+
 const BUILD_MISS = "The forest is built in one pass over every index row on the main thread (section 4.3); patching single changes is step 12.";
 const MEMORY_MISS = "The mock backend and its seed live in the page; the worker split (section 5 item 4) moves them out.";
 
@@ -654,47 +675,84 @@ test.describe("explorer at scale (?mock=large)", () => {
     within(info, m, HIGHLIGHT_MISS);
   });
 
-  test("select on canvas -> row revealed", async ({ page }, info) => {
-    await watchExplorer(page);
-    await openLarge(page);
-    const nodes = page.locator('.react-flow__node[aria-label^="Entity "]');
-    await expect
-      .poll(() => nodes.count(), { timeout: 30_000 })
-      .toBeGreaterThan(0)
-      .catch(() => undefined);
-    test.skip((await nodes.count()) === 0, "The large model's first diagram drew no entity.");
-    await page.waitForTimeout(2000);
-    // A node whose row is not on screen yet: its domain and folder are collapsed.
-    const ids = await nodes.evaluateAll((els) => els.map((e) => e.getAttribute("data-id") ?? ""));
-    const hidden = await page.evaluate((ids) => ids.filter((id) => id && !document.querySelector(`[data-testid="explorer-tree"] [data-key="${id}"]`)), ids);
-    test.skip(hidden.length === 0, "Every node's row is already on screen.");
-    const id = hidden[0];
-    await page.evaluate((id) => {
-      const w = window as unknown as { __mqReveal?: { start: number; end: number } };
-      const state = { start: 0, end: 0 };
-      w.__mqReveal = state;
-      const node = document.querySelector(`.react-flow__node[data-id="${id}"]`)!;
-      node.addEventListener("pointerdown", () => (state.start = performance.now()), { capture: true, once: true });
-      const shown = () => {
-        const row = document.querySelector(`[data-testid="explorer-tree"] [data-key="${id}"]`);
-        if (!row) return false;
-        const box = row.getBoundingClientRect();
-        const tree = document.querySelector('[data-testid="explorer-tree"]')!.getBoundingClientRect();
-        return box.top >= tree.top - 1 && box.bottom <= tree.bottom + 1;
-      };
-      const observer = new MutationObserver(() => {
-        if (state.start && shown()) {
-          state.end = performance.now();
-          observer.disconnect();
-        }
-      });
-      observer.observe(document.body, { subtree: true, childList: true, attributes: true });
-    }, id);
-    await page.locator(`.react-flow__node[data-id="${id}"]`).click();
-    await expect.poll(() => page.evaluate(() => (window as unknown as { __mqReveal: { end: number } }).__mqReveal.end), { timeout: 5_000 }).toBeGreaterThan(0);
-    const { start, end } = await page.evaluate(() => (window as unknown as { __mqReveal: { start: number; end: number } }).__mqReveal);
-    const m = record(info, { name: "select on canvas -> row revealed", ms: end - start, mockMs: 0, targetMs: 50, detail: { id } });
-    within(info, m, REVEAL_MISS);
+  // Its own browser context, and it waits until the page is idle (search index and table summaries in, the forest rebuilt, the
+  // canvas drawn and still) before it clicks: in a full run a neighbour's work, or this page's own late rebuilds, used to swallow
+  // the click or replace the node the listener was attached to, and the reveal was never seen.
+  test("select on canvas -> row revealed", async ({ browser }, info) => {
+    const context = await browser.newContext({ baseURL: info.project.use.baseURL });
+    const page = await context.newPage();
+    try {
+      await watchExplorer(page);
+      await openLarge(page);
+      await searchReady(page, true);
+      const nodes = page.locator('.react-flow__node[aria-label^="Entity "]');
+      await expect
+        .poll(() => nodes.count(), { timeout: 30_000 })
+        .toBeGreaterThan(0)
+        .catch(() => undefined);
+      test.skip((await nodes.count()) === 0, "The large model's first diagram drew no entity.");
+      await canvasIdle(page);
+      // A node whose row is not on screen yet (its domain and folder are collapsed) and whose centre is clickable: the fitted view
+      // can leave a node partly under the diagram toolbar or outside the pane, and a click there never reaches the node.
+      const ids = await nodes.evaluateAll((els) => els.map((e) => e.getAttribute("data-id") ?? ""));
+      const hidden = await page.evaluate(
+        (ids) =>
+          ids.filter((id) => {
+            if (!id || document.querySelector(`[data-testid="explorer-tree"] [data-key="${id}"]`)) return false;
+            const node = document.querySelector(`.react-flow__node[data-id="${id}"]`);
+            if (!node) return false;
+            const box = node.getBoundingClientRect();
+            const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+            return hit !== null && node.contains(hit);
+          }),
+        ids,
+      );
+      test.skip(hidden.length === 0, "No node with a hidden row can be clicked.");
+      const id = hidden[0];
+      await page.evaluate((id) => {
+        const w = window as unknown as { __mqReveal?: { start: number; end: number } };
+        const state = { start: 0, end: 0 };
+        w.__mqReveal = state;
+        const shown = () => {
+          const row = document.querySelector(`[data-testid="explorer-tree"] [data-key="${id}"]`);
+          if (!row) return false;
+          const box = row.getBoundingClientRect();
+          const tree = document.querySelector('[data-testid="explorer-tree"]')!.getBoundingClientRect();
+          return box.top >= tree.top - 1 && box.bottom <= tree.bottom + 1;
+        };
+        const done = () => {
+          if (state.start && !state.end && shown()) state.end = performance.now();
+          return state.end > 0;
+        };
+        // On the document, so a re-rendered node element still starts the clock.
+        const down = (event: Event) => {
+          if (!(event.target as Element | null)?.closest(`.react-flow__node[data-id="${id}"]`)) return;
+          state.start = performance.now();
+          document.removeEventListener("pointerdown", down, true);
+          const observer = new MutationObserver(() => done() && observer.disconnect());
+          observer.observe(document.body, { subtree: true, childList: true, attributes: true });
+          // A scroll that reveals the row mutates nothing: check every frame as well.
+          const frame = () => {
+            if (done()) observer.disconnect();
+            else requestAnimationFrame(frame);
+          };
+          requestAnimationFrame(frame);
+        };
+        document.addEventListener("pointerdown", down, true);
+      }, id);
+      await page.locator(`.react-flow__node[data-id="${id}"]`).click({ timeout: 15_000 });
+      await expect
+        .poll(() => page.evaluate(() => (window as unknown as { __mqReveal: { start: number } }).__mqReveal.start), { timeout: 10_000 })
+        .toBeGreaterThan(0);
+      await expect
+        .poll(() => page.evaluate(() => (window as unknown as { __mqReveal: { end: number } }).__mqReveal.end), { timeout: 15_000 })
+        .toBeGreaterThan(0);
+      const { start, end } = await page.evaluate(() => (window as unknown as { __mqReveal: { start: number; end: number } }).__mqReveal);
+      const m = record(info, { name: "select on canvas -> row revealed", ms: end - start, mockMs: 0, targetMs: 50, detail: { id } });
+      within(info, m, REVEAL_MISS);
+    } finally {
+      await context.close();
+    }
   });
 
   test("expand a table row", async ({ page }, info) => {

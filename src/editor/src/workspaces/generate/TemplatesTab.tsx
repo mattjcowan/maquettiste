@@ -16,6 +16,7 @@ import { Select } from "@/components/ui/input";
 import { Badge, EmptyState, Spinner, Toolbar } from "@/components/ui/misc";
 import { cn } from "@/lib/cn";
 import { markUnsaved, useDraftState } from "./drafts";
+import { noFilesText, pickElement, previewUnit, scopeCandidates, scopeMismatch, unitScope, type Candidate, type UnitScope } from "./previewScope";
 import {
   lineDiff,
   diagnosticsFor,
@@ -33,6 +34,8 @@ interface Props {
   pack: string;
   files: endpoints.PackDocument["files"];
   units: string[];
+  /** Each unit's `for` (its scope), by unit id. */
+  scopes: Record<string, string>;
   /** A file to show (the explorer's file rows). */
   focusFile?: string;
   onDirty(dirty: boolean): void;
@@ -46,7 +49,7 @@ interface Conflict {
 
 const PREVIEW_DELAY = 300;
 
-export function TemplatesTab({ pack, files, units, focusFile, onDirty }: Props) {
+export function TemplatesTab({ pack, files, units, scopes, focusFile, onDirty }: Props) {
   const qc = useQueryClient();
   const tree = useMemo(() => fileTree(files), [files]);
   const firstFile = tree.find((r) => r.file?.role === "template")?.path ?? tree.find((r) => !r.folder)?.path ?? null;
@@ -164,10 +167,17 @@ export function TemplatesTab({ pack, files, units, focusFile, onDirty }: Props) 
   // The preview's unit: one that uses this file (directly, as a companion, through includes; any for a script).
   const feeding = useMemo(() => (path ? unitsForFile(files, units, path) : []), [files, units, path]);
   const [unitChoice, setUnitChoice] = useState<string>("");
-  const unit = unitChoice && units.includes(unitChoice) ? unitChoice : (feeding[0] ?? units[0] ?? "");
-  const [elementChoice, setElementChoice] = useState<Record<string, string>>({});
+  const { unit, note } = previewUnit(
+    files.find((f) => f.path === path),
+    feeding,
+    units,
+    unitChoice,
+  );
+  const scope = useMemo(() => unitScope(scopes[unit] ?? ""), [scopes, unit]);
+  // The element per unit, kept while the pack stays open.
+  const [elementChoice, setElementChoice] = useDraftState<Record<string, string>>(`${pack}:templates:elements`, {});
   const markers: CodeMarker[] = [];
-  const preview = usePreview(pack, unit, elementChoice[unit] ?? "", buffers);
+  const preview = usePreview(pack, unit, scope, elementChoice[unit], buffers);
   const fileDiagnostics = path ? [...(saveDiagnostics[path] ?? []), ...diagnosticsFor(preview.result?.diagnostics ?? [], pack, path)] : [];
   for (const d of fileDiagnostics)
     if (d.line) markers.push({ line: d.line, column: d.column, message: `${d.rule} ${d.message}`, severity: d.severity === "error" ? "error" : "warning" });
@@ -284,7 +294,8 @@ export function TemplatesTab({ pack, files, units, focusFile, onDirty }: Props) 
         feeding={feeding}
         unit={unit}
         onUnit={setUnitChoice}
-        element={elementChoice[unit] ?? ""}
+        note={note}
+        scope={scope}
         onElement={(id) => setElementChoice((prev) => ({ ...prev, [unit]: id }))}
         preview={preview}
       />
@@ -303,22 +314,41 @@ interface PreviewState {
   result: PreviewResult | null;
   error: string | null;
   pending: boolean;
-  elementIds: string[];
+  /** The elements of the unit's scope, and the one rendered (null for a model unit or an empty scope). */
+  candidates: Candidate[];
+  elementId: string | null;
+  /** The friendly text when the render ran outside the unit's scope, or the scope has no element. */
+  scopeMessage: string | null;
 }
 
-/** Renders the unit with the unsaved text, `PREVIEW_DELAY` ms after the last change; the element ids come from the unit's planned paths. */
-function usePreview(pack: string, unit: string, element: string, buffers: Record<string, Buffer>): PreviewState {
+/**
+ * Renders the unit with the unsaved text, `PREVIEW_DELAY` ms after the last change, for an element of the unit's
+ * scope only: an `each` kind's elements come from the index, a table, locale or selector scope's from the unit's
+ * planned paths. A mismatch that still slips through shows as a message, not the raw render error.
+ */
+function usePreview(pack: string, unit: string, scope: UnitScope, remembered: string | undefined, buffers: Record<string, Buffer>): PreviewState {
+  const index = useIndex();
+  const fromPaths = !!unit && !scope.once && !scope.indexKind;
+  // Every element scope reads the unit's plan: an `each` kind is narrowed to what the unit renders (its `where` filter and
+  // skip hints), when the plan is complete; a failed or truncated plan leaves the index list as it is.
   const paths = useQuery({
     queryKey: [...keys.pack(pack), "paths", unit, "saved"],
     queryFn: ({ signal }) => endpoints.unitPaths({ pack, unit, limit: 200, unitOverride: null }, signal, endpoints.LIVE_CLIENT),
-    enabled: !!unit,
+    enabled: !!unit && !scope.once,
     retry: false,
   });
-  const elementIds = useMemo(() => [...new Set((paths.data?.paths ?? []).map((p) => p.elementId).filter((x): x is string => !!x))], [paths.data]);
-  const elementId = element && elementIds.includes(element) ? element : (elementIds[0] ?? null);
+  const planned = useMemo(() => (paths.data?.paths ?? []).map((p) => p.elementId).filter((x): x is string => !!x), [paths.data]);
+  const inScope = useMemo(() => (paths.data && paths.data.count <= paths.data.paths.length ? new Set(planned) : null), [paths.data, planned]);
+  const candidates = useMemo(
+    () => scopeCandidates(scope, index.data ?? [], fromPaths ? planned : [], inScope),
+    [scope, index.data, fromPaths, planned, inScope],
+  );
+  const elementId = pickElement(candidates, remembered);
   const overlay = useMemo(() => overlayOf(buffers), [buffers]);
   const requestKey = JSON.stringify({ pack, unit, elementId, overlay });
-  const ready = !!unit && paths.isFetched;
+  const listed = scope.once || ((!scope.indexKind || !!index.data) && paths.isFetched);
+  const empty = listed && !scope.once && !elementId;
+  const ready = !!unit && listed && !empty;
   const [answer, setAnswer] = useState<{ key: string; result: PreviewResult | null; error: string | null } | null>(null);
   const scheduler = useRef<PreviewScheduler<string, PreviewResult> | null>(null);
   useEffect(() => {
@@ -333,11 +363,19 @@ function usePreview(pack: string, unit: string, element: string, buffers: Record
   useEffect(() => {
     if (ready) scheduler.current?.schedule(requestKey);
   }, [ready, requestKey]);
+  // The last answer stays up while the next one renders (no spinner on every keystroke).
+  const mismatch = answer
+    ? scopeMismatch(scope, [...(answer.result?.diagnostics ?? []), ...(answer.error ? [{ rule: "MQ6006", message: answer.error }] : [])])
+    : null;
   return {
-    result: answer?.result ?? null,
-    error: answer?.error ?? null,
-    pending: !ready || answer?.key !== requestKey,
-    elementIds,
+    result: empty ? null : (answer?.result ?? null),
+    error: empty ? null : (answer?.error ?? null),
+    pending: !empty && (!ready || answer?.key !== requestKey),
+    candidates,
+    elementId,
+    scopeMessage: empty
+      ? `The model has no ${scope.label} to preview this template with.`
+      : (mismatch ?? (answer?.key === requestKey ? noFilesText(scope, unit, answer.result) : null)),
   };
 }
 
@@ -347,13 +385,12 @@ function PreviewPane(props: {
   feeding: string[];
   unit: string;
   onUnit(unit: string): void;
-  element: string;
+  note: string | null;
+  scope: UnitScope;
   onElement(id: string): void;
   preview: PreviewState;
 }) {
-  const { units, feeding, unit, preview } = props;
-  const index = useIndex();
-  const names = useMemo(() => new Map((index.data ?? []).map((e) => [e.id, e.displayName ?? e.name])), [index.data]);
+  const { units, feeding, unit, preview, scope } = props;
   const others = units.filter((u) => !feeding.includes(u));
   const result = preview.result;
   return (
@@ -379,18 +416,18 @@ function PreviewPane(props: {
           </Select>
         </label>
         <label className="flex min-w-0 items-center gap-1 text-secondary">
-          Element
+          {scope.once ? "Element" : scope.label.charAt(0).toUpperCase() + scope.label.slice(1)}
           <Select
             className="h-6 min-w-0 flex-1 text-12"
-            value={props.element}
+            value={preview.elementId ?? ""}
             onChange={(e) => props.onElement(e.target.value)}
-            disabled={!preview.elementIds.length}
+            disabled={!preview.candidates.length}
             data-testid="preview-element"
           >
-            <option value="">{preview.elementIds.length ? "First in scope" : "None (runs once)"}</option>
-            {preview.elementIds.map((id) => (
-              <option key={id} value={id}>
-                {names.get(id) ?? id}
+            {preview.candidates.length ? null : <option value="">{scope.once ? "None (runs once)" : `No ${scope.label}`}</option>}
+            {preview.candidates.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
               </option>
             ))}
           </Select>
@@ -401,7 +438,17 @@ function PreviewPane(props: {
           <span className="text-11 text-secondary">{result.elapsedMs} ms</span>
         ) : null}
       </Toolbar>
-      {result?.diagnostics.length ? (
+      {props.note ? (
+        <p className="border-b border-default px-2 py-0.5 text-11 text-secondary" data-testid="preview-note">
+          {props.note}
+        </p>
+      ) : null}
+      {preview.scopeMessage ? (
+        <p role="status" className="border-b border-default px-2 py-0.5 text-12 text-warning" data-testid="preview-scope">
+          {preview.scopeMessage}
+        </p>
+      ) : null}
+      {result?.diagnostics.length && !preview.scopeMessage ? (
         <ul className="max-h-24 shrink-0 overflow-auto border-b border-default text-11" aria-label="Preview diagnostics" data-testid="preview-diagnostics">
           {result.diagnostics.map((d, i) => (
             <li key={i} className={cn("px-2 py-px", d.severity === "error" ? "text-danger" : "text-warning")}>
@@ -420,7 +467,7 @@ function PreviewPane(props: {
       <div className="min-h-0 flex-1 overflow-auto">
         {!unit ? (
           <EmptyState title="No unit to preview">Add a unit on the Units tab; it names the template it runs.</EmptyState>
-        ) : preview.error ? (
+        ) : preview.scopeMessage ? null : preview.error ? (
           <p role="alert" className="px-2 py-1 text-12 text-danger">
             {preview.error}
           </p>

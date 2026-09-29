@@ -10,7 +10,7 @@ const css = readFileSync(path.resolve(import.meta.dirname, "../../src/design/tok
 
 describe("density", () => {
   it("shares the row height between CSS and JavaScript", () => {
-    const root = /:root\s*\{([^}]*)\}/.exec(css)![1];
+    const root = /:root,\s*\[data-theme="light"\]\s*\{([^}]*)\}/.exec(css)![1];
     expect(root).toContain(`--mq-row-h: ${ROW_H}px;`);
     expect(ROW_H).toBe(24);
   });

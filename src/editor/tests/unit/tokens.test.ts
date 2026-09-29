@@ -17,7 +17,7 @@ function block(selector: RegExp): Record<string, string> {
 }
 
 const THEMES = {
-  light: block(/:root\s*\{/),
+  light: block(/:root,\s*\[data-theme="light"\]\s*\{/),
   dark: block(/\[data-theme="dark"\]\s*\{/),
 };
 

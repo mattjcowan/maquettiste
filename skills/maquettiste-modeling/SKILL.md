@@ -32,7 +32,8 @@ roots and conventions are in `.maquettiste/maquettiste.json`.
 ## Preferred: the MCP tools
 
 When the `maquettiste` MCP server is connected (in Claude Code its tools show up as `mcp__maquettiste__<tool>`; it is
-`maquettiste mcp`, registered by `maquettiste init --mcp`, see docs/mcp.md), use its tools instead of editing the JSON
+`maquettiste mcp`, registered by `maquettiste init --mcp`, or by `maquettiste init --mcp --docker <image>` as a `./mcp.sh`
+wrapper that runs it in the image; see docs/mcp.md), use its tools instead of editing the JSON
 files: every write goes through the same validated, hash-checked path as the editor, so a save can never half-apply,
 clobber a concurrent edit or leave a dangling id.
 
@@ -91,4 +92,7 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
 - The engine creates no table or column for reference data on its own: the packs decide the physical form, from the
   storage strategy the project declares. Stereotypes and their meaning are the project's own, not built in.
 - Localization settings are `localization` in `maquettiste.json` (`defaultLocale`, `locales`, `fallbacks`, `require`);
-  default texts stay in the element files.
+  default texts stay in the element files. Locale tags are BCP 47 with a hyphen and canonical case (`zh-CN`,
+  `zh-Hant-TW`, `fr`), never `zh_CN` (MQ7201).
+- `name` and `branding` (`icon`, `colors.light`, `colors.dark`) in `maquettiste.json` only brand the editor; they never
+  change generated output.

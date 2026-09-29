@@ -7,6 +7,7 @@
     "$schema",
     "formatVersion",
     "name",
+    "branding",
     "outputs",
     "handEdits",
     "formatters",
@@ -31,6 +32,34 @@
     },
     "name": {
       "type": "string"
+    },
+    "branding": {
+      "description": "The project's branding in the editor: an icon for the top bar, the browser tab and the sign-in page, and a primary color per theme. It changes no generated output.",
+      "type": "object",
+      "x-order": ["icon", "colors"],
+      "properties": {
+        "icon": {
+          "description": "The icon file, relative to the model folder: branding/<name>.svg or branding/<name>.png (MQ8002 when it does not exist, MQ8003 when it is not a safe SVG or a PNG of at most 512 KB). The editor's mark when absent.",
+          "type": ["string", "null"]
+        },
+        "colors": {
+          "description": "The primary color per theme, as #rrggbb or #rgb (MQ8001 otherwise). The editor's accent, focus rings and selection follow it; the built-in accent when absent.",
+          "type": "object",
+          "x-order": ["light", "dark"],
+          "properties": {
+            "light": {
+              "type": ["string", "null"]
+            },
+            "dark": {
+              "type": ["string", "null"]
+            }
+          },
+          "additionalProperties": false,
+          "default": {}
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
     },
     "outputs": {
       "type": "object",

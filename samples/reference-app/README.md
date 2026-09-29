@@ -67,6 +67,9 @@ node samples/reference-app/tools/seed.mjs --url http://127.0.0.1:8093 --compare 
 docker compose -f docker/compose.yaml --project-directory tmp/nw-seed down -v
 ```
 
+`empty-editor.sh` runs the editor as the image's user (UID 1654) and opens the copy to it with ACLs (or `chmod` where
+`setfacl` is missing); over your own repository, export `MAQUETTISTE_UID` and `MAQUETTISTE_GID` instead (docker/README.md).
+
 `seed.mjs` saves `maquettiste.json` through `PUT /api/project/settings`, then posts 31 batches to `POST /api/model/batch`
 (vocabularies, packages, types, database objects, entities per package, relations per package, table overlays, mappings,
 diagrams), checks `POST /api/validate` reports nothing and, with `--compare`, that every file equals `build-model.mjs`'s and that

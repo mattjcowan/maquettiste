@@ -10,12 +10,14 @@
 # .maquettiste/ below, and static-site-hosting 0.2.0 deletes a site folder recursively, model included. Recovery is
 # `git checkout -- .maquettiste` (uncommitted model edits are lost).
 #
-# On Linux the container runs as UID 1654, so the two bind mounts must be writable by it without changing their owner. Grant
-# yourself default entries too, or you cannot edit or delete what the editor creates (see docker/README.md):
-#   setfacl -R -m "u:1654:rwX,d:u:1654:rwX,u:$(id -u):rwX,d:u:$(id -u):rwX" .maquettiste <output roots, such as db src/Generated>
+# The container starts as root only to pick the user the editor runs as (docker/entrypoint.sh): the owner of .maquettiste/.
+# Owned by root, as under rootless Podman (whose root is you outside the container), it stays root; owned by you, as under Docker
+# on Linux or on the Mac, it hands its /data volume to you and runs as you. Either way the model and the output roots are written
+# as you, with this file unchanged. Override with MAQUETTISTE_UID and MAQUETTISTE_GID (MAQUETTISTE_UID=0 stays root).
 services:
   maquettiste:
     image: ${MAQUETTISTE_IMAGE:-mattjcowan/maquettiste:latest}
+    user: "0:0"                                                     # picks its user at start (above)
     # MAQUETTISTE_PORT picks the host port when 8080 is taken on the machine (Windows services win over WSL forwarding).
     ports: ["127.0.0.1:${MAQUETTISTE_PORT:-8080}:8080"]
     volumes:
@@ -24,9 +26,11 @@ services:
       - ./:/repo                                                    # output root
     environment:
       MAQUETTISTE_REPO_ROOT: /repo
+      MAQUETTISTE_UID: ${MAQUETTISTE_UID:-}                         # optional; empty = the owner of .maquettiste/
+      MAQUETTISTE_GID: ${MAQUETTISTE_GID:-}                         # optional; empty = that owner's group
       MAQUETTISTE_EDITOR_TOKEN: ${MAQUETTISTE_EDITOR_TOKEN:-}       # optional; empty = local peers only
       # The container's gateway is found at start; set this only where the browser's requests arrive from another address
-      # (an IP address list, never *). See docker/README.md for Docker Desktop and other setups.
+      # (an IP address list, never *). See docker/README.md for the Mac and other setups.
       MAQUETTISTE_LOCAL_PEERS: ${MAQUETTISTE_LOCAL_PEERS:-}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]

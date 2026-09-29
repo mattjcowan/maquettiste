@@ -140,7 +140,7 @@ public sealed class HashingAndStateTests
     {
         using var repo = new TempRepo();
         var store = new UnitStateStore(repo.Options, new OutputPathPolicy(repo.Options, null));
-        Assert.EndsWith("p.v3.bin", store.FileOf("p"), StringComparison.Ordinal);
+        Assert.EndsWith("p.v4.bin", store.FileOf("p"), StringComparison.Ordinal);
         Assert.Empty(await store.LoadAsync("p", Ct));
         Assert.False(store.WasReset("p")); // no state at all: new, not reset
 
@@ -272,5 +272,28 @@ public sealed class HashingAndStateTests
             Task.FromResult(States.TryGetValue(pack, out var s) ? s : new Dictionary<string, UnitState>());
 
         public Task SaveAsync(string pack, IReadOnlyCollection<UnitState> states, CancellationToken ct) => Task.CompletedTask;
+    }
+
+    [Fact]
+    public void Element_names_round_trip_and_a_decoded_state_is_copied_byte_for_byte()
+    {
+        var named = new UnitState("p/a", "h1", ["e:1", "k:entity", "e:2"], [new UnitOutput("a.sql", "m", 3, 4)])
+        {
+            StaticParts = "parts",
+            Names = new Dictionary<string, string>(StringComparer.Ordinal) { ["e:1"] = "Customer (entity)", ["e:2"] = "Invoice (entity)" },
+        };
+        var plain = new UnitState("p/b", "h2", ["e:1"], []);
+        var bytes = UnitStateStore.Encode([named, plain]);
+        var decoded = UnitStateStore.Decode(bytes)!;
+        Assert.Equal(named.Names.OrderBy(n => n.Key, StringComparer.Ordinal), decoded["p/a"].Names!.OrderBy(n => n.Key, StringComparer.Ordinal));
+        Assert.Equal("parts", decoded["p/a"].StaticParts);
+        Assert.Null(decoded["p/b"].Names);
+
+        // Re-encoding the decoded states copies their records: the same bytes; a changed name encodes afresh.
+        Assert.Equal(bytes, UnitStateStore.Encode(decoded.Values.ToList()));
+        var renamed = decoded["p/a"] with { Names = new Dictionary<string, string>(StringComparer.Ordinal) { ["e:2"] = "Bill (entity)" } };
+        var again = UnitStateStore.Decode(UnitStateStore.Encode([renamed, decoded["p/b"]]))!;
+        Assert.Equal("Bill (entity)", Assert.Single(again["p/a"].Names!).Value);
+        Assert.Equal(["e:1", "k:entity", "e:2"], again["p/a"].ReadKeys);
     }
 }

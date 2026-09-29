@@ -7,9 +7,9 @@ What the audience sees, in three even parts, inside a partner team's existing Ty
 2. **The CLI** (7 min): `init`, the model as JSON files, `generate` with the built-in `sql-ddl` pack and with a custom
    TypeScript pack (`samples/typescript-pack`), a parameter change, a template change, `--check` as the CI gate,
    `--watch` while editing in the editor.
-3. **Claude Code over MCP** (5 min): `init --mcp --skill`, then two prompts that change and question the model.
+3. **Claude Code over MCP** (5 min): `init --mcp --docker <image> --skill`, then two prompts that change and question the model.
 
-Plus one minute of slack. Every command is for **macOS zsh** on the demo Mac (Apple silicon, Docker Desktop). The
+Plus one minute of slack. Every command is for **macOS zsh** on the demo Mac (Apple silicon, Podman or Docker Desktop). The
 walkthrough was rehearsed end to end on a Linux (WSL2, amd64, Docker Engine) machine with `mattjcowan/maquettiste:0.1.0`
 built from this tree: first on 2026-09-28, then again on 2026-09-29 after the editor was rebuilt, from an empty model,
 with every CLI and MCP step run from the image. The timings in [Rehearsal record](#rehearsal-record) come from there.
@@ -25,19 +25,25 @@ export REPO=~/src/partner-service    # adjust
 ## Before the talk (Mac)
 
 One image, one tag, one compose file. Do this the day before, then only step 4 fifteen minutes before 10:30.
+Podman and Docker Desktop both work with the compose file unchanged: the editor looks at who owns `.maquettiste/` and runs
+as that owner (Docker Desktop), or stays root when root owns it (rootless Podman, whose root inside the container is you
+outside it). No `chmod` and no user variables. With Podman, type `podman` wherever this guide says `docker` (and
+`podman compose` for `docker compose`), or install its `docker` command alias.
 
 **1. Pull the image** (published for arm64 and amd64):
 
 ```zsh
-docker pull mattjcowan/maquettiste:0.1.0
+docker pull mattjcowan/maquettiste:0.3.0   # needs an image whose entrypoint picks the folder's owner (docker/README.md)
 ```
 
 **2. The `maquettiste` command.** The image carries the CLI, so the Mac needs nothing else. Put this in `~/.zshrc`
 (then `source ~/.zshrc`); it runs every command in a throwaway container over the folder you are in:
 
 ```zsh
-maquettiste() { docker run --rm $([ -t 0 ] && echo -it) --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:0.1.0 maquettiste "$@"; }
-maquettiste --version                    # maquettiste 0.2.0 (engine contract 1.0.0, model format 1)
+maquettiste() { docker run --rm $([ -t 0 ] && echo -it) --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:0.3.0 maquettiste "$@"; }
+# With Podman, leave --user out (root in the container is you):
+# maquettiste() { podman run --rm $([ -t 0 ] && echo -it) -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:0.3.0 maquettiste "$@"; }
+maquettiste --version                    # maquettiste 0.3.0 (engine contract 1.0.0, model format 1)
 ```
 
 **3. Prepare the repository.** In the partner repository, on a branch of its own:
@@ -58,7 +64,8 @@ the image's compose file with the tag pinned; the model folder and the repositor
 ```yaml
 services:
   maquettiste:
-    image: mattjcowan/maquettiste:0.1.0
+    image: mattjcowan/maquettiste:0.3.0
+    user: "0:0"                                                     # starts as root, then runs as the owner of .maquettiste/
     ports: ["127.0.0.1:8080:8080"]
     volumes:
       - maquettiste-host:/data                                      # the editor's own state (users, keys, index cache)
@@ -66,6 +73,8 @@ services:
       - ./:/repo                                                    # the repository: generated files land here
     environment:
       MAQUETTISTE_REPO_ROOT: /repo
+      MAQUETTISTE_UID: ${MAQUETTISTE_UID:-}                         # optional override; empty = the owner of .maquettiste/
+      MAQUETTISTE_GID: ${MAQUETTISTE_GID:-}
       MAQUETTISTE_EDITOR_TOKEN: ${MAQUETTISTE_EDITOR_TOKEN:-}
 volumes:
   maquettiste-host:
@@ -78,7 +87,6 @@ starts on a project with no settings.
 
 ```zsh
 cd $REPO
-chmod -R a+rwX .maquettiste && chmod a+rwX . src   # the editor runs as user 1654 inside the container and must write here
 export MAQUETTISTE_EDITOR_TOKEN=$(openssl rand -hex 24)
 echo $MAQUETTISTE_EDITOR_TOKEN | pbcopy   # paste it on the sign-in page
 docker compose -f maquettiste.compose.yaml up -d
@@ -91,14 +99,14 @@ domain, New entity, New enum, New reference type, New diagram and New database. 
 
 **5. Three checks, once, the day before:**
 
-- `ls -ln .maquettiste/model` shows the owner of what the editor wrote. With Docker Desktop's VirtioFS file sharing the
-  container's user is not mapped to you: the CLI function passes `--user` for that reason, and the `chmod` above lets the
-  editor write; the generated files then belong to 1654 but stay readable and buildable. With gRPC FUSE file sharing
-  (Docker Desktop › Settings › General) ownership is mapped and neither is needed.
+- `ls -ln .maquettiste/model` after a save in the editor shows your own UID (`id -u`), under Podman and under Docker
+  Desktop. `docker compose -f maquettiste.compose.yaml logs | grep "running as\|staying root"` says which user the editor
+  picked: your UID under Docker Desktop, root under Podman. If the save fails with "Permission denied", the image is older
+  than the owner rule: pull it again and `up -d`.
 - In a second terminal, `maquettiste generate --watch`, then save something in the editor: it regenerates within a
   second. If it does not react, Docker Desktop is not forwarding file events; run `maquettiste generate` by hand in
   part 2 instead.
-- Claude Code in `$REPO` with the `.mcp.json` from step 3.1 lists 24 tools under `/mcp`.
+- Claude Code in `$REPO` with the `.mcp.json` and `mcp.sh` from step 3.1 lists 24 tools under `/mcp`.
 
 Also before the talk: a second terminal tab in `$REPO`, the repository open in a code editor, Claude Code logged in,
 the browser zoomed to 125% for Zoom, and port 8080 free (`lsof -nP -iTCP:8080 -sTCP:LISTEN` prints nothing).
@@ -342,7 +350,7 @@ partner's model.
 
 | Step | Do | Expected |
 | --- | --- | --- |
-| 3.1 (45 s) | Write the Docker-form `.mcp.json` (below), then `maquettiste init --mcp --skill` and `cat .mcp.json` | `kept .mcp.json (it already registers the maquettiste server)`, `created .claude/skills/maquettiste-modeling/SKILL.md`. The file registers `docker run -i --rm ... maquettiste mcp`: the server runs from the editor's own image over the repository, with the same model and write path as the editor. (With the .NET tool fallback, skip the file: `init --mcp` then writes `created .mcp.json (server maquettiste: maquettiste mcp)` with `{"type": "stdio", "command": "maquettiste", "args": ["mcp"]}`.) |
+| 3.1 (45 s) | `maquettiste init --mcp --docker mattjcowan/maquettiste:0.3.0 --skill`, then `cat .mcp.json` | `created mcp.sh (runs maquettiste mcp in mattjcowan/maquettiste:0.3.0; log in .maquettiste/.cache/mcp.log)`, `created .mcp.json (server maquettiste: ./mcp.sh)`, `created .claude/skills/maquettiste-modeling/SKILL.md`. The file registers `{"type": "stdio", "command": "./mcp.sh", "args": []}`; `mcp.sh` runs `docker run -i --rm --user <you> ... maquettiste mcp` from the editor's own image over the repository, with the same model and write path as the editor, and logs the server's messages to `.maquettiste/.cache/mcp.log`. (With the .NET tool fallback, drop `--docker ...`: `init --mcp` then writes `{"type": "stdio", "command": "maquettiste", "args": ["mcp"]}`.) |
 | 3.2 (30 s) | `claude`, approve the project server `maquettiste` when asked, type `/mcp` | maquettiste connected, 24 tools (get_model_index, get_element, create_element, apply_batch, validate, plan, get_plan_diff, apply_plan, reference_type_usage, get_translations, ...). |
 | 3.3 (2 min) | Prompt: `Add a Shipment entity related to Order (an order has many shipments) with carrier, an optional trackingNumber, shippedAt and a status enum ShipmentStatus (Preparing, InTransit, Delivered). Then validate and generate.` | About 50 s. Claude sends one `apply_batch` (the enum ShipmentStatus, the entity Shipment, a composition `ships` from Order to many Shipments), then `validate`, `plan`, `apply_plan`. Files: `A src/generated/shipment.ts`, `shipment-status.ts`, `shipment.schema.ts`, `M src/generated/order.ts` (`shipments?: Shipment[]`), `M index.ts`, `A db/main/shop/tables/shipments.sql`, `A db/main/migrations/000N.sql` with `CREATE TABLE shop.shipments ... REFERENCES shop.orders (id) ON DELETE RESTRICT` (the default; add "cascade on delete" to the prompt for CASCADE). The editor shows Shipment in the explorer without a reload; **Add related** on Order puts it on the diagram. |
 | 3.4 (1.5 min) | Prompt: `What would change in the generated code and the database scripts if Product.sku became required? Do not change the model; answer in at most 8 lines.` | About 20 s. In rehearsal: `product.ts` drops the `?` on `sku`, `product.schema.ts` drops `.optional()`, `schema.sql` and `products.sql` get `sku varchar(40) NOT NULL`, the existing migrations stay and the next one (`0005.sql`, named correctly) adds `ALTER TABLE ... ALTER COLUMN sku SET NOT NULL`, with a warning about existing NULL rows; the model is unchanged. |
@@ -354,27 +362,24 @@ as headless Claude Code runs through this `.mcp.json` (`claude -p '<prompt>' --m
 mcp__maquettiste`): 50 s and 20 s, and `tsc` passed afterwards. The interactive session (approving the server, `/mcp`)
 was not run **(not verified)**; it uses the same file.
 
-Commands for 3.1. `init --mcp` writes `"command": "maquettiste"`, which Claude Code cannot start when `maquettiste` is a
-zsh function, and it never replaces an existing `maquettiste` entry; so write the Docker form first and let `init` keep it:
+Commands for 3.1. `--docker` writes the wrapper `mcp.sh` (executable, no absolute path, safe to commit) and registers it;
+Claude Code starts it in `$REPO`. An older `.mcp.json` that already names a `maquettiste` server is kept as it is, so remove
+that entry (or the file) first when the repository has one from an earlier rehearsal. With Podman, the wrapper's
+`--user "$(id -u):$(id -g)"` must go (or become `--userns=keep-id`), and `MAQUETTISTE_DOCKER=podman` names the engine
+(docs/mcp.md):
 
 ```zsh
-cat > .mcp.json <<'EOF'
-{
-  "mcpServers": {
-    "maquettiste": {
-      "type": "stdio",
-      "command": "docker",
-      "args": ["run", "-i", "--rm", "-v", "${PWD}:/repo", "-w", "/repo", "mattjcowan/maquettiste:0.1.0", "maquettiste", "mcp"]
-    }
-  }
-}
-EOF
+maquettiste init --mcp --docker mattjcowan/maquettiste:0.3.0 --skill
+cat .mcp.json mcp.sh
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"check","version":"1"}}}' | ./mcp.sh
 ```
 
-Claude Code expands `${PWD}` (start `claude` in `$REPO`); if in doubt, put the absolute path of `$REPO` there instead. No
-`--user` on the Mac (Docker Desktop maps ownership); on Linux add `"--user", "<uid>:<gid>"` after `"--rm"`. Verified on
-Linux with a stdio client through `docker run -i`: `initialize` 0.6 s including the container start, `tools/list` 24
-tools, `validate` 52 ms; `init --mcp --skill` keeps the entry; and both prompts ran through Claude Code with it.
+The last line prints the server's `initialize` answer (one line of JSON with `"serverInfo":{"name":"maquettiste"...`) and
+exits: the server answers what it has read before it stops. If Claude Code reports the server as failed, read
+`.maquettiste/.cache/mcp.log`; "docker not found" there means Claude Code was started without Docker on its `PATH`:
+`export MAQUETTISTE_DOCKER=$(which docker)` in the shell that starts `claude`. The wrapper, the `"type": "stdio"` entry and
+the answer on a closed stdin are covered by the CLI tests and were checked on Linux with the image built from this tree; the
+Mac run of `./mcp.sh` is **(not verified on a Mac)**.
 
 Fallback if Claude Code or the network fails: show the same change through the editor, or read out the verified
 answers above.
@@ -406,8 +411,9 @@ right-click it › **Move to domain…**. Right-click **Shop** for New actions a
 **The top bar says `repo`.** `init` found no `package.json` name and no git remote and fell back to the container's
 folder `/repo`: set `"name"` in `.maquettiste/maquettiste.json` (then `maquettiste format`) and reload the page.
 
-**Generated files owned by someone else.** On the Mac, files should belong to you (step 5). If `ls -ln` shows UID 1654,
-remove them through a container: `docker run --rm --user 0 -v "$PWD:/w" --entrypoint rm mattjcowan/maquettiste:0.1.0 -rf /w/<path>`.
+**Generated files owned by someone else.** Files should belong to you (step 5). If `ls -ln` shows UID 1654, an older
+image wrote them: pull the image again, `up -d`, and remove the old files through a container:
+`docker run --rm --user 0 -v "$PWD:/w" --entrypoint rm mattjcowan/maquettiste:0.3.0 -rf /w/<path>`.
 
 **`maquettiste: command not found`.** The function of step 2 is not defined in this shell: `source ~/.zshrc`. With the .NET
 tool fallback, `export PATH="$PATH:$HOME/.dotnet/tools"`; Claude Code inherits the PATH of the shell that starts it.
@@ -442,10 +448,9 @@ Engine - Community", not Docker Desktop), so it behaves like Linux, not like the
 
 - Port 8090 there is held by another Maquettiste container (`billing-maquettiste-1`, the dev billing fixture) and 8080
   by Windows services, so the re-rehearsal used `MAQUETTISTE_PORT=8094`. The Mac commands above keep 8080.
-- The bind mounts need ACLs for UID 1654 (docker/README.md). `setfacl` is not installed and needs `sudo apt-get install acl`;
-  without sudo, run it from a container:
-  `docker run --rm --user 0 -v "$PWD:/w" -w /w --entrypoint sh nginx:alpine -c 'apk add -q acl && setfacl -R -m "u:1654:rwX,d:u:1654:rwX,u:1000:rwX,d:u:1000:rwX" .maquettiste'`.
-  Files the editor writes are then owned by 1654 but stay editable.
+- The 2026-09-29 rehearsal (image 0.1.0) needed ACLs for UID 1654 on the bind mounts. The current entrypoint needs neither
+  ACLs nor variables on Linux: it runs as the owner of `.maquettiste/`, 1000:1000 there, and the
+  files it writes are yours (`docker/smoke.sh` checks it).
 - The browser is a local peer there (the container's gateway), so the editor opens without the sign-in page even with a token set.
 - The rehearsal repository of 2026-09-29 is `shop-api-2` in the session scratchpad
   (`/tmp/claude-1000/-home-mjc-projects-github-com-mattjcowan-maquettiste/4bd3cdf0-05e3-4c41-8e17-843507f7abf8/scratchpad/demo/shop-api-2`),
@@ -465,7 +470,7 @@ minutes when you do it by hand.
 
 | Step | Result | Time |
 | --- | --- | --- |
-| `maquettiste --version` / `init` | `maquettiste 0.2.0 (engine contract 1.0.0, model format 1)`; 4 lines | 0.5 s / 0.65 s |
+| `maquettiste --version` / `init` | `maquettiste 0.3.0 (engine contract 1.0.0, model format 1)`; 4 lines | 0.5 s / 0.65 s |
 | `compose up` to `/api/health` 200, first boot | succeeded | 4.9 s |
 | 1.1 First-run panel, New domain Shop | created, "No problems" | 0.5 s |
 | 1.2 New enum from Shop's menu, four members with codes | saved, Domain preset to Shop | 3.5 s |
@@ -550,9 +555,9 @@ correctly.
 ## Appendix: alternatives (not needed for the talk)
 
 **Build the image locally** instead of pulling (native arm64, 5 to 10 minutes on a first build):
-`git clone git@github.com:mattjcowan/maquettiste.git && cd maquettiste && docker build -f docker/Dockerfile -t mattjcowan/maquettiste:0.1.0 .`
+`git clone git@github.com:mattjcowan/maquettiste.git && cd maquettiste && docker build -f docker/Dockerfile -t mattjcowan/maquettiste:0.3.0 .` (the tag the compose file and the function name)
 
-**The CLI as a .NET tool** (needs the .NET 10 SDK; NuGet has 0.1.0): `dotnet tool install -g Maquettiste.Cli --version 0.1.0`,
+**The CLI as a .NET tool** (needs the .NET 10 SDK; NuGet has 0.1.0, which predates `init --mcp --docker`, so prefer the image's version once it is on NuGet): `dotnet tool install -g Maquettiste.Cli --version 0.1.0`,
 then `export PATH="$PATH:$HOME/.dotnet/tools"` and `unfunction maquettiste` in a shell that defined the Docker function.
 Each Docker command pays a container start of about half a second; the native tool does not.
 

@@ -3,13 +3,17 @@
  *
  * The only file in src/ that may hold color literals (scripts/check-hex.mjs and the ESLint rule
  * enforce it). Light values on :root, dark on [data-theme="dark"]; src/design/theme.ts sets the
- * attribute from the OS preference unless the viewer chose a theme (localStorage mq.theme).
+ * attribute from the OS preference unless the viewer chose a theme (localStorage mq.theme). The light values
+ * also apply under [data-theme="light"], so a probe element can read either theme (src/design/branding.ts
+ * checks a project's primary color against both themes' surfaces); project colors override the accent
+ * tokens from a <style id="mq-branding"> sheet.
  * tests/unit/tokens.test.ts computes WCAG 2.2 contrast for every pairing the design names.
  *
  * Adjusted from S15 (open point 12, adopted by the owner): light status-warning #9E5400 (was
  * #B25E00) and status-success #1B7348 (was #1E7F4F); new accent-foreground and border-input.
  */
-:root {
+:root,
+[data-theme="light"] {
   color-scheme: light;
   --mq-bg-app: #f4f5f7;
   --mq-bg-surface: #ffffff;

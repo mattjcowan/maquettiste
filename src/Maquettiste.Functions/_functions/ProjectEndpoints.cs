@@ -18,9 +18,10 @@ namespace Maquettiste.Functions;
 /// <param name="PackDiagnostics">The packs' load diagnostics.</param>
 /// <param name="Extensions">The extension schemas.</param>
 /// <param name="Git">The git status, or <see langword="null"/> outside a git checkout.</param>
+/// <param name="IconHash">The content hash of the icon <c>GET /api/project/branding/icon</c> serves, or <see langword="null"/> without one.</param>
 public sealed record ProjectInfo(string Name, int FormatVersion, string EngineVersion, string Mode, ProjectSettings Settings, string SettingsHash,
     IReadOnlyList<ElementSummary> Databases, IReadOnlyList<PackManifest> Packs, IReadOnlyList<Diagnostic> PackDiagnostics,
-    IReadOnlyList<ExtensionSchema> Extensions, GitSummary? Git);
+    IReadOnlyList<ExtensionSchema> Extensions, GitSummary? Git, string? IconHash = null);
 
 /// <summary><c>GET /api/project</c> and <c>GET</c>, <c>PUT /api/project/settings</c>.</summary>
 public static class ProjectEndpoints
@@ -47,10 +48,11 @@ public static class ProjectEndpoints
         var snapshot = await store.GetSnapshotAsync(ct).ConfigureAwait(false);
         var packs = await generation.GetPacksAsync(ct).ConfigureAwait(false);
         var status = await git.ReadAsync(ct).ConfigureAwait(false);
+        var icon = await store.ReadBrandingIconAsync(ct).ConfigureAwait(false);
         var name = snapshot.Settings.Name is { Length: > 0 } n ? n : Path.GetFileName(settings.Engine.RepoRoot);
         return Api.Json(new ProjectInfo(name, snapshot.Settings.FormatVersion, Engine.EngineVersion.Value, EditorSettings.ModeOf(auth.VariablesFor(context)),
             snapshot.Settings, snapshot.SettingsHash, [.. snapshot.Summaries().Where(s => s.Kind == "database")], packs.Packs, packs.Diagnostics,
-            [.. snapshot.Extensions.Select(e => e.Schema)], status));
+            [.. snapshot.Extensions.Select(e => e.Schema)], status, icon?.Hash));
     });
 
     /// <summary>The canonical <c>maquettiste.json</c> with its hash as ETag (E3).</summary>

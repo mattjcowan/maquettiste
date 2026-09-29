@@ -81,10 +81,12 @@ public sealed partial class GenerationService
         var planId = NewId();
         var capture = new PlanCapture(_services.Plans, planId, RepoRoot);
         var run = new GenerationRun(_services, _store, progress);
+        var check = request.Mode == GenerationMode.Check;
         GenerationResult result;
         try
         {
-            result = await ExecuteAsync(request with { Mode = GenerationMode.DryRun }, planId, run, capture, ct).ConfigureAwait(false);
+            // A check plan renders every unit (in memory, committed roots) and says so: each unit's reason is "check".
+            result = await ExecuteAsync(request with { Mode = check ? GenerationMode.Check : GenerationMode.DryRun }, planId, run, capture, ct).ConfigureAwait(false);
         }
         catch
         {
@@ -103,7 +105,7 @@ public sealed partial class GenerationService
             prepared is null ? [.. request.Packs ?? []] : [.. prepared.Packs.Packs.Select(p => p.Name)],
             prepared is null ? [] : await PlanExplainer.ExplainAsync(capture.Units(prepared.Plan.Units), prepared.Plan.Units, _services.UnitState,
                 request.Force, RepoRoot, id => prepared.Resolved.Find(id) is not null, CancellationToken.None, prepared.Hasher.CurrentHash,
-                id => PlanExplainer.LabelOf(prepared.Resolved.Find(id))).ConfigureAwait(false),
+                id => PlanExplainer.LabelOf(prepared.Resolved.Find(id)), check).ConfigureAwait(false),
             result.Changes, result.Diagnostics);
         var policies = prepared is null
             ? new SortedDictionary<string, HandEditPolicy>(StringComparer.Ordinal)
@@ -522,7 +524,7 @@ public sealed partial class GenerationService
         try
         {
             var write = run.WriteContext(prepared, request, GenerationMode.Apply, runId, rendered.Select(u => current[u.Key]), skipped, journal, plannedPaths);
-            summary = await run.WriteAsync(prepared, FromPlan(plan.Id, rendered, current, prepared.Hasher.CurrentHash, ct), write, ct).ConfigureAwait(false);
+            summary = await run.WriteAsync(prepared, FromPlan(plan.Id, rendered, current, prepared.Hasher.CurrentHash, prepared.Resolved.Find, ct), write, ct).ConfigureAwait(false);
             outcome = Outcomes.Of(GenerationMode.Apply, run.Diagnostics, summary.Changes);
             if (outcome == RunOutcome.Succeeded && request.Roots == RootSelection.All)
                 await run.SaveSnapshotsAsync(prepared, ct).ConfigureAwait(false);
@@ -562,7 +564,7 @@ public sealed partial class GenerationService
 
     /// <summary>The processed units of a plan's rendered units, reading each blob only when the writer asks for its unit.</summary>
     private async IAsyncEnumerable<ProcessedUnit> FromPlan(string planId, IReadOnlyList<PlanUnit> units, IReadOnlyDictionary<string, PlannedUnit> current,
-        Func<string, string> currentHash, [EnumeratorCancellation] CancellationToken ct)
+        Func<string, string> currentHash, Func<string, Resolution.IResolvedObject?> find, [EnumeratorCancellation] CancellationToken ct)
     {
         foreach (var unit in units)
         {
@@ -580,6 +582,7 @@ public sealed partial class GenerationService
             var rendered = new RenderedUnit(current[unit.Key], [], unit.ReadKeys, unit.InputHash, [], false)
             {
                 KeyHashes = Planning.KeyHashes.Of(unit.ReadKeys, currentHash), // the plan's inputs are current (checked above)
+                Names = PlanExplainer.NamesOf(unit.ReadKeys, find),
             };
             yield return new ProcessedUnit(rendered, files, [], false);
         }

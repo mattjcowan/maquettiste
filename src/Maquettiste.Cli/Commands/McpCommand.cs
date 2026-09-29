@@ -10,7 +10,7 @@ namespace Maquettiste.Cli.Commands;
 /// server runs in-process over one <see cref="ModelStore"/> and one <see cref="GenerationService"/> for the repository that
 /// <c>generate</c> would use (<c>--repo</c>, else the nearest ancestor holding <c>.maquettiste/maquettiste.json</c>) with the same cache
 /// folder (<c>--cache-dir</c>, <c>$MAQUETTISTE_CACHE_DIR</c>, else the user cache folder). Stdout carries JSON-RPC messages only;
-/// messages for people go to stderr. The command ends with exit code 0 when the client closes stdin or on Ctrl+C.
+/// messages for people go to stderr. The command ends with exit code 0 when the client closes stdin (after answering the requests it has read) or on Ctrl+C.
 /// </summary>
 internal static class McpCommand
 {
@@ -36,8 +36,10 @@ internal static class McpCommand
             var serverOptions = McpServerSetup.CreateOptions(tools);
             context.Info($"maquettiste: serving {repo} over MCP (stdio).");
 
-            var input = openInput();
-            var output = openOutput();
+            // Every request read is answered before the end of stdin stops the server (echo request | maquettiste mcp).
+            var stdio = new DrainingStdio(openInput(), openOutput());
+            var input = stdio.Input;
+            var output = stdio.Output;
             await using (input.ConfigureAwait(false))
             await using (output.ConfigureAwait(false))
             {

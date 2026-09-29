@@ -725,6 +725,31 @@ export class MockModel {
     };
   }
 
+  /** Icons stored by POST /api/project/branding/icon, by model-relative path (the file under .maquettiste/branding/). */
+  readonly brandingIcons = new Map<string, { contentType: "image/svg+xml" | "image/png"; data: string; hash: string }>();
+
+  /** The icon settings `branding.icon` names, when it was stored. */
+  brandingIcon(): { contentType: "image/svg+xml" | "image/png"; data: string; hash: string } | null {
+    const icon = this.projectSettings().branding?.icon;
+    return (icon && this.brandingIcons.get(icon)) || null;
+  }
+
+  /** MQ8001 and MQ8002 as the engine reports them on a settings save. */
+  private brandingDiagnostics(json: Json): SettingsSaveResult["diagnostics"] {
+    const branding = projectSettings(json).branding;
+    const out: SettingsSaveResult["diagnostics"] = [];
+    const at = (rule: string, message: string, jsonPointer: string) =>
+      out.push({ rule, severity: "error", message, elementId: null, filePath: `${PREFIX}maquettiste.json`, jsonPointer, line: null, column: null });
+    for (const theme of ["light", "dark"] as const) {
+      const color = branding?.colors[theme];
+      if (color && !/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color))
+        at("MQ8001", `The ${theme} primary color '${color}' is not a hex color (#rrggbb or #rgb).`, `/branding/colors/${theme}`);
+    }
+    const icon = branding?.icon;
+    if (icon && !this.brandingIcons.has(icon)) at("MQ8002", `The icon file ${icon} does not exist in the model folder.`, "/branding/icon");
+    return out;
+  }
+
   saveSettings(json: Json, expectedHash: string): { status: number; body: SettingsSaveResult } {
     if (normalizeHash(expectedHash) !== this.settingsHash)
       return { status: 409, body: { outcome: "conflict", hash: this.settingsHash, current: this.settingsDocument(), diagnostics: [] } };
@@ -748,6 +773,8 @@ export class MockModel {
           })),
         },
       };
+    const branding = this.brandingDiagnostics(json);
+    if (branding.length) return { status: 422, body: { outcome: "invalid", hash: null, current: null, diagnostics: branding } };
     if (jsonEqual(json, this.settingsJson))
       return { status: 200, body: { outcome: "saved", hash: this.settingsHash, current: this.settingsDocument(), diagnostics: [] } };
     this.settingsJson = clone(json);
@@ -772,6 +799,7 @@ export class MockModel {
       packDiagnostics: [],
       extensions: clone(this.extensions),
       git: { branch: "main", head: "0000000", changedModelFiles: this.changedPaths.size },
+      iconHash: this.brandingIcon()?.hash ?? null,
     };
   }
 
@@ -927,6 +955,12 @@ export function projectSettings(json: Json): ProjectSettings {
       templateLoopLimit: (limits.templateLoopLimit as number | undefined) ?? 1000000,
       templateRecursionLimit: (limits.templateRecursionLimit as number | undefined) ?? 64,
     },
+    branding: (() => {
+      const branding = (json.branding as Json | undefined) ?? {};
+      const colors = (branding.colors as Json | undefined) ?? {};
+      const text = (v: unknown) => (typeof v === "string" ? v : null);
+      return { icon: text(branding.icon), colors: { light: text(colors.light), dark: text(colors.dark) } };
+    })(),
     explorer: {
       folders: ((((json.explorer as Json | undefined) ?? {}).folders as Json[] | undefined) ?? []).map((f) => {
         const match = (f.match as Json | undefined) ?? {};

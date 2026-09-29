@@ -11,6 +11,7 @@ import { useServices } from "./context";
 import { useUndoRedo } from "./shortcuts";
 import { LocaleSwitcher } from "@/l10n/LocaleSwitcher";
 import { LocalizationSync } from "@/l10n/queries";
+import { useBrandingView } from "./branding";
 
 const THEME_ICON = { system: Monitor, light: Sun, dark: Moon } as const;
 
@@ -24,6 +25,7 @@ export function TopBar() {
   const canRedo = useEditor(store, (s) => s.redo.length > 0);
   const { undo, redo } = useUndoRedo();
   const git = project.data?.git;
+  const branding = useBrandingView();
   const ThemeIcon = THEME_ICON[theme];
   const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
 
@@ -31,17 +33,21 @@ export function TopBar() {
     <header className="flex h-[var(--mq-topbar-h)] shrink-0 items-center gap-2 border-b border-default bg-surface px-2" data-region="topbar">
       <div className="flex min-w-0 items-center gap-2">
         <Tooltip content={LOGO_TOOLTIP}>
-          <span
-            aria-hidden
-            className="grid size-6 place-items-center rounded-control bg-accent text-12 font-semibold text-accent-foreground"
-            data-testid="logo"
-          >
-            M
-          </span>
+          {branding.iconUrl ? (
+            <img src={branding.iconUrl} alt="" aria-hidden className="size-6 rounded-control object-contain" data-testid="logo" />
+          ) : (
+            <span
+              aria-hidden
+              className="grid size-6 place-items-center rounded-control bg-accent text-12 font-semibold text-accent-foreground"
+              data-testid="logo"
+            >
+              M
+            </span>
+          )}
         </Tooltip>
         <Tooltip content={PROJECT_TOOLTIP}>
           <h1 className="truncate text-14 font-semibold" data-testid="project-name">
-            {project.data?.name ?? "Maquettiste"}
+            {branding.name}
           </h1>
         </Tooltip>
         {git ? (

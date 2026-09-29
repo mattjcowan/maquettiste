@@ -98,6 +98,20 @@ export class MockPacks {
     return found;
   }
 
+  /** What the pack's scripts register, read from their text (the server runs them): by kind, then name. */
+  registrations(pack: string): S["ScriptRegistration"][] {
+    const files = this.files.get(pack);
+    if (!files) return [];
+    const order = ["helper", "selector", "filter", "transform", "rule"];
+    const found: S["ScriptRegistration"][] = [];
+    for (const [path, text] of [...files].filter(([p]) => p.endsWith(".js")).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+      for (const match of text.matchAll(/maquettiste\.(helper|selector|filter|transform|rule)\(\s*["']([^"']+)["']/g))
+        found.push({ kind: match[1] as S["ScriptRegistration"]["kind"], name: match[2]!, declaredIn: path });
+    }
+    const key = (r: S["ScriptRegistration"]) => `${order.indexOf(r.kind)}\u0000${r.name}\u0000${r.declaredIn}`;
+    return found.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+  }
+
   fileInfos(pack: string): S["PackFileInfo"][] {
     const files = this.files.get(pack)!;
     const manifest = this.manifest(pack);
@@ -192,6 +206,7 @@ export class MockPacks {
       })),
       files: this.fileInfos(pack),
       diagnostics: this.diagnostics(pack),
+      registrations: this.registrations(pack),
     };
   }
 

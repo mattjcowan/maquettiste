@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Hashing;
+using Maquettiste.Engine.Scripting;
 using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Editor;
@@ -147,5 +148,29 @@ public sealed class PackAuthoringMoreTests
         Assert.Contains(context.Members["element"], m => m.Name == "columns" && m.Type == "list");
         Assert.Equal(context.Helpers.Order(StringComparer.Ordinal), context.Helpers);
         Assert.Null(await repo.Service.GetTemplateContextAsync("sql-ddl", "ghost", Ct));
+    }
+
+    [Fact]
+    public async Task The_template_context_and_the_pack_read_list_what_the_packs_own_scripts_register()
+    {
+        await using var repo = EditorRepo.Create();
+        var context = await repo.Service.GetTemplateContextAsync("sql-ddl", "table", Ct);
+        Assert.NotNull(context);
+        Assert.Contains("ddl_order", context.Helpers);
+        Assert.Contains(context.Registrations, r => r is { Kind: ScriptRegistrationKind.Selector, Name: "databases", DeclaredIn: var path } && path.EndsWith("helpers.js", StringComparison.Ordinal));
+        Assert.Equal(context.Registrations.OrderBy(r => r.Kind).ThenBy(r => r.Name, StringComparer.Ordinal), context.Registrations);
+
+        // A script edit shows at the next read: a filter and a transform are listed with their kinds.
+        var helpers = repo.Repo.PathOf(".maquettiste/templates/sql-ddl/helpers.js");
+        File.AppendAllText(helpers, "\nmaquettiste.filter(\"only_named\", (element) => !!element.name);\nmaquettiste.transform(\"shape\", (element) => ({ n: 1 }));\n");
+        var pack = await repo.Service.GetPackAsync("sql-ddl", Ct);
+        Assert.NotNull(pack);
+        Assert.Contains(pack.Registrations, r => r is { Kind: ScriptRegistrationKind.Filter, Name: "only_named" });
+        Assert.Contains(pack.Registrations, r => r is { Kind: ScriptRegistrationKind.Transform, Name: "shape" });
+        Assert.DoesNotContain("only_named", (await repo.Service.GetTemplateContextAsync("sql-ddl", "table", Ct))!.Helpers);
+
+        // A script that fails lists nothing (the pack's diagnostics say why) rather than failing the read.
+        File.AppendAllText(helpers, "\nthrow new Error(\"broken\");\n");
+        Assert.Empty((await repo.Service.GetPackAsync("sql-ddl", Ct))!.Registrations);
     }
 }

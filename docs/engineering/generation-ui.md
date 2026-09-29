@@ -273,3 +273,18 @@ Total: about 22.5 working days. Steps 0, 1 and 8 are independent; 2 and 3 need 1
 1. Shared packs pinned in `packs.lock.json` (SPEC §19): should the editor edit their files in place, or show them read-only with **Copy into project** (a new local pack from the pinned one)? The design assumes read-only with Copy, since a pinned pack's files are someone else's.
 2. Roles today: `saveSettings` (all of `maquettiste.json`) is admin, plan and apply are maintainer. The design lets maintainers edit `pack.json`, pack files and their own pack's `packs.<name>` (enabled, output base, parameter values) through the narrow `PUT /api/project/settings/packs/{pack}`, and keeps `outputs.allow` admin, so the writer's bounds stay with admins. Is that the split you want, or should pack settings stay admin-only (the header and Parameters tab then read-only for maintainers), or should pack authoring be its own role?
 3. Should `each database` (GU4) be added, or should databases stay on selectors as `sql-ddl` does today? GU4, E19 and steps 1 and 2 depend on the answer; if added, `sql-ddl` keeps its selector until its README is revised.
+
+## Status note (round 6, generation leftovers)
+
+- Unit state is now **format 4** (`units/<pack>.v4.bin`): format 3 shipped in 0.2.0 with the per-key hashes, so the element names
+  could not be added to it in place. Each state records the label (`Name (kind)`) of every `e:` key it read at render time; an
+  `absent` cause uses it when the model no longer has the element ("Customer (entity) was deleted"). A `.v3.bin` or `.v1.bin` file
+  and no `.v4.bin` gives `state-reset` once; saving deletes both older files.
+- A plan requested with `mode: check` runs the check (every unit rendered in memory over committed roots) and gives its units the
+  reason `check`; other plans are dry runs as before (the endpoint and the MCP tool still plan in apply mode).
+- `GET /api/packs/{pack}` and `GET /api/templates/context` carry `registrations` (kind, name, declaredIn) from one sandbox run of
+  the pack's scripts, cached per pack by settings hash and pack folder stamp; the context's `helpers` add the pack's helpers.
+- The Problem `code` enum lists `superseded` (the 409 of a superseded preview or paths request did not match the contract).
+- Templates tab preview (after the live test): the element picker lists only the unit's scope kind (`previewScope.ts`); with no
+  element of that kind it says "The model has no <kind> to preview this template with.", and a render outside the unit's scope
+  reads "This template renders one <kind>; pick a <kind> to preview it." instead of the template engine's error.

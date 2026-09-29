@@ -447,6 +447,79 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
 
+  /api/project/branding/icon:
+    get:
+      tags: [project]
+      operationId: getBrandingIcon
+      summary: The project icon named by settings `branding.icon`
+      description: |
+        Anonymous, so the sign-in page and the browser tab can show it. An SVG is served without the parts MQ8003 names (scripts,
+        event handlers, external references), with `Content-Security-Policy` `sandbox` and `nosniff`. The ETag is the served bytes'
+        hash (`iconHash` in `GET /api/project`); `If-None-Match` answers 304.
+      security: []
+      x-maquettiste-role: anonymous
+      x-engine-addition: ModelStore.ReadBrandingIconAsync
+      responses:
+        '200':
+          description: The icon.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '304':
+          description: The icon has the hash sent in `If-None-Match`.
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [project]
+      operationId: uploadBrandingIcon
+      summary: Store the project icon under .maquettiste/branding/
+      description: |
+        The body is JSON, as every write of the API: `{ contentType, data }` with the file in base64. An SVG or a PNG of at most
+        512 KB; an SVG is stored without its scripts, event handlers, external references and processing instructions (listed in
+        `removed`). The file is written under a content-addressed name, `branding/icon-<12 hex>.svg` or `.png`, in the model
+        folder, so an upload never replaces the icon the saved settings name; `maquettiste.json` is not changed: save
+        `branding.icon` with the returned `icon` through `PUT /api/project/settings`. That save removes the uploaded icons the
+        settings no longer name.
+      x-maquettiste-role: admin
+      x-engine-addition: ModelStore.SaveBrandingIconAsync
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BrandingIconUpload'
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrandingIconSaved'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '413':
+          description: The icon is over 512 KB.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Not a PNG, or not well-formed SVG with an `<svg>` root in the SVG namespace; nothing was written.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
   /api/project/settings/packs/{pack}:
     parameters:
       - $ref: '#/components/parameters/PackName'
@@ -4022,10 +4095,12 @@ components:
             - not-found
             - not-a-diagram
             - not-a-database
+            - invalid-icon
             - precondition-required
             - queue-full
             - job-finished
             - model-unavailable
+            - superseded
             - internal
         traceId:
           type: string
@@ -4134,6 +4209,9 @@ components:
           oneOf:
             - $ref: '#/components/schemas/GitSummary'
             - type: 'null'
+        iconHash:
+          description: The content hash of the icon `GET /api/project/branding/icon` serves (use it to refresh the icon), or null without a usable one. An older server leaves it out.
+          type: [string, 'null']
     GitSummary:
       type: object
       required: [branch, head, changedModelFiles]
@@ -4299,6 +4377,8 @@ components:
               type: integer
             templateRecursionLimit:
               type: integer
+        branding:
+          $ref: '#/components/schemas/BrandingSettings'
         explorer:
           description: Project-defined explorer folders (explorer-redesign.md section 1.6) and team scopes (section 3.2). An older server leaves it out, or leaves out `scopes`.
           type: object
@@ -4312,6 +4392,50 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/ExplorerScope'
+    BrandingSettings:
+      x-engine-record: Maquettiste.Engine.Model.BrandingSettings
+      description: The project's icon and primary color per theme in the editor (MQ8001 to MQ8003). An older server leaves it out.
+      type: object
+      required: [icon, colors]
+      properties:
+        icon:
+          description: '`branding/<name>.svg` or `.png` in the model folder; null for the editor''s mark.'
+          type: [string, 'null']
+        colors:
+          type: object
+          required: [light, dark]
+          properties:
+            light:
+              type: [string, 'null']
+            dark:
+              type: [string, 'null']
+    BrandingIconUpload:
+      type: object
+      required: [contentType, data]
+      properties:
+        contentType:
+          type: string
+          enum: [image/svg+xml, image/png]
+        data:
+          description: The file, base64 (at most 512 KB decoded).
+          type: string
+    BrandingIconSaved:
+      type: object
+      required: [icon, contentType, hash, removed]
+      properties:
+        icon:
+          description: The model-relative path to save as `branding.icon`.
+          type: string
+        contentType:
+          type: string
+          enum: [image/svg+xml, image/png]
+        hash:
+          $ref: '#/components/schemas/Hash'
+        removed:
+          description: What was removed from an SVG before it was stored; empty when nothing was.
+          type: array
+          items:
+            type: string
     ExplorerScope:
       x-engine-record: Maquettiste.Engine.Model.ExplorerScope
       type: object
@@ -6021,7 +6145,7 @@ components:
     PackDocument:
       x-engine-record: Maquettiste.Engine.PackDocument
       type: object
-      required: [name, enabled, output, hash, document, parameters, files, diagnostics]
+      required: [name, enabled, output, hash, document, parameters, files, diagnostics, registrations]
       properties:
         name:
           type: string
@@ -6047,6 +6171,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Diagnostic'
+        registrations:
+          description: What the pack's own scripts register, by kind then name; empty when the pack does not load or a script fails.
+          type: array
+          items:
+            $ref: '#/components/schemas/ScriptRegistration'
+    ScriptRegistration:
+      x-engine-record: Maquettiste.Engine.Scripting.ScriptRegistration
+      type: object
+      required: [kind, name, declaredIn]
+      properties:
+        kind:
+          type: string
+          enum: [helper, selector, filter, transform, rule]
+        name:
+          description: The registered name (the rule id for rules).
+          type: string
+        declaredIn:
+          description: The script path.
+          type: string
     PackFileContent:
       x-engine-record: Maquettiste.Engine.PackFileContent
       type: object
@@ -6204,7 +6347,7 @@ components:
     TemplateContextResult:
       x-engine-record: Maquettiste.Engine.TemplateContextResult
       type: object
-      required: [pack, unit, scope, variables, members, helpers]
+      required: [pack, unit, scope, variables, members, helpers, registrations]
       properties:
         pack:
           type: string
@@ -6223,9 +6366,15 @@ components:
             items:
               $ref: '#/components/schemas/TemplateMember'
         helpers:
+          description: The builtin helpers and the pack's own, ordinal.
           type: array
           items:
             type: string
+        registrations:
+          description: What the pack's own scripts register, by kind then name; its helpers are also in helpers.
+          type: array
+          items:
+            $ref: '#/components/schemas/ScriptRegistration'
     PackFileMove:
       x-engine-record: Maquettiste.Engine.PackFileMove
       type: object

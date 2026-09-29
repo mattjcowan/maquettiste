@@ -25,7 +25,7 @@ internal static class PlanExplainer
     /// <summary>Explains every unit of a plan against the recorded unit state (a plan writes none, so it is the state before the plan).</summary>
     public static async Task<IReadOnlyList<PlanUnit>> ExplainAsync(IReadOnlyList<PlanUnit> units, IReadOnlyList<PlannedUnit> planned, IUnitStateStore state,
         bool force, string repoRoot, Func<string, bool> resolves, CancellationToken ct, Func<string, string>? currentHash = null,
-        Func<string, string?>? nameOf = null)
+        Func<string, string?>? nameOf = null, bool check = false)
     {
         var byKey = planned.ToDictionary(u => u.Key, StringComparer.Ordinal);
         var states = new Dictionary<string, IReadOnlyDictionary<string, UnitState>>(StringComparer.Ordinal);
@@ -42,7 +42,7 @@ internal static class PlanExplainer
             if (!states.TryGetValue(p.Pack.Name, out var packState))
                 states[p.Pack.Name] = packState = await state.LoadAsync(p.Pack.Name, ct).ConfigureAwait(false);
             packState.TryGetValue(unit.Key, out var stored);
-            var (reason, causes) = Explain(unit, stored, force, repoRoot, resolves, currentHash, p.StaticParts, state.WasReset(p.Pack.Name), nameOf: nameOf);
+            var (reason, causes) = Explain(unit, stored, force, repoRoot, resolves, currentHash, p.StaticParts, state.WasReset(p.Pack.Name), check, nameOf);
             result.Add(unit with
             {
                 Pack = p.Pack.Name,
@@ -99,7 +99,7 @@ internal static class PlanExplainer
                 // without, when the resolved model no longer finds it.
                 if (key.StartsWith("e:", StringComparison.Ordinal)
                     && (currentHash is not null ? string.Equals(currentHash(key), DependencyHasher.Absent, StringComparison.Ordinal) : !resolves(key[2..])))
-                    causes.Add(new PlanCause("absent", key, $"{Label(key[2..], nameOf) ?? key[2..]} was deleted", key[2..], null));
+                    causes.Add(new PlanCause("absent", key, $"{Label(key[2..], nameOf) ?? LastName(stored, key) ?? key[2..]} was deleted", key[2..], null));
                 else if (!now.Contains(key))
                     causes.Add(new PlanCause(KindOf(key), key, $"{Describe(key)} is no longer read", ElementOf(key), null));
                 else if (!hashes.IsEmpty && KeyHashes.Differs(hashes.Span, i, currentHash!(key)))
@@ -200,6 +200,25 @@ internal static class PlanExplainer
     private static string? ElementOf(string key) => key.StartsWith("e:", StringComparison.Ordinal) || key.StartsWith("r:", StringComparison.Ordinal) ? key[2..] : null;
 
     private static string? Label(string id, Func<string, string?>? nameOf) => nameOf?.Invoke(id);
+
+    /// <summary>The label an element key had when the unit last rendered (unit state format 4), or <see langword="null"/>.</summary>
+    private static string? LastName(UnitState stored, string key) => stored.Names is { } names && names.TryGetValue(key, out var name) ? name : null;
+
+    /// <summary>
+    /// The labels of the element keys (<c>e:&lt;id&gt;</c>) among <paramref name="keys"/> that <paramref name="find"/> resolves to a named
+    /// object, for the unit state; <see langword="null"/> when there are none.
+    /// </summary>
+    internal static IReadOnlyDictionary<string, string>? NamesOf(IReadOnlyList<string> keys, Func<string, Maquettiste.Engine.Resolution.IResolvedObject?> find)
+    {
+        Dictionary<string, string>? names = null;
+        foreach (var key in keys)
+        {
+            if (key.StartsWith("e:", StringComparison.Ordinal) && LabelOf(find(key[2..])) is { } label)
+                (names ??= new Dictionary<string, string>(StringComparer.Ordinal))[key] = label;
+        }
+
+        return names;
+    }
 
     private static string Describe(string key, Func<string, string?>? nameOf) => KindOf(key) switch
     {

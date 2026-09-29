@@ -286,6 +286,7 @@ internal sealed class UnitRun
         return new RenderedUnit(Planned, failed ? [] : files, keys, inputHash, diagnostics, failed)
         {
             KeyHashes = Planning.KeyHashes.Of(keys, Run.Context.Hasher.CurrentHash),
+            Names = Generation.PlanExplainer.NamesOf(keys, Run.Context.Model.Find),
         };
     }
 

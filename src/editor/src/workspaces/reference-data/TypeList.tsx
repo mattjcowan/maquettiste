@@ -2,7 +2,7 @@
 // every group ("3 of 12" while searching), or flat A to Z; the search box takes the explorer's four operators.
 // Arrow keys move the selection, Left and Right collapse and expand a group, `/` focuses the search from anywhere in
 // the screen.
-import { ROW_H } from "@/design/density";
+import { rowHeight } from "@/design/density";
 import { useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
@@ -33,6 +33,7 @@ export function TypeList({
   const list = useMemo(() => listRows(items, { query, flat, collapsed }), [items, query, flat, collapsed]);
   const filtering = query.trim() !== "";
   const scrollRef = useRef<HTMLDivElement>(null);
+  const ROW_H = useMemo(() => rowHeight(), []);
   const virtualizer = useVirtualizer({ count: list.rows.length, getScrollElement: () => scrollRef.current, estimateSize: () => ROW_H, overscan: 20 });
   const at = list.rows.findIndex((r) => r.kind === "type" && r.key === selected);
 

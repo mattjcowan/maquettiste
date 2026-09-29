@@ -234,6 +234,33 @@ public sealed class PackAuthoringTests
     }
 
     [Fact]
+    public async Task The_preview_session_key_changes_with_the_model_version_the_settings_and_the_pack_files_only()
+    {
+        await using var repo = EditorRepo.Create();
+        var initial = await repo.Service.PreviewSessionKeyAsync("sql-ddl", Ct);
+        Assert.Equal(initial, await repo.Service.PreviewSessionKeyAsync("sql-ddl", Ct));
+
+        repo.EditSettingsOnDisk(s => s["limits"] = new JsonObject { ["scriptTimeoutMs"] = 3000 });
+        var settings = await repo.Service.PreviewSessionKeyAsync("sql-ddl", Ct);
+        Assert.NotEqual(initial, settings);
+
+        File.AppendAllText(repo.Repo.PathOf(".maquettiste/templates/sql-ddl/table.scriban"), "-- template edit\n");
+        var template = await repo.Service.PreviewSessionKeyAsync("sql-ddl", Ct);
+        Assert.NotEqual(settings, template);
+        // Another pack's files do not touch this pack's session.
+        File.AppendAllText(repo.Repo.PathOf(".maquettiste/templates/csharp-dapper/pack.json"), "\n");
+        Assert.Equal(template, await repo.Service.PreviewSessionKeyAsync("sql-ddl", Ct));
+
+        var customer = repo.Repo.PathOf(".maquettiste/model/entities/customer.json");
+        var node = JsonNode.Parse(File.ReadAllText(customer))!.AsObject();
+        node["name"] = "Client";
+        File.WriteAllText(customer, node.ToJsonString());
+        var model = await repo.Service.PreviewSessionKeyAsync("sql-ddl", Ct);
+        Assert.NotEqual(template, model);
+        Assert.Equal(model, await repo.Service.PreviewSessionKeyAsync("sql-ddl", Ct));
+    }
+
+    [Fact]
     public async Task A_preview_that_does_not_end_fails_with_MQ6007_within_the_deadline()
     {
         await using var repo = EditorRepo.Create();

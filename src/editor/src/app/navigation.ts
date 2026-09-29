@@ -150,6 +150,14 @@ export function useEditorNavigation() {
         openSettings(summary.kind === "tag-vocabulary" ? "tags" : summary.kind === "category-tree" ? "categories" : "stereotypes");
         return;
       }
+      // Settings, Reference data and Generate have no element inspector: going to an element shows its screen.
+      if (s.workspace === "settings" || s.workspace === "reference-data" || s.workspace === "generate") {
+        if (!["tag-vocabulary", "category-tree", "stereotype"].includes(summary.kind)) {
+          s.select([summary.id], { pointer });
+          openWorkspace("entities");
+          return;
+        }
+      }
       select([summary.id], pointer);
     },
     [store, queryClient, openDiagram, openDatabase, openSettings, openWorkspace, select],

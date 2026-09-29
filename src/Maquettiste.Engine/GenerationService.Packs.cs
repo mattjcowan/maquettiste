@@ -8,6 +8,7 @@ using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Planning;
 using Maquettiste.Engine.Rendering;
+using Maquettiste.Engine.Scripting;
 using Maquettiste.Engine.Resolution;
 
 namespace Maquettiste.Engine;
@@ -216,6 +217,10 @@ public sealed partial class GenerationService
         string.Join('|', snapshot.Version.ToString(System.Globalization.CultureInfo.InvariantCulture), snapshot.SettingsHash,
             Interlocked.Read(ref _writeEpoch).ToString(System.Globalization.CultureInfo.InvariantCulture), packStamp);
 
+    /// <summary>The key a preview session of <paramref name="pack"/> would be stored under now (tests: what invalidates the session).</summary>
+    internal async Task<string> PreviewSessionKeyAsync(string pack, CancellationToken ct) =>
+        SessionKey(await _store.GetSnapshotAsync(ct).ConfigureAwait(false), PackStamp(pack));
+
     private string PackStamp(string pack)
     {
         var root = PackAuthoring.PackRoot(_options, pack);
@@ -334,7 +339,43 @@ public sealed partial class GenerationService
     public async Task<PackDocument?> GetPackAsync(string pack, CancellationToken ct)
     {
         var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        return await PackAuthoring.ReadAsync(_options, _services.Schemas, snapshot, pack, ct).ConfigureAwait(false);
+        var document = await PackAuthoring.ReadAsync(_options, _services.Schemas, snapshot, pack, ct).ConfigureAwait(false);
+        return document is null ? null : document with { Registrations = await RegistrationsAsync(snapshot, pack, ct).ConfigureAwait(false) };
+    }
+
+    /// <summary>The last registrations read per pack, keyed like the preview session minus the write epoch (the scripts run once per change).</summary>
+    private readonly ConcurrentDictionary<string, (string Key, IReadOnlyList<ScriptRegistration> Registrations)> _registrations = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// What the pack's own scripts register, from one sandbox run under the project's limits; empty when the pack does not load or a script
+    /// fails (the failure is the pack's diagnostics' business).
+    /// </summary>
+    private async Task<IReadOnlyList<ScriptRegistration>> RegistrationsAsync(ModelSnapshot snapshot, string pack, CancellationToken ct)
+    {
+        var key = snapshot.SettingsHash + "|" + PackStamp(pack);
+        if (_registrations.TryGetValue(pack, out var cached) && string.Equals(cached.Key, key, StringComparison.Ordinal))
+            return cached.Registrations;
+        var (loaded, _) = await new PackLoader(_options, _services.Schemas).LoadNamedAsync(snapshot, pack, ct).ConfigureAwait(false);
+        IReadOnlyList<ScriptRegistration> registrations = [];
+        if (loaded is { Scripts.Count: > 0 })
+        {
+            try
+            {
+                using var pool = _services.Scripts.CreatePool(loaded.Scripts, snapshot.Settings.Limits, 1, ct);
+                registrations = [.. pool.Registrations.OrderBy(r => r.Kind).ThenBy(r => r.Name, StringComparer.Ordinal).ThenBy(r => r.DeclaredIn, StringComparer.Ordinal)];
+            }
+            catch (ScriptErrorException)
+            {
+            }
+            catch (ScriptLimitException)
+            {
+            }
+        }
+
+        if (_registrations.Count >= MaxSessions)
+            _registrations.Clear();
+        _registrations[pack] = (key, registrations);
+        return registrations;
     }
 
     /// <summary>Saves the whole <c>pack.json</c> document in canonical form when its hash is still <paramref name="expectedHash"/>.</summary>

@@ -17,6 +17,9 @@ public sealed record ProjectSettings
     /// <summary>The project name.</summary>
     public string? Name { get; init; }
 
+    /// <summary>The project's branding in the editor (icon and primary colors); it changes no generated output.</summary>
+    public BrandingSettings Branding { get; init; } = new();
+
     /// <summary>Output roots (the allowlist) and deny globs.</summary>
     public OutputSettings Outputs { get; init; } = new();
 
@@ -56,6 +59,26 @@ public sealed record ProjectSettings
 
     /// <summary>The editor's explorer settings: project-defined folders (explorer-redesign.md section 1.6).</summary>
     public ExplorerSettings Explorer { get; init; } = new();
+}
+
+/// <summary>The project's branding in the editor. The engine stores and checks it (MQ8001 to MQ8003); it changes no generated output.</summary>
+public sealed record BrandingSettings
+{
+    /// <summary>The icon file relative to the model folder (<c>branding/&lt;name&gt;.svg</c> or <c>.png</c>); null for the editor's mark.</summary>
+    public string? Icon { get; init; }
+
+    /// <summary>The primary color per theme.</summary>
+    public BrandingColors Colors { get; init; } = new();
+}
+
+/// <summary>The primary color per theme, as <c>#rrggbb</c> or <c>#rgb</c>; null for the built-in accent.</summary>
+public sealed record BrandingColors
+{
+    /// <summary>The light theme's primary color.</summary>
+    public string? Light { get; init; }
+
+    /// <summary>The dark theme's primary color.</summary>
+    public string? Dark { get; init; }
 }
 
 /// <summary>The editor's explorer settings. The engine stores them; they change no generated output.</summary>

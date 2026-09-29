@@ -21,7 +21,9 @@ import {
   completenessMatrix,
   isLocaleTag,
   localeName,
+  localeTagProblem,
   localizationProblems,
+  normalizeLocaleTag,
   REQUIRE_KINDS,
   removeLocale,
   setFallbacks,
@@ -97,6 +99,7 @@ function LocalesForm() {
 
   const locales = draft.locales ?? [draft.defaultLocale];
   const tag = adding.trim();
+  const problem = localeTagProblem(tag, locales);
   return (
     <section className="flex flex-col gap-2" aria-label="Locales">
       <SectionTitle
@@ -162,21 +165,29 @@ function LocalesForm() {
           className="flex items-center gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!isLocaleTag(tag)) return;
+            if (!isLocaleTag(tag) || problem) return;
             setDraft(addLocale(draft, tag));
             setAdding("");
           }}
         >
           <Input
             aria-label="New locale (BCP 47 tag)"
-            placeholder="fr, fr-CA, de…"
+            placeholder="fr, fr-CA, zh-CN…"
             className="max-w-40"
             value={adding}
-            onChange={(e) => setAdding(e.target.value)}
+            onChange={(e) => setAdding(normalizeLocaleTag(e.target.value))}
+            aria-invalid={problem ? true : undefined}
+            aria-describedby={problem ? "l10n-add-problem" : undefined}
+            data-testid="locale-add-input"
           />
-          <Button type="submit" variant="secondary" size="sm" disabled={!tag || !isLocaleTag(tag)}>
+          <Button type="submit" variant="secondary" size="sm" disabled={!tag || !!problem} data-testid="locale-add">
             <Plus className="size-3.5" aria-hidden /> Add locale
           </Button>
+          {problem ? (
+            <span id="l10n-add-problem" role="status" className="text-12 text-danger" data-testid="locale-add-problem">
+              {problem}
+            </span>
+          ) : null}
         </form>
       </div>
       <fieldset className="flex flex-col gap-1">

@@ -11,22 +11,17 @@ cd "$(dirname "$0")/.."
 MAQUETTISTE_IMAGE="${MAQUETTISTE_IMAGE:-mattjcowan/maquettiste:dev}"
 export MAQUETTISTE_IMAGE
 if [ -d tmp/billing ]; then
-  # Stop the previous run first, then delete as root inside a container: folders and files the editor wrote are owned by
-  # UID 1654 with mode 755, which the developer cannot remove with a plain rm.
+  # Stop the previous run first, then delete as root inside a container: an older run without MAQUETTISTE_UID left folders
+  # and files owned by UID 1654 with mode 755, which the developer cannot remove with a plain rm.
   docker compose -f docker/compose.yaml --project-directory tmp/billing down >/dev/null 2>&1 || true
   docker run --rm --user 0 -v "$PWD/tmp:/t" --entrypoint rm "$MAQUETTISTE_IMAGE" -rf /t/billing
 fi
 mkdir -p tmp/billing && cp -r tests/fixtures/models/billing/. tmp/billing/
 mkdir -p tmp/billing/.maquettiste/templates && cp -r packs/sql-ddl packs/csharp-dapper tmp/billing/.maquettiste/templates/
-if [ "$(uname)" = Linux ]; then
-  if command -v setfacl >/dev/null 2>&1; then
-    # The default entries for the invoking user keep what the container creates editable and deletable by the developer.
-    chmod -R u+rwX,go+rX tmp/billing   # the default ACL copies these base bits onto what the container creates
-    setfacl -R -m "u:1654:rwX,d:u:1654:rwX,u:$(id -u):rwX,d:u:$(id -u):rwX" tmp/billing
-  else
-    echo "dev-billing: setfacl is missing (apt install acl); making tmp/billing world-writable instead" >&2
-    chmod -R a+rwX tmp/billing
-  fi
+# The editor runs as the invoking user (docker/README.md "File ownership"), so what it writes stays editable here.
+if [ "$(id -u)" != 0 ]; then
+  MAQUETTISTE_UID="${MAQUETTISTE_UID:-$(id -u)}" MAQUETTISTE_GID="${MAQUETTISTE_GID:-$(id -g)}"
+  export MAQUETTISTE_UID MAQUETTISTE_GID
 fi
 docker compose -f docker/compose.yaml --project-directory tmp/billing up -d
 echo "dev-billing: starting; follow with: docker compose -f docker/compose.yaml --project-directory tmp/billing logs -f"

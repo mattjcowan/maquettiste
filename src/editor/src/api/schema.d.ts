@@ -101,6 +101,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/project/branding/icon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The project icon named by settings `branding.icon`
+         * @description Anonymous, so the sign-in page and the browser tab can show it. An SVG is served without the parts MQ8003 names (scripts,
+         *     event handlers, external references), with `Content-Security-Policy` `sandbox` and `nosniff`. The ETag is the served bytes'
+         *     hash (`iconHash` in `GET /api/project`); `If-None-Match` answers 304.
+         */
+        get: operations["getBrandingIcon"];
+        put?: never;
+        /**
+         * Store the project icon under .maquettiste/branding/
+         * @description The body is JSON, as every write of the API: `{ contentType, data }` with the file in base64. An SVG or a PNG of at most
+         *     512 KB; an SVG is stored without its scripts, event handlers, external references and processing instructions (listed in
+         *     `removed`). The file is written under a content-addressed name, `branding/icon-<12 hex>.svg` or `.png`, in the model
+         *     folder, so an upload never replaces the icon the saved settings name; `maquettiste.json` is not changed: save
+         *     `branding.icon` with the returned `icon` through `PUT /api/project/settings`. That save removes the uploaded icons the
+         *     settings no longer name.
+         */
+        post: operations["uploadBrandingIcon"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/project/settings/packs/{pack}": {
         parameters: {
             query?: never;
@@ -1193,7 +1224,7 @@ export interface components {
             detail?: string;
             instance?: string;
             /** @enum {string} */
-            code: "bad-request" | "unsupported-media-type" | "too-large" | "unauthenticated" | "bad-token" | "too-many-attempts" | "forbidden" | "forbidden-origin" | "not-found" | "not-a-diagram" | "not-a-database" | "precondition-required" | "queue-full" | "job-finished" | "model-unavailable" | "internal";
+            code: "bad-request" | "unsupported-media-type" | "too-large" | "unauthenticated" | "bad-token" | "too-many-attempts" | "forbidden" | "forbidden-origin" | "not-found" | "not-a-diagram" | "not-a-database" | "invalid-icon" | "precondition-required" | "queue-full" | "job-finished" | "model-unavailable" | "superseded" | "internal";
             traceId?: string;
         };
         SignInRequest: {
@@ -1254,6 +1285,8 @@ export interface components {
             extensions: components["schemas"]["ExtensionSchema"][];
             /** @description Read-only status for the top bar; `null` when the repo is not a git checkout or git is unavailable. */
             git: components["schemas"]["GitSummary"] | null;
+            /** @description The content hash of the icon `GET /api/project/branding/icon` serves (use it to refresh the icon), or null without a usable one. An older server leaves it out. */
+            iconHash?: string | null;
         };
         GitSummary: {
             /** @description `null` on a detached head. */
@@ -1332,11 +1365,36 @@ export interface components {
                 templateLoopLimit: number;
                 templateRecursionLimit: number;
             };
+            branding?: components["schemas"]["BrandingSettings"];
             /** @description Project-defined explorer folders (explorer-redesign.md section 1.6) and team scopes (section 3.2). An older server leaves it out, or leaves out `scopes`. */
             explorer?: {
                 folders: components["schemas"]["ExplorerFolder"][];
                 scopes?: components["schemas"]["ExplorerScope"][];
             };
+        };
+        /** @description The project's icon and primary color per theme in the editor (MQ8001 to MQ8003). An older server leaves it out. */
+        BrandingSettings: {
+            /** @description `branding/<name>.svg` or `.png` in the model folder; null for the editor's mark. */
+            icon: string | null;
+            colors: {
+                light: string | null;
+                dark: string | null;
+            };
+        };
+        BrandingIconUpload: {
+            /** @enum {string} */
+            contentType: "image/svg+xml" | "image/png";
+            /** @description The file, base64 (at most 512 KB decoded). */
+            data: string;
+        };
+        BrandingIconSaved: {
+            /** @description The model-relative path to save as `branding.icon`. */
+            icon: string;
+            /** @enum {string} */
+            contentType: "image/svg+xml" | "image/png";
+            hash: components["schemas"]["Hash"];
+            /** @description What was removed from an SVG before it was stored; empty when nothing was. */
+            removed: string[];
         };
         /** @description A named set of explorer filter chips; an empty member does not filter. */
         ExplorerScope: {
@@ -2176,6 +2234,16 @@ export interface components {
             parameters: components["schemas"]["PackParameterInfo"][];
             files: components["schemas"]["PackFileInfo"][];
             diagnostics: components["schemas"]["Diagnostic"][];
+            /** @description What the pack's own scripts register, by kind then name; empty when the pack does not load or a script fails. */
+            registrations: components["schemas"]["ScriptRegistration"][];
+        };
+        ScriptRegistration: {
+            /** @enum {string} */
+            kind: "helper" | "selector" | "filter" | "transform" | "rule";
+            /** @description The registered name (the rule id for rules). */
+            name: string;
+            /** @description The script path. */
+            declaredIn: string;
         };
         PackFileContent: {
             path: string;
@@ -2258,7 +2326,10 @@ export interface components {
             members: {
                 [key: string]: components["schemas"]["TemplateMember"][];
             };
+            /** @description The builtin helpers and the pack's own, ordinal. */
             helpers: string[];
+            /** @description What the pack's own scripts register, by kind then name; its helpers are also in helpers. */
+            registrations: components["schemas"]["ScriptRegistration"][];
         };
         PackFileMove: {
             from: string;
@@ -2515,6 +2586,22 @@ export interface components {
             $schema?: components["schemas"]["schemaPath"];
             formatVersion: number;
             name?: string;
+            /**
+             * @description The project's branding in the editor: an icon for the top bar, the browser tab and the sign-in page, and a primary color per theme. It changes no generated output.
+             * @default {}
+             */
+            branding?: {
+                /** @description The icon file, relative to the model folder: branding/<name>.svg or branding/<name>.png (MQ8002 when it does not exist, MQ8003 when it is not a safe SVG or a PNG of at most 512 KB). The editor's mark when absent. */
+                icon?: string | null;
+                /**
+                 * @description The primary color per theme, as #rrggbb or #rgb (MQ8001 otherwise). The editor's accent, focus rings and selection follow it; the built-in accent when absent.
+                 * @default {}
+                 */
+                colors?: {
+                    light?: string | null;
+                    dark?: string | null;
+                };
+            };
             /** @default {} */
             outputs?: {
                 /** @default [] */
@@ -4171,6 +4258,80 @@ export interface operations {
                 };
             };
             428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    getBrandingIcon: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The icon. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/svg+xml": string;
+                    "image/png": string;
+                };
+            };
+            /** @description The icon has the hash sent in `If-None-Match`. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    uploadBrandingIcon: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandingIconUpload"];
+            };
+        };
+        responses: {
+            /** @description Stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandingIconSaved"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description The icon is over 512 KB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not a PNG, or not well-formed SVG with an `<svg>` root in the SVG namespace; nothing was written. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     savePackSettings: {

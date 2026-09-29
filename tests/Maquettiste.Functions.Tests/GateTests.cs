@@ -287,7 +287,7 @@ public sealed class GateTests
         Assert.Equal(200, page.Status);
         Assert.False(page.Routed);
         Assert.StartsWith("text/html", page.ContentType, StringComparison.Ordinal);
-        Assert.Equal("default-src 'none'; style-src 'unsafe-inline'; form-action 'self'", page.Headers.ContentSecurityPolicy.ToString());
+        Assert.Equal("default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self'", page.Headers.ContentSecurityPolicy.ToString());
         Assert.Contains("action=\"/api/session\"", page.Text, StringComparison.Ordinal);
         Assert.Contains("value=\"/entities?sel=01J92P0V0FJ23CGSNKM7P1W5V7\"", page.Text, StringComparison.Ordinal);
         Assert.Equal(200, head.Status);
