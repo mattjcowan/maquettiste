@@ -1,0 +1,16 @@
+{
+  "$schema": ".schema/v1/maquettiste.json",
+  "formatVersion": 1,
+  "name": "processes",
+  "packs": {
+    "csharp-dapper": {
+      "output": "src/Processes.Data/Generated",
+      "parameters": {
+        "namespace": "Processes.Data"
+      }
+    },
+    "sql-ddl": {
+      "output": "db"
+    }
+  }
+}

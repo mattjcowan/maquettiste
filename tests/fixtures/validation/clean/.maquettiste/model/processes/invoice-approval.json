@@ -1,0 +1,37 @@
+{
+  "$schema": "../../.schema/v1/process.json",
+  "kind": "process",
+  "id": "01JPRC00000000000000009001",
+  "name": "InvoiceApproval",
+  "package": "01JPKG00000000000000000001",
+  "events": [
+    {
+      "id": "01JPRX00000000000000009001",
+      "name": "approve",
+      "actors": [
+        "01JACT00000000000000009001"
+      ]
+    }
+  ],
+  "states": [
+    {
+      "id": "01JSTA00000000000000009001",
+      "name": "Waiting"
+    },
+    {
+      "id": "01JSTA00000000000000009002",
+      "name": "Approved",
+      "type": "final"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "01JTRN00000000000000009001",
+      "source": "01JSTA00000000000000009001",
+      "event": "01JPRX00000000000000009001",
+      "targets": [
+        "01JSTA00000000000000009002"
+      ]
+    }
+  ]
+}

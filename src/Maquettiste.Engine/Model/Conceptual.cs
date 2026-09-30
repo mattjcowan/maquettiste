@@ -33,6 +33,10 @@ public sealed record Entity : Element
     [ElementRef(ElementKind.Entity)]
     public string? Base { get; init; }
 
+    /// <summary>The process that is this entity's lifecycle, or <see langword="null"/> (MQ9201 checks both sides).</summary>
+    [ElementRef(ElementKind.Process)]
+    public string? Lifecycle { get; init; }
+
     /// <summary>The primary key. Required unless the entity is abstract or has a base (MQ3005).</summary>
     public EntityKey? Key { get; init; }
 

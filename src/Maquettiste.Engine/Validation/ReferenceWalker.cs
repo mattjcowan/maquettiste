@@ -69,6 +69,11 @@ internal sealed class ReferenceWalker
                 case Role.Reference when child is string id:
                     sites.Add(new ReferenceSite(childPointer, fromId, property.Reference!, property.DeclaringType, property.ClrName, id));
                     break;
+                case Role.Reference when child is IDictionary map:
+                    // A map keyed by ids (a scenario's context and payload values, guard assumptions): each key is a reference.
+                    foreach (var key in map.Keys.Cast<string>().Order(StringComparer.Ordinal))
+                        sites.Add(new ReferenceSite(Ptr.Prop(childPointer, key), fromId, property.Reference!, property.DeclaringType, property.ClrName, key));
+                    break;
                 case Role.Reference when child is IEnumerable<string> ids:
                     var i = 0;
                     foreach (var item in ids)
@@ -103,6 +108,7 @@ internal sealed class ReferenceWalker
         CheckConstraint c => c.Id,
         TableIndex x => x.Id,
         RelationEnd e => e.Id,
+        IProcessNode n => n.Id,
         _ => null,
     };
 

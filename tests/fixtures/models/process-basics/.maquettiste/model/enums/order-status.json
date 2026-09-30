@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/enum.json",
+  "kind": "enum",
+  "id": "01JENM00000000000000000001",
+  "name": "OrderStatus",
+  "package": "01JPKG00000000000000000001",
+  "members": [
+    {
+      "id": "01JMEM00000000000000000001",
+      "name": "Draft"
+    },
+    {
+      "id": "01JMEM00000000000000000002",
+      "name": "Review"
+    },
+    {
+      "id": "01JMEM00000000000000000003",
+      "name": "Fulfilment"
+    },
+    {
+      "id": "01JMEM00000000000000000004",
+      "name": "Closed"
+    }
+  ]
+}

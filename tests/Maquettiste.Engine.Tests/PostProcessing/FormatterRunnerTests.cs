@@ -4,6 +4,7 @@ using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.PostProcessing;
 using Maquettiste.Testing;
+using Process = System.Diagnostics.Process;
 
 namespace Maquettiste.Engine.Tests.PostProcessing;
 

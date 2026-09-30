@@ -19,7 +19,7 @@ public sealed class CatalogTests
             Assert.Equal(info.Name, JsonSerializer.Serialize(info.Kind).Trim('"'));
         }
 
-        Assert.False(KindInfo.TryGet("process", out _));
+        Assert.False(KindInfo.TryGet("operation", out _));
     }
 
     [Fact]
@@ -39,11 +39,11 @@ public sealed class CatalogTests
 
         Assert.Equal(ids.Distinct(StringComparer.Ordinal), ids);
         Assert.Equal(ids.Order(StringComparer.Ordinal), ids);
-        Assert.All(ids, id => Assert.Matches("^MQ[1-8][0-9]{3}$", id));
+        Assert.All(ids, id => Assert.Matches("^MQ[1-9][0-9]{3}$", id));
         Assert.All(RuleCatalog.All.Where(r => r.Id.StartsWith("MQ1", StringComparison.Ordinal)), r => Assert.False(r.CanBeDisabled));
         Assert.Equal(DiagnosticSeverity.Warning, RuleCatalog.Get("MQ1003").DefaultSeverity);
         Assert.Equal(DiagnosticSeverity.Info, RuleCatalog.Get("MQ2006").DefaultSeverity);
-        Assert.Equal(116, RuleCatalog.All.Count);
+        Assert.Equal(146, RuleCatalog.All.Count);
     }
 
     [Fact]

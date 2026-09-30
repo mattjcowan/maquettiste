@@ -86,10 +86,20 @@ Public surface: the root facade, `Model`, `Diagnostics`, `Pipeline` (interfaces 
 | `stereotype` | `Stereotype` | `model/vocabularies/stereotypes/` | `stereotype.json` |
 | `reference-type` | `ReferenceType` | `model/reference-types/` | `reference-type.json` |
 | `seed` | `Seed` | `model/seeds/<target>/` | `seed.json` |
+| `process` | `Process` | `model/processes/` | `process.json` |
+| `actor` | `Actor` | `model/actors/` | `actor.json` |
+| `scenario` | `Scenario` | `model/scenarios/<process>/` | `scenario.json` |
 | (locale shard) | `LocaleShard` | `model/locales/<locale>/<domain path>.json`, `_root.json`, `_reference-data.json` | `locale.json` |
 | (settings) | `ProjectSettings` | `maquettiste.json` | `maquettiste.json` |
 | (pack) | `PackManifest` | `templates/<pack>/pack.json` | `pack.json` |
 | (extension) | `ExtensionSchema` | `extensions/*.json` | `extension.json` |
+
+Processes, actors and scenarios arrive in phase 3 (phase-3-design.md section 2). A scenario belongs to its process through an
+owning reference, as a seed belongs to its target: its folder is named after the process's file stem and deleting the process
+deletes its scenarios in the same save. Their sub-elements (`state`, `transition`, `event`, `guard`, `action`, `invoke`, `gate`,
+`meaning`, `step`) are index kinds with model-wide ULIDs. Index rows gain `use`, `subject` and `stateCount` (process), `actorType`
+(actor), `process` and `stepCount` (scenario), all from the row's own file; the index format constant (`ModelReads.IndexFormat`)
+moves with every change of the row shape and is `maquettiste-index/e8` since then.
 | (manifest, snapshot) | `ManifestFile`, `PhysicalSnapshot` | `manifest/<pack>.json`, `snapshots/<db>.json` | `manifest.json`, `snapshot.json` |
 
 Shared `$defs` live in `common.json`; `batch.json` validates untrusted batches and `diagnostics.json` describes `validate --format json`. The loader walks `model/**/*.json` recursively and dispatches on `kind`; a file outside its conventional folder loads, with warning MQ1005. The file name is the kebab-case name (`<db>` is the database's kebab name); on a collision in one folder, `-<last 6 characters of the id, lowercase>` is appended. Stores write to the conventional folder, and a rename moves the file in the same save (S11). A seed's folder is named after its target's file stem (`model/seeds/unit-of-measure/`), suffixed `-<last 6 of the target id>` on a collision; seed names are unique per target (reference-types-seeds-localization.md section 2.1). Files under `model/locales/` are **locale shards**, not elements: the loader reads them with `locale.json` (MQ1002, MQ1003 as for element files) and dispatches on `kind: "locale-shard"`; they carry no id and are not in `ModelSnapshot.Documents` (the shard model, completeness and the `l:` keys land with the localization engine, RT section 5 step 4).
@@ -252,7 +262,7 @@ public sealed record TranslationEntry { string? DisplayName; string? PluralName;
 // RelationEnd gains string? DisplayName; string? PluralName. Index sub-element kinds gain "reference-field" (code, label) and "row" (SeedRow).
 ```
 
-The S6 example's `lifecycle` field belongs to the phase 3 process schema; phase 1 schemas reject it (D7). The verbatim S6 and S7 examples fail only for the three adaptations listed in `docs/engineering/spec-errata.md` (E1 to E3); a test pins that.
+The S6 example's `lifecycle` field names a process: phase 1 schemas rejected it (D7), and since phase 3 `entity.json` accepts it (erratum E3 retired). The verbatim S6 and S7 examples fail only for the three adaptations listed in `docs/engineering/spec-errata.md` (E1 to E3); a test pins that.
 
 **Element serialization.** `Element` carries `[JsonDerivedType]` for all 17 concrete records without discriminators, so an `Element`-typed property (`ElementDocument.Element` in `SaveResult.Current` and `GetElementAsync`) serializes as its runtime record under any `JsonSerializerDefaults.Web` options; reading always goes through the kind's concrete type.
 

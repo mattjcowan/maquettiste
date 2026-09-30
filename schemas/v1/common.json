@@ -106,10 +106,10 @@
     "source": {
       "description": "Provenance of an imported element.",
       "type": "object",
-      "x-order": ["format", "name", "location", "fingerprint"],
+      "x-order": ["format", "name", "location", "fingerprint", "extensions"],
       "properties": {
         "format": {
-          "enum": ["dbml", "sql", "database", "openapi"]
+          "enum": ["dbml", "sql", "database", "openapi", "xstate"]
         },
         "name": {
           "type": "string"
@@ -119,6 +119,12 @@
         },
         "fingerprint": {
           "type": "string"
+        },
+        "extensions": {
+          "description": "Opaque data an import kept (unknown source configuration, by JSON pointer), written back on export.",
+          "type": "object",
+          "additionalProperties": true,
+          "default": {}
         }
       },
       "required": ["format"],

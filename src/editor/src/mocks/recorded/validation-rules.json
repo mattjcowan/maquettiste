@@ -926,5 +926,247 @@
     "family": "MQ80xx",
     "familyLabel": "Branding",
     "canBeOff": true
+  },
+  {
+    "id": "MQ9001",
+    "defaultSeverity": "error",
+    "description": "A compound state (or the process) whose initial is not one of its direct children, or an initial on a state that is not compound; set initial to a direct child, or remove it to use the first child.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true,
+    "quickFix": "set-initial"
+  },
+  {
+    "id": "MQ9002",
+    "defaultSeverity": "error",
+    "description": "A state's type contradicts its children: an atomic, final, history or choice state with children, or a compound or parallel state without; change the type or move the children.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9003",
+    "defaultSeverity": "warning",
+    "description": "An unreachable state: no path from the initial state through transitions, history defaults or invoke completions enters it (guards are ignored); add a transition to it or remove it.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9004",
+    "defaultSeverity": "warning",
+    "description": "A dead end: a reachable atomic state with no transition on itself or an ancestor and no invoke; add a transition or make it final.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9005",
+    "defaultSeverity": "info",
+    "description": "No final state is reachable, so the process never completes (normal for some lifecycles); add a final state and a transition to it if instances should end.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9006",
+    "defaultSeverity": "warning",
+    "description": "Overlapping transitions for one source and trigger: a transition after an unguarded one, or a guard tested twice, never fires; guard the earlier transition or remove the later one.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9007",
+    "defaultSeverity": "error",
+    "description": "Invalid targets: a state of another process, two targets in one region, or several targets not in orthogonal regions of one parallel ancestor; keep one target per region of this process.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9008",
+    "defaultSeverity": "error",
+    "description": "Trigger fields inconsistent: an event trigger without an event, an after trigger without a positive ISO 8601 duration, done on a state that cannot complete, an invoke trigger naming no invoke of the source, or a field of another trigger; fix the trigger or its field.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9009",
+    "defaultSeverity": "error",
+    "description": "A cycle of unguarded eventless transitions: the macrostep would never end; guard one of the transitions or give it an event.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9010",
+    "defaultSeverity": "error",
+    "description": "A choice state whose outgoing transitions are not all always, whose last transition is guarded (no default), or that has none; make them always transitions ending with an unguarded one.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9011",
+    "defaultSeverity": "error",
+    "description": "A history state outside a compound parent, or a default target that is not a descendant of its parent; move the history state into a compound state or pick a default inside it.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9012",
+    "defaultSeverity": "error",
+    "description": "A final state that is the source of transitions or invokes work; remove them, or make the state atomic.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9013",
+    "defaultSeverity": "warning",
+    "description": "A declared event, guard, action or invoke that nothing uses (an invoke is used by an invoke-done or invoke-error transition); use it or remove it.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9014",
+    "defaultSeverity": "error",
+    "description": "A reference to a state, event, guard, action or invoke of another process; declare it in this process instead.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9015",
+    "defaultSeverity": "error",
+    "description": "Invokes: a sub-process invoke cycle, a process invoke without a process, or a human task without actors; break the cycle, set the process, or list the actors.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9016",
+    "defaultSeverity": "warning",
+    "description": "A process diagram member that is not a state of the diagram's process; remove the member.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9017",
+    "defaultSeverity": "warning",
+    "description": "A parallel state with one region; add a region or make the state compound.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9018",
+    "defaultSeverity": "warning",
+    "description": "A done transition whose source has no reachable final state (in every region, for a parallel source), so it never fires; add a reachable final child or change the trigger.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9019",
+    "defaultSeverity": "error",
+    "description": "A process operation (sync-enum, set-lifecycle, set-initial) was refused: its element is not what the operation needs, the target is not a direct child or a process, the enum sync would remove members still in use, or another operation of the batch writes the process or enum it syncs; fix the operation, change the uses to a remaining member, or sync in a batch of its own.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9101",
+    "defaultSeverity": "error",
+    "description": "A gate needs more signatures than its signers can give (only person actors, repeat signing off); lower required, add signers, or allow repeat signers.",
+    "family": "MQ91xx",
+    "familyLabel": "Actors and gates",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9102",
+    "defaultSeverity": "error",
+    "description": "A gate's required actors are not all among its signers; add them to signers.",
+    "family": "MQ91xx",
+    "familyLabel": "Actors and gates",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9103",
+    "defaultSeverity": "error",
+    "description": "A gate on a transition whose trigger is not event, or two gates on one source and event; move the gate to an event transition or keep one gate.",
+    "family": "MQ91xx",
+    "familyLabel": "Actors and gates",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9104",
+    "defaultSeverity": "error",
+    "description": "A gate without meanings; add at least one meaning that says what a signature means.",
+    "family": "MQ91xx",
+    "familyLabel": "Actors and gates",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9105",
+    "defaultSeverity": "warning",
+    "description": "A gate signer that may not raise the gate's event (the event lists its actors and leaves the signer out); add the signer to the event's actors.",
+    "family": "MQ91xx",
+    "familyLabel": "Actors and gates",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9106",
+    "defaultSeverity": "info",
+    "description": "An actor no process references (event actors, gate signers, human tasks); use it in a process or remove it.",
+    "family": "MQ91xx",
+    "familyLabel": "Actors and gates",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9201",
+    "defaultSeverity": "error",
+    "description": "Lifecycle inconsistent: a lifecycle without a subject, a subject whose lifecycle does not name the process, or an entity whose lifecycle names an orchestration or another entity's lifecycle; set lifecycle on the subject to the process.",
+    "family": "MQ92xx",
+    "familyLabel": "Lifecycles",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9202",
+    "defaultSeverity": "error",
+    "description": "A bound attribute that is not a single-valued enum attribute of the subject (own, inherited or from a stereotype), or one set on an orchestration; bind a single-valued enum attribute of the subject.",
+    "family": "MQ92xx",
+    "familyLabel": "Lifecycles",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9203",
+    "defaultSeverity": "error",
+    "description": "Enum drift: the bound enum's members differ from the lifecycle's root-level states (missing, extra or out of order); sync the enum from the process.",
+    "family": "MQ92xx",
+    "familyLabel": "Lifecycles",
+    "canBeOff": true,
+    "quickFix": "sync-enum"
+  },
+  {
+    "id": "MQ9204",
+    "defaultSeverity": "warning",
+    "description": "The bound enum is used by other attributes or processes, so syncing it from the process changes them too; give the lifecycle its own enum if they should not follow.",
+    "family": "MQ92xx",
+    "familyLabel": "Lifecycles",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9205",
+    "defaultSeverity": "warning",
+    "description": "The bound attribute's default is not the lifecycle's initial root-level state; set the default to that state's name.",
+    "family": "MQ92xx",
+    "familyLabel": "Lifecycles",
+    "canBeOff": true
   }
 ]

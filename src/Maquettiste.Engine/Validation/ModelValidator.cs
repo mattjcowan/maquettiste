@@ -112,6 +112,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 {
                     var report = new Report(targets[i]);
                     BuiltinRules.Validate(context, report);
+                    ProcessRules.Validate(context, report);
                     extensions.Check(context, report);
                     if (runScripts)
                         RunScripts(pool!, rules, model, report, token);
@@ -286,6 +287,9 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             yield return mappedDocument;
         }
 
+        foreach (var peer in ProcessPeers(model, element))
+            yield return peer;
+
         switch (element)
         {
             case TagVocabulary or CategoryTree:
@@ -399,6 +403,12 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             case CategoryTree c:
                 foreach (var category in c.Categories) yield return category.Id;
                 break;
+            case Process p:
+                foreach (var id in ProcessNodeIds(p)) yield return id;
+                break;
+            case Scenario sc:
+                foreach (var step in sc.Steps) yield return step.Id;
+                break;
             case Table t:
                 foreach (var c in t.Columns) yield return c.Id;
                 foreach (var u in t.Uniques) yield return u.Id;
@@ -406,6 +416,75 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 foreach (var c in t.Checks) yield return c.Id;
                 foreach (var x in t.Indexes) yield return x.Id;
                 break;
+        }
+    }
+
+    private static IEnumerable<string> ProcessNodeIds(Process process)
+    {
+        foreach (var a in process.Context) yield return a.Id;
+        foreach (var e in process.Events)
+        {
+            yield return e.Id;
+            foreach (var a in e.Payload) yield return a.Id;
+        }
+
+        foreach (var g in process.Guards) yield return g.Id;
+        foreach (var a in process.Actions) yield return a.Id;
+        var stack = new Stack<ProcessState>(process.States.Reverse());
+        while (stack.Count > 0)
+        {
+            var state = stack.Pop();
+            yield return state.Id;
+            foreach (var invoke in state.Invoke) yield return invoke.Id;
+            for (var i = state.States.Count - 1; i >= 0; i--)
+                stack.Push(state.States[i]);
+        }
+
+        foreach (var t in process.Transitions)
+        {
+            yield return t.Id;
+            if (t.Gate is not { } gate)
+                continue;
+            yield return gate.Id;
+            foreach (var m in gate.Meanings) yield return m.Id;
+            foreach (var a in gate.AuditAttributes) yield return a.Id;
+        }
+    }
+
+    // The process rules that read other files: MQ9106 on actors depends on every process, MQ9015 on the sub-processes a process
+    // reaches, and MQ9203 to MQ9205 on the bound enum, the subject's attributes and every other use of the enum.
+    private static IEnumerable<ElementDocument> ProcessPeers(ModelSnapshot model, Element element)
+    {
+        if (element is Process process)
+        {
+            foreach (var actor in model.All<Actor>())
+            {
+                if (model.GetDocument(actor.Id) is { } peer)
+                    yield return peer;
+            }
+
+            var seen = new HashSet<string>(StringComparer.Ordinal) { process.Id };
+            var queue = new Queue<Process>([process]);
+            while (queue.Count > 0)
+            {
+                foreach (var callee in ProcessRules.Callees(queue.Dequeue()))
+                {
+                    if (seen.Add(callee) && model.Get<Process>(callee) is { } next && model.GetDocument(next.Id) is { } peer)
+                    {
+                        queue.Enqueue(next);
+                        yield return peer;
+                    }
+                }
+            }
+        }
+
+        if (element is Process or Entity or ValueObject or Relation or Stereotype or EnumType)
+        {
+            foreach (var bound in model.All<Process>())
+            {
+                if (bound.BoundAttribute is not null && model.GetDocument(bound.Id) is { } peer)
+                    yield return peer;
+            }
         }
     }
 

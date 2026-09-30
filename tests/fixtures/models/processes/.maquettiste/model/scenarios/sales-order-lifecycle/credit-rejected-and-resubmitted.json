@@ -1,0 +1,44 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JQSCN0000000000000000003",
+  "name": "CreditRejectedAndResubmitted",
+  "displayName": "Credit rejected and resubmitted",
+  "process": "01JQPRC0000000000000000001",
+  "start": {
+    "context": {
+      "01JQATT0000000000000000101": 5000,
+      "01JQATT0000000000000000102": 1000
+    }
+  },
+  "steps": [
+    {
+      "id": "01JQSTP0000000000000000008",
+      "event": "01JQPRX0000000000000000001",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000003"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000009",
+      "event": "01JQPRX0000000000000000003",
+      "actor": "01JQACT0000000000000000001",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000001"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000010",
+      "event": "01JQPRX0000000000000000001",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000003"
+        ]
+      }
+    }
+  ]
+}

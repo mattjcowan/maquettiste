@@ -1,0 +1,22 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JSCN00000000000000000002",
+  "name": "RefusedShip",
+  "process": "01JPRC00000000000000000001",
+  "start": {
+    "at": "2026-01-01T00:00:00Z"
+  },
+  "steps": [
+    {
+      "id": "01JSTP00000000000000000011",
+      "event": "01JPRX00000000000000000003",
+      "expect": {
+        "accepted": false,
+        "states": [
+          "01JSTA00000000000000000001"
+        ]
+      }
+    }
+  ]
+}

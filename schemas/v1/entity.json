@@ -13,6 +13,7 @@
     "package",
     "abstract",
     "base",
+    "lifecycle",
     "description",
     "stereotypes",
     "tags",
@@ -52,6 +53,10 @@
       "default": false
     },
     "base": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "lifecycle": {
+      "description": "The process that is this entity's lifecycle.",
       "$ref": "common.json#/$defs/id"
     },
     "description": {

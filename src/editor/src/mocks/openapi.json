@@ -7660,7 +7660,10 @@
           "category-tree",
           "stereotype",
           "reference-type",
-          "seed"
+          "seed",
+          "process",
+          "actor",
+          "scenario"
         ]
       },
       "ChangeSource": {
@@ -7780,6 +7783,41 @@
           "base": {
             "description": "The base entity's id, on entity rows that have one (E5h). Related-element highlighting reads base and derived entities from it.",
             "$ref": "#/components/schemas/Ulid"
+          },
+          "use": {
+            "description": "The process's use, on process rows (phase-3-design.md section 2.1).",
+            "type": "string",
+            "enum": [
+              "lifecycle",
+              "orchestration"
+            ]
+          },
+          "subject": {
+            "description": "The entity whose lifecycle the process is, on process rows that have one.",
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "stateCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The number of states at every depth, on process rows."
+          },
+          "actorType": {
+            "description": "The actor's type, on actor rows.",
+            "type": "string",
+            "enum": [
+              "person",
+              "role",
+              "external-system"
+            ]
+          },
+          "process": {
+            "description": "The process a scenario runs, on scenario rows.",
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "stepCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The number of steps, on scenario rows."
           }
         }
       },
@@ -7896,6 +7934,15 @@
           },
           {
             "$ref": "#/components/schemas/seed"
+          },
+          {
+            "$ref": "#/components/schemas/process"
+          },
+          {
+            "$ref": "#/components/schemas/actor"
+          },
+          {
+            "$ref": "#/components/schemas/scenario"
           }
         ]
       },
@@ -8259,7 +8306,7 @@
       },
       "BatchOp": {
         "type": "string",
-        "description": "`translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed.",
+        "description": "`translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `set-lifecycle` (`id` an entity, `target` a process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's lifecycle and turns the bound process back into an orchestration) and `set-initial` (`id` a process or a compound state, `target` one of its direct children). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`.",
         "enum": [
           "create",
           "update",
@@ -8268,7 +8315,10 @@
           "add-schema",
           "rename-schema",
           "remove-schema",
-          "set-default-schema"
+          "set-default-schema",
+          "sync-enum",
+          "set-lifecycle",
+          "set-initial"
         ]
       },
       "BatchOperation": {
@@ -8345,7 +8395,7 @@
             ]
           },
           "target": {
-            "description": "The schema id that what lives in the removed schema moves to (`remove-schema`).",
+            "description": "The schema id that what lives in the removed schema moves to (`remove-schema`); the process (`set-lifecycle`); the child state (`set-initial`).",
             "type": [
               "string",
               "null"
@@ -8473,6 +8523,15 @@
           "canBeOff": {
             "type": "boolean",
             "description": "Whether validation.rules may set the rule to off (false for MQ1xxx)."
+          },
+          "quickFix": {
+            "type": "string",
+            "enum": [
+              "sync-enum",
+              "set-lifecycle",
+              "set-initial"
+            ],
+            "description": "The batch operation that fixes a finding of the rule, applied to the finding's element (phase-3-design.md section 3); absent when the rule has none."
           }
         }
       },
@@ -8492,7 +8551,7 @@
         "properties": {
           "rule": {
             "type": "string",
-            "pattern": "^(MQ[1-7][0-9]{3}|x/.+)$"
+            "pattern": "^(MQ[1-9][0-9]{3}|x/.+)$"
           },
           "severity": {
             "$ref": "#/components/schemas/DiagnosticSeverity"
@@ -12347,7 +12406,8 @@
           "format",
           "name",
           "location",
-          "fingerprint"
+          "fingerprint",
+          "extensions"
         ],
         "properties": {
           "format": {
@@ -12355,7 +12415,8 @@
               "dbml",
               "sql",
               "database",
-              "openapi"
+              "openapi",
+              "xstate"
             ]
           },
           "name": {
@@ -12366,6 +12427,12 @@
           },
           "fingerprint": {
             "type": "string"
+          },
+          "extensions": {
+            "description": "Opaque data an import kept (unknown source configuration, by JSON pointer), written back on export.",
+            "type": "object",
+            "additionalProperties": true,
+            "default": {}
           }
         },
         "required": [
@@ -12727,6 +12794,7 @@
           "package",
           "abstract",
           "base",
+          "lifecycle",
           "description",
           "stereotypes",
           "tags",
@@ -12766,6 +12834,10 @@
             "default": false
           },
           "base": {
+            "$ref": "#/components/schemas/id"
+          },
+          "lifecycle": {
+            "description": "The process that is this entity's lifecycle.",
             "$ref": "#/components/schemas/id"
           },
           "description": {
@@ -14685,6 +14757,7 @@
           "displayName",
           "pluralName",
           "package",
+          "process",
           "description",
           "stereotypes",
           "tags",
@@ -14716,6 +14789,10 @@
             "type": "string"
           },
           "package": {
+            "$ref": "#/components/schemas/id"
+          },
+          "process": {
+            "description": "Set when the diagram is that process's statechart: its members are then states of the process.",
             "$ref": "#/components/schemas/id"
           },
           "description": {
@@ -15171,7 +15248,13 @@
                 "seed",
                 "attribute",
                 "enum-member",
-                "column"
+                "column",
+                "process",
+                "actor",
+                "scenario",
+                "state",
+                "transition",
+                "event"
               ]
             },
             "uniqueItems": true,
@@ -15520,10 +15603,1596 @@
         ],
         "additionalProperties": false
       },
+      "invoke": {
+        "title": "Invoke",
+        "description": "Work a state starts on entry: a sub-process, a service task or a human task.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "name",
+          "displayName",
+          "type",
+          "process",
+          "actors",
+          "description"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "process",
+              "service",
+              "human-task"
+            ]
+          },
+          "process": {
+            "description": "The sub-process, for type process.",
+            "$ref": "#/components/schemas/id"
+          },
+          "actors": {
+            "description": "Who may complete a human task.",
+            "$ref": "#/components/schemas/idList",
+            "default": []
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "state": {
+        "title": "State",
+        "description": "A state of the process; the root is implicit (the process is the root compound state).",
+        "type": "object",
+        "x-order": [
+          "id",
+          "name",
+          "displayName",
+          "type",
+          "initial",
+          "history",
+          "defaultTarget",
+          "entry",
+          "exit",
+          "invoke",
+          "states",
+          "description",
+          "stereotypes",
+          "properties"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "atomic",
+              "compound",
+              "parallel",
+              "final",
+              "history",
+              "choice"
+            ],
+            "default": "atomic"
+          },
+          "initial": {
+            "description": "Compound only: the initial child, a direct child (MQ9001); absent means the first child.",
+            "$ref": "#/components/schemas/id"
+          },
+          "history": {
+            "description": "History only: shallow or deep.",
+            "enum": [
+              "shallow",
+              "deep"
+            ],
+            "default": "shallow"
+          },
+          "defaultTarget": {
+            "description": "History only: the state entered when no history is recorded; absent means the parent's initial.",
+            "$ref": "#/components/schemas/id"
+          },
+          "entry": {
+            "description": "Actions run on entry, in list order.",
+            "$ref": "#/components/schemas/idList",
+            "default": []
+          },
+          "exit": {
+            "description": "Actions run on exit, in list order.",
+            "$ref": "#/components/schemas/idList",
+            "default": []
+          },
+          "invoke": {
+            "description": "Invocations started on entry and cancelled on exit, in display order.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/invoke"
+            },
+            "default": []
+          },
+          "states": {
+            "description": "Children in document order; the regions of a parallel state.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/state"
+            },
+            "default": []
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "meaning": {
+        "title": "Meaning",
+        "description": "What a signature means.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "name",
+          "displayName",
+          "description"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "gate": {
+        "title": "Gate",
+        "description": "A signature gate on an event transition: the transition fires on the occurrence that completes the gate.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "name",
+          "displayName",
+          "required",
+          "signers",
+          "requiredActors",
+          "allowRepeatSigner",
+          "reasonRequired",
+          "meanings",
+          "auditAttributes",
+          "description"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "required": {
+            "description": "The number of signatures needed.",
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "signers": {
+            "description": "The actors whose members may sign.",
+            "$ref": "#/components/schemas/idList",
+            "minItems": 1
+          },
+          "requiredActors": {
+            "description": "Actors each of which must give at least one signature (a subset of signers).",
+            "$ref": "#/components/schemas/idList",
+            "default": []
+          },
+          "allowRepeatSigner": {
+            "description": "Whether one signer may count twice.",
+            "type": "boolean",
+            "default": false
+          },
+          "reasonRequired": {
+            "description": "Whether each signature must carry a reason.",
+            "type": "boolean",
+            "default": false
+          },
+          "meanings": {
+            "description": "What a signature means.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/meaning"
+            },
+            "minItems": 1
+          },
+          "auditAttributes": {
+            "description": "Extra fields recorded with each signature.",
+            "type": "array",
+            "x-sort": "order",
+            "items": {
+              "$ref": "#/components/schemas/attribute"
+            },
+            "default": []
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "signers",
+          "meanings"
+        ],
+        "additionalProperties": false
+      },
+      "event": {
+        "title": "Event",
+        "description": "A process-local event.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "name",
+          "displayName",
+          "payload",
+          "actors",
+          "description",
+          "stereotypes",
+          "properties"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "payload": {
+            "description": "The typed payload.",
+            "type": "array",
+            "x-sort": "order",
+            "items": {
+              "$ref": "#/components/schemas/attribute"
+            },
+            "default": []
+          },
+          "actors": {
+            "description": "The actors that may send the event; empty means any actor.",
+            "$ref": "#/components/schemas/idList",
+            "default": []
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "guard": {
+        "title": "Guard",
+        "description": "A named condition; without an expression it is a stub.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "name",
+          "displayName",
+          "expression",
+          "description"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "expression": {
+            "description": "A JavaScript expression over context and event returning a boolean.",
+            "type": "string"
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "action": {
+        "title": "Action",
+        "description": "A named effect; without an expression it is a stub.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "name",
+          "displayName",
+          "expression",
+          "raises",
+          "description"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "expression": {
+            "description": "A JavaScript expression returning an object of context updates.",
+            "type": "string"
+          },
+          "raises": {
+            "description": "Internal events queued after the action.",
+            "$ref": "#/components/schemas/idList",
+            "default": []
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "transition": {
+        "title": "Transition",
+        "description": "A transition; among transitions with one source and one trigger, array order is priority.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "displayName",
+          "source",
+          "trigger",
+          "event",
+          "after",
+          "invoke",
+          "guard",
+          "targets",
+          "actions",
+          "external",
+          "gate",
+          "description",
+          "stereotypes",
+          "properties"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "displayName": {
+            "description": "The edge label when set.",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/id"
+          },
+          "trigger": {
+            "enum": [
+              "event",
+              "after",
+              "done",
+              "always",
+              "invoke-done",
+              "invoke-error"
+            ],
+            "default": "event"
+          },
+          "event": {
+            "description": "Required when trigger is event.",
+            "$ref": "#/components/schemas/id"
+          },
+          "after": {
+            "description": "An ISO 8601 duration; required when trigger is after.",
+            "type": "string"
+          },
+          "invoke": {
+            "description": "An invoke of the source; required for invoke-done and invoke-error.",
+            "$ref": "#/components/schemas/id"
+          },
+          "guard": {
+            "description": "Unguarded when absent.",
+            "$ref": "#/components/schemas/id"
+          },
+          "targets": {
+            "description": "None: targetless; several: one per orthogonal region.",
+            "$ref": "#/components/schemas/idList",
+            "default": []
+          },
+          "actions": {
+            "description": "Actions run on the transition, in list order.",
+            "$ref": "#/components/schemas/idList",
+            "default": []
+          },
+          "external": {
+            "description": "Whether the source is exited and re-entered when a target is its descendant.",
+            "type": "boolean",
+            "default": false
+          },
+          "gate": {
+            "$ref": "#/components/schemas/gate"
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
+          }
+        },
+        "required": [
+          "id",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "process": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Process",
+        "description": "A statechart: an entity lifecycle or an orchestration (model/processes/).",
+        "type": "object",
+        "x-order": [
+          "$schema",
+          "kind",
+          "id",
+          "name",
+          "displayName",
+          "pluralName",
+          "package",
+          "use",
+          "subject",
+          "boundAttribute",
+          "description",
+          "stereotypes",
+          "tags",
+          "category",
+          "context",
+          "events",
+          "guards",
+          "actions",
+          "states",
+          "initial",
+          "transitions",
+          "properties",
+          "generation",
+          "source"
+        ],
+        "properties": {
+          "$schema": {
+            "$ref": "#/components/schemas/schemaPath"
+          },
+          "kind": {
+            "const": "process"
+          },
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier",
+            "default": ""
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluralName": {
+            "type": "string"
+          },
+          "package": {
+            "$ref": "#/components/schemas/id"
+          },
+          "use": {
+            "enum": [
+              "lifecycle",
+              "orchestration"
+            ],
+            "default": "orchestration"
+          },
+          "subject": {
+            "description": "The entity whose lifecycle this is; required when use is lifecycle.",
+            "$ref": "#/components/schemas/id"
+          },
+          "boundAttribute": {
+            "description": "An enum-typed attribute of the subject that holds the state (lifecycle only).",
+            "$ref": "#/components/schemas/id"
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "tags": {
+            "$ref": "#/components/schemas/tagList",
+            "default": []
+          },
+          "category": {
+            "$ref": "#/components/schemas/id"
+          },
+          "context": {
+            "description": "The running instance's data.",
+            "type": "array",
+            "x-sort": "order",
+            "items": {
+              "$ref": "#/components/schemas/attribute"
+            },
+            "default": []
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/event"
+            },
+            "default": []
+          },
+          "guards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/guard"
+            },
+            "default": []
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/action"
+            },
+            "default": []
+          },
+          "states": {
+            "description": "The root's children, in document order.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/state"
+            },
+            "minItems": 1
+          },
+          "initial": {
+            "description": "The root's initial child; absent means the first.",
+            "$ref": "#/components/schemas/id"
+          },
+          "transitions": {
+            "description": "In priority order.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/transition"
+            },
+            "default": []
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
+          },
+          "generation": {
+            "$ref": "#/components/schemas/generation",
+            "default": {}
+          },
+          "source": {
+            "$ref": "#/components/schemas/source"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "states"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "state": {
+            "title": "State",
+            "description": "A state of the process; the root is implicit (the process is the root compound state).",
+            "type": "object",
+            "x-order": [
+              "id",
+              "name",
+              "displayName",
+              "type",
+              "initial",
+              "history",
+              "defaultTarget",
+              "entry",
+              "exit",
+              "invoke",
+              "states",
+              "description",
+              "stereotypes",
+              "properties"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "name": {
+                "$ref": "#/components/schemas/identifier"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "atomic",
+                  "compound",
+                  "parallel",
+                  "final",
+                  "history",
+                  "choice"
+                ],
+                "default": "atomic"
+              },
+              "initial": {
+                "description": "Compound only: the initial child, a direct child (MQ9001); absent means the first child.",
+                "$ref": "#/components/schemas/id"
+              },
+              "history": {
+                "description": "History only: shallow or deep.",
+                "enum": [
+                  "shallow",
+                  "deep"
+                ],
+                "default": "shallow"
+              },
+              "defaultTarget": {
+                "description": "History only: the state entered when no history is recorded; absent means the parent's initial.",
+                "$ref": "#/components/schemas/id"
+              },
+              "entry": {
+                "description": "Actions run on entry, in list order.",
+                "$ref": "#/components/schemas/idList",
+                "default": []
+              },
+              "exit": {
+                "description": "Actions run on exit, in list order.",
+                "$ref": "#/components/schemas/idList",
+                "default": []
+              },
+              "invoke": {
+                "description": "Invocations started on entry and cancelled on exit, in display order.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/invoke"
+                },
+                "default": []
+              },
+              "states": {
+                "description": "Children in document order; the regions of a parallel state.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/state"
+                },
+                "default": []
+              },
+              "description": {
+                "$ref": "#/components/schemas/description"
+              },
+              "stereotypes": {
+                "$ref": "#/components/schemas/keyList",
+                "default": []
+              },
+              "properties": {
+                "$ref": "#/components/schemas/properties",
+                "default": {}
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "transition": {
+            "title": "Transition",
+            "description": "A transition; among transitions with one source and one trigger, array order is priority.",
+            "type": "object",
+            "x-order": [
+              "id",
+              "displayName",
+              "source",
+              "trigger",
+              "event",
+              "after",
+              "invoke",
+              "guard",
+              "targets",
+              "actions",
+              "external",
+              "gate",
+              "description",
+              "stereotypes",
+              "properties"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "displayName": {
+                "description": "The edge label when set.",
+                "type": "string"
+              },
+              "source": {
+                "$ref": "#/components/schemas/id"
+              },
+              "trigger": {
+                "enum": [
+                  "event",
+                  "after",
+                  "done",
+                  "always",
+                  "invoke-done",
+                  "invoke-error"
+                ],
+                "default": "event"
+              },
+              "event": {
+                "description": "Required when trigger is event.",
+                "$ref": "#/components/schemas/id"
+              },
+              "after": {
+                "description": "An ISO 8601 duration; required when trigger is after.",
+                "type": "string"
+              },
+              "invoke": {
+                "description": "An invoke of the source; required for invoke-done and invoke-error.",
+                "$ref": "#/components/schemas/id"
+              },
+              "guard": {
+                "description": "Unguarded when absent.",
+                "$ref": "#/components/schemas/id"
+              },
+              "targets": {
+                "description": "None: targetless; several: one per orthogonal region.",
+                "$ref": "#/components/schemas/idList",
+                "default": []
+              },
+              "actions": {
+                "description": "Actions run on the transition, in list order.",
+                "$ref": "#/components/schemas/idList",
+                "default": []
+              },
+              "external": {
+                "description": "Whether the source is exited and re-entered when a target is its descendant.",
+                "type": "boolean",
+                "default": false
+              },
+              "gate": {
+                "$ref": "#/components/schemas/gate"
+              },
+              "description": {
+                "$ref": "#/components/schemas/description"
+              },
+              "stereotypes": {
+                "$ref": "#/components/schemas/keyList",
+                "default": []
+              },
+              "properties": {
+                "$ref": "#/components/schemas/properties",
+                "default": {}
+              }
+            },
+            "required": [
+              "id",
+              "source"
+            ],
+            "additionalProperties": false
+          },
+          "event": {
+            "title": "Event",
+            "description": "A process-local event.",
+            "type": "object",
+            "x-order": [
+              "id",
+              "name",
+              "displayName",
+              "payload",
+              "actors",
+              "description",
+              "stereotypes",
+              "properties"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "name": {
+                "$ref": "#/components/schemas/identifier"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "payload": {
+                "description": "The typed payload.",
+                "type": "array",
+                "x-sort": "order",
+                "items": {
+                  "$ref": "#/components/schemas/attribute"
+                },
+                "default": []
+              },
+              "actors": {
+                "description": "The actors that may send the event; empty means any actor.",
+                "$ref": "#/components/schemas/idList",
+                "default": []
+              },
+              "description": {
+                "$ref": "#/components/schemas/description"
+              },
+              "stereotypes": {
+                "$ref": "#/components/schemas/keyList",
+                "default": []
+              },
+              "properties": {
+                "$ref": "#/components/schemas/properties",
+                "default": {}
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "guard": {
+            "title": "Guard",
+            "description": "A named condition; without an expression it is a stub.",
+            "type": "object",
+            "x-order": [
+              "id",
+              "name",
+              "displayName",
+              "expression",
+              "description"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "name": {
+                "$ref": "#/components/schemas/identifier"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "expression": {
+                "description": "A JavaScript expression over context and event returning a boolean.",
+                "type": "string"
+              },
+              "description": {
+                "$ref": "#/components/schemas/description"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "action": {
+            "title": "Action",
+            "description": "A named effect; without an expression it is a stub.",
+            "type": "object",
+            "x-order": [
+              "id",
+              "name",
+              "displayName",
+              "expression",
+              "raises",
+              "description"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "name": {
+                "$ref": "#/components/schemas/identifier"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "expression": {
+                "description": "A JavaScript expression returning an object of context updates.",
+                "type": "string"
+              },
+              "raises": {
+                "description": "Internal events queued after the action.",
+                "$ref": "#/components/schemas/idList",
+                "default": []
+              },
+              "description": {
+                "$ref": "#/components/schemas/description"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "invoke": {
+            "title": "Invoke",
+            "description": "Work a state starts on entry: a sub-process, a service task or a human task.",
+            "type": "object",
+            "x-order": [
+              "id",
+              "name",
+              "displayName",
+              "type",
+              "process",
+              "actors",
+              "description"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "name": {
+                "$ref": "#/components/schemas/identifier"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "process",
+                  "service",
+                  "human-task"
+                ]
+              },
+              "process": {
+                "description": "The sub-process, for type process.",
+                "$ref": "#/components/schemas/id"
+              },
+              "actors": {
+                "description": "Who may complete a human task.",
+                "$ref": "#/components/schemas/idList",
+                "default": []
+              },
+              "description": {
+                "$ref": "#/components/schemas/description"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          "gate": {
+            "title": "Gate",
+            "description": "A signature gate on an event transition: the transition fires on the occurrence that completes the gate.",
+            "type": "object",
+            "x-order": [
+              "id",
+              "name",
+              "displayName",
+              "required",
+              "signers",
+              "requiredActors",
+              "allowRepeatSigner",
+              "reasonRequired",
+              "meanings",
+              "auditAttributes",
+              "description"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "name": {
+                "$ref": "#/components/schemas/identifier"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "required": {
+                "description": "The number of signatures needed.",
+                "type": "integer",
+                "minimum": 1,
+                "default": 1
+              },
+              "signers": {
+                "description": "The actors whose members may sign.",
+                "$ref": "#/components/schemas/idList",
+                "minItems": 1
+              },
+              "requiredActors": {
+                "description": "Actors each of which must give at least one signature (a subset of signers).",
+                "$ref": "#/components/schemas/idList",
+                "default": []
+              },
+              "allowRepeatSigner": {
+                "description": "Whether one signer may count twice.",
+                "type": "boolean",
+                "default": false
+              },
+              "reasonRequired": {
+                "description": "Whether each signature must carry a reason.",
+                "type": "boolean",
+                "default": false
+              },
+              "meanings": {
+                "description": "What a signature means.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/meaning"
+                },
+                "minItems": 1
+              },
+              "auditAttributes": {
+                "description": "Extra fields recorded with each signature.",
+                "type": "array",
+                "x-sort": "order",
+                "items": {
+                  "$ref": "#/components/schemas/attribute"
+                },
+                "default": []
+              },
+              "description": {
+                "$ref": "#/components/schemas/description"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "signers",
+              "meanings"
+            ],
+            "additionalProperties": false
+          },
+          "meaning": {
+            "title": "Meaning",
+            "description": "What a signature means.",
+            "type": "object",
+            "x-order": [
+              "id",
+              "name",
+              "displayName",
+              "description"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "name": {
+                "$ref": "#/components/schemas/identifier"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "description": {
+                "$ref": "#/components/schemas/description"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "actor": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Actor",
+        "description": "A person, a role or an external system that takes part in processes (model/actors/).",
+        "type": "object",
+        "x-order": [
+          "$schema",
+          "kind",
+          "id",
+          "name",
+          "displayName",
+          "pluralName",
+          "type",
+          "description",
+          "stereotypes",
+          "tags",
+          "category",
+          "properties",
+          "generation",
+          "source"
+        ],
+        "properties": {
+          "$schema": {
+            "$ref": "#/components/schemas/schemaPath"
+          },
+          "kind": {
+            "const": "actor"
+          },
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier",
+            "default": ""
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluralName": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "person",
+              "role",
+              "external-system"
+            ]
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "tags": {
+            "$ref": "#/components/schemas/tagList",
+            "default": []
+          },
+          "category": {
+            "$ref": "#/components/schemas/id"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
+          },
+          "generation": {
+            "$ref": "#/components/schemas/generation",
+            "default": {}
+          },
+          "source": {
+            "$ref": "#/components/schemas/source"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "step": {
+        "title": "Step",
+        "description": "One input to the process and what is expected after it.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "input",
+          "event",
+          "invoke",
+          "after",
+          "actor",
+          "signer",
+          "meaning",
+          "reason",
+          "payload",
+          "assume",
+          "expect",
+          "description"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "input": {
+            "enum": [
+              "event",
+              "time",
+              "invoke-done",
+              "invoke-error"
+            ],
+            "default": "event"
+          },
+          "event": {
+            "$ref": "#/components/schemas/id"
+          },
+          "invoke": {
+            "$ref": "#/components/schemas/id"
+          },
+          "after": {
+            "description": "An ISO 8601 duration to advance the clock by, for input time.",
+            "type": "string"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/id"
+          },
+          "signer": {
+            "description": "The signing person's identity, for gated events.",
+            "type": "string"
+          },
+          "meaning": {
+            "$ref": "#/components/schemas/id"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "payload": {
+            "description": "Payload values by attribute id.",
+            "type": "object",
+            "propertyNames": {
+              "$ref": "#/components/schemas/id"
+            },
+            "additionalProperties": {
+              "description": "A value of the attribute's type."
+            },
+            "default": {}
+          },
+          "assume": {
+            "description": "Results for guards without an expression, by guard id.",
+            "type": "object",
+            "propertyNames": {
+              "$ref": "#/components/schemas/id"
+            },
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "default": {}
+          },
+          "expect": {
+            "description": "What is expected after the step.",
+            "type": "object",
+            "x-order": [
+              "accepted",
+              "states",
+              "context"
+            ],
+            "properties": {
+              "accepted": {
+                "description": "false records a refusal.",
+                "type": "boolean",
+                "default": true
+              },
+              "states": {
+                "description": "The active atomic states, in document order.",
+                "$ref": "#/components/schemas/idList",
+                "default": []
+              },
+              "context": {
+                "description": "The attributes the step changed, by attribute id.",
+                "type": "object",
+                "propertyNames": {
+                  "$ref": "#/components/schemas/id"
+                },
+                "additionalProperties": {
+                  "description": "A value of the attribute's type."
+                },
+                "default": {}
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "scenario": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Scenario",
+        "description": "A recorded event sequence of one process (model/scenarios/<process stem>/); it belongs to the process.",
+        "type": "object",
+        "x-order": [
+          "$schema",
+          "kind",
+          "id",
+          "name",
+          "displayName",
+          "pluralName",
+          "process",
+          "description",
+          "stereotypes",
+          "tags",
+          "category",
+          "start",
+          "steps",
+          "outcome",
+          "properties",
+          "generation",
+          "source"
+        ],
+        "properties": {
+          "$schema": {
+            "$ref": "#/components/schemas/schemaPath"
+          },
+          "kind": {
+            "const": "scenario"
+          },
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier",
+            "default": ""
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluralName": {
+            "type": "string"
+          },
+          "process": {
+            "description": "The process; the scenario belongs to it.",
+            "$ref": "#/components/schemas/id"
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "tags": {
+            "$ref": "#/components/schemas/tagList",
+            "default": []
+          },
+          "category": {
+            "$ref": "#/components/schemas/id"
+          },
+          "start": {
+            "description": "The starting point.",
+            "type": "object",
+            "x-order": [
+              "context",
+              "at"
+            ],
+            "properties": {
+              "context": {
+                "description": "Initial context values over the attribute defaults, by attribute id.",
+                "type": "object",
+                "propertyNames": {
+                  "$ref": "#/components/schemas/id"
+                },
+                "additionalProperties": {
+                  "description": "A value of the attribute's type."
+                },
+                "default": {}
+              },
+              "at": {
+                "description": "The simulated clock's start (an ISO 8601 instant).",
+                "type": "string",
+                "default": "2000-01-01T00:00:00Z"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "steps": {
+            "description": "In order.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/step"
+            },
+            "minItems": 1
+          },
+          "outcome": {
+            "description": "Whether the root is final after the last step.",
+            "enum": [
+              "final",
+              "active"
+            ],
+            "default": "active"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
+          },
+          "generation": {
+            "$ref": "#/components/schemas/generation",
+            "default": {}
+          },
+          "source": {
+            "$ref": "#/components/schemas/source"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "process",
+          "steps"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "step": {
+            "title": "Step",
+            "description": "One input to the process and what is expected after it.",
+            "type": "object",
+            "x-order": [
+              "id",
+              "input",
+              "event",
+              "invoke",
+              "after",
+              "actor",
+              "signer",
+              "meaning",
+              "reason",
+              "payload",
+              "assume",
+              "expect",
+              "description"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "input": {
+                "enum": [
+                  "event",
+                  "time",
+                  "invoke-done",
+                  "invoke-error"
+                ],
+                "default": "event"
+              },
+              "event": {
+                "$ref": "#/components/schemas/id"
+              },
+              "invoke": {
+                "$ref": "#/components/schemas/id"
+              },
+              "after": {
+                "description": "An ISO 8601 duration to advance the clock by, for input time.",
+                "type": "string"
+              },
+              "actor": {
+                "$ref": "#/components/schemas/id"
+              },
+              "signer": {
+                "description": "The signing person's identity, for gated events.",
+                "type": "string"
+              },
+              "meaning": {
+                "$ref": "#/components/schemas/id"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "payload": {
+                "description": "Payload values by attribute id.",
+                "type": "object",
+                "propertyNames": {
+                  "$ref": "#/components/schemas/id"
+                },
+                "additionalProperties": {
+                  "description": "A value of the attribute's type."
+                },
+                "default": {}
+              },
+              "assume": {
+                "description": "Results for guards without an expression, by guard id.",
+                "type": "object",
+                "propertyNames": {
+                  "$ref": "#/components/schemas/id"
+                },
+                "additionalProperties": {
+                  "type": "boolean"
+                },
+                "default": {}
+              },
+              "expect": {
+                "description": "What is expected after the step.",
+                "type": "object",
+                "x-order": [
+                  "accepted",
+                  "states",
+                  "context"
+                ],
+                "properties": {
+                  "accepted": {
+                    "description": "false records a refusal.",
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "states": {
+                    "description": "The active atomic states, in document order.",
+                    "$ref": "#/components/schemas/idList",
+                    "default": []
+                  },
+                  "context": {
+                    "description": "The attributes the step changed, by attribute id.",
+                    "type": "object",
+                    "propertyNames": {
+                      "$ref": "#/components/schemas/id"
+                    },
+                    "additionalProperties": {
+                      "description": "A value of the attribute's type."
+                    },
+                    "default": {}
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "description": {
+                "$ref": "#/components/schemas/description"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
       "batch": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Model batch",
-        "description": "An atomic batch of element creates, updates and deletes and database schema operations, from the editor, a refactoring or an AI proposal.",
+        "description": "An atomic batch of element creates, updates and deletes, database schema operations and process operations, from the editor, a refactoring or an AI proposal.",
         "type": "object",
         "x-order": [
           "operations"
@@ -15557,7 +17226,10 @@
                     "add-schema",
                     "rename-schema",
                     "remove-schema",
-                    "set-default-schema"
+                    "set-default-schema",
+                    "sync-enum",
+                    "set-lifecycle",
+                    "set-initial"
                   ]
                 },
                 "id": {
@@ -15605,7 +17277,7 @@
                   "minLength": 1
                 },
                 "target": {
-                  "description": "The schema id that the tables, views, sequences, convention entries and mappings of the removed schema move to (remove-schema).",
+                  "description": "The schema id that the tables, views, sequences, convention entries and mappings of the removed schema move to (remove-schema); the process the entity follows, or absent to clear the lifecycle (set-lifecycle); the child state that becomes the initial one (set-initial).",
                   "$ref": "#/components/schemas/id"
                 },
                 "default": {
@@ -15678,7 +17350,10 @@
                           "add-schema",
                           "rename-schema",
                           "remove-schema",
-                          "set-default-schema"
+                          "set-default-schema",
+                          "sync-enum",
+                          "set-lifecycle",
+                          "set-initial"
                         ]
                       }
                     }
@@ -15686,6 +17361,20 @@
                   "then": {
                     "required": [
                       "id"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "op": {
+                        "const": "set-initial"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "target"
                     ]
                   }
                 },
@@ -15836,7 +17525,7 @@
                 },
                 "for": {
                   "type": "string",
-                  "pattern": "^(model|each (package|entity|relation|enum|value object|table|reference type|seed|locale)|select [A-Za-z_][A-Za-z0-9_]*)$"
+                  "pattern": "^(model|each (package|entity|relation|enum|value object|table|reference type|seed|locale|process|actor|scenario)|select [A-Za-z_][A-Za-z0-9_]*)$"
                 },
                 "where": {
                   "title": "Unit filters",

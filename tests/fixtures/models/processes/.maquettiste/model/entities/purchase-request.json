@@ -1,0 +1,32 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JQENT0000000000000000003",
+  "name": "PurchaseRequest",
+  "package": "01JQPKG0000000000000000002",
+  "key": {
+    "attributes": [
+      "01JQATT0000000000000000011"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01JQATT0000000000000000011",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01JQATT0000000000000000012",
+      "name": "amount",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "id": "01JQATT0000000000000000013",
+      "name": "costCentre",
+      "type": "string"
+    }
+  ]
+}

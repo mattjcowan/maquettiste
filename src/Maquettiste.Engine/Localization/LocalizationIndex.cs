@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
@@ -516,6 +517,8 @@ public sealed class LocalizationIndex
             ScalarType st => st.Package,
             EnumType en => en.Package,
             Relation r => r.Package,
+            Process process => process.Package,
+            Scenario scenario => (find(scenario.Process) as Process)?.Package,
             _ => null,
         };
         if (package == ReferenceDataScope)
@@ -652,10 +655,12 @@ public sealed class LocalizationIndex
                 Cell(row, rowSeed.Label), Cell(row, rowSeed.Description), false, false);
         }
 
-        if (entry.Kind is not ("attribute" or "end" or "enum-member" or "reference-field" or "category"))
+        if (entry.Kind is not ("attribute" or "end" or "enum-member" or "reference-field" or "category") && !ProcessNodeKinds.Contains(entry.Kind))
             return null;
         if (!Json.JsonPointer.TryGet(document.Json, entry.JsonPointer, out var node) || node.ValueKind != JsonValueKind.Object)
             return null;
+        if (ProcessNodeKinds.Contains(entry.Kind))
+            return ProcessNode(entry, scope, node);
         var name = String(node, "name") ?? String(node, "role");
         var display = String(node, "displayName") ?? name ?? (entry.Kind == "reference-field" ? DefaultFieldName(entry.JsonPointer) : null);
         var plural = String(node, "pluralName");
@@ -669,6 +674,27 @@ public sealed class LocalizationIndex
         var hasPlural = entry.Kind == "category" || (entry.Kind == "end" && toMany);
         return new LocalizableNode(entry.Id, entry.OwnerId, entry.Kind, scope, display, hasPlural ? plural ?? display : null, null,
             description, hasPlural, entry.Kind == "end" && !toMany && plural is not null);
+    }
+
+    /// <summary>The sub-elements of processes and scenarios (phase-3-design.md section 2.6).</summary>
+    private static readonly FrozenSet<string> ProcessNodeKinds =
+        FrozenSet.Create(StringComparer.Ordinal, "state", "transition", "event", "guard", "action", "invoke", "gate", "meaning", "step");
+
+    /// <summary>
+    /// A process or scenario sub-element: a transition localizes its <c>displayName</c> only (the edge label, no fallback to a name it
+    /// does not have), a scenario step its <c>description</c> only, and the others their display name (falling back to the name) and
+    /// description. None has a plural.
+    /// </summary>
+    private static LocalizableNode ProcessNode(IndexEntry entry, string scope, JsonElement node)
+    {
+        var display = entry.Kind == "step" ? null : String(node, "displayName") ?? String(node, "name");
+        var description = entry.Kind == "transition" ? null : node.TryGetProperty("description", out var d) ? d.ValueKind switch
+        {
+            JsonValueKind.String => d.GetString(),
+            JsonValueKind.Object when d.TryGetProperty("file", out var f) && f.ValueKind == JsonValueKind.String => "file:" + f.GetString(),
+            _ => null,
+        } : null;
+        return new LocalizableNode(entry.Id, entry.OwnerId, entry.Kind, scope, display, null, null, description, false, false);
     }
 
     private static string DefaultFieldName(string pointer) => pointer.EndsWith("/label", StringComparison.Ordinal) ? "Label" : "Code";

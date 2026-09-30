@@ -53,6 +53,9 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                     "rename-schema" => BatchOp.RenameSchema,
                     "remove-schema" => BatchOp.RemoveSchema,
                     "set-default-schema" => BatchOp.SetDefaultSchema,
+                    "sync-enum" => BatchOp.SyncEnum,
+                    "set-lifecycle" => BatchOp.SetLifecycle,
+                    "set-initial" => BatchOp.SetInitial,
                     _ => BatchOp.Delete,
                 };
                 operations.Add(new BatchOperation(

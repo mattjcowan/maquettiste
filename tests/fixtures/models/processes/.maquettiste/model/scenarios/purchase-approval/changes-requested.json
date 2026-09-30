@@ -1,0 +1,58 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JQSCN0000000000000000009",
+  "name": "ChangesRequested",
+  "displayName": "Changes requested loop",
+  "process": "01JQPRC0000000000000000002",
+  "start": {
+    "context": {
+      "01JQATT0000000000000000201": 2500
+    }
+  },
+  "steps": [
+    {
+      "id": "01JQSTP0000000000000000031",
+      "event": "01JQPRX0000000000000000014",
+      "actor": "01JQACT0000000000000000003",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000104",
+          "01JQSTA0000000000000000108"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000032",
+      "input": "invoke-error",
+      "invoke": "01JQPRX0000000000000000019",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000106",
+          "01JQSTA0000000000000000108"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000033",
+      "event": "01JQPRX0000000000000000015",
+      "actor": "01JQACT0000000000000000003",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000101"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000034",
+      "event": "01JQPRX0000000000000000014",
+      "actor": "01JQACT0000000000000000003",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000104",
+          "01JQSTA0000000000000000108"
+        ]
+      }
+    }
+  ]
+}

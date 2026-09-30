@@ -1,0 +1,645 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Process",
+  "description": "A statechart: an entity lifecycle or an orchestration (model/processes/).",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "kind",
+    "id",
+    "name",
+    "displayName",
+    "pluralName",
+    "package",
+    "use",
+    "subject",
+    "boundAttribute",
+    "description",
+    "stereotypes",
+    "tags",
+    "category",
+    "context",
+    "events",
+    "guards",
+    "actions",
+    "states",
+    "initial",
+    "transitions",
+    "properties",
+    "generation",
+    "source"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "kind": {
+      "const": "process"
+    },
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "name": {
+      "$ref": "common.json#/$defs/identifier",
+      "default": ""
+    },
+    "displayName": {
+      "type": "string"
+    },
+    "pluralName": {
+      "type": "string"
+    },
+    "package": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "use": {
+      "enum": [
+        "lifecycle",
+        "orchestration"
+      ],
+      "default": "orchestration"
+    },
+    "subject": {
+      "description": "The entity whose lifecycle this is; required when use is lifecycle.",
+      "$ref": "common.json#/$defs/id"
+    },
+    "boundAttribute": {
+      "description": "An enum-typed attribute of the subject that holds the state (lifecycle only).",
+      "$ref": "common.json#/$defs/id"
+    },
+    "description": {
+      "$ref": "common.json#/$defs/description"
+    },
+    "stereotypes": {
+      "$ref": "common.json#/$defs/keyList",
+      "default": []
+    },
+    "tags": {
+      "$ref": "common.json#/$defs/tagList",
+      "default": []
+    },
+    "category": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "context": {
+      "description": "The running instance's data.",
+      "type": "array",
+      "x-sort": "order",
+      "items": {
+        "$ref": "common.json#/$defs/attribute"
+      },
+      "default": []
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event"
+      },
+      "default": []
+    },
+    "guards": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/guard"
+      },
+      "default": []
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/action"
+      },
+      "default": []
+    },
+    "states": {
+      "description": "The root's children, in document order.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/state"
+      },
+      "minItems": 1
+    },
+    "initial": {
+      "description": "The root's initial child; absent means the first.",
+      "$ref": "common.json#/$defs/id"
+    },
+    "transitions": {
+      "description": "In priority order.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/transition"
+      },
+      "default": []
+    },
+    "properties": {
+      "$ref": "common.json#/$defs/properties",
+      "default": {}
+    },
+    "generation": {
+      "$ref": "common.json#/$defs/generation",
+      "default": {}
+    },
+    "source": {
+      "$ref": "common.json#/$defs/source"
+    }
+  },
+  "required": [
+    "kind",
+    "id",
+    "name",
+    "states"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "state": {
+      "title": "State",
+      "description": "A state of the process; the root is implicit (the process is the root compound state).",
+      "type": "object",
+      "x-order": [
+        "id",
+        "name",
+        "displayName",
+        "type",
+        "initial",
+        "history",
+        "defaultTarget",
+        "entry",
+        "exit",
+        "invoke",
+        "states",
+        "description",
+        "stereotypes",
+        "properties"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "name": {
+          "$ref": "common.json#/$defs/identifier"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "atomic",
+            "compound",
+            "parallel",
+            "final",
+            "history",
+            "choice"
+          ],
+          "default": "atomic"
+        },
+        "initial": {
+          "description": "Compound only: the initial child, a direct child (MQ9001); absent means the first child.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "history": {
+          "description": "History only: shallow or deep.",
+          "enum": [
+            "shallow",
+            "deep"
+          ],
+          "default": "shallow"
+        },
+        "defaultTarget": {
+          "description": "History only: the state entered when no history is recorded; absent means the parent's initial.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "entry": {
+          "description": "Actions run on entry, in list order.",
+          "$ref": "common.json#/$defs/idList",
+          "default": []
+        },
+        "exit": {
+          "description": "Actions run on exit, in list order.",
+          "$ref": "common.json#/$defs/idList",
+          "default": []
+        },
+        "invoke": {
+          "description": "Invocations started on entry and cancelled on exit, in display order.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/invoke"
+          },
+          "default": []
+        },
+        "states": {
+          "description": "Children in document order; the regions of a parallel state.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/state"
+          },
+          "default": []
+        },
+        "description": {
+          "$ref": "common.json#/$defs/description"
+        },
+        "stereotypes": {
+          "$ref": "common.json#/$defs/keyList",
+          "default": []
+        },
+        "properties": {
+          "$ref": "common.json#/$defs/properties",
+          "default": {}
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "transition": {
+      "title": "Transition",
+      "description": "A transition; among transitions with one source and one trigger, array order is priority.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "displayName",
+        "source",
+        "trigger",
+        "event",
+        "after",
+        "invoke",
+        "guard",
+        "targets",
+        "actions",
+        "external",
+        "gate",
+        "description",
+        "stereotypes",
+        "properties"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "displayName": {
+          "description": "The edge label when set.",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "trigger": {
+          "enum": [
+            "event",
+            "after",
+            "done",
+            "always",
+            "invoke-done",
+            "invoke-error"
+          ],
+          "default": "event"
+        },
+        "event": {
+          "description": "Required when trigger is event.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "after": {
+          "description": "An ISO 8601 duration; required when trigger is after.",
+          "type": "string"
+        },
+        "invoke": {
+          "description": "An invoke of the source; required for invoke-done and invoke-error.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "guard": {
+          "description": "Unguarded when absent.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "targets": {
+          "description": "None: targetless; several: one per orthogonal region.",
+          "$ref": "common.json#/$defs/idList",
+          "default": []
+        },
+        "actions": {
+          "description": "Actions run on the transition, in list order.",
+          "$ref": "common.json#/$defs/idList",
+          "default": []
+        },
+        "external": {
+          "description": "Whether the source is exited and re-entered when a target is its descendant.",
+          "type": "boolean",
+          "default": false
+        },
+        "gate": {
+          "$ref": "#/$defs/gate"
+        },
+        "description": {
+          "$ref": "common.json#/$defs/description"
+        },
+        "stereotypes": {
+          "$ref": "common.json#/$defs/keyList",
+          "default": []
+        },
+        "properties": {
+          "$ref": "common.json#/$defs/properties",
+          "default": {}
+        }
+      },
+      "required": [
+        "id",
+        "source"
+      ],
+      "additionalProperties": false
+    },
+    "event": {
+      "title": "Event",
+      "description": "A process-local event.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "name",
+        "displayName",
+        "payload",
+        "actors",
+        "description",
+        "stereotypes",
+        "properties"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "name": {
+          "$ref": "common.json#/$defs/identifier"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "payload": {
+          "description": "The typed payload.",
+          "type": "array",
+          "x-sort": "order",
+          "items": {
+            "$ref": "common.json#/$defs/attribute"
+          },
+          "default": []
+        },
+        "actors": {
+          "description": "The actors that may send the event; empty means any actor.",
+          "$ref": "common.json#/$defs/idList",
+          "default": []
+        },
+        "description": {
+          "$ref": "common.json#/$defs/description"
+        },
+        "stereotypes": {
+          "$ref": "common.json#/$defs/keyList",
+          "default": []
+        },
+        "properties": {
+          "$ref": "common.json#/$defs/properties",
+          "default": {}
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "guard": {
+      "title": "Guard",
+      "description": "A named condition; without an expression it is a stub.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "name",
+        "displayName",
+        "expression",
+        "description"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "name": {
+          "$ref": "common.json#/$defs/identifier"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "expression": {
+          "description": "A JavaScript expression over context and event returning a boolean.",
+          "type": "string"
+        },
+        "description": {
+          "$ref": "common.json#/$defs/description"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "action": {
+      "title": "Action",
+      "description": "A named effect; without an expression it is a stub.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "name",
+        "displayName",
+        "expression",
+        "raises",
+        "description"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "name": {
+          "$ref": "common.json#/$defs/identifier"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "expression": {
+          "description": "A JavaScript expression returning an object of context updates.",
+          "type": "string"
+        },
+        "raises": {
+          "description": "Internal events queued after the action.",
+          "$ref": "common.json#/$defs/idList",
+          "default": []
+        },
+        "description": {
+          "$ref": "common.json#/$defs/description"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "invoke": {
+      "title": "Invoke",
+      "description": "Work a state starts on entry: a sub-process, a service task or a human task.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "name",
+        "displayName",
+        "type",
+        "process",
+        "actors",
+        "description"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "name": {
+          "$ref": "common.json#/$defs/identifier"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "process",
+            "service",
+            "human-task"
+          ]
+        },
+        "process": {
+          "description": "The sub-process, for type process.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "actors": {
+          "description": "Who may complete a human task.",
+          "$ref": "common.json#/$defs/idList",
+          "default": []
+        },
+        "description": {
+          "$ref": "common.json#/$defs/description"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "gate": {
+      "title": "Gate",
+      "description": "A signature gate on an event transition: the transition fires on the occurrence that completes the gate.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "name",
+        "displayName",
+        "required",
+        "signers",
+        "requiredActors",
+        "allowRepeatSigner",
+        "reasonRequired",
+        "meanings",
+        "auditAttributes",
+        "description"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "name": {
+          "$ref": "common.json#/$defs/identifier"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "required": {
+          "description": "The number of signatures needed.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "signers": {
+          "description": "The actors whose members may sign.",
+          "$ref": "common.json#/$defs/idList",
+          "minItems": 1
+        },
+        "requiredActors": {
+          "description": "Actors each of which must give at least one signature (a subset of signers).",
+          "$ref": "common.json#/$defs/idList",
+          "default": []
+        },
+        "allowRepeatSigner": {
+          "description": "Whether one signer may count twice.",
+          "type": "boolean",
+          "default": false
+        },
+        "reasonRequired": {
+          "description": "Whether each signature must carry a reason.",
+          "type": "boolean",
+          "default": false
+        },
+        "meanings": {
+          "description": "What a signature means.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/meaning"
+          },
+          "minItems": 1
+        },
+        "auditAttributes": {
+          "description": "Extra fields recorded with each signature.",
+          "type": "array",
+          "x-sort": "order",
+          "items": {
+            "$ref": "common.json#/$defs/attribute"
+          },
+          "default": []
+        },
+        "description": {
+          "$ref": "common.json#/$defs/description"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "signers",
+        "meanings"
+      ],
+      "additionalProperties": false
+    },
+    "meaning": {
+      "title": "Meaning",
+      "description": "What a signature means.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "name",
+        "displayName",
+        "description"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "name": {
+          "$ref": "common.json#/$defs/identifier"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "description": {
+          "$ref": "common.json#/$defs/description"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

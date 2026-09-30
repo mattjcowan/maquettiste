@@ -130,9 +130,33 @@ internal sealed class ExtensionSet
             for (var i = 0; i < table.Columns.Count; i++)
                 CheckItem(context, table.Columns[i], Ptr.At("/columns", i), "column", report);
         }
+
+        if (element is Process process)
+        {
+            CheckStates(process.States, "");
+            for (var i = 0; i < process.Transitions.Count; i++)
+                CheckItem(context, process.Transitions[i].Id, process.Transitions[i].Stereotypes, process.Transitions[i].Properties, Ptr.At("/transitions", i), "transition", report);
+            for (var i = 0; i < process.Events.Count; i++)
+                CheckItem(context, process.Events[i].Id, process.Events[i].Stereotypes, process.Events[i].Properties, Ptr.At("/events", i), "event", report);
+        }
+
+        void CheckStates(IReadOnlyList<ProcessState> states, string pointer)
+        {
+            for (var i = 0; i < states.Count; i++)
+            {
+                var at = Ptr.At(pointer + "/states", i);
+                CheckItem(context, states[i].Id, states[i].Stereotypes, states[i].Properties, at, "state", report);
+                CheckStates(states[i].States, at);
+            }
+        }
     }
 
-    private void CheckItem(ValidationContext context, ElementBase item, string pointer, string kind, Report report)
+    private void CheckItem(ValidationContext context, ElementBase item, string pointer, string kind, Report report) =>
+        CheckItem(context, item.Id, item.Stereotypes, item.Properties, pointer, kind, report);
+
+    // A process node (state, transition, event) is not an ElementBase but carries stereotypes and properties the same way.
+    private void CheckItem(ValidationContext context, string? id, IReadOnlyList<string> stereotypes, IReadOnlyDictionary<string, JsonElement> properties,
+        string pointer, string kind, Report report)
     {
         JsonElement? merged = null;
         foreach (var (document, schema) in _extensions)
@@ -140,9 +164,9 @@ internal sealed class ExtensionSet
             var target = document.Schema.AppliesTo;
             if (target.Kinds.Count > 0 && !target.Kinds.Contains(kind, StringComparer.Ordinal))
                 continue;
-            if (target.Stereotypes.Count > 0 && !target.Stereotypes.Any(s => item.Stereotypes.Contains(s, StringComparer.Ordinal)))
+            if (target.Stereotypes.Count > 0 && !target.Stereotypes.Any(s => stereotypes.Contains(s, StringComparer.Ordinal)))
                 continue;
-            merged ??= Merge(context.Model, item);
+            merged ??= Merge(context.Model, stereotypes, properties);
             EvaluationResults results;
             try
             {
@@ -150,7 +174,7 @@ internal sealed class ExtensionSet
             }
             catch (Exception e) when (e is not OutOfMemoryException)
             {
-                report.Add("MQ5004", $"Extension '{document.Schema.Name}' ({document.Path}) could not be evaluated: {e.Message}", pointer + "/properties", item.Id);
+                report.Add("MQ5004", $"Extension '{document.Schema.Name}' ({document.Path}) could not be evaluated: {e.Message}", pointer + "/properties", id);
                 continue;
             }
 
@@ -167,14 +191,14 @@ internal sealed class ExtensionSet
                         continue;
                     var location = detail.InstanceLocation.ToString();
                     var text = keyword.Length == 0 ? message : keyword + ": " + message;
-                    var (at, origin) = Locate(context.Model, item, pointer, location);
-                    report.Add("MQ5001", $"Extension '{document.Schema.Name}': properties{location} {text}{origin}", at, item.Id);
+                    var (at, origin) = Locate(context.Model, stereotypes, properties, pointer, location);
+                    report.Add("MQ5001", $"Extension '{document.Schema.Name}': properties{location} {text}{origin}", at, id);
                     any = true;
                 }
             }
 
             if (!any)
-                report.Add("MQ5001", $"Extension '{document.Schema.Name}': the properties do not match the extension schema.", pointer + "/properties", item.Id);
+                report.Add("MQ5001", $"Extension '{document.Schema.Name}': the properties do not match the extension schema.", pointer + "/properties", id);
         }
     }
 
@@ -182,14 +206,15 @@ internal sealed class ExtensionSet
     /// The pointer of a failing property value: in the item's own <c>properties</c>, or, for a value that comes from a stereotype's
     /// <c>defaultProperties</c>, the stereotype's entry in the item's <c>stereotypes</c> list (the file has no value to point at).
     /// </summary>
-    private static (string Pointer, string Origin) Locate(ModelSnapshot model, ElementBase item, string pointer, string location)
+    private static (string Pointer, string Origin) Locate(ModelSnapshot model, IReadOnlyList<string> stereotypes, IReadOnlyDictionary<string, JsonElement> properties,
+        string pointer, string location)
     {
         var segments = Ptr.Split(location);
-        if (segments.Length == 0 || item.Properties.ContainsKey(segments[0]))
+        if (segments.Length == 0 || properties.ContainsKey(segments[0]))
             return (pointer + "/properties" + location, "");
-        for (var i = item.Stereotypes.Count - 1; i >= 0; i--)
+        for (var i = stereotypes.Count - 1; i >= 0; i--)
         {
-            if (model.GetStereotype(item.Stereotypes[i]) is { } stereotype && stereotype.DefaultProperties.ContainsKey(segments[0]))
+            if (model.GetStereotype(stereotypes[i]) is { } stereotype && stereotype.DefaultProperties.ContainsKey(segments[0]))
                 return (Ptr.At(pointer + "/stereotypes", i), $" (the value comes from the defaultProperties of stereotype '{stereotype.Key}')");
         }
 
@@ -202,8 +227,14 @@ internal sealed class ExtensionSet
     /// <returns>The merged properties as a JSON object with ordinal key order.</returns>
     public static JsonElement Merge(ModelSnapshot model, ElementBase item)
     {
+        ArgumentNullException.ThrowIfNull(item);
+        return Merge(model, item.Stereotypes, item.Properties);
+    }
+
+    private static JsonElement Merge(ModelSnapshot model, IReadOnlyList<string> stereotypes, IReadOnlyDictionary<string, JsonElement> properties)
+    {
         var merged = new SortedDictionary<string, JsonElement>(StringComparer.Ordinal);
-        foreach (var key in item.Stereotypes)
+        foreach (var key in stereotypes)
         {
             if (model.GetStereotype(key) is not { } stereotype)
                 continue;
@@ -211,7 +242,7 @@ internal sealed class ExtensionSet
                 merged[name] = value;
         }
 
-        foreach (var (name, value) in item.Properties)
+        foreach (var (name, value) in properties)
             merged[name] = value;
         return JsonSerializer.SerializeToElement(merged);
     }

@@ -165,15 +165,7 @@ internal static partial class BuiltinRules
     public static void CheckCommon(ValidationContext context, ElementBase item, string pointer, string kindName, Report report)
     {
         var model = context.Model;
-        for (var i = 0; i < item.Stereotypes.Count; i++)
-        {
-            var key = item.Stereotypes[i];
-            var at = Ptr.At(pointer + "/stereotypes", i);
-            if (model.GetStereotype(key) is not { } stereotype)
-                report.Add("MQ2003", $"Stereotype '{key}' is not defined in model/vocabularies/stereotypes.", at, item.Id);
-            else if (stereotype.AppliesTo.Count > 0 && !stereotype.AppliesTo.Contains(kindName, StringComparer.Ordinal))
-                report.Add("MQ2004", $"Stereotype '{key}' applies to {string.Join(", ", stereotype.AppliesTo)}, not to {Article(kindName)} {kindName}.", at, item.Id);
-        }
+        CheckStereotypes(context, item.Id, item.Stereotypes, pointer, kindName, report);
 
         if (item.Tags.Count > 0 && model.TagVocabularies.Any())
         {
@@ -191,6 +183,26 @@ internal static partial class BuiltinRules
                 else if (chain.Count > 0)
                     report.Add("MQ2006", strict ? DiagnosticSeverity.Error : DiagnosticSeverity.Info, $"Tag '{tag}' is not declared in the tag vocabulary{(chain.Count > 1 ? " of any domain on its chain" : "")}{(strict ? ", which is strict" : "")}.", at, item.Id);
             }
+        }
+    }
+
+    /// <summary>Checks the stereotype keys of an element, a sub-element or a process node (MQ2003, MQ2004).</summary>
+    /// <param name="context">The validation context.</param>
+    /// <param name="id">The id of the item.</param>
+    /// <param name="stereotypes">Its stereotype keys.</param>
+    /// <param name="pointer">Its pointer.</param>
+    /// <param name="kindName">Its kind name for <c>appliesTo</c>.</param>
+    /// <param name="report">The report.</param>
+    public static void CheckStereotypes(ValidationContext context, string? id, IReadOnlyList<string> stereotypes, string pointer, string kindName, Report report)
+    {
+        for (var i = 0; i < stereotypes.Count; i++)
+        {
+            var key = stereotypes[i];
+            var at = Ptr.At(pointer + "/stereotypes", i);
+            if (context.Model.GetStereotype(key) is not { } stereotype)
+                report.Add("MQ2003", $"Stereotype '{key}' is not defined in model/vocabularies/stereotypes.", at, id);
+            else if (stereotype.AppliesTo.Count > 0 && !stereotype.AppliesTo.Contains(kindName, StringComparer.Ordinal))
+                report.Add("MQ2004", $"Stereotype '{key}' applies to {string.Join(", ", stereotype.AppliesTo)}, not to {Article(kindName)} {kindName}.", at, id);
         }
     }
 
@@ -275,7 +287,7 @@ internal static partial class BuiltinRules
     {
         switch (element)
         {
-            case Package or Entity or ValueObject or ScalarType or EnumType:
+            case Package or Entity or ValueObject or ScalarType or EnumType or Process:
                 CheckIdentifier(element.Name, element.KindName, "/name", element.Id, report);
                 break;
             case Table { Origin: TableOrigin.Synthesized, Name.Length: 0 }:

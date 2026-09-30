@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JSCN00000000000000009001",
+  "name": "Approve",
+  "process": "01JPRC00000000000000009001",
+  "steps": [
+    {
+      "id": "01JSTP00000000000000009001",
+      "event": "01JPRX00000000000000009001",
+      "actor": "01JACT00000000000000009001",
+      "expect": {
+        "states": [
+          "01JSTA00000000000000009002"
+        ]
+      }
+    }
+  ],
+  "outcome": "final"
+}

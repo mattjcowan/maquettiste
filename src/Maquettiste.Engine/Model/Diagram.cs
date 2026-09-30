@@ -12,6 +12,10 @@ public sealed record Diagram : Element
     [ElementRef(ElementKind.Package)]
     public string? Package { get; init; }
 
+    /// <summary>Set when the diagram is that process's statechart: its members are then states of the process (MQ9016).</summary>
+    [ElementRef(ElementKind.Process)]
+    public string? Process { get; init; }
+
     /// <summary>The elements shown, with positions.</summary>
     public IReadOnlyList<DiagramMember> Members { get; init; } = [];
 

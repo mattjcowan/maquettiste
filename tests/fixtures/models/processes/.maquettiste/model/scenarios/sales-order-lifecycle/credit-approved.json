@@ -1,0 +1,53 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JQSCN0000000000000000002",
+  "name": "CreditApproved",
+  "displayName": "Credit approved with two signatures",
+  "process": "01JQPRC0000000000000000001",
+  "start": {
+    "context": {
+      "01JQATT0000000000000000101": 5000,
+      "01JQATT0000000000000000102": 1000
+    }
+  },
+  "steps": [
+    {
+      "id": "01JQSTP0000000000000000005",
+      "event": "01JQPRX0000000000000000001",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000003"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000006",
+      "event": "01JQPRX0000000000000000002",
+      "actor": "01JQACT0000000000000000001",
+      "signer": "carol",
+      "meaning": "01JQPRX0000000000000000013",
+      "reason": "Long-standing customer",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000003"
+        ]
+      },
+      "description": "The first signature is recorded; the state does not change."
+    },
+    {
+      "id": "01JQSTP0000000000000000007",
+      "event": "01JQPRX0000000000000000002",
+      "actor": "01JQACT0000000000000000002",
+      "signer": "dan",
+      "meaning": "01JQPRX0000000000000000013",
+      "reason": "Within risk appetite",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000007",
+          "01JQSTA0000000000000000011"
+        ]
+      }
+    }
+  ]
+}

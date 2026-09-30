@@ -1,0 +1,78 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JSCN00000000000000000001",
+  "name": "HappyPath",
+  "displayName": "Happy path",
+  "process": "01JPRC00000000000000000001",
+  "start": {
+    "context": {
+      "01JATT00000000000000000011": 500,
+      "01JATT00000000000000000012": false
+    }
+  },
+  "steps": [
+    {
+      "id": "01JSTP00000000000000000001",
+      "event": "01JPRX00000000000000000001",
+      "actor": "01JACT00000000000000000001",
+      "payload": {
+        "01JATT00000000000000000021": "rush"
+      },
+      "expect": {
+        "states": [
+          "01JSTA00000000000000000004"
+        ],
+        "context": {
+          "01JATT00000000000000000012": true
+        }
+      },
+      "description": "The clerk submits the order."
+    },
+    {
+      "id": "01JSTP00000000000000000002",
+      "event": "01JPRX00000000000000000002",
+      "actor": "01JACT00000000000000000002",
+      "signer": "ann",
+      "meaning": "01JPRX00000000000000000051",
+      "reason": "ok",
+      "expect": {
+        "states": [
+          "01JSTA00000000000000000004"
+        ]
+      }
+    },
+    {
+      "id": "01JSTP00000000000000000003",
+      "event": "01JPRX00000000000000000002",
+      "actor": "01JACT00000000000000000003",
+      "signer": "bob",
+      "meaning": "01JPRX00000000000000000052",
+      "reason": "ok",
+      "expect": {
+        "states": [
+          "01JSTA00000000000000000009",
+          "01JSTA00000000000000000012"
+        ]
+      }
+    },
+    {
+      "id": "01JSTP00000000000000000004",
+      "event": "01JPRX00000000000000000003",
+      "assume": {
+        "01JPRX00000000000000000011": false
+      }
+    },
+    {
+      "id": "01JSTP00000000000000000005",
+      "event": "01JPRX00000000000000000004",
+      "actor": "01JACT00000000000000000004",
+      "expect": {
+        "states": [
+          "01JSTA00000000000000000014"
+        ]
+      }
+    }
+  ],
+  "outcome": "final"
+}

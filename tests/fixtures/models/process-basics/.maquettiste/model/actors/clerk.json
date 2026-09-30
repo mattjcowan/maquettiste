@@ -1,0 +1,15 @@
+{
+  "$schema": "../../.schema/v1/actor.json",
+  "kind": "actor",
+  "id": "01JACT00000000000000000001",
+  "name": "Clerk",
+  "type": "person",
+  "stereotypes": [
+    "persona"
+  ],
+  "properties": {
+    "goals": [
+      "Submit orders quickly"
+    ]
+  }
+}

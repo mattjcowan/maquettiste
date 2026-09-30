@@ -97,7 +97,7 @@ public sealed class ModelLoaderTests
     public async Task An_unknown_kind_is_MQ1002()
     {
         using var h = new LoaderHarness();
-        h.Write("model/entities/process.json", $"{{\n  \"kind\": \"process\",\n  \"id\": \"{_ids.NewId()}\"\n}}\n");
+        h.Write("model/entities/operation.json", $"{{\n  \"kind\": \"operation\",\n  \"id\": \"{_ids.NewId()}\"\n}}\n");
 
         var d = Assert.Single((await LoadAsync(h.NewLoader())).Snapshot.LoadDiagnostics);
 

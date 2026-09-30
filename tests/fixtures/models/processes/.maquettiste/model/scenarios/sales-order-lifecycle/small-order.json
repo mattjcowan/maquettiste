@@ -1,0 +1,58 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JQSCN0000000000000000001",
+  "name": "SmallOrder",
+  "displayName": "Small order",
+  "process": "01JQPRC0000000000000000001",
+  "start": {
+    "context": {
+      "01JQATT0000000000000000101": 100,
+      "01JQATT0000000000000000102": 1000
+    }
+  },
+  "steps": [
+    {
+      "id": "01JQSTP0000000000000000001",
+      "event": "01JQPRX0000000000000000001",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000007",
+          "01JQSTA0000000000000000011"
+        ]
+      },
+      "description": "Within the credit limit: straight to fulfilment."
+    },
+    {
+      "id": "01JQSTP0000000000000000002",
+      "event": "01JQPRX0000000000000000005",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000007",
+          "01JQSTA0000000000000000012"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000003",
+      "event": "01JQPRX0000000000000000006",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000007",
+          "01JQSTA0000000000000000013"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000004",
+      "event": "01JQPRX0000000000000000004",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000016"
+        ]
+      },
+      "description": "Both regions are final, so the order completes."
+    }
+  ],
+  "outcome": "final"
+}

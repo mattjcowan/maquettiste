@@ -85,7 +85,13 @@
           "seed",
           "attribute",
           "enum-member",
-          "column"
+          "column",
+          "process",
+          "actor",
+          "scenario",
+          "state",
+          "transition",
+          "event"
         ]
       },
       "uniqueItems": true,

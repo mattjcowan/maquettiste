@@ -1,0 +1,50 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JQSCN0000000000000000010",
+  "name": "BudgetRejected",
+  "displayName": "Budget rejected",
+  "process": "01JQPRC0000000000000000002",
+  "start": {
+    "context": {
+      "01JQATT0000000000000000201": 2500
+    }
+  },
+  "steps": [
+    {
+      "id": "01JQSTP0000000000000000035",
+      "event": "01JQPRX0000000000000000014",
+      "actor": "01JQACT0000000000000000008",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000104",
+          "01JQSTA0000000000000000108"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000036",
+      "input": "invoke-error",
+      "invoke": "01JQPRX0000000000000000019",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000106",
+          "01JQSTA0000000000000000108"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000037",
+      "input": "invoke-done",
+      "invoke": "01JQPRX0000000000000000020",
+      "actor": "01JQACT0000000000000000006",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000106",
+          "01JQSTA0000000000000000109"
+        ]
+      },
+      "description": "Compliance clears it, but the budget region never completes."
+    }
+  ]
+}

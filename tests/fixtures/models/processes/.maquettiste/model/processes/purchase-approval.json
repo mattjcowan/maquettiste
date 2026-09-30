@@ -1,0 +1,281 @@
+{
+  "$schema": "../../.schema/v1/process.json",
+  "kind": "process",
+  "id": "01JQPRC0000000000000000002",
+  "name": "PurchaseApproval",
+  "displayName": "Purchase approval",
+  "package": "01JQPKG0000000000000000002",
+  "subject": "01JQENT0000000000000000003",
+  "description": "A purchase request checked for budget and compliance in parallel, approved by two signers and ordered.",
+  "context": [
+    {
+      "id": "01JQATT0000000000000000201",
+      "name": "amount",
+      "type": "decimal",
+      "default": 0
+    },
+    {
+      "id": "01JQATT0000000000000000202",
+      "name": "reminders",
+      "type": "int32",
+      "default": 0
+    }
+  ],
+  "events": [
+    {
+      "id": "01JQPRX0000000000000000014",
+      "name": "submit",
+      "actors": [
+        "01JQACT0000000000000000003",
+        "01JQACT0000000000000000008"
+      ]
+    },
+    {
+      "id": "01JQPRX0000000000000000015",
+      "name": "requestChanges",
+      "actors": [
+        "01JQACT0000000000000000003",
+        "01JQACT0000000000000000008"
+      ]
+    },
+    {
+      "id": "01JQPRX0000000000000000016",
+      "name": "approve",
+      "actors": [
+        "01JQACT0000000000000000004",
+        "01JQACT0000000000000000005"
+      ]
+    },
+    {
+      "id": "01JQPRX0000000000000000017",
+      "name": "reject",
+      "payload": [
+        {
+          "id": "01JQATT0000000000000000203",
+          "name": "reason",
+          "type": "text",
+          "required": true
+        }
+      ],
+      "actors": [
+        "01JQACT0000000000000000004",
+        "01JQACT0000000000000000005"
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "id": "01JQPRX0000000000000000018",
+      "name": "sendReminder",
+      "expression": "({ reminders: context.reminders + 1 })"
+    }
+  ],
+  "states": [
+    {
+      "id": "01JQSTA0000000000000000101",
+      "name": "Drafting"
+    },
+    {
+      "id": "01JQSTA0000000000000000102",
+      "name": "Review",
+      "type": "parallel",
+      "states": [
+        {
+          "id": "01JQSTA0000000000000000103",
+          "name": "Budget",
+          "type": "compound",
+          "states": [
+            {
+              "id": "01JQSTA0000000000000000104",
+              "name": "Checking",
+              "invoke": [
+                {
+                  "id": "01JQPRX0000000000000000019",
+                  "name": "checkBudget",
+                  "type": "service"
+                }
+              ]
+            },
+            {
+              "id": "01JQSTA0000000000000000105",
+              "name": "BudgetOk",
+              "type": "final"
+            },
+            {
+              "id": "01JQSTA0000000000000000106",
+              "name": "BudgetRejected"
+            }
+          ]
+        },
+        {
+          "id": "01JQSTA0000000000000000107",
+          "name": "Compliance",
+          "type": "compound",
+          "states": [
+            {
+              "id": "01JQSTA0000000000000000108",
+              "name": "Pending",
+              "invoke": [
+                {
+                  "id": "01JQPRX0000000000000000020",
+                  "name": "complianceReview",
+                  "type": "human-task",
+                  "actors": [
+                    "01JQACT0000000000000000006"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "01JQSTA0000000000000000109",
+              "name": "Cleared",
+              "type": "final"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "01JQSTA0000000000000000110",
+      "name": "Approval"
+    },
+    {
+      "id": "01JQSTA0000000000000000111",
+      "name": "Ordering",
+      "invoke": [
+        {
+          "id": "01JQPRX0000000000000000021",
+          "name": "createPurchaseOrder",
+          "type": "service",
+          "actors": [
+            "01JQACT0000000000000000007"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "01JQSTA0000000000000000112",
+      "name": "Ordered",
+      "type": "final"
+    },
+    {
+      "id": "01JQSTA0000000000000000113",
+      "name": "Rejected",
+      "type": "final"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "01JQTRN0000000000000000015",
+      "source": "01JQSTA0000000000000000101",
+      "event": "01JQPRX0000000000000000014",
+      "targets": [
+        "01JQSTA0000000000000000102"
+      ]
+    },
+    {
+      "id": "01JQTRN0000000000000000016",
+      "source": "01JQSTA0000000000000000104",
+      "trigger": "invoke-done",
+      "invoke": "01JQPRX0000000000000000019",
+      "targets": [
+        "01JQSTA0000000000000000105"
+      ]
+    },
+    {
+      "id": "01JQTRN0000000000000000017",
+      "source": "01JQSTA0000000000000000104",
+      "trigger": "invoke-error",
+      "invoke": "01JQPRX0000000000000000019",
+      "targets": [
+        "01JQSTA0000000000000000106"
+      ]
+    },
+    {
+      "id": "01JQTRN0000000000000000018",
+      "source": "01JQSTA0000000000000000106",
+      "event": "01JQPRX0000000000000000015",
+      "targets": [
+        "01JQSTA0000000000000000101"
+      ]
+    },
+    {
+      "id": "01JQTRN0000000000000000019",
+      "source": "01JQSTA0000000000000000108",
+      "trigger": "invoke-done",
+      "invoke": "01JQPRX0000000000000000020",
+      "targets": [
+        "01JQSTA0000000000000000109"
+      ]
+    },
+    {
+      "id": "01JQTRN0000000000000000020",
+      "source": "01JQSTA0000000000000000102",
+      "trigger": "done",
+      "targets": [
+        "01JQSTA0000000000000000110"
+      ]
+    },
+    {
+      "id": "01JQTRN0000000000000000021",
+      "source": "01JQSTA0000000000000000110",
+      "event": "01JQPRX0000000000000000016",
+      "targets": [
+        "01JQSTA0000000000000000111"
+      ],
+      "gate": {
+        "id": "01JQPRX0000000000000000022",
+        "name": "purchaseApproval",
+        "displayName": "Purchase approval",
+        "required": 2,
+        "signers": [
+          "01JQACT0000000000000000004",
+          "01JQACT0000000000000000005"
+        ],
+        "requiredActors": [
+          "01JQACT0000000000000000005"
+        ],
+        "meanings": [
+          {
+            "id": "01JQPRX0000000000000000023",
+            "name": "approved",
+            "displayName": "Approved for purchase"
+          }
+        ],
+        "auditAttributes": [
+          {
+            "id": "01JQATT0000000000000000204",
+            "name": "costCentre",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "id": "01JQTRN0000000000000000022",
+      "source": "01JQSTA0000000000000000110",
+      "event": "01JQPRX0000000000000000017",
+      "targets": [
+        "01JQSTA0000000000000000113"
+      ]
+    },
+    {
+      "id": "01JQTRN0000000000000000023",
+      "source": "01JQSTA0000000000000000110",
+      "trigger": "after",
+      "after": "P5D",
+      "actions": [
+        "01JQPRX0000000000000000018"
+      ]
+    },
+    {
+      "id": "01JQTRN0000000000000000024",
+      "source": "01JQSTA0000000000000000111",
+      "trigger": "invoke-done",
+      "invoke": "01JQPRX0000000000000000021",
+      "targets": [
+        "01JQSTA0000000000000000112"
+      ]
+    }
+  ]
+}

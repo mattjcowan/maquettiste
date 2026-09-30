@@ -1,0 +1,19 @@
+{
+  "$schema": "../../.schema/v1/diagram.json",
+  "kind": "diagram",
+  "id": "01JDGM00000000000000000001",
+  "name": "OrderLifecycle",
+  "package": "01JPKG00000000000000000001",
+  "process": "01JPRC00000000000000000001",
+  "members": [
+    {
+      "element": "01JSTA00000000000000000001"
+    },
+    {
+      "element": "01JSTA00000000000000000003",
+      "x": 200,
+      "width": 300,
+      "height": 200
+    }
+  ]
+}

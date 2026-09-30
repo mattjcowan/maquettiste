@@ -5,6 +5,7 @@ using System.Text;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
+using Process = System.Diagnostics.Process;
 
 namespace Maquettiste.Engine.PostProcessing;
 

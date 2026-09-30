@@ -67,6 +67,9 @@ public abstract record ElementBase
 [JsonDerivedType(typeof(Stereotype))]
 [JsonDerivedType(typeof(ReferenceType))]
 [JsonDerivedType(typeof(Seed))]
+[JsonDerivedType(typeof(Process))]
+[JsonDerivedType(typeof(Actor))]
+[JsonDerivedType(typeof(Scenario))]
 public abstract record Element : ElementBase
 {
     /// <summary>
@@ -111,4 +114,10 @@ public sealed record SourceInfo
 
     /// <summary>A fingerprint of the source definition at import time.</summary>
     public string? Fingerprint { get; init; }
+
+    /// <summary>
+    /// Opaque data an import kept (unknown source configuration, keyed by JSON pointer into the source), written back on export
+    /// (phase-3-design.md section 5.2).
+    /// </summary>
+    public IReadOnlyDictionary<string, JsonElement> Extensions { get; init; } = ImmutableDictionary<string, JsonElement>.Empty;
 }

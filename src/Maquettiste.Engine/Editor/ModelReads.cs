@@ -20,7 +20,7 @@ public static class ModelReads
     /// The format of the index rows, hashed into <see cref="IndexTag"/>: changed whenever <see cref="ElementSummary"/> gains or loses a
     /// member, so a client holding an index of an older shape never gets 304 for it.
     /// </summary>
-    internal const string IndexFormat = "maquettiste-index/e7";
+    internal const string IndexFormat = "maquettiste-index/e8";
 
     /// <summary>
     /// Reads the documents of up to <see cref="MaxReadIds"/> element or sub-element ids from one snapshot (no rescan): a sub-element id

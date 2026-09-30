@@ -1,0 +1,315 @@
+{
+  "$schema": "../../.schema/v1/process.json",
+  "kind": "process",
+  "id": "01JQPRC0000000000000000001",
+  "name": "SalesOrderLifecycle",
+  "displayName": "Sales order lifecycle",
+  "package": "01JQPKG0000000000000000001",
+  "use": "lifecycle",
+  "subject": "01JQENT0000000000000000001",
+  "boundAttribute": "01JQATT0000000000000000002",
+  "description": "From draft through a credit check and fulfilment to completion.",
+  "context": [
+    {
+      "id": "01JQATT0000000000000000101",
+      "name": "total",
+      "type": "decimal",
+      "default": 0
+    },
+    {
+      "id": "01JQATT0000000000000000102",
+      "name": "creditLimit",
+      "type": "decimal",
+      "default": 0
+    }
+  ],
+  "events": [
+    {
+      "id": "01JQPRX0000000000000000001",
+      "name": "submit"
+    },
+    {
+      "id": "01JQPRX0000000000000000002",
+      "name": "approveCredit",
+      "actors": [
+        "01JQACT0000000000000000001",
+        "01JQACT0000000000000000002"
+      ]
+    },
+    {
+      "id": "01JQPRX0000000000000000003",
+      "name": "rejectCredit",
+      "actors": [
+        "01JQACT0000000000000000001",
+        "01JQACT0000000000000000002"
+      ]
+    },
+    {
+      "id": "01JQPRX0000000000000000004",
+      "name": "paymentReceived"
+    },
+    {
+      "id": "01JQPRX0000000000000000005",
+      "name": "pick"
+    },
+    {
+      "id": "01JQPRX0000000000000000006",
+      "name": "ship"
+    },
+    {
+      "id": "01JQPRX0000000000000000007",
+      "name": "hold"
+    },
+    {
+      "id": "01JQPRX0000000000000000008",
+      "name": "release"
+    },
+    {
+      "id": "01JQPRX0000000000000000009",
+      "name": "cancel"
+    }
+  ],
+  "guards": [
+    {
+      "id": "01JQPRX0000000000000000010",
+      "name": "exceedsCreditLimit",
+      "expression": "context.total > context.creditLimit"
+    },
+    {
+      "id": "01JQPRX0000000000000000011",
+      "name": "notShipped",
+      "description": "Whether nothing has left the warehouse yet; answered by the host."
+    }
+  ],
+  "states": [
+    {
+      "id": "01JQSTA0000000000000000001",
+      "name": "Draft"
+    },
+    {
+      "id": "01JQSTA0000000000000000002",
+      "name": "CreditCheck",
+      "type": "choice"
+    },
+    {
+      "id": "01JQSTA0000000000000000003",
+      "name": "CreditReview"
+    },
+    {
+      "id": "01JQSTA0000000000000000004",
+      "name": "Fulfilment",
+      "type": "compound",
+      "initial": "01JQSTA0000000000000000005",
+      "states": [
+        {
+          "id": "01JQSTA0000000000000000005",
+          "name": "Processing",
+          "type": "parallel",
+          "states": [
+            {
+              "id": "01JQSTA0000000000000000006",
+              "name": "Payment",
+              "type": "compound",
+              "states": [
+                {
+                  "id": "01JQSTA0000000000000000007",
+                  "name": "AwaitingPayment"
+                },
+                {
+                  "id": "01JQSTA0000000000000000008",
+                  "name": "PaymentOverdue"
+                },
+                {
+                  "id": "01JQSTA0000000000000000009",
+                  "name": "Paid",
+                  "type": "final"
+                }
+              ]
+            },
+            {
+              "id": "01JQSTA0000000000000000010",
+              "name": "Shipping",
+              "type": "compound",
+              "states": [
+                {
+                  "id": "01JQSTA0000000000000000011",
+                  "name": "Picking"
+                },
+                {
+                  "id": "01JQSTA0000000000000000012",
+                  "name": "Packing"
+                },
+                {
+                  "id": "01JQSTA0000000000000000013",
+                  "name": "Shipped",
+                  "type": "final"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "01JQSTA0000000000000000014",
+          "name": "Resume",
+          "type": "history",
+          "history": "deep",
+          "defaultTarget": "01JQSTA0000000000000000005"
+        }
+      ],
+      "description": "Wraps the parallel regions so that the deep history state belongs to a compound state."
+    },
+    {
+      "id": "01JQSTA0000000000000000015",
+      "name": "OnHold"
+    },
+    {
+      "id": "01JQSTA0000000000000000016",
+      "name": "Completed",
+      "type": "final"
+    },
+    {
+      "id": "01JQSTA0000000000000000017",
+      "name": "Cancelled",
+      "type": "final"
+    }
+  ],
+  "initial": "01JQSTA0000000000000000001",
+  "transitions": [
+    {
+      "id": "01JQTRN0000000000000000001",
+      "source": "01JQSTA0000000000000000001",
+      "event": "01JQPRX0000000000000000001",
+      "targets": [
+        "01JQSTA0000000000000000002"
+      ]
+    },
+    {
+      "id": "01JQTRN0000000000000000002",
+      "source": "01JQSTA0000000000000000002",
+      "trigger": "always",
+      "guard": "01JQPRX0000000000000000010",
+      "targets": [
+        "01JQSTA0000000000000000003"
+      ]
+    },
+    {
+      "id": "01JQTRN0000000000000000003",
+      "source": "01JQSTA0000000000000000002",
+      "trigger": "always",
+      "targets": [
+        "01JQSTA0000000000000000004"
+      ]
+    },
+    {
+      "id": "01JQTRN0000000000000000004",
+      "source": "01JQSTA0000000000000000003",
+      "event": "01JQPRX0000000000000000002",
+      "targets": [
+        "01JQSTA0000000000000000004"
+      ],
+      "gate": {
+        "id": "01JQPRX0000000000000000012",
+        "name": "creditApproval",
+        "displayName": "Credit approval",
+        "required": 2,
+        "signers": [
+          "01JQACT0000000000000000001",
+          "01JQACT0000000000000000002"
+        ],
+        "requiredActors": [
+          "01JQACT0000000000000000001"
+        ],
+        "reasonRequired": true,
+        "meanings": [
+          {
+            "id": "01JQPRX0000000000000000013",
+            "name": "creditApproved",
+            "displayName": "Credit approved"
+          }
+        ]
+      }
+    },
+    {
+      "id": "01JQTRN0000000000000000005",
+      "source": "01JQSTA0000000000000000003",
+      "event": "01JQPRX0000000000000000003",
+      "targets": [
+        "01JQSTA0000000000000000001"
+      ]
+    },
+    {
+      "id": "01JQTRN0000000000000000006",
+      "source": "01JQSTA0000000000000000007",
+      "event": "01JQPRX0000000000000000004",
+      "targets": [
+        "01JQSTA0000000000000000009"
+      ]
+    },
+    {
+      "id": "01JQTRN0000000000000000007",
+      "source": "01JQSTA0000000000000000007",
+      "trigger": "after",
+      "after": "P30D",
+      "targets": [
+        "01JQSTA0000000000000000008"
+      ]
+    },
+    {
+      "id": "01JQTRN0000000000000000008",
+      "source": "01JQSTA0000000000000000008",
+      "event": "01JQPRX0000000000000000004",
+      "targets": [
+        "01JQSTA0000000000000000009"
+      ]
+    },
+    {
+      "id": "01JQTRN0000000000000000009",
+      "source": "01JQSTA0000000000000000011",
+      "event": "01JQPRX0000000000000000005",
+      "targets": [
+        "01JQSTA0000000000000000012"
+      ]
+    },
+    {
+      "id": "01JQTRN0000000000000000010",
+      "source": "01JQSTA0000000000000000012",
+      "event": "01JQPRX0000000000000000006",
+      "targets": [
+        "01JQSTA0000000000000000013"
+      ]
+    },
+    {
+      "id": "01JQTRN0000000000000000011",
+      "source": "01JQSTA0000000000000000005",
+      "trigger": "done",
+      "targets": [
+        "01JQSTA0000000000000000016"
+      ]
+    },
+    {
+      "id": "01JQTRN0000000000000000012",
+      "source": "01JQSTA0000000000000000004",
+      "event": "01JQPRX0000000000000000007",
+      "targets": [
+        "01JQSTA0000000000000000015"
+      ]
+    },
+    {
+      "id": "01JQTRN0000000000000000013",
+      "source": "01JQSTA0000000000000000015",
+      "event": "01JQPRX0000000000000000008",
+      "targets": [
+        "01JQSTA0000000000000000014"
+      ]
+    },
+    {
+      "id": "01JQTRN0000000000000000014",
+      "source": "01JQSTA0000000000000000004",
+      "event": "01JQPRX0000000000000000009",
+      "guard": "01JQPRX0000000000000000011",
+      "targets": [
+        "01JQSTA0000000000000000017"
+      ]
+    }
+  ]
+}

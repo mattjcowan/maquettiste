@@ -1,0 +1,8 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01JQMAP0000000000000000005",
+  "name": "GateSignature in main",
+  "database": "01JQDBS0000000000000000001",
+  "entity": "01JQENT0000000000000000005"
+}

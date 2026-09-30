@@ -1,0 +1,74 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JQENT0000000000000000005",
+  "name": "GateSignature",
+  "package": "01JQPKG0000000000000000002",
+  "description": "The audit record of a gate: one row per signature attempt and outcome.",
+  "key": {
+    "attributes": [
+      "01JQATT0000000000000000020"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01JQATT0000000000000000020",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01JQATT0000000000000000021",
+      "name": "instance",
+      "type": "string",
+      "required": true
+    },
+    {
+      "id": "01JQATT0000000000000000022",
+      "name": "gate",
+      "type": "string",
+      "required": true
+    },
+    {
+      "id": "01JQATT0000000000000000023",
+      "name": "sequence",
+      "type": "int64",
+      "required": true
+    },
+    {
+      "id": "01JQATT0000000000000000024",
+      "name": "signer",
+      "type": "string",
+      "required": true
+    },
+    {
+      "id": "01JQATT0000000000000000025",
+      "name": "actor",
+      "type": "string",
+      "required": true
+    },
+    {
+      "id": "01JQATT0000000000000000026",
+      "name": "meaning",
+      "type": "string"
+    },
+    {
+      "id": "01JQATT0000000000000000027",
+      "name": "reason",
+      "type": "text"
+    },
+    {
+      "id": "01JQATT0000000000000000028",
+      "name": "outcome",
+      "type": "string",
+      "required": true
+    },
+    {
+      "id": "01JQATT0000000000000000029",
+      "name": "at",
+      "type": "datetimeoffset",
+      "required": true
+    }
+  ]
+}

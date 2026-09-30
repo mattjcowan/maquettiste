@@ -1,0 +1,295 @@
+{
+  "$schema": "../../.schema/v1/process.json",
+  "kind": "process",
+  "id": "01JPRC00000000000000000001",
+  "name": "OrderLifecycle",
+  "displayName": "Order lifecycle",
+  "package": "01JPKG00000000000000000001",
+  "use": "lifecycle",
+  "subject": "01JENT00000000000000000001",
+  "boundAttribute": "01JATT00000000000000000002",
+  "description": "From draft to closed.",
+  "context": [
+    {
+      "id": "01JATT00000000000000000011",
+      "name": "amount",
+      "type": "decimal",
+      "default": 0
+    },
+    {
+      "id": "01JATT00000000000000000012",
+      "name": "submitted",
+      "type": "bool"
+    }
+  ],
+  "events": [
+    {
+      "id": "01JPRX00000000000000000001",
+      "name": "submit",
+      "displayName": "Submit",
+      "payload": [
+        {
+          "id": "01JATT00000000000000000021",
+          "name": "note",
+          "type": "string"
+        }
+      ],
+      "actors": [
+        "01JACT00000000000000000001"
+      ]
+    },
+    {
+      "id": "01JPRX00000000000000000002",
+      "name": "approve",
+      "actors": [
+        "01JACT00000000000000000002",
+        "01JACT00000000000000000003"
+      ]
+    },
+    {
+      "id": "01JPRX00000000000000000003",
+      "name": "ship"
+    },
+    {
+      "id": "01JPRX00000000000000000004",
+      "name": "pay",
+      "actors": [
+        "01JACT00000000000000000004"
+      ]
+    },
+    {
+      "id": "01JPRX00000000000000000005",
+      "name": "cancel"
+    }
+  ],
+  "guards": [
+    {
+      "id": "01JPRX00000000000000000011",
+      "name": "isLarge",
+      "expression": "context.amount > 1000"
+    }
+  ],
+  "actions": [
+    {
+      "id": "01JPRX00000000000000000021",
+      "name": "recordSubmission",
+      "expression": "({ submitted: true })"
+    },
+    {
+      "id": "01JPRX00000000000000000022",
+      "name": "notifyClerk"
+    }
+  ],
+  "states": [
+    {
+      "id": "01JSTA00000000000000000001",
+      "name": "Draft"
+    },
+    {
+      "id": "01JSTA00000000000000000002",
+      "name": "Decide",
+      "type": "choice"
+    },
+    {
+      "id": "01JSTA00000000000000000003",
+      "name": "Review",
+      "type": "compound",
+      "initial": "01JSTA00000000000000000004",
+      "states": [
+        {
+          "id": "01JSTA00000000000000000004",
+          "name": "Pending",
+          "entry": [
+            "01JPRX00000000000000000022"
+          ]
+        },
+        {
+          "id": "01JSTA00000000000000000005",
+          "name": "Escalated",
+          "invoke": [
+            {
+              "id": "01JPRX00000000000000000031",
+              "name": "managerReview",
+              "type": "human-task",
+              "actors": [
+                "01JACT00000000000000000002"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "01JSTA00000000000000000006",
+          "name": "Resume",
+          "type": "history",
+          "history": "deep",
+          "defaultTarget": "01JSTA00000000000000000004"
+        }
+      ]
+    },
+    {
+      "id": "01JSTA00000000000000000007",
+      "name": "Fulfilment",
+      "type": "parallel",
+      "states": [
+        {
+          "id": "01JSTA00000000000000000008",
+          "name": "Shipping",
+          "type": "compound",
+          "states": [
+            {
+              "id": "01JSTA00000000000000000009",
+              "name": "Packing"
+            },
+            {
+              "id": "01JSTA00000000000000000010",
+              "name": "Shipped",
+              "type": "final"
+            }
+          ]
+        },
+        {
+          "id": "01JSTA00000000000000000011",
+          "name": "Billing",
+          "type": "compound",
+          "states": [
+            {
+              "id": "01JSTA00000000000000000012",
+              "name": "Invoicing"
+            },
+            {
+              "id": "01JSTA00000000000000000013",
+              "name": "Paid",
+              "type": "final"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "01JSTA00000000000000000014",
+      "name": "Closed",
+      "type": "final"
+    }
+  ],
+  "initial": "01JSTA00000000000000000001",
+  "transitions": [
+    {
+      "id": "01JTRN00000000000000000001",
+      "source": "01JSTA00000000000000000001",
+      "event": "01JPRX00000000000000000001",
+      "targets": [
+        "01JSTA00000000000000000002"
+      ],
+      "actions": [
+        "01JPRX00000000000000000021"
+      ]
+    },
+    {
+      "id": "01JTRN00000000000000000002",
+      "source": "01JSTA00000000000000000002",
+      "trigger": "always",
+      "guard": "01JPRX00000000000000000011",
+      "targets": [
+        "01JSTA00000000000000000005"
+      ]
+    },
+    {
+      "id": "01JTRN00000000000000000003",
+      "source": "01JSTA00000000000000000002",
+      "trigger": "always",
+      "targets": [
+        "01JSTA00000000000000000006"
+      ]
+    },
+    {
+      "id": "01JTRN00000000000000000004",
+      "source": "01JSTA00000000000000000004",
+      "trigger": "after",
+      "after": "P2D",
+      "targets": [
+        "01JSTA00000000000000000005"
+      ]
+    },
+    {
+      "id": "01JTRN00000000000000000005",
+      "source": "01JSTA00000000000000000005",
+      "trigger": "invoke-done",
+      "invoke": "01JPRX00000000000000000031",
+      "targets": [
+        "01JSTA00000000000000000004"
+      ]
+    },
+    {
+      "id": "01JTRN00000000000000000006",
+      "source": "01JSTA00000000000000000003",
+      "event": "01JPRX00000000000000000002",
+      "targets": [
+        "01JSTA00000000000000000007"
+      ],
+      "gate": {
+        "id": "01JPRX00000000000000000041",
+        "name": "approval",
+        "required": 2,
+        "signers": [
+          "01JACT00000000000000000002",
+          "01JACT00000000000000000003"
+        ],
+        "requiredActors": [
+          "01JACT00000000000000000003"
+        ],
+        "reasonRequired": true,
+        "meanings": [
+          {
+            "id": "01JPRX00000000000000000051",
+            "name": "reviewedAsManager",
+            "displayName": "Reviewed as manager"
+          },
+          {
+            "id": "01JPRX00000000000000000052",
+            "name": "reviewedAsFinance"
+          }
+        ],
+        "auditAttributes": [
+          {
+            "id": "01JATT00000000000000000031",
+            "name": "comment",
+            "type": "text"
+          }
+        ]
+      }
+    },
+    {
+      "id": "01JTRN00000000000000000007",
+      "source": "01JSTA00000000000000000009",
+      "event": "01JPRX00000000000000000003",
+      "targets": [
+        "01JSTA00000000000000000010"
+      ]
+    },
+    {
+      "id": "01JTRN00000000000000000008",
+      "source": "01JSTA00000000000000000012",
+      "event": "01JPRX00000000000000000004",
+      "targets": [
+        "01JSTA00000000000000000013"
+      ]
+    },
+    {
+      "id": "01JTRN00000000000000000009",
+      "source": "01JSTA00000000000000000007",
+      "trigger": "done",
+      "targets": [
+        "01JSTA00000000000000000014"
+      ]
+    },
+    {
+      "id": "01JTRN00000000000000000010",
+      "displayName": "cancelled",
+      "source": "01JSTA00000000000000000001",
+      "event": "01JPRX00000000000000000005",
+      "targets": [
+        "01JSTA00000000000000000014"
+      ]
+    }
+  ]
+}

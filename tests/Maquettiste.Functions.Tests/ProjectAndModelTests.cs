@@ -68,6 +68,8 @@ public sealed class ProjectAndModelTests
         Assert.Equal("Localization", locale["familyLabel"]!.GetValue<string>());
         Assert.True(locale["canBeOff"]!.GetValue<bool>());
         Assert.All(rules, r => Assert.NotEqual(r!["family"]!.GetValue<string>(), r["familyLabel"]!.GetValue<string>()));
+        Assert.Equal("sync-enum", rules.Single(r => r!["id"]!.GetValue<string>() == "MQ9203")!["quickFix"]!.GetValue<string>());
+        Assert.Null(first["quickFix"]); // left out when the rule has none
 
         // The editor's mock serves this recording; a new or changed rule needs MAQUETTISTE_RECORD=1 once.
         Recorder.Json("validation-rules.json", response);

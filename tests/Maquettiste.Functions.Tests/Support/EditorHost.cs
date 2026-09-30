@@ -110,6 +110,10 @@ internal sealed class EditorHost : IAsyncDisposable
     public static EditorHost CreateReferenceData() =>
         new(Path.Combine(Path.GetTempPath(), "maquettiste-functions-tests", Guid.NewGuid().ToString("N")), null, false, "reference-data");
 
+    /// <summary>A new site over a fresh copy of another model fixture (for example processes), without packs.</summary>
+    public static EditorHost CreateModel(string model) =>
+        new(Path.Combine(Path.GetTempPath(), "maquettiste-functions-tests", Guid.NewGuid().ToString("N")), null, false, model);
+
     /// <summary>The absolute path of a repo-relative path.</summary>
     public string PathOf(string repoPath) => Path.Combine(RepoRoot, repoPath.Replace('/', Path.DirectorySeparatorChar));
 

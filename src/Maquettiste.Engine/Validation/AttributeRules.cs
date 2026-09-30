@@ -160,6 +160,8 @@ internal static partial class AttributeRules
         {
             if (k is not null && Fits(k, validation.AllowedValues[i], null, null, null) is { } reason)
                 report.Add("MQ3013", $"{subject}: allowed value {i.ToString(CultureInfo.InvariantCulture)} does not fit {described}: {reason}.", Ptr.At(v + "/allowedValues", i), elementId);
+            else if (type.Enum is { } e && EnumMismatch(e, validation.AllowedValues[i]) is { } mismatch)
+                report.Add("MQ3013", $"{subject}: allowed value {i.ToString(CultureInfo.InvariantCulture)} does not name a member of the enum ({mismatch}); name a member or remove the value.", Ptr.At(v + "/allowedValues", i), elementId);
         }
     }
 

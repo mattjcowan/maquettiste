@@ -1,0 +1,50 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JQENT0000000000000000004",
+  "name": "ProcessInstance",
+  "package": "01JQPKG0000000000000000002",
+  "description": "A running orchestration: its active states and context.",
+  "key": {
+    "attributes": [
+      "01JQATT0000000000000000014"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01JQATT0000000000000000014",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01JQATT0000000000000000015",
+      "name": "process",
+      "type": "string",
+      "required": true
+    },
+    {
+      "id": "01JQATT0000000000000000016",
+      "name": "subject",
+      "type": "uuid"
+    },
+    {
+      "id": "01JQATT0000000000000000017",
+      "name": "configuration",
+      "type": "json",
+      "required": true
+    },
+    {
+      "id": "01JQATT0000000000000000018",
+      "name": "context",
+      "type": "json"
+    },
+    {
+      "id": "01JQATT0000000000000000019",
+      "name": "updatedAt",
+      "type": "datetimeoffset",
+      "required": true
+    }
+  ]
+}

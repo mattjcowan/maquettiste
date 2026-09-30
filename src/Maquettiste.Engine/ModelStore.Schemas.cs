@@ -24,15 +24,17 @@ public sealed partial class ModelStore
     {
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
         var work = new SchemaWork(snapshot, _options.EffectiveIdGenerator);
+        var processWork = new ProcessWork(snapshot, _options.EffectiveIdGenerator, changes);
         for (var i = 0; i < batch.Operations.Count; i++)
         {
             var o = batch.Operations[i];
-            if (!IsSchemaOperation(o.Op) || invalid[i] is not null)
+            if (!(IsSchemaOperation(o.Op) || IsProcessOperation(o.Op)) || invalid[i] is not null)
                 continue;
-            if (work.Apply(o) is { } refusal)
+            var (rule, refusal) = IsSchemaOperation(o.Op) ? ("MQ4015", work.Apply(o)) : ("MQ9019", processWork.Apply(o));
+            if (refusal is not null)
             {
                 var pointer = "/operations/" + i.ToString(CultureInfo.InvariantCulture);
-                invalid[i] = new SaveResult(SaveOutcome.Invalid, o.Id, null, null, [RuleCatalog.Create("MQ4015", refusal, o.Id, null, pointer)], [], null);
+                invalid[i] = new SaveResult(SaveOutcome.Invalid, o.Id, null, null, [RuleCatalog.Create(rule, refusal, o.Id, null, pointer)], [], null);
             }
         }
 
@@ -42,7 +44,7 @@ public sealed partial class ModelStore
             return new BatchResult(SaveOutcome.Invalid, items, null);
         }
 
-        foreach (var (id, expectedHash, node) in work.Changes())
+        foreach (var (id, expectedHash, node) in work.Changes().Concat(processWork.Changes()))
         {
             if (!TryParseRequest(Encoding.UTF8.GetBytes(node.ToJsonString()), id, out var parsed, out var failure))
                 return new BatchResult(SaveOutcome.Invalid, [failure], null);

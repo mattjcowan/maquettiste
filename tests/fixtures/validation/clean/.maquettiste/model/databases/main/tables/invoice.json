@@ -8,14 +8,14 @@
   "columns": [
     {
       "id": "01JCMN00000000000000000004",
-      "attribute": "01JATT00000000000000000202",
       "name": "invoice_no",
+      "attribute": "01JATT00000000000000000202",
       "nativeType": "varchar(32)"
     },
     {
       "id": "01JCMN00000000000000000005",
-      "attribute": "01JATT00000000000000000203.01JATT00000000000000008001",
-      "name": "total_amount"
+      "name": "total_amount",
+      "attribute": "01JATT00000000000000000203.01JATT00000000000000008001"
     }
   ],
   "indexes": [

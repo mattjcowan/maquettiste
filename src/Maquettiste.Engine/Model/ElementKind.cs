@@ -56,4 +56,13 @@ public enum ElementKind
 
     /// <summary>Rows of data for an entity, a relation or a reference type (<c>seed</c>).</summary>
     [JsonStringEnumMemberName("seed")] Seed,
+
+    /// <summary>A statechart: an entity lifecycle or an orchestration (<c>process</c>).</summary>
+    [JsonStringEnumMemberName("process")] Process,
+
+    /// <summary>A person, role or external system that takes part in processes (<c>actor</c>).</summary>
+    [JsonStringEnumMemberName("actor")] Actor,
+
+    /// <summary>A recorded event sequence of one process (<c>scenario</c>).</summary>
+    [JsonStringEnumMemberName("scenario")] Scenario,
 }

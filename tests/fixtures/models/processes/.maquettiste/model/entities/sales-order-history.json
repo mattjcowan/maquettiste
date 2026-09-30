@@ -1,0 +1,45 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JQENT0000000000000000002",
+  "name": "SalesOrderHistory",
+  "package": "01JQPKG0000000000000000001",
+  "description": "One row per status change of a sales order.",
+  "key": {
+    "attributes": [
+      "01JQATT0000000000000000006"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01JQATT0000000000000000006",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01JQATT0000000000000000007",
+      "name": "salesOrderId",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01JQATT0000000000000000008",
+      "name": "fromState",
+      "type": "string"
+    },
+    {
+      "id": "01JQATT0000000000000000009",
+      "name": "toState",
+      "type": "string",
+      "required": true
+    },
+    {
+      "id": "01JQATT0000000000000000010",
+      "name": "at",
+      "type": "datetimeoffset",
+      "required": true
+    }
+  ]
+}

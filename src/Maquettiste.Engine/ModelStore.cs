@@ -207,7 +207,7 @@ public sealed partial class ModelStore : IAsyncDisposable
                 continue;
             }
 
-            if (IsSchemaOperation(o.Op))
+            if (IsSchemaOperation(o.Op) || IsProcessOperation(o.Op))
             {
                 schemaOps = true;
                 continue;
@@ -939,6 +939,23 @@ public enum BatchOp
 
     /// <summary><c>set-default-schema</c>: makes schema <c>schema</c> the default of database <c>id</c>.</summary>
     [JsonStringEnumMemberName("set-default-schema")] SetDefaultSchema,
+
+    /// <summary>
+    /// <c>sync-enum</c>: makes the members of the enum bound by lifecycle process <c>id</c> its bound states in document order, keeping
+    /// the ids, codes and descriptions of the members it keeps (phase-3-design.md section 2.3). A removal of a member a default,
+    /// allowed values, a seed cell or a scenario value uses refuses the operation (MQ9019), as does another operation of the batch
+    /// that writes the process or the enum.
+    /// </summary>
+    [JsonStringEnumMemberName("sync-enum")] SyncEnum,
+
+    /// <summary>
+    /// <c>set-lifecycle</c>: makes process <c>target</c> the lifecycle of entity <c>id</c> and the entity its subject in one change, or,
+    /// without <c>target</c>, clears the entity's lifecycle and turns the process that was bound back into an orchestration.
+    /// </summary>
+    [JsonStringEnumMemberName("set-lifecycle")] SetLifecycle,
+
+    /// <summary><c>set-initial</c>: makes state <c>target</c> the initial child of process <c>id</c> (its root) or of compound state <c>id</c>.</summary>
+    [JsonStringEnumMemberName("set-initial")] SetInitial,
 }
 
 /// <summary>One batch operation.</summary>
@@ -951,7 +968,8 @@ public enum BatchOp
 /// <param name="Value">The translated text, a sidecar reference, or null to remove it (translate).</param>
 /// <param name="Schema">The schema id (rename-schema, remove-schema, set-default-schema; optional for add-schema).</param>
 /// <param name="Name">The schema name (add-schema, rename-schema).</param>
-/// <param name="Target">The schema id that what lives in the removed schema moves to (remove-schema).</param>
+/// <param name="Target">The schema id that what lives in the removed schema moves to (remove-schema); the process (set-lifecycle); the
+/// child state (set-initial).</param>
 /// <param name="Default">The schema id that becomes the default when the removed schema is the default (remove-schema).</param>
 public sealed record BatchOperation(
     BatchOp Op, string? Id, string? ExpectedHash, JsonElement? Element, string? Locale = null, string? Field = null, JsonElement? Value = null,

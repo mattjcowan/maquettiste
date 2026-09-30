@@ -1,0 +1,61 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JQSCN0000000000000000006",
+  "name": "CancelRefusedAfterShipping",
+  "displayName": "Cancel refused after shipping",
+  "process": "01JQPRC0000000000000000001",
+  "start": {
+    "context": {
+      "01JQATT0000000000000000101": 100,
+      "01JQATT0000000000000000102": 1000
+    }
+  },
+  "steps": [
+    {
+      "id": "01JQSTP0000000000000000018",
+      "event": "01JQPRX0000000000000000001",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000007",
+          "01JQSTA0000000000000000011"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000019",
+      "event": "01JQPRX0000000000000000005",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000007",
+          "01JQSTA0000000000000000012"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000020",
+      "event": "01JQPRX0000000000000000006",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000007",
+          "01JQSTA0000000000000000013"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000021",
+      "event": "01JQPRX0000000000000000009",
+      "assume": {
+        "01JQPRX0000000000000000011": false
+      },
+      "expect": {
+        "accepted": false,
+        "states": [
+          "01JQSTA0000000000000000007",
+          "01JQSTA0000000000000000013"
+        ]
+      },
+      "description": "The goods have left: notShipped is false."
+    }
+  ]
+}

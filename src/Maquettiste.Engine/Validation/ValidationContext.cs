@@ -276,6 +276,15 @@ internal sealed class ValidationContext
             case Stereotype s:
                 yield return ("stereotype|" + s.Key, "stereotype keys");
                 break;
+            case Process process when process.Name.Length > 0:
+                yield return ("process|" + process.Package + "|" + process.Name, "processes of the same package");
+                break;
+            case Actor actor when actor.Name.Length > 0:
+                yield return ("actor|" + actor.Name, "actors");
+                break;
+            case Scenario scenario when scenario.Name.Length > 0:
+                yield return ("scenario|" + scenario.Process + "|" + scenario.Name, "scenarios of the same process");
+                break;
         }
     }
 

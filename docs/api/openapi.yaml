@@ -5106,7 +5106,7 @@ components:
                   $ref: '#/components/schemas/StorageChoice'
     ElementKind:
       type: string
-      enum: [package, entity, value-object, scalar-type, enum, relation, database, table, view, sequence, mapping, diagram, tag-vocabulary, category-tree, stereotype, reference-type, seed]
+      enum: [package, entity, value-object, scalar-type, enum, relation, database, table, view, sequence, mapping, diagram, tag-vocabulary, category-tree, stereotype, reference-type, seed, process, actor, scenario]
     ChangeSource:
       type: string
       enum: [editor, disk, cli, engine]
@@ -5181,6 +5181,28 @@ components:
         base:
           description: The base entity's id, on entity rows that have one (E5h). Related-element highlighting reads base and derived entities from it.
           $ref: '#/components/schemas/Ulid'
+        use:
+          description: The process's use, on process rows (phase-3-design.md section 2.1).
+          type: string
+          enum: [lifecycle, orchestration]
+        subject:
+          description: The entity whose lifecycle the process is, on process rows that have one.
+          $ref: '#/components/schemas/Ulid'
+        stateCount:
+          type: integer
+          minimum: 0
+          description: The number of states at every depth, on process rows.
+        actorType:
+          description: The actor's type, on actor rows.
+          type: string
+          enum: [person, role, external-system]
+        process:
+          description: The process a scenario runs, on scenario rows.
+          $ref: '#/components/schemas/Ulid'
+        stepCount:
+          type: integer
+          minimum: 0
+          description: The number of steps, on scenario rows.
     RelationEndSummary:
       x-engine-addition: E5
       x-engine-record: Maquettiste.Engine.Model.RelationEndSummary
@@ -5239,6 +5261,9 @@ components:
         - $ref: '../../schemas/v1/stereotype.json'
         - $ref: '../../schemas/v1/reference-type.json'
         - $ref: '../../schemas/v1/seed.json'
+        - $ref: '../../schemas/v1/process.json'
+        - $ref: '../../schemas/v1/actor.json'
+        - $ref: '../../schemas/v1/scenario.json'
     NewModelDocument:
       description: 'A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required. Reference types and seeds (`reference-type`, `seed`) are documents like any other.'
       type: object
@@ -5436,8 +5461,16 @@ components:
         (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the
         default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the
         database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results
-        followed by one per element the schema operations changed.
-      enum: [create, update, delete, translate, add-schema, rename-schema, remove-schema, set-default-schema]
+        followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and
+        4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order,
+        keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a
+        default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or
+        the enum), `set-lifecycle` (`id` an entity, `target` a
+        process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's
+        lifecycle and turns the bound process back into an orchestration) and `set-initial` (`id` a process or a compound
+        state, `target` one of its direct children). They expand into updates the same way, and a refusal is MQ9019 at
+        `/operations/<n>`.
+      enum: [create, update, delete, translate, add-schema, rename-schema, remove-schema, set-default-schema, sync-enum, set-lifecycle, set-initial]
     BatchOperation:
       x-engine-record: Maquettiste.Engine.BatchOperation
       type: object
@@ -5470,7 +5503,7 @@ components:
           description: The schema name (`add-schema`, `rename-schema`).
           type: [string, 'null']
         target:
-          description: The schema id that what lives in the removed schema moves to (`remove-schema`).
+          description: The schema id that what lives in the removed schema moves to (`remove-schema`); the process (`set-lifecycle`); the child state (`set-initial`).
           type: [string, 'null']
         default:
           description: The schema id that becomes the default when the removed schema is the default (`remove-schema`).
@@ -5539,6 +5572,10 @@ components:
         canBeOff:
           type: boolean
           description: Whether validation.rules may set the rule to off (false for MQ1xxx).
+        quickFix:
+          type: string
+          enum: [sync-enum, set-lifecycle, set-initial]
+          description: The batch operation that fixes a finding of the rule, applied to the finding's element (phase-3-design.md section 3); absent when the rule has none.
     Diagnostic:
       x-engine-record: Maquettiste.Engine.Diagnostics.Diagnostic
       type: object
@@ -5546,7 +5583,7 @@ components:
       properties:
         rule:
           type: string
-          pattern: '^(MQ[1-7][0-9]{3}|x/.+)$'
+          pattern: '^(MQ[1-9][0-9]{3}|x/.+)$'
         severity:
           $ref: '#/components/schemas/DiagnosticSeverity'
         message:

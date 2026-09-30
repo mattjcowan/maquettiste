@@ -5,9 +5,11 @@ import {
   Eye,
   FolderTree,
   Gem,
+  GitBranch,
   Hash,
   Library,
   Link2,
+  ListChecks,
   ListOrdered,
   Package,
   Rows3,
@@ -15,6 +17,7 @@ import {
   Table2,
   Tags,
   Type,
+  UserRound,
   Workflow,
   type LucideIcon,
 } from "lucide-react";
@@ -38,6 +41,9 @@ export const KIND_ICONS: Record<ElementKind, LucideIcon> = {
   stereotype: Stamp,
   "reference-type": Library,
   seed: Rows3,
+  process: GitBranch,
+  actor: UserRound,
+  scenario: ListChecks,
 };
 
 export function KindIcon({ kind, className }: { kind: ElementKind; className?: string }) {

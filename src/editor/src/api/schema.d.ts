@@ -1712,7 +1712,7 @@ export interface components {
             }[];
         };
         /** @enum {string} */
-        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed";
+        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "process" | "actor" | "scenario";
         /** @enum {string} */
         ChangeSource: "editor" | "disk" | "cli" | "engine";
         /**
@@ -1751,6 +1751,24 @@ export interface components {
             fieldCount?: number;
             /** @description The base entity's id, on entity rows that have one (E5h). Related-element highlighting reads base and derived entities from it. */
             base?: components["schemas"]["Ulid"];
+            /**
+             * @description The process's use, on process rows (phase-3-design.md section 2.1).
+             * @enum {string}
+             */
+            use?: "lifecycle" | "orchestration";
+            /** @description The entity whose lifecycle the process is, on process rows that have one. */
+            subject?: components["schemas"]["Ulid"];
+            /** @description The number of states at every depth, on process rows. */
+            stateCount?: number;
+            /**
+             * @description The actor's type, on actor rows.
+             * @enum {string}
+             */
+            actorType?: "person" | "role" | "external-system";
+            /** @description The process a scenario runs, on scenario rows. */
+            process?: components["schemas"]["Ulid"];
+            /** @description The number of steps, on scenario rows. */
+            stepCount?: number;
         };
         RelationEndSummary: {
             entity: components["schemas"]["Ulid"];
@@ -1767,7 +1785,7 @@ export interface components {
             missing: string[];
         };
         /** @description A canonical model file (`schemas/v1/<kind>.json`), chosen by `kind`. */
-        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"];
+        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"] | components["schemas"]["process"] | components["schemas"]["actor"] | components["schemas"]["scenario"];
         /** @description A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required. Reference types and seeds (`reference-type`, `seed`) are documents like any other. */
         NewModelDocument: {
             kind: components["schemas"]["ElementKind"];
@@ -1875,10 +1893,10 @@ export interface components {
             changes: components["schemas"]["ChangeSet"] | null;
         };
         /**
-         * @description `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed.
+         * @description `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `set-lifecycle` (`id` an entity, `target` a process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's lifecycle and turns the bound process back into an orchestration) and `set-initial` (`id` a process or a compound state, `target` one of its direct children). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`.
          * @enum {string}
          */
-        BatchOp: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema";
+        BatchOp: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "sync-enum" | "set-lifecycle" | "set-initial";
         BatchOperation: {
             op: components["schemas"]["BatchOp"];
             id: string | null;
@@ -1896,7 +1914,7 @@ export interface components {
             schema?: string | null;
             /** @description The schema name (`add-schema`, `rename-schema`). */
             name?: string | null;
-            /** @description The schema id that what lives in the removed schema moves to (`remove-schema`). */
+            /** @description The schema id that what lives in the removed schema moves to (`remove-schema`); the process (`set-lifecycle`); the child state (`set-initial`). */
             target?: string | null;
             /** @description The schema id that becomes the default when the removed schema is the default (`remove-schema`). */
             default?: string | null;
@@ -1925,6 +1943,11 @@ export interface components {
             familyLabel: string;
             /** @description Whether validation.rules may set the rule to off (false for MQ1xxx). */
             canBeOff: boolean;
+            /**
+             * @description The batch operation that fixes a finding of the rule, applied to the finding's element (phase-3-design.md section 3); absent when the rule has none.
+             * @enum {string}
+             */
+            quickFix?: "sync-enum" | "set-lifecycle" | "set-initial";
         };
         Diagnostic: {
             rule: string;
@@ -2931,10 +2954,17 @@ export interface components {
         /** @description Provenance of an imported element. */
         source: {
             /** @enum {unknown} */
-            format: "dbml" | "sql" | "database" | "openapi";
+            format: "dbml" | "sql" | "database" | "openapi" | "xstate";
             name?: string;
             location?: string;
             fingerprint?: string;
+            /**
+             * @description Opaque data an import kept (unknown source configuration, by JSON pointer), written back on export.
+             * @default {}
+             */
+            extensions?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * Package
@@ -3049,6 +3079,8 @@ export interface components {
             /** @default false */
             abstract?: boolean;
             base?: components["schemas"]["id"];
+            /** @description The process that is this entity's lifecycle. */
+            lifecycle?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
@@ -3615,6 +3647,8 @@ export interface components {
             displayName?: string;
             pluralName?: string;
             package?: components["schemas"]["id"];
+            /** @description Set when the diagram is that process's statechart: its members are then states of the process. */
+            process?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
@@ -3752,7 +3786,7 @@ export interface components {
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
             /** @default [] */
-            appliesTo?: ("package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "attribute" | "enum-member" | "column")[];
+            appliesTo?: ("package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "attribute" | "enum-member" | "column" | "process" | "actor" | "scenario" | "state" | "transition" | "event")[];
             /** @default [] */
             attributes?: components["schemas"]["attribute"][];
             /** @default {} */
@@ -3864,13 +3898,689 @@ export interface components {
             source?: components["schemas"]["source"];
         };
         /**
+         * Invoke
+         * @description Work a state starts on entry: a sub-process, a service task or a human task.
+         */
+        invoke: {
+            id: components["schemas"]["id"];
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            /** @enum {unknown} */
+            type: "process" | "service" | "human-task";
+            /** @description The sub-process, for type process. */
+            process?: components["schemas"]["id"];
+            /**
+             * @description Who may complete a human task.
+             * @default []
+             */
+            actors?: components["schemas"]["idList"];
+            description?: components["schemas"]["description"];
+        };
+        /**
+         * State
+         * @description A state of the process; the root is implicit (the process is the root compound state).
+         */
+        state: {
+            id: components["schemas"]["id"];
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            /**
+             * @default atomic
+             * @enum {unknown}
+             */
+            type?: "atomic" | "compound" | "parallel" | "final" | "history" | "choice";
+            /** @description Compound only: the initial child, a direct child (MQ9001); absent means the first child. */
+            initial?: components["schemas"]["id"];
+            /**
+             * @description History only: shallow or deep.
+             * @default shallow
+             * @enum {unknown}
+             */
+            history?: "shallow" | "deep";
+            /** @description History only: the state entered when no history is recorded; absent means the parent's initial. */
+            defaultTarget?: components["schemas"]["id"];
+            /**
+             * @description Actions run on entry, in list order.
+             * @default []
+             */
+            entry?: components["schemas"]["idList"];
+            /**
+             * @description Actions run on exit, in list order.
+             * @default []
+             */
+            exit?: components["schemas"]["idList"];
+            /**
+             * @description Invocations started on entry and cancelled on exit, in display order.
+             * @default []
+             */
+            invoke?: components["schemas"]["invoke"][];
+            /**
+             * @description Children in document order; the regions of a parallel state.
+             * @default []
+             */
+            states?: components["schemas"]["state"][];
+            description?: components["schemas"]["description"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+        };
+        /**
+         * Meaning
+         * @description What a signature means.
+         */
+        meaning: {
+            id: components["schemas"]["id"];
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            description?: components["schemas"]["description"];
+        };
+        /**
+         * Gate
+         * @description A signature gate on an event transition: the transition fires on the occurrence that completes the gate.
+         */
+        gate: {
+            id: components["schemas"]["id"];
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            /**
+             * @description The number of signatures needed.
+             * @default 1
+             */
+            required?: number;
+            /** @description The actors whose members may sign. */
+            signers: components["schemas"]["idList"];
+            /**
+             * @description Actors each of which must give at least one signature (a subset of signers).
+             * @default []
+             */
+            requiredActors?: components["schemas"]["idList"];
+            /**
+             * @description Whether one signer may count twice.
+             * @default false
+             */
+            allowRepeatSigner?: boolean;
+            /**
+             * @description Whether each signature must carry a reason.
+             * @default false
+             */
+            reasonRequired?: boolean;
+            /** @description What a signature means. */
+            meanings: components["schemas"]["meaning"][];
+            /**
+             * @description Extra fields recorded with each signature.
+             * @default []
+             */
+            auditAttributes?: components["schemas"]["attribute"][];
+            description?: components["schemas"]["description"];
+        };
+        /**
+         * Event
+         * @description A process-local event.
+         */
+        event: {
+            id: components["schemas"]["id"];
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            /**
+             * @description The typed payload.
+             * @default []
+             */
+            payload?: components["schemas"]["attribute"][];
+            /**
+             * @description The actors that may send the event; empty means any actor.
+             * @default []
+             */
+            actors?: components["schemas"]["idList"];
+            description?: components["schemas"]["description"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+        };
+        /**
+         * Guard
+         * @description A named condition; without an expression it is a stub.
+         */
+        guard: {
+            id: components["schemas"]["id"];
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            /** @description A JavaScript expression over context and event returning a boolean. */
+            expression?: string;
+            description?: components["schemas"]["description"];
+        };
+        /**
+         * Action
+         * @description A named effect; without an expression it is a stub.
+         */
+        action: {
+            id: components["schemas"]["id"];
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            /** @description A JavaScript expression returning an object of context updates. */
+            expression?: string;
+            /**
+             * @description Internal events queued after the action.
+             * @default []
+             */
+            raises?: components["schemas"]["idList"];
+            description?: components["schemas"]["description"];
+        };
+        /**
+         * Transition
+         * @description A transition; among transitions with one source and one trigger, array order is priority.
+         */
+        transition: {
+            id: components["schemas"]["id"];
+            /** @description The edge label when set. */
+            displayName?: string;
+            source: components["schemas"]["id"];
+            /**
+             * @default event
+             * @enum {unknown}
+             */
+            trigger?: "event" | "after" | "done" | "always" | "invoke-done" | "invoke-error";
+            /** @description Required when trigger is event. */
+            event?: components["schemas"]["id"];
+            /** @description An ISO 8601 duration; required when trigger is after. */
+            after?: string;
+            /** @description An invoke of the source; required for invoke-done and invoke-error. */
+            invoke?: components["schemas"]["id"];
+            /** @description Unguarded when absent. */
+            guard?: components["schemas"]["id"];
+            /**
+             * @description None: targetless; several: one per orthogonal region.
+             * @default []
+             */
+            targets?: components["schemas"]["idList"];
+            /**
+             * @description Actions run on the transition, in list order.
+             * @default []
+             */
+            actions?: components["schemas"]["idList"];
+            /**
+             * @description Whether the source is exited and re-entered when a target is its descendant.
+             * @default false
+             */
+            external?: boolean;
+            gate?: components["schemas"]["gate"];
+            description?: components["schemas"]["description"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+        };
+        /**
+         * Process
+         * @description A statechart: an entity lifecycle or an orchestration (model/processes/).
+         */
+        process: {
+            $schema?: components["schemas"]["schemaPath"];
+            /** @constant */
+            kind: "process";
+            id: components["schemas"]["id"];
+            /** @default  */
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            pluralName?: string;
+            package?: components["schemas"]["id"];
+            /**
+             * @default orchestration
+             * @enum {unknown}
+             */
+            use?: "lifecycle" | "orchestration";
+            /** @description The entity whose lifecycle this is; required when use is lifecycle. */
+            subject?: components["schemas"]["id"];
+            /** @description An enum-typed attribute of the subject that holds the state (lifecycle only). */
+            boundAttribute?: components["schemas"]["id"];
+            description?: components["schemas"]["description"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /**
+             * @description The running instance's data.
+             * @default []
+             */
+            context?: components["schemas"]["attribute"][];
+            /** @default [] */
+            events?: components["schemas"]["event"][];
+            /** @default [] */
+            guards?: components["schemas"]["guard"][];
+            /** @default [] */
+            actions?: components["schemas"]["action"][];
+            /** @description The root's children, in document order. */
+            states: components["schemas"]["state"][];
+            /** @description The root's initial child; absent means the first. */
+            initial?: components["schemas"]["id"];
+            /**
+             * @description In priority order.
+             * @default []
+             */
+            transitions?: components["schemas"]["transition"][];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+            $defs: {
+                /**
+                 * State
+                 * @description A state of the process; the root is implicit (the process is the root compound state).
+                 */
+                state: {
+                    id: components["schemas"]["id"];
+                    name: components["schemas"]["identifier"];
+                    displayName?: string;
+                    /**
+                     * @default atomic
+                     * @enum {unknown}
+                     */
+                    type?: "atomic" | "compound" | "parallel" | "final" | "history" | "choice";
+                    /** @description Compound only: the initial child, a direct child (MQ9001); absent means the first child. */
+                    initial?: components["schemas"]["id"];
+                    /**
+                     * @description History only: shallow or deep.
+                     * @default shallow
+                     * @enum {unknown}
+                     */
+                    history?: "shallow" | "deep";
+                    /** @description History only: the state entered when no history is recorded; absent means the parent's initial. */
+                    defaultTarget?: components["schemas"]["id"];
+                    /**
+                     * @description Actions run on entry, in list order.
+                     * @default []
+                     */
+                    entry?: components["schemas"]["idList"];
+                    /**
+                     * @description Actions run on exit, in list order.
+                     * @default []
+                     */
+                    exit?: components["schemas"]["idList"];
+                    /**
+                     * @description Invocations started on entry and cancelled on exit, in display order.
+                     * @default []
+                     */
+                    invoke?: components["schemas"]["invoke"][];
+                    /**
+                     * @description Children in document order; the regions of a parallel state.
+                     * @default []
+                     */
+                    states?: components["schemas"]["state"][];
+                    description?: components["schemas"]["description"];
+                    /** @default [] */
+                    stereotypes?: components["schemas"]["keyList"];
+                    /** @default {} */
+                    properties?: components["schemas"]["properties"];
+                };
+                /**
+                 * Transition
+                 * @description A transition; among transitions with one source and one trigger, array order is priority.
+                 */
+                transition: {
+                    id: components["schemas"]["id"];
+                    /** @description The edge label when set. */
+                    displayName?: string;
+                    source: components["schemas"]["id"];
+                    /**
+                     * @default event
+                     * @enum {unknown}
+                     */
+                    trigger?: "event" | "after" | "done" | "always" | "invoke-done" | "invoke-error";
+                    /** @description Required when trigger is event. */
+                    event?: components["schemas"]["id"];
+                    /** @description An ISO 8601 duration; required when trigger is after. */
+                    after?: string;
+                    /** @description An invoke of the source; required for invoke-done and invoke-error. */
+                    invoke?: components["schemas"]["id"];
+                    /** @description Unguarded when absent. */
+                    guard?: components["schemas"]["id"];
+                    /**
+                     * @description None: targetless; several: one per orthogonal region.
+                     * @default []
+                     */
+                    targets?: components["schemas"]["idList"];
+                    /**
+                     * @description Actions run on the transition, in list order.
+                     * @default []
+                     */
+                    actions?: components["schemas"]["idList"];
+                    /**
+                     * @description Whether the source is exited and re-entered when a target is its descendant.
+                     * @default false
+                     */
+                    external?: boolean;
+                    gate?: components["schemas"]["gate"];
+                    description?: components["schemas"]["description"];
+                    /** @default [] */
+                    stereotypes?: components["schemas"]["keyList"];
+                    /** @default {} */
+                    properties?: components["schemas"]["properties"];
+                };
+                /**
+                 * Event
+                 * @description A process-local event.
+                 */
+                event: {
+                    id: components["schemas"]["id"];
+                    name: components["schemas"]["identifier"];
+                    displayName?: string;
+                    /**
+                     * @description The typed payload.
+                     * @default []
+                     */
+                    payload?: components["schemas"]["attribute"][];
+                    /**
+                     * @description The actors that may send the event; empty means any actor.
+                     * @default []
+                     */
+                    actors?: components["schemas"]["idList"];
+                    description?: components["schemas"]["description"];
+                    /** @default [] */
+                    stereotypes?: components["schemas"]["keyList"];
+                    /** @default {} */
+                    properties?: components["schemas"]["properties"];
+                };
+                /**
+                 * Guard
+                 * @description A named condition; without an expression it is a stub.
+                 */
+                guard: {
+                    id: components["schemas"]["id"];
+                    name: components["schemas"]["identifier"];
+                    displayName?: string;
+                    /** @description A JavaScript expression over context and event returning a boolean. */
+                    expression?: string;
+                    description?: components["schemas"]["description"];
+                };
+                /**
+                 * Action
+                 * @description A named effect; without an expression it is a stub.
+                 */
+                action: {
+                    id: components["schemas"]["id"];
+                    name: components["schemas"]["identifier"];
+                    displayName?: string;
+                    /** @description A JavaScript expression returning an object of context updates. */
+                    expression?: string;
+                    /**
+                     * @description Internal events queued after the action.
+                     * @default []
+                     */
+                    raises?: components["schemas"]["idList"];
+                    description?: components["schemas"]["description"];
+                };
+                /**
+                 * Invoke
+                 * @description Work a state starts on entry: a sub-process, a service task or a human task.
+                 */
+                invoke: {
+                    id: components["schemas"]["id"];
+                    name: components["schemas"]["identifier"];
+                    displayName?: string;
+                    /** @enum {unknown} */
+                    type: "process" | "service" | "human-task";
+                    /** @description The sub-process, for type process. */
+                    process?: components["schemas"]["id"];
+                    /**
+                     * @description Who may complete a human task.
+                     * @default []
+                     */
+                    actors?: components["schemas"]["idList"];
+                    description?: components["schemas"]["description"];
+                };
+                /**
+                 * Gate
+                 * @description A signature gate on an event transition: the transition fires on the occurrence that completes the gate.
+                 */
+                gate: {
+                    id: components["schemas"]["id"];
+                    name: components["schemas"]["identifier"];
+                    displayName?: string;
+                    /**
+                     * @description The number of signatures needed.
+                     * @default 1
+                     */
+                    required?: number;
+                    /** @description The actors whose members may sign. */
+                    signers: components["schemas"]["idList"];
+                    /**
+                     * @description Actors each of which must give at least one signature (a subset of signers).
+                     * @default []
+                     */
+                    requiredActors?: components["schemas"]["idList"];
+                    /**
+                     * @description Whether one signer may count twice.
+                     * @default false
+                     */
+                    allowRepeatSigner?: boolean;
+                    /**
+                     * @description Whether each signature must carry a reason.
+                     * @default false
+                     */
+                    reasonRequired?: boolean;
+                    /** @description What a signature means. */
+                    meanings: components["schemas"]["meaning"][];
+                    /**
+                     * @description Extra fields recorded with each signature.
+                     * @default []
+                     */
+                    auditAttributes?: components["schemas"]["attribute"][];
+                    description?: components["schemas"]["description"];
+                };
+                /**
+                 * Meaning
+                 * @description What a signature means.
+                 */
+                meaning: {
+                    id: components["schemas"]["id"];
+                    name: components["schemas"]["identifier"];
+                    displayName?: string;
+                    description?: components["schemas"]["description"];
+                };
+            };
+        };
+        /**
+         * Actor
+         * @description A person, a role or an external system that takes part in processes (model/actors/).
+         */
+        actor: {
+            $schema?: components["schemas"]["schemaPath"];
+            /** @constant */
+            kind: "actor";
+            id: components["schemas"]["id"];
+            /** @default  */
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            pluralName?: string;
+            /** @enum {unknown} */
+            type: "person" | "role" | "external-system";
+            description?: components["schemas"]["description"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+        };
+        /**
+         * Step
+         * @description One input to the process and what is expected after it.
+         */
+        step: {
+            id: components["schemas"]["id"];
+            /**
+             * @default event
+             * @enum {unknown}
+             */
+            input?: "event" | "time" | "invoke-done" | "invoke-error";
+            event?: components["schemas"]["id"];
+            invoke?: components["schemas"]["id"];
+            /** @description An ISO 8601 duration to advance the clock by, for input time. */
+            after?: string;
+            actor?: components["schemas"]["id"];
+            /** @description The signing person's identity, for gated events. */
+            signer?: string;
+            meaning?: components["schemas"]["id"];
+            reason?: string;
+            /**
+             * @description Payload values by attribute id.
+             * @default {}
+             */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description Results for guards without an expression, by guard id.
+             * @default {}
+             */
+            assume?: {
+                [key: string]: boolean;
+            };
+            /** @description What is expected after the step. */
+            expect?: {
+                /**
+                 * @description false records a refusal.
+                 * @default true
+                 */
+                accepted?: boolean;
+                /**
+                 * @description The active atomic states, in document order.
+                 * @default []
+                 */
+                states?: components["schemas"]["idList"];
+                /**
+                 * @description The attributes the step changed, by attribute id.
+                 * @default {}
+                 */
+                context?: {
+                    [key: string]: unknown;
+                };
+            };
+            description?: components["schemas"]["description"];
+        };
+        /**
+         * Scenario
+         * @description A recorded event sequence of one process (model/scenarios/<process stem>/); it belongs to the process.
+         */
+        scenario: {
+            $schema?: components["schemas"]["schemaPath"];
+            /** @constant */
+            kind: "scenario";
+            id: components["schemas"]["id"];
+            /** @default  */
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            pluralName?: string;
+            /** @description The process; the scenario belongs to it. */
+            process: components["schemas"]["id"];
+            description?: components["schemas"]["description"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /** @description The starting point. */
+            start?: {
+                /**
+                 * @description Initial context values over the attribute defaults, by attribute id.
+                 * @default {}
+                 */
+                context?: {
+                    [key: string]: unknown;
+                };
+                /**
+                 * @description The simulated clock's start (an ISO 8601 instant).
+                 * @default 2000-01-01T00:00:00Z
+                 */
+                at?: string;
+            };
+            /** @description In order. */
+            steps: components["schemas"]["step"][];
+            /**
+             * @description Whether the root is final after the last step.
+             * @default active
+             * @enum {unknown}
+             */
+            outcome?: "final" | "active";
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+            $defs: {
+                /**
+                 * Step
+                 * @description One input to the process and what is expected after it.
+                 */
+                step: {
+                    id: components["schemas"]["id"];
+                    /**
+                     * @default event
+                     * @enum {unknown}
+                     */
+                    input?: "event" | "time" | "invoke-done" | "invoke-error";
+                    event?: components["schemas"]["id"];
+                    invoke?: components["schemas"]["id"];
+                    /** @description An ISO 8601 duration to advance the clock by, for input time. */
+                    after?: string;
+                    actor?: components["schemas"]["id"];
+                    /** @description The signing person's identity, for gated events. */
+                    signer?: string;
+                    meaning?: components["schemas"]["id"];
+                    reason?: string;
+                    /**
+                     * @description Payload values by attribute id.
+                     * @default {}
+                     */
+                    payload?: {
+                        [key: string]: unknown;
+                    };
+                    /**
+                     * @description Results for guards without an expression, by guard id.
+                     * @default {}
+                     */
+                    assume?: {
+                        [key: string]: boolean;
+                    };
+                    /** @description What is expected after the step. */
+                    expect?: {
+                        /**
+                         * @description false records a refusal.
+                         * @default true
+                         */
+                        accepted?: boolean;
+                        /**
+                         * @description The active atomic states, in document order.
+                         * @default []
+                         */
+                        states?: components["schemas"]["idList"];
+                        /**
+                         * @description The attributes the step changed, by attribute id.
+                         * @default {}
+                         */
+                        context?: {
+                            [key: string]: unknown;
+                        };
+                    };
+                    description?: components["schemas"]["description"];
+                };
+            };
+        };
+        /**
          * Model batch
-         * @description An atomic batch of element creates, updates and deletes and database schema operations, from the editor, a refactoring or an AI proposal.
+         * @description An atomic batch of element creates, updates and deletes, database schema operations and process operations, from the editor, a refactoring or an AI proposal.
          */
         batch: {
             operations: ({
                 /** @enum {unknown} */
-                op: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema";
+                op: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "sync-enum" | "set-lifecycle" | "set-initial";
                 id?: components["schemas"]["id"];
                 expectedHash?: string;
                 element?: Record<string, never>;
@@ -3883,11 +4593,11 @@ export interface components {
                 schema?: components["schemas"]["id"];
                 /** @description The schema name (add-schema, rename-schema). */
                 name?: string;
-                /** @description The schema id that the tables, views, sequences, convention entries and mappings of the removed schema move to (remove-schema). */
+                /** @description The schema id that the tables, views, sequences, convention entries and mappings of the removed schema move to (remove-schema); the process the entity follows, or absent to clear the lifecycle (set-lifecycle); the child state that becomes the initial one (set-initial). */
                 target?: components["schemas"]["id"];
                 /** @description The schema id that becomes the default when the removed schema is the default (remove-schema). */
                 default?: components["schemas"]["id"];
-            } & (unknown & unknown & unknown & unknown & unknown & unknown))[];
+            } & (unknown & unknown & unknown & unknown & unknown & unknown & unknown))[];
         };
         /**
          * Template pack

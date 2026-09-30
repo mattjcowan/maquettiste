@@ -1,0 +1,56 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JQSCN0000000000000000004",
+  "name": "HoldAndRelease",
+  "displayName": "Hold and release",
+  "process": "01JQPRC0000000000000000001",
+  "start": {
+    "context": {
+      "01JQATT0000000000000000101": 100,
+      "01JQATT0000000000000000102": 1000
+    }
+  },
+  "steps": [
+    {
+      "id": "01JQSTP0000000000000000011",
+      "event": "01JQPRX0000000000000000001",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000007",
+          "01JQSTA0000000000000000011"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000012",
+      "event": "01JQPRX0000000000000000005",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000007",
+          "01JQSTA0000000000000000012"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000013",
+      "event": "01JQPRX0000000000000000007",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000015"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000014",
+      "event": "01JQPRX0000000000000000008",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000007",
+          "01JQSTA0000000000000000012"
+        ]
+      },
+      "description": "The deep history restores both regions."
+    }
+  ]
+}

@@ -213,6 +213,9 @@ export const KIND_LABELS: Record<ElementKind, string> = {
   stereotype: "Stereotype",
   "reference-type": "Reference type",
   seed: "Seed data",
+  process: "Process",
+  actor: "Actor",
+  scenario: "Scenario",
 };
 
 /** A domain inside another domain. */

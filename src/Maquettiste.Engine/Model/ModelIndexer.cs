@@ -70,6 +70,15 @@ internal static class ModelIndexer
         _ when type == typeof(DbSchema) => "schema",
         _ when type == typeof(ReferenceCode) || type == typeof(ReferenceLabel) => "reference-field",
         _ when type == typeof(SeedRow) => "row",
+        _ when type == typeof(ProcessState) => "state",
+        _ when type == typeof(ProcessTransition) => "transition",
+        _ when type == typeof(ProcessEvent) => "event",
+        _ when type == typeof(ProcessGuard) => "guard",
+        _ when type == typeof(ProcessAction) => "action",
+        _ when type == typeof(ProcessInvoke) => "invoke",
+        _ when type == typeof(ProcessGate) => "gate",
+        _ when type == typeof(GateMeaning) => "meaning",
+        _ when type == typeof(ScenarioStep) => "step",
         _ when type == typeof(AlternateKey) || type == typeof(UniqueConstraint) || type == typeof(ForeignKey)
             || type == typeof(CheckConstraint) || type == typeof(TableIndex) => "key",
         _ => null,
@@ -458,7 +467,26 @@ internal static class ModelIndexer
             Target: element is Seed seed ? seed.Target : null,
             RowCount: element is Seed rows ? rows.Rows.Count : null,
             FieldCount: element is ReferenceType referenceType ? referenceType.Attributes.Count : null,
-            Base: element is Entity entity ? entity.Base : null);
+            Base: element is Entity entity ? entity.Base : null,
+            Use: element is Process use ? (use.Use == ProcessUse.Lifecycle ? "lifecycle" : "orchestration") : null,
+            Subject: element is Process subject ? subject.Subject : null,
+            StateCount: element is Process states ? CountStates(states.States) : null,
+            ActorType: element is Actor actor ? actor.Type switch
+            {
+                Model.ActorType.Person => "person",
+                Model.ActorType.Role => "role",
+                _ => "external-system",
+            } : null,
+            Process: element is Scenario scenario ? scenario.Process : null,
+            StepCount: element is Scenario steps ? steps.Steps.Count : null);
+
+    private static int CountStates(IReadOnlyList<ProcessState> states)
+    {
+        var count = states.Count;
+        foreach (var state in states)
+            count += CountStates(state.States);
+        return count;
+    }
 
     private static RelationEndSummary[] EndsOf(Relation relation)
     {
@@ -477,6 +505,7 @@ internal static class ModelIndexer
         EnumType e => e.Package,
         Relation r => r.Package,
         Diagram d => d.Package,
+        Process p => p.Package,
         TagVocabulary t => t.Package,
         CategoryTree c => c.Package,
         _ => null,
@@ -652,6 +681,11 @@ internal static class ModelIndexer
                     case PropertyRole.Reference when child is string id:
                         References.Add(new ReferenceInfo(ownerId, fromId, childPointer, property.Name, id, property.Owning));
                         break;
+                    case PropertyRole.Reference when child is IDictionary map:
+                        // A map keyed by ids (a scenario's context and payload values, guard assumptions): each key is a reference.
+                        foreach (var key in map.Keys.Cast<string>().Order(StringComparer.Ordinal))
+                            References.Add(new ReferenceInfo(ownerId, fromId, childPointer + "/" + Escape(key), property.Name, key));
+                        break;
                     case PropertyRole.Reference when child is IEnumerable<string> ids:
                         var i = 0;
                         foreach (var item in ids)
@@ -719,6 +753,7 @@ internal static class ModelIndexer
             SeedRow r => r.Id,
             ReferenceCode c => c.Id,
             ReferenceLabel l => l.Id,
+            IProcessNode n => n.Id,
             _ => null,
         };
 
@@ -728,7 +763,8 @@ internal static class ModelIndexer
             {
                 if (pi.GetCustomAttribute<ElementRefAttribute>(inherit: true) is { } reference)
                     return reference.Keyed ? PropertyRole.KeyedReference : PropertyRole.Reference;
-                if (pi.DeclaringType == typeof(ElementBase) && pi.Name == nameof(ElementBase.Stereotypes))
+                if (pi.Name == nameof(ElementBase.Stereotypes)
+                    && (pi.DeclaringType == typeof(ElementBase) || typeof(IProcessNode).IsAssignableFrom(pi.DeclaringType)))
                     return PropertyRole.StereotypeKeys;
             }
 

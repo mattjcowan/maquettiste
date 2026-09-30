@@ -34,10 +34,16 @@ public sealed record KindInfo(ElementKind Kind, string Name, Type ClrType, strin
         new(ElementKind.Stereotype, "stereotype", typeof(Stereotype), "stereotype.json", "model/vocabularies/stereotypes", null),
         new(ElementKind.ReferenceType, "reference-type", typeof(ReferenceType), "reference-type.json", "model/reference-types", null),
         new(ElementKind.Seed, "seed", typeof(Seed), "seed.json", SeedsFolder, null),
+        new(ElementKind.Process, "process", typeof(Process), "process.json", "model/processes", null),
+        new(ElementKind.Actor, "actor", typeof(Actor), "actor.json", "model/actors", null),
+        new(ElementKind.Scenario, "scenario", typeof(Scenario), "scenario.json", ScenariosFolder, null),
     ];
 
     /// <summary>The folder of seeds; each target's seeds share a sub-folder named after the target.</summary>
     public const string SeedsFolder = "model/seeds";
+
+    /// <summary>The folder of scenarios; each process's scenarios share a sub-folder named after the process's file stem.</summary>
+    public const string ScenariosFolder = "model/scenarios";
 
     /// <summary>The folder of locale shards, one sub-folder per locale (<c>model/locales/&lt;locale&gt;/</c>).</summary>
     public const string LocalesFolder = "model/locales";

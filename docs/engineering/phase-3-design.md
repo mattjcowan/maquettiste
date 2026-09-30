@@ -294,6 +294,22 @@ that is not an actor), MQ3001 and MQ3018 for names, MQ5001 for properties.
 | MQ9506 | warning | Two transitions enabled for one event from one source at run time (the first in priority order is taken) | |
 | MQ9507 | error | A macrostep exceeded 1,000 microsteps | |
 
+**As built (P1), where the table left a choice.** One finding per fact: a compound or parallel state without children, and
+a final state with children, are MQ9002 (not MQ9001 or MQ9012); MQ9012 covers a final state's outgoing transitions and
+invokes; MQ9001 also reports an `initial` set on a state that is not compound. A target in another process is MQ9007; every
+other reference to another process's state, event, guard, action or invoke is MQ9014. MQ9003 reports only the topmost
+unreachable state of a subtree (with the count below it) and includes pseudo-states: a history state no transition targets is
+unreachable (the `process-basics` fixture's choice default now enters `Review` through its history state for that reason).
+MQ9004 and MQ9018 look only at reachable states (an unreachable one already has MQ9003); `done` on a state that is not
+compound or parallel is MQ9008. MQ9008 also reports a field of another trigger (`event`, `after` or `invoke` set with a
+trigger that never reads it). A history state directly under the root is allowed (the root is compound). An invoke is "used"
+(MQ9013) when an `invoke-done` or `invoke-error` transition names it. MQ9202 also refuses a flags enum (it holds several
+members at once). MQ9204 counts every other attribute typed by the enum (entities, value objects, relations, stereotypes, and
+process context, payload and audit attributes); another lifecycle bound to the enum is counted through its attribute. MQ9205
+also reports a bound attribute without a default, and is skipped when the root's initial child is a choice or history state.
+Scoped validation adds peers for these rules: a process change re-checks every actor (MQ9106) and the sub-processes it reaches
+(MQ9015); a change to an enum or to any element holding attributes re-checks the processes that bind an attribute.
+
 **Where they run.** MQ90xx to MQ92xx run in whole-model and scoped validation (`ValidationScope` with referrers, so an
 enum change re-checks its bound processes). MQ93xx and MQ9502 to MQ9507 run by replaying scenarios in the engine
 interpreter: `validate` replays every scenario of every process in scope, and the simulation endpoint reports them on its
@@ -306,6 +322,16 @@ one batch that undo reverts. The operations are batch operations in `batch.json`
 `set-lifecycle` (`id`: the entity, `target`: the process), `set-initial` (`id`: the compound state or the process,
 `target`: the child), `refresh-scenario` (`id`: the scenario: rewrite `expect` and `outcome` from a replay). The removals use the
 existing `update`.
+
+As built (P1), how each fix is derived from the diagnostic (P3 wires the button from this; `QuickFix` names only the
+operation, so a fix whose arguments cannot be read from the diagnostic's element and pointer is not in the catalog):
+
+| Rule | Operation | Arguments from the diagnostic | In the catalog |
+| --- | --- | --- | --- |
+| MQ9001 | `set-initial` | `id` = the diagnostic's element (the process, or the compound state); `target` = the first child in document order (the editor lets the user pick another) | yes |
+| MQ9203 | `sync-enum` | `id` = the diagnostic's element (the process); nothing else | yes |
+| MQ9201 | `set-lifecycle` | only two of its four findings are fixable: pointer `/subject` (`id` = the process's `subject`, `target` = the process) and an entity's `/lifecycle` naming an orchestration (`id` = the entity, `target` = its `lifecycle`). Pointer `/use` (no subject) has no entity to pass, and an entity naming another entity's lifecycle would silently unbind that entity | no: P3 either adds per-diagnostic fix arguments or builds these two cases in the editor |
+| MQ9013, MQ9016, MQ9102, MQ9105, MQ9205 | plain `update` of the diagnostic's element: remove the node at the pointer (MQ9013, MQ9016), add the missing actors to `signers` or the event's `actors` (MQ9102, MQ9105), set `default` (MQ9205) | the element, its hash and the pointer | no: an update is not a named operation; P3 builds it in the editor and counts it as a quick fix |
 
 ## 4. Engine
 
@@ -389,7 +415,7 @@ documents go through `/api/model/elements`; these are the process-specific opera
 | `POST /api/processes/{id}/verify` | `{ scenarios?: [id] }` (all of the process when absent) | `{ results: [{ scenario, passed, steps, failure?: { step, rule, message, expected, actual } }] }` |
 | `GET /api/processes/{id}/export?format=xstate` | | the XState config (§5), `application/json`, canonical key order; `X-Maquettiste-Diagnostics` counts MQ9406 |
 | `POST /api/processes/import?format=xstate&dryRun=true` | `{ config, package?, name?, use?, subject?, into?, expectedHash? }`; `into` re-imports over a process | `{ document, diagnostics, created: [id] }`; with `dryRun=false` it saves as one batch (409 when `into` changed since `expectedHash`) |
-| `POST /api/processes/{id}/sync-enum` | `{ dryRun?: bool, expectedHash? }` | `{ enum, added: [name], removed: [name], reordered: bool, refused: [{ member, referencedBy: [id] }] }`; a member still used by a default, `allowedValues` or a seed cell is refused, not removed |
+| `POST /api/processes/{id}/sync-enum` | `{ dryRun?: bool, expectedHash? }` | `{ enum, added: [name], removed: [name], reordered: bool, refused: [{ member, referencedBy: [id] }] }`; a member still used by a default, `allowedValues`, a seed cell or a scenario value (`start.context`, a step's `payload` or `expect.context`, for attributes typed by the enum) is refused, not removed: there is no force flag, the user changes the uses first. In a batch, the plan reads the documents as the batch's other operations leave them, and a batch that also writes the process or the enum is refused |
 
 `SimInput` is a step without `expect` (§2.4); `StepTrace` is `{ index, input, accepted, refusal?, microsteps: [{
 transitions, exited, entered, actions: [{ action, source: "expression" | "stub", changed }] }], guards: [{ guard,
@@ -691,9 +717,11 @@ hand-written partners, and `tools/gate3.sh`. Neither process comes from the owne
   `SalesOrderStatus`). `Draft` → `submit` → choice `CreditCheck` (`exceedsCreditLimit` → `CreditReview`, else →
   `Fulfilment`). `CreditReview` has a gate on `approveCredit`: 2 signatures from `CreditManager` and `FinanceDirector`,
   `CreditManager` required, no repeat signer, reason required, meaning "Credit approved"; `rejectCredit` loops back to
-  `Draft`. `Fulfilment` is parallel: region Payment (`AwaitingPayment` → `paymentReceived` → `Paid`, final; `after P30D`
-  → `PaymentOverdue`), region Shipping (`Picking` → `pick` → `Packing` → `ship` → `Shipped`, final); `onDone` →
-  `Completed` (final). `hold` from `Fulfilment` → `OnHold`; `release` → a deep history of `Fulfilment`. `cancel` →
+  `Draft`. `Fulfilment` is compound (as built, see the erratum in §10): its initial child `Processing` is parallel with region
+  Payment (`AwaitingPayment` → `paymentReceived` → `Paid`, final; `after P30D` → `PaymentOverdue`) and region Shipping
+  (`Picking` → `pick` → `Packing` → `ship` → `Shipped`, final), and its other child is the deep history state `Resume`
+  (default `Processing`); `Processing`'s `done` → `Completed` (final). `hold` from `Fulfilment` → `OnHold`; `release` →
+  `Resume`, the deep history of `Fulfilment`. `cancel` →
   `Cancelled` (final), guarded by `notShipped`. Context `total`, `creditLimit`; guards with expressions and one stub
   (`notShipped`). Scenarios: small order, credit approved with two signatures, credit rejected and resubmitted, hold and
   release (deep history), payment overdue by time, cancel refused after shipping, repeat signer refused.
@@ -748,6 +776,22 @@ and a status line in this document.
 | **P5** Packs, interpreter, dispatch, tests, gate 3 | `packs/csharp-dapper/` (process units, `helpers.js` translation), `packs/process-docs/`, `packs/sql-ddl/` (`process-tables`), `samples/typescript-pack/`, `tests/Maquettiste.Packs.Tests/ProcessTests.cs`, `tests/fixtures/models/processes/src/` and `tools/gate3.sh`, `.github/workflows/gate3.yml` | §7.2 units with golden files; the generated interpreter agrees with the engine on every fixture scenario; the dispatch registry, behaviours and pairs; the TypeScript mirror in CI; gate 3 criteria 1 to 8 pass | A generated file that differs between `--jobs` values; a companion overwritten on regeneration; reflection in the registry; a scenario test that passes against a broken handler |
 | **P6** Docs, user guide, gate close | `docs/user-guide.md`, `docs/mcp.md`, pack READMEs, this document's status, `docs/engineering/spec-errata.md` (E27 onward), `README.md` | User guide sections for processes, actors, scenarios, simulation, import and export; MQ9xxx table in the guide; gate 3 run recorded; errata entered for the owner | A guide step that does not match the editor; an MQ id missing from the guide; a vendor name anywhere |
 
+**Status P1, stage 1 (model), 2026-09-29:** built and verified. `process.json`, `actor.json`, `scenario.json` (with `$defs` for state, transition, event, guard, action, invoke, gate, meaning, step); `entity.json` `lifecycle`, `diagram.json` `process`, `pack.json` scopes `each process|actor|scenario`, `extension.json` and `stereotype.json` applicable kinds, `common.json` `source.extensions` (and `format: xstate`). Records in `Model/Processes.cs`, the nine index kinds, owning scenario deletion, `model/scenarios/<process stem>/`, index rows (`use`, `subject`, `stateCount`, `actorType`, `process`, `stepCount`, format `maquettiste-index/e8`), localizable nodes and shards, the six MQ9 family labels; fixture `tests/fixtures/models/process-basics/` and `Processes/ProcessModelTests.cs`. Scenarios carry `pluralName` like every element (the design's `x-order` omits it). Left for P1: MQ9001-MQ9018, MQ9101-MQ9106, MQ9201-MQ9205, the batch operations and the §8.1 fixture.
+
+**Status P1, stage 2 (rules), 2026-09-29:** built and verified. `Processes/ProcessAnalysis.cs` (state tree, reachability through initial children, parallel regions, history defaults, transitions and `done`, completion, transition groups, eventless cycles); `Validation/ProcessRules.cs` with MQ9001-MQ9018, MQ9101-MQ9106 and MQ9201-MQ9205 run by `ModelValidator` (scoped peers for actors, sub-processes and bound enums); 29 catalog entries; `Processes/ProcessRuleTests.cs` with a failing and a passing case per rule. Choices the table left open are listed under section 3 ("As built"). Left for P1: MQ3001/MQ3018/MQ5001/MQ2003 on process sub-elements, the `sync-enum`, `set-lifecycle` and `set-initial` batch operations, and the section 8.1 fixture.
+
+**Status P1, stage 3 (operations and fixture), 2026-09-29:** built and verified. Batch operations `sync-enum` (bound enum members become the bound states in document order, keeping ids, codes and descriptions; a removed member still used by a default, `allowedValues` or a seed cell refuses the operation (stage 4 dropped a `removeUsed` override); `ModelStore.PlanSyncEnumAsync` is the dry run: added, removed, reordered, refused), `set-lifecycle` (binds entity and process in one change and unbinds the previous partners, or clears the entity's lifecycle and turns the process back into an orchestration) and `set-initial` (process or compound state, a direct child) in `batch.json`, the engine's batch dispatcher (`ModelStore.Processes.cs`), `openapi.yaml`, `apply_batch` and `docs/mcp.md`; refusals are the new MQ9019 (catalog 146). `RuleInfo.QuickFix` and the rules endpoint's `quickFix` carry the fixes: MQ9001 `set-initial`, MQ9201 `set-lifecycle`, MQ9203 `sync-enum` (the Problems panel had no fix mechanism before; P3 wires it). The section 8.1 fixture `tests/fixtures/models/processes/.maquettiste/` (39 files, 13 scenarios, 48 steps) validates 0/0/0 and is canonical; `Fulfilment` is a compound state wrapping the parallel `Processing` and the deep history `Resume`, because MQ9011 (as built) puts a history state in a compound parent; `Processing`'s `done` goes to `Completed`. Tests: `Processes/ProcessOperationTests.cs`, `Processes/ProcessFixtureTests.cs`, Functions `ProcessBatchTests.cs`. Left for P1: MQ3001/MQ3018/MQ5001/MQ2003 on process sub-elements.
+
+**Status P1, stage 4 (review fixes), 2026-09-29:** built and verified. MQ3001 now covers processes (per package), actors,
+scenarios (per process), states among siblings, and events, guards, actions, invokes and gates within the process (one
+namespace per kind) and gate meanings within their gate; MQ3018 checks process and node names as identifiers; MQ2003 and
+MQ2004 run on the stereotypes of states, transitions and events, and extensions (MQ5001) apply to the kinds `state`,
+`transition` and `event`. `removeUsed` is gone (§4.4 never had it): a used member is refused until its uses change, and
+uses now include scenario values; `sync-enum` plans over the batch's own staged documents and is refused when the batch
+also writes its process or enum. MQ3013 reports an enum attribute's `allowedValues` entry that names no member. MQ9201
+lost its catalog quick fix (see the derivation table in §3). Refusal messages say what to do; the canonical round trip
+test covers both process fixtures; §8.1 and §10 record the `Fulfilment` restructuring. P1 is complete.
+
 ## 10. SPEC amendments and open risks
 
 Errata to add to `docs/engineering/spec-errata.md` for the owner to apply:
@@ -767,6 +811,14 @@ Errata to add to `docs/engineering/spec-errata.md` for the owner to apply:
 | E37 | Section 21, gate 3 | Name the fixtures and the criteria of §8.2; C# gates, TypeScript follows |
 
 **Open risks.**
+
+- Erratum to this design (P1): the first draft of §8.1 made `Fulfilment` parallel and targeted "a deep history of
+  `Fulfilment`", but MQ9011 (§3) puts a history state inside a compound parent, and a parallel state's children are its
+  regions. The fixture wraps the parallel state in a compound `Fulfilment` holding `Processing` and the history `Resume`,
+  which keeps the scenario (hold and release restore both regions). If the interpreter of P2 or an importer ever needs
+  history directly under a parallel state, MQ9011 changes first.
+- The fixture settings name `csharp-dapper` and `sql-ddl`; gate criterion 4 needs `process-docs`, which P5 creates and
+  then adds to `tests/fixtures/models/processes/.maquettiste/maquettiste.json`.
 
 - The engine interpreter and the generated interpreters can drift on corner cases (conflicting transitions across
   regions, history with parallel descendants, `done` ordering). The conformance suite of P2 is replayed against both

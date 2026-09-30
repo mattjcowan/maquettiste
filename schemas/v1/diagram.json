@@ -11,6 +11,7 @@
     "displayName",
     "pluralName",
     "package",
+    "process",
     "description",
     "stereotypes",
     "tags",
@@ -42,6 +43,10 @@
       "type": "string"
     },
     "package": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "process": {
+      "description": "Set when the diagram is that process's statechart: its members are then states of the process.",
       "$ref": "common.json#/$defs/id"
     },
     "description": {

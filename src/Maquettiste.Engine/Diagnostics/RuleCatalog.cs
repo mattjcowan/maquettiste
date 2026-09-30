@@ -1,6 +1,7 @@
 using System.Collections.Frozen;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Serialization;
 
 namespace Maquettiste.Engine.Diagnostics;
 
@@ -8,7 +9,9 @@ namespace Maquettiste.Engine.Diagnostics;
 /// <param name="Id">The rule id, for example <c>MQ2001</c>.</param>
 /// <param name="DefaultSeverity">The severity unless <c>validation.rules</c> overrides it.</param>
 /// <param name="Description">A short description, used for SARIF <c>rules[]</c>.</param>
-public sealed record RuleInfo(string Id, DiagnosticSeverity DefaultSeverity, string Description)
+/// <param name="QuickFix">The batch operation that fixes a finding of the rule, applied to the finding's element (phase-3-design.md
+/// section 3, "Quick fixes"), or <see langword="null"/>.</param>
+public sealed record RuleInfo(string Id, DiagnosticSeverity DefaultSeverity, string Description, string? QuickFix = null)
 {
     /// <summary>Whether <c>validation.rules</c> may turn the rule off (every rule except MQ1xxx).</summary>
     public bool CanBeDisabled => !Id.StartsWith("MQ1", StringComparison.Ordinal);
@@ -21,7 +24,9 @@ public sealed record RuleInfo(string Id, DiagnosticSeverity DefaultSeverity, str
 /// <param name="Family">The rule's hundreds group, for example <c>MQ72xx</c>.</param>
 /// <param name="FamilyLabel">What the family's rules cover, for example <c>Localization</c>.</param>
 /// <param name="CanBeOff">Whether <c>validation.rules</c> may set the rule to <c>off</c> (false for MQ1xxx).</param>
-public sealed record RuleCatalogEntry(string Id, DiagnosticSeverity DefaultSeverity, string Description, string Family, string FamilyLabel, bool CanBeOff);
+/// <param name="QuickFix">The batch operation that fixes a finding (for example <c>sync-enum</c>); left out of the JSON when none.</param>
+public sealed record RuleCatalogEntry(string Id, DiagnosticSeverity DefaultSeverity, string Description, string Family, string FamilyLabel, bool CanBeOff,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? QuickFix = null);
 
 /// <summary>The built-in rule catalog (engine-design.md section 6). JavaScript rules use <c>x/&lt;id&gt;</c> and are not listed here.</summary>
 public static class RuleCatalog
@@ -157,6 +162,39 @@ public static class RuleCatalog
         new("MQ8001", E, "A branding color that is not a hex color (#rrggbb or #rgb)."),
         new("MQ8002", E, "The branding icon is not an .svg or .png file under branding/ in the model folder, or the file does not exist."),
         new("MQ8003", E, "The branding icon is not a safe SVG (scripts, event handlers, external references) or a PNG of at most 512 KB."),
+
+        new("MQ9001", E, "A compound state (or the process) whose initial is not one of its direct children, or an initial on a state that is not compound; set initial to a direct child, or remove it to use the first child.", "set-initial"),
+        new("MQ9002", E, "A state's type contradicts its children: an atomic, final, history or choice state with children, or a compound or parallel state without; change the type or move the children."),
+        new("MQ9003", W, "An unreachable state: no path from the initial state through transitions, history defaults or invoke completions enters it (guards are ignored); add a transition to it or remove it."),
+        new("MQ9004", W, "A dead end: a reachable atomic state with no transition on itself or an ancestor and no invoke; add a transition or make it final."),
+        new("MQ9005", I, "No final state is reachable, so the process never completes (normal for some lifecycles); add a final state and a transition to it if instances should end."),
+        new("MQ9006", W, "Overlapping transitions for one source and trigger: a transition after an unguarded one, or a guard tested twice, never fires; guard the earlier transition or remove the later one."),
+        new("MQ9007", E, "Invalid targets: a state of another process, two targets in one region, or several targets not in orthogonal regions of one parallel ancestor; keep one target per region of this process."),
+        new("MQ9008", E, "Trigger fields inconsistent: an event trigger without an event, an after trigger without a positive ISO 8601 duration, done on a state that cannot complete, an invoke trigger naming no invoke of the source, or a field of another trigger; fix the trigger or its field."),
+        new("MQ9009", E, "A cycle of unguarded eventless transitions: the macrostep would never end; guard one of the transitions or give it an event."),
+        new("MQ9010", E, "A choice state whose outgoing transitions are not all always, whose last transition is guarded (no default), or that has none; make them always transitions ending with an unguarded one."),
+        new("MQ9011", E, "A history state outside a compound parent, or a default target that is not a descendant of its parent; move the history state into a compound state or pick a default inside it."),
+        new("MQ9012", E, "A final state that is the source of transitions or invokes work; remove them, or make the state atomic."),
+        new("MQ9013", W, "A declared event, guard, action or invoke that nothing uses (an invoke is used by an invoke-done or invoke-error transition); use it or remove it."),
+        new("MQ9014", E, "A reference to a state, event, guard, action or invoke of another process; declare it in this process instead."),
+        new("MQ9015", E, "Invokes: a sub-process invoke cycle, a process invoke without a process, or a human task without actors; break the cycle, set the process, or list the actors."),
+        new("MQ9016", W, "A process diagram member that is not a state of the diagram's process; remove the member."),
+        new("MQ9017", W, "A parallel state with one region; add a region or make the state compound."),
+        new("MQ9018", W, "A done transition whose source has no reachable final state (in every region, for a parallel source), so it never fires; add a reachable final child or change the trigger."),
+        new("MQ9019", E, "A process operation (sync-enum, set-lifecycle, set-initial) was refused: its element is not what the operation needs, the target is not a direct child or a process, the enum sync would remove members still in use, or another operation of the batch writes the process or enum it syncs; fix the operation, change the uses to a remaining member, or sync in a batch of its own."),
+
+        new("MQ9101", E, "A gate needs more signatures than its signers can give (only person actors, repeat signing off); lower required, add signers, or allow repeat signers."),
+        new("MQ9102", E, "A gate's required actors are not all among its signers; add them to signers."),
+        new("MQ9103", E, "A gate on a transition whose trigger is not event, or two gates on one source and event; move the gate to an event transition or keep one gate."),
+        new("MQ9104", E, "A gate without meanings; add at least one meaning that says what a signature means."),
+        new("MQ9105", W, "A gate signer that may not raise the gate's event (the event lists its actors and leaves the signer out); add the signer to the event's actors."),
+        new("MQ9106", I, "An actor no process references (event actors, gate signers, human tasks); use it in a process or remove it."),
+
+        new("MQ9201", E, "Lifecycle inconsistent: a lifecycle without a subject, a subject whose lifecycle does not name the process, or an entity whose lifecycle names an orchestration or another entity's lifecycle; set lifecycle on the subject to the process."),
+        new("MQ9202", E, "A bound attribute that is not a single-valued enum attribute of the subject (own, inherited or from a stereotype), or one set on an orchestration; bind a single-valued enum attribute of the subject."),
+        new("MQ9203", E, "Enum drift: the bound enum's members differ from the lifecycle's root-level states (missing, extra or out of order); sync the enum from the process.", "sync-enum"),
+        new("MQ9204", W, "The bound enum is used by other attributes or processes, so syncing it from the process changes them too; give the lifecycle its own enum if they should not follow."),
+        new("MQ9205", W, "The bound attribute's default is not the lifecycle's initial root-level state; set the default to that state's name."),
     ];
 
     private static readonly FrozenDictionary<string, RuleInfo> ById = Rules.ToFrozenDictionary(r => r.Id, StringComparer.Ordinal);
@@ -173,6 +211,12 @@ public static class RuleCatalog
         ["MQ71xx"] = "Seeds",
         ["MQ72xx"] = "Localization",
         ["MQ80xx"] = "Branding",
+        ["MQ90xx"] = "Processes",
+        ["MQ91xx"] = "Actors and gates",
+        ["MQ92xx"] = "Lifecycles",
+        ["MQ93xx"] = "Scenarios",
+        ["MQ94xx"] = "Process import and export",
+        ["MQ95xx"] = "Process expressions and simulation",
     }.ToFrozenDictionary(StringComparer.Ordinal);
 
     /// <summary>The hundreds group of a rule id: <c>MQ7204</c> is in <c>MQ72xx</c>.</summary>
@@ -192,7 +236,7 @@ public static class RuleCatalog
     /// <summary>Every built-in rule with its family and whether it can be turned off, ordered by id.</summary>
     /// <returns>The catalog entries.</returns>
     public static IReadOnlyList<RuleCatalogEntry> Describe() =>
-        [.. Rules.Select(r => new RuleCatalogEntry(r.Id, r.DefaultSeverity, r.Description, FamilyOf(r.Id), FamilyLabel(FamilyOf(r.Id)), r.CanBeDisabled))];
+        [.. Rules.Select(r => new RuleCatalogEntry(r.Id, r.DefaultSeverity, r.Description, FamilyOf(r.Id), FamilyLabel(FamilyOf(r.Id)), r.CanBeDisabled, r.QuickFix))];
 
     /// <summary>Every built-in rule, ordered by id.</summary>
     public static IReadOnlyList<RuleInfo> All => Rules;

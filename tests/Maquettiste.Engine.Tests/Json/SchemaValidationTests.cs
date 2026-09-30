@@ -42,11 +42,12 @@ public sealed class SchemaValidationTests
     }
 
     [Fact]
-    public void Phase_3_lifecycle_field_is_rejected()
+    public void Lifecycle_field_is_accepted_since_phase_3()
     {
-        var diagnostics = EvaluateFixture("entity.json", "invoice-with-lifecycle.entity.json");
-
-        Assert.Contains(diagnostics, d => d.JsonPointer == "/lifecycle");
+        // Erratum E3 is retired: an entity names the process that is its lifecycle (phase-3-design.md section 2.1).
+        Assert.Empty(EvaluateFixture("entity.json", "invoice-with-lifecycle.entity.json"));
+        Assert.Contains(Evaluate("entity.json", "{\"kind\":\"entity\",\"id\":\"01JAX3K9V2Q7M4T8W1Z5C6B0DE\",\"name\":\"Invoice\",\"abstract\":true,\"lifecycle\":\"draft\"}"),
+            d => d.JsonPointer == "/lifecycle");
     }
 
     [Theory]

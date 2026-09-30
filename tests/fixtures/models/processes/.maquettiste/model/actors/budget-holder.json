@@ -1,0 +1,16 @@
+{
+  "$schema": "../../.schema/v1/actor.json",
+  "kind": "actor",
+  "id": "01JQACT0000000000000000008",
+  "name": "BudgetHolder",
+  "type": "person",
+  "stereotypes": [
+    "persona"
+  ],
+  "properties": {
+    "goals": [
+      "Keep spending inside the budget",
+      "Approve urgent purchases quickly"
+    ]
+  }
+}
