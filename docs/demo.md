@@ -33,17 +33,17 @@ outside it). No `chmod` and no user variables. With Podman, type `podman` wherev
 **1. Pull the image** (published for arm64 and amd64):
 
 ```zsh
-docker pull mattjcowan/maquettiste:0.4.0   # needs an image whose entrypoint picks the folder's owner (docker/README.md)
+docker pull mattjcowan/maquettiste:0.5.0   # needs an image whose entrypoint picks the folder's owner (docker/README.md)
 ```
 
 **2. The `maquettiste` command.** The image carries the CLI, so the Mac needs nothing else. Put this in `~/.zshrc`
 (then `source ~/.zshrc`); it runs every command in a throwaway container over the folder you are in:
 
 ```zsh
-maquettiste() { docker run --rm $([ -t 0 ] && echo -it) --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:0.4.0 maquettiste "$@"; }
+maquettiste() { docker run --rm $([ -t 0 ] && echo -it) --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:0.5.0 maquettiste "$@"; }
 # With Podman, leave --user out (root in the container is you):
-# maquettiste() { podman run --rm $([ -t 0 ] && echo -it) -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:0.4.0 maquettiste "$@"; }
-maquettiste --version                    # maquettiste 0.4.0 (engine contract 1.0.0, model format 1)
+# maquettiste() { podman run --rm $([ -t 0 ] && echo -it) -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:0.5.0 maquettiste "$@"; }
+maquettiste --version                    # maquettiste 0.5.0 (engine contract 1.0.0, model format 1)
 ```
 
 **3. Prepare the repository.** In the partner repository, on a branch of its own:
@@ -64,7 +64,7 @@ the image's compose file with the tag pinned; the model folder and the repositor
 ```yaml
 services:
   maquettiste:
-    image: mattjcowan/maquettiste:0.4.0
+    image: mattjcowan/maquettiste:0.5.0
     user: "0:0"                                                     # starts as root, then runs as the owner of .maquettiste/
     ports: ["127.0.0.1:8080:8080"]
     volumes:
@@ -351,7 +351,7 @@ partner's model.
 
 | Step | Do | Expected |
 | --- | --- | --- |
-| 3.1 (45 s) | `maquettiste init --mcp --docker mattjcowan/maquettiste:0.4.0 --skill`, then `cat .mcp.json` | `created mcp.sh (runs maquettiste mcp in mattjcowan/maquettiste:0.4.0; log in .maquettiste/.cache/mcp.log)`, `created .mcp.json (server maquettiste: ./mcp.sh)`, `created .claude/skills/maquettiste-modeling/SKILL.md`. The file registers `{"type": "stdio", "command": "./mcp.sh", "args": []}`; `mcp.sh` runs `docker run -i --rm --user <you> ... maquettiste mcp` from the editor's own image over the repository, with the same model and write path as the editor, and logs the server's messages to `.maquettiste/.cache/mcp.log`. (With the .NET tool fallback, drop `--docker ...`: `init --mcp` then writes `{"type": "stdio", "command": "maquettiste", "args": ["mcp"]}`.) |
+| 3.1 (45 s) | `maquettiste init --mcp --docker mattjcowan/maquettiste:0.5.0 --skill`, then `cat .mcp.json` | `created mcp.sh (runs maquettiste mcp in mattjcowan/maquettiste:0.5.0; log in .maquettiste/.cache/mcp.log)`, `created .mcp.json (server maquettiste: ./mcp.sh)`, `created .claude/skills/maquettiste-modeling/SKILL.md`. The file registers `{"type": "stdio", "command": "./mcp.sh", "args": []}`; `mcp.sh` runs `docker run -i --rm --user <you> ... maquettiste mcp` from the editor's own image over the repository, with the same model and write path as the editor, and logs the server's messages to `.maquettiste/.cache/mcp.log`. (With the .NET tool fallback, drop `--docker ...`: `init --mcp` then writes `{"type": "stdio", "command": "maquettiste", "args": ["mcp"]}`.) |
 | 3.2 (30 s) | `claude`, approve the project server `maquettiste` when asked, type `/mcp` | maquettiste connected, 46 tools (get_model_index, get_element, create_element, apply_batch, validate, plan, get_plan_diff, apply_plan, reference_type_usage, get_translations, ...). |
 | 3.3 (2 min) | Prompt: `Add a Shipment entity related to Order (an order has many shipments) with carrier, an optional trackingNumber, shippedAt and a status enum ShipmentStatus (Preparing, InTransit, Delivered). Then validate and generate.` | About 50 s. Claude sends one `apply_batch` (the enum ShipmentStatus, the entity Shipment, a composition `ships` from Order to many Shipments), then `validate`, `plan`, `apply_plan`. Files: `A src/generated/shipment.ts`, `shipment-status.ts`, `shipment.schema.ts`, `M src/generated/order.ts` (`shipments?: Shipment[]`), `M index.ts`, `A db/main/shop/tables/shipments.sql`, `A db/main/migrations/000N.sql` with `CREATE TABLE shop.shipments ... REFERENCES shop.orders (id) ON DELETE RESTRICT` (the default; add "cascade on delete" to the prompt for CASCADE). The editor shows Shipment in the explorer without a reload; **Add related** on Order puts it on the diagram. |
 | 3.4 (1.5 min) | Prompt: `What would change in the generated code and the database scripts if Product.sku became required? Do not change the model; answer in at most 8 lines.` | About 20 s. In rehearsal: `product.ts` drops the `?` on `sku`, `product.schema.ts` drops `.optional()`, `schema.sql` and `products.sql` get `sku varchar(40) NOT NULL`, the existing migrations stay and the next one (`0005.sql`, named correctly) adds `ALTER TABLE ... ALTER COLUMN sku SET NOT NULL`, with a warning about existing NULL rows; the model is unchanged. |
@@ -370,7 +370,7 @@ that entry (or the file) first when the repository has one from an earlier rehea
 (docs/mcp.md):
 
 ```zsh
-maquettiste init --mcp --docker mattjcowan/maquettiste:0.4.0 --skill
+maquettiste init --mcp --docker mattjcowan/maquettiste:0.5.0 --skill
 cat .mcp.json mcp.sh
 echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"check","version":"1"}}}' | ./mcp.sh
 ```
@@ -414,7 +414,7 @@ folder `/repo`: set `"name"` in `.maquettiste/maquettiste.json` (then `maquettis
 
 **Generated files owned by someone else.** Files should belong to you (step 5). If `ls -ln` shows UID 1654, an older
 image wrote them: pull the image again, `up -d`, and remove the old files through a container:
-`docker run --rm --user 0 -v "$PWD:/w" --entrypoint rm mattjcowan/maquettiste:0.4.0 -rf /w/<path>`.
+`docker run --rm --user 0 -v "$PWD:/w" --entrypoint rm mattjcowan/maquettiste:0.5.0 -rf /w/<path>`.
 
 **`maquettiste: command not found`.** The function of step 2 is not defined in this shell: `source ~/.zshrc`. With the .NET
 tool fallback, `export PATH="$PATH:$HOME/.dotnet/tools"`; Claude Code inherits the PATH of the shell that starts it.
@@ -471,7 +471,7 @@ minutes when you do it by hand.
 
 | Step | Result | Time |
 | --- | --- | --- |
-| `maquettiste --version` / `init` | `maquettiste 0.4.0 (engine contract 1.0.0, model format 1)`; 4 lines | 0.5 s / 0.65 s |
+| `maquettiste --version` / `init` | `maquettiste 0.5.0 (engine contract 1.0.0, model format 1)`; 4 lines | 0.5 s / 0.65 s |
 | `compose up` to `/api/health` 200, first boot | succeeded | 4.9 s |
 | 1.1 First-run panel, New domain Shop | created, "No problems" | 0.5 s |
 | 1.2 New enum from Shop's menu, four members with codes | saved, Domain preset to Shop | 3.5 s |
@@ -556,7 +556,7 @@ correctly.
 ## Appendix: alternatives (not needed for the talk)
 
 **Build the image locally** instead of pulling (native arm64, 5 to 10 minutes on a first build):
-`git clone git@github.com:mattjcowan/maquettiste.git && cd maquettiste && docker build -f docker/Dockerfile -t mattjcowan/maquettiste:0.4.0 .` (the tag the compose file and the function name)
+`git clone git@github.com:mattjcowan/maquettiste.git && cd maquettiste && docker build -f docker/Dockerfile -t mattjcowan/maquettiste:0.5.0 .` (the tag the compose file and the function name)
 
 **The CLI as a .NET tool** (needs the .NET 10 SDK; NuGet has 0.1.0, which predates `init --mcp --docker`, so prefer the image's version once it is on NuGet): `dotnet tool install -g Maquettiste.Cli --version 0.1.0`,
 then `export PATH="$PATH:$HOME/.dotnet/tools"` and `unfunction maquettiste` in a shell that defined the Docker function.
