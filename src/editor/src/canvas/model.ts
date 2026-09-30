@@ -138,14 +138,37 @@ export function applyPositions(diagram: Pick<DiagramDoc, "members">, positions: 
   return changed;
 }
 
-/** The layout input for a set of cards and edges, with measured sizes when React Flow has them. */
+/** The pill of a relation label: 11 px text at about 0.6 em per character, 8 px of padding each side, 22 px high. */
+export const LABEL_TEXT_PX = 11;
+export const LABEL_PADDING = 8;
+export const LABEL_HEIGHT = 22;
+/** The clear space the layout keeps between a label and the cards beside it. */
+export const LABEL_GAP = 12;
+
+/** The size of a relation's label pill from its text (the name, plus the attribute count when it has attributes). */
+export function relationLabelSize(relation: Pick<RelationDoc, "name" | "attributes">): { width: number; height: number } {
+  const badge = relation.attributes?.length ? 2 + String(relation.attributes.length).length : 0;
+  return { width: Math.ceil(((relation.name ?? "").length + badge) * LABEL_TEXT_PX * 0.6) + 2 * LABEL_PADDING, height: LABEL_HEIGHT };
+}
+
+/** The layout input for a set of cards and edges, with measured sizes when React Flow has them, and each relation
+ * edge's label size so the layout makes room for it (a label sitting on a card is unreadable on a large diagram). */
 export function layoutInput(
   nodes: readonly { id: string; measured?: { width?: number; height?: number } }[],
-  edges: readonly { id: string; source: string; target: string }[],
+  edges: readonly { id: string; source: string; target: string; data?: { relation?: Pick<RelationDoc, "name" | "attributes"> } }[],
 ): { nodes: LayoutNode[]; edges: LayoutEdge[] } {
   return {
     nodes: nodes.map((n) => ({ id: n.id, width: n.measured?.width || NODE_WIDTH, height: n.measured?.height || NODE_HEIGHT })),
-    edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+    edges: edges.map((e) => {
+      const relation = e.data?.relation;
+      const label = relation ? relationLabelSize(relation) : null;
+      return {
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        ...(label ? { label: { width: label.width + 2 * LABEL_GAP, height: label.height + LABEL_GAP } } : {}),
+      };
+    }),
   };
 }
 

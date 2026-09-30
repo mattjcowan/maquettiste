@@ -1,16 +1,19 @@
 // The mock's process operations (phase-3-design.md 4.4): simulate, record, verify, export, import and sync-enum. The
 // engine recordings of the processes fixture answer simulate and export while the mock model is pristine and the
-// request is the recorded one (PurchaseApproval keeps the fixture's ids, processSeed.ts); otherwise these resolvers
-// answer from the mock model: no interpreter runs here, so a simulation shows the initial configuration and verify
-// passes every scenario but those processSeed.ts lists as failing.
+// request is the recorded one (PurchaseApproval keeps the fixture's ids, processSeed.ts); any other simulate, and the
+// expectations a record fills in, come from the mock's reduced interpreter (model/stepper.ts). Verify passes every
+// scenario but those processSeed.ts lists as failing.
 import { http as rawHttp, HttpResponse, type HttpHandler } from "msw";
 import { newId } from "@/lib/ids";
+import { sha256Hex } from "@/lib/sha256";
 import type { MockBackend } from "./backend";
 import { mentions, replayable, type Recording } from "./recorded";
 
 const kebab = (name: string) => name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
 import { MOCK_FAILURES } from "./model/processSeed";
-import { enumDrift } from "./model/validate";
+import { normalizeInput, readAt, replay, simulate } from "./model/stepper";
+import { enumDrift, schemaDiagnostics } from "./model/validate";
+import { report } from "./model/store";
 
 type Json = Record<string, unknown>;
 type StateDoc = { id: string; name: string; type?: string; initial?: string; states?: StateDoc[] };
@@ -143,6 +146,17 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       return null;
     }
   };
+  // Inputs may name actors; expressions see an actor's name as event.actor.
+  const actorLookup = () => {
+    const actors = [...model.entries.values()].filter((e) => e.json.kind === "actor");
+    return {
+      actorId: (name: string) => {
+        const hits = actors.filter((a) => a.json.name === name);
+        return hits.length === 1 ? hits[0].id : undefined;
+      },
+      actorName: (id: string) => actors.find((a) => a.id === id)?.json.name as string | undefined,
+    };
+  };
   const scenariosOf = (processId: string) =>
     [...model.entries.values()].filter((e) => e.json.kind === "scenario" && e.json.process === processId).sort((a, b) => (a.path < b.path ? -1 : 1));
 
@@ -153,49 +167,77 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       const value = await body(request);
       if (!value) return bad("The body must be a JSON object.");
       const scenario = typeof value.scenario === "string" ? value.scenario : null;
-      // The recording's variant names the scenario it replays (simulateProcess.budget-rejected.json).
       const scenarioEntry = scenario
-        ? [...model.entries.values()].find((e) => e.json.kind === "scenario" && (e.id === scenario || e.json.name === scenario))
+        ? [...model.entries.values()].find((e) => e.json.kind === "scenario" && e.json.process === entry.id && (e.id === scenario || e.json.name === scenario))
         : undefined;
-      const variant = scenarioEntry && scenarioEntry.json.process === entry.id ? kebab(String(scenarioEntry.json.name)) : null;
+      if (scenario && !scenarioEntry) return kit.problem(404, "not-found" as never, `The process has no scenario ${scenario}.`);
+      // The recording's variant names the scenario it replays (simulateProcess.budget-rejected.json); it answers only the
+      // recorded request: that scenario alone, no steps, no `from`, no draft.
+      const variant = scenarioEntry ? kebab(String(scenarioEntry.json.name)) : null;
       const rec = replayable(kit.recorded, "simulateProcess", kit.pristine(), (r) => !!variant && r.file.endsWith(`.${variant}.json`) && !value.document);
       if (rec && value.from === undefined && value.steps === undefined) return kit.answer(rec);
-      const doc = ((value.document as Json | undefined) ?? entry.json) as Json;
-      const context = Object.fromEntries(arr(doc.context).map((a) => [String(a.id), a.default ?? null]));
-      return HttpResponse.json({
-        processHash: entry.hash,
-        trace: [],
-        configuration: initialLeaves(doc.states as StateDoc[], doc.initial as string | undefined),
-        context,
-        enabled: [],
-        pending: [],
-        timers: [],
-        gates: [],
-        final: false,
-        clock: "2000-01-01T00:00:00Z",
-        diagnostics: [],
-      });
+      if (value.steps !== undefined && value.steps !== null && !Array.isArray(value.steps)) return bad("steps must be an array of inputs.");
+      const start = value.start && typeof value.start === "object" ? (value.start as Json) : null;
+      if (readAt(start?.at) === "invalid") return bad(`start.at is not an ISO 8601 instant: ${String(start?.at)}.`);
+      let doc = entry.json;
+      if (value.document && typeof value.document === "object") {
+        doc = value.document as Json;
+        const errors = schemaDiagnostics({ id: entry.id, path: entry.path, json: doc }).filter((d) => d.severity === "error");
+        if (errors.length) return HttpResponse.json(report(errors), { status: 422 });
+      }
+      // A scenario's start and steps run before the request's steps; with a scenario, its start is the one used (the
+      // request's `start` is ignored), as the engine does.
+      const scenarioSteps = scenarioEntry ? arr(scenarioEntry.json.steps) : [];
+      const scenarioStart = scenarioEntry?.json.start && typeof scenarioEntry.json.start === "object" ? (scenarioEntry.json.start as Json) : null;
+      const steps = [...scenarioSteps, ...arr(value.steps)];
+      const from = typeof value.from === "number" ? value.from : -1;
+      const result = simulate(doc, (scenarioEntry ? scenarioStart : start) as never, steps, { from, ...actorLookup() });
+      return HttpResponse.json({ processHash: value.document ? sha256Hex(JSON.stringify(doc)) : entry.hash, ...result });
     }),
     rawHttp.post(url("/api/processes/:id/scenarios"), async ({ params, request }) => {
       const entry = find(String(params.id));
       if (!entry) return missing(String(params.id));
       const value = await body(request);
-      if (!value || typeof value.name !== "string" || !Array.isArray(value.steps)) return bad("name and steps are required.");
+      if (!value || typeof value.name !== "string" || !value.name.trim() || !Array.isArray(value.steps)) return bad("name and steps are required.");
+      if (value.outcome !== undefined && value.outcome !== null && value.outcome !== "final" && value.outcome !== "active")
+        return bad("outcome must be 'final' or 'active'.");
+      const start = value.start && typeof value.start === "object" ? (value.start as Json) : null;
+      if (readAt(start?.at) === "invalid") return bad(`start.at is not an ISO 8601 instant: ${String(start?.at)}.`);
       const dryRun = new URL(request.url).searchParams.get("dryRun") === "true";
+      // The expectations come from a replay of the inputs, as the engine's record fills them (refusals as accepted: false).
+      const replayed = replay(entry.json, start as never, value.steps as Json[], actorLookup());
+      // The engine refuses inputs that cannot be replayed to the last step (422 with the replay's findings).
+      if (!replayed.complete && value.steps.length) return HttpResponse.json(report(replayed.diagnostics.length ? replayed.diagnostics : []), { status: 422 });
+      const lookup = actorLookup();
+      const steps = (value.steps as Json[]).map((raw, i) => {
+        // Names resolve to ids as the engine's record resolves them; defaults are left out (the canonical form).
+        const s = normalizeInput(raw, i, { doc: entry.json }, lookup.actorId) as unknown as Json;
+        const step: Json = { id: newId() };
+        for (const key of ["input", "event", "invoke", "after", "actor", "signer", "meaning", "reason", "payload", "assume"]) {
+          const v = s[key];
+          if (v === undefined || v === null || v === "" || (key === "input" && v === "event")) continue;
+          if (typeof v === "object" && !Array.isArray(v) && !Object.keys(v as Json).length) continue;
+          step[key] = v;
+        }
+        step.expect = replayed.expects[i] ?? {};
+        if (typeof s.description === "string" && s.description) step.description = s.description;
+        return step;
+      });
+      const outcome = (value.outcome as string | null | undefined) ?? replayed.outcome;
       const element: Json = {
         kind: "scenario",
         id: newId(),
-        name: value.name,
+        name: value.name.trim(),
         process: entry.id,
-        steps: (value.steps as Json[]).map((s) => ({ ...s, id: newId() })),
-        ...(value.outcome ? { outcome: value.outcome } : {}),
+        ...(start && (start.context || start.at) ? { start } : {}),
+        steps,
+        ...(outcome === "final" ? { outcome } : {}),
       };
       if (dryRun) return HttpResponse.json({ id: element.id, element, hash: null, applied: false, diagnostics: [] });
       const saved = model.create(element);
-      if (saved.outcome !== "saved")
-        return HttpResponse.json({ id: element.id, element, hash: null, applied: false, diagnostics: saved.diagnostics }, { status: 422 });
+      if (saved.outcome !== "saved") return HttpResponse.json(report(saved.diagnostics), { status: 422 });
       return HttpResponse.json(
-        { id: element.id, element, hash: saved.hash, applied: true, diagnostics: [] },
+        { id: element.id, element: saved.current?.json ?? element, hash: saved.hash, applied: true, diagnostics: [] },
         { status: 201, headers: { ETag: `"${saved.hash}"` } },
       );
     }),

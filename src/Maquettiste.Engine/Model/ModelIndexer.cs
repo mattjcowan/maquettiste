@@ -477,7 +477,12 @@ internal static class ModelIndexer
                 Model.ActorType.Role => "role",
                 _ => "external-system",
             } : null,
-            Process: element is Scenario scenario ? scenario.Process : null,
+            Process: element switch
+            {
+                Scenario scenario => scenario.Process,
+                Diagram statechart => statechart.Process,
+                _ => null,
+            },
             StepCount: element is Scenario steps ? steps.Steps.Count : null);
 
     private static int CountStates(IReadOnlyList<ProcessState> states)

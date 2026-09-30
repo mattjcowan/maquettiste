@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { openapi, validatorAt } from "@/mocks/contract";
 import { baselineOperations } from "@/mocks/baseline";
-import { BUDGET_REJECTED, INVOICE, INVOICE_LIFECYCLE, PURCHASE_APPROVAL } from "@/mocks/model/processSeed";
+import { APPROVER, BUDGET_HOLDER, BUDGET_REJECTED, INVOICE, INVOICE_LIFECYCLE, PURCHASE_APPROVAL } from "@/mocks/model/processSeed";
 import { IDS, useMockApi } from "./harness";
 
 type Json = Record<string, unknown>;
@@ -303,6 +303,51 @@ describe("mock contract", () => {
     expect((await call("post", "/api/processes/import?dryRun=false", "/api/processes/import", { config: "{ not json" })).status).toBe(422);
     expect((await call("post", `${id(INVOICE_LIFECYCLE)}/sync-enum`, "/api/processes/{id}/sync-enum", { dryRun: true })).status).toBe(200);
     expect((await call("post", `${id(PURCHASE_APPROVAL)}/sync-enum`, "/api/processes/{id}/sync-enum", { dryRun: true })).status).toBe(422);
+
+    const { payload: payload0 } = await call("get", `/api/model/elements/${PURCHASE_APPROVAL}`, "/api/model/elements/{id}");
+    // The reduced interpreter's answers: several inputs (an event, invoke results, a gated event, time, a refusal), a
+    // scenario followed by steps, `from`, a draft document, a draft that does not validate, and a record that saves.
+    const steps = [
+      { event: "submit", actor: BUDGET_HOLDER },
+      { input: "invoke-done", invoke: "checkBudget" },
+      { input: "invoke-done", invoke: "complianceReview", actor: APPROVER },
+      { event: "approve", actor: APPROVER, signer: "ann", reason: "fine" },
+      { event: "approve", actor: BUDGET_HOLDER, signer: "bob" },
+      { input: "time", after: "P6D" },
+    ];
+    const sim = await call("post", `${id(PURCHASE_APPROVAL)}/simulate`, "/api/processes/{id}/simulate", {
+      start: { context: { "01JQATT0000000000000000201": 900 } },
+      steps,
+    });
+    const result = sim.payload as { trace: { accepted: boolean; refusal: string | null }[]; gates: unknown[]; context: Record<string, unknown> };
+    expect(result.trace.map((t) => t.refusal)).toEqual([null, null, null, null, null, "actor", null]);
+    expect(result.gates).toHaveLength(1);
+    expect(result.context["01JQATT0000000000000000202"]).toBe(1);
+    const tail = await call("post", `${id(PURCHASE_APPROVAL)}/simulate`, "/api/processes/{id}/simulate", {
+      scenario: BUDGET_REJECTED,
+      steps: [{ event: "requestChanges", actor: BUDGET_HOLDER }],
+      from: 3,
+    });
+    expect((tail.payload as { trace: { index: number }[] }).trace.map((t) => t.index)).toEqual([3]);
+    // With a scenario, the scenario's start is used and the request's start is ignored, as the engine does.
+    const scenarioStart = await call("post", `${id(PURCHASE_APPROVAL)}/simulate`, "/api/processes/{id}/simulate", {
+      scenario: BUDGET_REJECTED,
+      start: { context: { "01JQATT0000000000000000201": 1 } },
+      steps: [],
+    });
+    expect((scenarioStart.payload as { context: Record<string, unknown> }).context["01JQATT0000000000000000201"]).toBe(2500);
+    const draft = { ...(payload0 as { json: Record<string, unknown> }).json, name: "Draft" };
+    expect((await call("post", `${id(PURCHASE_APPROVAL)}/simulate`, "/api/processes/{id}/simulate", { document: draft, steps })).status).toBe(200);
+    expect(
+      (await call("post", `${id(PURCHASE_APPROVAL)}/simulate`, "/api/processes/{id}/simulate", { document: { ...draft, states: [] }, steps })).status,
+    ).toBe(422);
+    const saved = await call("post", `${id(PURCHASE_APPROVAL)}/scenarios`, "/api/processes/{id}/scenarios", { name: "Recorded", steps: steps.slice(0, 5) });
+    expect(saved.status).toBe(201);
+    const element = (saved.payload as { element: { steps: { expect: { accepted?: boolean; states: string[] } }[]; outcome?: string } }).element;
+    expect(element.steps.map((st) => st.expect.accepted ?? true)).toEqual([true, true, true, true, false]);
+    expect(element.steps[3].expect.states).toEqual(["01JQSTA0000000000000000110"]);
+    const { payload: scenarioDoc } = await call("get", `/api/model/elements/${(saved.payload as { id: string }).id}`, "/api/model/elements/{id}");
+    expect((scenarioDoc as { json: { kind: string } }).json.kind).toBe("scenario");
 
     const { payload } = await call("get", `/api/model/elements/${PURCHASE_APPROVAL}`, "/api/model/elements/{id}");
     const states = ((payload as { json: { states: { id: string }[] } }).json.states ?? []).map((st) => st.id);

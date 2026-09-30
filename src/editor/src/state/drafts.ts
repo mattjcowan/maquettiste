@@ -25,6 +25,7 @@ export class DraftManager {
   private readonly timers = new Map<string, unknown>();
   private readonly inflight = new Map<string, Promise<void>>();
   private readonly retriedDiagram = new Set<string>();
+  private readonly savedListeners = new Set<(id: string, before: ModelJson | null, after: ModelJson) => void>();
   private readonly delays: { element: number; diagram: number };
   private readonly setTimer: (fn: () => void, ms: number) => unknown;
   private readonly clearTimer: (handle: unknown) => void;
@@ -137,6 +138,22 @@ export class DraftManager {
     await promise;
   }
 
+  /**
+   * Saves the element's draft now and tells whether the saved version is now what the editor shows: false while a
+   * draft remains (refused as invalid, in conflict, or failed), so an operation on the saved version must not go on.
+   */
+  async flushSaved(id: string): Promise<boolean> {
+    // An edit made while the save was in flight is saved next; a refusal or a failure ends the wait.
+    for (let round = 0; round < 3; round++) {
+      await this.flush(id);
+      await this.whenSettled(id);
+      const draft = this.state.drafts[id];
+      if (!draft) return true;
+      if (draft.error || (draft.status !== "dirty" && draft.status !== "saving")) return false;
+    }
+    return !this.state.drafts[id];
+  }
+
   /** Saves every draft and waits until none is in flight or waiting to be saved. */
   async flushAll(): Promise<void> {
     await Promise.all(Object.keys(this.state.drafts).map((id) => this.flush(id)));
@@ -169,6 +186,16 @@ export class DraftManager {
   /** Resolves once the element has no save in flight. */
   async whenSettled(id: string): Promise<void> {
     while (this.inflight.has(id)) await this.inflight.get(id);
+  }
+
+  /**
+   * Calls `listener` after each draft save the server accepted, once its undo step is recorded, with the version the
+   * draft started from and the one saved: a follow-up edit made then (a process's diagram following its rename) joins
+   * that step. Returns the unsubscribe.
+   */
+  onSaved(listener: (id: string, before: ModelJson | null, after: ModelJson) => void): () => void {
+    this.savedListeners.add(listener);
+    return () => this.savedListeners.delete(listener);
   }
 
   hasUnsaved(): boolean {
@@ -209,6 +236,7 @@ export class DraftManager {
             after: [clone(sent)],
             afterHashes: [result.hash],
           });
+        for (const listener of this.savedListeners) listener(id, before, sent);
         if (!draft) return;
         const baseJson = (result.current?.json as ModelJson | undefined) ?? sent;
         if (jsonEqual(draft.json, sent)) {
@@ -228,7 +256,7 @@ export class DraftManager {
         if (draft.channel === "diagram" && result.current && !this.retriedDiagram.has(id)) {
           // Positions: re-apply ours onto the disk version and retry once (openapi saveDiagram).
           this.retriedDiagram.add(id);
-          const merged = reapplyDiagram(result.current.json as ModelJson, draft.json);
+          const merged = reapplyDiagram(result.current.json as ModelJson, draft.json, draft.baseJson);
           this.state.setDraft({
             ...draft,
             baseHash: result.current.hash,
@@ -294,24 +322,44 @@ export class DraftManager {
   }
 }
 
-/** Our member positions, collapsed flags and viewport over the disk version of a diagram. */
-export function reapplyDiagram(disk: ModelJson, ours: ModelJson): ModelJson {
+/**
+ * Our changes to a diagram over its disk version, after a 409 (openapi saveDiagram): only what our draft changed since
+ * `base` (the document it started from) is re-applied, member by member and field by field (x, y, width, height,
+ * collapsed), so a state another window moved keeps its new place. A missing `collapsed` reads as false, so an expand is
+ * re-applied like a collapse. A member we added is added; one we had from the base and the disk version no longer has
+ * (removed elsewhere) is not brought back. The viewport is ours when we changed it.
+ */
+export function reapplyDiagram(disk: ModelJson, ours: ModelJson, base: ModelJson): ModelJson {
   type Member = { element: string; x?: number; y?: number; collapsed?: boolean; width?: number; height?: number };
+  const membersOf = (json: ModelJson) => new Map(((json as { members?: Member[] }).members ?? []).map((m) => [m.element, m]));
   const result = clone(disk) as ModelJson & { members?: Member[]; viewport?: unknown };
-  const mine = new Map(((ours as { members?: Member[] }).members ?? []).map((m) => [m.element, m]));
+  const mine = membersOf(ours);
+  const was = membersOf(base);
   const members = result.members ?? [];
+  const fields = ["x", "y", "width", "height"] as const;
   for (const member of members) {
     const m = mine.get(member.element);
     if (!m) continue;
-    if (m.x !== undefined) member.x = m.x;
-    if (m.y !== undefined) member.y = m.y;
-    if (m.collapsed !== undefined) member.collapsed = m.collapsed;
+    const b = was.get(member.element);
+    for (const f of fields) {
+      if (m[f] === b?.[f]) continue;
+      if (m[f] === undefined) delete member[f];
+      else member[f] = m[f];
+    }
+    const collapsed = m.collapsed === true;
+    if (collapsed !== (b?.collapsed === true)) {
+      if (collapsed) member.collapsed = true;
+      else delete member.collapsed;
+    }
   }
   const present = new Set(members.map((m) => m.element));
-  for (const m of mine.values()) if (!present.has(m.element)) members.push(clone(m));
+  for (const m of mine.values()) if (!present.has(m.element) && !was.has(m.element)) members.push(clone(m));
   result.members = members;
   const viewport = (ours as { viewport?: unknown }).viewport;
-  if (viewport !== undefined) result.viewport = clone(viewport);
+  if (!jsonEqual(viewport ?? null, (base as { viewport?: unknown }).viewport ?? null)) {
+    if (viewport === undefined) delete result.viewport;
+    else result.viewport = clone(viewport);
+  }
   return result;
 }
 

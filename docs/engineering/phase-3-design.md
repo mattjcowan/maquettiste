@@ -555,7 +555,7 @@ header; Translations collapsed. Tabs:
 
 | Tab | Content |
 | --- | --- |
-| **Chart** | The statechart canvas (§6.3) with the simulation panel (§6.4) docked below it |
+| **Chart** | The statechart canvas (§6.3) with the simulation panel (§6.4) docked below it; the editor opens on it (P4) |
 | **States** | A tree grid: name, type, initial, history, entry, exit, invokes, bound member (read-only); keyboard entry as the attribute grid |
 | **Transitions** | A grid: source (path), trigger, event or duration, guard, targets, actions, external, gate badge; below it the **Guards** and **Actions** grids (name, expression in a one-line code field with MQ9501 markers, description, used by) |
 | **Events** | Events grid (name, actors, used by); the selected event's payload in the attribute grid |
@@ -969,6 +969,115 @@ explorer reads the process and subject documents once per forest). Mock: `mocks/
 (process side) and MQ9205; the seed binds Invoice to InvoiceLifecycle and the drift scenario binds Payment; the new
 `?mock=lifecycle` scenario has one finding per quick-fix kind (e2e `processReview.mock-only.spec.ts`); the contract suite
 calls every process operation and the process batch ops. Deferred with reason: per-state Translations (above).
+
+**Status P4, stage (canvas, layout, process diagrams), 2026-09-30:** built and verified. `src/editor/src/canvas/statechart/`
+on the canvas library renders the Chart tab (the process editor now opens on it; the simulation panel is docked below):
+`chartModel.ts` (states, regions, pseudo-states, one edge per target with `event [guard] / actions`, `after 5d`, `done`,
+`always`, `done: <invoke>`; targetless transitions as rows inside their state; the gate badge "N of M" with the signers
+in its tooltip; the bound enum member of a lifecycle's root states; MQ9003, MQ9004 and MQ9006 badges by pointer; a
+collapsed container as one box with the count it hides), `chartLayout.ts`, `diagram.ts`, `keyboard.ts`, `edits.ts`
+(pure, unit-tested), the nodes, the edges and `StatechartCanvas.tsx`. Layout (toolbar, Ctrl/Cmd+L; the whole chart or
+the selected container) is one call of the layered layout library in its worker in hierarchical mode
+(`INCLUDE_CHILDREN`, direction right, node spacing 32, layer spacing 64, orthogonal, edge labels sized so the layers
+make room for them, `MODEL_ORDER` cycle breaking on the top graph only, because the library's hierarchical mode fails
+when a container sets an ordering strategy); `fitTree` then sizes each container bottom-up to its children plus padding
+and a parallel state's regions are packed side by side; when the worker fails, a bottom-up per-container layout with the
+fallback library stands in. State sizes are computed from their text, so nothing waits for measuring. Positions live in
+the process diagram (2.7): members with `x`, `y` relative to the parent state, `width` and `height` on containers,
+`collapsed`; one diagram per process, named after it in its domain, created as one undoable step by the first drag,
+Layout, pan or zoom, or collapse (a chart without one is drawn from a layout held in memory); moves save through the
+diagram's draft, the viewport as the entity canvas saves it. A state without a place (N, Shift+N, the States grid) is
+placed by `placeMissing` inside its container only; its containers only grow; the placement joins the add's undo step;
+saved positions move only by Layout. As built, where the design left a choice: index rows of process diagrams carry
+`process` (`maquettiste-index/e9`), which the Diagrams explorer shows as "statechart of <process>" and `openDiagram`
+routes to the process editor's Chart tab (the Domain model picker leaves process diagrams out); deleting states that the
+diagram holds is one batch of the process and the diagram (also from the States grid; Delete process deletes the diagram
+with it); the delete dialog lists the transitions entering the states and deletes them with the states; F12 on an edge
+opens its gate, else its guard, else its event; with nothing selected an arrow selects the initial state, Escape on a
+transition selects its source; in T mode the arrows pick among every state drawn. Budgets
+(`statechart-budget.mock-only.spec.ts`, `?mock=chart400`: 400 states nested three deep with parallel regions and 321
+transitions; run as the `mock` project's teardown, alone): first paint 228 to 236 ms (budget 250), layout in the worker
+265 to 270 ms on the first Layout and 160 to 177 ms after (budget 400). Tests: unit `statechart-model`,
+`statechart-layout` (bottom-up sizing over a fake engine and the real library), `statechart-keyboard`,
+`statechart-diagram`, `statechart-edits`; Playwright `statechart.mock-only.spec.ts`. Left: the MQ9013 quick fix and an
+XState import `into` a process do not drop the diagram's members of removed states (the save is refused with MQ2001 on
+the diagram until they batch the diagram as `changeWithDiagram` does); a grown container may overlap a sibling until
+Layout.
+
+**Status P4, stage (simulation panel), 2026-09-30:** built and verified. `editors/process/simulation/` holds
+`session.ts` (the pure client session: start, inputs, selection, the last answer; `addInput`, `removeFrom`,
+`selectEntry`, `resetSession`, `restart`, `loadScenario`, `requestOf`, `viewOf`), `useSimulation.ts`
+(`SimulationRunner`: simulate is called 150 ms after the last change with the whole input list, the call in flight is
+aborted, and the draft is sent as `document` while the process has unsaved edits; a 422 shows its diagnostics in the
+panel), `model.ts` (the pure rows: enabled rows with their default input, pending, the last step's lines, the trace, a
+replay), `requests.ts` (the explorer's requests) and `SimulationPanel.tsx` (Start, Enabled, Time, Pending,
+Configuration, Last step, Trace, Record to scenario… and Replay scenario…, in `ROW_H` rows with collapsible sections).
+After every answer and every selection the panel publishes `setSimulationView` (`simulation/view.ts`: the shown entry's
+configuration, the transitions it took, the step) and the canvas highlights the active states and flashes the taken
+edges once. Every configuration, guard result, refusal, gate progress and verdict shown comes from simulate or verify;
+the browser computes none of them. Entry points: the Processes explorer's **Simulate** opens the process editor pinned
+on Chart with the panel shown; New scenario… **Record from simulation** creates nothing: it opens the Chart with the
+panel recording under the given name, prefilled in Record to scenario…. **Record to scenario…** is `POST scenarios`;
+the new scenario's index row and validation follow, and one undo step deletes it. **Replay scenario…** takes each
+step's verdict from verify and the states after it from simulate with `scenario`, stops at the first failure and shows
+expected and actual side by side; Configuration and the canvas follow the selected replay step. As built, where 6.4
+left a choice: a start edit restarts the session (its inputs are dropped); raising while an earlier trace entry is
+selected drops the inputs after it; while an earlier entry is selected, Enabled, Time and Pending wait for the last
+entry (the answer describes only the last one; no second call is made); a row's default input is the first allowed
+actor (none when any actor may), the payload defaults, a fresh signer `signer<n>`, the gate's first meaning, every stub
+guard assumed true, and for time the delay to the next timer; the number keys work while the focus is in the panel;
+sessions are kept per process for the page's life; record flushes the process draft first (the operation replays the
+saved process); the panel starts folded to its toolbar (the chart keeps its room: at a 900 px window the editor's header
+and the bottom panel leave the tab about 220 px) and expands on a Simulate or Record request or by its chevron, the
+choice kept per browser (`mq.simulation.open`); the element editor's title row gained a chevron that folds the display
+names, description and top controls away (`mq.editor.details.<kind>`), since the inspector shows the same fields. Mock: `mocks/model/stepper.ts` is a reduced port of the interpreter that answers simulate for any input
+list and fills record's `expect` and `outcome` (the recording still answers the pristine BudgetRejected request): initial
+entry, parallel regions, shallow and deep history, choice through `always`, priority and conflict removal, guards by
+expression or `assume`, actions, actors, gates with audit records, `done` for compound and parallel states, timers on a
+simulated clock, pending invokes, MQ9305, MQ9306 and MQ9507; it leaves out sub-process instances (a `process` invoke
+waits like a service task), MQ9505 and MQ9506; its BudgetRejected trace equals the engine recording. Tests: unit
+`stepper` (17), `simulation` (14, with the debounce and abort over a fake fetch), the contract suite for simulate with
+several inputs, a draft, a 422 and a record; Playwright `simulation.mock-only.spec.ts`.
+
+
+**Status P4, review fixes, 2026-09-30:** built and verified. Deleting states with the diagram (`changeWithDiagram`, the
+canvas and the States grid) saves both drafts first and refuses, changing nothing, while a draft of the process or of
+the diagram remains (`DraftManager.flushSaved`: false while a draft could not be saved); Record and Replay refuse the
+same way. Payload fields keep the text typed and convert it when the input is built (`inputOf`), so `1.5` can be typed;
+a row's edits merge the payload and the assumptions field by field (`mergeRowEdit`). First paint: the canvas draws no
+node until the states have their places (the diagram loaded, or the first layout done), and the time runs from the
+tab's first render to the frame after the first placed state node is in the page; the budget spec asserts target × 1.25
+here and in CI (no shared-runner allowance) and checks the states timed stand at distinct places: first paint 219, 278
+and 229 ms on three runs (budget 313), layout in the worker 268, 265 and 267 ms (budget 500). A new state's placement
+waits for the process's save to settle (`whenSettled`) and names only the states the saved process holds; a refused
+save leaves the state unplaced until the process saves again. `reapplyDiagram(disk, ours, base)` re-applies only what
+our draft changed since its base, field by field, reads a missing `collapsed` as false (an expand is re-applied), does
+not bring back a member removed elsewhere, and keeps their viewport unless we changed ours. Mock: simulate with a
+scenario always uses the scenario's start; MQ3001 no longer applies to diagrams (the engine's name keys have none); the
+difference in how the mock and the engine answer a reference error on a save is left as it is. A replay
+whose outcome failed (step -1) says "Outcome failed" (`replaySummary`). Shift+F12 on the canvas lists where the selected
+state or transition is used (`showReferences`). Deleting a confirmed incoming transition's target removes only that
+target; the transition goes when none is left. A selected state hidden inside collapsed containers (selected on the
+States grid or in the explorer) expands them as one follow-up of the diagram's draft (in memory without a diagram),
+chosen over selecting the container because the selection is shared with the grids and the inspector. Accessibility:
+each drawn state is a tree item (`role="treeitem"`, `aria-selected`, `aria-expanded` on containers, DOM id
+`mq-chart-state-<id>`) whose React Flow node is its tree (the library's `application` wrapper sits between the nodes and
+the canvas, so the canvas cannot be the tree); edge labels carry `mq-chart-edge-<edge>`; the focused canvas sets
+`aria-activedescendant` once the element is in the page, and a polite live region announces the selection; the axe scan
+of the chart is in `statechart.mock-only.spec.ts`. Labels moved to `CHART_LABELS` and `SIMULATION_LABELS` (state types,
+the state and transition names, notices, edge words, the gate tooltip, the assumption toggle). The edge flash alternates
+its class with every result flashed (a counter, not the parity of `seq`, which also grows on selection changes), so a
+new result restarts it. Each simulate call is tagged with the session's `version` (it grows with every change of the
+start or the inputs) and `withAnswer` drops an answer for an older version. A process rename (the explorer, the editor
+or the inspector: every one saves the process's draft) renames its diagram when the diagram carries the old name (and
+its display name when it carried the old one): `DraftManager.onSaved` calls `followProcessRename`, whose diagram edit is
+a follow-up saved at once, so the rename and the diagram's are one undo step in two writes, not one batch (the draft
+path saves one element). Duplicate is hidden on a process diagram's row. Tests: unit `statechart-actions` (new: the
+delete with its diagram, the refusal on an unsaved draft, the rename followed and undone, a diagram named otherwise
+left alone), `simulation`, `statechart-edits`, `statechart-model`, `canvas-model`, `drafts-undo`, `create`,
+`mock-model-index`, the contract suite; Playwright `statechart.mock-only.spec.ts` (Shift+F12, the hidden selection,
+aria-activedescendant and the live region, axe), `simulation.mock-only.spec.ts` (the highlight and the flash) and the
+budget spec.
 
 ## 10. SPEC amendments and open risks
 

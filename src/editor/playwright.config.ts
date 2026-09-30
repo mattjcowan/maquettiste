@@ -1,5 +1,7 @@
 // Playwright (phase2-design.md §4.10). Projects:
 // - mock: the static mock build served by `vite preview` (CI on every push). Specs in tests/e2e/*.spec.ts.
+// - mock-budgets: the mock project's teardown (it runs with `--project=mock`, after the other specs, alone): the
+//   statechart canvas's budgets (phase-3-design.md 4.5), timed without parallel specs competing for the machine.
 // - dev: starts the Vite dev server itself (only dev enforces server.fs.allow) and runs the smoke spec.
 // - scale: ?mock=large (the 5,000-entity model from `npm run gen:scale`) against the same mock
 //   preview, measuring the explorer-redesign.md 4.5 targets (`npm run e2e:scale`).
@@ -27,13 +29,15 @@ export default defineConfig({
   reporter: ci ? [["list"], ["html", { open: "never" }]] : [["list"]],
   use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, trace: "retain-on-failure" },
   projects: [
-    { name: "mock", testIgnore: /dev-smoke|scale/, use: { baseURL: mockUrl } },
+    // The statechart budgets run after the rest of the mock project, alone, so parallel specs do not skew their timings.
+    { name: "mock", testIgnore: /dev-smoke|scale|budget/, use: { baseURL: mockUrl }, teardown: "mock-budgets" },
+    { name: "mock-budgets", testMatch: /budget\.mock-only\.spec\.ts/, fullyParallel: false, use: { baseURL: mockUrl } },
     { name: "scale", testMatch: /scale\.spec\.ts/, retries: 0, use: { baseURL: mockUrl } },
     { name: "dev", testMatch: /dev-smoke\.spec\.ts/, use: { baseURL: "http://localhost:5173" } },
     { name: "live", testIgnore: /dev-smoke|mock-only|scale/, use: { baseURL: live } },
   ],
   webServer: [
-    ...(wants("mock") || wants("scale")
+    ...(wants("mock") || wants("mock-budgets") || wants("scale")
       ? [
           {
             command: `npm run build:mock && npm run preview:mock -- --port ${mockPort}`,

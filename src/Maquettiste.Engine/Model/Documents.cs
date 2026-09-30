@@ -54,7 +54,7 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// <param name="Subject">The entity whose lifecycle the process is, on process rows that have one.</param>
 /// <param name="StateCount">The number of states at every depth, on process rows.</param>
 /// <param name="ActorType">The actor's type, <c>person</c>, <c>role</c> or <c>external-system</c>, on actor rows.</param>
-/// <param name="Process">The process a scenario runs, on scenario rows.</param>
+/// <param name="Process">The process a scenario runs, on scenario rows; the process a diagram is the statechart of, on process diagram rows.</param>
 /// <param name="StepCount">The number of steps, on scenario rows.</param>
 /// <remarks>
 /// The E5 members are left out of the JSON when they are <see langword="null"/>, so rows of other kinds cost nothing. Equality compares

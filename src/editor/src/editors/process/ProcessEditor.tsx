@@ -1,6 +1,7 @@
 // The process editor (phase-3-design.md 6.2) in the editor frame: the top controls, then States, Transitions, Events,
-// Gates, Context and Scenarios (the Chart tab arrives with the canvas, round P4). It opens on States, or on the tab a
-// row of the Processes explorer asked for with that node selected (app/processFocus.ts).
+// Gates, Context and Scenarios. The Chart tab (ChartTab.tsx) holds the statechart canvas with the simulation panel
+// docked below it. It opens on Chart, or on the tab a row of the Processes explorer asked for with that node selected
+// (app/processFocus.ts).
 import { useEffect, useState } from "react";
 import { clearProcessFocus, useProcessFocus, type ProcessTab } from "@/app/processFocus";
 import { useServices } from "@/app/context";
@@ -9,6 +10,7 @@ import { useEditor, type Draft } from "@/state/store";
 import { EditorLayout, useEditorContext, type EditorContext } from "../EditorFrame";
 import { setView } from "../tabs";
 import { ProcessControls, useBinding } from "./ProcessControls";
+import { ChartTab } from "./ChartTab";
 import { StatesTab } from "./StatesTab";
 import { TransitionsTab } from "./TransitionsTab";
 import { EventsTab } from "./EventsTab";
@@ -28,7 +30,7 @@ function ProcessBody({ ctx, draft }: { ctx: EditorContext; draft: Draft | undefi
   const { store } = useServices();
   const pc = useProcessContext(ctx);
   const { id, process } = pc;
-  const view = useEditor(store, (s) => s.editors.view.process) ?? "states";
+  const view = useEditor(store, (s) => s.editors.view.process) ?? "chart";
   const focus = useProcessFocus(id);
   const [node, setNode] = useState<{ tab: ProcessTab; node: string | null } | null>(null);
   const { members } = useBinding(process.subject, process.boundAttribute);
@@ -38,14 +40,16 @@ function ProcessBody({ ctx, draft }: { ctx: EditorContext; draft: Draft | undefi
     if (!focus) return;
     store.getState().updateEditors((e) => setView(e, "process", focus.tab));
     setNode({ tab: focus.tab, node: focus.node });
-    if (focus.tab === "states" && focus.node) selectProcessNode({ process: id, kind: "state", id: focus.node });
+    if ((focus.tab === "states" || focus.tab === "chart") && focus.node) selectProcessNode({ process: id, kind: "state", id: focus.node });
     clearProcessFocus();
   }, [focus, id, store]);
 
-  // The inspector follows what is selected on the tab shown: leaving States or Transitions leaves their selection.
+  // The inspector follows what is selected on the tab shown: leaving States or Transitions leaves their selection; the
+  // Chart selects both kinds.
   useEffect(() => {
     const s = processSelection();
-    if (s?.process === id && ((s.kind === "state" && view !== "states") || (s.kind === "transition" && view !== "transitions"))) selectProcessNode(null);
+    if (s?.process !== id || view === "chart") return;
+    if ((s.kind === "state" && view !== "states") || (s.kind === "transition" && view !== "transitions")) selectProcessNode(null);
   }, [view, id]);
   useEffect(
     () => () => {
@@ -62,6 +66,7 @@ function ProcessBody({ ctx, draft }: { ctx: EditorContext; draft: Draft | undefi
         draft={draft}
         controls={<ProcessControls ctx={ctx} />}
         tabs={[
+          { value: "chart", label: PROCESS_TAB_LABELS.chart, content: <ChartTab pc={pc} />, fill: true },
           { value: "states", label: PROCESS_TAB_LABELS.states, content: <StatesTab pc={pc} members={members} /> },
           { value: "transitions", label: PROCESS_TAB_LABELS.transitions, content: <TransitionsTab pc={pc} /> },
           { value: "events", label: PROCESS_TAB_LABELS.events, content: <EventsTab pc={pc} focus={nodeOn("events")} /> },

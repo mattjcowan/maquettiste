@@ -14,6 +14,7 @@ import { MockLocalization } from "./model/localization";
 import type { Seed } from "./model/store";
 import { billingSeed, emptySeed, mediumSeed } from "./model/seed";
 import { withDrift, withLifecycleProblems } from "./model/processSeed";
+import { withLargeChart } from "./model/processDiagramSeed";
 import { truncateChangeEvent } from "./wire";
 
 /**
@@ -21,7 +22,7 @@ import { truncateChangeEvent } from "./wire";
  * that scripts/gen-scale-model.mjs writes (browser.ts loads it and passes it as `seed`).
  */
 export type Scenario =
-  "conflict" | "slow" | "empty" | "medium" | "wide" | "large" | "unauthenticated" | "presence" | "invalid" | "locales" | "drift" | "lifecycle";
+  "conflict" | "slow" | "empty" | "medium" | "wide" | "large" | "unauthenticated" | "presence" | "invalid" | "locales" | "drift" | "lifecycle" | "chart400";
 
 export interface MockBackendOptions {
   scenarios?: Scenario[];
@@ -67,7 +68,9 @@ export class MockBackend {
       (this.scenarios.has("empty") ? emptySeed() : this.scenarios.has("medium") ? mediumSeed() : this.scenarios.has("wide") ? mediumSeed(400) : billingSeed());
     const lifecycle = this.scenarios.has("lifecycle") ? withLifecycleProblems(seed) : seed;
     const drifted = this.scenarios.has("drift") ? withDrift(lifecycle) : lifecycle;
-    this.model = new MockModel(this.scenarios.has("locales") ? withLocales(drifted) : drifted, {
+    // `chart400`: a 400-state process with its diagram, for the statechart canvas's budgets (phase-3-design.md 4.5).
+    const charted = this.scenarios.has("chart400") ? withLargeChart(drifted) : drifted;
+    this.model = new MockModel(this.scenarios.has("locales") ? withLocales(charted) : charted, {
       newId,
       onChanged: (changes) => {
         // E5d: each change carries the element's index row as it is now.
@@ -160,6 +163,20 @@ function withLocales(seed: Seed): Seed {
 export function scenariosFrom(search: string): Scenario[] {
   const params = new URLSearchParams(search);
   const all = params.getAll("mock").flatMap((v) => v.split(","));
-  const known: Scenario[] = ["conflict", "slow", "empty", "medium", "wide", "large", "unauthenticated", "presence", "invalid", "locales", "drift", "lifecycle"];
+  const known: Scenario[] = [
+    "conflict",
+    "slow",
+    "empty",
+    "medium",
+    "wide",
+    "large",
+    "unauthenticated",
+    "presence",
+    "invalid",
+    "locales",
+    "drift",
+    "lifecycle",
+    "chart400",
+  ];
   return all.filter((v): v is Scenario => (known as string[]).includes(v));
 }

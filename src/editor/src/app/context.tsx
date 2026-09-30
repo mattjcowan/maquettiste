@@ -8,6 +8,7 @@ import { DraftManager } from "@/state/drafts";
 import { UndoManager } from "@/state/undo";
 import type { RealtimeClient } from "@/realtime/events";
 import { JobTracker } from "@/realtime/jobs";
+import { followProcessRename } from "@/canvas/statechart/actions";
 
 export interface AppServices {
   queryClient: QueryClient;
@@ -24,6 +25,8 @@ export function createServices(realtime: RealtimeClient, mock: boolean, queryCli
   const drafts = new DraftManager({ store, queryClient, saveElement: endpoints.saveElement, saveDiagram: endpoints.saveDiagram });
   const undo = new UndoManager({ store, queryClient, drafts, applyBatch: endpoints.applyBatch });
   const jobs = new JobTracker({ realtime, queryClient, store });
+  // A process's diagram follows the process's rename when it carries the old name (one undo step with the rename).
+  drafts.onSaved((id, before, after) => void followProcessRename({ drafts, queryClient, store }, id, before, after).catch(() => undefined));
   return { queryClient, store, drafts, undo, realtime, jobs, mock };
 }
 

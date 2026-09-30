@@ -41,6 +41,8 @@ describe("New actions (1.8)", () => {
     expect(menuFor([{ type: "group", element: false, domainGroup: true }])[0].id).toBe("new:diagram");
     expect(menuFor([{ type: "group", element: false, explorer: "databases" }])[0].id).toBe("new:database");
     expect(menuFor([{ type: "element", kind: "diagram", element: true }]).map((i) => i.id)).toContain("duplicate");
+    // A process's diagram is one per process: no Duplicate on its row.
+    expect(menuFor([{ type: "element", kind: "diagram", element: true, processDiagram: true }]).map((i) => i.id)).not.toContain("duplicate");
     expect(folderCreate("scalar-type")).toBe("scalar-type");
     expect(EXPLORER_CREATE.databases).toEqual(["database"]);
     expect(EXPLORER_CREATE["reference-data"]).toEqual(["reference-type"]);

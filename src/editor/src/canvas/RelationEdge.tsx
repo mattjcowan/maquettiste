@@ -6,6 +6,25 @@ import { Paperclip } from "lucide-react";
 import type { RelationDoc } from "@/api/types";
 import { crowsFoot, multiplicity, relationKind } from "@/model/model";
 import { cn } from "@/lib/cn";
+import { LABEL_GAP, relationLabelSize } from "./model";
+
+/**
+ * Where the label sits: at the edge's midpoint when the run between the cards has room for the pill and a gap on each
+ * side, else moved off the line (above a horizontal run, left of a vertical one) so it never covers a card. Pure, so it
+ * can be tested.
+ */
+export function labelOffset(
+  ends: { sourceX: number; sourceY: number; targetX: number; targetY: number },
+  label: { width: number; height: number },
+): { dx: number; dy: number } {
+  const dx = Math.abs(ends.targetX - ends.sourceX);
+  const dy = Math.abs(ends.targetY - ends.sourceY);
+  const horizontal = dx >= dy;
+  const run = horizontal ? dx : dy;
+  const needed = (horizontal ? label.width : label.height) + 2 * LABEL_GAP;
+  if (run >= needed) return { dx: 0, dy: 0 };
+  return horizontal ? { dx: 0, dy: -(label.height / 2 + 6) } : { dx: -(label.width / 2 + 6), dy: 0 };
+}
 
 export type Notation = "uml" | "crowsfoot";
 
@@ -33,6 +52,7 @@ function RelationEdgeView({ id, sourceX, sourceY, targetX, targetY, sourcePositi
   const endMarker = notation === "crowsfoot" && b ? `url(#mq-cf-${crowsFoot(b)})` : undefined;
   const attributes = relation.attributes ?? [];
   const offset = (x: number, pos: string) => (pos === "right" ? x + 14 : pos === "left" ? x - 14 : x);
+  const nudge = labelOffset({ sourceX, sourceY, targetX, targetY }, relationLabelSize(relation));
   return (
     <>
       <BaseEdge
@@ -49,7 +69,7 @@ function RelationEdgeView({ id, sourceX, sourceY, targetX, targetY, sourcePositi
             "nodrag nopan pointer-events-auto absolute flex items-center gap-1 rounded-full border bg-surface px-2 py-0.5 text-11 font-medium text-primary",
             selected ? "border-accent" : "border-default",
           )}
-          style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+          style={{ transform: `translate(-50%, -50%) translate(${labelX + nudge.dx}px, ${labelY + nudge.dy}px)` }}
           data-testid={`relation-label-${relation.name}`}
         >
           <span>{relation.name}</span>

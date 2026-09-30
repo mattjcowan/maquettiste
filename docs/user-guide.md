@@ -158,6 +158,10 @@ entity its key, **Base entity**, **Is abstract**, stereotypes, tags and category
 - **Domain**: General, Tags and Categories. The display name, plural name and description are edited in the editor's
   header only, not again on General.
 
+The chevron at the right of the editor's title row folds the details away (the display names, the description and the
+top controls; the inspector shows the same fields) so a chart or a grid gets the room; the choice is remembered in this
+browser per kind of element.
+
 **Follow selection** on the tab bar turns the shown editor into **General mode**: it follows the selection in the
 explorer and on the canvas and keeps its tab, so you can walk twenty entities on the Mappings tab without reopening
 anything. Unsaved edits are kept per element, so moving on never loses one. A reference type opens in the Reference data
@@ -205,7 +209,8 @@ database shows on the Database screen at once. The explorers remember which rows
   "All of <domain>" before this move into that diagram the next time it opens.
 
   **Auto-layout and new cards.** Auto-layout re-arranges every card of the diagram and fits the view; it is the only
-  thing that moves cards you placed. A diagram whose cards have no position yet is laid out the same way when it first
+  thing that moves cards you placed. It makes room for the relationship labels: layers are spaced for the label pills
+  plus a gap, and a label whose edge is too short to hold it floats beside the line rather than over a card. A diagram whose cards have no position yet is laid out the same way when it first
   opens. A card that arrives later (a new entity, an entity added to the diagram without a position, one that joined
   the domain) is placed on its own, in free space beside a card it has a relationship with, or else in a row under the
   drawing; nothing else moves and the zoom stays, and a new card you just created is scrolled into view.
@@ -398,8 +403,8 @@ A **process** is a statechart: a **lifecycle** describes the states of one entit
 enum attribute of that entity whose members are the lifecycle's root-level states; an **orchestration** coordinates work
 and needs no subject. **Actors** are the people, roles and external systems that raise events and sign gates.
 **Scenarios** are recorded runs of a process, step by step, with what each step is expected to lead to; the engine
-replays them to check the process still behaves as written. The chart canvas and the simulation panel arrive next; for
-now a process is edited in its grids.
+replays them to check the process still behaves as written. A process is drawn on its **chart** (a statechart canvas)
+and tried out in the **simulation panel** under it; its grids edit the same document.
 
 ### The Processes explorer
 
@@ -409,10 +414,15 @@ its last replay status (not run, passed, or failed at step N). The **Actors** fo
 state, event or scenario row opens the process editor on that tab with the row selected. Domain model's **Processes**
 kind folder lists the same process rows.
 
-Right-click a process for **Open**, **Open in new tab**, **Verify scenarios**, **Export XState**, **Where used**,
-**Move to domain…**, **Rename**, **Add to favorites** and **Delete**. **Simulate** is listed but disabled: it arrives with
-the simulation panel. Right-click a domain group for **New process…** and **Import XState…**. The header's **+** offers
-New process…, New actor… and New scenario….
+Right-click a process for **Open**, **Open in new tab**, **Simulate** (opens its chart with the simulation panel),
+**Verify scenarios**, **Export XState**, **Where used**, **Move to domain…**, **Rename**, **Add to favorites** and
+**Delete** (its scenarios and its chart's diagram go with it). Right-click a domain group for **New process…** and
+**Import XState…**. The header's **+** offers New process…, New actor… and New scenario….
+
+A process's chart is a diagram like any other: once you have arranged it, the **Diagrams** explorer lists it under the
+process's domain as "statechart of <process>", and opening it there opens the process editor on its Chart tab. It has
+no **Duplicate** (a process has one chart), and renaming the process renames its chart too while the chart still
+carries the process's name.
 
 ### New process…
 
@@ -434,8 +444,9 @@ its **Goals** field (one per line).
 
 ### New scenario…
 
-**Process**, **Name** and **Start**: **Empty** (one step to fill in). **Record from simulation** is shown disabled; it
-arrives with the simulation panel.
+**Process**, **Name** and **Start**: **Record from simulation** creates nothing yet: it opens the process's chart with
+the simulation panel recording under that name, and **Record to scenario…** in the panel saves what you raise.
+**Empty** creates the scenario with one step to fill in.
 
 ### The process editor
 
@@ -443,8 +454,9 @@ A process opens in a document tab with its top controls: name and domain, **Use*
 (with a drift badge when the enum and the states differ, and **Sync enum** beside it), stereotype, tag and category
 chips. **Use** and **Subject** change both sides of a lifecycle at once: making a process a lifecycle (it needs a
 subject first), moving it to another entity, or turning it back into an orchestration also updates the entity's
-lifecycle and releases the entity's previous lifecycle, as one change. It opens on **States**. The tabs:
+lifecycle and releases the entity's previous lifecycle, as one change. It opens on **Chart**. The tabs:
 
+- **Chart**: the statechart canvas with the simulation panel docked below it (both described next).
 - **States**: the state tree as a grid: name, type, initial, history, entry and exit actions, invokes, and the bound
   enum member (read-only). Below it, the selected state's **Invokes** grid: name, type (process, service, human task),
   the invoked process and the human task's actors. An invoke a transition still waits on is not removed.
@@ -468,6 +480,69 @@ used. Each change is one undo step (Ctrl/Cmd+Z).
 An **actor** opens in its own editor (name, type, chips; General lists the processes that use it). A **scenario** opens
 in its editor: process, outcome and the **Steps** grid, each step with its replay status; **Replay** runs it and shows
 the first failure.
+
+### The chart
+
+The **Chart** tab draws the process as a statechart. States are boxes with a 24 px header; a compound state is a box
+holding its children, a parallel state holds its regions side by side, separated by dashed lines; the initial state is
+marked by a filled dot with an arrow, a final state is a ringed dot, a history state a circled H (H* for deep), a choice
+state a diamond. A transition is an edge labelled `event [guard] / actions`, `after 5d`, `done` or `always`; a transition
+that waits for approvals carries a badge such as "2 of 3" (hover it for the signers). A lifecycle's root states show
+their enum member in muted text. A state or an edge with a problem (unreachable, a dead end, overlapping guards) shows a
+badge; hover it for the message. Clicking a state or an edge selects it, and the inspector shows its State or Transition
+section; clicking the background shows the process's own fields.
+
+**Arranging the chart.** A chart you have not arranged yet is drawn with an automatic layout; nothing is saved by
+looking at it. The first drag, **Layout**, pan or zoom, or collapse creates the process's diagram (named after the
+process, in its domain) and saves the arrangement there: from then on every state keeps the place you gave it, and only
+**Layout** (the toolbar button, or Ctrl+L, Cmd+L on a Mac) moves states again. Layout arranges the whole chart, or only
+the states inside the selected compound or parallel state. A new state (from the chart or the States grid) is placed
+inside its container without moving anything else; the container grows to hold it. A compound or parallel state can be
+collapsed to one box that says how many states it hides; selecting a state it hides (on the States grid, say) opens it
+again. Undo takes an arrangement back like any change.
+
+**Keys on the chart.** The arrow keys move the selection to the nearest state in that direction inside the same
+container; Enter enters a compound state (its initial child), Escape goes back to its parent; Tab and Shift+Tab walk the
+selected state's outgoing transitions. N adds a sibling state and Shift+N a child; T starts a transition from the
+selected state (pick the target with the arrows, Enter confirms, Escape cancels); F2 renames; Delete removes the
+selection, and when transitions enter the state from elsewhere a dialog lists them: each loses the state as a target,
+and one left with no target is deleted with it. While the process has changes that could not be saved (they do not
+validate, or someone else changed the process), a delete is refused until you fix or discard them. F12 on an edge
+opens its gate, guard or event on the matching tab; Shift+F12 lists where the selected state or transition is used.
+Shift-click or drag a box to select several states; they move and delete together. Each gesture is one undo step.
+Right-click a state for the same actions as a menu. A screen reader announces the state or transition selected while
+the focus stays on the chart.
+
+### The simulation panel
+
+Under the chart, the **simulation panel** runs the process through the engine: the browser only sends the inputs and
+shows the answer, so what you see is what the interpreter does. It starts folded to its title row so the chart keeps
+its room; expand it with the chevron on that row (the choice is remembered in this browser), or open it with
+**Simulate** on the process's row or **Record from simulation** in New scenario…. Its sections (each collapses):
+
+- **Start**: the context attributes as a form, with their defaults. Editing a value restarts the simulation.
+  **From scenario…** loads a scenario's start and steps as the inputs.
+- **Enabled**: one row per input the process can take now: an event with its actor (only the actors the event allows),
+  its payload fields, and for a gated event the signer, the meaning and the reason; a guard without an expression shows
+  a true/false toggle whose value is recorded as an assumption. **Raise** (Enter on the row) sends it; the keys 1 to 9
+  raise the first nine rows. A refused input stays in the trace with its reason.
+- **Time**: the next timer due, and **Advance** by a duration (the next timer by default); the clock starts at
+  2000-01-01 unless the Start says otherwise.
+- **Pending**: the service and human tasks waiting for a result, with **Done** and **Error**.
+- **Configuration**: the active states by path; the chart highlights them, and the edges just taken flash once.
+- **Last step**: the guards evaluated (with their result and where it came from: an expression, an assumption, or
+  missing), the actions run and what they changed in the context, the gate's signatures and audit records, or the
+  refusal and its reason.
+- **Trace**: the inputs so far. Selecting one shows the state after it (the chart follows); Delete removes it and every
+  input after it. **Restart** clears them.
+
+While the process has unsaved edits, the simulation runs on the draft, so a chart edit is tried at once; an edit that
+does not validate is reported in the panel instead. Record and Replay work on the saved process, so they save your edits
+first and refuse while changes that could not be saved remain. **Record to scenario…** saves the inputs as a scenario of the
+process (name, and the outcome prefilled: final when the process ended, active otherwise), with each step's expected
+states and context filled from the run; one undo removes it. **Replay scenario…** steps through a scenario: the engine
+verifies it, each step shows passed or failed, and the replay stops at the first failure with the expected and actual
+states side by side; the chart follows the selected step.
 
 ### The inspector for processes
 

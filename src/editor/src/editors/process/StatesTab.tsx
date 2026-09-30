@@ -9,6 +9,7 @@ import { SectionTitle } from "@/components/ui/misc";
 import { useIndex } from "@/api/queries";
 import { newId } from "@/lib/ids";
 import { indexLookup } from "@/model/index";
+import { CHART_LABELS } from "@/model/labels";
 import {
   addSiblingState,
   addState,
@@ -20,18 +21,25 @@ import {
   stateIndex,
   stateRows,
   STATE_TYPES,
+  subtreeIds,
   type InvokeDoc,
   type ProcessDoc,
   type StateRow,
   type StateType,
   uniqueName,
 } from "@/model/process";
+import { useServices } from "@/app/context";
+import { changeWithDiagram } from "@/canvas/statechart/actions";
+import { processDiagramId } from "@/canvas/statechart/diagram";
 import { Grid, type GridColumn } from "./Grid";
 import { rowProblems, useGridTargets, type ProcessContext } from "./shared";
 import { selectProcessNode, useProcessSelection } from "./selection";
 
 export function StatesTab({ pc, members }: { pc: ProcessContext; members: string[] | null }) {
   const { process, change, id } = pc;
+  const services = useServices();
+  const index = useIndex();
+  const diagramId = processDiagramId(indexLookup(index.data).rows, id);
   const selection = useProcessSelection(id);
   const [error, setError] = useState<string | null>(null);
   const rows = stateRows(process, members);
@@ -150,13 +158,30 @@ export function StatesTab({ pc, members }: { pc: ProcessContext; members: string
         onCommit={commit}
         onAdd={(after) => add(after, false)}
         onRemove={(row) => {
-          let refusal: string | null = null;
           // The check runs on the current document first: a refused delete makes no change (and no undo step).
           const probe = structuredClone(process);
           const result = deleteState(probe, row.id);
-          if (!result.ok) refusal = result.reason;
-          else change((p) => void deleteState(p, row.id));
-          setError(refusal);
+          if (!result.ok) {
+            setError(result.reason);
+            return;
+          }
+          setError(null);
+          if (!diagramId) {
+            change((p) => void deleteState(p, row.id));
+            return;
+          }
+          // The process diagram's members of the deleted states go in the same batch (a member naming a deleted state
+          // would refuse the save).
+          void changeWithDiagram(services, {
+            process: id,
+            diagram: diagramId,
+            label: `Delete ${row.name}`,
+            removed: subtreeIds(process, row.id),
+            apply: (p) => {
+              const r = deleteState(p, row.id);
+              return r.ok ? null : r.reason;
+            },
+          }).then((failed) => failed && setError(CHART_LABELS.notDeleted(failed)));
         }}
         onKey={(e, row) => {
           if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "Enter") {

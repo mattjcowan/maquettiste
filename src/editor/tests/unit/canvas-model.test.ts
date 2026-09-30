@@ -14,12 +14,15 @@ import {
   NODE_WIDTH,
   parseView,
   relationEnds,
+  relationLabelSize,
   selectedEntities,
   storedPosition,
   viewElements,
   viewKey,
 } from "@/canvas/model";
 import { reapplyDiagram } from "@/state/drafts";
+import { elkGraph } from "@/canvas/layout";
+import { labelOffset } from "@/canvas/RelationEdge";
 import type { ModelJson } from "@/api/types";
 
 const rows = [
@@ -113,19 +116,57 @@ describe("positions", () => {
   });
 
   it("re-applies our positions onto the disk version after a 409 (keeps their new members)", () => {
+    const base = { kind: "diagram", members: [{ element: "a", x: 0, y: 0 }] } as unknown as ModelJson;
     const disk = { kind: "diagram", members: [{ element: "a", x: 0, y: 0 }, { element: "new" }] } as unknown as ModelJson;
     const ours = {
       kind: "diagram",
       members: [
-        { element: "a", x: 50, y: 60, collapsed: true },
+        { element: "a", x: 50, y: 60, width: 300, height: 120, collapsed: true },
         { element: "mine", x: 1, y: 1 },
       ],
     } as unknown as ModelJson;
-    expect((reapplyDiagram(disk, ours) as unknown as { members: DiagramMember[] }).members).toEqual([
-      { element: "a", x: 50, y: 60, collapsed: true },
+    expect((reapplyDiagram(disk, ours, base) as unknown as { members: DiagramMember[] }).members).toEqual([
+      { element: "a", x: 50, y: 60, width: 300, height: 120, collapsed: true },
       { element: "new" },
       { element: "mine", x: 1, y: 1 },
     ]);
+  });
+
+  it("re-applies only what our draft changed: a state another window moved keeps its place, an expand is re-applied", () => {
+    const base = {
+      kind: "diagram",
+      members: [
+        { element: "a", x: 0, y: 0 },
+        { element: "b", x: 10, y: 10, width: 200, height: 100, collapsed: true },
+        { element: "gone", x: 5, y: 5 },
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    } as unknown as ModelJson;
+    // Another window moved a and removed gone; we moved nothing but b, which we expanded and grew.
+    const disk = {
+      kind: "diagram",
+      members: [
+        { element: "a", x: 400, y: 300 },
+        { element: "b", x: 10, y: 10, width: 200, height: 100, collapsed: true },
+      ],
+      viewport: { x: 9, y: 9, zoom: 2 },
+    } as unknown as ModelJson;
+    const ours = {
+      kind: "diagram",
+      members: [
+        { element: "a", x: 0, y: 0 },
+        { element: "b", x: 10, y: 10, width: 260, height: 100 },
+        { element: "gone", x: 5, y: 5 },
+      ],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    } as unknown as ModelJson;
+    const merged = reapplyDiagram(disk, ours, base) as unknown as { members: DiagramMember[]; viewport: unknown };
+    expect(merged.members).toEqual([
+      { element: "a", x: 400, y: 300 },
+      { element: "b", x: 10, y: 10, width: 260, height: 100 },
+    ]);
+    // Our viewport did not change: theirs stays.
+    expect(merged.viewport).toEqual({ x: 9, y: 9, zoom: 2 });
   });
 });
 
@@ -150,6 +191,36 @@ describe("edges", () => {
 });
 
 describe("layout input", () => {
+  it("gives every relation edge its label's size with a gap, so the layout makes room for it", () => {
+    const input = layoutInput(
+      [{ id: "a" }, { id: "b" }],
+      [{ id: "r", source: "a", target: "b", data: { relation: { name: "places", attributes: [{ id: "x", name: "quantity", type: "int32" }] } } }],
+    );
+    const label = relationLabelSize({ name: "places", attributes: [{ id: "x", name: "quantity", type: "int32" }] });
+    expect(label).toEqual({ width: Math.ceil(9 * 11 * 0.6) + 16, height: 22 });
+    expect(input.edges[0].label).toEqual({ width: label.width + 24, height: label.height + 12 });
+    expect(layoutInput([{ id: "a" }], [{ id: "e", source: "a", target: "a" }]).edges[0].label).toBeUndefined();
+  });
+
+  it("puts an edge label in the layout graph with its size", () => {
+    const graph = elkGraph(
+      [
+        { id: "a", width: 10, height: 10 },
+        { id: "b", width: 10, height: 10 },
+      ],
+      [{ id: "r", source: "a", target: "b", label: { width: 80, height: 30 } }],
+    );
+    expect(graph.edges?.[0].labels).toEqual([{ id: "r:label", text: "r", width: 80, height: 30 }]);
+    expect(graph.layoutOptions?.["elk.spacing.edgeLabel"]).toBe("12");
+  });
+
+  it("moves a label off a short edge so it never covers a card", () => {
+    const label = { width: 100, height: 22 };
+    expect(labelOffset({ sourceX: 0, sourceY: 0, targetX: 300, targetY: 0 }, label)).toEqual({ dx: 0, dy: 0 });
+    expect(labelOffset({ sourceX: 0, sourceY: 0, targetX: 96, targetY: 4 }, label)).toEqual({ dx: 0, dy: -17 });
+    expect(labelOffset({ sourceX: 0, sourceY: 0, targetX: 2, targetY: 30 }, label)).toEqual({ dx: -56, dy: 0 });
+  });
+
   it("uses measured sizes and falls back to the default card size", () => {
     const input = layoutInput(
       [{ id: "a", measured: { width: 260, height: 300 } }, { id: "b" }, { id: "c", measured: { width: 0, height: 0 } }],

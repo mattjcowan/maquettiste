@@ -7,6 +7,8 @@ import * as endpoints from "@/api/endpoints";
 import type { ElementSummary, ModelJson } from "@/api/types";
 import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
+import { focusProcess } from "@/app/processFocus";
+import { requestSimulation } from "@/editors/process/simulation/requests";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
@@ -350,8 +352,19 @@ function NewScenarioDialog({ process: preset, forest, onClose }: { process: stri
   const [busy, setBusy] = useState(false);
   const doc = useQuery({ ...elementQuery(process), enabled: !!process });
   const problem = processNameProblem(name) ?? (!process ? "Choose a process." : !doc.data ? "Loading the process…" : null);
+  const { openEditor } = useEditorNavigation();
   const save = async () => {
-    if (problem || busy || start !== "empty" || !doc.data) return;
+    if (problem || busy || !doc.data) return;
+    if (start === "record") {
+      // Record from simulation creates nothing yet: the process editor opens on its Chart tab and the simulation panel
+      // starts recording under this name; its Record to scenario… saves the scenario.
+      const summary = forest.byId.get(process);
+      onClose();
+      requestSimulation(process, { record: { name: name.trim() } });
+      focusProcess(process, "chart", null, "record");
+      if (summary) openEditor(summary as ElementSummary, true);
+      return;
+    }
     setBusy(true);
     try {
       const scenario = buildScenario(name, doc.data.json as Json, newId);
@@ -389,17 +402,16 @@ function NewScenarioDialog({ process: preset, forest, onClose }: { process: stri
             <Input id="new-scenario-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
           <fieldset className="flex flex-col gap-1 text-12" aria-label="Start">
-            <label className="flex h-6 items-center gap-2 text-disabled" title={PROCESS_LABELS.simulateLater}>
+            <label className="flex h-6 items-center gap-2">
               <input
                 type="radio"
                 name="new-scenario-start"
-                disabled
                 checked={start === "record"}
                 onChange={() => setStart("record")}
                 data-testid="new-scenario-record"
               />
               {PROCESS_LABELS.recordFromSimulation}
-              <span className="text-secondary">({PROCESS_LABELS.simulateLater.toLowerCase()})</span>
+              <span className="text-secondary">({PROCESS_LABELS.recordFromSimulationNote})</span>
             </label>
             <label className="flex h-6 items-center gap-2">
               <input type="radio" name="new-scenario-start" checked={start === "empty"} onChange={() => setStart("empty")} data-testid="new-scenario-empty" />

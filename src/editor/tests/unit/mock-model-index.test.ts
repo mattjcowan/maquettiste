@@ -125,6 +125,19 @@ describe("mock model index", () => {
     expect(after).toEqual(fromScratch(model));
   });
 
+  it("does not apply MQ3001 to diagrams, as the engine does not (a process's diagram shares its name with others)", () => {
+    const backend = new MockBackend();
+    const model = backend.model;
+    const [first, second] = entriesOf(model, "diagram");
+    const saved = edit(model, second.id, (json) => {
+      json.name = String(first.json.name);
+      json.package = first.json.package;
+    });
+    expect(saved.outcome).toBe("saved");
+    expect(model.validate().diagnostics.some((d) => d.rule === "MQ3001")).toBe(false);
+    expect(model.validate().diagnostics).toEqual(fromScratch(model));
+  });
+
   it("answers owners and references from the index", () => {
     const model = new MockBackend().model;
     for (const entry of model.entries.values()) {

@@ -1935,7 +1935,7 @@ export interface components {
              * @enum {string}
              */
             actorType?: "person" | "role" | "external-system";
-            /** @description The process a scenario runs, on scenario rows. */
+            /** @description The process a scenario runs, on scenario rows; the process a diagram is the statechart of, on process diagram rows. */
             process?: components["schemas"]["Ulid"];
             /** @description The number of steps, on scenario rows. */
             stepCount?: number;

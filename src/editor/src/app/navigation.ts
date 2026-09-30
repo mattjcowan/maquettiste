@@ -8,6 +8,7 @@ import { keys } from "@/api/queries";
 import { placeOf } from "@/search/engine";
 import { useServices } from "./context";
 import { activate, hasEditor, openTab, setView } from "@/editors/tabs";
+import { focusProcess } from "./processFocus";
 
 /** The centre area shows the screen again, in front of the editor tabs. */
 const showScreen = (store: EditorStore) => store.getState().updateEditors((e) => activate(e, null));
@@ -75,6 +76,19 @@ export function useEditorNavigation() {
 
   const openDiagram = useCallback(
     (id: string | null, options?: { keepEditors?: boolean; replace?: boolean }) => {
+      // A process's diagram is its statechart (phase-3-design.md 6.5): it opens the process editor on its Chart tab,
+      // never the Domain model canvas.
+      const process = id ? queryClient.getQueryData<ElementSummary[]>(keys.index)?.find((r) => r.id === id && r.kind === "diagram")?.process : null;
+      if (process) {
+        const s = store.getState();
+        if (s.workspace === "settings" || s.workspace === "reference-data" || s.workspace === "generate") s.setWorkspace("entities");
+        s.select([process], { pointer: null });
+        focusProcess(process, "chart", null);
+        s.updateEditors((e) => openTab(setView(e, "process", "chart"), { id: process, kind: "process" }, { pin: true }));
+        const after = store.getState();
+        navigate(buildUrl(after.workspace, segmentFor(after.workspace), [process], keep()), options?.replace ? { replace: true } : undefined);
+        return;
+      }
       // The Domain model screen's default pick after load keeps the editors: an editor the user opened in the first
       // second (a double-click in the tree) must not be hidden by it. The user's own choice brings the screen forward.
       if (!options?.keepEditors) showScreen(store);
@@ -83,7 +97,7 @@ export function useEditorNavigation() {
       // `replace`: a domain's canvas that is now its diagram replaces "All of <domain>" in the history, so Back skips it.
       navigate(buildUrl("entities", id, store.getState().selection, keep()), options?.replace ? { replace: true } : undefined);
     },
-    [navigate, store, keep],
+    [navigate, store, keep, queryClient, segmentFor],
   );
 
   const openDatabase = useCallback(

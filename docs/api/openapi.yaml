@@ -5622,7 +5622,7 @@ components:
           type: string
           enum: [person, role, external-system]
         process:
-          description: The process a scenario runs, on scenario rows.
+          description: The process a scenario runs, on scenario rows; the process a diagram is the statechart of, on process diagram rows.
           $ref: '#/components/schemas/Ulid'
         stepCount:
           type: integer

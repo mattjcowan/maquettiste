@@ -91,6 +91,7 @@ import { DeleteProcessDialog, ImportXStateDialog, useCommit } from "./processDia
 import { deleteProcessOps } from "./processCreate";
 import { exportProcess, useScenarioStatuses, verifyLines, verifyScenarios } from "./processApi";
 import { focusProcess, tabOfRow } from "@/app/processFocus";
+import { requestSimulation } from "@/editors/process/simulation/requests";
 import { NewSchemaDialog } from "@/inspector/DatabaseSchemas";
 import { MarkDialog, PromoteDialog } from "./markDialogs";
 import type { MarkKind } from "./marks";
@@ -100,6 +101,7 @@ import { createTargetSeed } from "@/workspaces/reference-data/seedTargets";
 import { CREATE_LABELS, domainOfKey, EXPLORER_CREATE, processOfKey, startDomain, type CreateKind } from "./create";
 import { CreateButtons } from "./NewElementDialog";
 import { addToDiagram } from "@/workspaces/entities/actions";
+import { isProcessDiagram } from "@/canvas/statechart/diagram";
 import { ELEMENTS_MIME, relatedWithin, type RelationLookup } from "@/canvas/model";
 
 const EMPTY_TABLES = new Map<string, TablesInput | undefined>();
@@ -881,6 +883,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         favorite: !!element && favoriteSet.has(element),
         domainGroup,
         explorer: creates || domainGroup ? node.explorer : undefined,
+        processDiagram: node.kind === "diagram" && !!element && isProcessDiagram(forest.byId.get(element)),
       };
     },
     [forest, idOf, favoriteSet],
@@ -1076,8 +1079,16 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       case "import-xstate":
         setImportingInto({ domain: node?.id && forest.byId.get(node.id)?.kind === "package" ? node.id : null });
         break;
-      case "simulate":
+      case "simulate": {
+        // Simulate (6.1): the process editor, pinned, on its Chart tab with the simulation panel shown.
+        const row = ids[0] ? forest.byId.get(ids[0]) : undefined;
+        if (row?.kind === "process") {
+          requestSimulation(row.id);
+          focusProcess(row.id, "chart", null, "simulate");
+          openEditor(row as ElementSummary, true);
+        }
         break;
+      }
     }
   };
 
@@ -1117,7 +1128,8 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   /** Delete a process and its scenarios, in one batch. */
   const deleteProcess = async (process: string) => {
     if (!forest) return;
-    const scenarioIds = [...forest.byId.values()].filter((r) => r.kind === "scenario" && r.process === process).map((r) => r.id);
+    // Its scenarios and its diagram (the statechart's arrangement) go with it, in the same batch.
+    const scenarioIds = [...forest.byId.values()].filter((r) => (r.kind === "scenario" || r.kind === "diagram") && r.process === process).map((r) => r.id);
     const docs = await Promise.all([process, ...scenarioIds].map((x) => queryClient.fetchQuery({ ...elementQuery(x), staleTime: 0 })));
     const [own, ...scenarios] = docs;
     const ops = deleteProcessOps(

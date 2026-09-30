@@ -4,6 +4,7 @@
 // browser.ts (largeSeed.ts).
 import type { Seed, SeedFile } from "./store";
 import { bindLifecycles, processFiles } from "./processSeed";
+import { processDiagramFiles } from "./processDiagramSeed";
 
 const fixture = import.meta.glob("../fixture/billing/**/*.{json,md}", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 const packFiles = import.meta.glob("../fixture/packs/*/pack.json", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
@@ -21,7 +22,7 @@ export function billingSeed(): Seed {
     .map((key) => ({ path: key.replace("../fixture/billing/", ""), text: fixture[key] }));
   if (files.length === 0) throw new Error("The billing fixture is missing from src/mocks/fixture; run `npm run copy-fixture`.");
   // The processes, actors and scenarios of the mock (processSeed.ts), which the shared billing fixture does not hold.
-  files.push(...processFiles());
+  files.push(...processFiles(), ...processDiagramFiles());
   return { files: bindLifecycles(files), packs: packs() };
 }
 

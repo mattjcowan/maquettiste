@@ -897,7 +897,7 @@ export function summary(e: Entry): ElementSummary {
 }
 
 /** The index format hashed into the index tag; the engine's ModelReads.IndexFormat. */
-export const INDEX_FORMAT = "maquettiste-index/e7";
+export const INDEX_FORMAT = "maquettiste-index/e9";
 
 /** The E5 members of an index row, present only for the kinds that carry them (as the engine writes them). */
 function e5(json: Json): Partial<ElementSummary> {
@@ -913,6 +913,8 @@ function e5(json: Json): Partial<ElementSummary> {
   }
   if (kind === "reference-type") out.fieldCount = Array.isArray(json.attributes) ? json.attributes.length : 0;
   if (kind === "diagram") out.memberCount = Array.isArray(json.members) ? json.members.length : 0;
+  // A process diagram names its process (the engine's index row since maquettiste-index/e9).
+  if (kind === "diagram" && typeof json.process === "string") out.process = json.process;
   // Phase 3 (phase-3-design.md 2.1): a process's use, subject and state count; an actor's type; a scenario's process and steps.
   if (kind === "process") {
     out.use = json.use === "lifecycle" ? "lifecycle" : "orchestration";

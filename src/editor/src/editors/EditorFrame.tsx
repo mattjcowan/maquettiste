@@ -4,7 +4,7 @@
 import { TranslationsSection } from "@/l10n/TranslationsSection";
 import { HeaderTextFields } from "@/l10n/HeaderTextFields";
 import { useState, type ReactNode } from "react";
-import { CircleAlert, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, CircleAlert, Plus, Trash2 } from "lucide-react";
 import { useIndex, useProject } from "@/api/queries";
 import type { ElementSummary, StereotypeDoc } from "@/api/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,7 +15,8 @@ import { KindIcon } from "@/app/icons";
 import { useServices } from "@/app/context";
 import { useEditor, type Draft } from "@/state/store";
 import { displayName, KIND_LABELS } from "@/model/model";
-import { EDITOR_TAB_LABELS, GROUP_LABELS } from "@/model/labels";
+import { EDITOR_LABELS, EDITOR_TAB_LABELS, GROUP_LABELS } from "@/model/labels";
+import { local } from "@/lib/storage";
 import { Button } from "@/components/ui/button";
 import { CheckboxField } from "@/components/ui/checkbox";
 import { indexLookup } from "@/model/index";
@@ -86,6 +87,13 @@ export function EditorLayout({
   const list = tabs.filter((t): t is EditorSubTab => !!t);
   const current = list.some((t) => t.value === view && !t.disabled) ? view! : list[0]?.value;
   const diagnostics = draft?.status === "invalid" ? ctx.diagnostics : [];
+  // The display names, the description and the top controls can be folded away (a chart or a grid then gets the room;
+  // the inspector shows the same fields); the choice is kept per browser and kind.
+  const [details, setDetails] = useState(() => local.get(`mq.editor.details.${kind}`) !== "hidden");
+  const toggleDetails = () => {
+    local.set(`mq.editor.details.${kind}`, details ? "hidden" : "shown");
+    setDetails(!details);
+  };
 
   return (
     <section aria-label={`Editor: ${name}`} className="flex h-full min-h-0 flex-col bg-surface" data-testid="element-editor" data-kind={kind} data-id={id}>
@@ -98,6 +106,16 @@ export function EditorLayout({
           <span className="text-12 text-secondary">{KIND_LABELS[kind]}</span>
           <span className="flex-1" />
           <span data-testid="editor-save-status">{statusBadge(draft?.status, false)}</span>
+          <Button
+            variant="ghost"
+            size="icon-row"
+            label={details ? EDITOR_LABELS.hideDetails : EDITOR_LABELS.showDetails}
+            aria-expanded={details}
+            data-testid="editor-details-toggle"
+            onClick={toggleDetails}
+          >
+            {details ? <ChevronUp /> : <ChevronDown />}
+          </Button>
         </div>
         {draft?.error ? (
           <p role="alert" className="text-12 text-danger">
@@ -116,11 +134,13 @@ export function EditorLayout({
             ))}
           </ul>
         ) : null}
-        <HeaderFields {...ctx} />
+        {details ? <HeaderFields {...ctx} /> : null}
       </header>
-      <div className="border-b border-default px-2 py-1" data-testid="editor-controls">
-        {controls}
-      </div>
+      {details ? (
+        <div className="border-b border-default px-2 py-1" data-testid="editor-controls">
+          {controls}
+        </div>
+      ) : null}
       <Tabs value={current} onValueChange={(v) => store.getState().updateEditors((s) => setView(s, kind, v))} className="flex min-h-0 flex-1 flex-col">
         <TabsList aria-label={`${KIND_LABELS[kind]} editor views`}>
           {list.map((t) => (

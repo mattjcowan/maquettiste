@@ -182,3 +182,35 @@
 .mq-line-match-gutter {
   border-left: 3px solid var(--mq-accent);
 }
+
+/* The statechart canvas (phase-3-design.md 6.3): the edges a simulation step just took flash once. Two identical
+   animations alternate so a transition taken on two steps in a row flashes again; with reduced motion the edge is
+   marked in the accent colour for the same time instead. */
+@keyframes mq-flash-a {
+  0%,
+  60% {
+    stroke: var(--mq-accent);
+    stroke-width: 3px;
+  }
+}
+@keyframes mq-flash-b {
+  0%,
+  60% {
+    stroke: var(--mq-accent);
+    stroke-width: 3px;
+  }
+}
+.react-flow__edge.mq-flash-a .react-flow__edge-path {
+  animation: mq-flash-a 1100ms var(--mq-ease) 1;
+}
+.react-flow__edge.mq-flash-b .react-flow__edge-path {
+  animation: mq-flash-b 1100ms var(--mq-ease) 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .react-flow__edge.mq-flash-a .react-flow__edge-path,
+  .react-flow__edge.mq-flash-b .react-flow__edge-path {
+    animation: none;
+    stroke: var(--mq-accent) !important;
+    stroke-width: 3px !important;
+  }
+}

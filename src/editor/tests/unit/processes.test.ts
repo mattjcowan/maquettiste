@@ -96,7 +96,7 @@ describe("Processes explorer", () => {
       "Add to favorites",
       "Delete",
     ]);
-    expect(process.find((i) => i.id === "simulate")!.disabledNote).toBe("Arrives with the simulation panel");
+    expect(process.find((i) => i.id === "simulate")!.disabledNote).toBeUndefined();
     expect(menuFor([{ type: "group", kind: "process", element: false, domainGroup: true, explorer: "processes" }]).map((i) => i.label)).toEqual([
       "New process…",
       "Import XState…",

@@ -51,6 +51,7 @@ import { MarkerDefs } from "@/canvas/markers";
 import { defaultLayoutEngine } from "@/canvas/layout";
 import { placeNodes, roundViewport, sameViewport, savedViewport } from "@/canvas/placement";
 import { diagramsInDomain, domainDiagramId, domainOfDiagram, newDomainDiagram, syncDomainMembers } from "@/canvas/domainDiagram";
+import { isProcessDiagram } from "@/canvas/statechart/diagram";
 import { exportCanvas } from "@/canvas/export";
 import {
   applyPositions,
@@ -109,7 +110,8 @@ function EntitiesCanvas() {
   const flow = useReactFlow<EntityFlowNode, RelationFlowEdge>();
   const nodesInitialized = useNodesInitialized();
 
-  const diagrams = lookup.ofKind("diagram");
+  // A process's diagram is its statechart, shown by the process editor: the picker and the default pick leave it out.
+  const diagrams = useMemo(() => lookup.ofKind("diagram").filter((d) => !isProcessDiagram(d)), [lookup]);
   const packages = lookup.ofKind("package");
   // "All of <domain>" only for a domain of at most ALL_OF_CAP entities (explorer-redesign.md 1.6).
   const allOfDomains = useMemo(() => {
@@ -121,6 +123,14 @@ function EntitiesCanvas() {
   }, [lookup, packages, diagrams]);
   const view = parseView(activeDiagram);
 
+  // A process diagram named by the URL is never drawn here: the default pick replaces it.
+  const processDiagram = view?.type === "diagram" && isProcessDiagram(lookup.byId.get(view.id));
+  useEffect(() => {
+    if (processDiagram) {
+      if (diagrams.length) openDiagram(diagrams[0].id, { keepEditors: true, replace: true });
+      else if (packages.length) openDiagram(`pkg:${packages[0].id}`, { keepEditors: true, replace: true });
+    }
+  }, [processDiagram, diagrams, packages, openDiagram]);
   useEffect(() => {
     if (!activeDiagram && index.data) {
       // The default pick keeps the editors (see openDiagram): an editor opened in the first second after load stays.
@@ -129,7 +139,7 @@ function EntitiesCanvas() {
     }
   }, [activeDiagram, index.data, diagrams, packages, openDiagram]);
 
-  const diagram = useDraftDocument(view?.type === "diagram" ? view.id : null);
+  const diagram = useDraftDocument(view?.type === "diagram" && !processDiagram ? view.id : null);
   const diagramJson = diagram.json as DiagramDoc | undefined;
   const members = useMemo(() => diagramJson?.members ?? [], [diagramJson]);
   const viewKey = keyOfView(view);

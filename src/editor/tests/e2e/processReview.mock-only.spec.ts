@@ -18,6 +18,8 @@ async function openProcess(page: Page, row: string, path = "/") {
   await side.getByTestId(`explorer-row-${row}`).dblclick();
   const editor = page.getByTestId("process-editor");
   await expect(editor).toBeVisible();
+  // The editor opens on its chart (round P4); these specs start from the States tab.
+  await tab(editor, "States").click();
   return editor;
 }
 

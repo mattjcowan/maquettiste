@@ -69,6 +69,8 @@ export interface MenuTarget {
   explorer?: ExplorerId;
   /** A group that stands for a domain (the Diagrams explorer's per-domain groups). */
   domainGroup?: boolean;
+  /** A process's diagram (its statechart's places): one per process, so it is never duplicated. */
+  processDiagram?: boolean;
 }
 
 const item = (id: MenuActionId, label: string, multi = false, danger = false): MenuItem => ({ id, label, multi, danger });
@@ -81,11 +83,7 @@ const PROCESS_KINDS: ReadonlySet<string> = new Set(["process", "actor", "scenari
 function processMenu(t: MenuTarget): MenuItem[] {
   const out: MenuItem[] = [item("open", "Open"), item("open-new-tab", "Open in new tab")];
   if (t.kind === "process")
-    out.push(
-      { ...item("simulate", PROCESS_LABELS.simulate), disabledNote: PROCESS_LABELS.simulateLater },
-      item("verify-scenarios", PROCESS_LABELS.verify),
-      item("export-xstate", PROCESS_LABELS.exportXState),
-    );
+    out.push(item("simulate", PROCESS_LABELS.simulate), item("verify-scenarios", PROCESS_LABELS.verify), item("export-xstate", PROCESS_LABELS.exportXState));
   out.push(item("where-used", "Where used"));
   if (t.kind === "process") out.push(item("move", "Move to domain…", true));
   out.push(item("rename", "Rename"), item("favorite", t.favorite ? "Remove from favorites" : "Add to favorites"), item("delete", "Delete", true, true));
@@ -156,8 +154,9 @@ function single(t: MenuTarget): MenuItem[] {
     if (t.linked) out.push(item("go-to-table", "Go to table"));
   } else if (t.kind === "relation")
     out.push(item("add-to-diagram", "Add to diagram", true), item("go-to-ends", "Go to ends"), item("where-used", "Where used"));
-  else if (t.kind === "diagram") out.push(item("duplicate", "Duplicate"));
-  else out.push(item("where-used", "Where used"));
+  else if (t.kind === "diagram") {
+    if (!t.processDiagram) out.push(item("duplicate", "Duplicate"));
+  } else out.push(item("where-used", "Where used"));
   if (t.kind && MARKABLE.has(t.kind))
     out.push(item("apply-stereotype", "Apply stereotype…", true), item("tag", "Tag…", true), item("set-category", "Set category…", true));
   if (t.kind && PROMOTABLE_KINDS.has(t.kind)) out.push(item("promote", "Promote to entity"));

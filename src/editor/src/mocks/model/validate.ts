@@ -140,10 +140,11 @@ function scopeName(scope: string, globals: ModelGlobals): string {
   return scope === "" ? "the model (global)" : `domain '${globals.packages.get(scope)?.name ?? scope}'`;
 }
 
-/** MQ3001's scope of an element (kind group, package and lower-cased name), or null when the rule does not apply. */
+/** MQ3001's scope of an element (kind group, package and lower-cased name), or null when the rule does not apply.
+ * Diagrams take no part, as in the engine: a process's diagram carries the process's name beside other diagrams. */
 export function nameScope(json: Json): string | null {
   const kind = String(json.kind);
-  if (typeof json.name !== "string" || json.name === "" || !["entity", "value-object", "enum", "scalar-type", "relation", "diagram", "package"].includes(kind))
+  if (typeof json.name !== "string" || json.name === "" || !["entity", "value-object", "enum", "scalar-type", "relation", "package"].includes(kind))
     return null;
   const group = ["entity", "value-object", "enum", "scalar-type"].includes(kind) ? "type" : kind;
   return `${group}|${String(json.package ?? json.parent ?? "")}|${json.name.toLowerCase()}`;

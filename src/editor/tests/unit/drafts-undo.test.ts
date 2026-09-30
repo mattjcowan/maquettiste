@@ -97,6 +97,21 @@ describe("drafts and undo over the mock API", () => {
     expect((api.backend.model.get(IDS.invoice)!.json as Named).name).toBe("Invoice");
   });
 
+  it("flushSaved is true once the draft is saved, false while a draft that could not be saved remains", async () => {
+    const { drafts, store } = api.services;
+    await load(IDS.invoice);
+    drafts.edit(IDS.invoice, (json) => {
+      (json as Named).name = "Bill";
+    });
+    expect(await drafts.flushSaved(IDS.invoice)).toBe(true);
+    expect(await drafts.flushSaved(IDS.invoice)).toBe(true);
+    drafts.edit(IDS.invoice, (json) => {
+      (json as Named).name = "";
+    });
+    expect(await drafts.flushSaved(IDS.invoice)).toBe(false);
+    expect(store.getState().drafts[IDS.invoice]?.status).toBe("invalid");
+  });
+
   it("drops a draft that returns to its base without saving", async () => {
     const { drafts, store } = api.services;
     await load(IDS.invoice);

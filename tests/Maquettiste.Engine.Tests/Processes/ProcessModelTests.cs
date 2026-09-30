@@ -197,6 +197,8 @@ public sealed class ProcessModelTests
         Assert.Equal(".maquettiste/model/scenarios/order-lifecycle/happy-path.json", scenario.Path);
         Assert.Null(rows[Order].StateCount);
         Assert.Null(rows[Order].Process);
+        // A process diagram names its process on its row, so the Diagrams explorer labels it without reading it.
+        Assert.Equal(("diagram", Process, 2), (rows["01JDGM00000000000000000001"].Kind, rows["01JDGM00000000000000000001"].Process, rows["01JDGM00000000000000000001"].MemberCount));
 
         foreach (var (id, kind) in new[]
         {
@@ -220,7 +222,7 @@ public sealed class ProcessModelTests
 
     [Fact]
     public void Index_format_moved_with_the_row_shape() =>
-        Assert.Equal("maquettiste-index/e8", ModelReads.IndexFormat);
+        Assert.Equal("maquettiste-index/e9", ModelReads.IndexFormat);
 
     [Fact]
     public async Task A_wrong_kind_or_dangling_sub_element_reference_is_reported()

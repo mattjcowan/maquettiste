@@ -163,6 +163,8 @@ function indexMembers(json: Record<string, unknown>): Partial<ElementSummary> {
   }
   if (kind === "reference-type") out.fieldCount = Array.isArray(json.attributes) ? json.attributes.length : 0;
   if (kind === "diagram") out.memberCount = Array.isArray(json.members) ? json.members.length : 0;
+  // A process diagram names its process (phase-3-design.md 2.7), so the explorer and the canvas find it by its row.
+  if (kind === "diagram" && typeof json.process === "string") out.process = json.process;
   if (kind === "relation" && Array.isArray(json.ends))
     out.ends = (json.ends as Record<string, unknown>[]).map((end) => ({ entity: String(end.entity ?? ""), role: String(end.role ?? "") }));
   return out;

@@ -126,15 +126,15 @@ test("New process, New actor and New scenario each save as one change", async ({
   await expand(page, side.getByTestId("explorer-folder-Actors"));
   await expect(side.getByTestId("explorer-row-Clerk")).toContainText("person · persona");
 
-  // New scenario from a process's Scenarios folder: Record from simulation waits for the simulation panel.
+  // New scenario from a process's Scenarios folder (Record from simulation: simulation.mock-only.spec.ts).
   await expand(page, side.getByTestId("explorer-row-Purchase approval"));
   await side.getByTestId("explorer-folder-Scenarios").first().click({ button: "right" });
   await menuItem(page, "New scenario…").click();
   const scenario = page.getByTestId("new-scenario-dialog");
-  await expect(scenario.getByTestId("new-scenario-record")).toBeDisabled();
+  await expect(scenario.getByTestId("new-scenario-record")).toBeEnabled();
   // The folder's process is preset, although it is not the first process alphabetically.
   await expect(scenario.locator("#new-scenario-process option:checked")).toHaveText(/Purchase/);
-  await expect(scenario).toContainText("arrives with the simulation panel");
+  await expect(scenario).toContainText("opens the chart with the simulation panel recording");
   await scenario.getByLabel("Name").fill("Smoke");
   await scenario.getByTestId("new-scenario-create").click();
   await expect(scenario).toHaveCount(0);
@@ -152,7 +152,7 @@ test("Verify scenarios, Export XState, Import XState and Delete from the row men
   const purchase = side.getByTestId("explorer-row-Purchase approval");
 
   await purchase.click({ button: "right" });
-  await expect(menuItem(page, "Simulate")).toHaveAttribute("aria-disabled", "true");
+  await expect(menuItem(page, "Simulate")).not.toHaveAttribute("aria-disabled", "true");
   await menuItem(page, "Verify scenarios").click();
   await expect(page.getByTestId("output-list")).toContainText("PurchaseApproval: 1 of 2 scenarios passed");
   await expect(page.getByTestId("output-list")).toContainText("QuickApproval: failed at step 2");

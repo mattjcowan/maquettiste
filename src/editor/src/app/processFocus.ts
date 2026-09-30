@@ -3,7 +3,7 @@
 // (src/editors/process, round P3b) reads it and clears it once it has selected the node.
 import { useSyncExternalStore } from "react";
 
-export const PROCESS_TABS = ["states", "transitions", "events", "gates", "context", "scenarios"] as const;
+export const PROCESS_TABS = ["chart", "states", "transitions", "events", "gates", "context", "scenarios"] as const;
 export type ProcessTab = (typeof PROCESS_TABS)[number];
 
 export interface ProcessFocus {
@@ -11,6 +11,8 @@ export interface ProcessFocus {
   tab: ProcessTab;
   /** The state, event or scenario id to select, or null for the tab alone. */
   node: string | null;
+  /** On the Chart tab: open the simulation panel (Simulate), or start it recording a scenario (New scenario…). */
+  panel?: "simulate" | "record" | null;
   /** Grows with each request, so the same node asked for twice selects it twice. */
   seq: number;
 }
@@ -19,8 +21,8 @@ let current: ProcessFocus | null = null;
 let seq = 0;
 const listeners = new Set<() => void>();
 
-export function focusProcess(process: string, tab: ProcessTab, node: string | null): ProcessFocus {
-  current = { process, tab, node, seq: ++seq };
+export function focusProcess(process: string, tab: ProcessTab, node: string | null, panel: ProcessFocus["panel"] = null): ProcessFocus {
+  current = { process, tab, node, panel, seq: ++seq };
   for (const l of listeners) l();
   return current;
 }

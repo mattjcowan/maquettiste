@@ -194,8 +194,10 @@ describe("tree over the billing fixture", () => {
     const group = find(forest, "diagrams", "Billing");
     expect(group.icon).toBe("domain");
     expect(group.tooltip).toBe("Diagrams whose home is Billing");
-    expect(labels(forest, group.key)).toEqual(["Billing overview"]);
+    expect(labels(forest, group.key)).toEqual(["Billing overview", "Purchase approval"]);
     expect(find(forest, "diagrams", "Billing", "Billing overview").secondary).toBe("8 members");
+    // A process diagram (phase-3-design.md 6.5) says whose statechart it is.
+    expect(find(forest, "diagrams", "Billing", "Purchase approval").secondary).toBe("statechart of Purchase approval");
   });
 
   it("rolls up error badges", () => {

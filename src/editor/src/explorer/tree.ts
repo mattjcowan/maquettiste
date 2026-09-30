@@ -20,6 +20,7 @@ import {
   OTHER_FOLDER,
   ACTOR_TYPE_LABELS,
   PROCESS_LABELS,
+  CHART_LABELS,
   countOf,
   kindFolder,
   placementOf,
@@ -284,7 +285,7 @@ function rowLabel(byId: ReadonlyMap<string, Row>, r: Row): string {
   return r.displayName || r.name || (e ? e.displayName || e.name : undefined) || `${kindFolder(r.kind)?.one ?? r.kind} ${r.id.slice(-6)}`;
 }
 
-/** An element row's secondary text: a relation's ends, a diagram's member count, a seed's row count. */
+/** An element row's secondary text: a relation's ends, a diagram's member count (a process diagram: whose statechart it is), a seed's row count. */
 function rowSecondary(byId: ReadonlyMap<string, Row>, r: Row): string | undefined {
   const nameOf = (id: string) => {
     const e = byId.get(id);
@@ -295,6 +296,7 @@ function rowSecondary(byId: ReadonlyMap<string, Row>, r: Row): string | undefine
     for (const e of r.ends) text = text ? `${text} → ${nameOf(e.entity) ?? "?"}` : (nameOf(e.entity) ?? "?");
     return text;
   }
+  if (r.kind === "diagram" && r.process) return CHART_LABELS.statechartOf(nameOf(r.process) ?? "?");
   if (r.kind === "diagram") return plural(r.memberCount ?? 0, "member", "members");
   if (r.kind === "seed" && r.rowCount != null) return plural(r.rowCount, "row", "rows");
   if (r.kind === "process") return processSecondary(r, r.subject ? nameOf(r.subject) : undefined, undefined);

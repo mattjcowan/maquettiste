@@ -1,7 +1,7 @@
-// The process editor (phase-3-design.md 6.2): a lifecycle opened from the Processes explorer with every tab walked;
-// a state and a transition added by keyboard (one undo step each); a guard expression that does not parse marked
-// MQ9501; the drifted enum synced after its dry run; a scenario opened and replayed with each step's status; and the
-// inspector following the selection inside the editor. Mock-only: the processes live in mocks/model/processSeed.ts.
+// The process editor (phase-3-design.md 6.2): a lifecycle opened from the Processes explorer (on its Chart tab) with
+// every tab walked; a state and a transition added by keyboard (one undo step each); a guard expression that does not
+// parse marked MQ9501; the drifted enum synced after its dry run; a scenario opened and replayed with each step's
+// status; and the inspector following the selection inside the editor. Mock-only: the processes live in mocks/model/processSeed.ts.
 import AxeBuilder from "@axe-core/playwright";
 import type { Locator, Page } from "@playwright/test";
 import { expect, openEditor, test, workspace } from "./fixtures";
@@ -23,6 +23,9 @@ async function openProcess(page: Page, row: string, path = "/") {
   await side.getByTestId(`explorer-row-${row}`).dblclick();
   const editor = page.getByTestId("process-editor");
   await expect(editor).toBeVisible();
+  // The editor opens on its chart (round P4); these specs walk the grids from the States tab.
+  await expect(tab(editor, "Chart")).toHaveAttribute("aria-selected", "true");
+  await tab(editor, "States").click();
   return editor;
 }
 
@@ -30,10 +33,9 @@ const tab = (editor: Locator, name: string) => editor.getByRole("tab", { name, e
 const rowsOf = (editor: Locator, grid: string) => editor.getByTestId(`${grid}-row`);
 const cell = (row: Locator, column: string) => row.locator(`[data-column="${column}"]`);
 
-test("a lifecycle opens on States and every tab shows its part of the process", async ({ page }) => {
+test("a lifecycle opens on its chart and every tab shows its part of the process", async ({ page }) => {
   const editor = await openProcess(page, "InvoiceLifecycle");
   await expect(tab(editor, "States")).toHaveAttribute("aria-selected", "true");
-  await expect(tab(editor, "Chart")).toHaveCount(0);
   const states = rowsOf(editor, "states-grid");
   await expect(states).toHaveCount(4);
   await expect(cell(states.first(), "bound")).toHaveText("Draft");
