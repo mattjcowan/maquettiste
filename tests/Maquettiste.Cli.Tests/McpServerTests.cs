@@ -9,11 +9,13 @@ public sealed class McpSurfaceTests
 {
     private static readonly string[] Tools =
     [
-        "apply_batch", "apply_plan", "create_element", "create_seed", "delete_element", "delete_pack_file", "explain_unit", "export_seed_csv",
-        "get_database_view", "get_element", "get_model_index", "get_pack", "get_pack_outputs", "get_plan", "get_plan_diff", "get_project",
-        "get_references", "get_schema", "get_settings", "get_template_context", "get_translations", "import_seed_csv", "list_pack_files",
-        "list_packs", "list_validation_rules", "localization_status", "move_pack_file", "new_pack", "plan", "preview_unit", "read_pack_file", "reference_type_usage",
-        "save_element", "save_pack", "save_pack_settings", "save_settings", "set_translations", "unit_paths", "validate", "write_pack_file",
+        "apply_batch", "apply_plan", "create_element", "create_seed", "delete_element", "delete_pack_file", "explain_unit",
+        "export_process", "export_seed_csv", "get_database_view", "get_element", "get_model_index", "get_pack", "get_pack_outputs",
+        "get_plan", "get_plan_diff", "get_project", "get_references", "get_schema", "get_settings", "get_template_context",
+        "get_translations", "import_process", "import_seed_csv", "list_pack_files", "list_packs", "list_validation_rules",
+        "localization_status", "move_pack_file", "new_pack", "plan", "preview_unit", "read_pack_file", "record_scenario",
+        "reference_type_usage", "save_element", "save_pack", "save_pack_settings", "save_settings", "set_translations", "simulate_process",
+        "sync_enum_from_process", "unit_paths", "validate", "verify_scenarios", "write_pack_file",
     ];
 
     [Fact]

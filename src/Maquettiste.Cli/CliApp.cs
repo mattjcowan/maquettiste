@@ -163,6 +163,19 @@ public sealed class CliApp(CliEnvironment environment)
                                   --locale <tag> (repeatable: its label and description columns), --out <file>
           seed import <seed> <file>
                                 Preview a CSV import: --mode merge|replace; --apply writes it, --check, --format text|json
+          process simulate <process>
+                                Run a process through inputs: --inputs <file|-> (an array of steps, or { start, steps }),
+                                  --scenario <id|name> (its steps first), --from <index>, --format text|json
+          process record <process> <name>
+                                Preview a scenario recorded from --inputs <file> (expectations from the replay); --apply writes it
+          process verify [<process>...]
+                                Replay the scenarios of the processes (all by default); exit 1 on a failure; --format text|json
+          process export <process>
+                                The process as an XState machine config: --format xstate, --out <file>
+          process import <file> Preview an XState config import: --domain <package> (new process), --name, --use,
+                                  --subject, or --into <process> (keeps its ids); --apply writes it, --format text|json
+          process sync-enum <process>
+                                Preview syncing a lifecycle's bound enum with its states; --apply, --check, --format text|json
           mcp                   Serve the model to agents over the Model Context Protocol (stdio; see docs/mcp.md)
 
         Global options:
@@ -215,6 +228,7 @@ public sealed class CliApp(CliEnvironment environment)
                 "bench" => await BenchCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "l10n" => await L10nCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "seed" => await SeedCommand.RunAsync(context, ct).ConfigureAwait(false),
+                "process" => await ProcessCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "mcp" => await McpCommand.RunAsync(context, ct).ConfigureAwait(false),
                 _ => throw new UsageException($"Unknown command '{command}'. Run 'maquettiste --help'."),
             };

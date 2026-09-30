@@ -1,0 +1,18 @@
+{
+  "id": "Triage",
+  "initial": "Received",
+  "states": {
+    "Received": { "on": { "assess": "Decide" } },
+    "Decide": {
+      "always": [
+        { "target": "Urgent", "guard": "isUrgent" },
+        { "target": "Normal", "guard": { "type": "and", "guards": ["isKnown", { "type": "not", "guards": ["isSpam"] }] } },
+        { "target": "Normal", "guard": { "type": "hasPriority", "params": { "level": 2 } } },
+        { "target": "Backlog" }
+      ]
+    },
+    "Urgent": { "type": "final" },
+    "Normal": { "type": "final" },
+    "Backlog": { "type": "final" }
+  }
+}

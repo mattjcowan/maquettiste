@@ -8,6 +8,9 @@ namespace Maquettiste.Cli.Tests;
 /// <summary>A tool call's outcome: whether it is a tool error, its text and, when the text is JSON, the parsed node.</summary>
 public sealed record ToolReply(bool IsError, string Text)
 {
+    /// <summary>Every text block, in order (<see cref="Text"/> is their concatenation).</summary>
+    public IReadOnlyList<string> Blocks { get; init; } = [Text];
+
     public JsonNode Json => JsonNode.Parse(Text) ?? throw new InvalidOperationException("null body");
 
     public string Code => (string)Json["code"]!;
@@ -89,8 +92,8 @@ public sealed class McpSession : IAsyncDisposable
         }
 
         var result = await Client.CallToolAsync(tool, args, cancellationToken: ct);
-        var text = string.Concat(result.Content.OfType<TextContentBlock>().Select(b => b.Text));
-        return new ToolReply(result.IsError == true, text);
+        var blocks = result.Content.OfType<TextContentBlock>().Select(b => b.Text).ToList();
+        return new ToolReply(result.IsError == true, string.Concat(blocks)) { Blocks = blocks };
     }
 
     public async Task<JsonNode> OkAsync(string tool, object? arguments = null)

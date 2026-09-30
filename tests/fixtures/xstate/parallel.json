@@ -1,0 +1,30 @@
+{
+  "id": "Upload",
+  "initial": "Idle",
+  "context": { "retries": 0, "label": "draft", "ratio": 0.5, "enabled": true, "extra": null },
+  "states": {
+    "Idle": { "on": { "start": "Working" } },
+    "Working": {
+      "type": "parallel",
+      "states": {
+        "Files": {
+          "initial": "Sending",
+          "states": {
+            "Sending": { "on": { "sent": { "target": "Sent", "actions": ["recordFile"] } } },
+            "Sent": { "type": "final" }
+          }
+        },
+        "Checks": {
+          "initial": "Scanning",
+          "states": {
+            "Scanning": { "on": { "clean": "Clean" } },
+            "Clean": { "type": "final" }
+          }
+        }
+      },
+      "onDone": { "target": "Done" },
+      "on": { "abort": { "target": "#Upload.Idle", "reenter": true } }
+    },
+    "Done": { "type": "final" }
+  }
+}

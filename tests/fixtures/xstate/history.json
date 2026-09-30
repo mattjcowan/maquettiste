@@ -1,0 +1,38 @@
+{
+  "id": "Editor",
+  "initial": "Editing",
+  "states": {
+    "Editing": {
+      "initial": "Text",
+      "states": {
+        "Text": {
+          "on": {
+            "toImage": "Image"
+          }
+        },
+        "Image": {
+          "on": {
+            "toText": "Text"
+          }
+        },
+        "Last": {
+          "type": "history",
+          "history": "deep",
+          "target": "Text"
+        },
+        "Shallow": {
+          "type": "history"
+        }
+      },
+      "on": {
+        "pause": "Paused"
+      }
+    },
+    "Paused": {
+      "on": {
+        "resume": "Editing.Last",
+        "resumeShallow": "#Editor.Editing.Shallow"
+      }
+    }
+  }
+}

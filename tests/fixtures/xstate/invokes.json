@@ -1,0 +1,19 @@
+{
+  "id": "Checkout",
+  "initial": "Paying",
+  "states": {
+    "Paying": {
+      "invoke": {
+        "id": "chargeCard",
+        "src": "paymentService",
+        "onDone": { "target": "Paid" },
+        "onError": [{ "target": "Failed", "guard": "canRetry" }, { "target": "Cancelled" }]
+      }
+    },
+    "Paid": {
+      "invoke": [{ "src": "sendReceipt" }, { "src": "notifyWarehouse", "input": { "priority": "high" } }]
+    },
+    "Failed": {},
+    "Cancelled": { "type": "final" }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "id": "Reminder",
+  "initial": "Waiting",
+  "delays": { "grace": 90000 },
+  "states": {
+    "Waiting": {
+      "after": {
+        "1500": { "target": "Nudged" },
+        "grace": "Late",
+        "someDelay": "Expired"
+      }
+    },
+    "Nudged": { "after": { "86400000": "Expired" } },
+    "Late": {},
+    "Expired": { "type": "final" }
+  }
+}

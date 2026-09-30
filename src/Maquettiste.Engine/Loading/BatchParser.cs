@@ -56,6 +56,7 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                     "sync-enum" => BatchOp.SyncEnum,
                     "set-lifecycle" => BatchOp.SetLifecycle,
                     "set-initial" => BatchOp.SetInitial,
+                    "refresh-scenario" => BatchOp.RefreshScenario,
                     _ => BatchOp.Delete,
                 };
                 operations.Add(new BatchOperation(

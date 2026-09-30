@@ -1083,7 +1083,7 @@
   {
     "id": "MQ9019",
     "defaultSeverity": "error",
-    "description": "A process operation (sync-enum, set-lifecycle, set-initial) was refused: its element is not what the operation needs, the target is not a direct child or a process, the enum sync would remove members still in use, or another operation of the batch writes the process or enum it syncs; fix the operation, change the uses to a remaining member, or sync in a batch of its own.",
+    "description": "A process operation (sync-enum, set-lifecycle, set-initial, refresh-scenario) was refused: its element is not what the operation needs, the target is not a direct child or a process, the enum sync would remove members still in use, a scenario cannot be replayed to its last step, or another operation of the batch writes the process, enum or scenario it changes; fix the operation or the step, change the uses to a remaining member, or run it in a batch of its own.",
     "family": "MQ90xx",
     "familyLabel": "Processes",
     "canBeOff": true
@@ -1175,6 +1175,161 @@
     "description": "The bound attribute's default is not the lifecycle's initial root-level state; set the default to that state's name.",
     "family": "MQ92xx",
     "familyLabel": "Lifecycles",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9301",
+    "defaultSeverity": "error",
+    "description": "A scenario step is refused while expect.accepted is true (no transition, a guard false, an actor not allowed, a gate refusal), or accepted while it is false; fix the step's input or set accepted to what the process does.",
+    "family": "MQ93xx",
+    "familyLabel": "Scenarios",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9302",
+    "defaultSeverity": "error",
+    "description": "The active states after a scenario step differ from expect.states; fix the chart or update the expectations from a replay.",
+    "family": "MQ93xx",
+    "familyLabel": "Scenarios",
+    "canBeOff": true,
+    "quickFix": "refresh-scenario"
+  },
+  {
+    "id": "MQ9303",
+    "defaultSeverity": "error",
+    "description": "The context attributes a scenario step changed differ from expect.context; fix the actions or update the expectations from a replay.",
+    "family": "MQ93xx",
+    "familyLabel": "Scenarios",
+    "canBeOff": true,
+    "quickFix": "refresh-scenario"
+  },
+  {
+    "id": "MQ9304",
+    "defaultSeverity": "error",
+    "description": "Whether the process is final after the scenario's last step differs from outcome; fix the steps or update the expectations from a replay.",
+    "family": "MQ93xx",
+    "familyLabel": "Scenarios",
+    "canBeOff": true,
+    "quickFix": "refresh-scenario"
+  },
+  {
+    "id": "MQ9305",
+    "defaultSeverity": "error",
+    "description": "A scenario step's fields are inconsistent: an event the process does not declare, a time step without a positive duration, an invoke that is not pending, or a payload value that is not an attribute of the event or does not fit its type; fix the step.",
+    "family": "MQ93xx",
+    "familyLabel": "Scenarios",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9306",
+    "defaultSeverity": "warning",
+    "description": "A guard without an expression is evaluated during a scenario step that has no assume value for it, so the replay stops there; add the guard to the step's assume, or give the guard an expression.",
+    "family": "MQ93xx",
+    "familyLabel": "Scenarios",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9401",
+    "defaultSeverity": "warning",
+    "description": "XState configuration the model has no place for (custom actor logic, tags, output, systemId, parameterized guards or actions, spawn, sendTo, unknown keys) was kept as opaque data in the process's source extensions and is written back on export; model it with process features where one exists, or leave it for the host.",
+    "family": "MQ94xx",
+    "familyLabel": "Process import and export",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9402",
+    "defaultSeverity": "warning",
+    "description": "An inline function in the XState configuration (a guard, action, delay or invoke source given as function text) became a named stub whose description holds the text, which never runs; give the stub an expression or implement its handler.",
+    "family": "MQ94xx",
+    "familyLabel": "Process import and export",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9403",
+    "defaultSeverity": "error",
+    "description": "The import input is not a statechart configuration the importer accepts (invalid JSON, no states, a target or initial state that does not resolve, a parallel root, or an unknown state type); fix the configuration and import it again.",
+    "family": "MQ94xx",
+    "familyLabel": "Process import and export",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9404",
+    "defaultSeverity": "warning",
+    "description": "An XState feature was mapped approximately or dropped on import or export (a guard combinator, a named delay without a value, an actor or custom state id the model does not know, a name that is not an identifier, data that no longer has a place); review the imported process.",
+    "family": "MQ94xx",
+    "familyLabel": "Process import and export",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9405",
+    "defaultSeverity": "error",
+    "description": "An id carried in the configuration names an element of another kind or of another process, or is used twice, so the node got a new id; re-import into the process the ids belong to, or remove the stale ids.",
+    "family": "MQ94xx",
+    "familyLabel": "Process import and export",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9406",
+    "defaultSeverity": "info",
+    "description": "Export wrote model data with no XState equivalent (ids, display names, types, gates, durations, invoke kinds) into meta.maquettiste, so an import restores it; keep the meta entries when editing the configuration by hand.",
+    "family": "MQ94xx",
+    "familyLabel": "Process import and export",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9501",
+    "defaultSeverity": "error",
+    "description": "A guard or action expression does not parse as one JavaScript expression; fix its syntax (an action returns an object literal in parentheses).",
+    "family": "MQ95xx",
+    "familyLabel": "Process expressions and simulation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9502",
+    "defaultSeverity": "error",
+    "description": "A guard or action expression threw while a scenario replayed or a simulation ran; fix the expression, for example guard against missing values.",
+    "family": "MQ95xx",
+    "familyLabel": "Process expressions and simulation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9503",
+    "defaultSeverity": "error",
+    "description": "A guard or action expression exceeded the sandbox deadline (50 ms) or statement limit (100,000); simplify it, or leave the expression empty and implement the handler.",
+    "family": "MQ95xx",
+    "familyLabel": "Process expressions and simulation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9504",
+    "defaultSeverity": "warning",
+    "description": "A guard returned a value that is not a boolean, which counts as false; make the expression return true or false.",
+    "family": "MQ95xx",
+    "familyLabel": "Process expressions and simulation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9505",
+    "defaultSeverity": "warning",
+    "description": "An action's result names an attribute the context does not declare, or a value that does not fit the attribute's type, and the entry is ignored; return only context attribute names with values of their types.",
+    "family": "MQ95xx",
+    "familyLabel": "Process expressions and simulation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9506",
+    "defaultSeverity": "warning",
+    "description": "Two guarded transitions of one source and trigger were enabled at once, and the first in priority order was taken; make the guards exclusive or reorder the transitions.",
+    "family": "MQ95xx",
+    "familyLabel": "Process expressions and simulation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9507",
+    "defaultSeverity": "error",
+    "description": "A macrostep ran more than 1,000 microsteps (an eventless loop whose guards keep holding, or internal events that keep raising each other); break the loop with a guard that turns false.",
+    "family": "MQ95xx",
+    "familyLabel": "Process expressions and simulation",
     "canBeOff": true
   }
 ]

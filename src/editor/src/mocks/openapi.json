@@ -90,6 +90,10 @@
       "description": "Seed CSV import and export and reference type usage (reference-types-seeds-localization.md sections 2.3 and 3.9)."
     },
     {
+      "name": "processes",
+      "description": "Simulation, scenario recording and verification, XState import and export, and enum sync for processes (phase-3-design.md section 4.4)."
+    },
+    {
       "name": "realtime",
       "description": "Events pushed over the host's SignalR hub (`webhooks`); the browser listens with `site.realtime.on`."
     }
@@ -3831,6 +3835,656 @@
         }
       }
     },
+    "/api/processes/{id}/simulate": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ProcessId"
+        }
+      ],
+      "post": {
+        "tags": [
+          "processes"
+        ],
+        "operationId": "simulateProcess",
+        "summary": "Simulate a process (or an unsaved draft of it) through a list of inputs",
+        "description": "phase-3-design.md sections 4.1 and 4.4. Simulation state lives in the client: every call replays `start` and `steps` from\nthe initial entry, so one input list always gives one trace, and two windows never diverge. `document` simulates an unsaved\ndraft of the process, checked as a save would check it (422 with the diagnostics when it adds an error). `scenario` runs a\nscenario's start and steps first (the request's `start` is then ignored) and `steps` after them. The replay stops after an\ninput whose trace is incomplete (a guard with neither expression nor `assume`, MQ9305, MQ9507). `trace` starts at index\n`from` (-1, the default, is the initial entry).\n",
+        "x-maquettiste-role": "viewer",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulateRequest"
+              },
+              "example": {
+                "start": {
+                  "context": {
+                    "01JQATT0000000000000000201": 2500
+                  }
+                },
+                "steps": [
+                  {
+                    "event": "01JQPRX0000000000000000014",
+                    "actor": "01JQACT0000000000000000008"
+                  }
+                ],
+                "from": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The traces and where the process stands after the last input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationResult"
+                },
+                "example": {
+                  "processHash": "4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73",
+                  "trace": [
+                    {
+                      "index": 0,
+                      "input": {
+                        "id": "input-0",
+                        "input": "event",
+                        "event": "01JQPRX0000000000000000014",
+                        "invoke": null,
+                        "after": null,
+                        "actor": "01JQACT0000000000000000008",
+                        "signer": null,
+                        "meaning": null,
+                        "reason": null,
+                        "payload": {},
+                        "assume": {},
+                        "expect": null,
+                        "description": null
+                      },
+                      "accepted": true,
+                      "refusal": null,
+                      "microsteps": [
+                        {
+                          "transitions": [
+                            "01JQTRN0000000000000000101"
+                          ],
+                          "exited": [
+                            "01JQSTA0000000000000000101"
+                          ],
+                          "entered": [
+                            "01JQSTA0000000000000000102",
+                            "01JQSTA0000000000000000104",
+                            "01JQSTA0000000000000000108"
+                          ],
+                          "actions": []
+                        }
+                      ],
+                      "guards": [],
+                      "audit": [],
+                      "configuration": [
+                        "01JQSTA0000000000000000104",
+                        "01JQSTA0000000000000000108"
+                      ],
+                      "context": {
+                        "01JQATT0000000000000000201": 2500
+                      },
+                      "changed": {},
+                      "clock": "2000-01-01T00:00:00Z",
+                      "final": false,
+                      "diagnostics": [],
+                      "incomplete": false
+                    }
+                  ],
+                  "configuration": [
+                    "01JQSTA0000000000000000104",
+                    "01JQSTA0000000000000000108"
+                  ],
+                  "context": {
+                    "01JQATT0000000000000000201": 2500
+                  },
+                  "enabled": [
+                    {
+                      "trigger": "invoke-done",
+                      "event": null,
+                      "invoke": "01JQPRX0000000000000000019",
+                      "transitions": [
+                        "01JQTRN0000000000000000105"
+                      ],
+                      "actors": [],
+                      "guardUnknown": false,
+                      "gate": null
+                    }
+                  ],
+                  "pending": [
+                    {
+                      "invoke": "01JQPRX0000000000000000019",
+                      "state": "01JQSTA0000000000000000104"
+                    }
+                  ],
+                  "timers": [],
+                  "gates": [],
+                  "final": false,
+                  "clock": "2000-01-01T00:00:00Z",
+                  "diagnostics": []
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "description": "The draft `document` adds an error; nothing ran.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/processes/{id}/scenarios": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ProcessId"
+        }
+      ],
+      "post": {
+        "tags": [
+          "processes"
+        ],
+        "operationId": "recordScenario",
+        "summary": "Record a scenario from a list of inputs",
+        "description": "phase-3-design.md section 4.4. The engine replays `start` and `steps` and fills each step's `expect` (refusals recorded as\n`accepted: false`) and the `outcome` (unless the request gives one) from the replay, gives the scenario and its steps new ids,\nand saves it as one change under `model/scenarios/<process file stem>/`. `?dryRun=true` returns the scenario without writing\nit. Inputs that cannot be replayed to the last step (MQ9305, MQ9306, MQ9507) are 422 with the diagnostics.\n",
+        "x-maquettiste-role": "editor",
+        "parameters": [
+          {
+            "name": "dryRun",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordScenarioRequest"
+              },
+              "example": {
+                "name": "BudgetRejected",
+                "start": {
+                  "context": {
+                    "01JQATT0000000000000000201": 2500
+                  }
+                },
+                "steps": [
+                  {
+                    "event": "01JQPRX0000000000000000014",
+                    "actor": "01JQACT0000000000000000008"
+                  },
+                  {
+                    "input": "invoke-error",
+                    "invoke": "01JQPRX0000000000000000019"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The scenario a dry run would save.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordScenarioResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "The scenario was saved; `ETag` is its hash and `Location` its element.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              },
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordScenarioResult"
+                },
+                "example": {
+                  "id": "01JQSCN0000000000000000099",
+                  "element": {
+                    "kind": "scenario",
+                    "id": "01JQSCN0000000000000000099",
+                    "name": "BudgetRejected",
+                    "process": "01JQPRC0000000000000000002",
+                    "steps": []
+                  },
+                  "hash": "4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73",
+                  "applied": true,
+                  "diagnostics": []
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The model changed while the scenario was saved; nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The inputs cannot be replayed to the last step, or the scenario does not validate; nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/processes/{id}/verify": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ProcessId"
+        }
+      ],
+      "post": {
+        "tags": [
+          "processes"
+        ],
+        "operationId": "verifyScenarios",
+        "summary": "Replay a process's scenarios and report each one's first failure",
+        "description": "phase-3-design.md sections 3 and 4.4. Every scenario of the process (or the ids or names in `scenarios`) is replayed through\nthe engine interpreter; `failure` is the first failed expectation (MQ9301 to MQ9304) or the stop that kept the replay from the\nlast step (MQ9305, MQ9306, MQ9507; `expected` and `actual` are then null). Results are ordered by name, then id.\n",
+        "x-maquettiste-role": "viewer",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyRequest"
+              },
+              "example": {
+                "scenarios": [
+                  "01JQSCN0000000000000000010"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One result per scenario.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyResult"
+                },
+                "example": {
+                  "process": "01JQPRC0000000000000000002",
+                  "results": [
+                    {
+                      "scenario": "01JQSCN0000000000000000010",
+                      "name": "BudgetRejected",
+                      "passed": true,
+                      "steps": 3,
+                      "failure": null
+                    }
+                  ],
+                  "passed": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/processes/{id}/export": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ProcessId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "processes"
+        ],
+        "operationId": "exportProcess",
+        "summary": "Export a process as an XState machine config",
+        "description": "phase-3-design.md section 5.1. The config in canonical key order (two-space indent, `\\n` line ends, a trailing newline); what\nhas no XState home travels under `meta.maquettiste`, so importing the export over the process gives the same file.\n`X-Maquettiste-Diagnostics` counts the MQ9406 notes (what went into `meta`); `X-Maquettiste-Warnings` counts the other\ndiagnostics (MQ9404: a kept opaque pointer that has no place in the config and was dropped). The CLI prints those to stderr\nand the MCP tool returns every diagnostic in a second content block.\n",
+        "x-maquettiste-role": "viewer",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "xstate"
+              ],
+              "default": "xstate"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The XState config.",
+            "headers": {
+              "X-Maquettiste-Diagnostics": {
+                "description": "The number of MQ9406 notes.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "X-Maquettiste-Warnings": {
+                "description": "The number of other export diagnostics (MQ9404).",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "states"
+                  ],
+                  "additionalProperties": true
+                },
+                "example": {
+                  "id": "PurchaseApproval",
+                  "initial": "Drafting",
+                  "states": {
+                    "Drafting": {
+                      "id": "01JQSTA0000000000000000101",
+                      "on": {
+                        "submit": [
+                          {
+                            "target": [
+                              "#01JQSTA0000000000000000102"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/processes/import": {
+      "post": {
+        "tags": [
+          "processes"
+        ],
+        "operationId": "importProcess",
+        "summary": "Preview or apply an XState machine config import",
+        "description": "phase-3-design.md sections 5.1 and 5.2. `?dryRun=true` (the default) returns the process document the import gives with its\ndiagnostics (MQ9401 to MQ9406) and the ids it creates, writing nothing. `into` re-imports over an existing process (id or\nname), keeping the ids of the nodes it matches; `removed` lists what it drops. With `dryRun=false` the document is saved as\none change: 409 when `into` changed since `expectedHash`, 422 when the import has errors or the process does not validate.\n",
+        "x-maquettiste-role": "editor",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "xstate"
+              ],
+              "default": "xstate"
+            }
+          },
+          {
+            "name": "dryRun",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessImportRequest"
+              },
+              "example": {
+                "config": {
+                  "id": "Door",
+                  "initial": "Closed",
+                  "states": {
+                    "Closed": {
+                      "on": {
+                        "open": "Opened"
+                      }
+                    },
+                    "Opened": {
+                      "on": {
+                        "close": "Closed"
+                      }
+                    }
+                  }
+                },
+                "package": "purchasing",
+                "use": "orchestration"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The preview, or the saved import (`applied` true, `hash`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessImportResult"
+                },
+                "example": {
+                  "document": {
+                    "kind": "process",
+                    "id": "01JQPRC0000000000000000099",
+                    "name": "Door",
+                    "states": []
+                  },
+                  "diagnostics": [],
+                  "created": [
+                    "01JQPRC0000000000000000099"
+                  ],
+                  "removed": [],
+                  "applied": false,
+                  "id": "01JQPRC0000000000000000099",
+                  "hash": null
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "`into` changed since `expectedHash`; nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessImportResult"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The import has errors, or the process does not validate; nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessImportResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/processes/{id}/sync-enum": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ProcessId"
+        }
+      ],
+      "post": {
+        "tags": [
+          "processes"
+        ],
+        "operationId": "syncEnumFromProcess",
+        "summary": "Sync a lifecycle's bound enum with its root-level states",
+        "description": "phase-3-design.md sections 3 and 4.4, the `sync-enum` batch operation. The bound enum's members become the root-level states in\ndocument order (ids, codes and descriptions kept). `dryRun: true` returns the plan. A member still used by a default,\n`allowedValues`, a seed cell or a scenario value is listed in `refused` and not removed: there is no force flag, change the uses\nfirst (applying such a plan is 422 with MQ9019). 409 when the process changed since `expectedHash`.\n",
+        "x-maquettiste-role": "editor",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncEnumRequest"
+              },
+              "example": {
+                "dryRun": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The plan, applied unless `dryRun`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncEnumResult"
+                },
+                "example": {
+                  "process": "01JQPRC0000000000000000001",
+                  "enum": "01JQENM0000000000000000001",
+                  "added": [
+                    "OnHold"
+                  ],
+                  "removed": [],
+                  "reordered": false,
+                  "refused": [],
+                  "applied": false,
+                  "diagnostics": []
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The process changed since `expectedHash`; nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncEnumResult"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The process is not a bound lifecycle, or a removal is refused (MQ9019 in `diagnostics`); nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncEnumResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/generate/plan": {
       "post": {
         "tags": [
@@ -5624,6 +6278,16 @@
           "pattern": "^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$"
         }
       },
+      "ProcessId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "A process id (uppercase ULID).",
+        "schema": {
+          "$ref": "#/components/schemas/Ulid"
+        },
+        "example": "01JQPRC0000000000000000002"
+      },
       "ElementId": {
         "name": "id",
         "in": "path",
@@ -5875,6 +6539,7 @@
               "job-finished",
               "model-unavailable",
               "superseded",
+              "conflict",
               "internal"
             ]
           },
@@ -8306,7 +8971,7 @@
       },
       "BatchOp": {
         "type": "string",
-        "description": "`translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `set-lifecycle` (`id` an entity, `target` a process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's lifecycle and turns the bound process back into an orchestration) and `set-initial` (`id` a process or a compound state, `target` one of its direct children). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`.",
+        "description": "`translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `set-lifecycle` (`id` an entity, `target` a process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's lifecycle and turns the bound process back into an orchestration), `set-initial` (`id` a process or a compound state, `target` one of its direct children) and `refresh-scenario` (`id` a scenario: every step's `expect` and the `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step, or when another operation of the batch writes the scenario or its process). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`.",
         "enum": [
           "create",
           "update",
@@ -8318,7 +8983,8 @@
           "set-default-schema",
           "sync-enum",
           "set-lifecycle",
-          "set-initial"
+          "set-initial",
+          "refresh-scenario"
         ]
       },
       "BatchOperation": {
@@ -8529,7 +9195,8 @@
             "enum": [
               "sync-enum",
               "set-lifecycle",
-              "set-initial"
+              "set-initial",
+              "refresh-scenario"
             ],
             "description": "The batch operation that fixes a finding of the rule, applied to the finding's element (phase-3-design.md section 3); absent when the rule has none."
           }
@@ -10867,6 +11534,1043 @@
           },
           "summary": {
             "type": "string"
+          }
+        }
+      },
+      "SimInput": {
+        "x-engine-record": "Maquettiste.Engine.Model.ScenarioStep",
+        "description": "A scenario step without `expect` (phase-3-design.md section 2.4); `id` is optional in a request. Echoed in a trace with every member written.",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "input": {
+            "type": "string",
+            "enum": [
+              "event",
+              "time",
+              "invoke-done",
+              "invoke-error"
+            ],
+            "default": "event"
+          },
+          "event": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "invoke": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "after": {
+            "description": "An ISO 8601 duration, for `time`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "actor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "signer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meaning": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "assume": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "expect": {
+            "description": "Ignored in a request; null in a trace.",
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "description": {
+            "description": "Inline Markdown text (a string) or a sidecar reference.",
+            "type": [
+              "string",
+              "object",
+              "null"
+            ]
+          }
+        }
+      },
+      "SimulateRequest": {
+        "x-engine-record": "Maquettiste.Engine.Processes.SimulateRequest",
+        "type": "object",
+        "properties": {
+          "document": {
+            "description": "An unsaved draft of the process document (`schemas/v1/process.json`).",
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "start": {
+            "$ref": "#/components/schemas/SimStart"
+          },
+          "scenario": {
+            "description": "A scenario of the process whose start and steps run first.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "steps": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/SimInput"
+            }
+          },
+          "from": {
+            "description": "The first trace index returned; -1 includes the initial entry.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": -1,
+            "default": -1
+          }
+        }
+      },
+      "SimStart": {
+        "description": "The start of a simulation or scenario.",
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "context": {
+            "description": "Initial context values by attribute id, over the defaults.",
+            "type": "object",
+            "additionalProperties": true
+          },
+          "at": {
+            "description": "The clock's start (ISO 8601); 2000-01-01T00:00:00Z when absent.",
+            "type": "string"
+          }
+        }
+      },
+      "StepTrace": {
+        "x-engine-record": "Maquettiste.Engine.Processes.StepTrace",
+        "type": "object",
+        "required": [
+          "index",
+          "input",
+          "accepted",
+          "refusal",
+          "microsteps",
+          "guards",
+          "audit",
+          "configuration",
+          "context",
+          "changed",
+          "clock",
+          "final",
+          "diagnostics",
+          "incomplete"
+        ],
+        "properties": {
+          "index": {
+            "description": "The input's index; -1 for the initial entry.",
+            "type": "integer",
+            "minimum": -1
+          },
+          "input": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SimInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accepted": {
+            "type": "boolean"
+          },
+          "refusal": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "no-transition",
+              "guard",
+              "actor",
+              "gate-signer",
+              "gate-repeat",
+              "gate-reason",
+              null
+            ]
+          },
+          "microsteps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MicrostepTrace"
+            }
+          },
+          "guards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GuardEvaluation"
+            }
+          },
+          "audit": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GateAuditRecord"
+            }
+          },
+          "configuration": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          "context": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "changed": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "clock": {
+            "type": "string"
+          },
+          "final": {
+            "type": "boolean"
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
+          },
+          "incomplete": {
+            "description": "A guard result was missing or the replay stopped (MQ9305, MQ9306, MQ9507); later inputs did not run.",
+            "type": "boolean"
+          }
+        }
+      },
+      "MicrostepTrace": {
+        "x-engine-record": "Maquettiste.Engine.Processes.MicrostepTrace",
+        "type": "object",
+        "required": [
+          "transitions",
+          "exited",
+          "entered",
+          "actions"
+        ],
+        "properties": {
+          "transitions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          "exited": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          "entered": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActionRun"
+            }
+          }
+        }
+      },
+      "ActionRun": {
+        "x-engine-record": "Maquettiste.Engine.Processes.ActionRun",
+        "type": "object",
+        "required": [
+          "action",
+          "source",
+          "changed"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "expression",
+              "stub"
+            ]
+          },
+          "changed": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "GuardEvaluation": {
+        "x-engine-record": "Maquettiste.Engine.Processes.GuardEvaluation",
+        "type": "object",
+        "required": [
+          "guard",
+          "transition",
+          "result",
+          "source"
+        ],
+        "properties": {
+          "guard": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "transition": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "result": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "expression",
+              "assumed",
+              "missing"
+            ]
+          }
+        }
+      },
+      "GateAuditRecord": {
+        "x-engine-record": "Maquettiste.Engine.Processes.GateAuditRecord",
+        "type": "object",
+        "required": [
+          "instance",
+          "process",
+          "gate",
+          "transition",
+          "sequence",
+          "signer",
+          "actor",
+          "meaning",
+          "reason",
+          "at",
+          "outcome",
+          "attributes"
+        ],
+        "properties": {
+          "instance": {
+            "type": "string"
+          },
+          "process": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "gate": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "transition": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "sequence": {
+            "type": "integer"
+          },
+          "signer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "actor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meaning": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "at": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "signed",
+              "completed",
+              "refused",
+              "discarded"
+            ]
+          },
+          "attributes": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "EnabledTrigger": {
+        "x-engine-record": "Maquettiste.Engine.Processes.EnabledTrigger",
+        "type": "object",
+        "required": [
+          "trigger",
+          "event",
+          "invoke",
+          "transitions",
+          "actors",
+          "guardUnknown",
+          "gate"
+        ],
+        "properties": {
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "event",
+              "invoke-done",
+              "invoke-error",
+              "time"
+            ]
+          },
+          "event": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "invoke": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "transitions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          "actors": {
+            "description": "The actors the input must come from; empty for any.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          "guardUnknown": {
+            "description": "A candidate's guard has no expression; the input needs `assume`.",
+            "type": "boolean"
+          },
+          "gate": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/GateProgress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "GateProgress": {
+        "x-engine-record": "Maquettiste.Engine.Processes.GateProgress",
+        "type": "object",
+        "required": [
+          "have",
+          "need"
+        ],
+        "properties": {
+          "have": {
+            "type": "integer"
+          },
+          "need": {
+            "type": "integer"
+          }
+        }
+      },
+      "PendingInvoke": {
+        "x-engine-record": "Maquettiste.Engine.Processes.PendingInvoke",
+        "type": "object",
+        "required": [
+          "invoke",
+          "state"
+        ],
+        "properties": {
+          "invoke": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "state": {
+            "$ref": "#/components/schemas/Ulid"
+          }
+        }
+      },
+      "ScheduledTimer": {
+        "x-engine-record": "Maquettiste.Engine.Processes.ScheduledTimer",
+        "type": "object",
+        "required": [
+          "transition",
+          "dueAt"
+        ],
+        "properties": {
+          "transition": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "dueAt": {
+            "type": "string"
+          }
+        }
+      },
+      "GateSignature": {
+        "x-engine-record": "Maquettiste.Engine.Processes.GateSignature",
+        "type": "object",
+        "required": [
+          "signer",
+          "actor",
+          "meaning",
+          "reason"
+        ],
+        "properties": {
+          "signer": {
+            "type": "string"
+          },
+          "actor": {
+            "type": "string"
+          },
+          "meaning": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "GateState": {
+        "x-engine-record": "Maquettiste.Engine.Processes.GateState",
+        "type": "object",
+        "required": [
+          "gate",
+          "transition",
+          "signatures",
+          "satisfied"
+        ],
+        "properties": {
+          "gate": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "transition": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "signatures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GateSignature"
+            }
+          },
+          "satisfied": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SimulationResult": {
+        "x-engine-record": "Maquettiste.Engine.Processes.SimulationResult",
+        "type": "object",
+        "required": [
+          "processHash",
+          "trace",
+          "configuration",
+          "context",
+          "enabled",
+          "pending",
+          "timers",
+          "gates",
+          "final",
+          "clock",
+          "diagnostics"
+        ],
+        "properties": {
+          "processHash": {
+            "$ref": "#/components/schemas/Hash"
+          },
+          "trace": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StepTrace"
+            }
+          },
+          "configuration": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          "context": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "enabled": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnabledTrigger"
+            }
+          },
+          "pending": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PendingInvoke"
+            }
+          },
+          "timers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScheduledTimer"
+            }
+          },
+          "gates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GateState"
+            }
+          },
+          "final": {
+            "type": "boolean"
+          },
+          "clock": {
+            "type": "string"
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
+          }
+        }
+      },
+      "RecordScenarioRequest": {
+        "x-engine-record": "Maquettiste.Engine.Processes.RecordScenarioRequest",
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "start": {
+            "$ref": "#/components/schemas/SimStart"
+          },
+          "steps": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/SimInput"
+            }
+          },
+          "outcome": {
+            "description": "The expected outcome; the replay's when absent.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "final",
+              "active",
+              null
+            ]
+          }
+        }
+      },
+      "RecordScenarioResult": {
+        "x-engine-record": "Maquettiste.Engine.Processes.RecordScenarioResult",
+        "type": "object",
+        "required": [
+          "id",
+          "element",
+          "hash",
+          "applied",
+          "diagnostics"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "element": {
+            "description": "The scenario document (`schemas/v1/scenario.json`), canonical.",
+            "type": "object"
+          },
+          "hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "applied": {
+            "type": "boolean"
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
+          }
+        }
+      },
+      "VerifyRequest": {
+        "type": "object",
+        "properties": {
+          "scenarios": {
+            "description": "Scenario ids or names; every scenario of the process when absent.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ScenarioFailure": {
+        "x-engine-record": "Maquettiste.Engine.Processes.ScenarioFailure",
+        "type": "object",
+        "required": [
+          "step",
+          "rule",
+          "message",
+          "expected",
+          "actual"
+        ],
+        "properties": {
+          "step": {
+            "description": "The step index; -1 for the outcome.",
+            "type": "integer",
+            "minimum": -1
+          },
+          "rule": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "expected": {},
+          "actual": {}
+        }
+      },
+      "ScenarioVerification": {
+        "x-engine-record": "Maquettiste.Engine.Processes.ScenarioVerification",
+        "type": "object",
+        "required": [
+          "scenario",
+          "name",
+          "passed",
+          "steps",
+          "failure"
+        ],
+        "properties": {
+          "scenario": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "steps": {
+            "type": "integer"
+          },
+          "failure": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ScenarioFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "VerifyResult": {
+        "x-engine-record": "Maquettiste.Engine.Processes.VerifyResult",
+        "type": "object",
+        "required": [
+          "process",
+          "results",
+          "passed"
+        ],
+        "properties": {
+          "process": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScenarioVerification"
+            }
+          },
+          "passed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ProcessImportRequest": {
+        "x-engine-record": "Maquettiste.Engine.Processes.ProcessImportRequest",
+        "type": "object",
+        "required": [
+          "config"
+        ],
+        "properties": {
+          "config": {
+            "description": "The XState machine config, as an object or a string holding one.",
+            "type": [
+              "object",
+              "string"
+            ]
+          },
+          "package": {
+            "description": "The package (id or name) of a new process.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "use": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "lifecycle",
+              "orchestration",
+              null
+            ]
+          },
+          "subject": {
+            "description": "The subject entity (id or name).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "into": {
+            "description": "A process (id or name) to re-import over, keeping its ids.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expectedHash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ProcessImportResult": {
+        "x-engine-record": "Maquettiste.Engine.Processes.ProcessImportResult",
+        "type": "object",
+        "required": [
+          "document",
+          "diagnostics",
+          "created",
+          "removed",
+          "applied",
+          "id",
+          "hash"
+        ],
+        "properties": {
+          "document": {
+            "description": "The process document the import gives (`schemas/v1/process.json`), or null when the config cannot be read.",
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
+          },
+          "created": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          "applied": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "SyncEnumRequest": {
+        "type": "object",
+        "properties": {
+          "dryRun": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": false
+          },
+          "expectedHash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "SyncEnumRefusal": {
+        "x-engine-record": "Maquettiste.Engine.SyncEnumRefusal",
+        "type": "object",
+        "required": [
+          "member",
+          "referencedBy"
+        ],
+        "properties": {
+          "member": {
+            "type": "string"
+          },
+          "referencedBy": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          }
+        }
+      },
+      "SyncEnumResult": {
+        "x-engine-record": "Maquettiste.Engine.Processes.SyncEnumResult",
+        "type": "object",
+        "required": [
+          "process",
+          "enum",
+          "added",
+          "removed",
+          "reordered",
+          "refused",
+          "applied",
+          "diagnostics"
+        ],
+        "properties": {
+          "process": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "enum": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "added": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reordered": {
+            "type": "boolean"
+          },
+          "refused": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SyncEnumRefusal"
+            }
+          },
+          "applied": {
+            "type": "boolean"
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
           }
         }
       },
@@ -17238,7 +18942,8 @@
                     "set-default-schema",
                     "sync-enum",
                     "set-lifecycle",
-                    "set-initial"
+                    "set-initial",
+                    "refresh-scenario"
                   ]
                 },
                 "id": {
@@ -17362,7 +19067,8 @@
                           "set-default-schema",
                           "sync-enum",
                           "set-lifecycle",
-                          "set-initial"
+                          "set-initial",
+                          "refresh-scenario"
                         ]
                       }
                     }

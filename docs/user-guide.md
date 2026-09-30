@@ -677,8 +677,8 @@ folders as you. Two variables override the choice when you need to:
 
 `maquettiste` is the same engine without the editor: it creates the project, checks it and generates the code, which is
 what a CI job and a terminal need. `maquettiste --help` lists every option; exit codes are 0 success, 1 validation or read errors,
-2 drift (or a `--check` preview that would change something), 3 hand-edit conflicts (or, for the `l10n` and `seed` verbs, a file
-that changed while the command ran), 4 an internal or usage error (a refused write, or an argument that names no locale or seed). A locale argument is read as
+2 drift (or a `--check` preview that would change something), 3 hand-edit conflicts (or, for the `l10n`, `seed` and `process` verbs, a file
+that changed while the command ran), 4 an internal or usage error (a refused write, or an argument that names no locale, seed or process). A locale argument is read as
 the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cannot be read exits 4 and says how to write it.
 
 | Command | What it does |
@@ -697,6 +697,12 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | `maquettiste seed new <type>` | Creates a reference type's seed (by id or name), named after the type, with the columns code, label and description and no rows; a type that has a seed keeps it. |
 | `maquettiste seed export <seed>` | A seed's rows as CSV (the seed's id or name, or the id or name of the element it seeds); `--locale fr` adds the French label and description columns, `--out <file>` writes a file. |
 | `maquettiste seed import <seed> <file>` | Previews a CSV import (rows match by `@id`, else by `@code`): added, changed, removed and blocked rows; `--mode replace` also removes the rows the file leaves out, except rows still referenced; `--apply` plans again and writes it, refused (exit 3) when the seed file changes while the command runs; it prints what it wrote, which can differ from an earlier preview if the seed changed in between. |
+| `maquettiste process simulate <process>` | Runs a process (by id, name or model path) through the engine from its initial state: `--inputs <file>` (or `-` for stdin) holds an array of steps, or `{ "start": { "context": {...}, "at": "..." }, "steps": [...] }`, each step a scenario step without `expect`; `--scenario <name>` runs a scenario's steps first. Prints one line per input (accepted or refused, and the active states after it), then the configuration, what can happen next and the clock; `--format json` prints the whole trace, `--from <n>` only from input n. The same inputs always give the same trace. |
+| `maquettiste process record <process> <name>` | Replays `--inputs <file>` and prints the scenario it would write, each step's expectations and the outcome filled from the replay; `--apply` writes it under `model/scenarios/<process>/`. |
+| `maquettiste process verify [<process>...]` | Replays the scenarios of the processes named (all processes when none is) and prints `pass` or `FAIL` per scenario with the first failing step and rule; exits 1 when one fails. `--format json` for scripts. |
+| `maquettiste process export <process>` | The process as an XState machine config (`--format xstate`, the only format), on stdout or into `--out <file>`. What has no XState home travels under `meta.maquettiste`, so importing the file back over the process gives the same file. |
+| `maquettiste process import <file>` | Previews importing an XState config: `--domain <package>` (with `--name`, `--use lifecycle\|orchestration`, `--subject <entity>`) for a new process, or `--into <process>` to re-import over one, keeping the ids of what matches. Prints the diagnostics and how many ids are created and removed; `--apply` writes it as one change, refused (exit 3) when the process changed while the command ran and exit 1 when the import has errors. `--format json` prints the document. |
+| `maquettiste process sync-enum <process>` | Previews making a lifecycle's bound enum follow its root-level states (members added, removed, reordered, and removals refused because a default, allowed values, a seed cell or a scenario still uses the member); `--apply` writes it; `--check` exits 2 when the enum is out of sync. A refused removal exits 1: change the uses first. |
 | `maquettiste pack new <name>` | Scaffolds a pack under `.maquettiste/templates/<name>/` (`--from empty`, `sql-ddl` or `csharp-dapper`). Give it an `output` under an allowed root in `maquettiste.json` before the next `generate` (packs/README.md). |
 
 Progress (`--progress plain`, the default when stderr is not a terminal) prints each stage once, in order, with a start

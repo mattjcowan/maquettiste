@@ -792,6 +792,104 @@ also writes its process or enum. MQ3013 reports an enum attribute's `allowedValu
 lost its catalog quick fix (see the derivation table in §3). Refusal messages say what to do; the canonical round trip
 test covers both process fixtures; §8.1 and §10 record the `Fulfilment` restructuring. P1 is complete.
 
+**Status P2, stage (interpreter, expressions, replay), 2026-09-29:** built and verified. `Processes/StatechartModel.cs` (the resolved
+chart, cached by process id and hash), `StatechartInterpreter.cs` (§4.1: configuration, macrostep and microstep, selection with
+priority and SCXML conflict removal, exit and entry sets with the XState v5 transition domain, shallow and deep history, `done` for
+compound and parallel states, a simulated clock with timers in due then document order, sub-process instances and pending service and
+human tasks, gates with the §2.3 audit records, actors, refusal reasons), `StepTrace.cs` (the §4.4 trace), `ProcessExpressions.cs` (each
+process's expressions parsed without running, MQ9501, and compiled once into one prepared script of `(context, event) => (expression)`
+helpers; 50 ms and 100,000 statements under the pool's cancellation), `ScenarioReplayer.cs` (`ProcessRuntime` shares charts and one
+expression pool per process per run; MQ9301 to MQ9306). `validate` replays every scenario in scope (`Validation/ScenarioRules.cs`; a
+process change re-checks its scenarios and those of its callers, an entity change those of the processes it is the subject of, an enum,
+value object or scalar change those of the processes whose attributes use it). The `refresh-scenario` batch operation (batch.json,
+openapi, parser, quick fix of MQ9302 to MQ9304). All 13 fixture scenarios pass as written: no expectation needed a correction.
+Measured on the fixture (in-test stopwatch, 960 macrosteps): macrostep p95 0.07 to 0.09 ms, guard evaluation p95 0.015 ms on a
+rented lease (budgets 0.2 ms on a 400-state chart and 0.05 ms; the bench cases are P2c's). As built, where §3 and §4.1 left a choice:
+only the first failing step of a scenario is reported, and the steps after it still run (their traces feed `refresh-scenario`) without
+being compared; an empty `expect.states` is not checked, and `expect.context` must equal the set of attributes the step changed; a
+`time` input is always accepted; MQ9506 compares guarded transitions only (an unguarded fallback, a choice's else, is intended); a
+raised (internal) event never completes a gate (it has no signer); durations are fixed spans (a year 365 days, a month 30 days, as
+delays in milliseconds are); an event input that names an event of a running sub-process goes to that instance; `event.actor` is the
+actor's name. Replay findings (MQ93xx, MQ9502 to MQ9507) are reported on a save but do not refuse it (`RuleCatalog.IsReplayFinding`,
+read by `ModelStore`), so a chart edit is saved and its scenarios are refreshed afterwards; `refresh-scenario` is refused (MQ9019) when
+the batch also writes the scenario or its process, or when the replay stops before the last step. Left for P2: MQ9401 to MQ9406 and the
+XState projection, the `simulate`, `scenarios`, `verify`, `export`, `import` and `sync-enum` endpoints with MCP tools and CLI verbs,
+and the bench cases.
+
+**Status P2, stage (XState projection), 2026-09-29:** built and verified. `Processes/XStateProjection.cs` (the engine methods the
+`export` and `import` endpoints, MCP tools and CLI verbs call: `XStateProjection.Export(process, json, options)` returns the config text
+and MQ9406/MQ9404; `XStateProjection.Import(text, json, options)` with `Model`, `Into`, `Package`, `Name`, `Use`, `Subject`, `Ids`
+returns the canonical process file, the record, MQ9401 to MQ9405, `Created` and, with `into`, `Removed`), `XStateExporter.cs` and
+`XStateImporter.cs`; catalog MQ9401 to MQ9406 (165 rules). Every fixture process (the two §8.1 processes and `process-basics`) exported
+then imported gives a byte-identical canonical file and an identical second export, both standalone and `into` itself within the
+model (no diagnostic, nothing created or removed); five exports of one process are byte-identical. Import samples in
+`tests/fixtures/xstate/` (parallel, history, delays, invokes, choice with a combinator and a parameterized guard, inline functions,
+unknown keys) are each stable after their first import. Tests: `Processes/XStateProjectionTests.cs` (39). As built, where §5 left a
+choice: the global key order is `id, src, initial, states, context, type, history, target, entry, exit, on, after, always, onDone,
+onError, invoke, guard, actions, reenter`, then kept opaque keys, then `meta` (every object follows the table's row order); a state's
+model id is its XState `id`, so `"#<id>"` targets resolve in XState itself and a state's `meta.maquettiste` carries no `id`
+(transitions and invokes carry theirs in `meta`); an invoke's XState `id` is its name; a compound state or root whose model names no
+`initial` is exported with its first child as `initial` (XState v5 needs one) and `meta.maquettiste.initialImplied: true`; the root's
+`meta.maquettiste.transitions` lists transition ids in priority order (per-state grouping loses the global order); `meta.maquettiste`
+holds each node's canonical fields with no XState home, in canonical order (context attributes without `default`, whose value is in
+`context`); `on`, `after`, `always`, `onDone` and invoke `onDone`/`onError` are always arrays, and opaque data is keyed by pointers in
+that array form (a single transition object imports as `/0`), so it is written back where it was; a kept pointer with no place left is
+dropped on export with MQ9404. Ids an import creates derive from one seed id drawn from `Ids` per import and the node's path in the
+config (SHA-256 into the ULID's random part, the seed's time part): one path gets one id within an import, another import gets fresh
+ids, and a deterministic generator makes the whole import deterministic. Without `meta`, `into` keeps ids and descriptive fields
+(display names, descriptions, stereotypes, properties, gates, definitions with their expressions) of nodes matched by path (states),
+name (events, guards, actions, invokes, context) or source, trigger and position (transitions), and keeps its order for them. MQ9405
+also covers an id carried twice in one config and, without `into`, a carried process id already in the model; the node gets a derived
+id so the dry run still shows a document. A `src` naming a model process imports as a `process` invoke; context values without `meta`
+type as `string`, `bool`, `int32`/`int64`, `decimal` or `json` (null: no default); a root `type` other than compound, an unknown state
+type, or a target or initial that does not resolve is MQ9403. Left for P2: the `simulate`, `scenarios`, `verify`, `export`, `import`
+and `sync-enum` endpoints with MCP tools, CLI verbs and parity tests, and the bench cases.
+
+**Status P2, stage (API, MCP, CLI, bench), 2026-09-29:** built and verified; P2 is complete. The six operations of §4.4 share one
+engine call each (`ModelStore.ProcessApi.cs`: `SimulateProcessAsync`, `RecordScenarioAsync`, `VerifyScenariosAsync`,
+`ExportProcessAsync`, `ImportProcessAsync`, `SyncEnumAsync`, returning `ProcessCall<T>`; request, response and simulation code in
+`Processes/ProcessApi.cs`), wrapped by `_functions/ProcessEndpoints.cs`, the MCP tools `simulate_process`, `record_scenario`,
+`verify_scenarios`, `export_process`, `import_process`, `sync_enum_from_process` (`Mcp/ProcessTools.cs`, 46 tools) and
+`maquettiste process simulate|record|verify|export|import|sync-enum` (`Commands/ProcessCommand.cs`); `openapi.yaml` (tag
+`processes`, 62 operations, problem code `conflict`) and the regenerated editor client and mocks. Parity tests:
+`Functions.Tests/ProcessEndpointTests.cs` (6), `Cli.Tests/ProcessCommandTests.cs` (2 MCP, 2 CLI): verify passes all 13 fixture
+scenarios, export then import `into` the process gives the same bytes, sync-enum plans and applies a drifted (reordered) enum.
+As built, where §4.4 left a choice: a draft `document` is checked exactly as a save would check it (a new non-replay error is 422
+with a `ValidationReport`); `scenario` runs its start and steps before the request's `steps`; the replay stops after an incomplete
+trace; `from` defaults to -1 (the initial entry); `enabled` lists events of the root instance with candidate transitions (actors:
+the event's, else the gate's signers), `invoke-done`/`invoke-error` per pending task, and `time` when timers exist; `gates` lists
+the gated transitions of active states with their signatures; `record` accepts `?dryRun=true` (the CLI preview) and takes
+`outcome` from the request when given, else from the replay; `verify` failures from a stop (MQ9305, MQ9306, MQ9507) have null
+`expected` and `actual`; `sync-enum` checks `expectedHash` against the process (409) and a refused or non-lifecycle sync is 422
+with MQ9019; `import` 409 comes back as a problem before planning and as the result body when the save conflicts; the CLI exits 0,
+1 (failing scenario, invalid import, refused sync), 2 (`sync-enum --check` out of sync), 3 (changed while running), 4 (names
+nothing). The functions' file budget of phase2-design.md §3.1 went from 24 to 25 files for `ProcessEndpoints.cs` (the host limit
+is 50). No fixture expectation needed a correction. Bench (`Maquettiste.Bench time-processes`, a verb of its own so the default
+bench does not move; 5,000 entities, 1,000 processes of 42 states with 5 of 400, 5,000 scenarios of 20 steps, 24 cores, jobs 24):
+macrostep p95 0.005 ms (budget 0.2), guard evaluation p95 0.003 ms (0.05), simulate of 200 inputs 2.3 ms (30), whole-model
+MQ90xx to MQ92xx 347 ms added to validate (400; base 143 ms, with processes 491 ms), replay of every scenario 2.3 s (3 s), export
+4.3 ms and dry-run import into itself 6.9 ms of a 400-state process (50). **Known miss:** "one 400-state process ≤ 10 ms" measures
+33 ms as a validate scoped to that process, but a validate scoped to one entity of the same model costs 43 ms: the figure is the
+fixed cost of building a scoped validation context over the 5,000-entity model, not the process rules (5 ms on a 200-entity
+model); the budget is kept and the scoped-validate fixed cost is left for a later round. Left: P3 onward (the editor wires these
+operations and the quick fixes).
+
+Status (P2 review fixes): the interpreter now queues `done` for a compound parent only; a parallel state's completion is a walk
+from the final state's parent (or its region's parent) up through enclosing parallel states while every region is final, each
+queued once per microstep, and a final state that is itself a region counts as final (a final region no longer completes its
+parallel state early, and completion reaches a parallel state nested in another). A gate is checked during selection (refusals as
+before) but signed only when its transition survives conflict removal; a preempted gated transition gets no signature and no audit,
+and an incomplete one does not preempt others. The MQ90xx-MQ92xx budget row now measures what it names, `ProcessRules` for the
+400-state process over a built validation context: **1.6 ms (10), pass**; the scoped validate (30 ms, with 41 ms for one entity)
+is logged for reference as the fixed cost of a scoped run. Other figures of the same run: macrostep 0.005 ms, guard 0.003 ms,
+simulate 2.2 ms, whole-model rules 319 ms added (base 122, with processes 441), replay 2.3 s, export 4.2 ms, import 7.0 ms; no
+miss. Export diagnostics reach every surface: HTTP `X-Maquettiste-Warnings` counts MQ9404 (next to the MQ9406 count), MCP
+`export_process` adds a second content block `{ diagnostics }`, the CLI prints them to stderr. An unparsable `start.at` is a bad
+request on simulate and record (exit 4 on the CLI) and MQ9305 at `/start/at` in a replay. Simulation and recorded inputs accept
+event, invoke, guard (`assume` keys) and actor names, resolved to ids when exactly one element has the name. MQ9502 to MQ9504
+have passing rows, and MQ9503 has separate rows for the statement limit and the deadline (`ProcessExpressions.Open` takes limits).
+No fixture expectation needed a correction; the 13 scenarios pass.
+
 ## 10. SPEC amendments and open risks
 
 Errata to add to `docs/engineering/spec-errata.md` for the owner to apply:

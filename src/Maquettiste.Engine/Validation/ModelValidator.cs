@@ -2,6 +2,7 @@ using System.Collections.Frozen;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Processes;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Scripting;
 
@@ -99,6 +100,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             }
         }
 
+        var runtime = targets.Any(d => d.Element is Scenario) ? new ProcessRuntime(model, parallelism, ct) : null;
         try
         {
             var context = shared.WithRuleNames(ruleNames);
@@ -113,6 +115,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                     var report = new Report(targets[i]);
                     BuiltinRules.Validate(context, report);
                     ProcessRules.Validate(context, report);
+                    ScenarioRules.Validate(context, report, runtime);
                     extensions.Check(context, report);
                     if (runScripts)
                         RunScripts(pool!, rules, model, report, token);
@@ -127,6 +130,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         finally
         {
             pool?.Dispose();
+            runtime?.Dispose();
         }
 
         ct.ThrowIfCancellationRequested();
@@ -486,7 +490,37 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                     yield return peer;
             }
         }
+
+        // MQ93xx and MQ95xx on scenarios replay their process, the sub-processes it invokes and the types of its attributes: a process
+        // change re-checks its own scenarios and those of the processes that invoke it; an enum or subject change re-checks the
+        // scenarios of the processes that use it.
+        var replayed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var candidate in model.All<Process>())
+        {
+            var affected = element switch
+            {
+                Process changed => string.Equals(candidate.Id, changed.Id, StringComparison.Ordinal) || ProcessRules.Callees(candidate).Contains(changed.Id),
+                Entity entity => string.Equals(candidate.Subject, entity.Id, StringComparison.Ordinal),
+                EnumType or ValueObject or ScalarType => UsesType(candidate, element.Id),
+                _ => false,
+            };
+            if (affected)
+                replayed.Add(candidate.Id);
+        }
+
+        if (replayed.Count == 0)
+            yield break;
+        foreach (var scenario in model.All<Scenario>())
+        {
+            if (replayed.Contains(scenario.Process) && model.GetDocument(scenario.Id) is { } peer)
+                yield return peer;
+        }
     }
+
+    private static bool UsesType(Process process, string typeId) =>
+        process.Context.Concat(process.Events.SelectMany(e => e.Payload))
+            .Concat(process.Transitions.Where(t => t.Gate is not null).SelectMany(t => t.Gate!.AuditAttributes))
+            .Any(a => string.Equals(a.Type.Ref, typeId, StringComparison.Ordinal));
 
     private static bool NamesRules(IEnumerable<ElementDocument> documents)
     {

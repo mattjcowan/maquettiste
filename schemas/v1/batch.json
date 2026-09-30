@@ -13,7 +13,7 @@
         "x-order": ["op", "id", "expectedHash", "element", "locale", "field", "value", "schema", "name", "target", "default"],
         "properties": {
           "op": {
-            "enum": ["create", "update", "delete", "translate", "add-schema", "rename-schema", "remove-schema", "set-default-schema", "sync-enum", "set-lifecycle", "set-initial"]
+            "enum": ["create", "update", "delete", "translate", "add-schema", "rename-schema", "remove-schema", "set-default-schema", "sync-enum", "set-lifecycle", "set-initial", "refresh-scenario"]
           },
           "id": {
             "$ref": "common.json#/$defs/id"
@@ -104,7 +104,7 @@
             "if": {
               "properties": {
                 "op": {
-                  "enum": ["add-schema", "rename-schema", "remove-schema", "set-default-schema", "sync-enum", "set-lifecycle", "set-initial"]
+                  "enum": ["add-schema", "rename-schema", "remove-schema", "set-default-schema", "sync-enum", "set-lifecycle", "set-initial", "refresh-scenario"]
                 }
               }
             },

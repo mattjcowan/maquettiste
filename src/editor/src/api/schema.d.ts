@@ -665,6 +665,176 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/processes/{id}/simulate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A process id (uppercase ULID).
+                 * @example 01JQPRC0000000000000000002
+                 */
+                id: components["parameters"]["ProcessId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Simulate a process (or an unsaved draft of it) through a list of inputs
+         * @description phase-3-design.md sections 4.1 and 4.4. Simulation state lives in the client: every call replays `start` and `steps` from
+         *     the initial entry, so one input list always gives one trace, and two windows never diverge. `document` simulates an unsaved
+         *     draft of the process, checked as a save would check it (422 with the diagnostics when it adds an error). `scenario` runs a
+         *     scenario's start and steps first (the request's `start` is then ignored) and `steps` after them. The replay stops after an
+         *     input whose trace is incomplete (a guard with neither expression nor `assume`, MQ9305, MQ9507). `trace` starts at index
+         *     `from` (-1, the default, is the initial entry).
+         */
+        post: operations["simulateProcess"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/processes/{id}/scenarios": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A process id (uppercase ULID).
+                 * @example 01JQPRC0000000000000000002
+                 */
+                id: components["parameters"]["ProcessId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a scenario from a list of inputs
+         * @description phase-3-design.md section 4.4. The engine replays `start` and `steps` and fills each step's `expect` (refusals recorded as
+         *     `accepted: false`) and the `outcome` (unless the request gives one) from the replay, gives the scenario and its steps new ids,
+         *     and saves it as one change under `model/scenarios/<process file stem>/`. `?dryRun=true` returns the scenario without writing
+         *     it. Inputs that cannot be replayed to the last step (MQ9305, MQ9306, MQ9507) are 422 with the diagnostics.
+         */
+        post: operations["recordScenario"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/processes/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A process id (uppercase ULID).
+                 * @example 01JQPRC0000000000000000002
+                 */
+                id: components["parameters"]["ProcessId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replay a process's scenarios and report each one's first failure
+         * @description phase-3-design.md sections 3 and 4.4. Every scenario of the process (or the ids or names in `scenarios`) is replayed through
+         *     the engine interpreter; `failure` is the first failed expectation (MQ9301 to MQ9304) or the stop that kept the replay from the
+         *     last step (MQ9305, MQ9306, MQ9507; `expected` and `actual` are then null). Results are ordered by name, then id.
+         */
+        post: operations["verifyScenarios"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/processes/{id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A process id (uppercase ULID).
+                 * @example 01JQPRC0000000000000000002
+                 */
+                id: components["parameters"]["ProcessId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Export a process as an XState machine config
+         * @description phase-3-design.md section 5.1. The config in canonical key order (two-space indent, `\n` line ends, a trailing newline); what
+         *     has no XState home travels under `meta.maquettiste`, so importing the export over the process gives the same file.
+         *     `X-Maquettiste-Diagnostics` counts the MQ9406 notes (what went into `meta`); `X-Maquettiste-Warnings` counts the other
+         *     diagnostics (MQ9404: a kept opaque pointer that has no place in the config and was dropped). The CLI prints those to stderr
+         *     and the MCP tool returns every diagnostic in a second content block.
+         */
+        get: operations["exportProcess"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/processes/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview or apply an XState machine config import
+         * @description phase-3-design.md sections 5.1 and 5.2. `?dryRun=true` (the default) returns the process document the import gives with its
+         *     diagnostics (MQ9401 to MQ9406) and the ids it creates, writing nothing. `into` re-imports over an existing process (id or
+         *     name), keeping the ids of the nodes it matches; `removed` lists what it drops. With `dryRun=false` the document is saved as
+         *     one change: 409 when `into` changed since `expectedHash`, 422 when the import has errors or the process does not validate.
+         */
+        post: operations["importProcess"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/processes/{id}/sync-enum": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A process id (uppercase ULID).
+                 * @example 01JQPRC0000000000000000002
+                 */
+                id: components["parameters"]["ProcessId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync a lifecycle's bound enum with its root-level states
+         * @description phase-3-design.md sections 3 and 4.4, the `sync-enum` batch operation. The bound enum's members become the root-level states in
+         *     document order (ids, codes and descriptions kept). `dryRun: true` returns the plan. A member still used by a default,
+         *     `allowedValues`, a seed cell or a scenario value is listed in `refused` and not removed: there is no force flag, change the uses
+         *     first (applying such a plan is 422 with MQ9019). 409 when the process changed since `expectedHash`.
+         */
+        post: operations["syncEnumFromProcess"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/generate/plan": {
         parameters: {
             query?: never;
@@ -1269,7 +1439,7 @@ export interface components {
             detail?: string;
             instance?: string;
             /** @enum {string} */
-            code: "bad-request" | "unsupported-media-type" | "too-large" | "unauthenticated" | "bad-token" | "too-many-attempts" | "forbidden" | "forbidden-origin" | "not-found" | "not-a-diagram" | "not-a-database" | "invalid-icon" | "precondition-required" | "queue-full" | "job-finished" | "model-unavailable" | "superseded" | "internal";
+            code: "bad-request" | "unsupported-media-type" | "too-large" | "unauthenticated" | "bad-token" | "too-many-attempts" | "forbidden" | "forbidden-origin" | "not-found" | "not-a-diagram" | "not-a-database" | "invalid-icon" | "precondition-required" | "queue-full" | "job-finished" | "model-unavailable" | "superseded" | "conflict" | "internal";
             traceId?: string;
         };
         SignInRequest: {
@@ -1893,10 +2063,10 @@ export interface components {
             changes: components["schemas"]["ChangeSet"] | null;
         };
         /**
-         * @description `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `set-lifecycle` (`id` an entity, `target` a process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's lifecycle and turns the bound process back into an orchestration) and `set-initial` (`id` a process or a compound state, `target` one of its direct children). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`.
+         * @description `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `set-lifecycle` (`id` an entity, `target` a process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's lifecycle and turns the bound process back into an orchestration), `set-initial` (`id` a process or a compound state, `target` one of its direct children) and `refresh-scenario` (`id` a scenario: every step's `expect` and the `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step, or when another operation of the batch writes the scenario or its process). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`.
          * @enum {string}
          */
-        BatchOp: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "sync-enum" | "set-lifecycle" | "set-initial";
+        BatchOp: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario";
         BatchOperation: {
             op: components["schemas"]["BatchOp"];
             id: string | null;
@@ -1947,7 +2117,7 @@ export interface components {
              * @description The batch operation that fixes a finding of the rule, applied to the finding's element (phase-3-design.md section 3); absent when the rule has none.
              * @enum {string}
              */
-            quickFix?: "sync-enum" | "set-lifecycle" | "set-initial";
+            quickFix?: "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario";
         };
         Diagnostic: {
             rule: string;
@@ -2477,6 +2647,252 @@ export interface components {
             unit: components["schemas"]["PlanUnit"];
             groups: components["schemas"]["ReadKeyGroup"][];
             summary: string;
+        };
+        /** @description A scenario step without `expect` (phase-3-design.md section 2.4); `id` is optional in a request. Echoed in a trace with every member written. */
+        SimInput: {
+            id?: string;
+            /**
+             * @default event
+             * @enum {string}
+             */
+            input?: "event" | "time" | "invoke-done" | "invoke-error";
+            event?: string | null;
+            invoke?: string | null;
+            /** @description An ISO 8601 duration, for `time`. */
+            after?: string | null;
+            actor?: string | null;
+            signer?: string | null;
+            meaning?: string | null;
+            reason?: string | null;
+            payload?: {
+                [key: string]: unknown;
+            };
+            assume?: {
+                [key: string]: boolean;
+            };
+            /** @description Ignored in a request; null in a trace. */
+            expect?: Record<string, never> | null;
+            /** @description Inline Markdown text (a string) or a sidecar reference. */
+            description?: string | Record<string, never> | null;
+        };
+        SimulateRequest: {
+            /** @description An unsaved draft of the process document (`schemas/v1/process.json`). */
+            document?: Record<string, never> | null;
+            start?: components["schemas"]["SimStart"];
+            /** @description A scenario of the process whose start and steps run first. */
+            scenario?: string | null;
+            steps?: components["schemas"]["SimInput"][] | null;
+            /**
+             * @description The first trace index returned; -1 includes the initial entry.
+             * @default -1
+             */
+            from?: number | null;
+        };
+        /** @description The start of a simulation or scenario. */
+        SimStart: {
+            /** @description Initial context values by attribute id, over the defaults. */
+            context?: {
+                [key: string]: unknown;
+            };
+            /** @description The clock's start (ISO 8601); 2000-01-01T00:00:00Z when absent. */
+            at?: string;
+        } | null;
+        StepTrace: {
+            /** @description The input's index; -1 for the initial entry. */
+            index: number;
+            input: components["schemas"]["SimInput"] | null;
+            accepted: boolean;
+            /** @enum {string|null} */
+            refusal: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | null;
+            microsteps: components["schemas"]["MicrostepTrace"][];
+            guards: components["schemas"]["GuardEvaluation"][];
+            audit: components["schemas"]["GateAuditRecord"][];
+            configuration: components["schemas"]["Ulid"][];
+            context: {
+                [key: string]: unknown;
+            };
+            changed: {
+                [key: string]: unknown;
+            };
+            clock: string;
+            final: boolean;
+            diagnostics: components["schemas"]["Diagnostic"][];
+            /** @description A guard result was missing or the replay stopped (MQ9305, MQ9306, MQ9507); later inputs did not run. */
+            incomplete: boolean;
+        };
+        MicrostepTrace: {
+            transitions: components["schemas"]["Ulid"][];
+            exited: components["schemas"]["Ulid"][];
+            entered: components["schemas"]["Ulid"][];
+            actions: components["schemas"]["ActionRun"][];
+        };
+        ActionRun: {
+            action: components["schemas"]["Ulid"];
+            /** @enum {string} */
+            source: "expression" | "stub";
+            changed: {
+                [key: string]: unknown;
+            };
+        };
+        GuardEvaluation: {
+            guard: components["schemas"]["Ulid"];
+            transition: components["schemas"]["Ulid"];
+            result: boolean | null;
+            /** @enum {string} */
+            source: "expression" | "assumed" | "missing";
+        };
+        GateAuditRecord: {
+            instance: string;
+            process: components["schemas"]["Ulid"];
+            gate: components["schemas"]["Ulid"];
+            transition: components["schemas"]["Ulid"];
+            sequence: number;
+            signer: string | null;
+            actor: string | null;
+            meaning: string | null;
+            reason: string | null;
+            at: string;
+            /** @enum {string} */
+            outcome: "signed" | "completed" | "refused" | "discarded";
+            attributes: {
+                [key: string]: unknown;
+            };
+        };
+        EnabledTrigger: {
+            /** @enum {string} */
+            trigger: "event" | "invoke-done" | "invoke-error" | "time";
+            event: string | null;
+            invoke: string | null;
+            transitions: components["schemas"]["Ulid"][];
+            /** @description The actors the input must come from; empty for any. */
+            actors: components["schemas"]["Ulid"][];
+            /** @description A candidate's guard has no expression; the input needs `assume`. */
+            guardUnknown: boolean;
+            gate: components["schemas"]["GateProgress"] | null;
+        };
+        GateProgress: {
+            have: number;
+            need: number;
+        };
+        PendingInvoke: {
+            invoke: components["schemas"]["Ulid"];
+            state: components["schemas"]["Ulid"];
+        };
+        ScheduledTimer: {
+            transition: components["schemas"]["Ulid"];
+            dueAt: string;
+        };
+        GateSignature: {
+            signer: string;
+            actor: string;
+            meaning: string | null;
+            reason: string | null;
+        };
+        GateState: {
+            gate: components["schemas"]["Ulid"];
+            transition: components["schemas"]["Ulid"];
+            signatures: components["schemas"]["GateSignature"][];
+            satisfied: boolean;
+        };
+        SimulationResult: {
+            processHash: components["schemas"]["Hash"];
+            trace: components["schemas"]["StepTrace"][];
+            configuration: components["schemas"]["Ulid"][];
+            context: {
+                [key: string]: unknown;
+            };
+            enabled: components["schemas"]["EnabledTrigger"][];
+            pending: components["schemas"]["PendingInvoke"][];
+            timers: components["schemas"]["ScheduledTimer"][];
+            gates: components["schemas"]["GateState"][];
+            final: boolean;
+            clock: string;
+            diagnostics: components["schemas"]["Diagnostic"][];
+        };
+        RecordScenarioRequest: {
+            name: string;
+            start?: components["schemas"]["SimStart"];
+            steps?: components["schemas"]["SimInput"][] | null;
+            /**
+             * @description The expected outcome; the replay's when absent.
+             * @enum {string|null}
+             */
+            outcome?: "final" | "active" | null;
+        };
+        RecordScenarioResult: {
+            id: components["schemas"]["Ulid"];
+            /** @description The scenario document (`schemas/v1/scenario.json`), canonical. */
+            element: Record<string, never>;
+            hash: string | null;
+            applied: boolean;
+            diagnostics: components["schemas"]["Diagnostic"][];
+        };
+        VerifyRequest: {
+            /** @description Scenario ids or names; every scenario of the process when absent. */
+            scenarios?: string[] | null;
+        };
+        ScenarioFailure: {
+            /** @description The step index; -1 for the outcome. */
+            step: number;
+            rule: string;
+            message: string;
+            expected: unknown;
+            actual: unknown;
+        };
+        ScenarioVerification: {
+            scenario: components["schemas"]["Ulid"];
+            name: string;
+            passed: boolean;
+            steps: number;
+            failure: components["schemas"]["ScenarioFailure"] | null;
+        };
+        VerifyResult: {
+            process: components["schemas"]["Ulid"];
+            results: components["schemas"]["ScenarioVerification"][];
+            passed: boolean;
+        };
+        ProcessImportRequest: {
+            /** @description The XState machine config, as an object or a string holding one. */
+            config: Record<string, never> | string;
+            /** @description The package (id or name) of a new process. */
+            package?: string | null;
+            name?: string | null;
+            /** @enum {string|null} */
+            use?: "lifecycle" | "orchestration" | null;
+            /** @description The subject entity (id or name). */
+            subject?: string | null;
+            /** @description A process (id or name) to re-import over, keeping its ids. */
+            into?: string | null;
+            expectedHash?: string | null;
+        };
+        ProcessImportResult: {
+            /** @description The process document the import gives (`schemas/v1/process.json`), or null when the config cannot be read. */
+            document: Record<string, never> | null;
+            diagnostics: components["schemas"]["Diagnostic"][];
+            created: components["schemas"]["Ulid"][];
+            removed: components["schemas"]["Ulid"][];
+            applied: boolean;
+            id: string | null;
+            hash: string | null;
+        };
+        SyncEnumRequest: {
+            /** @default false */
+            dryRun?: boolean | null;
+            expectedHash?: string | null;
+        };
+        SyncEnumRefusal: {
+            member: string;
+            referencedBy: components["schemas"]["Ulid"][];
+        };
+        SyncEnumResult: {
+            process: components["schemas"]["Ulid"];
+            enum: string | null;
+            added: string[];
+            removed: string[];
+            reordered: boolean;
+            refused: components["schemas"]["SyncEnumRefusal"][];
+            applied: boolean;
+            diagnostics: components["schemas"]["Diagnostic"][];
         };
         PresenceReport: {
             /** @description `site.realtime.connectionId` of the reporting window. */
@@ -4586,7 +5002,7 @@ export interface components {
         batch: {
             operations: ({
                 /** @enum {unknown} */
-                op: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "sync-enum" | "set-lifecycle" | "set-initial";
+                op: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario";
                 id?: components["schemas"]["id"];
                 expectedHash?: string;
                 element?: Record<string, never>;
@@ -4794,6 +5210,11 @@ export interface components {
         PackFilePath: string;
         /** @description A declared BCP 47 locale other than the default. */
         Locale: string;
+        /**
+         * @description A process id (uppercase ULID).
+         * @example 01JQPRC0000000000000000002
+         */
+        ProcessId: components["schemas"]["Ulid"];
         /**
          * @description An element or sub-element id (uppercase ULID).
          * @example 01J92P0V0FJ23CGSNKM7P1W5V7
@@ -6237,6 +6658,523 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    simulateProcess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A process id (uppercase ULID).
+                 * @example 01JQPRC0000000000000000002
+                 */
+                id: components["parameters"]["ProcessId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                /**
+                 * @example {
+                 *       "start": {
+                 *         "context": {
+                 *           "01JQATT0000000000000000201": 2500
+                 *         }
+                 *       },
+                 *       "steps": [
+                 *         {
+                 *           "event": "01JQPRX0000000000000000014",
+                 *           "actor": "01JQACT0000000000000000008"
+                 *         }
+                 *       ],
+                 *       "from": 0
+                 *     }
+                 */
+                "application/json": components["schemas"]["SimulateRequest"];
+            };
+        };
+        responses: {
+            /** @description The traces and where the process stands after the last input. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "processHash": "4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73",
+                     *       "trace": [
+                     *         {
+                     *           "index": 0,
+                     *           "input": {
+                     *             "id": "input-0",
+                     *             "input": "event",
+                     *             "event": "01JQPRX0000000000000000014",
+                     *             "invoke": null,
+                     *             "after": null,
+                     *             "actor": "01JQACT0000000000000000008",
+                     *             "signer": null,
+                     *             "meaning": null,
+                     *             "reason": null,
+                     *             "payload": {},
+                     *             "assume": {},
+                     *             "expect": null,
+                     *             "description": null
+                     *           },
+                     *           "accepted": true,
+                     *           "refusal": null,
+                     *           "microsteps": [
+                     *             {
+                     *               "transitions": [
+                     *                 "01JQTRN0000000000000000101"
+                     *               ],
+                     *               "exited": [
+                     *                 "01JQSTA0000000000000000101"
+                     *               ],
+                     *               "entered": [
+                     *                 "01JQSTA0000000000000000102",
+                     *                 "01JQSTA0000000000000000104",
+                     *                 "01JQSTA0000000000000000108"
+                     *               ],
+                     *               "actions": []
+                     *             }
+                     *           ],
+                     *           "guards": [],
+                     *           "audit": [],
+                     *           "configuration": [
+                     *             "01JQSTA0000000000000000104",
+                     *             "01JQSTA0000000000000000108"
+                     *           ],
+                     *           "context": {
+                     *             "01JQATT0000000000000000201": 2500
+                     *           },
+                     *           "changed": {},
+                     *           "clock": "2000-01-01T00:00:00Z",
+                     *           "final": false,
+                     *           "diagnostics": [],
+                     *           "incomplete": false
+                     *         }
+                     *       ],
+                     *       "configuration": [
+                     *         "01JQSTA0000000000000000104",
+                     *         "01JQSTA0000000000000000108"
+                     *       ],
+                     *       "context": {
+                     *         "01JQATT0000000000000000201": 2500
+                     *       },
+                     *       "enabled": [
+                     *         {
+                     *           "trigger": "invoke-done",
+                     *           "event": null,
+                     *           "invoke": "01JQPRX0000000000000000019",
+                     *           "transitions": [
+                     *             "01JQTRN0000000000000000105"
+                     *           ],
+                     *           "actors": [],
+                     *           "guardUnknown": false,
+                     *           "gate": null
+                     *         }
+                     *       ],
+                     *       "pending": [
+                     *         {
+                     *           "invoke": "01JQPRX0000000000000000019",
+                     *           "state": "01JQSTA0000000000000000104"
+                     *         }
+                     *       ],
+                     *       "timers": [],
+                     *       "gates": [],
+                     *       "final": false,
+                     *       "clock": "2000-01-01T00:00:00Z",
+                     *       "diagnostics": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SimulationResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            /** @description The draft `document` adds an error; nothing ran. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationReport"];
+                };
+            };
+        };
+    };
+    recordScenario: {
+        parameters: {
+            query?: {
+                dryRun?: boolean;
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description A process id (uppercase ULID).
+                 * @example 01JQPRC0000000000000000002
+                 */
+                id: components["parameters"]["ProcessId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "name": "BudgetRejected",
+                 *       "start": {
+                 *         "context": {
+                 *           "01JQATT0000000000000000201": 2500
+                 *         }
+                 *       },
+                 *       "steps": [
+                 *         {
+                 *           "event": "01JQPRX0000000000000000014",
+                 *           "actor": "01JQACT0000000000000000008"
+                 *         },
+                 *         {
+                 *           "input": "invoke-error",
+                 *           "invoke": "01JQPRX0000000000000000019"
+                 *         }
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["RecordScenarioRequest"];
+            };
+        };
+        responses: {
+            /** @description The scenario a dry run would save. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordScenarioResult"];
+                };
+            };
+            /** @description The scenario was saved; `ETag` is its hash and `Location` its element. */
+            201: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "01JQSCN0000000000000000099",
+                     *       "element": {
+                     *         "kind": "scenario",
+                     *         "id": "01JQSCN0000000000000000099",
+                     *         "name": "BudgetRejected",
+                     *         "process": "01JQPRC0000000000000000002",
+                     *         "steps": []
+                     *       },
+                     *       "hash": "4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73",
+                     *       "applied": true,
+                     *       "diagnostics": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["RecordScenarioResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            /** @description The model changed while the scenario was saved; nothing was written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationReport"];
+                };
+            };
+            /** @description The inputs cannot be replayed to the last step, or the scenario does not validate; nothing was written. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationReport"];
+                };
+            };
+        };
+    };
+    verifyScenarios: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A process id (uppercase ULID).
+                 * @example 01JQPRC0000000000000000002
+                 */
+                id: components["parameters"]["ProcessId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                /**
+                 * @example {
+                 *       "scenarios": [
+                 *         "01JQSCN0000000000000000010"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["VerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description One result per scenario. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "process": "01JQPRC0000000000000000002",
+                     *       "results": [
+                     *         {
+                     *           "scenario": "01JQSCN0000000000000000010",
+                     *           "name": "BudgetRejected",
+                     *           "passed": true,
+                     *           "steps": 3,
+                     *           "failure": null
+                     *         }
+                     *       ],
+                     *       "passed": true
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VerifyResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    exportProcess: {
+        parameters: {
+            query?: {
+                format?: "xstate";
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description A process id (uppercase ULID).
+                 * @example 01JQPRC0000000000000000002
+                 */
+                id: components["parameters"]["ProcessId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The XState config. */
+            200: {
+                headers: {
+                    /** @description The number of MQ9406 notes. */
+                    "X-Maquettiste-Diagnostics"?: number;
+                    /** @description The number of other export diagnostics (MQ9404). */
+                    "X-Maquettiste-Warnings"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "PurchaseApproval",
+                     *       "initial": "Drafting",
+                     *       "states": {
+                     *         "Drafting": {
+                     *           "id": "01JQSTA0000000000000000101",
+                     *           "on": {
+                     *             "submit": [
+                     *               {
+                     *                 "target": [
+                     *                   "#01JQSTA0000000000000000102"
+                     *                 ]
+                     *               }
+                     *             ]
+                     *           }
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    importProcess: {
+        parameters: {
+            query?: {
+                format?: "xstate";
+                dryRun?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "config": {
+                 *         "id": "Door",
+                 *         "initial": "Closed",
+                 *         "states": {
+                 *           "Closed": {
+                 *             "on": {
+                 *               "open": "Opened"
+                 *             }
+                 *           },
+                 *           "Opened": {
+                 *             "on": {
+                 *               "close": "Closed"
+                 *             }
+                 *           }
+                 *         }
+                 *       },
+                 *       "package": "purchasing",
+                 *       "use": "orchestration"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ProcessImportRequest"];
+            };
+        };
+        responses: {
+            /** @description The preview, or the saved import (`applied` true, `hash`). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "document": {
+                     *         "kind": "process",
+                     *         "id": "01JQPRC0000000000000000099",
+                     *         "name": "Door",
+                     *         "states": []
+                     *       },
+                     *       "diagnostics": [],
+                     *       "created": [
+                     *         "01JQPRC0000000000000000099"
+                     *       ],
+                     *       "removed": [],
+                     *       "applied": false,
+                     *       "id": "01JQPRC0000000000000000099",
+                     *       "hash": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ProcessImportResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            /** @description `into` changed since `expectedHash`; nothing was written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessImportResult"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The import has errors, or the process does not validate; nothing was written. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessImportResult"];
+                };
+            };
+        };
+    };
+    syncEnumFromProcess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A process id (uppercase ULID).
+                 * @example 01JQPRC0000000000000000002
+                 */
+                id: components["parameters"]["ProcessId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                /**
+                 * @example {
+                 *       "dryRun": true
+                 *     }
+                 */
+                "application/json": components["schemas"]["SyncEnumRequest"];
+            };
+        };
+        responses: {
+            /** @description The plan, applied unless `dryRun`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "process": "01JQPRC0000000000000000001",
+                     *       "enum": "01JQENM0000000000000000001",
+                     *       "added": [
+                     *         "OnHold"
+                     *       ],
+                     *       "removed": [],
+                     *       "reordered": false,
+                     *       "refused": [],
+                     *       "applied": false,
+                     *       "diagnostics": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SyncEnumResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            /** @description The process changed since `expectedHash`; nothing was written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncEnumResult"];
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The process is not a bound lifecycle, or a removal is refused (MQ9019 in `diagnostics`); nothing was written. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncEnumResult"];
+                };
+            };
         };
     };
     startPlan: {

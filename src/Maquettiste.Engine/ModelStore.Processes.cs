@@ -3,13 +3,14 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Loading;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Processes;
 using Maquettiste.Engine.Validation;
 
 namespace Maquettiste.Engine;
 
 /// <summary>
 /// The process operations of a batch (phase-3-design.md sections 3 and 4.4): <c>sync-enum</c>, <c>set-lifecycle</c> and
-/// <c>set-initial</c>. Each expands into updates of the documents it touches (the enum, the entity and the processes of a lifecycle
+/// <c>set-initial</c> and <c>refresh-scenario</c>. Each expands into updates of the documents it touches (the enum, the entity and the processes of a lifecycle
 /// binding, or the process holding a compound state); the updates run with the batch's other operations, all or nothing, and a
 /// refused operation reports MQ9019 on its pointer.
 /// </summary>
@@ -17,7 +18,7 @@ public sealed partial class ModelStore
 {
     /// <summary>Whether an operation is a process operation.</summary>
     /// <param name="op">The operation kind.</param>
-    public static bool IsProcessOperation(BatchOp op) => op is BatchOp.SyncEnum or BatchOp.SetLifecycle or BatchOp.SetInitial;
+    public static bool IsProcessOperation(BatchOp op) => op is BatchOp.SyncEnum or BatchOp.SetLifecycle or BatchOp.SetInitial or BatchOp.RefreshScenario;
 
     /// <summary>
     /// What <c>sync-enum</c> on a lifecycle would change, without writing: the dry run the Problems quick fix and the process
@@ -53,6 +54,7 @@ public sealed partial class ModelStore
         {
             BatchOp.SyncEnum => Sync(o),
             BatchOp.SetLifecycle => SetLifecycle(o),
+            BatchOp.RefreshScenario => RefreshScenario(o),
             _ => SetInitial(o),
         };
 
@@ -396,6 +398,77 @@ public sealed partial class ModelStore
             Node(owner, o.ExpectedHash); // marks the working copy the holder belongs to as changed
             holder["initial"] = o.Target;
             return null;
+        }
+
+        // ---- refresh-scenario ----
+
+        private string? RefreshScenario(BatchOperation o)
+        {
+            if (o.Id is null || snapshot.Get<Scenario>(o.Id) is not { } scenario)
+                return $"'{o.Id}' is not a scenario; pass the id of the scenario whose expectations to rewrite.";
+            foreach (var written in new[] { scenario.Id, scenario.Process })
+            {
+                if (_staged.ContainsKey(written))
+                    return $"'{Name(written)}' is also written by another operation of this batch; save it first, then refresh the scenario in a batch of its own.";
+            }
+
+            ScenarioReplay? replay;
+            using (var runtime = new ProcessRuntime(snapshot, 1, CancellationToken.None))
+                replay = ScenarioReplayer.Replay(scenario, runtime);
+            if (replay is null)
+                return $"Scenario '{scenario.Name}' names no process of the model; set its process, then refresh it.";
+            if (!replay.Complete)
+            {
+                var why = replay.Diagnostics.FirstOrDefault(d => d.Rule is "MQ9305" or "MQ9306" or "MQ9507")?.Message ?? "the replay stopped early";
+                return $"Scenario '{scenario.Name}' cannot be replayed to its last step ({why}); fix that step, then refresh again.";
+            }
+
+            var (expects, outcome) = replay.Observed();
+            var node = Node(scenario.Id, o.ExpectedHash, track: false);
+            var steps = node["steps"] as JsonArray ?? [];
+            var changed = false;
+            for (var i = 0; i < steps.Count && i < expects.Count; i++)
+            {
+                if (steps[i] is not JsonObject step)
+                    continue;
+                var expect = ExpectNode(expects[i]);
+                if (!JsonNode.DeepEquals(step["expect"], expect))
+                {
+                    step["expect"] = expect;
+                    changed = true;
+                }
+            }
+
+            var outcomeText = outcome == ScenarioOutcome.Final ? "final" : null;
+            if (node["outcome"]?.GetValue<string>() is var current && !string.Equals(current ?? "active", outcomeText ?? "active", StringComparison.Ordinal))
+            {
+                if (outcomeText is null)
+                    node.Remove("outcome");
+                else
+                    node["outcome"] = outcomeText;
+                changed = true;
+            }
+
+            if (changed)
+                Node(scenario.Id, o.ExpectedHash); // marks the working copy as changed
+            return null;
+        }
+
+        private static JsonObject ExpectNode(StepExpectation expect)
+        {
+            var node = new JsonObject();
+            if (!expect.Accepted)
+                node["accepted"] = false;
+            node["states"] = new JsonArray([.. expect.States.Select(s => (JsonNode?)JsonValue.Create(s))]);
+            if (expect.Context.Count > 0)
+            {
+                var context = new JsonObject();
+                foreach (var (id, value) in expect.Context.OrderBy(p => p.Key, StringComparer.Ordinal))
+                    context[id] = JsonNode.Parse(value.GetRawText());
+                node["context"] = context;
+            }
+
+            return node;
         }
 
         // ---- helpers ----

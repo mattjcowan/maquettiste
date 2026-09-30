@@ -1,0 +1,21 @@
+{
+  "id": "Review",
+  "initial": "Draft",
+  "states": {
+    "Draft": {
+      "entry": "({ context }) => console.log(context)",
+      "on": {
+        "submit": {
+          "target": "Review",
+          "guard": "({ context }) => context.amount > 0",
+          "actions": ["notify", "function (args) { return args; }"]
+        }
+      }
+    },
+    "Review": {
+      "invoke": { "src": "async ({ input }) => fetch(input.url)", "onDone": "Done" },
+      "after": { "({ context }) => context.wait": "Draft" }
+    },
+    "Done": { "type": "final" }
+  }
+}

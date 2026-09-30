@@ -694,7 +694,7 @@ public sealed partial class ModelStore : IAsyncDisposable
         {
             var outcome = plan.Outcomes[ChangeIndexOf(diagnostic, candidate, plan, byPath)];
             outcome.Diagnostics.Add(diagnostic);
-            if (diagnostic.Severity != DiagnosticSeverity.Error)
+            if (diagnostic.Severity != DiagnosticSeverity.Error || RuleCatalog.IsReplayFinding(diagnostic.Rule))
                 continue;
             var key = ErrorKey(diagnostic);
             if (known.TryGetValue(key, out var count) && count > 0)
@@ -956,6 +956,12 @@ public enum BatchOp
 
     /// <summary><c>set-initial</c>: makes state <c>target</c> the initial child of process <c>id</c> (its root) or of compound state <c>id</c>.</summary>
     [JsonStringEnumMemberName("set-initial")] SetInitial,
+
+    /// <summary>
+    /// <c>refresh-scenario</c>: rewrites the <c>expect</c> of every step of scenario <c>id</c> and its <c>outcome</c> from a replay in the
+    /// engine interpreter (phase-3-design.md section 3); refused when the replay cannot reach the last step.
+    /// </summary>
+    [JsonStringEnumMemberName("refresh-scenario")] RefreshScenario,
 }
 
 /// <summary>One batch operation.</summary>

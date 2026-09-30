@@ -182,7 +182,7 @@ public static class RuleCatalog
         new("MQ9016", W, "A process diagram member that is not a state of the diagram's process; remove the member."),
         new("MQ9017", W, "A parallel state with one region; add a region or make the state compound."),
         new("MQ9018", W, "A done transition whose source has no reachable final state (in every region, for a parallel source), so it never fires; add a reachable final child or change the trigger."),
-        new("MQ9019", E, "A process operation (sync-enum, set-lifecycle, set-initial) was refused: its element is not what the operation needs, the target is not a direct child or a process, the enum sync would remove members still in use, or another operation of the batch writes the process or enum it syncs; fix the operation, change the uses to a remaining member, or sync in a batch of its own."),
+        new("MQ9019", E, "A process operation (sync-enum, set-lifecycle, set-initial, refresh-scenario) was refused: its element is not what the operation needs, the target is not a direct child or a process, the enum sync would remove members still in use, a scenario cannot be replayed to its last step, or another operation of the batch writes the process, enum or scenario it changes; fix the operation or the step, change the uses to a remaining member, or run it in a batch of its own."),
 
         new("MQ9101", E, "A gate needs more signatures than its signers can give (only person actors, repeat signing off); lower required, add signers, or allow repeat signers."),
         new("MQ9102", E, "A gate's required actors are not all among its signers; add them to signers."),
@@ -196,6 +196,25 @@ public static class RuleCatalog
         new("MQ9203", E, "Enum drift: the bound enum's members differ from the lifecycle's root-level states (missing, extra or out of order); sync the enum from the process.", "sync-enum"),
         new("MQ9204", W, "The bound enum is used by other attributes or processes, so syncing it from the process changes them too; give the lifecycle its own enum if they should not follow."),
         new("MQ9205", W, "The bound attribute's default is not the lifecycle's initial root-level state; set the default to that state's name."),
+        new("MQ9301", E, "A scenario step is refused while expect.accepted is true (no transition, a guard false, an actor not allowed, a gate refusal), or accepted while it is false; fix the step's input or set accepted to what the process does."),
+        new("MQ9302", E, "The active states after a scenario step differ from expect.states; fix the chart or update the expectations from a replay.", "refresh-scenario"),
+        new("MQ9303", E, "The context attributes a scenario step changed differ from expect.context; fix the actions or update the expectations from a replay.", "refresh-scenario"),
+        new("MQ9304", E, "Whether the process is final after the scenario's last step differs from outcome; fix the steps or update the expectations from a replay.", "refresh-scenario"),
+        new("MQ9305", E, "A scenario step's fields are inconsistent: an event the process does not declare, a time step without a positive duration, an invoke that is not pending, or a payload value that is not an attribute of the event or does not fit its type; fix the step."),
+        new("MQ9306", W, "A guard without an expression is evaluated during a scenario step that has no assume value for it, so the replay stops there; add the guard to the step's assume, or give the guard an expression."),
+        new("MQ9401", W, "XState configuration the model has no place for (custom actor logic, tags, output, systemId, parameterized guards or actions, spawn, sendTo, unknown keys) was kept as opaque data in the process's source extensions and is written back on export; model it with process features where one exists, or leave it for the host."),
+        new("MQ9402", W, "An inline function in the XState configuration (a guard, action, delay or invoke source given as function text) became a named stub whose description holds the text, which never runs; give the stub an expression or implement its handler."),
+        new("MQ9403", E, "The import input is not a statechart configuration the importer accepts (invalid JSON, no states, a target or initial state that does not resolve, a parallel root, or an unknown state type); fix the configuration and import it again."),
+        new("MQ9404", W, "An XState feature was mapped approximately or dropped on import or export (a guard combinator, a named delay without a value, an actor or custom state id the model does not know, a name that is not an identifier, data that no longer has a place); review the imported process."),
+        new("MQ9405", E, "An id carried in the configuration names an element of another kind or of another process, or is used twice, so the node got a new id; re-import into the process the ids belong to, or remove the stale ids."),
+        new("MQ9406", I, "Export wrote model data with no XState equivalent (ids, display names, types, gates, durations, invoke kinds) into meta.maquettiste, so an import restores it; keep the meta entries when editing the configuration by hand."),
+        new("MQ9501", E, "A guard or action expression does not parse as one JavaScript expression; fix its syntax (an action returns an object literal in parentheses)."),
+        new("MQ9502", E, "A guard or action expression threw while a scenario replayed or a simulation ran; fix the expression, for example guard against missing values."),
+        new("MQ9503", E, "A guard or action expression exceeded the sandbox deadline (50 ms) or statement limit (100,000); simplify it, or leave the expression empty and implement the handler."),
+        new("MQ9504", W, "A guard returned a value that is not a boolean, which counts as false; make the expression return true or false."),
+        new("MQ9505", W, "An action's result names an attribute the context does not declare, or a value that does not fit the attribute's type, and the entry is ignored; return only context attribute names with values of their types."),
+        new("MQ9506", W, "Two guarded transitions of one source and trigger were enabled at once, and the first in priority order was taken; make the guards exclusive or reorder the transitions."),
+        new("MQ9507", E, "A macrostep ran more than 1,000 microsteps (an eventless loop whose guards keep holding, or internal events that keep raising each other); break the loop with a guard that turns false."),
     ];
 
     private static readonly FrozenDictionary<string, RuleInfo> ById = Rules.ToFrozenDictionary(r => r.Id, StringComparer.Ordinal);
@@ -253,6 +272,15 @@ public static class RuleCatalog
     /// <returns>The rule.</returns>
     /// <exception cref="KeyNotFoundException">The id is not a built-in rule.</exception>
     public static RuleInfo Get(string id) => ById[id];
+
+    /// <summary>
+    /// Whether a rule reports what a scenario replay found (MQ93xx, MQ9502 to MQ9507): a verification result, like a failing test, that is
+    /// reported on a save but does not refuse it, so a chart edit can be saved and its scenarios then refreshed (phase-3-design.md 3).
+    /// </summary>
+    /// <param name="ruleId">The rule id.</param>
+    /// <returns><see langword="true"/> for a replay finding.</returns>
+    public static bool IsReplayFinding(string ruleId) =>
+        ruleId.StartsWith("MQ93", StringComparison.Ordinal) || ruleId is "MQ9502" or "MQ9503" or "MQ9504" or "MQ9505" or "MQ9506" or "MQ9507";
 
     /// <summary>Creates a diagnostic with the rule's default severity.</summary>
     /// <param name="ruleId">The built-in rule id.</param>

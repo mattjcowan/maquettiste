@@ -18,6 +18,7 @@ internal sealed class CommandLine
     {
         "--repo", "--cache-dir", "--jobs", "--progress", "--verbosity", "--format", "--output", "--pack", "--roots", "--hand-edits",
         "--from", "--out", "--docker", "--locale", "--mode", "--name", "--seed", "--entities", "--relations", "--enums", "--fanout", "--baseline", "--max-regression",
+        "--inputs", "--scenario", "--domain", "--use", "--subject", "--into", "--processes",
     };
 
     /// <summary>Options that are flags.</summary>

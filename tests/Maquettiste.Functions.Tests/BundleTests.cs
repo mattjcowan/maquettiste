@@ -7,7 +7,7 @@ namespace Maquettiste.Functions.Tests;
 
 /// <summary>
 /// The site zip's <c>_functions/</c> (phase2-design.md section 3.1): within the host's limits (50 files, 1 MB each, 4 MB in all) and the
-/// budget (24 files, 40 KB each, 400 KB in all); directives only in <c>Directives.cs</c>, pinning the version <c>Directory.Build.props</c>
+/// budget (25 files since phase 3 added ProcessEndpoints.cs, 40 KB each, 400 KB in all); directives only in <c>Directives.cs</c>, pinning the version <c>Directory.Build.props</c>
 /// builds; no <c>#:project</c>; class names unique across files; and <c>_variables.json</c> declaring what the functions read.
 /// </summary>
 public sealed partial class BundleTests
@@ -22,7 +22,7 @@ public sealed partial class BundleTests
         var files = Files;
 
         Assert.All(files, f => Assert.Equal(".cs", f.Extension));
-        Assert.InRange(files.Count, 1, 24);
+        Assert.InRange(files.Count, 1, 25);
         Assert.All(files, f => Assert.True(f.Length <= 40 * 1024, $"{f.Name} is {f.Length} bytes, over the 40 KB budget."));
         Assert.True(files.Sum(f => f.Length) <= 400 * 1024, $"_functions/ is {files.Sum(f => f.Length)} bytes, over the 400 KB budget.");
         Assert.True(files.Count <= 50 && files.All(f => f.Length <= 1024 * 1024) && files.Sum(f => f.Length) <= 4 * 1024 * 1024);

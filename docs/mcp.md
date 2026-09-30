@@ -115,7 +115,7 @@ claude mcp add maquettiste -- docker run -i --rm --user "$(id -u):$(id -g)" -v "
 ```
 
 Checked on Linux (Docker Engine, amd64) with a stdio client over `docker run -i --rm --user ... maquettiste mcp`: `initialize`
-in 0.7 s, `tools/list` with 18 tools (image 0.1.0; the published 0.2.0 image lists 24, the current source 40), `validate` in 55 ms, the container removed on exit. The wrapper's shape (arguments, stderr
+in 0.7 s, `tools/list` with 18 tools (image 0.1.0; the published 0.2.0 image lists 24, the current source 46), `validate` in 55 ms, the container removed on exit. The wrapper's shape (arguments, stderr
 to the log, stdout untouched) is covered by the CLI tests.
 
 ### In this repository
@@ -134,7 +134,7 @@ Create the copy first with `docker/dev-billing.sh`, or without Docker, then buil
 ```sh
 mkdir -p tmp/billing && cp -r tests/fixtures/models/billing/.maquettiste tmp/billing/
 dotnet build src/Maquettiste.Cli -c Release
-claude                               # then /mcp shows maquettiste connected with 40 tools
+claude                               # then /mcp shows maquettiste connected with 46 tools
 ```
 
 A headless check that needs no approval prompt (an explicit `--mcp-config` is trusted):
@@ -169,7 +169,13 @@ the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.We
 | `save_element` | saveElement | `id`, `element` (whole document), `expectedHash` | the save result (new `hash`, changes) |
 | `create_element` | createElement | `element` (an id is assigned when absent) | the save result with the new `id`; write a database with `byConvention` (`none`, `packages` or `all`): without it a database with no `packages` takes every entity (the rule from before 0.3.0) |
 | `delete_element` | deleteElement | `id`, `expectedHash`, `resolution` (`refuse` default, or `remove-references`) | the save result |
-| `apply_batch` | applyBatch | `operations` (the batch's `operations` array, or the whole `{ "operations": [...] }` body); besides create, update and delete, the database schema operations `add-schema`, `rename-schema`, `remove-schema` (with `target` to move what lives there, `default` when removing the default) and `set-default-schema`; the process operations `sync-enum` (`id` a lifecycle process: its bound enum's members become the root-level states in order; a removal of a member still used by a default, allowed values, a seed cell or a scenario value is refused with MQ9019; change the uses first), `set-lifecycle` (`id` an entity, `target` a process, both sides in one change; no `target` clears it) and `set-initial` (`id` a process or compound state, `target` a direct child) | the batch result, all or nothing |
+| `apply_batch` | applyBatch | `operations` (the batch's `operations` array, or the whole `{ "operations": [...] }` body); besides create, update and delete, the database schema operations `add-schema`, `rename-schema`, `remove-schema` (with `target` to move what lives there, `default` when removing the default) and `set-default-schema`; the process operations `sync-enum` (`id` a lifecycle process: its bound enum's members become the root-level states in order; a removal of a member still used by a default, allowed values, a seed cell or a scenario value is refused with MQ9019; change the uses first), `set-lifecycle` (`id` an entity, `target` a process, both sides in one change; no `target` clears it) `set-initial` (`id` a process or compound state, `target` a direct child) and `refresh-scenario` (`id` a scenario: its steps' `expect` and its `outcome` are rewritten from the engine's replay; refused when the batch also writes the scenario or its process, or when the replay stops early) | the batch result, all or nothing |
+| `simulate_process` | simulateProcess | `process` (id, name or model path), `steps` (scenario steps without `expect`; ids optional), `start` (`{ context, at }`), `scenario` (its start and steps run first), `document` (an unsaved draft; invalid is `invalid` with diagnostics), `from` | `{ processHash, trace, configuration, context, enabled, pending, timers, gates, final, clock, diagnostics }`; nothing is kept between calls: send the whole input list each time |
+| `record_scenario` | recordScenario | `process`, `name`, `steps`, `start`, `outcome` (the replay's when absent), `dryRun` | `{ id, element, hash, applied, diagnostics }`: the scenario with every step's `expect` and the outcome filled from the engine's replay, saved unless `dryRun` |
+| `verify_scenarios` | verifyScenarios | `process`, `scenarios` (ids or names; all when absent) | `{ process, results: [{ scenario, name, passed, steps, failure }], passed }`; `failure` is `{ step, rule, message, expected, actual }` |
+| `export_process` | exportProcess | `process`, `format` (`xstate`) | the XState v5 machine config text (canonical key order; the model data without an XState home under `meta.maquettiste`), then, when there are any, a second block `{ diagnostics }` (MQ9404, MQ9406) |
+| `import_process` | importProcess | `config` (object or string), `package`, `name`, `use`, `subject` for a new process, or `into` (id or name) and `expectedHash`; `apply` (false: a dry run) | `{ document, diagnostics, created, removed, applied, id, hash }`; errors (MQ9401 to MQ9405) or a changed `into` refuse the apply |
+| `sync_enum_from_process` | syncEnumFromProcess | `process` (a lifecycle), `expectedHash`, `apply` (false: a dry run) | `{ process, enum, added, removed, reordered, refused, applied, diagnostics }`; a member still in use is refused, never removed |
 | `get_references` | getReferences | `id` | where the element is used |
 | `localization_status` | getLocalizationStatus | | `defaultLocale`, `declared`, and per translated locale its `chain` and per shard `expected`, `translated`, `missing`, `stale` |
 | `get_translations` | getTranslations | `locale`, `owner` or `shard` (optional), `missing` (the entries that need work, 200 per page), `cursor` | `{ entries, cursor }`: per field the `source`, `translation`, `effective` text, `state` (`translated`, `missing`, `stale`, `fallback`), `shard` and `shardHash` |
@@ -211,6 +217,12 @@ The pack tools let a client write a pack end to end, as the editor's Generate sc
 as `overlay` to try it before saving), fix the diagnostics, check where the files land with `unit_paths`, then `plan`,
 `get_plan` with `units` true, and `explain_unit` for the reason each unit renders or does not. The files are the ones under
 `.maquettiste/templates/<pack>/` that the command line, the editor and git all see.
+
+The process tools mirror the process operations of the editor API (phase-3-design.md section 4.4) and the `maquettiste process`
+verbs. A process argument is an id, a name or a model path. Simulation keeps no state on the server: an agent holds the input list,
+calls `simulate_process` with all of it, reads `enabled` for what can happen next, and turns a run it likes into a scenario with
+`record_scenario`. `verify_scenarios` replays scenarios the way `validate` does (MQ9301 to MQ9306). `import_process` and
+`sync_enum_from_process` are dry runs unless `apply` is true.
 
 The reference data and localization tools are `localization_status`, `get_translations`, `set_translations`,
 `create_seed`, `export_seed_csv`, `import_seed_csv` and `reference_type_usage`; the kinds `reference-type` and `seed` work with every

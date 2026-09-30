@@ -1,0 +1,18 @@
+{
+  "id": "Ticket",
+  "version": "1.2",
+  "initial": "Open",
+  "meta": { "owner": "support" },
+  "states": {
+    "Open": {
+      "tags": ["visible", "editable"],
+      "description": "Waiting for an agent.",
+      "on": {
+        "close": { "target": "Closed", "actions": [{ "type": "sendTo", "to": "audit" }] },
+        "*": "Open"
+      },
+      "meta": { "color": "green" }
+    },
+    "Closed": { "type": "final", "output": { "resolved": true } }
+  }
+}

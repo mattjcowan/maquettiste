@@ -20,7 +20,8 @@ public static class Program
         "                         [--advisory-budgets]\n" +
         "                         [--cli <maquettiste executable> | --no-one-shot]\n" +
         "       Maquettiste.Bench write-model --out <dir> [options]   (the explorer's large mock model; see WriteModel.Usage)\n" +
-        "       Maquettiste.Bench time-tables --model <dir> [--jobs 8] [--rounds 3]   (E5c and E5f timings; edits the model)\n";
+        "       Maquettiste.Bench time-tables --model <dir> [--jobs 8] [--rounds 3]   (E5c and E5f timings; edits the model)\n" +
+        "       Maquettiste.Bench time-processes [--out <dir>] [--entities 5000] [--processes 1000] [--scenarios 5000] [--jobs <cores>]   (phase 3 budgets)\n";
 
     /// <summary>Runs the benchmark.</summary>
     /// <param name="args">The arguments.</param>
@@ -39,6 +40,8 @@ public static class Program
             return await WriteModel.RunAsync(args[1..], Console.Out, Console.Error, cancel.Token).ConfigureAwait(false);
         if (args.Length > 0 && args[0] == TimeTables.Verb)
             return await TimeTables.RunAsync(args[1..], Console.Out, Console.Error, cancel.Token).ConfigureAwait(false);
+        if (args.Length > 0 && args[0] == TimeProcesses.Verb)
+            return await TimeProcesses.RunAsync(args[1..], Console.Out, Console.Error, cancel.Token).ConfigureAwait(false);
         if (args.Length > 0 && args[0] == TimeLoad.Verb)
             return await TimeLoad.RunAsync(args[1..], Console.Out, Console.Error, cancel.Token).ConfigureAwait(false);
         if (args.Length > 0 && args[0] == OneShotGenerate.Verb)
