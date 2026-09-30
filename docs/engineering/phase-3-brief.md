@@ -1,5 +1,16 @@
 # Phase 3 brief: processes
 
+**Status (2026-09-29): answered; the design exists in `phase-3-design.md`.** The owner answered all ten questions:
+(1) definitions and handler stubs only, with a small generated interpreter as a pack output; (2) a sales-order lifecycle
+and a purchase-approval orchestration as fixtures under `tests/fixtures/models`; (3) scenarios recorded in the
+simulation panel and turned into tests by a pack, C# first, TypeScript second; (4) the process owns the state list, drift
+is an error with a "Sync enum from process" quick fix; (5) signers are actors, the audit record shape is modelled and its
+storage is a template or mapping choice; (6) JavaScript in the existing sandbox; (7) unknown XState config kept as
+opaque data and inline functions turned into named stubs, both with warnings; (8) a layered layout library, positions
+saved in the diagram file; (9) events process-local until phase 4; (10) phase 3 starts now, L2 to L5 as a side track,
+the owner applies the errata. Added: actors and scenarios are element kinds in phase 3, operations stay in phase 4,
+generated code leaves room for regions and pairs, and the packs generate a loosely coupled dispatch.
+
 Phases 1 and 2 are complete (README.md, "What is built"). Phase 3 is SPEC.md Section 21's "3 Processes": statechart
 canvas, simulation, gates, XState import and export, process templates, closed by gate 3. This brief lists what the SPEC
 asks for and what the owner must answer before the phase 3 design document is written.
