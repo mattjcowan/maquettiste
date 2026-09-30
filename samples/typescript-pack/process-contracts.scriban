@@ -1,0 +1,140 @@
+{{-
+# process-contracts: the context type, one command per event (<P><Event>Command: typed payload plus the envelope), the start,
+# tick and invoke-result commands (<P>StartControl, <P>TickControl, <P><Invoke>DoneControl and <P><Invoke>ErrorControl: their
+# names end in Control and every event command's in Command, so no event name collides with them), the Transitioned record
+# and one audit record type per gate. Plain types with no dependency on the dispatcher, so other services can share them.
+include "_process.scriban"
+P = pascal process.name
+self = pmod(process, "contracts.ts")
+func member(a, optional)
+  $doc = a.description ? ("  /** " + (ts_comment a.description) + " */\n") : ""
+  ret $doc + "  readonly " + a.name + (optional ? "?" : "") + ": " + value_type(a) + ";"
+end
+commands = [P + "StartControl", P + "TickControl"]
+types = [ts_string cmd_start(process), ts_string cmd_tick(process)]
+-}}
+{{ banner "//" }}
+
+import type { AuditRecord, TransitionedRecord } from {{ imp(self, "runtime/statechart.gen") }};
+import type { {{ P }}State } from {{ imp(self, pmod(process, "states")) }};
+
+/** The running instance's data: {{ P }}'s context attributes (null until set when an attribute has no default). */
+export interface {{ P }}Context {
+{{- for a in process.context }}
+{{ if a.description }}  /** {{ ts_comment a.description }} */
+{{ end }}  {{ a.name }}: {{ value_type(a) }}{{ if a.default == null }} | null{{ end }};
+{{- end }}
+}
+
+/** What every event command of {{ P }} carries besides its payload. */
+export interface {{ P }}Envelope {
+  /** The process instance's identity. */
+  readonly instance: string;
+  /** The actor the sender acts as (an actor's name). */
+  readonly actor?: string | null;
+  /** The signing person's identity, for a gated event. */
+  readonly signer?: string | null;
+  /** The meaning of a signature (a gate meaning's name). */
+  readonly meaning?: string | null;
+  /** Why the signer signs, for a gate that requires a reason. */
+  readonly reason?: string | null;
+}
+
+/** Starts an instance: context values over the attribute defaults. */
+export interface {{ P }}StartControl {
+  readonly type: {{ ts_string cmd_start(process) }};
+  readonly instance: string;
+  readonly actor?: string | null;
+  readonly context?: Partial<{{ P }}Context>;
+}
+
+/** Moves the instance's clock to the host clock's time, firing the timers due by then. */
+export interface {{ P }}TickControl {
+  readonly type: {{ ts_string cmd_tick(process) }};
+  readonly instance: string;
+}
+{{- for e in process.events }}
+{{- S = stem(process, e.name) }}
+{{- audit = [] }}
+{{- for t in e.transitions }}
+{{- if t.gate }}
+{{- for a in t.gate.audit_attributes }}
+{{- audit[audit.size] = a }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+/** The payload of {{ e.name }}{{ if audit.size > 0 }}, with the audit attributes of its gate{{ end }}. */
+{{- if e.payload.size == 0 && audit.size == 0 }}
+export type {{ S }}Payload = Readonly<Record<string, never>>;
+{{- else }}
+export type {{ S }}Payload = {
+{{- for a in e.payload }}
+{{ member(a, !a.required) }}
+{{- end }}
+{{- for a in audit }}
+{{ member(a, true) }}
+{{- end }}
+};
+{{- end }}
+
+/** {{ ts_comment (e.description ?? ("Sends " + e.name + " to " + P + ".")) }}{{ if e.actors.size > 0 }} Actors: {{ names(e.actors) | array.join ", " }}.{{ end }} */
+export interface {{ S }}Command extends {{ P }}Envelope {
+  readonly type: {{ ts_string cmd_event(process, e) }};
+  readonly payload: {{ S }}Payload;
+}
+{{- commands[commands.size] = S + "Command" }}
+{{- types[types.size] = ts_string cmd_event(process, e) }}
+{{- end }}
+{{- for i in tasks(process) }}
+{{- S = stem(process, i.name) }}
+
+/** Completes the {{ i.type | string.replace "-" " " }} {{ i.name }} (state {{ i.state.path }}){{ if i.type == "human-task" && i.actors.size > 0 }}; sent by {{ names(i.actors) | array.join " or " }}{{ end }}. */
+export interface {{ S }}DoneControl {
+  readonly type: {{ ts_string cmd_invoke(process, i, "done") }};
+  readonly instance: string;
+  readonly actor?: string | null;
+}
+
+/** Reports that the {{ i.type | string.replace "-" " " }} {{ i.name }} failed. */
+export interface {{ S }}ErrorControl {
+  readonly type: {{ ts_string cmd_invoke(process, i, "error") }};
+  readonly instance: string;
+  readonly actor?: string | null;
+}
+{{- commands[commands.size] = S + "DoneControl" }}
+{{- commands[commands.size] = S + "ErrorControl" }}
+{{- types[types.size] = ts_string cmd_invoke(process, i, "done") }}
+{{- types[types.size] = ts_string cmd_invoke(process, i, "error") }}
+{{- end }}
+
+/** Every command of {{ P }}. */
+export type {{ P }}Command =
+{{- for c in commands }}
+  | {{ c }}
+{{- end }};
+
+/** Every command type of {{ P }}. */
+export const {{ camel process.name }}CommandTypes = [{{ types | array.join ", " }}] as const satisfies readonly {{ P }}Command['type'][];
+
+/** Recorded after each accepted input that took a transition (or entered the initial states). */
+export interface {{ P }}Transitioned extends TransitionedRecord {
+  readonly type: {{ ts_string (P + ".transitioned") }};
+  readonly from: readonly {{ P }}State[];
+  readonly to: readonly {{ P }}State[];
+}
+{{- for g in process.gates }}
+
+/**
+ * The audit record of gate {{ g.name }} ({{ ts_comment (g.display_name ?? g.name) }}): one per signature attempt and per outcome
+ * (signed, completed, refused, discarded).
+ */
+export interface {{ stem(process, g.name) }}Audit extends AuditRecord {
+  readonly gate: {{ ts_string g.id }};
+  readonly attributes: {
+{{- for a in g.audit_attributes }}
+  {{ member(a, true) }}
+{{- end }}
+  };
+}
+{{- end }}

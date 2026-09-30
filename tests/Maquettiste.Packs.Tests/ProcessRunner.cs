@@ -17,8 +17,10 @@ internal static class ProcessRunner
     /// <param name="workingDirectory">The working directory.</param>
     /// <param name="timeout">How long to wait.</param>
     /// <param name="standardInput">Text written to standard input, if any.</param>
+    /// <param name="environment">Environment variables to set for the command, if any.</param>
     /// <returns>The result.</returns>
-    public static async Task<Result> RunAsync(string fileName, IEnumerable<string> arguments, string workingDirectory, TimeSpan timeout, string? standardInput = null)
+    public static async Task<Result> RunAsync(string fileName, IEnumerable<string> arguments, string workingDirectory, TimeSpan timeout, string? standardInput = null,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         var start = new ProcessStartInfo(fileName)
         {
@@ -34,6 +36,8 @@ internal static class ProcessRunner
         start.Environment["DOTNET_NOLOGO"] = "1";
         start.Environment["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1";
         start.Environment["MSBUILDDISABLENODEREUSE"] = "1";
+        foreach (var (name, value) in environment ?? new Dictionary<string, string>())
+            start.Environment[name] = value;
 
         var output = new StringBuilder();
         using var process = new Process { StartInfo = start };

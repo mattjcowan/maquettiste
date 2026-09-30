@@ -1,0 +1,108 @@
+{{-
+# interpreter (companion, written once): runtime/process-host.ts, the host's clock, timer scheduler and invoke host with
+# in-memory defaults, and an in-memory process store. Written only when the model has processes.
+if model.processes.size > 0
+-}}
+{{- capture content -}}
+// The host of the generated processes: the clock, the timer scheduler and the invoke host the machines use, and an in-memory
+// process store. Maquettiste wrote this file once, with in-memory defaults, and never touches it again: replace them with the
+// service's own (the system clock, a durable scheduler that dispatches a tick when a timer is due, a queue for started tasks,
+// a database). runtime/statechart.gen.ts declares the shapes; `satisfies` checks them.
+import type {
+  AuditRecord,
+  InvokeHost,
+  InvokeRecord,
+  ProcessClock,
+  ProcessHostFactory,
+  ProcessSnapshot,
+  TimerScheduler,
+  TimerSnapshot,
+  TransitionedRecord,
+} from {{ ts_string (ts_module "statechart.gen" pack.params.importExtension) }};
+
+/** A clock that moves only when told to: tests, simulations and replays advance it by hand. */
+export class ManualClock implements ProcessClock {
+  private current: number;
+
+  constructor(start: number = Date.UTC(2000, 0, 1)) {
+    this.current = start;
+  }
+
+  now(): number {
+    return this.current;
+  }
+
+  advance(ms: number): void {
+    this.current += ms;
+  }
+
+  set(ms: number): void {
+    this.current = ms;
+  }
+}
+
+/** Each instance's timers as its last step left them; `due` lists the instances a tick should go to. */
+export class InMemoryTimers implements TimerScheduler {
+  private readonly entries = new Map<string, { process: string; instance: string; timers: readonly TimerSnapshot[] }>();
+
+  schedule(process: string, instance: string, timers: readonly TimerSnapshot[]): void {
+    const key = process + '/' + instance;
+    if (timers.length === 0) this.entries.delete(key);
+    else this.entries.set(key, { process, instance, timers });
+  }
+
+  due(now: number): { process: string; instance: string }[] {
+    return [...this.entries.values()]
+      .filter((e) => e.timers.some((t) => t.due <= now))
+      .map((e) => ({ process: e.process, instance: e.instance, first: Math.min(...e.timers.map((t) => t.due)) }))
+      .sort((a, b) => a.first - b.first || (a.instance < b.instance ? -1 : a.instance > b.instance ? 1 : 0))
+      .map(({ process, instance }) => ({ process, instance }));
+  }
+}
+
+/** The service and human tasks that started and have not ended yet. */
+export class InMemoryInvokes implements InvokeHost {
+  readonly pending: { instance: string; invoke: InvokeRecord }[] = [];
+
+  started(instance: string, invoke: InvokeRecord): void {
+    this.pending.push({ instance, invoke });
+  }
+
+  ended(instance: string, invoke: InvokeRecord): void {
+    const index = this.pending.findIndex((p) => p.instance === instance && p.invoke.process === invoke.process && p.invoke.invoke === invoke.invoke);
+    if (index >= 0) this.pending.splice(index, 1);
+  }
+}
+
+/** Process instances, their history and their audit records, in memory. */
+export class InMemoryProcessStore {
+  private readonly instances = new Map<string, ProcessSnapshot>();
+  readonly history: TransitionedRecord[] = [];
+  readonly audit: AuditRecord[] = [];
+
+  async load(instance: string): Promise<ProcessSnapshot | undefined> {
+    return this.instances.get(instance);
+  }
+
+  async save(snapshot: ProcessSnapshot): Promise<void> {
+    this.instances.set(snapshot.instance, snapshot);
+  }
+
+  async appendHistory(records: readonly TransitionedRecord[]): Promise<void> {
+    this.history.push(...records);
+  }
+
+  async appendAudit(records: readonly AuditRecord[]): Promise<void> {
+    this.audit.push(...records);
+  }
+}
+
+/** The host the dispatcher uses unless it is given one: a manual clock (2000-01-01 unless given), in-memory timers and invokes. */
+export const createHost = ((options = {}) => ({
+  clock: options.clock ?? new ManualClock(),
+  timers: new InMemoryTimers(),
+  invokes: new InMemoryInvokes(),
+})) satisfies ProcessHostFactory;
+{{ end -}}
+{{- file "runtime/process-host.ts" content -}}
+{{- end -}}

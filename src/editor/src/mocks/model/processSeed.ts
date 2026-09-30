@@ -184,7 +184,7 @@ const scenarios: Json[] = [
     name: "BudgetRejected",
     displayName: "Budget rejected",
     process: PURCHASE_APPROVAL,
-    start: { context: { "01JQATT0000000000000000201": 2500 } },
+    start: { context: { "01JQATT0000000000000000201": 25000 } },
     steps: [
       { id: "01JQSTP0000000000000000035", event: X(14), actor: BUDGET_HOLDER, expect: { states: [S(104), S(108)] } },
       { id: "01JQSTP0000000000000000036", input: "invoke-error", invoke: X(19), expect: { states: [S(106), S(108)] } },

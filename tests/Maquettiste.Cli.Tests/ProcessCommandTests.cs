@@ -38,7 +38,7 @@ public sealed class ProcessCommandTests
             verified += verify["results"]!.AsArray().Count;
         }
 
-        Assert.Equal(13, verified);
+        Assert.Equal(14, verified);
         var inputs = JsonNode.Parse(Inputs)!;
         var preview = await session.OkAsync("record_scenario", new { process = Purchase, name = "Recorded", steps = inputs["steps"], start = inputs["start"], dryRun = true });
         Assert.False(preview["applied"]!.GetValue<bool>());
@@ -105,7 +105,7 @@ public sealed class ProcessCommandTests
         using var repo = CliRepo.Processes();
         var verify = await repo.RunAsync("process", "verify");
         Assert.Equal(0, verify.ExitCode);
-        Assert.Contains("13 scenarios, 13 passed, 0 failed", verify.Out, StringComparison.Ordinal);
+        Assert.Contains("14 scenarios, 14 passed, 0 failed", verify.Out, StringComparison.Ordinal);
         var json = await repo.RunAsync("process", "verify", "PurchaseApproval", "--format", "json");
         Assert.Equal(6, JsonNode.Parse(json.Out)!["scenarios"]!.GetValue<int>());
 
@@ -123,7 +123,7 @@ public sealed class ProcessCommandTests
         var record = await repo.RunAsync("process", "record", "PurchaseApproval", "Recorded", "--inputs", repo.PathOf("inputs.json"), "--apply");
         Assert.Equal(0, record.ExitCode);
         Assert.True(File.Exists(repo.PathOf(".maquettiste/model/scenarios/purchase-approval/recorded.json")));
-        Assert.Contains("14 scenarios, 14 passed", (await repo.RunAsync("process", "verify")).Out, StringComparison.Ordinal);
+        Assert.Contains("15 scenarios, 15 passed", (await repo.RunAsync("process", "verify")).Out, StringComparison.Ordinal);
 
         repo.Replace(".maquettiste/model/scenarios/purchase-approval/budget-rejected.json", "\"01JQSTA0000000000000000109\"", "\"01JQSTA0000000000000000108\"");
         var failing = await repo.RunAsync("process", "verify", "PurchaseApproval");

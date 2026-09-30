@@ -175,6 +175,10 @@ internal sealed class MemberCatalog
             members.Add(new ProxyMember("hasStereotype", null, ProxyFunction.HasStereotype));
             members.Add(new ProxyMember("hasTag", null, ProxyFunction.HasTag));
         }
+        else if (typeof(RProcessNode).IsAssignableFrom(type))
+        {
+            members.Add(new ProxyMember("hasStereotype", null, ProxyFunction.HasStereotype));
+        }
 
         if (type == typeof(ResolvedModel))
             members.Add(new ProxyMember("find", null, ProxyFunction.Find));

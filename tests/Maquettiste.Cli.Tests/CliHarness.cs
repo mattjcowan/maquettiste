@@ -171,7 +171,7 @@ public sealed class CliRepo : IDisposable
         return repo;
     }
 
-    /// <summary>The gate 3 process fixture (phase-3-design.md section 8.1): two processes, eight actors, 13 scenarios.</summary>
+    /// <summary>The gate 3 process fixture (phase-3-design.md section 8.1): two processes, eight actors, 14 scenarios.</summary>
     public static CliRepo Processes()
     {
         var repo = new CliRepo(new TempRepo());

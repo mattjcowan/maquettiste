@@ -5,6 +5,7 @@
   "description": "SQL DDL for PostgreSQL, SQL Server and SQLite: one script per table, one schema script per database, once-mode migrations from the schema diff, and a seed script with protected regions that reconciles reference data (lookup tables, check constraints or native types) and inserts seed rows.",
   "parameters": {
     "comments": true,
+    "processTables": false,
     "quoting": "",
     "referenceStrategy": "lookup-table",
     "schemaScript": "inline",
@@ -40,6 +41,11 @@
       "for": "select databases",
       "output": "{{ kebab database.name }}/seed.sql",
       "mode": "regions"
+    },
+    {
+      "id": "process-tables",
+      "template": "process-tables.scriban",
+      "for": "each process"
     }
   ]
 }

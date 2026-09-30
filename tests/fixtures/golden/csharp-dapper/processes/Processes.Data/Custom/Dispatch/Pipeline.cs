@@ -1,0 +1,30 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Processes.Data.Dispatch;
+
+// The hand-written half of the pipeline. Maquettiste wrote this file once and never touches it again: order the behaviours,
+// add the project's own, and implement the policy hooks the generated Behaviours.g.cs declares.
+public sealed partial class Pipeline
+{
+    // The default order: validation, authorization, logging, transaction, outbox (outermost first).
+    private partial IReadOnlyList<IPipelineBehaviour> Order() =>
+    [
+        new ValidationBehaviour(this),
+        new AuthorizationBehaviour(this),
+        new LoggingBehaviour(this),
+        new TransactionBehaviour(this),
+        new OutboxBehaviour(this),
+    ];
+
+    // Whether the caller may act as the envelope's actor: map the host's principal to actors here. Until it is implemented
+    // every command fails, so that no process runs with authorization left open.
+    private partial bool Authorize(CommandContext context) =>
+        throw new NotImplementedException("Map the caller's principal to the envelope's actor in Pipeline.cs (Authorize).");
+
+    // The unit of work around the handler, the store and the outbox; none by default.
+    private partial Task<IProcessTransaction> BeginTransactionAsync(CommandContext context, CancellationToken cancellationToken) =>
+        Task.FromResult<IProcessTransaction>(NoProcessTransaction.Instance);
+}

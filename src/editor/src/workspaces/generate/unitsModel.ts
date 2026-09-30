@@ -23,7 +23,21 @@ export const WRITE_MODES: { value: WriteMode; label: string; help: string }[] = 
 export const modeLabel = (mode: unknown): string => WRITE_MODES.find((m) => m.value === mode)?.label ?? "Overwrite";
 
 /** The element kinds a unit can run for, in the words the Scope picker shows. */
-export const EACH_KINDS = ["entity", "relation", "enum", "value object", "reference type", "seed", "package", "database", "table", "locale"];
+export const EACH_KINDS = [
+  "entity",
+  "relation",
+  "enum",
+  "value object",
+  "reference type",
+  "seed",
+  "package",
+  "database",
+  "table",
+  "locale",
+  "process",
+  "actor",
+  "scenario",
+];
 
 export const SCOPE_OPTIONS: string[] = ["model", ...EACH_KINDS.map((k) => `each ${k}`)];
 
@@ -41,6 +55,9 @@ export function filesLabel(scope: string): string {
 /** The scope in the path summary's words: "once" for the model, else the `for` text. */
 export const scopeWords = (scope: string): string => (scope.trim() === "model" ? "once" : scope.trim());
 
+/** The scope help of `each process`, `each actor` and `each scenario` (phase-3-design.md 7.1). */
+export const PROCESS_SCOPE_HELP = "Runs once per process, actor or scenario; one file each.";
+
 /** Plain-language help per scope (generation-ui.md 3.1). */
 export function scopeHelp(scope: string): string {
   const s = scope.trim();
@@ -49,6 +66,7 @@ export function scopeHelp(scope: string): string {
   if (s === "each database") return "Runs once per database; one file per database gathering its tables.";
   if (s === "each table") return "Runs once per table of every database: the tables the databases design and the tables their mappings resolve.";
   if (s === "each locale") return "Runs once per declared language; no element, no filter.";
+  if (s === "each process" || s === "each actor" || s === "each scenario") return PROCESS_SCOPE_HELP;
   if (s.startsWith("select ")) return `Runs once per element that the selector ${s.slice(7)}, registered by the pack's scripts, returns.`;
   if (s.startsWith("each ")) return "Runs once per element of that kind; one file each.";
   return "Not a scope this editor knows; the pack loader reports it when it is invalid.";

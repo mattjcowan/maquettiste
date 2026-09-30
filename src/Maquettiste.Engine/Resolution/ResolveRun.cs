@@ -120,6 +120,7 @@ internal sealed partial class ResolveRun
 
         FinishConceptual();
         ResolveSeedsAndUsages();
+        ResolveProcesses();
         var result = new ResolvedModel
         {
             Source = Model,
@@ -133,6 +134,9 @@ internal sealed partial class ResolveRun
             ReferenceTypes = new RList<RReferenceType>(_referenceTypeOrder, ["k:reference-type"]),
             Seeds = new RList<RSeed>(_seedOrder, ["k:seed"]),
             SeedsInOrder = new RList<RSeed>(_seedsInOrder, _seedsInOrderKeys),
+            Processes = new RList<RProcess>(_processOrder, [ProcessKind]),
+            Actors = new RList<RActor>(_actorOrder, [ActorKind]),
+            Scenarios = new RList<RScenario>(_scenarioOrder, [ScenarioKind]),
             Databases = new RList<RDatabase>(resolvedDatabases, ["k:database"]),
             Locales = new RList<RLocale>(RLocale.Of(Settings.Localization), [RLocale.SettingsKey]),
             Diagnostics = [.. Diagnostics.Order(Diagnostic.Order)],

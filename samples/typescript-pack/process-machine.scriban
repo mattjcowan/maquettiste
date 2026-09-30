@@ -1,0 +1,146 @@
+{{-
+# process-machine (generated side): the typed facade of one process (start, send<Event> per event, complete<Invoke> and
+# fail<Invoke> per task, tick for the clock, and apply for a command: the prefixes keep every event and invoke name apart from
+# the fixed members) and the command handler the dispatcher registers: it loads the instance through the store,
+# runs the machine, saves, appends the history and audit records, and tells the host and the services what started or ended.
+include "_process.scriban"
+P = pascal process.name
+p = camel process.name
+self = pmod(process, "machine.gen.ts")
+T = tasks(process)
+-}}
+{{ banner "//" }}
+
+import { Statechart, endedTasks } from {{ imp(self, "runtime/statechart.gen") }};
+import type { ChartInput, ProcessHost, ProcessOutcome, ProcessSnapshot, StatechartOptions, StepResult } from {{ imp(self, "runtime/statechart.gen") }};
+import type {
+  {{ P }}Command,
+  {{ P }}Context,
+{{- for e in process.events }}
+  {{ stem(process, e.name) }}Command,
+{{- end }}
+  {{ P }}Transitioned,
+} from {{ imp(self, pmod(process, "contracts")) }};
+import { {{ p }}Definition } from {{ imp(self, pmod(process, "definition")) }};
+import { {{ p }}Handlers } from {{ imp(self, pmod(process, "handlers.gen")) }};
+import { {{ p }}RunTasks } from {{ imp(self, pmod(process, "services.gen")) }};
+import type { {{ P }}State } from {{ imp(self, pmod(process, "states")) }};
+import type { {{ P }}Store } from {{ imp(self, pmod(process, "store.gen")) }};
+import { extensions } from {{ imp(self, pmod(process, "machine")) }};
+
+/** What a command did: the next snapshot, the interpreter's result and, when a transition was taken, the Transitioned record. */
+export interface {{ P }}Outcome extends ProcessOutcome {
+  readonly transitioned: {{ P }}Transitioned | null;
+}
+
+/** The fields of an event command besides its type and instance. */
+type Envelope<C> = Omit<C, 'type' | 'instance'>;
+
+/** The typed facade of {{ P }}. Every method takes the instance's snapshot and returns the next one; nothing is stored. */
+export interface {{ P }}MachineCore {
+  readonly definition: typeof {{ p }}Definition;
+  /** Enters the initial states with context values over the attribute defaults, the clock at `at`. */
+  start(instance: string, context?: Partial<{{ P }}Context>, at?: number): {{ P }}Outcome;
+{{- for e in process.events }}
+  /** Sends {{ e.name }}{{ if e.actors.size > 0 }} (actors: {{ names(e.actors) | array.join ", " }}){{ end }}. */
+  send{{ pascal e.name }}(snapshot: ProcessSnapshot, command: Envelope<{{ stem(process, e.name) }}Command>): {{ P }}Outcome;
+{{- end }}
+{{- for i in T }}
+  /** Completes the {{ i.type | string.replace "-" " " }} {{ i.name }}. */
+  complete{{ pascal i.name }}(snapshot: ProcessSnapshot, actor?: string | null): {{ P }}Outcome;
+  /** Reports that the {{ i.type | string.replace "-" " " }} {{ i.name }} failed. */
+  fail{{ pascal i.name }}(snapshot: ProcessSnapshot, actor?: string | null): {{ P }}Outcome;
+{{- end }}
+  /** Moves the clock to `now`, firing the timers due by then. */
+  tick(snapshot: ProcessSnapshot, now: number): {{ P }}Outcome;
+  /** Runs a command against a snapshot (none for a start); `now` is the host clock's time. */
+  apply(snapshot: ProcessSnapshot | undefined, command: {{ P }}Command, now: number): {{ P }}Outcome;
+  /** Runs a command against the stored instance and saves the result. */
+  handle(command: {{ P }}Command, store: {{ P }}Store, host: ProcessHost): Promise<{{ P }}Outcome>;
+  /** The active atomic states of a snapshot, in document order. */
+  states(snapshot: ProcessSnapshot): {{ P }}State[];
+  /** Whether a state is active in a snapshot. */
+  matches(snapshot: ProcessSnapshot, state: {{ P }}State): boolean;
+}
+
+/**
+ * Queries and conveniences the companion ({{ kebab process.name }}.machine.ts) adds to the machine; each is called with the machine
+ * as `this`.
+ */
+export type {{ P }}MachineExtensions = { readonly [name: string]: (this: {{ P }}MachineCore, ...args: never[]) => unknown };
+
+export type {{ P }}Machine = {{ P }}MachineCore & typeof extensions;
+
+/** The companion's extensions, checked against the declared shape. */
+export const {{ p }}Extensions: {{ P }}MachineExtensions = extensions;
+
+function outcome(chart: Statechart<{{ P }}Context>, before: ProcessSnapshot | undefined, next: { snapshot: ProcessSnapshot; result: StepResult }, event: string): {{ P }}Outcome {
+  const taken = next.result.accepted && next.result.microsteps.length > 0;
+  const transitioned: {{ P }}Transitioned | null = taken
+    ? {
+        type: {{ ts_string (P + ".transitioned") }},
+        instance: next.snapshot.instance,
+        from: before === undefined ? [] : (chart.states(before) as {{ P }}State[]),
+        to: next.result.states as {{ P }}State[],
+        event,
+        at: next.result.clock,
+      }
+    : null;
+  return { snapshot: next.snapshot, result: next.result, transitioned };
+}
+
+/** Creates the machine; `options.resolve` finds the programs of invoked sub-processes. */
+export function create{{ P }}Machine(options: StatechartOptions = {}): {{ P }}Machine {
+  const chart = new Statechart<{{ P }}Context>({ definition: {{ p }}Definition, handlers: {{ p }}Handlers }, options);
+  const step = (snapshot: ProcessSnapshot, input: ChartInput, event: string): {{ P }}Outcome => outcome(chart, snapshot, chart.step(snapshot, input), event);
+  const core: {{ P }}MachineCore = {
+    definition: {{ p }}Definition,
+    start: (instance, context = {}, at) => outcome(chart, undefined, chart.start(instance, context, at), {{ ts_string cmd_start(process) }}),
+{{- for e in process.events }}
+    send{{ pascal e.name }}: (snapshot, command) =>
+      step(snapshot, { input: 'event', event: {{ ts_string e.name }}, actor: command.actor ?? null, signer: command.signer ?? null, meaning: command.meaning ?? null, reason: command.reason ?? null, payload: command.payload }, {{ ts_string cmd_event(process, e) }}),
+{{- end }}
+{{- for i in T }}
+    complete{{ pascal i.name }}: (snapshot, actor) => step(snapshot, { input: 'invoke-done', invoke: {{ ts_string i.name }}, actor: actor ?? null }, {{ ts_string cmd_invoke(process, i, "done") }}),
+    fail{{ pascal i.name }}: (snapshot, actor) => step(snapshot, { input: 'invoke-error', invoke: {{ ts_string i.name }}, actor: actor ?? null }, {{ ts_string cmd_invoke(process, i, "error") }}),
+{{- end }}
+    tick: (snapshot, now) => step(snapshot, { input: 'time', until: now }, {{ ts_string cmd_tick(process) }}),
+    apply(snapshot, command, now) {
+      if (command.type === {{ ts_string cmd_start(process) }}) {
+        if (snapshot !== undefined) throw new Error(`{{ P }} instance '${command.instance}' already exists.`);
+        return core.start(command.instance, command.context, now);
+      }
+      if (snapshot === undefined) throw new Error(`No {{ P }} instance '${command.instance}'.`);
+      switch (command.type) {
+        case {{ ts_string cmd_tick(process) }}:
+          return core.tick(snapshot, now);
+{{- for e in process.events }}
+        case {{ ts_string cmd_event(process, e) }}:
+          return core.send{{ pascal e.name }}(snapshot, command);
+{{- end }}
+{{- for i in T }}
+        case {{ ts_string cmd_invoke(process, i, "done") }}:
+          return core.complete{{ pascal i.name }}(snapshot, command.actor);
+        case {{ ts_string cmd_invoke(process, i, "error") }}:
+          return core.fail{{ pascal i.name }}(snapshot, command.actor);
+{{- end }}
+      }
+    },
+    async handle(command, store, host) {
+      const stored = await store.load(command.instance);
+      const result = core.apply(stored, command, host.clock.now());
+      await store.save(result.snapshot);
+      if (result.transitioned) await store.appendHistory([result.transitioned]);
+      if (result.result.audit.length > 0) await store.appendAudit(result.result.audit);
+      host.timers.schedule({{ p }}Definition.id, command.instance, result.snapshot.root.timers);
+      for (const record of result.result.cancelled) host.invokes.ended(command.instance, record, 'cancelled');
+      for (const record of endedTasks({{ p }}Definition, stored, result.snapshot, result.result)) host.invokes.ended(command.instance, record, command.type.endsWith(':error') ? 'error' : 'done');
+      for (const record of result.result.started) host.invokes.started(command.instance, record);
+      await {{ p }}RunTasks(command.instance, result.result);
+      return result;
+    },
+    states: (snapshot) => chart.states(snapshot) as {{ P }}State[],
+    matches: (snapshot, state) => chart.matches(snapshot, state),
+  };
+  return Object.assign(core, extensions);
+}

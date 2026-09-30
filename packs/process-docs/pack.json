@@ -1,0 +1,35 @@
+{
+  "name": "process-docs",
+  "version": "1.0.0",
+  "engine": ">=1.0 <2.0",
+  "description": "Markdown documentation of processes: one page per process with a state diagram in diagram text, its transitions, gates, events and actors; one page per actor; one walk-through page per scenario; and an index page.",
+  "parameters": {
+    "diagrams": true,
+    "title": "Process documentation"
+  },
+  "units": [
+    {
+      "id": "process-page",
+      "template": "process-page.scriban",
+      "for": "each process",
+      "output": "processes/{{ kebab process.name }}.md"
+    },
+    {
+      "id": "actor-page",
+      "template": "actor-page.scriban",
+      "for": "each actor",
+      "output": "actors/{{ kebab actor.name }}.md"
+    },
+    {
+      "id": "scenario-page",
+      "template": "scenario-page.scriban",
+      "for": "each scenario",
+      "output": "processes/{{ kebab scenario.process.name }}/{{ kebab scenario.name }}.md"
+    },
+    {
+      "id": "index",
+      "template": "index.scriban",
+      "for": "model"
+    }
+  ]
+}

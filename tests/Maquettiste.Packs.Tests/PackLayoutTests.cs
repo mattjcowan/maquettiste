@@ -6,7 +6,7 @@ namespace Maquettiste.Packs.Tests;
 /// <summary>The shape of the example packs themselves: manifests, documentation and file hygiene.</summary>
 public sealed class PackLayoutTests
 {
-    public static TheoryData<string> PackNames => ["sql-ddl", "csharp-dapper"];
+    public static TheoryData<string> PackNames => ["sql-ddl", "csharp-dapper", "process-docs"];
 
     [Fact]
     public void Packs_folder_names_the_two_phase_1_example_packs()

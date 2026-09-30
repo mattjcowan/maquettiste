@@ -11,7 +11,8 @@ namespace Maquettiste.Engine.Planning;
 
 /// <summary>
 /// Stage 4: expands packs into render units (W6; engine-design.md section 8): template × element for each unit's <c>for</c> scope
-/// (<c>model</c>, <c>each package|entity|relation|enum|value object|table</c>, or <c>select &lt;name&gt;</c> through the sandbox),
+/// (<c>model</c>, <c>each package|entity|relation|enum|value object|table|reference type|seed|locale|process|actor|scenario</c>, or
+/// <c>select &lt;name&gt;</c> through the sandbox),
 /// minus elements whose <c>generation["*"|pack].skip</c> is set, filtered by <c>where</c> (<see cref="UnitFilter"/>). Units are
 /// ordered by pack order, then key ordinal; a key produced twice (a selector returning an id twice) is planned once.
 /// </summary>
@@ -351,6 +352,9 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
             case "each reference type": return model.ReferenceTypes;
             case "each seed": return model.Seeds;
             case "each locale": return model.Locales;
+            case "each process": return model.Processes;
+            case "each actor": return model.Actors;
+            case "each scenario": return model.Scenarios;
         }
 
         if (!unit.For.StartsWith("select ", StringComparison.Ordinal))

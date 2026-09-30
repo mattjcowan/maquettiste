@@ -72,7 +72,7 @@
   {
     "rule": "MQ6021",
     "severity": "error",
-    "message": "Unit 'entity' has the unknown scope 'each entiti'; did you mean 'each entity'? Valid scopes: model, each package, each entity, each relation, each enum, each value object, each table, each reference type, each seed, each locale, or 'select <name>' for a selector the pack's scripts register.",
+    "message": "Unit 'entity' has the unknown scope 'each entiti'; did you mean 'each entity'? Valid scopes: model, each package, each entity, each relation, each enum, each value object, each table, each reference type, each seed, each locale, each process, each actor, each scenario, or 'select <name>' for a selector the pack's scripts register.",
     "elementId": null,
     "filePath": ".maquettiste/templates/scope/pack.json",
     "jsonPointer": "/units/0/for",

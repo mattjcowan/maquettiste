@@ -187,6 +187,15 @@ public sealed class ResolvedModel
     /// without a <c>localization</c> block.</summary>
     public RList<RLocale> Locales { get; internal init; } = RList<RLocale>.Empty;
 
+    /// <summary>Processes, by (package qualified name, name, id).</summary>
+    public RList<RProcess> Processes { get; internal init; } = RList<RProcess>.Empty;
+
+    /// <summary>Actors, by (name, id).</summary>
+    public RList<RActor> Actors { get; internal init; } = RList<RActor>.Empty;
+
+    /// <summary>Scenarios, by (process in <see cref="Processes"/> order, name, id).</summary>
+    public RList<RScenario> Scenarios { get; internal init; } = RList<RScenario>.Empty;
+
     /// <summary>Databases, by name.</summary>
     public RList<RDatabase> Databases { get; internal init; } = RList<RDatabase>.Empty;
 

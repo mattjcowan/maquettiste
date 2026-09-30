@@ -324,6 +324,9 @@ public sealed partial class GenerationService
         "each reference type" => typeof(RReferenceType),
         "each seed" => typeof(RSeed),
         "each locale" => typeof(RLocale),
+        "each process" => typeof(RProcess),
+        "each actor" => typeof(RActor),
+        "each scenario" => typeof(RScenario),
         _ => null,
     };
 

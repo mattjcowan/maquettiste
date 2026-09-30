@@ -1,0 +1,300 @@
+package Purchasing
+package Sales
+entity GateSignature plural=GateSignatures package=Purchasing abstract=false base=- promoted=false stereotypes=
+  key id uuid-v7
+  attr 0 id: builtin uuid required
+  attr 1 instance: builtin string required
+  attr 2 gate: builtin string required
+  attr 3 sequence: builtin int64 required
+  attr 4 signer: builtin string required
+  attr 5 actor: builtin string required
+  attr 6 meaning: builtin string
+  attr 7 reason: builtin text
+  attr 8 outcome: builtin string required
+  attr 9 at: builtin datetimeoffset required
+  mapping main table=gate_signatures inheritance=- discriminator=-=-
+    <GateSignature:id> -> gate_signatures.id
+    <GateSignature:instance> -> gate_signatures.instance
+    <GateSignature:gate> -> gate_signatures.gate
+    <GateSignature:sequence> -> gate_signatures.sequence
+    <GateSignature:signer> -> gate_signatures.signer
+    <GateSignature:actor> -> gate_signatures.actor
+    <GateSignature:meaning> -> gate_signatures.meaning
+    <GateSignature:reason> -> gate_signatures.reason
+    <GateSignature:outcome> -> gate_signatures.outcome
+    <GateSignature:at> -> gate_signatures.at
+entity ProcessInstance plural=ProcessInstances package=Purchasing abstract=false base=- promoted=false stereotypes=
+  key id uuid-v7
+  attr 0 id: builtin uuid required
+  attr 1 process: builtin string required
+  attr 2 subject: builtin uuid
+  attr 3 configuration: builtin json required
+  attr 4 context: builtin json
+  attr 5 updatedAt: builtin datetimeoffset required
+  mapping main table=process_instances inheritance=- discriminator=-=-
+    <ProcessInstance:id> -> process_instances.id
+    <ProcessInstance:process> -> process_instances.process
+    <ProcessInstance:subject> -> process_instances.subject
+    <ProcessInstance:configuration> -> process_instances.configuration
+    <ProcessInstance:context> -> process_instances.context
+    <ProcessInstance:updatedAt> -> process_instances.updated_at
+entity PurchaseRequest plural=PurchaseRequests package=Purchasing abstract=false base=- promoted=false stereotypes=
+  key id uuid-v7
+  attr 0 id: builtin uuid required
+  attr 1 amount: builtin decimal required
+  attr 2 costCentre: builtin string
+  mapping main table=purchase_requests inheritance=- discriminator=-=-
+    <PurchaseRequest:id> -> purchase_requests.id
+    <PurchaseRequest:amount> -> purchase_requests.amount
+    <PurchaseRequest:costCentre> -> purchase_requests.cost_centre
+entity SalesOrder plural=SalesOrders package=Sales abstract=false base=- promoted=false stereotypes=
+  key id uuid-v7
+  attr 0 id: builtin uuid required
+  attr 1 status: enum SalesOrderStatus required
+  attr 2 configuration: builtin json
+  attr 3 total: builtin decimal required
+  attr 4 creditLimit: builtin decimal required
+  mapping main table=sales_orders inheritance=- discriminator=-=-
+    <SalesOrder:id> -> sales_orders.id
+    <SalesOrder:status> -> sales_orders.status
+    <SalesOrder:configuration> -> sales_orders.configuration
+    <SalesOrder:total> -> sales_orders.total
+    <SalesOrder:creditLimit> -> sales_orders.credit_limit
+entity SalesOrderHistory plural=SalesOrderHistories package=Sales abstract=false base=- promoted=false stereotypes=
+  key id uuid-v7
+  attr 0 id: builtin uuid required
+  attr 1 salesOrderId: builtin uuid required
+  attr 2 fromState: builtin string
+  attr 3 toState: builtin string required
+  attr 4 at: builtin datetimeoffset required
+  mapping main table=sales_order_histories inheritance=- discriminator=-=-
+    <SalesOrderHistory:id> -> sales_order_histories.id
+    <SalesOrderHistory:salesOrderId> -> sales_order_histories.sales_order_id
+    <SalesOrderHistory:fromState> -> sales_order_histories.from_state
+    <SalesOrderHistory:toState> -> sales_order_histories.to_state
+    <SalesOrderHistory:at> -> sales_order_histories.at
+database main postgresql default-schema=public limit=63 schemas=public
+  table public.gate_signatures key=<GateSignature>@<main> synthesized entity=GateSignature
+    0 id uuid native=uuid not-null pk key=<GateSignature:id>
+    1 instance string(255) native=varchar(255) not-null key=<GateSignature:instance>
+    2 gate string(255) native=varchar(255) not-null key=<GateSignature:gate>
+    3 sequence int64 native=bigint not-null key=<GateSignature:sequence>
+    4 signer string(255) native=varchar(255) not-null key=<GateSignature:signer>
+    5 actor string(255) native=varchar(255) not-null key=<GateSignature:actor>
+    6 meaning string(255) native=varchar(255) null key=<GateSignature:meaning>
+    7 reason text native=text null key=<GateSignature:reason>
+    8 outcome string(255) native=varchar(255) not-null key=<GateSignature:outcome>
+    9 at datetimeoffset[6,-] native=timestamptz(6) not-null key=<GateSignature:at>
+    pk pk_gate_signatures (id)
+  table public.process_instances key=<ProcessInstance>@<main> synthesized entity=ProcessInstance
+    0 id uuid native=uuid not-null pk key=<ProcessInstance:id>
+    1 process string(255) native=varchar(255) not-null key=<ProcessInstance:process>
+    2 subject uuid native=uuid null key=<ProcessInstance:subject>
+    3 configuration json native=jsonb not-null key=<ProcessInstance:configuration>
+    4 context json native=jsonb null key=<ProcessInstance:context>
+    5 updated_at datetimeoffset[6,-] native=timestamptz(6) not-null key=<ProcessInstance:updatedAt>
+    pk pk_process_instances (id)
+  table public.purchase_requests key=<PurchaseRequest>@<main> synthesized entity=PurchaseRequest
+    0 id uuid native=uuid not-null pk key=<PurchaseRequest:id>
+    1 amount decimal[18,2] native=numeric(18,2) not-null key=<PurchaseRequest:amount>
+    2 cost_centre string(255) native=varchar(255) null key=<PurchaseRequest:costCentre>
+    pk pk_purchase_requests (id)
+  table public.sales_order_histories key=<SalesOrderHistory>@<main> synthesized entity=SalesOrderHistory
+    0 id uuid native=uuid not-null pk key=<SalesOrderHistory:id>
+    1 sales_order_id uuid native=uuid not-null key=<SalesOrderHistory:salesOrderId>
+    2 from_state string(255) native=varchar(255) null key=<SalesOrderHistory:fromState>
+    3 to_state string(255) native=varchar(255) not-null key=<SalesOrderHistory:toState>
+    4 at datetimeoffset[6,-] native=timestamptz(6) not-null key=<SalesOrderHistory:at>
+    pk pk_sales_order_histories (id)
+  table public.sales_orders key=<SalesOrder>@<main> synthesized entity=SalesOrder
+    0 id uuid native=uuid not-null pk key=<SalesOrder:id>
+    1 status int32 native=integer not-null default=0 key=<SalesOrder:status>
+    2 configuration json native=jsonb null key=<SalesOrder:configuration>
+    3 total decimal[18,2] native=numeric(18,2) not-null key=<SalesOrder:total>
+    4 credit_limit decimal[18,2] native=numeric(18,2) not-null key=<SalesOrder:creditLimit>
+    pk pk_sales_orders (id)
+process PurchaseApproval display='Purchase approval' package=Purchasing use=orchestration subject=PurchaseRequest bound=- enum=- initial=Drafting
+  keys e:<PurchaseRequest> e:<PurchaseApproval> s:inflection
+  context 0 amount: builtin decimal default=0
+  context 1 reminders: builtin int32 default=0
+  event submit actors=Requester,BudgetHolder payload=- transitions=1
+  event requestChanges actors=Requester,BudgetHolder payload=- transitions=1
+  event approve actors=Approver,FinanceController payload=- transitions=1
+  event reject actors=Approver,FinanceController payload=reason:text! transitions=1
+  action sendReminder expr=({ reminders: context.reminders + 1 }) raises=- used-by=t(after 5d / sendReminder)
+  roots Drafting,Review,Approval,Ordering,Ordered,Rejected atomic=Drafting,Review.Budget.Checking,Review.Budget.BudgetOk,Review.Budget.BudgetRejected,Review.Compliance.Pending,Review.Compliance.Cleared,Approval,Ordering,Ordered,Rejected bound=Drafting,Review,Approval,Ordering,Ordered,Rejected
+  state Drafting atomic depth=1 parent=- children=- leaf out=1
+  state Review parallel depth=1 parent=- children=Budget,Compliance out=1
+  state   Review.Budget compound depth=2 parent=Review children=Checking,BudgetOk,BudgetRejected initial=Checking region=0 out=0
+  state     Review.Budget.Checking atomic depth=3 parent=Review.Budget children=- leaf invoke=checkBudget out=2
+  state     Review.Budget.BudgetOk final depth=3 parent=Review.Budget children=- final leaf out=0
+  state     Review.Budget.BudgetRejected atomic depth=3 parent=Review.Budget children=- leaf out=1
+  state   Review.Compliance compound depth=2 parent=Review children=Pending,Cleared initial=Pending region=1 out=0
+  state     Review.Compliance.Pending atomic depth=3 parent=Review.Compliance children=- leaf invoke=complianceReview out=1
+  state     Review.Compliance.Cleared final depth=3 parent=Review.Compliance children=- final leaf out=0
+  state Approval atomic depth=1 parent=- children=- leaf out=3
+  state Ordering atomic depth=1 parent=- children=- leaf invoke=createPurchaseOrder out=1
+  state Ordered final depth=1 parent=- children=- final leaf out=0
+  state Rejected final depth=1 parent=- children=- final leaf out=0
+  transition 'submit' Drafting -> Review trigger=event event=submit
+  transition 'done: checkBudget' Review.Budget.Checking -> Review.Budget.BudgetOk trigger=invoke-done invoke=checkBudget
+  transition 'error: checkBudget' Review.Budget.Checking -> Review.Budget.BudgetRejected trigger=invoke-error invoke=checkBudget
+  transition 'requestChanges' Review.Budget.BudgetRejected -> Drafting trigger=event event=requestChanges
+  transition 'done: complianceReview' Review.Compliance.Pending -> Review.Compliance.Cleared trigger=invoke-done invoke=complianceReview
+  transition 'done' Review -> Approval trigger=done
+  transition 'approve' Approval -> Ordering trigger=event event=approve gate=purchaseApproval
+  transition 'reject' Approval -> Rejected trigger=event event=reject
+  transition 'after 5d / sendReminder' Approval -> (targetless) trigger=after after=P5D ms=432000000 actions=sendReminder
+  transition 'done: createPurchaseOrder' Ordering -> Ordered trigger=invoke-done invoke=createPurchaseOrder
+  gate purchaseApproval on 'approve' required=2 signers=Approver,FinanceController required-actors=FinanceController repeat=false reason=false meanings=approved('Approved for purchase')
+    audit instance:string! process:id! gate:id! transition:id! sequence:int64! signer:string actor:id meaning:id reason:text at:datetimeoffset! outcome:string![signed|completed|refused|discarded] costCentre:string(attribute)
+  invoke checkBudget service state=Review.Budget.Checking process=- actors=-
+  invoke complianceReview human-task state=Review.Compliance.Pending process=- actors=ComplianceOfficer
+  invoke createPurchaseOrder service state=Ordering process=- actors=ProcurementSystem
+  actors Approver,BudgetHolder,ComplianceOfficer,FinanceController,ProcurementSystem,Requester membership e:<PurchaseRequest> e:<PurchaseApproval> k:actor
+  scenarios BudgetRejected,ChangesRequested,ComplianceFirstThenBudget,HappyPath,RejectionWithReason,ReminderAfterFiveDays membership k:scenario r:<PurchaseApproval>
+process SalesOrderLifecycle display='Sales order lifecycle' package=Sales use=lifecycle subject=SalesOrder bound=status enum=SalesOrderStatus initial=Draft
+  keys e:<SalesOrderStatus> e:<SalesOrder> e:<SalesOrderLifecycle> s:inflection
+  context 0 total: builtin decimal default=0
+  context 1 creditLimit: builtin decimal default=0
+  event submit actors=- payload=- transitions=1
+  event approveCredit actors=CreditManager,FinanceDirector payload=- transitions=1
+  event rejectCredit actors=CreditManager,FinanceDirector payload=- transitions=1
+  event paymentReceived actors=- payload=- transitions=2
+  event pick actors=- payload=- transitions=1
+  event ship actors=- payload=- transitions=1
+  event hold actors=- payload=- transitions=1
+  event release actors=- payload=- transitions=1
+  event cancel actors=- payload=- transitions=1
+  guard exceedsCreditLimit expr=context.total > context.creditLimit used-by=always [exceedsCreditLimit]
+  guard notShipped stub used-by=cancel [notShipped]
+  roots Draft,CreditCheck,CreditReview,Fulfilment,OnHold,Completed,Cancelled atomic=Draft,CreditReview,Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Payment.PaymentOverdue,Fulfilment.Processing.Payment.Paid,Fulfilment.Processing.Shipping.Picking,Fulfilment.Processing.Shipping.Packing,Fulfilment.Processing.Shipping.Shipped,OnHold,Completed,Cancelled bound=Draft=Draft,CreditReview=CreditReview,Fulfilment=Fulfilment,OnHold=OnHold,Completed=Completed,Cancelled=Cancelled
+  state Draft atomic depth=1 parent=- children=- leaf out=1
+  state CreditCheck choice depth=1 parent=- children=- out=2
+  state CreditReview atomic depth=1 parent=- children=- leaf out=2
+  state Fulfilment compound depth=1 parent=- children=Processing,Resume initial=Processing out=2
+  state   Fulfilment.Processing parallel depth=2 parent=Fulfilment children=Payment,Shipping out=1
+  state     Fulfilment.Processing.Payment compound depth=3 parent=Fulfilment.Processing children=AwaitingPayment,PaymentOverdue,Paid initial=AwaitingPayment region=0 out=0
+  state       Fulfilment.Processing.Payment.AwaitingPayment atomic depth=4 parent=Fulfilment.Processing.Payment children=- leaf out=2
+  state       Fulfilment.Processing.Payment.PaymentOverdue atomic depth=4 parent=Fulfilment.Processing.Payment children=- leaf out=1
+  state       Fulfilment.Processing.Payment.Paid final depth=4 parent=Fulfilment.Processing.Payment children=- final leaf out=0
+  state     Fulfilment.Processing.Shipping compound depth=3 parent=Fulfilment.Processing children=Picking,Packing,Shipped initial=Picking region=1 out=0
+  state       Fulfilment.Processing.Shipping.Picking atomic depth=4 parent=Fulfilment.Processing.Shipping children=- leaf out=1
+  state       Fulfilment.Processing.Shipping.Packing atomic depth=4 parent=Fulfilment.Processing.Shipping children=- leaf out=1
+  state       Fulfilment.Processing.Shipping.Shipped final depth=4 parent=Fulfilment.Processing.Shipping children=- final leaf out=0
+  state   Fulfilment.Resume history depth=2 parent=Fulfilment children=- history=deep default=Fulfilment.Processing out=0
+  state OnHold atomic depth=1 parent=- children=- leaf out=1
+  state Completed final depth=1 parent=- children=- final leaf out=0
+  state Cancelled final depth=1 parent=- children=- final leaf out=0
+  transition 'submit' Draft -> CreditCheck trigger=event event=submit
+  transition 'always [exceedsCreditLimit]' CreditCheck -> CreditReview trigger=always guard=exceedsCreditLimit
+  transition 'always' CreditCheck -> Fulfilment trigger=always
+  transition 'approveCredit' CreditReview -> Fulfilment trigger=event event=approveCredit gate=creditApproval
+  transition 'rejectCredit' CreditReview -> Draft trigger=event event=rejectCredit
+  transition 'paymentReceived' Fulfilment.Processing.Payment.AwaitingPayment -> Fulfilment.Processing.Payment.Paid trigger=event event=paymentReceived
+  transition 'after 30d' Fulfilment.Processing.Payment.AwaitingPayment -> Fulfilment.Processing.Payment.PaymentOverdue trigger=after after=P30D ms=2592000000
+  transition 'paymentReceived' Fulfilment.Processing.Payment.PaymentOverdue -> Fulfilment.Processing.Payment.Paid trigger=event event=paymentReceived
+  transition 'pick' Fulfilment.Processing.Shipping.Picking -> Fulfilment.Processing.Shipping.Packing trigger=event event=pick
+  transition 'ship' Fulfilment.Processing.Shipping.Packing -> Fulfilment.Processing.Shipping.Shipped trigger=event event=ship
+  transition 'done' Fulfilment.Processing -> Completed trigger=done
+  transition 'hold' Fulfilment -> OnHold trigger=event event=hold
+  transition 'release' OnHold -> Fulfilment.Resume trigger=event event=release
+  transition 'cancel [notShipped]' Fulfilment -> Cancelled trigger=event event=cancel guard=notShipped
+  gate creditApproval on 'approveCredit' required=2 signers=CreditManager,FinanceDirector required-actors=CreditManager repeat=false reason=true meanings=creditApproved('Credit approved')
+    audit instance:string! process:id! gate:id! transition:id! sequence:int64! signer:string actor:id meaning:id reason:text at:datetimeoffset! outcome:string![signed|completed|refused|discarded]
+  actors CreditManager,FinanceDirector membership e:<SalesOrderStatus> e:<SalesOrder> e:<SalesOrderLifecycle> k:actor
+  scenarios CancelBeforeShipping,CancelRefusedAfterShipping,CreditApproved,CreditRejectedAndResubmitted,HoldAndRelease,PaymentOverdue,RepeatSignerRefused,SmallOrder membership k:scenario r:<SalesOrderLifecycle>
+actor Approver role package=- stereotypes=- processes=PurchaseApproval events=approve,reject gates=purchaseApproval
+  keys e:<Approver> s:inflection lists r:<Approver>
+actor BudgetHolder person package=- stereotypes=persona processes=PurchaseApproval events=submit,requestChanges gates=-
+  keys e:<BudgetHolder> e:<Persona> s:inflection lists r:<BudgetHolder>
+actor ComplianceOfficer role package=- stereotypes=- processes=PurchaseApproval events=- gates=-
+  keys e:<ComplianceOfficer> s:inflection lists r:<ComplianceOfficer>
+actor CreditManager role package=- stereotypes=- processes=SalesOrderLifecycle events=approveCredit,rejectCredit gates=creditApproval
+  keys e:<CreditManager> s:inflection lists r:<CreditManager>
+actor FinanceController role package=- stereotypes=- processes=PurchaseApproval events=approve,reject gates=purchaseApproval
+  keys e:<FinanceController> s:inflection lists r:<FinanceController>
+actor FinanceDirector role package=- stereotypes=- processes=SalesOrderLifecycle events=approveCredit,rejectCredit gates=creditApproval
+  keys e:<FinanceDirector> s:inflection lists r:<FinanceDirector>
+actor ProcurementSystem external-system package=- stereotypes=- processes=PurchaseApproval events=- gates=-
+  keys e:<ProcurementSystem> s:inflection lists r:<ProcurementSystem>
+actor Requester role package=- stereotypes=- processes=PurchaseApproval events=submit,requestChanges gates=-
+  keys e:<Requester> s:inflection lists r:<Requester>
+scenario BudgetRejected process=PurchaseApproval package=Purchasing outcome=active at=2000-01-01T00:00:00Z context={amount=25000}
+  keys e:<PurchaseApproval> e:<BudgetRejected> s:inflection
+  step 0 event event=submit actor=BudgetHolder expect accepted=true states=Review.Budget.Checking,Review.Compliance.Pending
+  step 1 invoke-error invoke=checkBudget expect accepted=true states=Review.Budget.BudgetRejected,Review.Compliance.Pending
+  step 2 invoke-done invoke=complianceReview actor=ComplianceOfficer expect accepted=true states=Review.Budget.BudgetRejected,Review.Compliance.Cleared
+scenario ChangesRequested process=PurchaseApproval package=Purchasing outcome=active at=2000-01-01T00:00:00Z context={amount=25000}
+  keys e:<PurchaseApproval> e:<ChangesRequested> s:inflection
+  step 0 event event=submit actor=Requester expect accepted=true states=Review.Budget.Checking,Review.Compliance.Pending
+  step 1 invoke-error invoke=checkBudget expect accepted=true states=Review.Budget.BudgetRejected,Review.Compliance.Pending
+  step 2 event event=requestChanges actor=Requester expect accepted=true states=Drafting
+  step 3 event event=submit actor=Requester expect accepted=true states=Review.Budget.Checking,Review.Compliance.Pending
+scenario ComplianceFirstThenBudget process=PurchaseApproval package=Purchasing outcome=active at=2000-01-01T00:00:00Z context={amount=2500}
+  keys e:<PurchaseApproval> e:<ComplianceFirstThenBudget> s:inflection
+  step 0 event event=submit actor=Requester expect accepted=true states=Review.Budget.Checking,Review.Compliance.Pending
+  step 1 invoke-done invoke=complianceReview actor=ComplianceOfficer expect accepted=true states=Review.Budget.Checking,Review.Compliance.Cleared
+  step 2 invoke-done invoke=checkBudget expect accepted=true states=Approval
+scenario HappyPath process=PurchaseApproval package=Purchasing outcome=final at=2000-01-01T00:00:00Z context={amount=2500}
+  keys e:<PurchaseApproval> e:<HappyPath> s:inflection
+  step 0 event event=submit actor=Requester expect accepted=true states=Review.Budget.Checking,Review.Compliance.Pending
+  step 1 invoke-done invoke=checkBudget expect accepted=true states=Review.Budget.BudgetOk,Review.Compliance.Pending
+  step 2 invoke-done invoke=complianceReview actor=ComplianceOfficer expect accepted=true states=Approval
+  step 3 event event=approve actor=Approver signer=erin meaning=approved expect accepted=true states=Approval
+  step 4 event event=approve actor=FinanceController signer=frank meaning=approved expect accepted=true states=Ordering
+  step 5 invoke-done invoke=createPurchaseOrder actor=ProcurementSystem expect accepted=true states=Ordered
+scenario RejectionWithReason process=PurchaseApproval package=Purchasing outcome=final at=2000-01-01T00:00:00Z context={amount=2500}
+  keys e:<PurchaseApproval> e:<RejectionWithReason> s:inflection
+  step 0 event event=submit actor=Requester expect accepted=true states=Review.Budget.Checking,Review.Compliance.Pending
+  step 1 invoke-done invoke=checkBudget expect accepted=true states=Review.Budget.BudgetOk,Review.Compliance.Pending
+  step 2 invoke-done invoke=complianceReview actor=ComplianceOfficer expect accepted=true states=Approval
+  step 3 event event=reject actor=Approver payload={reason='Over budget for the quarter'} expect accepted=true states=Rejected
+scenario ReminderAfterFiveDays process=PurchaseApproval package=Purchasing outcome=active at=2000-01-01T00:00:00Z context={amount=2500}
+  keys e:<PurchaseApproval> e:<ReminderAfterFiveDays> s:inflection
+  step 0 event event=submit actor=Requester expect accepted=true states=Review.Budget.Checking,Review.Compliance.Pending
+  step 1 invoke-done invoke=checkBudget expect accepted=true states=Review.Budget.BudgetOk,Review.Compliance.Pending
+  step 2 invoke-done invoke=complianceReview actor=ComplianceOfficer expect accepted=true states=Approval
+  step 3 time after=P5D ms=432000000 expect accepted=true states=Approval context={reminders=1}
+scenario CancelBeforeShipping process=SalesOrderLifecycle package=Sales outcome=final at=2000-01-01T00:00:00Z context={creditLimit=1000,total=100}
+  keys e:<SalesOrderLifecycle> e:<CancelBeforeShipping> s:inflection
+  step 0 event event=submit expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Picking
+  step 1 event event=cancel assume={notShipped=true} expect accepted=true states=Cancelled
+scenario CancelRefusedAfterShipping process=SalesOrderLifecycle package=Sales outcome=active at=2000-01-01T00:00:00Z context={creditLimit=1000,total=100}
+  keys e:<SalesOrderLifecycle> e:<CancelRefusedAfterShipping> s:inflection
+  step 0 event event=submit expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Picking
+  step 1 event event=pick expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Packing
+  step 2 event event=ship expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Shipped
+  step 3 event event=cancel assume={notShipped=false} expect accepted=false states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Shipped
+scenario CreditApproved process=SalesOrderLifecycle package=Sales outcome=active at=2000-01-01T00:00:00Z context={creditLimit=1000,total=5000}
+  keys e:<SalesOrderLifecycle> e:<CreditApproved> s:inflection
+  step 0 event event=submit expect accepted=true states=CreditReview
+  step 1 event event=approveCredit actor=CreditManager signer=carol meaning=creditApproved reason='Long-standing customer' expect accepted=true states=CreditReview
+  step 2 event event=approveCredit actor=FinanceDirector signer=dan meaning=creditApproved reason='Within risk appetite' expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Picking
+scenario CreditRejectedAndResubmitted process=SalesOrderLifecycle package=Sales outcome=active at=2000-01-01T00:00:00Z context={creditLimit=1000,total=5000}
+  keys e:<SalesOrderLifecycle> e:<CreditRejectedAndResubmitted> s:inflection
+  step 0 event event=submit expect accepted=true states=CreditReview
+  step 1 event event=rejectCredit actor=CreditManager expect accepted=true states=Draft
+  step 2 event event=submit expect accepted=true states=CreditReview
+scenario HoldAndRelease process=SalesOrderLifecycle package=Sales outcome=active at=2000-01-01T00:00:00Z context={creditLimit=1000,total=100}
+  keys e:<SalesOrderLifecycle> e:<HoldAndRelease> s:inflection
+  step 0 event event=submit expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Picking
+  step 1 event event=pick expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Packing
+  step 2 event event=hold expect accepted=true states=OnHold
+  step 3 event event=release expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Packing
+scenario PaymentOverdue process=SalesOrderLifecycle package=Sales outcome=active at=2000-01-01T00:00:00Z context={creditLimit=1000,total=100}
+  keys e:<SalesOrderLifecycle> e:<PaymentOverdue> s:inflection
+  step 0 event event=submit expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Picking
+  step 1 time after=P30D ms=2592000000 expect accepted=true states=Fulfilment.Processing.Payment.PaymentOverdue,Fulfilment.Processing.Shipping.Picking
+  step 2 event event=paymentReceived expect accepted=true states=Fulfilment.Processing.Payment.Paid,Fulfilment.Processing.Shipping.Picking
+scenario RepeatSignerRefused process=SalesOrderLifecycle package=Sales outcome=active at=2000-01-01T00:00:00Z context={creditLimit=1000,total=5000}
+  keys e:<SalesOrderLifecycle> e:<RepeatSignerRefused> s:inflection
+  step 0 event event=submit expect accepted=true states=CreditReview
+  step 1 event event=approveCredit actor=CreditManager signer=carol meaning=creditApproved reason='Long-standing customer' expect accepted=true states=CreditReview
+  step 2 event event=approveCredit actor=FinanceDirector signer=carol meaning=creditApproved reason='Signing again' expect accepted=false states=CreditReview
+scenario SmallOrder process=SalesOrderLifecycle package=Sales outcome=final at=2000-01-01T00:00:00Z context={creditLimit=1000,total=100}
+  keys e:<SalesOrderLifecycle> e:<SmallOrder> s:inflection
+  step 0 event event=submit expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Picking
+  step 1 event event=pick expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Packing
+  step 2 event event=ship expect accepted=true states=Fulfilment.Processing.Payment.AwaitingPayment,Fulfilment.Processing.Shipping.Shipped
+  step 3 event event=paymentReceived expect accepted=true states=Completed

@@ -90,6 +90,8 @@ export interface ChartInput {
 
 const SHORT_UNITS: Record<string, string> = { Y: "y", M: "mo", W: "w", D: "d", H: "h", TM: "m", S: "s" };
 
+// The engine gives templates the same text (Resolution/ResolveRun.Processes.cs, ProcessText): change both together;
+// statechart-label-parity.test.ts compares them on the gate 3 fixture.
 /** An ISO 8601 duration written short: `P30D` → `30d`, `PT1H30M` → `1h 30m`, `P1M` → `1mo`; anything else as given. */
 export function shortDuration(iso: string | undefined): string {
   if (!iso) return "";

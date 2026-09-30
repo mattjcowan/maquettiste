@@ -1,0 +1,51 @@
+{{-
+# process-endpoints: endpoints/<process>.endpoints.ts, one endpoint per event (POST <routePrefix>/<process>/:instance/<event>)
+# that maps the request to the command and calls the dispatcher. The command and the response are built in generated code, and
+# each endpoint has a user-code region between them that may change either and survives regeneration (a committed output root
+# only); a region's id is its event's id, so renaming an event keeps the region's body.
+include "_process.scriban"
+P = pascal process.name
+self = "endpoints/" + (kebab process.name) + ".endpoints.ts"
+route = pack.params.routePrefix + "/" + (kebab process.name)
+-}}
+{{ banner "//" }}
+
+import type { Endpoint, EndpointResponse } from {{ imp(self, "dispatch/dispatch.gen") }};
+import type { ProcessOutcome } from {{ imp(self, "runtime/statechart.gen") }};
+import type {
+{{- for e in process.events }}
+  {{ stem(process, e.name) }}Command,
+  {{ stem(process, e.name) }}Payload,
+{{- end }}
+} from {{ imp(self, pmod(process, "contracts")) }};
+
+/** One endpoint per event of {{ P }}. Edit inside the marked regions: the rest is regenerated. */
+export const {{ camel process.name }}Endpoints = {
+{{- for e in process.events }}
+{{- S = stem(process, e.name) }}
+  {{ e.name }}: {
+    method: 'POST',
+    path: {{ ts_string (route + "/:instance/" + e.name) }},
+    async handle(request, dispatcher) {
+      const body = (request.body ?? {}) as Partial<Omit<{{ S }}Command, 'type' | 'instance'>>;
+      let command: {{ S }}Command = {
+        type: {{ ts_string cmd_event(process, e) }},
+        instance: request.params['instance'] ?? '',
+        actor: body.actor ?? null,
+        signer: body.signer ?? null,
+        meaning: body.meaning ?? null,
+        reason: body.reason ?? null,
+        payload: (body.payload ?? {}) as {{ S }}Payload,
+      };
+      let respond = (outcome: ProcessOutcome): EndpointResponse => ({
+        status: outcome.result.accepted ? 200 : 409,
+        body: { accepted: outcome.result.accepted, refusal: outcome.result.refusal, states: outcome.result.states },
+      });
+      // Change the command or the response here: the region is kept when the file is regenerated.
+      // maquettiste:keep id={{ e.id }}
+      // maquettiste:end-keep
+      return respond(await dispatcher.dispatch(command, request.principal));
+    },
+  },
+{{- end }}
+} satisfies Readonly<Record<string, Endpoint>>;

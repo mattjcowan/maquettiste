@@ -74,6 +74,9 @@ public sealed class REntity : RElement
 
     /// <summary>The seeds whose target is the entity, by (name, id).</summary>
     public RList<RSeed> Seeds { get; internal set; } = RList<RSeed>.Empty;
+
+    /// <summary>The lifecycle process the entity names, or <see langword="null"/>.</summary>
+    public RProcess? Lifecycle { get; internal set; }
 }
 
 /// <summary>A resolved primary key.</summary>

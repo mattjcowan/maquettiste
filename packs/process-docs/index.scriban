@@ -1,0 +1,34 @@
+{{- include "_docs.scriban" -}}
+{{-
+# The index page, written only when the model has a process or an actor, so a project without them gets no file.
+if model.processes.size > 0 || model.actors.size > 0
+  capture content
+-}}
+{{ banner "<!--" }} -->
+
+# {{ md_cell pack.params.title }}
+{{- if model.processes.size > 0 }}
+
+## Processes
+
+| Process | Domain | Use | Subject | States | Scenarios |
+| --- | --- | --- | --- | --- | --- |
+{{- for p in model.processes }}
+| [{{ md_cell p.display_name }}](processes/{{ kebab p.name }}.md) | {{ p.package ? (md_code p.package.qualified_name) : "" }} | {{ p.use }} | {{ p.subject ? (md_code p.subject.name) : "" }} | {{ p.all_states.size }} | {{ p.scenarios.size }} |
+{{- end }}
+{{- end }}
+{{- if model.actors.size > 0 }}
+
+## Actors
+
+| Actor | Type | Processes |
+| --- | --- | --- |
+{{- for a in model.actors }}
+| {{ actor_link(a, "") }} | {{ a.type }} | {{ for p in a.processes }}{{ for.first ? "" : ", " }}{{ process_link(p, "") }}{{ end }} |
+{{- end }}
+{{- end }}
+{{ end -}}
+{{-
+  file "index.md" content
+end
+-}}

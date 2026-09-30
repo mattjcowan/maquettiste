@@ -1,0 +1,27 @@
+{{-
+# process-store (generated side): the store interface of one process. Where instances, history and audit records live is a
+# mapping or template decision; the companion adapts this interface to whatever the project mapped.
+include "_process.scriban"
+P = pascal process.name
+p = camel process.name
+self = pmod(process, "store.gen.ts")
+-}}
+{{ banner "//" }}
+
+import type { AuditRecord, ProcessSnapshot } from {{ imp(self, "runtime/statechart.gen") }};
+import type { {{ P }}Transitioned } from {{ imp(self, pmod(process, "contracts")) }};
+import { createStore } from {{ imp(self, pmod(process, "store")) }};
+
+/** Where {{ P }} instances (their snapshots), their history and their gate audit records live. */
+export interface {{ P }}Store {
+  /** The instance's latest snapshot, or undefined when it was never started. */
+  load(instance: string): Promise<ProcessSnapshot | undefined>;
+  save(snapshot: ProcessSnapshot): Promise<void>;
+  appendHistory(records: readonly {{ P }}Transitioned[]): Promise<void>;
+  appendAudit(records: readonly AuditRecord[]): Promise<void>;
+}
+
+export type {{ P }}StoreFactory = () => {{ P }}Store;
+
+/** The companion's store factory ({{ kebab process.name }}.store.ts), checked against the interface. */
+export const create{{ P }}Store: {{ P }}StoreFactory = createStore;

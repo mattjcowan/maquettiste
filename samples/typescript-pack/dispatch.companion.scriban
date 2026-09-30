@@ -1,0 +1,25 @@
+{{-
+# dispatch-companion (written once): dispatch/pipeline.ts, the order of the behaviours and the project's policy hooks.
+# Written only when the model has processes.
+include "_process.scriban"
+if model.processes.size > 0
+self = "dispatch/pipeline.ts"
+-}}
+{{- capture content -}}
+// The dispatch pipeline: the order of the behaviours around every handler, the project's own behaviours, and the policy
+// hooks the generated behaviours call. Maquettiste wrote this file once and never touches it again. The defaults trust the
+// command's actor, log nothing, run without a transaction and publish nowhere.
+import type { PipelineCompanion } from {{ imp(self, "dispatch/dispatch.gen") }};
+
+export const pipeline = {
+  order: (defaults) => [defaults.validation, defaults.authorization, defaults.logging, defaults.transaction, defaults.outbox],
+  hooks: {
+    mayActAs: (_principal, _actor, _command) => true,
+    log: (_entry) => {},
+    unitOfWork: (_command, work) => work(),
+    outbox: (_records, _command) => {},
+  },
+} satisfies PipelineCompanion;
+{{ end -}}
+{{- file "dispatch/pipeline.ts" content -}}
+{{- end -}}

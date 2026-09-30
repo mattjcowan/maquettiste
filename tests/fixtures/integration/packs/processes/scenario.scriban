@@ -1,0 +1,4 @@
+{{ scenario.name }} of {{ scenario.process.name }}, ends {{ scenario.outcome }}
+{{- for s in scenario.steps }}
+{{ s.index }} {{ s.input }}{{ if s.event }} {{ s.event.name }}{{ end }}{{ if s.actor }} by {{ s.actor.name }}{{ end }}{{ if s.expect }} -> {{ s.expect.state_paths | array.join ", " }}{{ if !s.expect.accepted }} (refused){{ end }}{{ end }}
+{{- end }}

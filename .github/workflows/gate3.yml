@@ -1,0 +1,123 @@
+name: gate3
+
+# The gate 3 check (SPEC Section 21, phase-3-design.md section 8): two processes with parallel states and gates, their scenarios
+# and the generated C# end to end. Every step is a step of tests/fixtures/models/processes/tools/gate3.sh, so the same sequence
+# runs locally: build the image, start it over a copy of the fixture (tmp/gate3), walk the editor with Playwright (gate3.spec.ts:
+# simulate PurchaseApproval and SalesOrderLifecycle in the simulation panel, record both paths as scenarios, plan and apply),
+# then validate (no error or warning, every file canonical), verify every scenario in the engine, generate (a clean check,
+# --jobs 1 and --jobs N byte-identical and equal to the editor's output, exports byte-identical), build the fixture's solution
+# with warnings as errors, run the generated scenario tests (one per scenario, on in-memory SQLite: no database service),
+# round-trip both processes through XState, and run the bench's process budgets. Any failing step fails the run.
+
+on:
+  push:
+    branches: [main, "phase-*"]
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "packs/**"
+      - "schemas/**"
+      - "docker/**"
+      - "bench/**"
+      - "global.json"
+      - "Directory.*"
+      - "tests/fixtures/models/processes/**"
+      - ".github/workflows/gate3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gate3-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOCKER_BUILDKIT: "1"
+  MAQUETTISTE_IMAGE: mattjcowan/maquettiste:gate3
+  MAQUETTISTE_PORT: "8098"
+
+jobs:
+  gate3:
+    name: processes end to end
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/editor/package-lock.json
+
+      - name: Build the image
+        run: docker build -f docker/Dockerfile -t "$MAQUETTISTE_IMAGE" .
+
+      - name: Build the CLI
+        run: dotnet build -c Release src/Maquettiste.Cli
+
+      - name: Install the editor's Playwright
+        working-directory: src/editor
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Make an editor token for this run
+        run: echo "MAQUETTISTE_EDITOR_TOKEN=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+
+      - name: prepare (tmp/gate3, the fixture, editor up)
+        run: sh tests/fixtures/models/processes/tools/gate3.sh prepare
+
+      - name: walk (Playwright live, gate3.spec.ts)
+        run: sh tests/fixtures/models/processes/tools/gate3.sh walk
+
+      - name: validate (criterion 1)
+        run: sh tests/fixtures/models/processes/tools/gate3.sh validate
+
+      - name: verify (criteria 2 and 3)
+        run: sh tests/fixtures/models/processes/tools/gate3.sh verify
+
+      - name: generate (criteria 4 and 6)
+        run: sh tests/fixtures/models/processes/tools/gate3.sh generate
+
+      - name: build (criterion 4, warnings as errors)
+        run: sh tests/fixtures/models/processes/tools/gate3.sh build
+
+      - name: test (criterion 5, the generated scenario tests)
+        run: sh tests/fixtures/models/processes/tools/gate3.sh test
+
+      - name: roundtrip (criterion 7, XState)
+        run: sh tests/fixtures/models/processes/tools/gate3.sh roundtrip
+
+      # The section 4.5 budgets assume an 8-core machine; on a GitHub-hosted runner (4 vCPUs) they are advisory, as in bench.yml:
+      # the script records them, turns a MISS into a warning and passes. On a self-hosted runner they are binding.
+      - name: bench (criterion 8, the section 4.5 budgets; advisory on hosted runners)
+        env:
+          GATE3_BENCH_ADVISORY: ${{ runner.environment == 'github-hosted' && '1' || '0' }}
+        run: sh tests/fixtures/models/processes/tools/gate3.sh bench
+
+      - name: Editor logs
+        if: failure()
+        run: docker compose -f docker/compose.yaml --project-directory tmp/gate3 -p pr-gate3 logs --tail 200 || true
+
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate3-playwright
+          path: |
+            src/editor/playwright-report
+            src/editor/test-results
+          if-no-files-found: ignore
+
+      - name: Stop
+        if: always()
+        run: sh tests/fixtures/models/processes/tools/gate3.sh down

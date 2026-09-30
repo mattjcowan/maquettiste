@@ -1,0 +1,12 @@
+# Output that maquettiste generate writes into a copy of this fixture (tools/gate3.sh, the pack tests): the built roots, the
+# committed roots db/ and docs/ (the process-docs pages, regenerated from the model) and the endpoint files with their regions
+# (regenerated from the model, nothing hand-written in them here), the manifests and the run cache. Custom/ holds the committed
+# companions and stays tracked.
+/db/
+/docs/
+/src/Processes.Data/Generated/
+/src/Processes.Data/Custom/Processes/*/Endpoints/
+/src/Processes.Tests/Generated/
+/.maquettiste/.cache/
+/.maquettiste/manifest/
+/.maquettiste/snapshots/

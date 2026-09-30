@@ -1,0 +1,44 @@
+{{-
+# process-handlers (companion, written once): the stub guards and actions, with starting bodies the project replaces.
+include "_process.scriban"
+P = pascal process.name
+self = pmod(process, "handlers.ts")
+stubs = []
+for g in process.guards
+  if g.is_stub
+    stubs[stubs.size] = g
+  end
+end
+action_stubs = 0
+for a in process.actions
+  if a.is_stub
+    stubs[stubs.size] = a
+    action_stubs = action_stubs + 1
+  end
+end
+-}}
+// The hand-written guards and actions of {{ P }}: the ones the model names without an expression. Maquettiste wrote this
+// file once and never touches it again. The generated half ({{ kebab process.name }}.handlers.gen.ts) declares what must be
+// here: when the model gains a stub, `satisfies` fails the build until it is implemented.
+{{- if action_stubs > 0 }}
+import type { {{ P }}Context } from {{ imp(self, pmod(process, "contracts")) }};
+{{- end }}
+import type { {{ P }}Handlers } from {{ imp(self, pmod(process, "handlers.gen")) }};
+
+export const handlers = {
+{{- for n in stubs }}
+{{- if n.kind == "guard" }}
+  /** Guard {{ n.name }}{{ if n.description }}: {{ ts_comment n.description }}{{ end }} */
+  guard{{ pascal n.name }}(_context, _event, _states): boolean {
+    // Replace with the real rule: until then the guard fails, and so does every scenario test that reaches it.
+    throw new Error({{ ts_string ("Guard " + n.name + " of " + P + " is not implemented yet.") }});
+  },
+{{- else }}
+  /** Action {{ n.name }}{{ if n.description }}: {{ ts_comment n.description }}{{ end }} */
+  action{{ pascal n.name }}(_context, _event, _states): Partial<{{ P }}Context> {
+    // Return the context attributes the action changes; until then the action fails.
+    throw new Error({{ ts_string ("Action " + n.name + " of " + P + " is not implemented yet.") }});
+  },
+{{- end }}
+{{- end }}
+} satisfies {{ P }}Handlers;

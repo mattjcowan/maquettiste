@@ -49,6 +49,54 @@ jobs:
           path: TestResults
           if-no-files-found: ignore
 
+  # The TypeScript sample pack's process units (phase-3-design.md section 7.5), after the C# packs' tests: generated over the
+  # gate 3 fixture, type-checked with the editor's TypeScript compiler (tsc --noEmit), and its scenario tests run on node's test
+  # runner, each step compared with the engine's replay (TypeScriptPackTests). MAQUETTISTE_REQUIRE_TYPESCRIPT turns the tests'
+  # skip (no node or compiler) into a failure. Not a gate 3 criterion.
+  typescript-pack:
+    name: typescript pack
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/editor/package-lock.json
+
+      - name: Install the editor's packages (the TypeScript compiler and node's types)
+        working-directory: src/editor
+        run: npm ci
+
+      - name: Restore (locked)
+        run: dotnet restore tests/Maquettiste.Packs.Tests/Maquettiste.Packs.Tests.csproj --locked-mode
+
+      - name: Build
+        run: dotnet build tests/Maquettiste.Packs.Tests/Maquettiste.Packs.Tests.csproj --configuration Release --no-restore
+
+      - name: Test
+        env:
+          MAQUETTISTE_REQUIRE_TYPESCRIPT: "1"
+        run: dotnet test tests/Maquettiste.Packs.Tests/Maquettiste.Packs.Tests.csproj --configuration Release --no-build --filter "FullyQualifiedName~TypeScriptPackTests" --logger "trx;LogFilePrefix=typescript-pack" --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: typescript-pack-test-results
+          path: TestResults
+          if-no-files-found: ignore
+
   # The editor's functions (phase2-design.md sections 3.9 and 9): the functions also compile with the host's LINQPad default imports
   # (the host adds them; a type name that becomes ambiguous under them would fail the site's deploy), and their tests run on both
   # operating systems (file watcher, git status and symbolic-link handling differ on macOS).

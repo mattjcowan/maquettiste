@@ -1,0 +1,86 @@
+{{- include "_docs.scriban" -}}
+{{- a = actor -}}
+{{ banner "<!--" }} -->
+
+# {{ md_cell a.display_name }}
+{{- if a.description }}
+
+{{ a.description }}
+{{- end }}
+
+| | |
+| --- | --- |
+| Name | {{ md_code a.name }} |
+| Type | {{ a.type }} |
+{{- if a.stereotypes.size > 0 }}
+| Stereotypes | {{ for st in a.stereotypes }}{{ for.first ? "" : ", " }}{{ md_code st.key }}{{ end }} |
+{{- end }}
+{{- if a.tags.size > 0 }}
+| Tags | {{ for tag in a.tags }}{{ for.first ? "" : ", " }}{{ md_code tag }}{{ end }} |
+{{- end }}
+{{- if a.category }}
+| Category | {{ md_cell a.category.name }} |
+{{- end }}
+{{- keys = object.keys a.properties | array.sort }}
+{{- if keys.size > 0 }}
+
+## Properties
+{{- for key in keys }}
+{{- value = a.properties[key] }}
+
+### {{ md_cell key }}
+
+{{ if object.typeof value == "array" -}}
+{{ for item in value }}{{ for.first ? "" : "\n" }}- {{ object.typeof item == "string" ? (md_cell item) : (md_code (json item)) }}{{ end }}
+{{- else if object.typeof value == "string" -}}
+{{ md_cell value }}
+{{- else -}}
+{{ md_code (json value) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if a.processes.size > 0 }}
+
+## Processes
+{{ for p in a.processes }}
+- {{ process_link(p, "../") }}
+{{- end }}
+{{- end }}
+{{- events = [] }}
+{{- gates = [] }}
+{{- tasks = [] }}
+{{- for p in a.processes }}
+{{- for e in p.events }}{{ if has_actor(e.actors, a) }}{{ events[events.size] = { process: p, event: e } }}{{ end }}{{ end }}
+{{- for g in p.gates }}{{ if has_actor(g.signers, a) }}{{ gates[gates.size] = { process: p, gate: g } }}{{ end }}{{ end }}
+{{- for i in p.invokes }}{{ if has_actor(i.actors, a) }}{{ tasks[tasks.size] = { process: p, invoke: i } }}{{ end }}{{ end }}
+{{- end }}
+{{- if events.size > 0 }}
+
+## Events it raises
+
+| Event | Process | Transitions | Payload |
+| --- | --- | --- | --- |
+{{- for x in events }}
+| {{ md_code x.event.name }} | {{ process_link(x.process, "../") }} | {{ for t in x.event.transitions }}{{ for.first ? "" : ", " }}{{ md_code t.source.path }} to {{ t.is_targetless ? "itself (stays)" : code_paths(t.targets) }}{{ end }} | {{ attr_list(x.event.payload) }} |
+{{- end }}
+{{- end }}
+{{- if gates.size > 0 }}
+
+## Gates it signs
+
+| Gate | Process | Transition | Signatures | Its signature |
+| --- | --- | --- | --- | --- |
+{{- for x in gates }}
+| {{ md_cell x.gate.display_name }} ({{ md_code x.gate.name }}) | {{ process_link(x.process, "../") }} | {{ md_code x.gate.transition.label }} from {{ md_code x.gate.transition.source.path }} | {{ x.gate.required }} of {{ actor_links(x.gate.signers, "../") }} | {{ has_actor(x.gate.required_actors, a) ? "required" : "counts toward the total" }} |
+{{- end }}
+{{- end }}
+{{- if tasks.size > 0 }}
+
+## Tasks
+
+| Task | Type | Process | State |
+| --- | --- | --- | --- |
+{{- for x in tasks }}
+| {{ md_code x.invoke.name }} | {{ x.invoke.type }} | {{ process_link(x.process, "../") }} | {{ md_code x.invoke.state.path }} |
+{{- end }}
+{{- end }}

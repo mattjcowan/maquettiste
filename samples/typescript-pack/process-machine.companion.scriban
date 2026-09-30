@@ -1,0 +1,12 @@
+{{-
+# process-machine (companion, written once): queries and conveniences over the generated machine.
+include "_process.scriban"
+P = pascal process.name
+self = pmod(process, "machine.ts")
+-}}
+// Queries and conveniences over the {{ P }} machine. Maquettiste wrote this file once and never touches it again. Each
+// function is called with the machine as `this`, for example:
+//   isActive(snapshot: ProcessSnapshot) { return this.states(snapshot).length > 0; },
+import type { {{ P }}MachineExtensions } from {{ imp(self, pmod(process, "machine.gen")) }};
+
+export const extensions = {} satisfies {{ P }}MachineExtensions;

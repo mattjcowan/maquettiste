@@ -12,7 +12,7 @@ using Stopwatch = System.Diagnostics.Stopwatch;
 namespace Maquettiste.Engine.Tests.Processes;
 
 /// <summary>
-/// Scenario replay (phase-3-design.md sections 3, 4.1 and 4.5): the gate 3 fixture's 13 scenarios pass under the interpreter; MQ9301 to
+/// Scenario replay (phase-3-design.md sections 3, 4.1 and 4.5): the gate 3 fixture's 14 scenarios pass under the interpreter; MQ9301 to
 /// MQ9306 each fail on a broken copy of a fixture scenario; validation replays scenarios in whole-model and scoped runs; the
 /// <c>refresh-scenario</c> batch operation rewrites expectations from a replay; and the macrostep and expression budgets are measured.
 /// </summary>
@@ -60,9 +60,9 @@ public sealed class ScenarioReplayTests
 
         var replays = model.All<Scenario>().Select(s => Replay(model, s)).ToList();
 
-        Assert.Equal(13, replays.Count);
+        Assert.Equal(14, replays.Count);
         Assert.All(replays, r => Assert.True(r.Passed && r.Diagnostics.Count == 0, r.Scenario.Name + ": " + string.Join(" | ", r.Diagnostics.Select(d => d.Message))));
-        Assert.Equal(48, replays.Sum(r => r.Steps.Count));
+        Assert.Equal(50, replays.Sum(r => r.Steps.Count));
         var happy = replays.Single(r => r.Scenario.Id == HappyPath);
         Assert.Equal([GateOutcome.Signed, GateOutcome.Signed, GateOutcome.Completed], happy.Steps.SelectMany(t => t.Audit).Select(a => a.Outcome));
         Assert.Equal("01JQATT0000000000000000204", Assert.Single(model.Get<Process>(happy.Scenario.Process)!.Transitions.Single(t => t.Gate is not null).Gate!.AuditAttributes).Id);

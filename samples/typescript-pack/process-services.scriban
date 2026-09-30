@@ -1,0 +1,86 @@
+{{-
+# process-services (generated side): one interface per service task and one notification hook per human task, and the
+# function the machine calls after a step to start the services and notify the tasks it entered or cancel what it left.
+include "_process.scriban"
+P = pascal process.name
+p = camel process.name
+self = pmod(process, "services.gen.ts")
+T = tasks(process)
+-}}
+{{ banner "//" }}
+
+import type { StepResult } from {{ imp(self, "runtime/statechart.gen") }};
+import type { {{ P }}Context } from {{ imp(self, pmod(process, "contracts")) }};
+import { services } from {{ imp(self, pmod(process, "services")) }};
+
+/** What a service or a human task hears about: the instance and its context when the task's state was entered. */
+export interface {{ P }}TaskRequest {
+  readonly instance: string;
+  readonly context: Readonly<{{ P }}Context>;
+}
+{{- for i in T }}
+{{- if i.type == "service" }}
+
+/**
+ * Service task {{ i.name }} (state {{ i.state.path }}){{ if i.description }}: {{ ts_comment i.description }}{{ end }}. `start` begins the work; the
+ * result comes back as the {{ cmd_invoke(process, i, "done") }} or {{ cmd_invoke(process, i, "error") }} command. `cancel` hears that the state was left first.
+ */
+export interface {{ stem(process, i.name) }}Service {
+  start(request: {{ P }}TaskRequest): void | Promise<void>;
+  cancel(request: {{ P }}TaskRequest): void | Promise<void>;
+}
+{{- else }}
+
+/**
+ * Human task {{ i.name }} (state {{ i.state.path }}{{ if i.actors.size > 0 }}, completed by {{ names(i.actors) | array.join " or " }}{{ end }}){{ if i.description }}: {{ ts_comment i.description }}{{ end }}.
+ * `assigned` hears that the task is waiting; the person completes it with the {{ cmd_invoke(process, i, "done") }} or
+ * {{ cmd_invoke(process, i, "error") }} command. `withdrawn` hears that the state was left first.
+ */
+export interface {{ stem(process, i.name) }}Task {
+  assigned(request: {{ P }}TaskRequest & { readonly actors: readonly string[] }): void | Promise<void>;
+  withdrawn(request: {{ P }}TaskRequest): void | Promise<void>;
+}
+{{- end }}
+{{- end }}
+
+/** The implementations of {{ P }}'s service tasks and human-task hooks; the companion ({{ kebab process.name }}.services.ts) provides them. */
+export interface {{ P }}Services {
+{{- for i in T }}
+  readonly {{ i.name }}: {{ stem(process, i.name) }}{{ i.type == "service" ? "Service" : "Task" }};
+{{- end }}
+}
+
+/** The companion's implementations, checked against the interface. */
+export const {{ p }}Services: {{ P }}Services = services;
+
+/** Starts the services and notifies the human tasks a step entered, and cancels or withdraws those it left. */
+export async function {{ p }}RunTasks(instance: string, result: StepResult): Promise<void> {
+{{- if T.size == 0 }}
+  void instance;
+  void result;
+{{- else }}
+  const context = result.context as unknown as Readonly<{{ P }}Context>;
+  for (const record of result.cancelled) {
+    switch (record.invoke) {
+{{- for i in T }}
+      case {{ ts_string i.name }}:
+        await {{ p }}Services.{{ i.name }}.{{ i.type == "service" ? "cancel" : "withdrawn" }}({ instance, context });
+        break;
+{{- end }}
+    }
+  }
+  for (const record of result.started) {
+    switch (record.invoke) {
+{{- for i in T }}
+      case {{ ts_string i.name }}:
+{{- if i.type == "service" }}
+        await {{ p }}Services.{{ i.name }}.start({ instance, context });
+{{- else }}
+        await {{ p }}Services.{{ i.name }}.assigned({ instance, context, actors: {{ str_list(names(i.actors)) }} });
+{{- end }}
+        break;
+{{- end }}
+    }
+  }
+{{- end }}
+}

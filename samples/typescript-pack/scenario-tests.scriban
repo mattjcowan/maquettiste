@@ -1,0 +1,93 @@
+{{-
+# scenario-tests: one node:test file per scenario. It replays the scenario through the dispatcher and the generated
+# interpreter with a manual clock and asserts, after each step with an expectation, accepted or refused, the active states
+# (when the scenario lists them) and the changed context, the stub guards' answers the step assumes, that no guard or action
+# failed, a refusal's reason and the gate audit outcomes as the engine's replay gives them, and the outcome. Each
+# step also reports its result as a test diagnostic line ("maquettiste-step" and JSON) for conformance tooling.
+include "_process.scriban"
+proc = scenario.process
+P = pascal proc.name
+self = pack.params.testsFolder + "/" + (kebab proc.name) + "/" + (kebab scenario.name) + ".test.ts"
+func opt_json(v)
+  ret v == null ? "null" : (json v)
+end
+-}}
+{{ banner "//" }}
+//
+// Scenario {{ scenario.name }} of {{ P }}.{{ if scenario.description }} {{ ts_comment scenario.description }}{{ end }}
+// A failing step is fixed in the model or in a handler, never here: the file is regenerated from the scenario.
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createDispatcher } from {{ imp(self, "dispatch/dispatch.gen") }};
+import { ManualClock, createHost } from {{ imp(self, "runtime/process-host") }};
+import type { ProcessOutcome } from {{ imp(self, "runtime/statechart.gen") }};
+
+test({{ ts_string (P + " / " + scenario.name) }}, async (t) => {
+  const clock = new ManualClock(Date.parse({{ ts_string scenario.start.at }}));
+  const dispatcher = createDispatcher({ host: createHost({ clock }) });
+  const instance = {{ ts_string scenario.name }};
+  const trace = (step: number, outcome: ProcessOutcome): ProcessOutcome => {
+    const { accepted, refusal, states, changed, final } = outcome.result;
+    t.diagnostic('maquettiste-step ' + JSON.stringify({ scenario: {{ ts_string scenario.id }}, step, accepted, refusal, states, changed, final }));
+    return outcome;
+  };
+
+  let outcome = trace(-1, await dispatcher.dispatch({ type: {{ ts_string cmd_start(proc) }}, instance, context: {{ json scenario.start.context }} }));
+  assert.equal(outcome.result.accepted, true, 'start: accepted');
+{{- for step in scenario.steps }}
+{{- n = step.index + 1 }}
+{{- at = "step " + n }}
+
+{{- if step.input == "time" }}
+
+  // Step {{ n }}: advance the clock by {{ step.after }}.{{ if step.description }} {{ ts_comment step.description }}{{ end }}
+  clock.advance({{ step.after_ms ?? 0 }});
+  outcome = trace({{ step.index }}, await dispatcher.dispatch({ type: {{ ts_string cmd_tick(proc) }}, instance }));
+{{- else if step.input == "event" }}
+
+  // Step {{ n }}: {{ step.event ? step.event.name : "(an event that does not resolve)" }}{{ if step.actor }} as {{ step.actor.name }}{{ end }}{{ if step.signer }}, signed by {{ ts_comment step.signer }}{{ end }}.{{ if step.description }} {{ ts_comment step.description }}{{ end }}
+  outcome = trace(
+    {{ step.index }},
+    await dispatcher.dispatch({
+      type: {{ ts_string (step.event ? cmd_event(proc, step.event) : (P + ".?")) }},
+      instance,
+      actor: {{ step.actor ? (ts_string step.actor.name) : "null" }},
+      signer: {{ opt_json(step.signer) }},
+      meaning: {{ step.meaning ? (ts_string step.meaning.name) : "null" }},
+      reason: {{ opt_json(step.reason) }},
+      payload: {{ json step.payload }},
+    }),
+  );
+{{- else }}
+
+  // Step {{ n }}: {{ step.input == "invoke-done" ? "complete" : "fail" }} {{ step.invoke ? step.invoke.name : "(an invoke that does not resolve)" }}{{ if step.actor }} as {{ step.actor.name }}{{ end }}.{{ if step.description }} {{ ts_comment step.description }}{{ end }}
+  outcome = trace({{ step.index }}, await dispatcher.dispatch({ type: {{ ts_string (step.invoke ? cmd_invoke(proc, step.invoke, (step.input == "invoke-done" ? "done" : "error")) : (P + ".?")) }}, instance, actor: {{ step.actor ? (ts_string step.actor.name) : "null" }} }));
+{{- end }}
+{{- assume = json step.assume }}
+{{- if assume != "{}" }}
+  const assumed{{ n }}: Readonly<Record<string, boolean>> = {{ assume }};
+  for (const g of outcome.result.guards) {
+    if (Object.hasOwn(assumed{{ n }}, g.guard)) assert.equal(g.result, assumed{{ n }}[g.guard], `{{ at }}: guard ${g.guard} answers as the scenario assumes`);
+  }
+{{- end }}
+  assert.deepEqual(outcome.result.problems, [], {{ ts_string (at + ": no guard or action failed") }});
+{{- if step.expect }}
+  assert.equal(outcome.result.accepted, {{ step.expect.accepted }}, {{ ts_string (at + ": " + (step.expect.accepted ? "accepted" : "refused")) }});
+{{- if !step.expect.accepted && step.trace && step.trace.refusal }}
+  assert.equal(outcome.result.refusal, {{ ts_string step.trace.refusal }}, {{ ts_string (at + ": refused for the engine's reason") }});
+{{- end }}
+{{- end }}
+{{- if step.trace && step.trace.audit.size > 0 }}
+  assert.deepEqual(outcome.result.audit.map((a) => a.outcome), {{ str_list(step.trace.audit) }}, {{ ts_string (at + ": gate audit outcomes") }});
+{{- end }}
+{{- if step.expect }}
+{{- if step.expect.state_paths.size > 0 }}
+  assert.deepEqual(outcome.result.states, {{ str_list(step.expect.state_paths) }}, {{ ts_string (at + ": active states") }});
+{{- end }}
+  assert.deepEqual(outcome.result.changed, {{ json step.expect.context }}, {{ ts_string (at + ": changed context") }});
+{{- end }}
+{{- end }}
+
+  assert.equal(outcome.result.final, {{ scenario.outcome == "final" }}, {{ ts_string ("outcome: " + scenario.outcome) }});
+});

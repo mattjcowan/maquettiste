@@ -1,0 +1,50 @@
+{{-
+# The companion of the interpreter (unit interpreter-companion, written once): Runtime/ProcessHost.cs, the in-memory extension
+# points. Written only when the model has processes.
+include "_csharp.scriban"
+if model.processes.size > 0
+-}}
+{{- capture content -}}
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace {{ pack.params.namespace }}.Runtime;
+
+// The hand-written half of the process runtime. Maquettiste wrote this file once and never touches it again. ProcessHost
+// implements the interpreter's extension points with in-memory defaults: the system clock (or any other), a list of scheduled
+// timers and a list of started invokes. Replace them with the host's scheduler and work queue; the generated Statechart.g.cs
+// only calls these interfaces.
+
+/// <summary>The clock, timer scheduler and invoke host of the processes, in memory.</summary>
+/// <param name="clock">The clock; the system clock when null.</param>
+public sealed partial class ProcessHost(IProcessClock? clock = null) : IProcessClock, ITimerScheduler, IInvokeHost
+{
+    private readonly IProcessClock? _clock = clock;
+    private readonly List<TimerRequest> _timers = [];
+    private readonly List<InvokeRequest> _invokes = [];
+
+    /// <inheritdoc/>
+    public DateTimeOffset Now => _clock?.Now ?? DateTimeOffset.UtcNow;
+
+    /// <summary>The scheduled timers, in due order.</summary>
+    public IReadOnlyList<TimerRequest> Timers => [.. _timers.OrderBy(t => t.Due)];
+
+    /// <summary>The started invokes that have not been cancelled.</summary>
+    public IReadOnlyList<InvokeRequest> Invokes => _invokes;
+
+    /// <inheritdoc/>
+    public void Schedule(TimerRequest timer) => _timers.Add(timer);
+
+    /// <inheritdoc/>
+    public void Cancel(TimerRequest timer) => _timers.Remove(timer);
+
+    /// <inheritdoc/>
+    public void Start(InvokeRequest invoke) => _invokes.Add(invoke);
+
+    /// <inheritdoc/>
+    public void Cancel(InvokeRequest invoke) => _invokes.RemoveAll(i => i.Instance == invoke.Instance && i.Invoke == invoke.Invoke);
+}
+{{ end -}}
+{{- file (join_path pack.params.partialFolder "Runtime" "ProcessHost.cs") content -}}
+{{- end -}}

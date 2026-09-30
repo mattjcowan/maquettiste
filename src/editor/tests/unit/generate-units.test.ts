@@ -11,6 +11,7 @@ import {
   moveUnit,
   removeUnit,
   sameDocument,
+  SCOPE_OPTIONS,
   scopeHelp,
   setUnitField,
   toPackUnit,
@@ -83,6 +84,11 @@ describe("units model", () => {
     expect(modeLabel(undefined)).toBe("Overwrite");
     expect(scopeHelp("model")).toMatch(/^Runs once\./);
     expect(scopeHelp("each entity")).toMatch(/once per element of that kind/);
+    for (const scope of ["each process", "each actor", "each scenario"]) {
+      expect(scopeHelp(scope)).toBe("Runs once per process, actor or scenario; one file each.");
+      expect(SCOPE_OPTIONS).toContain(scope);
+    }
+    expect(filesLabel("each scenario")).toBe("Each scenario");
     expect(scopeHelp("select databases")).toContain("selector databases");
     expect(unitLine(doc().units[0])).toBe("table · each table → table.scriban → <database>/[<schema>/]tables/<table>.sql");
     expect(unitLine({ id: "all", for: "model", template: "all.scriban" })).toBe(`all · once → all.scriban → ${NO_OUTPUT}`);

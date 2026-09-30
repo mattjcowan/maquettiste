@@ -1,0 +1,12 @@
+{{-
+# process-store (companion, written once): the store of one process, in memory until the project maps it.
+include "_process.scriban"
+P = pascal process.name
+self = pmod(process, "store.ts")
+-}}
+// Where {{ P }} instances, their history and their audit records live. Maquettiste wrote this file once, with an in-memory
+// store, and never touches it again: adapt the {{ P }}Store interface to the tables or documents the project maps.
+import type { {{ P }}StoreFactory } from {{ imp(self, pmod(process, "store.gen")) }};
+import { InMemoryProcessStore } from {{ imp(self, "runtime/process-host") }};
+
+export const createStore = (() => new InMemoryProcessStore()) satisfies {{ P }}StoreFactory;

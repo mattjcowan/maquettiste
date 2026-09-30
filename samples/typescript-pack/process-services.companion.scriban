@@ -1,0 +1,35 @@
+{{-
+# process-services (companion, written once): the project's service implementations and human-task hooks.
+include "_process.scriban"
+P = pascal process.name
+self = pmod(process, "services.ts")
+T = tasks(process)
+-}}
+// The implementations of {{ P }}'s service tasks and the hooks of its human tasks. Maquettiste wrote this file once and never
+// touches it again. The generated half ({{ kebab process.name }}.services.gen.ts) declares one interface per task: when the model
+// gains a task, `satisfies` fails the build until it is here.
+import type { {{ P }}Services } from {{ imp(self, pmod(process, "services.gen")) }};
+
+export const services = {
+{{- for i in T }}
+{{- if i.type == "service" }}
+  {{ i.name }}: {
+    start(_request) {
+      // Begin the work here; report the result with the {{ cmd_invoke(process, i, "done") }} (or :error) command.
+    },
+    cancel(_request) {
+      // The state was left before the work finished.
+    },
+  },
+{{- else }}
+  {{ i.name }}: {
+    assigned(_request) {
+      // Tell the people who may complete the task; they send the {{ cmd_invoke(process, i, "done") }} (or :error) command.
+    },
+    withdrawn(_request) {
+      // The state was left before anyone completed the task.
+    },
+  },
+{{- end }}
+{{- end }}
+} satisfies {{ P }}Services;

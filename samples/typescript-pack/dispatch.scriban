@@ -1,0 +1,164 @@
+{{-
+# dispatch (generated side): dispatch/dispatch.gen.ts, the command union of every process, the handler, behaviour and registry
+# types, the dispatcher and the endpoint shapes. Written only when the model has processes; the companion is
+# dispatch/pipeline.ts (unit dispatch-companion).
+include "_process.scriban"
+if model.processes.size > 0
+self = "dispatch/dispatch.gen.ts"
+-}}
+{{- capture content -}}
+{{ banner "//" }}
+
+import { createProcessHost } from {{ imp(self, "runtime/statechart.gen") }};
+import type { ProcessHost, ProcessOutcome } from {{ imp(self, "runtime/statechart.gen") }};
+{{- for p in model.processes }}
+import type { {{ pascal p.name }}Command } from {{ imp(self, pmod(p, "contracts")) }};
+{{- end }}
+import { defaultBehaviours } from {{ imp(self, "dispatch/behaviours") }};
+import { pipeline } from {{ imp(self, "dispatch/pipeline") }};
+import { createStores, registry } from {{ imp(self, "dispatch/registry") }};
+import type { Stores } from {{ imp(self, "dispatch/registry") }};
+
+/** Every command of every process. */
+export type Command =
+{{- for p in model.processes }}
+  | {{ pascal p.name }}Command
+{{- end }};
+
+export type CommandType = Command['type'];
+
+/** What handlers and behaviours get besides the command. */
+export interface DispatchContext {
+  readonly host: ProcessHost;
+  readonly stores: Stores;
+  /** The caller's identity as the host knows it; the pipeline's hooks map it to actors. */
+  readonly principal: unknown;
+}
+
+export type Handler<C extends Command = Command> = (command: C, context: DispatchContext) => Promise<ProcessOutcome>;
+
+/** A pipeline step around the handler: it may inspect the command, refuse it by throwing, or wrap what `next` does. */
+export type Behaviour = (command: Command, context: DispatchContext, next: () => Promise<ProcessOutcome>) => Promise<ProcessOutcome>;
+
+/** One handler per command type: a mapped type, so a command without a handler fails the build. */
+export type Registry = { readonly [K in CommandType]: Handler<Extract<Command, { type: K }>> };
+
+/** Thrown by a behaviour that refuses a command before it reaches the process (invalid payload, a caller who may not act as the actor). */
+export class DispatchError extends Error {
+  readonly code: 'invalid' | 'forbidden';
+  readonly problems: readonly string[];
+
+  constructor(code: 'invalid' | 'forbidden', problems: readonly string[]) {
+    super(problems.join(' '));
+    this.name = 'DispatchError';
+    this.code = code;
+    this.problems = problems;
+  }
+}
+
+/** The generated behaviours, in their default order; the companion's `order` arranges them and adds the project's own. */
+export interface DefaultBehaviours {
+  readonly validation: Behaviour;
+  readonly authorization: Behaviour;
+  readonly logging: Behaviour;
+  readonly transaction: Behaviour;
+  readonly outbox: Behaviour;
+}
+
+/** An entry the logging behaviour writes: payload attributes marked sensitive are left out. */
+export interface LogEntry {
+  readonly phase: 'received' | 'handled' | 'failed';
+  readonly type: CommandType;
+  readonly instance: string;
+  readonly actor: string | null;
+  readonly payload: Readonly<Record<string, unknown>>;
+  readonly accepted?: boolean;
+  readonly refusal?: string | null;
+  readonly states?: readonly string[];
+  readonly error?: string;
+}
+
+/** The policy hooks the generated behaviours call. */
+export interface PipelineHooks {
+  /** Whether the caller may act as the actor the command names (null: no actor named). */
+  mayActAs(principal: unknown, actor: string | null, command: Command): boolean | Promise<boolean>;
+  log(entry: LogEntry): void;
+  /** Runs the handler and the outbox hand-off as one unit of work (a database transaction, for example). */
+  unitOfWork<T>(command: Command, work: () => Promise<T>): Promise<T>;
+  /** Receives the records to publish (Transitioned and audit records) inside the unit of work. */
+  outbox(records: readonly unknown[], command: Command): void | Promise<void>;
+}
+
+/** The companion's shape (dispatch/pipeline.ts). */
+export interface PipelineCompanion {
+  order(defaults: DefaultBehaviours): readonly Behaviour[];
+  readonly hooks: PipelineHooks;
+}
+
+/** The companion's pipeline, checked against the declared shape. */
+export const dispatchPipeline: PipelineCompanion = pipeline;
+
+/** Dispatches commands in-process: the behaviours in order around the registered handler. No reflection: the registry is a typed map. */
+export class Dispatcher {
+  private readonly handlers: Registry;
+  private readonly behaviours: readonly Behaviour[];
+  private readonly context: DispatchContext;
+
+  constructor(handlers: Registry, behaviours: readonly Behaviour[], context: DispatchContext) {
+    this.handlers = handlers;
+    this.behaviours = behaviours;
+    this.context = context;
+  }
+
+  get host(): ProcessHost {
+    return this.context.host;
+  }
+
+  get stores(): Stores {
+    return this.context.stores;
+  }
+
+  dispatch(command: Command, principal?: unknown): Promise<ProcessOutcome> {
+    const handler = this.handlers[command.type] as Handler;
+    const context: DispatchContext = principal === undefined ? this.context : { ...this.context, principal };
+    const run = (index: number): Promise<ProcessOutcome> => {
+      const behaviour = this.behaviours[index];
+      return behaviour ? behaviour(command, context, () => run(index + 1)) : handler(command, context);
+    };
+    return run(0);
+  }
+}
+
+export interface DispatcherOptions {
+  readonly host?: ProcessHost;
+  readonly stores?: Stores;
+  readonly principal?: unknown;
+}
+
+/** A dispatcher over the generated registry, the companion's pipeline and stores, and a host (the companion's by default). */
+export function createDispatcher(options: DispatcherOptions = {}): Dispatcher {
+  const context: DispatchContext = { host: options.host ?? createProcessHost(), stores: options.stores ?? createStores(), principal: options.principal ?? null };
+  return new Dispatcher(registry, dispatchPipeline.order(defaultBehaviours), context);
+}
+
+/** A request as an endpoint sees it, whatever serves it: route parameters, the parsed body and the caller. */
+export interface EndpointRequest {
+  readonly params: Readonly<Record<string, string>>;
+  readonly body: unknown;
+  readonly principal?: unknown;
+}
+
+export interface EndpointResponse {
+  readonly status: number;
+  readonly body: unknown;
+}
+
+export interface Endpoint {
+  readonly method: 'POST';
+  /** The route, with `:instance` for the instance's identity. */
+  readonly path: string;
+  handle(request: EndpointRequest, dispatcher: Dispatcher): Promise<EndpointResponse>;
+}
+{{ end -}}
+{{- file "dispatch/dispatch.gen.ts" content -}}
+{{- end -}}

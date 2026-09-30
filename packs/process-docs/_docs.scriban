@@ -1,0 +1,255 @@
+{{-
+# Shared functions of the process-docs pack. Include this file once at the top of a page template; it prints nothing.
+# Names (identifiers and paths) are written as code spans with md_code; display names, which are free text, go through
+# md_cell; descriptions are the author's own Markdown and are written as they are (md_inline only keeps a table row on one line).
+
+# A description for a table cell: line breaks become spaces and pipes are escaped, so the row stays one row.
+func md_inline(text)
+  if !text
+    ret ""
+  end
+  ret string.replace (string.replace (string.replace text "\r\n" " ") "\n" " ") "|" "\\|"
+end
+
+# Code spans of the names of a list, separated by commas.
+func code_names(list)
+  $text = ""
+  for $item in list
+    $text = $text + (for.first ? "" : ", ") + (md_code $item.name)
+  end
+  ret $text
+end
+
+# Code spans of the paths of a list of states, separated by commas.
+func code_paths(list)
+  $text = ""
+  for $item in list
+    $text = $text + (for.first ? "" : ", ") + (md_code $item.path)
+  end
+  ret $text
+end
+
+# The link to an actor's page from a page `up` folders below the output root ("../" for a process page).
+func actor_link(a, up)
+  ret "[" + (md_cell a.display_name) + "](" + up + "actors/" + (kebab a.name) + ".md)"
+end
+
+# Links to the pages of a list of actors, separated by commas.
+func actor_links(list, up)
+  $text = ""
+  for $item in list
+    $text = $text + (for.first ? "" : ", ") + actor_link($item, up)
+  end
+  ret $text
+end
+
+# The link to a process's page from a page `up` folders below the output root.
+func process_link(p, up)
+  ret "[" + (md_cell p.display_name) + "](" + up + "processes/" + (kebab p.name) + ".md)"
+end
+
+# An attribute's type as the model writes it: the type name, a length in parentheses, "[]" for a collection.
+func attr_type(a)
+  $t = a.type.name
+  if a.length
+    $t = $t + "(" + a.length + ")"
+  end
+  if a.collection
+    $t = $t + "[]"
+  end
+  ret $t
+end
+
+# A list of attributes in one line: `name` type, "(required)" when required.
+func attr_list(list)
+  $text = ""
+  for $item in list
+    $text = $text + (for.first ? "" : ", ") + (md_code $item.name) + " " + (md_code attr_type($item)) + ($item.required ? " (required)" : "")
+  end
+  ret $text
+end
+
+# What starts a transition, in words: an event, a time span, a finished or failed invoke, the end of the source, or nothing.
+func trigger_text(t)
+  case t.trigger
+    when "event"
+      ret "event " + (t.event ? (md_code t.event.name) : "`?`")
+    when "after"
+      ret "after " + (md_code t.after)
+    when "done"
+      ret "done"
+    when "always"
+      ret "always"
+    when "invoke-done"
+      ret "done of " + (t.invoke ? (md_code t.invoke.name) : "`?`")
+    when "invoke-error"
+      ret "error of " + (t.invoke ? (md_code t.invoke.name) : "`?`")
+  end
+  ret t.trigger
+end
+
+# The number of each transition in the transitions table (its priority order, from 1), keyed by transition id.
+func transition_numbers(p)
+  $numbers = {}
+  for $t in p.transitions
+    $numbers[$t.id] = for.index + 1
+  end
+  ret $numbers
+end
+
+# Whether a list of actors holds an actor (compared by id).
+func has_actor(list, a)
+  for $item in list
+    if $item.id == a.id
+      ret true
+    end
+  end
+  ret false
+end
+
+# ---------------------------------------------------------------------------------------------------------------------------
+# The state diagram, in diagram text. Compound states are nested blocks with "[*]" to their initial child and from their final
+# children; the regions of a parallel state are blocks separated by "--"; a choice state is a choice pseudo-state; a history
+# state is a state labelled "H" (shallow) or "H*" (deep) with an edge "default" to its default target; each transition with
+# targets is an edge per target labelled as the editor labels it (plus the gate's count); a targetless transition, which leaves
+# its source active, is a note beside the source. Each edge is declared in the innermost compound state holding both its ends,
+# so the renderer places it inside that block.
+
+# The diagram id of each state, keyed by path: the state's name when no other state of the process has it and it is not a word
+# the diagram text reserves, else "s_" and the path with "_" between names.
+func diagram_ids(p)
+  $count = {}
+  for $s in p.all_states
+    $count[$s.name] = ($count[$s.name] ?? 0) + 1
+  end
+  $ids = {}
+  for $s in p.all_states
+    if $count[$s.name] == 1 && !(diagram_reserved $s.name)
+      $ids[$s.path] = $s.name
+    else
+      $ids[$s.path] = "s_" + (string.replace $s.path "." "_")
+    end
+  end
+  ret $ids
+end
+
+# Whether a state lies strictly inside the state at `prefix` (the container's path followed by a dot).
+func inside(s, prefix)
+  ret string.starts_with s.path prefix
+end
+
+# The path of the block an edge belongs in ("" for the top level): the innermost compound state that strictly contains the
+# source and every target. A parallel state is skipped, since its body holds only its regions.
+func edge_container(t)
+  $c = t.source.parent
+  while $c
+    $ok = $c.type != "parallel" && inside(t.source, $c.path + ".")
+    if $ok
+      for $x in t.targets
+        if !inside($x, $c.path + ".")
+          $ok = false
+        end
+      end
+    end
+    if $ok
+      ret $c.path
+    end
+    $c = $c.parent
+  end
+  ret ""
+end
+
+# The edge label of a transition: the editor's label, and "(gate N of M)" when a gate guards it.
+func edge_label(t)
+  $label = t.label
+  if t.gate
+    $label = $label + " (gate " + t.gate.required + " of " + t.gate.signers.size + ")"
+  end
+  ret diagram_text $label
+end
+
+# The lines of one state inside its container's block, with its own block when it has children.
+func diagram_state(p, ids, where, s, ind)
+  $id = ids[s.path]
+  if s.type == "choice"
+    ret ind + "state " + $id + " <<choice>>\n"
+  end
+  if s.type == "history"
+    ret ind + "state \"" + (diagram_text s.name) + (s.history == "deep" ? " H*" : " H") + "\" as " + $id + "\n"
+  end
+  $head = $id == s.name ? "" : ind + "state \"" + (diagram_text s.name) + "\" as " + $id + "\n"
+  if s.children.size == 0
+    ret $head == "" ? ind + $id + "\n" : $head
+  end
+  $out = $head + ind + "state " + $id + " {\n"
+  if s.type == "parallel"
+    for $region in s.children
+      if !for.first
+        $out = $out + ind + "    --\n"
+      end
+      $out = $out + diagram_state(p, ids, where, $region, ind + "    ") + diagram_notes(ids, $region, ind + "    ")
+    end
+  else
+    $out = $out + diagram_body(p, ids, where, s.path, s.children, s.initial, ind + "    ")
+  end
+  ret $out + ind + "}\n"
+end
+
+# The body of the top level or of a compound state: the initial edge, the children, the edges that belong here, history
+# defaults, the edges to the end, then notes for targetless transitions.
+func diagram_body(p, ids, where, path, children, initial, ind)
+  $out = ""
+  if initial
+    $out = $out + ind + "[*] --> " + ids[initial.path] + "\n"
+  end
+  for $child in children
+    $out = $out + diagram_state(p, ids, where, $child, ind)
+  end
+  for $t in p.transitions
+    if !$t.is_targetless && where[$t.id] == path
+      for $x in $t.targets
+        $out = $out + ind + ids[$t.source.path] + " --> " + ids[$x.path] + " : " + edge_label($t) + "\n"
+      end
+    end
+  end
+  for $child in children
+    if $child.type == "history" && $child.default_target
+      $out = $out + ind + ids[$child.path] + " --> " + ids[$child.default_target.path] + " : default\n"
+    end
+  end
+  for $child in children
+    if $child.is_final
+      $out = $out + ind + ids[$child.path] + " --> [*]\n"
+    end
+  end
+  for $child in children
+    $out = $out + diagram_notes(ids, $child, ind)
+  end
+  ret $out
+end
+
+# The note beside a state listing its targetless transitions, or "". A region of a parallel state gets its note inside its own
+# part of the parallel block, after the region.
+func diagram_notes(ids, s, ind)
+  $lines = ""
+  for $t in s.transitions_out
+    if $t.is_targetless
+      $lines = $lines + ind + "    internal: " + edge_label($t) + "\n"
+    end
+  end
+  if $lines == ""
+    ret ""
+  end
+  ret ind + "note right of " + ids[s.path] + "\n" + $lines + ind + "end note\n"
+end
+
+# The whole diagram of a process, from the header line to the last edge, without the fence.
+func diagram(p)
+  $ids = diagram_ids(p)
+  $where = {}
+  for $t in p.transitions
+    $where[$t.id] = edge_container($t)
+  end
+  ret "stateDiagram-v2\n" + diagram_body(p, $ids, $where, "", p.states, p.initial, "    ")
+end
+-}}

@@ -180,3 +180,49 @@ own files; what earlier database runs add (relation dependency keys in `FinishRe
 (`FinishConceptual`, seeds, usages, the dependency freeze) shape no table, so they are skipped and dependency lists stay unset. The
 tables are those of `Run` (tests compare every `TableView` on the fixture model and the bench's synthetic model). Generation always
 uses the whole-model `Run`. Numbers: explorer-redesign.md section 4.5 (`bench time-tables`).
+
+## Processes (P5a: phase-3-design.md sections 4.3 and 7.1)
+
+- `ResolveRun.Processes.cs` resolves actors, then process shells (an invoke names another process), then each process, then
+  scenarios, the actors' uses and `REntity.Lifecycle`, after the seeds (a lifecycle reads its subject's flattened attributes). The
+  R-types are in `ResolvedProcesses.cs`; engine-design.md section 7.1a lists them.
+- The chart is the interpreter's: `StatechartModel.Get(process, null)` gives the states in document order with their paths, depth,
+  initial children and history defaults, and the transitions whose source resolves in priority order. Nothing about paths or order is
+  re-derived here. `AfterMs`, `AfterTicks` (the exact span, below a millisecond too) and the `iso_duration_ms` helper use
+  `StatechartModel.ParseDuration` (fixed spans).
+- `RStep.Trace` is the engine interpreter's replay of the step's scenario (`ScenarioReplayer` over a `ProcessRuntime` of the resolved
+  snapshot, pool size 1), computed lazily once per scenario and shared by its steps, so a run whose templates never read it pays
+  nothing; its reads record the step's keys (the scenario's and the process's). A step's `Payload` names keys by event payload, then
+  gate audit attribute, then context attribute.
+- `ProcessText.Label` and `ProcessText.ShortDuration` copy the editor's `edgeLabel` and `shortDuration` (`canvas/statechart/
+  chartModel.ts`): an unknown id reads `?`, the invoke triggers read `done: <invoke>` and `error: <invoke>`, the duration pattern
+  accepts decimals in any unit (ASCII digits, as the script pattern). The editor test `statechart-label-parity.test.ts` compares the
+  canvas labels with the golden `Golden/processes/resolved.txt` on the gate 3 fixture. A transition's `DisplayName` is its
+  `displayName`, else its label.
+- As built where section 4.3 left a choice: `IsAtomic` (and `AtomicStates`) is what a configuration reports as an active leaf
+  (`ChartState.IsLeaf` without choice states): atomic and final states and containers without children, never history or choice
+  states. `Depth` is the chart's (1 for a child of the root). `RegionIndex` is set on the children of a parallel state. `Initial` is
+  set on compound states only (`null` on a parallel state). `BoundMember` is the bound enum's member with the state's name, set only
+  on a lifecycle's bound root states. `Context` is the declared context attributes stably sorted by order, without stereotype virtual
+  attributes (the interpreter's context holds only declared attributes). An action's `UsedBy` lists the transitions that run it, then
+  the states whose entry or exit run it. `REvent.Transitions` holds event-triggered transitions only. `RActor.Events` lists the events
+  that name the actor (an event without actors accepts any actor but is not listed on every actor).
+- The audit record (`RGate.Audit`, `RAuditField`): `instance` string, `process`, `gate`, `transition` `id`, `sequence` int64, `signer`
+  string, `actor` and `meaning` `id`, `reason` text, `at` datetimeoffset, `outcome` string with `Values` signed, completed, refused,
+  discarded; then one field per audit attribute with its `Attribute`. `signer`, `actor`, `meaning` and `reason` are not `Required`:
+  a discarded record carries none, even when the gate requires a reason on signatures.
+- Scenario maps (`Start.Context`, `Payload`, `Expect.Context`) key by attribute name, `Assume` by guard name; an id that resolves to
+  nothing keeps the id as its key. A scenario whose process does not resolve (MQ2001) is left out of `model.scenarios`.
+- Dependency keys (deviation from phase-3-design.md 4.3's list, which puts `r:<process id>` on the process): a process's own
+  object carries no `r:` key. The referrers of a process are its scenarios, so an `r:` key on the object would re-render every
+  process unit and every sibling scenario unit whenever one scenario is edited. `r:<process id>` sits on `process.scenarios`
+  (with `k:scenario`), the only member that other files decide. An actor's `processes`, `events` and `gates` carry `r:<actor id>`,
+  so an actor's unit re-renders when a process starts naming it (a scenario step naming the actor also changes the key, which is
+  a harmless over-approximation). Every process node lists the process file's `e:` key plus the subject's and the bound enum's
+  (a bound state's member follows the enum), and the `e:` keys of the actors and invoked processes that node names. An entity that
+  names a lifecycle adds `k:process`, so the process appearing or disappearing re-renders its units.
+- Processes are resolved one after another (not on the parallel phases): each writes the shared actor uses in process order.
+
+Tests: `tests/Maquettiste.Engine.Tests/Resolution/ProcessResolutionTests.cs` (golden `Golden/processes/resolved.txt` over the gate 3
+fixture, ordering, keys, the interpreter's chart, the duration rules), `Planning/ProcessScopeTests.cs`,
+`Rendering/ProcessRenderTests.cs`, `Integration/ProcessGenerationTests.cs` (incremental runs).

@@ -97,10 +97,10 @@ describe("the session", () => {
     expect(s.start.context).toEqual({ "01JQATT0000000000000000201": 900 });
     expect(setStartValue(s, "01JQATT0000000000000000201", undefined).start.context).toEqual({});
     const loaded = loadScenario(s, scenario(BUDGET_REJECTED));
-    expect(loaded.start.context).toEqual({ "01JQATT0000000000000000201": 2500 });
+    expect(loaded.start.context).toEqual({ "01JQATT0000000000000000201": 25000 });
     // Inputs carry no id, expectation or description, and no default `input`.
     expect(loaded.inputs).toEqual([submit, { input: "invoke-error", invoke: X(19) }, { input: "invoke-done", invoke: X(20), actor: APPROVER }]);
-    expect(requestOf(loaded)).toEqual({ start: { context: { "01JQATT0000000000000000201": 2500 } }, steps: loaded.inputs, from: -1 });
+    expect(requestOf(loaded)).toEqual({ start: { context: { "01JQATT0000000000000000201": 25000 } }, steps: loaded.inputs, from: -1 });
     expect(requestOf(loaded, { kind: "process" }).document).toEqual({ kind: "process" });
     expect(clean({ id: "x", event: "e", payload: {}, assume: {}, reason: "" } as never)).toEqual({ event: "e" });
   });

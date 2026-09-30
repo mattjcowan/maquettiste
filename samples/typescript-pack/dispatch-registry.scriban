@@ -1,0 +1,70 @@
+{{-
+# dispatch-registry: dispatch/registry.ts, the typed map from command type to handler (checked to cover every command), each
+# process's program by id (for sub-process invokes) and the stores. Written only when the model has processes.
+include "_process.scriban"
+if model.processes.size > 0
+self = "dispatch/registry.ts"
+-}}
+{{- capture content -}}
+{{ banner "//" }}
+
+import { chartProgram } from {{ imp(self, "runtime/statechart.gen") }};
+import type { ChartProgram } from {{ imp(self, "runtime/statechart.gen") }};
+import type { Registry } from {{ imp(self, "dispatch/dispatch.gen") }};
+{{- for p in model.processes }}
+{{- P = pascal p.name }}
+{{- c = camel p.name }}
+import { {{ c }}Definition } from {{ imp(self, pmod(p, "definition")) }};
+import { {{ c }}Handlers } from {{ imp(self, pmod(p, "handlers.gen")) }};
+import { create{{ P }}Machine } from {{ imp(self, pmod(p, "machine.gen")) }};
+import { create{{ P }}Store } from {{ imp(self, pmod(p, "store.gen")) }};
+import type { {{ P }}Store } from {{ imp(self, pmod(p, "store.gen")) }};
+{{- end }}
+
+/** Every process's chart and handlers, by process id: an invoked sub-process runs from here. */
+export const programs: Readonly<Record<string, ChartProgram>> = {
+{{- for p in model.processes }}
+  {{ ts_string p.id }}: chartProgram({{ camel p.name }}Definition, {{ camel p.name }}Handlers),
+{{- end }}
+};
+
+const resolve = (processId: string): ChartProgram | undefined => programs[processId];
+{{- for p in model.processes }}
+const {{ camel p.name }} = create{{ pascal p.name }}Machine({ resolve });
+{{- end }}
+
+/** One store per process. */
+export interface Stores {
+{{- for p in model.processes }}
+  readonly {{ pascal p.name }}: {{ pascal p.name }}Store;
+{{- end }}
+}
+
+/** The stores the companions create. */
+export function createStores(): Stores {
+  return {
+{{- for p in model.processes }}
+    {{ pascal p.name }}: create{{ pascal p.name }}Store(),
+{{- end }}
+  };
+}
+
+/** The handler of every command type. `satisfies Registry` fails the build when a command has no handler or a handler no command. */
+export const registry = {
+{{- for p in model.processes }}
+{{- c = camel p.name }}
+{{- h = "(command, context) => " + c + ".handle(command, context.stores." + (pascal p.name) + ", context.host)" }}
+  {{ ts_string cmd_start(p) }}: {{ h }},
+  {{ ts_string cmd_tick(p) }}: {{ h }},
+{{- for e in p.events }}
+  {{ ts_string cmd_event(p, e) }}: {{ h }},
+{{- end }}
+{{- for i in tasks(p) }}
+  {{ ts_string cmd_invoke(p, i, "done") }}: {{ h }},
+  {{ ts_string cmd_invoke(p, i, "error") }}: {{ h }},
+{{- end }}
+{{- end }}
+} satisfies Registry;
+{{ end -}}
+{{- file "dispatch/registry.ts" content -}}
+{{- end -}}

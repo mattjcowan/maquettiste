@@ -2,12 +2,14 @@
   "name": "csharp-dapper",
   "version": "1.0.0",
   "engine": ">=1.0 <2.0",
-  "description": "C# model and Dapper data access: entity classes as generated/hand-written pairs, enums, value objects, reference types as records with a static class of rows and resource files per locale, one repository per mapped entity and one registration file per package.",
+  "description": "C# model and Dapper data access: entity classes as generated/hand-written pairs, enums, value objects, reference types as records with a static class of rows and resource files per locale, one repository per mapped entity and one registration file per package; for processes, the states, definition and contracts, handlers, services, machine and store as pairs, HTTP endpoints with regions, a typed dispatcher with pipeline behaviours, a generated statechart interpreter and one xunit test per scenario.",
   "parameters": {
     "database": "",
+    "endpointsFolder": "",
     "generatedFolder": "",
     "namespace": "App.Model",
-    "partialFolder": ""
+    "partialFolder": "",
+    "testsFolder": ""
   },
   "units": [
     {
@@ -63,6 +65,116 @@
       "template": "type-handlers.scriban",
       "for": "model",
       "output": "{{ join_path pack.params.generatedFolder \"DapperTypeHandlers.g.cs\" }}"
+    },
+    {
+      "id": "process-states",
+      "template": "process-states.scriban",
+      "for": "each process",
+      "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"States.cs\") }}"
+    },
+    {
+      "id": "process-definition",
+      "template": "process-definition.scriban",
+      "for": "each process",
+      "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Definition.cs\") }}"
+    },
+    {
+      "id": "process-contracts",
+      "template": "process-contracts.scriban",
+      "for": "each process",
+      "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Contracts.cs\") }}"
+    },
+    {
+      "id": "process-handlers",
+      "template": "process-handlers.scriban",
+      "for": "each process",
+      "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Handlers.g.cs\") }}",
+      "mode": "pair",
+      "companion": {
+        "template": "process-handlers.partial.scriban",
+        "output": "{{ join_path pack.params.partialFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Handlers.cs\") }}"
+      }
+    },
+    {
+      "id": "process-services",
+      "template": "process-services.scriban",
+      "for": "each process",
+      "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Services.g.cs\") }}",
+      "mode": "pair",
+      "companion": {
+        "template": "process-services.partial.scriban",
+        "output": "{{ join_path pack.params.partialFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Services.cs\") }}"
+      }
+    },
+    {
+      "id": "process-machine",
+      "template": "process-machine.scriban",
+      "for": "each process",
+      "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Machine.g.cs\") }}",
+      "mode": "pair",
+      "companion": {
+        "template": "process-machine.partial.scriban",
+        "output": "{{ join_path pack.params.partialFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Machine.cs\") }}"
+      }
+    },
+    {
+      "id": "process-store",
+      "template": "process-store.scriban",
+      "for": "each process",
+      "output": "{{ join_path pack.params.generatedFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Store.g.cs\") }}",
+      "mode": "pair",
+      "companion": {
+        "template": "process-store.partial.scriban",
+        "output": "{{ join_path pack.params.partialFolder \"Processes\" (pascal process.name) ((pascal process.name) + \"Store.cs\") }}"
+      }
+    },
+    {
+      "id": "process-endpoints",
+      "template": "process-endpoints.scriban",
+      "for": "each process",
+      "mode": "regions"
+    },
+    {
+      "id": "dispatch",
+      "template": "dispatch.scriban",
+      "for": "model"
+    },
+    {
+      "id": "dispatch-companion",
+      "template": "dispatch.partial.scriban",
+      "for": "model",
+      "mode": "once"
+    },
+    {
+      "id": "dispatch-registry",
+      "template": "dispatch-registry.scriban",
+      "for": "model"
+    },
+    {
+      "id": "dispatch-behaviours",
+      "template": "dispatch-behaviours.scriban",
+      "for": "model"
+    },
+    {
+      "id": "interpreter",
+      "template": "interpreter.scriban",
+      "for": "model"
+    },
+    {
+      "id": "interpreter-companion",
+      "template": "interpreter.partial.scriban",
+      "for": "model",
+      "mode": "once"
+    },
+    {
+      "id": "actors",
+      "template": "actors.scriban",
+      "for": "model"
+    },
+    {
+      "id": "scenario-tests",
+      "template": "scenario-tests.scriban",
+      "for": "each scenario"
     }
   ]
 }

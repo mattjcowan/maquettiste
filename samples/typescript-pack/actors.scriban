@@ -1,0 +1,32 @@
+{{-
+# actors: <processFolder>/actors.ts, one constant per actor with its type, and each event's allowed actors by command type.
+# Written only when the model has actors.
+include "_process.scriban"
+if model.actors.size > 0
+-}}
+{{- capture content -}}
+{{ banner "//" }}
+
+/** Every actor by name: its id and type. */
+export const actors = {
+{{- for a in model.actors }}
+{{- if a.description }}
+  /** {{ ts_comment a.description }} */
+{{- end }}
+  {{ a.name }}: { id: {{ ts_string a.id }}, type: {{ ts_string a.type }} },
+{{- end }}
+} as const;
+
+export type ActorName = keyof typeof actors;
+
+/** The actors each event accepts, by command type (an event that lists none accepts any actor). */
+export const eventActors = {
+{{- for p in model.processes }}
+{{- for e in p.events }}
+  {{ ts_string cmd_event(p, e) }}: {{ str_list(names(e.actors)) }},
+{{- end }}
+{{- end }}
+} as const satisfies Readonly<Record<string, readonly ActorName[]>>;
+{{ end -}}
+{{- file (pack.params.processFolder + "/actors.ts") content -}}
+{{- end -}}

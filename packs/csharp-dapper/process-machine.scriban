@@ -1,0 +1,98 @@
+{{-
+# The typed facade of a process over the generated interpreter (the generated half of a pair): Start, Restore, one method per
+# event, invoke results and due timers. The companion <P>Machine.cs holds the team's queries and conveniences.
+include "_csharp.scriban"
+include "_process.scriban"
+p = process
+name = p_name(p)
+ctx = name + "Context"
+snap = "ProcessSnapshot<" + ctx + ">"
+res = "StepResult<" + ctx + ">"
+-}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+using {{ runtime_ns() }};
+
+namespace {{ ns(p) }};
+
+/// <summary>Runs instances of process {{ p.name }} on the generated interpreter.</summary>
+public sealed partial class {{ name }}Machine
+{
+    private readonly Statechart<{{ ctx }}> _chart;
+    private readonly ITimerScheduler? _timers;
+    private readonly IInvokeHost? _invokes;
+
+    /// <summary>Creates the machine.</summary>
+    /// <param name="handlers">The guards and actions.</param>
+    /// <param name="clock">The clock.</param>
+    /// <param name="timers">Where timers are scheduled; none when null.</param>
+    /// <param name="invokes">Where invokes run; none when null.</param>
+    public {{ name }}Machine({{ name }}Handlers handlers, IProcessClock clock, ITimerScheduler? timers = null, IInvokeHost? invokes = null)
+    {
+        _chart = new Statechart<{{ ctx }}>({{ name }}Definition.Chart, handlers, clock);
+        _timers = timers;
+        _invokes = invokes;
+    }
+
+    /// <summary>Starts an instance in the initial configuration.</summary>
+    /// <param name="instance">The instance identity.</param>
+    /// <param name="context">The initial context; the attribute defaults when null.</param>
+    /// <returns>The result; its snapshot is the instance.</returns>
+    public {{ res }} Start(string instance, {{ ctx }}? context = null) => _chart.Start(instance, context ?? new {{ ctx }}());
+
+    /// <summary>Checks a stored instance against the chart.</summary>
+    /// <param name="snapshot">The stored instance.</param>
+    /// <returns>The instance.</returns>
+    public {{ snap }} Restore({{ snap }} snapshot) => _chart.Restore(snapshot);
+{{- for e in p.events }}
+{{- cmd = command_type(p, e) }}
+
+    /// <summary>Raises {{ e.name }}{{ if e.description }}: {{ cs_line e.description | string.strip | escape_xml }}{{ end }}.</summary>
+    /// <param name="snapshot">The instance.</param>
+    /// <param name="command">The command.</param>
+    /// <returns>The result.</returns>
+    public {{ res }} {{ pascal e.name }}({{ snap }} snapshot, {{ cmd }} command)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        return _chart.Send(snapshot, {{ json e.name }}, command.Envelope, command.Payload(), command.AuditValues());
+    }
+{{- end }}
+
+    /// <summary>Reports the result of an invoke.</summary>
+    /// <param name="snapshot">The instance.</param>
+    /// <param name="command">The command.</param>
+    /// <returns>The result.</returns>
+    public {{ res }} Complete({{ snap }} snapshot, {{ name }}InvokeResultControl command)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        return _chart.Complete(snapshot, command.Invoke, command.Failed, command.Envelope.Actor);
+    }
+
+    /// <summary>Fires the timers due at the clock's current instant.</summary>
+    /// <param name="snapshot">The instance.</param>
+    /// <returns>The result.</returns>
+    public {{ res }} Tick({{ snap }} snapshot) => _chart.Tick(snapshot);
+
+    /// <summary>A refused result reporting the instance as it is.</summary>
+    /// <param name="snapshot">The instance.</param>
+    /// <param name="refusal">The reason.</param>
+    /// <param name="input">The input's name.</param>
+    /// <returns>The result.</returns>
+    public {{ res }} Refused({{ snap }} snapshot, string refusal, string input) => _chart.Refused(snapshot, refusal, input);
+
+    /// <summary>Tells the timer scheduler and the invoke host what a step started and cancelled (after the store saved it).</summary>
+    /// <param name="step">The step.</param>
+    public void Publish({{ res }} step)
+    {
+        ArgumentNullException.ThrowIfNull(step);
+        foreach (var t in step.Unscheduled)
+            _timers?.Cancel(t);
+        foreach (var t in step.Scheduled)
+            _timers?.Schedule(t);
+        foreach (var i in step.Cancelled)
+            _invokes?.Cancel(i);
+        foreach (var i in step.Started)
+            _invokes?.Start(i);
+    }
+}

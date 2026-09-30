@@ -1,0 +1,78 @@
+{{-
+# process-definition: the chart as a const object the interpreter reads. States are keyed by path in document order,
+# transitions are in priority order; names stand for events, guards, actions, invokes, gates and actors, and each node keeps
+# its model id (audit records carry ids). A transition naming a guard the process does not declare gets the guard '', which
+# the interpreter finds nowhere and so never holds, as in the engine.
+include "_process.scriban"
+P = pascal process.name
+p = camel process.name
+self = pmod(process, "definition.ts")
+func opt_path(s)
+  ret s ? (ts_string s.path) : "null"
+end
+func opt_name(n)
+  ret n ? (ts_string n.name) : "null"
+end
+func opt_text(t)
+  ret t ? (ts_string t) : "null"
+end
+-}}
+{{ banner "//" }}
+
+import type { ChartDefinition } from {{ imp(self, "runtime/statechart.gen") }};
+
+/** {{ ts_comment (process.description ?? (P + "'s chart.")) }} */
+export const {{ p }}Definition = {
+  id: {{ ts_string process.id }},
+  name: {{ ts_string process.name }},
+  initial: {{ opt_path(process.initial) }},
+  context: {{ if process.context.size == 0 }}{},{{ else }}{
+{{- for a in process.context }}
+    {{ a.name }}: { id: {{ ts_string a.id }}, default: {{ json a.default }} },
+{{- end }}
+  },{{ end }}
+  states: {
+{{- for s in process.all_states }}
+    {{ ts_string s.path }}: { id: {{ ts_string s.id }}, name: {{ ts_string s.name }}, type: {{ ts_string s.type }}, parent: {{ opt_path(s.parent) }}, children: {{ str_list(paths(s.children)) }}, initial: {{ opt_path(s.initial) }}, history: {{ opt_text(s.history) }}, defaultTarget: {{ opt_path(s.default_target) }}, entry: {{ str_list(names(s.entry)) }}, exit: {{ str_list(names(s.exit)) }}, invoke: {{ str_list(names(s.invoke)) }} },
+{{- end }}
+  },
+  transitions: [
+{{- for t in process.transitions }}
+    { id: {{ ts_string t.id }}, source: {{ ts_string t.source.path }}, trigger: {{ ts_string t.trigger }}, event: {{ opt_name(t.event) }}, after: {{ opt_text(t.after) }}, afterMs: {{ t.after_ms ?? "null" }}, invoke: {{ opt_name(t.invoke) }}, guard: {{ t.guard_missing ? "''" : opt_name(t.guard) }}, targets: {{ str_list(paths(t.targets)) }}, actions: {{ str_list(names(t.actions)) }}, external: {{ t.external }}, gate: {{ t.gate ? (ts_string t.gate.name) : "null" }} },
+{{- end }}
+  ],
+  events: {{ if process.events.size == 0 }}{},{{ else }}{
+{{- for e in process.events }}
+    {{ e.name }}: { id: {{ ts_string e.id }}, actors: {{ str_list(names(e.actors)) }}, payload: {{ str_list(names(e.payload)) }} },
+{{- end }}
+  },{{ end }}
+  guards: {{ if process.guards.size == 0 }}{},{{ else }}{
+{{- for g in process.guards }}
+    {{ g.name }}: { id: {{ ts_string g.id }}, stub: {{ g.is_stub }} },
+{{- end }}
+  },{{ end }}
+  actions: {{ if process.actions.size == 0 }}{},{{ else }}{
+{{- for a in process.actions }}
+    {{ a.name }}: { id: {{ ts_string a.id }}, stub: {{ a.is_stub }}, raises: {{ str_list(names(a.raises)) }} },
+{{- end }}
+  },{{ end }}
+  invokes: {{ if process.invokes.size == 0 }}{},{{ else }}{
+{{- for i in process.invokes }}
+    {{ i.name }}: { id: {{ ts_string i.id }}, type: {{ ts_string i.type }}, process: {{ i.process ? (ts_string i.process.id) : "null" }}, actors: {{ str_list(names(i.actors)) }}, state: {{ ts_string i.state.path }} },
+{{- end }}
+  },{{ end }}
+  gates: {{ if process.gates.size == 0 }}{},{{ else }}{
+{{- for g in process.gates }}
+{{- meanings = [] }}
+{{- for m in g.meanings }}
+{{- meanings[meanings.size] = m.name + ": " + (ts_string m.id) }}
+{{- end }}
+    {{ g.name }}: { id: {{ ts_string g.id }}, transition: {{ ts_string g.transition.id }}, required: {{ g.required }}, signers: {{ str_list(names(g.signers)) }}, requiredActors: {{ str_list(names(g.required_actors)) }}, allowRepeatSigner: {{ g.allow_repeat_signer }}, reasonRequired: {{ g.reason_required }}, meanings: { {{ meanings | array.join ", " }} }, auditAttributes: {{ str_list(names(g.audit_attributes)) }} },
+{{- end }}
+  },{{ end }}
+  actors: {{ if process.actors.size == 0 }}{},{{ else }}{
+{{- for a in process.actors }}
+    {{ a.name }}: {{ ts_string a.id }},
+{{- end }}
+  },{{ end }}
+} as const satisfies ChartDefinition;

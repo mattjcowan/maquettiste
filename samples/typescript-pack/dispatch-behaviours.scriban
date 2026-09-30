@@ -1,0 +1,132 @@
+{{-
+# dispatch-behaviours: dispatch/behaviours.ts, the default behaviours as composed functions (validation, authorization by
+# actor, logging, transaction, outbox hand-off) and what they know of each command. Written only when the model has processes.
+include "_process.scriban"
+if model.processes.size > 0
+self = "dispatch/behaviours.ts"
+func rule(a)
+  $v = a.validation
+  $kind = value_type(a)
+  $allowed = ($v && $v.allowed_values.size > 0) ? (json $v.allowed_values) : "[]"
+  ret "{ name: " + (ts_string a.name) + ", type: " + (ts_string $kind) + ", required: " + (a.required ? "true" : "false") + ", maxLength: " + (a.length ?? "null") + ", min: " + (($v && $v.min != null) ? (json $v.min) : "null") + ", max: " + (($v && $v.max != null) ? (json $v.max) : "null") + ", allowed: " + $allowed + ", sensitive: " + (a.sensitive ? "true" : "false") + " }"
+end
+-}}
+{{- capture content -}}
+{{ banner "//" }}
+
+import type { Behaviour, Command, CommandType, DefaultBehaviours } from {{ imp(self, "dispatch/dispatch.gen") }};
+import { DispatchError } from {{ imp(self, "dispatch/dispatch.gen") }};
+import { pipeline } from {{ imp(self, "dispatch/pipeline") }};
+
+/** What validation checks of a payload attribute. */
+export interface PayloadRule {
+  readonly name: string;
+  readonly type: string;
+  readonly required: boolean;
+  readonly maxLength: number | null;
+  readonly min: number | string | null;
+  readonly max: number | string | null;
+  readonly allowed: readonly unknown[];
+  /** Never logged. */
+  readonly sensitive: boolean;
+}
+
+/** What the behaviours know of a command: its payload rules. The actor and gate rules are the interpreter's (so refusals are audited). */
+export interface CommandRule {
+  readonly payload: readonly PayloadRule[];
+}
+
+/** The rules of the commands that carry a payload, by command type. */
+export const commandRules: Readonly<Partial<Record<CommandType, CommandRule>>> = {
+{{- for p in model.processes }}
+{{- for e in p.events }}
+{{- audit = [] }}
+{{- for t in e.transitions }}
+{{- if t.gate }}
+{{- for a in t.gate.audit_attributes }}
+{{- audit[audit.size] = a }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if e.payload.size > 0 || audit.size > 0 }}
+  {{ ts_string cmd_event(p, e) }}: {
+    payload: [
+{{- for a in e.payload }}
+      {{ rule(a) }},
+{{- end }}
+{{- for a in audit }}
+      {{ rule(a) | string.replace "required: true" "required: false" }},
+{{- end }}
+    ],
+  },
+{{- end }}
+{{- end }}
+{{- end }}
+};
+
+function payloadOf(command: Command): Readonly<Record<string, unknown>> {
+  return 'payload' in command ? (command.payload as Readonly<Record<string, unknown>>) : {};
+}
+
+function problemsOf(rule: PayloadRule, value: unknown): string[] {
+  if (value === undefined || value === null) return rule.required ? [`'${rule.name}' is required.`] : [];
+  const problems: string[] = [];
+  const kind = rule.type.endsWith('[]') ? 'array' : rule.type;
+  if (kind === 'array' ? !Array.isArray(value) : kind !== 'unknown' && kind !== 'Record<string, unknown>' && typeof value !== kind) problems.push(`'${rule.name}' must be a ${rule.type}.`);
+  if (rule.maxLength !== null && typeof value === 'string' && value.length > rule.maxLength) problems.push(`'${rule.name}' is longer than ${rule.maxLength}.`);
+  if (rule.min !== null && typeof value === 'number' && value < Number(rule.min)) problems.push(`'${rule.name}' is below ${rule.min}.`);
+  if (rule.max !== null && typeof value === 'number' && value > Number(rule.max)) problems.push(`'${rule.name}' is above ${rule.max}.`);
+  if (rule.allowed.length > 0 && !rule.allowed.includes(value)) problems.push(`'${rule.name}' is not one of the allowed values.`);
+  return problems;
+}
+
+/** Refuses a command whose payload breaks its attributes' rules (required, length, range, allowed values). */
+export const validation: Behaviour = async (command, context, next) => {
+  const rule = commandRules[command.type];
+  if (rule) {
+    const payload = payloadOf(command);
+    const problems = rule.payload.flatMap((r) => problemsOf(r, payload[r.name]));
+    if (problems.length > 0) throw new DispatchError('invalid', problems);
+  }
+  return next();
+};
+
+/** Refuses a command whose caller may not act as the actor it names (the hook maps the host's principal to actors). */
+export const authorization: Behaviour = async (command, context, next) => {
+  const actor = 'actor' in command ? (command.actor ?? null) : null;
+  if (!(await pipeline.hooks.mayActAs(context.principal, actor, command))) throw new DispatchError('forbidden', [`The caller may not act as ${actor ?? 'no actor'}.`]);
+  return next();
+};
+
+/** Logs each command and its result; attributes marked sensitive are never logged. */
+export const logging: Behaviour = async (command, context, next) => {
+  const sensitive = new Set((commandRules[command.type]?.payload ?? []).filter((r) => r.sensitive).map((r) => r.name));
+  const payload = Object.fromEntries(Object.entries(payloadOf(command)).filter(([name]) => !sensitive.has(name)));
+  const base = { type: command.type, instance: command.instance, actor: 'actor' in command ? (command.actor ?? null) : null, payload };
+  pipeline.hooks.log({ phase: 'received', ...base });
+  try {
+    const outcome = await next();
+    pipeline.hooks.log({ phase: 'handled', ...base, accepted: outcome.result.accepted, refusal: outcome.result.refusal, states: outcome.result.states });
+    return outcome;
+  } catch (error) {
+    pipeline.hooks.log({ phase: 'failed', ...base, error: error instanceof Error ? error.message : String(error) });
+    throw error;
+  }
+};
+
+/** Runs the rest of the pipeline (the outbox hand-off and the handler with its store) as one unit of work. */
+export const transaction: Behaviour = (command, context, next) => pipeline.hooks.unitOfWork(command, next);
+
+/** Hands the Transitioned and audit records of a handled command to the outbox, inside the unit of work. */
+export const outbox: Behaviour = async (command, context, next) => {
+  const outcome = await next();
+  const records: unknown[] = [...(outcome.transitioned ? [outcome.transitioned] : []), ...outcome.result.audit];
+  if (records.length > 0) await pipeline.hooks.outbox(records, command);
+  return outcome;
+};
+
+/** The generated behaviours by name, for the companion's `order`. */
+export const defaultBehaviours: DefaultBehaviours = { validation, authorization, logging, transaction, outbox };
+{{ end -}}
+{{- file "dispatch/behaviours.ts" content -}}
+{{- end -}}

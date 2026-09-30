@@ -1,0 +1,40 @@
+{{-
+include "_csharp.scriban"
+include "_process.scriban"
+p = process
+name = p_name(p)
+ctx = name + "Context"
+call = "StatechartCall<" + ctx + ">"
+stubs = 0
+-}}
+using System;
+using {{ runtime_ns() }};
+
+namespace {{ ns(p) }};
+
+// The hand-written half of {{ name }}Handlers. Maquettiste wrote this file once and never touches it again. Implement here the
+// guards and actions whose expression the generated half could not translate (or that have none); a guard or action added to
+// the model later is declared in {{ name }}Handlers.g.cs and fails the build until you add it here.
+public sealed partial class {{ name }}Handlers
+{
+{{- for g in p.guards }}
+{{- if translate(p, g, "guard") == "" }}
+{{- if stubs > 0 }}
+{{ end }}
+{{- stubs = stubs + 1 }}
+{{ doc(g.description ?? ("Guard " + g.name + "."), "    ") }}{{ if g.expression }}    // The model's expression, outside the translated subset: {{ cs_line g.expression }}
+{{ end }}    private partial bool Guard{{ pascal g.name }}({{ call }} call) =>
+        throw new NotImplementedException("Guard {{ g.name }} of process {{ p.name }} is not implemented yet.");
+{{- end }}
+{{- end }}
+{{- for a in p.actions }}
+{{- if translate(p, a, "action") == "" }}
+{{- if stubs > 0 }}
+{{ end }}
+{{- stubs = stubs + 1 }}
+{{ doc(a.description ?? ("Action " + a.name + "."), "    ") }}{{ if a.expression }}    // The model's expression, outside the translated subset: {{ cs_line a.expression }}
+{{ end }}    private partial {{ ctx }} Action{{ pascal a.name }}({{ call }} call) =>
+        throw new NotImplementedException("Action {{ a.name }} of process {{ p.name }} is not implemented yet.");
+{{- end }}
+{{- end }}
+}

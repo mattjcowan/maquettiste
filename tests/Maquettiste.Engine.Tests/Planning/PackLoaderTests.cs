@@ -66,6 +66,9 @@ public sealed class PackLoaderTests
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"model\" }, { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"model\" } ] }", "MQ6001", "/units/1/id")]
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"model\", \"where\": { \"tags\": [\"x\"] } } ] }", "MQ6001", "/units/0/where")]
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"each thing\" } ] }", "MQ6021", "/units/0/for")]
+    [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"each process\", \"where\": { \"database\": \"main\" } } ] }", "MQ6001", "/units/0/where/database")]
+    [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"each scenario\", \"where\": { \"database\": \"main\" } } ] }", "MQ6001", "/units/0/where/database")]
+    [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"each actor\", \"where\": { \"abstract\": false } } ] }", "MQ6001", "/units/0/where/abstract")]
     [InlineData("{ \"name\": \"basic\", \"version\": \"1.0.0\", \"engine\": \">=1.0\", \"scripts\": [\"nope.js\"], \"units\": [ { \"id\": \"a\", \"template\": \"index.tpl\", \"for\": \"model\" } ] }", "MQ6001", "/scripts/0")]
     public async Task Invalid_pack_json_is_reported_and_the_pack_left_out(string json, string rule, string pointer)
     {

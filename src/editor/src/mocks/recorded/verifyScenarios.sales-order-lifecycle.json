@@ -2,6 +2,13 @@
   "process": "01JQPRC0000000000000000001",
   "results": [
     {
+      "scenario": "01JQSCN0000000000000000014",
+      "name": "CancelBeforeShipping",
+      "passed": true,
+      "steps": 2,
+      "failure": null
+    },
+    {
       "scenario": "01JQSCN0000000000000000006",
       "name": "CancelRefusedAfterShipping",
       "passed": true,

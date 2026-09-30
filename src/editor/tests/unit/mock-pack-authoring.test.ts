@@ -41,6 +41,30 @@ describe("mock pack authoring", () => {
     expect((await call("GET", "/api/templates/context?pack=sql-ddl&unit=ghost")).status).toBe(404);
   });
 
+  it("serves the template context of a process, actor or scenario unit", async () => {
+    const pack = await call("GET", "/api/packs/sql-ddl");
+    const document = pack.json.document as Json;
+    const units = [
+      ...(document.units as Json[]),
+      { id: "flow", template: "table.scriban", for: "each process" },
+      { id: "who", template: "table.scriban", for: "each actor" },
+      { id: "walk", template: "table.scriban", for: "each scenario" },
+    ];
+    const saved = await call("PUT", "/api/packs/sql-ddl", "/api/packs/{pack}", { ...document, units }, { "If-Match": `"${pack.json.hash as string}"` });
+    expect(saved.status).toBe(200);
+    const cases: [string, string, string][] = [
+      ["flow", "process", "all_states"],
+      ["who", "actor", "gates"],
+      ["walk", "scenario", "steps"],
+    ];
+    for (const [unit, alias, member] of cases) {
+      const context = await call("GET", `/api/templates/context?pack=sql-ddl&unit=${unit}`, "/api/templates/context");
+      expect((context.json.variables as Json[]).map((v) => v.name)).toContain(alias);
+      expect((context.json.members as Record<string, Json[]>).element.map((m) => m.name)).toContain(member);
+      expect(context.json.helpers as string[]).toEqual(expect.arrayContaining(["state_path", "iso_duration_ms"]));
+    }
+  });
+
   it("moves a file with both hashes and rewrites the units", async () => {
     const pack = await call("GET", "/api/packs/sql-ddl");
     const file = await call("GET", "/api/packs/sql-ddl/file?path=table.scriban");

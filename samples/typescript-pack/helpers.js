@@ -39,3 +39,27 @@ maquettiste.helper("ts_string", (text) => "'" + String(text).replace(/\\/g, "\\\
 
 // A relative import specifier for a generated module: "./order-line.js" (the extension comes from the importExtension parameter).
 maquettiste.helper("ts_module", (fileName, extension) => "./" + fileName + (extension ?? ""));
+
+// The TypeScript type of a built-in type keyword for a process's context and payload values. The interpreter holds them as the
+// model's own interpreter does, as JSON values, so every numeric type is a number there (unlike entity fields, which travel
+// as strings when a JS number would lose precision).
+const valueTypes = {
+  bool: "boolean",
+  int16: "number", int32: "number", int64: "number", float: "number", double: "number", decimal: "number",
+  json: "unknown",
+};
+maquettiste.helper("ts_value_type", (builtin) => valueTypes[String(builtin)] ?? "string");
+
+// A relative import specifier from one output file to another module, both given relative to the pack's output root
+// ("processes/order/order.states.ts" to "runtime/statechart.gen" gives "../../runtime/statechart.gen.js").
+maquettiste.helper("ts_import", (from, to, extension) => {
+  const source = String(from).split("/").slice(0, -1);
+  const target = String(to).split("/");
+  let common = 0;
+  while (common < source.length && common < target.length - 1 && source[common] === target[common]) common++;
+  const up = source.length - common;
+  return (up === 0 ? "./" : "../".repeat(up)) + target.slice(common).join("/") + (extension ?? "");
+});
+
+// A comment-safe single line: newlines become spaces and a closing comment marker is broken up.
+maquettiste.helper("ts_comment", (text) => String(text ?? "").replace(/\s+/g, " ").trim().replace(/\*\//g, "* /"));

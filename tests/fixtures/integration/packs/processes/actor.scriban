@@ -1,0 +1,7 @@
+{{ actor.name }} ({{ actor.type }})
+{{- for e in actor.events }}
+raises {{ e.name }}
+{{- end }}
+{{- for g in actor.gates }}
+signs {{ g.name }}
+{{- end }}

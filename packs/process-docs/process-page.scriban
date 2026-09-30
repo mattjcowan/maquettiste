@@ -1,0 +1,192 @@
+{{- include "_docs.scriban" -}}
+{{- p = process -}}
+{{- numbers = transition_numbers(p) -}}
+{{ banner "<!--" }} -->
+
+# {{ md_cell p.display_name }}
+{{- if p.description }}
+
+{{ p.description }}
+{{- end }}
+
+| | |
+| --- | --- |
+| Name | {{ md_code p.name }} |
+{{- if p.package }}
+| Domain | {{ md_code p.package.qualified_name }} |
+{{- end }}
+| Use | {{ p.use }} |
+{{- if p.subject }}
+| Subject | {{ md_code p.subject.name }} |
+{{- end }}
+{{- if p.initial }}
+| Initial state | {{ md_code p.initial.path }} |
+{{- end }}
+{{- if p.tags.size > 0 }}
+| Tags | {{ for tag in p.tags }}{{ for.first ? "" : ", " }}{{ md_code tag }}{{ end }} |
+{{- end }}
+{{- if p.stereotypes.size > 0 }}
+| Stereotypes | {{ for st in p.stereotypes }}{{ for.first ? "" : ", " }}{{ md_code st.key }}{{ end }} |
+{{- end }}
+{{- if p.use == "lifecycle" && p.bound_attribute }}
+
+## Lifecycle
+
+The attribute {{ md_code (p.subject.name + "." + p.bound_attribute.name) }} of {{ md_code p.subject.name }} holds the top-level state{{ if p.bound_enum }}, as a member of the enum {{ md_code p.bound_enum.name }}{{ end }}; a nested state counts as its top-level ancestor.
+
+| State | Enum member |
+| --- | --- |
+{{- for s in p.bound_states }}
+| {{ md_code s.path }} | {{ s.bound_member ? (md_code s.bound_member.name) : "none" }} |
+{{- end }}
+{{- end }}
+{{- if pack.params.diagrams && p.all_states.size > 0 }}
+
+## Diagram
+
+```mermaid
+{{ diagram(p) -}}
+```
+{{- end }}
+
+## States
+
+| State | Type | Details |
+| --- | --- | --- |
+{{- for s in p.all_states }}
+{{- details = [] }}
+{{- if s.initial }}{{ details[details.size] = "initial " + (md_code s.initial.name) }}{{ end }}
+{{- if s.type == "history" }}{{ details[details.size] = s.history + " history" + (s.default_target ? ", default " + (md_code s.default_target.path) : "") }}{{ end }}
+{{- if s.region_index != null }}{{ details[details.size] = "region " + (s.region_index + 1) + " of " + (md_code s.parent.path) }}{{ end }}
+{{- if s.entry.size > 0 }}{{ details[details.size] = "entry " + code_names(s.entry) }}{{ end }}
+{{- if s.exit.size > 0 }}{{ details[details.size] = "exit " + code_names(s.exit) }}{{ end }}
+{{- for i in s.invoke }}{{ details[details.size] = "invokes " + (md_code i.name) + " (" + i.type + ")" }}{{ end }}
+{{- if s.description }}{{ details[details.size] = md_inline(s.description) }}{{ end }}
+| {{ md_code s.path }} | {{ s.type }} | {{ details | array.join "; " }} |
+{{- end }}
+{{- if p.transitions.size > 0 }}
+
+## Transitions
+
+In priority order: among the transitions of one source and one trigger, the first whose guard holds is taken.
+
+| # | Source | Trigger | Guard | Targets | Actions | Gate |
+| --- | --- | --- | --- | --- | --- | --- |
+{{- for t in p.transitions }}
+| {{ for.index + 1 }} | {{ md_code t.source.path }} | {{ trigger_text(t) }} | {{ t.guard ? (md_code t.guard.name) : "" }} | {{ t.is_targetless ? "none (stays in the source)" : code_paths(t.targets) }}{{ t.external ? " (external)" : "" }} | {{ code_names(t.actions) }} | {{ t.gate ? (md_code t.gate.name) + " (" + t.gate.required + " of " + t.gate.signers.size + ")" : "" }} |
+{{- end }}
+{{- end }}
+{{- if p.gates.size > 0 }}
+
+## Gates
+
+A gated transition fires on the occurrence of its event that completes the gate; each earlier occurrence records one signature
+and changes no state. Leaving the source state discards the signatures.
+{{- for g in p.gates }}
+
+### {{ md_cell g.display_name }}
+
+- Name: {{ md_code g.name }}
+- On: transition {{ numbers[g.transition.id] }}, {{ trigger_text(g.transition) }} from {{ md_code g.transition.source.path }}{{ if !g.transition.is_targetless }} to {{ code_paths(g.transition.targets) }}{{ end }}
+- Signatures required: {{ g.required }}, from {{ actor_links(g.signers, "../") }}
+{{- if g.required_actors.size > 0 }}
+- Required actors: at least one signature from each of {{ actor_links(g.required_actors, "../") }}
+{{- end }}
+- Repeat signer: {{ g.allow_repeat_signer ? "allowed (one person may count more than once)" : "not allowed (each signature from a different person)" }}
+- Reason: {{ g.reason_required ? "required with each signature" : "optional" }}
+- Meanings: {{ for m in g.meanings }}{{ for.first ? "" : ", " }}{{ md_code m.name }}{{ if m.display_name != m.name }} ({{ md_cell m.display_name }}){{ end }}{{ end }}
+{{- if g.description }}
+
+{{ g.description }}
+{{- end }}
+
+The audit record, one per signature attempt and per outcome of the gate:
+
+| Field | Type | Required | Values | Description |
+| --- | --- | --- | --- | --- |
+{{- for f in g.audit }}
+| {{ md_code f.name }} | {{ md_code f.type }} | {{ f.required ? "yes" : "no" }} | {{ for v in f.values }}{{ for.first ? "" : ", " }}{{ md_code v }}{{ end }} | {{ md_inline(f.description) }} |
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if p.events.size > 0 }}
+
+## Events
+
+| Event | Raised by | Payload | Transitions | Description |
+| --- | --- | --- | --- | --- |
+{{- for e in p.events }}
+| {{ md_code e.name }} | {{ e.actors.size > 0 ? actor_links(e.actors, "../") : "any actor" }} | {{ attr_list(e.payload) }} | {{ for t in e.transitions }}{{ for.first ? "" : ", " }}{{ numbers[t.id] }}{{ end }} | {{ md_inline(e.description) }} |
+{{- end }}
+{{- end }}
+{{- if p.context.size > 0 }}
+
+## Context
+
+The data a running instance carries.
+
+| Attribute | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+{{- for a in p.context }}
+| {{ md_code a.name }} | {{ md_code attr_type(a) }} | {{ a.required ? "yes" : "no" }} | {{ a.default != null ? (md_code (json a.default)) : "" }} | {{ md_inline(a.description) }} |
+{{- end }}
+{{- end }}
+{{- if p.guards.size > 0 }}
+
+## Guards
+
+| Guard | Expression | Used by transitions | Description |
+| --- | --- | --- | --- |
+{{- for g in p.guards }}
+| {{ md_code g.name }} | {{ g.is_stub ? "none: a named stub the host answers" : (md_code g.expression) }} | {{ for t in g.used_by }}{{ for.first ? "" : ", " }}{{ numbers[t.id] }}{{ end }} | {{ md_inline(g.description) }} |
+{{- end }}
+{{- end }}
+{{- if p.actions.size > 0 }}
+
+## Actions
+
+| Action | Expression | Raises | Used by | Description |
+| --- | --- | --- | --- | --- |
+{{- for a in p.actions }}
+{{- uses = [] }}
+{{- for u in a.used_by }}
+{{- if u.kind == "transition" }}{{ uses[uses.size] = "transition " + numbers[u.id] }}{{ else }}{{ uses[uses.size] = "state " + (md_code u.path) }}{{ end }}
+{{- end }}
+| {{ md_code a.name }} | {{ a.is_stub ? "none: a named stub the host implements" : (md_code a.expression) }} | {{ code_names(a.raises) }} | {{ uses | array.join ", " }} | {{ md_inline(a.description) }} |
+{{- end }}
+{{- end }}
+{{- if p.invokes.size > 0 }}
+
+## Invokes
+
+Started when their state is entered and cancelled when it is left.
+
+| Invoke | Type | State | Performed by | Description |
+| --- | --- | --- | --- | --- |
+{{- for i in p.invokes }}
+| {{ md_code i.name }} | {{ i.type }} | {{ md_code i.state.path }} | {{ if i.process }}{{ process_link(i.process, "../") }}{{ else }}{{ actor_links(i.actors, "../") }}{{ end }} | {{ md_inline(i.description) }} |
+{{- end }}
+{{- end }}
+{{- if p.actors.size > 0 }}
+
+## Actors
+
+| Actor | Type | Raises | Signs | Tasks |
+| --- | --- | --- | --- | --- |
+{{- for a in p.actors }}
+{{- raises = [] }}
+{{- for e in p.events }}{{ if has_actor(e.actors, a) }}{{ raises[raises.size] = md_code e.name }}{{ end }}{{ end }}
+{{- signs = [] }}
+{{- for g in p.gates }}{{ if has_actor(g.signers, a) }}{{ signs[signs.size] = (md_code g.name) + (has_actor(g.required_actors, a) ? " (required)" : "") }}{{ end }}{{ end }}
+{{- tasks = [] }}
+{{- for i in p.invokes }}{{ if has_actor(i.actors, a) }}{{ tasks[tasks.size] = md_code i.name }}{{ end }}{{ end }}
+| {{ actor_link(a, "../") }} | {{ a.type }} | {{ raises | array.join ", " }} | {{ signs | array.join ", " }} | {{ tasks | array.join ", " }} |
+{{- end }}
+{{- end }}
+{{- if p.scenarios.size > 0 }}
+
+## Scenarios
+{{ for sc in p.scenarios }}
+- [{{ md_cell sc.display_name }}]({{ kebab p.name }}/{{ kebab sc.name }}.md): {{ sc.steps.size }} {{ sc.steps.size == 1 ? "step" : "steps" }}, ends {{ sc.outcome == "final" ? "final" : "active" }}
+{{- end }}
+{{- end }}

@@ -603,7 +603,7 @@ sit beside them and work the same way. A pack also has an **output base** (`pack
 the folder its paths start from, and can be switched off there (`enabled: false`).
 
 **A unit** is one line of a pack's work list. It names a template, which elements the template runs for (the scope),
-and where the result goes (the output pattern). `sql-ddl` has four units: `table`, `schema`, `migration`, `seed`.
+and where the result goes (the output pattern). `sql-ddl` has five units: `table`, `schema`, `migration`, `seed` and `process-tables` (off unless its `processTables` parameter is set).
 
 **The scope** (`for` in `pack.json`) decides how many times a unit runs:
 

@@ -28,6 +28,9 @@ describe("unitScope", () => {
       ["each reference type", "reference type", "reference-type", "reference_type"],
       ["each seed", "seed", "seed", "seed"],
       ["each locale", "locale", null, "locale"],
+      ["each process", "process", "process", "process"],
+      ["each actor", "actor", "actor", "actor"],
+      ["each scenario", "scenario", "scenario", "scenario"],
     ];
     for (const [f, label, kind, variable] of cases) {
       const s = unitScope(f);

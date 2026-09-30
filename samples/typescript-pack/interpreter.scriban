@@ -1,0 +1,1324 @@
+{{-
+# interpreter (generated side): runtime/statechart.gen.ts, the interpreter every generated process runs on. Written only when
+# the model has processes. The TypeScript below is copied as written (an escaped block), so it may use any braces.
+if model.processes.size > 0
+-}}
+{{- capture content -}}
+{{ banner "//" }}
+//
+// The statechart interpreter every generated process runs on. It follows the semantics the model's own interpreter uses to
+// verify scenarios, so a scenario that passes in the model passes here: a configuration of active states that is always
+// legal, one macrostep per external input (the input's microstep, then eventless transitions and internal events until
+// none is left), selection by active leaf in document order walking up the ancestors with transitions in priority order,
+// conflict removal (a descendant's transition wins, then document order), exit in reverse document order, transition
+// actions, entry in document order through initial children and shallow or deep history, done events for compound and
+// parallel states, a clock that moves only on time inputs with timers fired in due then document order, sub-process
+// instances, pending service and human tasks, signature gates with their audit records, and actors. It keeps no global
+// state beyond a cache of compiled charts, reads no wall clock and has no dependency beyond the language.
+
+import { createHost } from {{ ts_string (ts_module "process-host" pack.params.importExtension) }};
+
+{%{export type StateType = 'atomic' | 'compound' | 'parallel' | 'final' | 'history' | 'choice';
+export type TransitionTrigger = 'event' | 'after' | 'done' | 'always' | 'invoke-done' | 'invoke-error';
+export type InvokeType = 'process' | 'service' | 'human-task';
+export type Refusal = 'no-transition' | 'guard' | 'actor' | 'gate-signer' | 'gate-repeat' | 'gate-reason';
+export type GateOutcome = 'signed' | 'completed' | 'refused' | 'discarded';
+
+/** A state of a chart, keyed by its dotted path in ChartDefinition.states (document order). */
+export interface StateDefinition {
+  readonly id: string;
+  readonly name: string;
+  readonly type: StateType;
+  readonly parent: string | null;
+  readonly children: readonly string[];
+  readonly initial: string | null;
+  readonly history: 'shallow' | 'deep' | null;
+  readonly defaultTarget: string | null;
+  readonly entry: readonly string[];
+  readonly exit: readonly string[];
+  readonly invoke: readonly string[];
+}
+
+/** A transition; ChartDefinition.transitions lists them in priority order. */
+export interface TransitionDefinition {
+  readonly id: string;
+  readonly source: string;
+  readonly trigger: TransitionTrigger;
+  readonly event: string | null;
+  readonly after: string | null;
+  readonly afterMs: number | null;
+  readonly invoke: string | null;
+  readonly guard: string | null;
+  readonly targets: readonly string[];
+  readonly actions: readonly string[];
+  readonly external: boolean;
+  readonly gate: string | null;
+}
+
+export interface EventDefinition {
+  readonly id: string;
+  /** The actors that may send the event; empty means any actor. */
+  readonly actors: readonly string[];
+  /** The payload attribute names. */
+  readonly payload: readonly string[];
+}
+
+export interface GuardDefinition {
+  readonly id: string;
+  /** Whether the model gives no expression, so the project's companion answers it. */
+  readonly stub: boolean;
+}
+
+export interface ActionDefinition {
+  readonly id: string;
+  readonly stub: boolean;
+  /** The internal events queued after the action runs. */
+  readonly raises: readonly string[];
+}
+
+export interface InvokeDefinition {
+  readonly id: string;
+  readonly type: InvokeType;
+  /** The invoked process's id, for a sub-process. */
+  readonly process: string | null;
+  /** Who may complete a human task; empty means any actor. */
+  readonly actors: readonly string[];
+  /** The path of the state that starts it. */
+  readonly state: string;
+}
+
+export interface GateDefinition {
+  readonly id: string;
+  readonly transition: string;
+  readonly required: number;
+  readonly signers: readonly string[];
+  readonly requiredActors: readonly string[];
+  readonly allowRepeatSigner: boolean;
+  readonly reasonRequired: boolean;
+  /** Meaning ids by meaning name. */
+  readonly meanings: Readonly<Record<string, string>>;
+  /** The audit attribute names recorded with each signature. */
+  readonly auditAttributes: readonly string[];
+}
+
+export interface ContextAttributeDefinition {
+  readonly id: string;
+  readonly default: unknown;
+}
+
+/** A process's chart as static data: the generated definition modules are values of this type. */
+export interface ChartDefinition {
+  readonly id: string;
+  readonly name: string;
+  /** The path of the root's initial child. */
+  readonly initial: string | null;
+  readonly context: Readonly<Record<string, ContextAttributeDefinition>>;
+  readonly states: Readonly<Record<string, StateDefinition>>;
+  readonly transitions: readonly TransitionDefinition[];
+  readonly events: Readonly<Record<string, EventDefinition>>;
+  readonly guards: Readonly<Record<string, GuardDefinition>>;
+  readonly actions: Readonly<Record<string, ActionDefinition>>;
+  readonly invokes: Readonly<Record<string, InvokeDefinition>>;
+  readonly gates: Readonly<Record<string, GateDefinition>>;
+  /** Actor ids by actor name (audit records carry ids). */
+  readonly actors: Readonly<Record<string, string>>;
+}
+
+/** What a guard or an action sees of the input: the event name, the actor's name and the declared payload by name. */
+export interface EventView {
+  readonly name: string | null;
+  readonly actor: string | null;
+  // Values are typed loosely because an expression is emitted as written and may serve several events.
+  readonly payload: Readonly<Record<string, any>>;
+}
+
+/**
+ * A guard or action: the context, the event, and the paths of every active state (all levels, document order), which a
+ * hand-written guard or action may read; the model's expressions read only the first two, as in the engine.
+ */
+export type Guard<C> = (context: Readonly<C>, event: EventView, states: readonly string[]) => boolean;
+export type Action<C> = (context: Readonly<C>, event: EventView, states: readonly string[]) => Partial<C> | void;
+
+export interface ChartHandlers<C> {
+  readonly guards: { readonly [name: string]: Guard<C> };
+  readonly actions: { readonly [name: string]: Action<C> };
+}
+
+/** A chart with the guards and actions that run it. */
+export interface ChartProgram<C extends object = object> {
+  readonly definition: ChartDefinition;
+  readonly handlers: ChartHandlers<C>;
+}
+
+export interface EventInput {
+  readonly input: 'event';
+  readonly event: string;
+  /** The id of the process whose instance should take the event; the root first, then running sub-processes, when absent. */
+  readonly process?: string | null;
+  readonly actor?: string | null;
+  readonly signer?: string | null;
+  readonly meaning?: string | null;
+  readonly reason?: string | null;
+  readonly payload?: Readonly<Record<string, unknown>>;
+}
+
+/** Moves the clock to `until` (milliseconds since the epoch), firing every timer due by then. */
+export interface TimeInput {
+  readonly input: 'time';
+  readonly until: number;
+  readonly actor?: string | null;
+}
+
+export interface InvokeInput {
+  readonly input: 'invoke-done' | 'invoke-error';
+  readonly invoke: string;
+  readonly actor?: string | null;
+}
+
+export type ChartInput = EventInput | TimeInput | InvokeInput;
+
+export interface Signature {
+  readonly signer: string;
+  readonly actor: string;
+  readonly meaning: string | null;
+  readonly reason: string | null;
+}
+
+export interface TimerSnapshot {
+  readonly transition: string;
+  readonly due: number;
+  readonly sequence: number;
+}
+
+/** One running instance of a chart, as plain data a store can keep. */
+export interface InstanceSnapshot {
+  readonly process: string;
+  /** Every active state's path (not only the leaves), in document order. */
+  readonly configuration: readonly string[];
+  readonly context: Readonly<Record<string, unknown>>;
+  readonly history: Readonly<Record<string, readonly string[]>>;
+  readonly timers: readonly TimerSnapshot[];
+  /** The pending service and human tasks, by invoke name. */
+  readonly pending: readonly string[];
+  readonly signatures: Readonly<Record<string, readonly Signature[]>>;
+  /** Running sub-process instances by invoke name. */
+  readonly children: Readonly<Record<string, InstanceSnapshot>>;
+  readonly done: boolean;
+  readonly reported: boolean;
+}
+
+/** A process instance: the root instance with its clock and sequences. */
+export interface ProcessSnapshot {
+  readonly instance: string;
+  readonly clock: number;
+  readonly auditSequence: number;
+  readonly timerSequence: number;
+  readonly root: InstanceSnapshot;
+}
+
+/** One audit record per signature attempt and per gate outcome. */
+export interface AuditRecord {
+  readonly instance: string;
+  readonly process: string;
+  readonly gate: string;
+  readonly transition: string;
+  readonly sequence: number;
+  readonly signer: string | null;
+  /** The actor's id. */
+  readonly actor: string | null;
+  /** The meaning's id. */
+  readonly meaning: string | null;
+  readonly reason: string | null;
+  readonly at: string;
+  readonly outcome: GateOutcome;
+  readonly attributes: Readonly<Record<string, unknown>>;
+}
+
+export interface GuardEvaluation {
+  readonly guard: string;
+  readonly transition: string;
+  readonly result: boolean;
+}
+
+export interface MicrostepRecord {
+  readonly transitions: readonly string[];
+  readonly exited: readonly string[];
+  readonly entered: readonly string[];
+  readonly actions: readonly string[];
+}
+
+export interface InvokeRecord {
+  /** The id of the process whose instance started or cancelled it. */
+  readonly process: string;
+  readonly invoke: string;
+  readonly type: InvokeType;
+  readonly state: string;
+}
+
+export interface StepResult {
+  readonly accepted: boolean;
+  readonly refusal: Refusal | null;
+  /** The active atomic states' paths, in document order. */
+  readonly states: readonly string[];
+  readonly context: Readonly<Record<string, unknown>>;
+  /** The context attributes the input changed, by name. */
+  readonly changed: Readonly<Record<string, unknown>>;
+  readonly final: boolean;
+  readonly clock: string;
+  readonly microsteps: readonly MicrostepRecord[];
+  readonly guards: readonly GuardEvaluation[];
+  readonly audit: readonly AuditRecord[];
+  /** Service and human tasks that started (the host starts the work) or were cancelled by an exit. */
+  readonly started: readonly InvokeRecord[];
+  readonly cancelled: readonly InvokeRecord[];
+  /** Guards and actions that failed or returned something unusable (the input still ran). */
+  readonly problems: readonly string[];
+}
+
+export interface StatechartOptions {
+  /** Finds the program of an invoked sub-process; without it a sub-process invoke stays pending. */
+  readonly resolve?: (processId: string) => ChartProgram | undefined;
+  /** The most microsteps one macrostep may run. */
+  readonly maxMicrosteps?: number;
+}
+
+/** Recorded after each accepted input that took a transition (or entered the initial states). */
+export interface TransitionedRecord {
+  readonly type: string;
+  readonly instance: string;
+  readonly from: readonly string[];
+  readonly to: readonly string[];
+  /** The command type that caused it. */
+  readonly event: string;
+  readonly at: string;
+}
+
+/** A command's effect on an instance: the next snapshot, the interpreter's result and the Transitioned record. */
+export interface ProcessOutcome {
+  readonly snapshot: ProcessSnapshot;
+  readonly result: StepResult;
+  readonly transitioned: TransitionedRecord | null;
+}
+
+/** The host's clock, in milliseconds since the epoch. The interpreter itself only moves its clock on ticks. */
+export interface ProcessClock {
+  now(): number;
+}
+
+/** Keeps each instance's timers so the host can dispatch a tick when one is due; after every step it gets the full list. */
+export interface TimerScheduler {
+  schedule(process: string, instance: string, timers: readonly TimerSnapshot[]): void;
+}
+
+/** Learns which service and human tasks started and which ended (completed, failed or cancelled by an exit). */
+export interface InvokeHost {
+  started(instance: string, invoke: InvokeRecord): void;
+  ended(instance: string, invoke: InvokeRecord, how: 'done' | 'error' | 'cancelled'): void;
+}
+
+/** The extension points the generated machines use; the companion process-host.ts implements them. */
+export interface ProcessHost {
+  readonly clock: ProcessClock;
+  readonly timers: TimerScheduler;
+  readonly invokes: InvokeHost;
+}
+
+export type ProcessHostFactory = (options?: { readonly clock?: ProcessClock }) => ProcessHost;
+
+/** The host factory of the companion, checked against the declared shape. */
+export const createProcessHost: ProcessHostFactory = createHost;
+
+/** The service and human tasks of the root instance that a step ended by completing or failing them (not by an exit). */
+export function endedTasks(definition: ChartDefinition, before: ProcessSnapshot | undefined, after: ProcessSnapshot, result: StepResult): InvokeRecord[] {
+  if (before === undefined) return [];
+  const still = new Set(after.root.pending);
+  const cancelled = new Set(result.cancelled.map((c) => c.invoke));
+  return before.root.pending
+    .filter((name) => !still.has(name) && !cancelled.has(name) && Object.hasOwn(definition.invokes, name))
+    .map((name) => ({ process: definition.id, invoke: name, type: definition.invokes[name]!.type, state: definition.invokes[name]!.state }));
+}
+
+/** A chart and its handlers as a program another chart can invoke as a sub-process. */
+export function chartProgram<C extends object>(definition: ChartDefinition, handlers: ChartHandlers<C>): ChartProgram {
+  return { definition, handlers } as unknown as ChartProgram;
+}
+
+/** The fixed start instant when a scenario or host gives none. */
+export const defaultStart = Date.UTC(2000, 0, 1);
+
+const durationPattern =
+  /^P(?=\d|T\d)(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)W)?(?:(\d+)D)?(?:T(?=\d)(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:[.,]\d+)?)S)?)?$/;
+
+/** An ISO 8601 duration in milliseconds with fixed spans (a year 365 days, a month 30 days), or null when it does not parse. */
+export function durationMs(text: string): number | null {
+  const m = durationPattern.exec(text);
+  if (!m) return null;
+  const part = (i: number): number => (m[i] ? Number(m[i]) : 0);
+  const days = part(1) * 365 + part(2) * 30 + part(3) * 7 + part(4);
+  const seconds = m[7] ? Number(m[7].replace(',', '.')) : 0;
+  return Math.round(((days * 24 + part(5)) * 60 + part(6)) * 60000 + seconds * 1000);
+}
+
+/** An instant as ISO 8601 UTC text without trailing zero fractions (2000-01-01T00:00:00Z). */
+export function isoInstant(ms: number): string {
+  const [whole, fraction = '000Z'] = new Date(ms).toISOString().split('.');
+  const digits = fraction.slice(0, -1).replace(/0+$/, '');
+  return whole + (digits ? '.' + digits : '') + 'Z';
+}
+
+/** Whether two JSON-like values are the same value (numbers by value, arrays by items, objects by members). */
+export function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((x, i) => sameValue(x, b[i]));
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  const keys = Object.keys(left);
+  return keys.length === Object.keys(right).length && keys.every((k) => Object.hasOwn(right, k) && sameValue(left[k], right[k]));
+}
+
+function cloneValue<T>(value: T): T {
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map((v: unknown) => cloneValue(v)) as T;
+  const copy: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) copy[k] = cloneValue(v);
+  return copy as T;
+}
+
+function frozen<T>(value: T): T {
+  if (value !== null && typeof value === 'object') {
+    for (const v of Object.values(value as object)) frozen(v);
+    Object.freeze(value);
+  }
+  return value;
+}
+
+function sortedRecord(entries: Iterable<[string, unknown]>): Record<string, unknown> {
+  const list = [...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  const record: Record<string, unknown> = {};
+  for (const [k, v] of list) record[k] = v;
+  return record;
+}
+
+// ---- the compiled chart ----
+
+interface Node {
+  readonly path: string;
+  readonly def: StateDefinition | null;
+  readonly type: StateType;
+  readonly order: number;
+  readonly parent: Node | null;
+  readonly ancestors: Node[];
+  children: Node[];
+  initial: Node | null;
+  defaultTarget: Node | null;
+  transitions: Edge[];
+  timers: Edge[];
+}
+
+interface Edge {
+  readonly def: TransitionDefinition;
+  readonly index: number;
+  readonly source: Node;
+  readonly targets: Node[];
+}
+
+class Chart {
+  readonly root: Node;
+  readonly nodes = new Map<string, Node>();
+  readonly edges = new Map<string, Edge>();
+  private readonly groups = new Map<string, Edge[]>();
+  readonly definition: ChartDefinition;
+
+  constructor(definition: ChartDefinition) {
+    this.definition = definition;
+    this.root = { path: '', def: null, type: 'compound', order: -1, parent: null, ancestors: [], children: [], initial: null, defaultTarget: null, transitions: [], timers: [] };
+    let order = 0;
+    for (const [path, def] of Object.entries(definition.states)) {
+      const parent = def.parent === null ? this.root : this.nodes.get(def.parent);
+      if (!parent) continue;
+      const node: Node = { path, def, type: def.type, order: order++, parent, ancestors: [parent, ...parent.ancestors], children: [], initial: null, defaultTarget: null, transitions: [], timers: [] };
+      this.nodes.set(path, node);
+      parent.children.push(node);
+    }
+    this.root.initial = (definition.initial !== null ? this.nodes.get(definition.initial) : undefined) ?? this.root.children[0] ?? null;
+    for (const node of this.nodes.values()) {
+      const def = node.def!;
+      if (node.type === 'compound') node.initial = (def.initial !== null ? this.nodes.get(def.initial) : undefined) ?? node.children[0] ?? null;
+    }
+    for (const node of this.nodes.values()) {
+      const def = node.def!;
+      if (node.type === 'history') node.defaultTarget = (def.defaultTarget !== null ? this.nodes.get(def.defaultTarget) : undefined) ?? node.parent!.initial;
+    }
+    definition.transitions.forEach((def, index) => {
+      const source = this.nodes.get(def.source);
+      if (!source) return;
+      const targets = def.targets.map((t) => this.nodes.get(t)).filter((t): t is Node => t !== undefined);
+      const edge: Edge = { def, index, source, targets };
+      this.edges.set(def.id, edge);
+      source.transitions.push(edge);
+      if (def.trigger === 'after' && def.afterMs !== null) source.timers.push(edge);
+      const key = Chart.key(def.source, def.trigger, Chart.edgeKey(def));
+      const group = this.groups.get(key);
+      if (group) group.push(edge);
+      else this.groups.set(key, [edge]);
+    });
+  }
+
+  candidates(source: Node, trigger: TransitionTrigger, key: string): readonly Edge[] {
+    return this.groups.get(Chart.key(source.path, trigger, key)) ?? [];
+  }
+
+  private static key(source: string, trigger: TransitionTrigger, key: string): string {
+    return source + '\u0000' + trigger + '\u0000' + key;
+  }
+
+  private static edgeKey(def: TransitionDefinition): string {
+    if (def.trigger === 'event') return def.event ?? '';
+    if (def.trigger === 'invoke-done' || def.trigger === 'invoke-error') return def.invoke ?? '';
+    return '';
+  }
+}
+
+const charts = new WeakMap<ChartDefinition, Chart>();
+
+function chartOf(definition: ChartDefinition): Chart {
+  let chart = charts.get(definition);
+  if (!chart) {
+    chart = new Chart(definition);
+    charts.set(definition, chart);
+  }
+  return chart;
+}
+
+function isLeaf(node: Node): boolean {
+  return node.children.length === 0 && node.type !== 'history';
+}
+
+function isDescendantOf(node: Node, ancestor: Node): boolean {
+  for (let p = node.parent; p !== null; p = p.parent) if (p === ancestor) return true;
+  return false;
+}
+
+// ---- the running instance ----
+
+interface Timer {
+  readonly owner: Instance;
+  readonly edge: Edge;
+  readonly due: number;
+  readonly sequence: number;
+}
+
+interface Internal {
+  readonly kind: 'event' | 'done' | 'invoke-done' | 'invoke-error';
+  readonly key: string;
+}
+
+class Instance {
+  readonly config = new Set<Node>();
+  readonly history = new Map<string, Node[]>();
+  context: Record<string, unknown> = {};
+  timers: Timer[] = [];
+  pending: { invoke: string; state: Node }[] = [];
+  readonly children = new Map<string, Instance>();
+  readonly signatures = new Map<string, Signature[]>();
+  queue: Internal[] = [];
+  done = false;
+  reported = false;
+
+  readonly chart: Chart;
+  readonly handlers: ChartHandlers<object>;
+  readonly parent: Instance | null;
+  readonly parentInvoke: string | null;
+  readonly depth: number;
+
+  constructor(chart: Chart, handlers: ChartHandlers<object>, parent: Instance | null, parentInvoke: string | null, depth: number) {
+    this.chart = chart;
+    this.handlers = handlers;
+    this.parent = parent;
+    this.parentInvoke = parentInvoke;
+    this.depth = depth;
+  }
+}
+
+class MacrostepOverflow extends Error {}
+
+interface Selection {
+  readonly edges: Edge[];
+  readonly consumed: boolean;
+  readonly reason: Refusal;
+}
+
+/** Runs one process instance: start it, then feed it inputs; each call takes and returns a plain snapshot. */
+export class Statechart<C extends object> {
+  private readonly program: ChartProgram<C>;
+  private readonly options: StatechartOptions;
+  private readonly maxMicrosteps: number;
+
+  constructor(program: ChartProgram<C>, options: StatechartOptions = {}) {
+    this.program = program;
+    this.options = options;
+    this.maxMicrosteps = options.maxMicrosteps ?? 1000;
+  }
+
+  get definition(): ChartDefinition {
+    return this.program.definition;
+  }
+
+  /** Enters the initial configuration (one macrostep) with context values over the attribute defaults. */
+  start(instance: string, context: Partial<C> = {}, at: number = defaultStart): { snapshot: ProcessSnapshot; result: StepResult } {
+    const run = new Run(this.options, this.maxMicrosteps, instance, at, 0, 0);
+    const root = run.create(this.program.definition, this.program.handlers as ChartHandlers<object>, null, null, 0);
+    run.initContext(root, context as Record<string, unknown>);
+    const result = run.execute(root, null, () => run.macrostep(() => run.startInstance(root)));
+    return { snapshot: run.snapshot(root), result };
+  }
+
+  /** Runs one input as a macrostep (a time input runs one macrostep per due timer). */
+  step(snapshot: ProcessSnapshot, input: ChartInput): { snapshot: ProcessSnapshot; result: StepResult } {
+    const run = new Run(this.options, this.maxMicrosteps, snapshot.instance, snapshot.clock, snapshot.auditSequence, snapshot.timerSequence);
+    const root = run.restore(this.program.definition, this.program.handlers as ChartHandlers<object>, snapshot.root, null, null, 0);
+    const result = run.execute(root, input, () => {
+      if (input.input === 'time') run.handleTime(root, input);
+      else if (input.input === 'event') run.handleEvent(root, input);
+      else run.handleInvoke(root, input);
+    });
+    return { snapshot: run.snapshot(root), result };
+  }
+
+  /** The active atomic states' paths of a snapshot, in document order. */
+  states(snapshot: ProcessSnapshot): string[] {
+    const chart = chartOf(this.program.definition);
+    return snapshot.root.configuration.filter((p) => {
+      const node = chart.nodes.get(p);
+      return node !== undefined && isLeaf(node);
+    });
+  }
+
+  /** Whether a state (by path) is active in a snapshot. */
+  matches(snapshot: ProcessSnapshot, path: string): boolean {
+    return snapshot.root.configuration.includes(path);
+  }
+}
+
+// One call's working state: the scope of the input being run, and the clock and sequences shared by the instance tree.
+class Run {
+  private micro = 0;
+  private input: ChartInput | null = null;
+  private event: EventView = { name: null, actor: null, payload: {} };
+  private refusal: Refusal | null = null;
+  private readonly microsteps: MicrostepRecord[] = [];
+  private readonly guards: GuardEvaluation[] = [];
+  private readonly audit: AuditRecord[] = [];
+  private readonly started: InvokeRecord[] = [];
+  private readonly cancelled: InvokeRecord[] = [];
+  private readonly problems: string[] = [];
+  private readonly options: StatechartOptions;
+  private readonly maxMicrosteps: number;
+  private readonly instance: string;
+  private clock: number;
+  private auditSequence: number;
+  private timerSequence: number;
+
+  constructor(options: StatechartOptions, maxMicrosteps: number, instance: string, clock: number, auditSequence: number, timerSequence: number) {
+    this.options = options;
+    this.maxMicrosteps = maxMicrosteps;
+    this.instance = instance;
+    this.clock = clock;
+    this.auditSequence = auditSequence;
+    this.timerSequence = timerSequence;
+  }
+
+  create(definition: ChartDefinition, handlers: ChartHandlers<object>, parent: Instance | null, parentInvoke: string | null, depth: number): Instance {
+    return new Instance(chartOf(definition), handlers, parent, parentInvoke, depth);
+  }
+
+  restore(definition: ChartDefinition, handlers: ChartHandlers<object>, data: InstanceSnapshot, parent: Instance | null, parentInvoke: string | null, depth: number): Instance {
+    const inst = this.create(definition, handlers, parent, parentInvoke, depth);
+    const chart = inst.chart;
+    inst.config.add(chart.root);
+    for (const path of data.configuration) {
+      const node = chart.nodes.get(path);
+      if (node) inst.config.add(node);
+    }
+    inst.context = cloneValue({ ...data.context });
+    for (const [path, recorded] of Object.entries(data.history))
+      inst.history.set(path, recorded.map((p) => chart.nodes.get(p)).filter((n): n is Node => n !== undefined));
+    for (const t of data.timers) {
+      const edge = chart.edges.get(t.transition);
+      if (edge) inst.timers.push({ owner: inst, edge, due: t.due, sequence: t.sequence });
+    }
+    for (const name of data.pending) {
+      const invoke = definition.invokes[name];
+      const state = invoke ? chart.nodes.get(invoke.state) : undefined;
+      if (state) inst.pending.push({ invoke: name, state });
+    }
+    for (const [id, list] of Object.entries(data.signatures)) inst.signatures.set(id, list.map((s) => ({ ...s })));
+    for (const [name, child] of Object.entries(data.children)) {
+      const program = this.options.resolve?.(child.process);
+      if (program) inst.children.set(name, this.restore(program.definition, program.handlers as ChartHandlers<object>, child, inst, name, depth + 1));
+    }
+    inst.done = data.done;
+    inst.reported = data.reported;
+    return inst;
+  }
+
+  snapshot(root: Instance): ProcessSnapshot {
+    return { instance: this.instance, clock: this.clock, auditSequence: this.auditSequence, timerSequence: this.timerSequence, root: this.save(root) };
+  }
+
+  private save(inst: Instance): InstanceSnapshot {
+    const def = inst.chart.definition;
+    const history: Record<string, readonly string[]> = {};
+    for (const [path, nodes] of [...inst.history].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) history[path] = nodes.map((n) => n.path);
+    const signatures: Record<string, readonly Signature[]> = {};
+    for (const [id, list] of [...inst.signatures].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) if (list.length > 0) signatures[id] = [...list];
+    const children: Record<string, InstanceSnapshot> = {};
+    for (const [name, child] of this.sortedChildren(inst)) children[name] = this.save(child);
+    return {
+      process: def.id,
+      configuration: [...inst.config].filter((n) => n !== inst.chart.root).sort((a, b) => a.order - b.order).map((n) => n.path),
+      context: cloneValue(inst.context),
+      history,
+      timers: [...inst.timers].sort((a, b) => a.sequence - b.sequence).map((t) => ({ transition: t.edge.def.id, due: t.due, sequence: t.sequence })),
+      pending: inst.pending.map((p) => p.invoke),
+      signatures,
+      children,
+      done: inst.done,
+      reported: inst.reported,
+    };
+  }
+
+  execute(root: Instance, input: ChartInput | null, body: () => void): StepResult {
+    this.input = input;
+    const before = { ...root.context };
+    body();
+    const changed: [string, unknown][] = [];
+    for (const [name, value] of Object.entries(root.context)) {
+      if (!Object.hasOwn(before, name) || !sameValue(before[name], value)) changed.push([name, cloneValue(value)]);
+    }
+    return {
+      accepted: this.refusal === null,
+      refusal: this.refusal,
+      states: this.leaves(root).map((n) => n.path),
+      context: cloneValue(sortedRecord(Object.entries(root.context))),
+      changed: sortedRecord(changed),
+      final: root.done,
+      clock: isoInstant(this.clock),
+      microsteps: this.microsteps,
+      guards: this.guards,
+      audit: this.audit,
+      started: this.started,
+      cancelled: this.cancelled,
+      problems: [...new Set(this.problems)],
+    };
+  }
+
+  initContext(inst: Instance, start: Readonly<Record<string, unknown>> | null): void {
+    for (const [name, attribute] of Object.entries(inst.chart.definition.context)) inst.context[name] = cloneValue(attribute.default ?? null);
+    if (!start) return;
+    for (const [name, value] of Object.entries(start)) if (Object.hasOwn(inst.chart.definition.context, name) && value !== undefined) inst.context[name] = cloneValue(value);
+  }
+
+  // ---- inputs ----
+
+  handleEvent(root: Instance, input: EventInput): void {
+    if (root.done) {
+      this.refuse('no-transition');
+      return;
+    }
+    const target = this.allInstances(root).find((i) => (input.process == null || i.chart.definition.id === input.process) && Object.hasOwn(i.chart.definition.events, input.event));
+    if (!target) {
+      this.problems.push(`The event '${input.event}' is not an event of the process or of a running sub-process.`);
+      this.refuse('no-transition');
+      return;
+    }
+    const ev = target.chart.definition.events[input.event]!;
+    const actor = input.actor ?? null;
+    if (ev.actors.length > 0 && (actor === null || !ev.actors.includes(actor))) {
+      this.refuse('actor');
+      return;
+    }
+    const payload = input.payload ?? {};
+    this.event = this.view(input.event, actor, ev.payload.filter((name) => Object.hasOwn(payload, name)).map((name) => [name, payload[name]]));
+    this.macrostep(() => {
+      const selection = this.select(target, 'event', input.event, true);
+      if (selection.edges.length === 0 && !selection.consumed) {
+        this.refuse(selection.reason);
+        return;
+      }
+      if (selection.edges.length > 0) this.microstep(target, selection.edges);
+      this.runToCompletion(target);
+      this.propagate(target);
+    });
+  }
+
+  handleTime(root: Instance, input: TimeInput): void {
+    const end = Math.max(this.clock, input.until);
+    this.event = this.view(null, input.actor ?? null, []);
+    while (!root.done) {
+      const next = this.allInstances(root).flatMap((i) => i.timers).filter((t) => t.due <= end).sort(timerOrder)[0];
+      if (!next) break;
+      this.clock = next.due;
+      next.owner.timers = next.owner.timers.filter((t) => t !== next);
+      if (next.owner.done) continue;
+      this.macrostep(() => {
+        if (!this.guard(next.owner, next.edge)) return;
+        this.microstep(next.owner, [next.edge]);
+        this.runToCompletion(next.owner);
+        this.propagate(next.owner);
+      });
+    }
+    this.clock = end;
+  }
+
+  handleInvoke(root: Instance, input: InvokeInput): void {
+    let found: { inst: Instance; invoke: string; state: Node } | undefined;
+    for (const inst of this.allInstances(root)) {
+      const p = inst.pending.find((x) => x.invoke === input.invoke);
+      if (p) {
+        found = { inst, invoke: p.invoke, state: p.state };
+        break;
+      }
+    }
+    if (!found) {
+      this.problems.push(`The invoke '${input.invoke}' is not pending (its state is not active, or it already completed).`);
+      this.refuse('no-transition');
+      return;
+    }
+    const { inst, invoke, state } = found;
+    const def = inst.chart.definition.invokes[invoke]!;
+    const actor = input.actor ?? null;
+    if (def.type === 'human-task' && def.actors.length > 0 && (actor === null || !def.actors.includes(actor))) {
+      this.refuse('actor');
+      return;
+    }
+    this.event = this.view(null, actor, []);
+    this.macrostep(() => {
+      const selection = this.selectAt(inst, state, input.input, invoke);
+      if (selection.edges.length === 0) {
+        this.refuse(selection.reason);
+        return;
+      }
+      inst.pending = inst.pending.filter((p) => p.invoke !== invoke);
+      this.microstep(inst, selection.edges);
+      this.runToCompletion(inst);
+      this.propagate(inst);
+    });
+  }
+
+  // ---- macrostep ----
+
+  macrostep(body: () => void): void {
+    this.micro = 0;
+    try {
+      body();
+    } catch (error) {
+      if (!(error instanceof MacrostepOverflow)) throw error;
+      this.problems.push(`A macrostep ran more than ${this.maxMicrosteps} microsteps; an eventless loop or a chain of raised events never ends.`);
+    }
+  }
+
+  startInstance(inst: Instance): void {
+    inst.config.add(inst.chart.root);
+    if (inst.chart.root.initial) this.microstep(inst, [], inst.chart.root.initial);
+    this.runToCompletion(inst);
+  }
+
+  private runToCompletion(inst: Instance): void {
+    while (!inst.done) {
+      const always = this.select(inst, 'always', '', false);
+      if (always.edges.length > 0) {
+        this.microstep(inst, always.edges);
+        continue;
+      }
+      const next = inst.queue.shift();
+      if (!next) break;
+      const saved = this.event;
+      let edges: Edge[] = [];
+      if (next.kind === 'event') {
+        this.event = this.view(next.key, null, []);
+        edges = this.select(inst, 'event', next.key, false).edges;
+      } else if (next.kind === 'done') {
+        const state = inst.chart.nodes.get(next.key);
+        edges = state && inst.config.has(state) ? this.selectAt(inst, state, 'done', '').edges : [];
+      } else {
+        const invoke = inst.chart.definition.invokes[next.key];
+        const state = invoke ? inst.chart.nodes.get(invoke.state) : undefined;
+        edges = state && inst.config.has(state) ? this.selectAt(inst, state, next.kind, next.key).edges : [];
+      }
+      if (edges.length > 0) this.microstep(inst, edges);
+      this.event = saved;
+    }
+  }
+
+  private propagate(inst: Instance): void {
+    for (let child: Instance = inst; child.parent !== null && child.done && !child.reported; child = child.parent) {
+      child.reported = true;
+      child.parent.queue.push({ kind: 'invoke-done', key: child.parentInvoke! });
+      this.runToCompletion(child.parent);
+    }
+  }
+
+  // ---- selection ----
+
+  private select(inst: Instance, trigger: TransitionTrigger, key: string, external: boolean): Selection {
+    const enabled: Edge[] = [];
+    const tried = new Map<Edge, boolean>();
+    let consumed = false;
+    let reason: Refusal = 'no-transition';
+    let rank = 0;
+    const fail = (why: Refusal, level: number): void => {
+      if (level > rank) {
+        rank = level;
+        reason = why;
+      }
+    };
+    for (const leaf of this.leaves(inst)) {
+      let found = false;
+      for (const s of [leaf, ...leaf.ancestors]) {
+        if (s.parent === null) break;
+        for (const t of inst.chart.candidates(s, trigger, key)) {
+          const taken = tried.get(t);
+          if (taken !== undefined) {
+            if (taken) {
+              found = true;
+              break;
+            }
+            continue;
+          }
+          tried.set(t, false);
+          if (!this.guard(inst, t)) {
+            fail('guard', 1);
+            continue;
+          }
+          if (t.def.gate !== null) {
+            const gate = inst.chart.definition.gates[t.def.gate];
+            if (gate) {
+              if (!external) {
+                fail('gate-signer', 2);
+                continue;
+              }
+              // Checked now, signed only when the transition survives conflict removal (a preempted gate gets no signature).
+              const refusal = this.checkSigner(inst, t, gate);
+              if (refusal !== null) {
+                fail(refusal, 2);
+                continue;
+              }
+            }
+          }
+          tried.set(t, true);
+          enabled.push(t);
+          found = true;
+          break;
+        }
+        if (found) break;
+      }
+    }
+    const selected = this.removeConflicts(inst, enabled, (t) => {
+      const gate = t.def.gate !== null ? inst.chart.definition.gates[t.def.gate] : undefined;
+      if (!gate || this.sign(inst, t, gate)) return true;
+      consumed = true; // the occurrence signed an incomplete gate: it is accepted, and the transition waits for more signatures
+      return false;
+    });
+    return { edges: selected, consumed, reason };
+  }
+
+  private selectAt(inst: Instance, source: Node, trigger: TransitionTrigger, key: string): Selection {
+    let reason: Refusal = 'no-transition';
+    for (const t of inst.chart.candidates(source, trigger, key)) {
+      if (this.guard(inst, t)) return { edges: [t], consumed: false, reason };
+      reason = 'guard';
+    }
+    return { edges: [], consumed: false, reason };
+  }
+
+  private removeConflicts(inst: Instance, enabled: Edge[], admit: (t: Edge) => boolean): Edge[] {
+    let filtered: Edge[] = [];
+    for (const t1 of enabled) {
+      if (filtered.includes(t1)) continue;
+      let preempted = false;
+      const remove: Edge[] = [];
+      const exit1 = this.exitSet(inst, t1);
+      for (const t2 of filtered) {
+        const exit2 = this.exitSet(inst, t2);
+        if (![...exit1].some((s) => exit2.has(s))) continue;
+        if (isDescendantOf(t1.source, t2.source)) {
+          remove.push(t2);
+        } else {
+          preempted = true;
+          break;
+        }
+      }
+      if (preempted || !admit(t1)) continue;
+      filtered = filtered.filter((t) => !remove.includes(t));
+      filtered.push(t1);
+    }
+    return filtered;
+  }
+
+  // ---- guards and actions ----
+
+  private guard(inst: Instance, t: Edge): boolean {
+    const name = t.def.guard;
+    if (name === null) return true;
+    const fn = inst.handlers.guards[name];
+    if (!Object.hasOwn(inst.chart.definition.guards, name) || !fn) return false; // an undeclared guard never holds
+    let value = false;
+    try {
+      const result: unknown = fn(frozen(cloneValue(this.contextView(inst))), this.event, this.activePaths(inst));
+      if (typeof result === 'boolean') value = result;
+      else this.problems.push(`Guard '${name}' returned ${describe(result)}, which counts as false.`);
+    } catch (error) {
+      this.problems.push(`Guard '${name}' failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    this.guards.push({ guard: name, transition: t.def.id, result: value });
+    return value;
+  }
+
+  private runAction(inst: Instance, name: string): void {
+    const def = inst.chart.definition.actions[name];
+    if (!def) return;
+    const fn = inst.handlers.actions[name];
+    if (fn) {
+      try {
+        const result: unknown = fn(frozen(cloneValue(this.contextView(inst))), this.event, this.activePaths(inst));
+        if (result !== null && typeof result === 'object' && !Array.isArray(result)) {
+          for (const [key, value] of Object.entries(result)) {
+            if (value === undefined) continue;
+            if (!Object.hasOwn(inst.chart.definition.context, key)) {
+              this.problems.push(`Action '${name}' returned '${key}', which is not a context attribute; the entry is ignored.`);
+              continue;
+            }
+            inst.context[key] = cloneValue(value);
+          }
+        } else if (result !== undefined && result !== null) {
+          this.problems.push(`Action '${name}' returned ${describe(result)}, not an object of context updates; the result is ignored.`);
+        }
+      } catch (error) {
+        this.problems.push(`Action '${name}' failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    for (const raised of def.raises) if (Object.hasOwn(inst.chart.definition.events, raised)) inst.queue.push({ kind: 'event', key: raised });
+  }
+
+  // ---- gates ----
+
+  // Refuses (and audits the refused attempt) when the input cannot sign the gate; null when it can.
+  private checkSigner(inst: Instance, t: Edge, gate: GateDefinition): Refusal | null {
+    const input = this.input as EventInput;
+    const signatures = inst.signatures.get(t.def.id) ?? [];
+    const actor = input.actor ?? null;
+    const signer = input.signer ?? null;
+    let refusal: Refusal | null = null;
+    if (actor === null || !signer || !gate.signers.includes(actor)) refusal = 'gate-signer';
+    else if (!gate.allowRepeatSigner && signatures.some((s) => s.signer === signer)) refusal = 'gate-repeat';
+    else if (gate.reasonRequired && !(input.reason ?? '').trim()) refusal = 'gate-reason';
+    if (refusal !== null) this.record(inst, gate, t, signer, actor, this.meaning(input, gate), input.reason ?? null, 'refused', this.auditAttributes(input, gate));
+    return refusal;
+  }
+
+  // Adds the input's signature (already checked); true when it completes the gate.
+  private sign(inst: Instance, t: Edge, gate: GateDefinition): boolean {
+    const input = this.input as EventInput;
+    let signatures = inst.signatures.get(t.def.id);
+    if (!signatures) inst.signatures.set(t.def.id, (signatures = []));
+    const meaning = this.meaning(input, gate);
+    const attributes = this.auditAttributes(input, gate);
+    signatures.push({ signer: input.signer!, actor: input.actor!, meaning, reason: input.reason ?? null });
+    this.record(inst, gate, t, input.signer ?? null, input.actor ?? null, meaning, input.reason ?? null, 'signed', attributes);
+    const all = signatures;
+    const complete = all.length >= Math.max(1, gate.required) && gate.requiredActors.every((a) => all.some((s) => s.actor === a));
+    if (complete) {
+      this.record(inst, gate, t, input.signer ?? null, input.actor ?? null, meaning, input.reason ?? null, 'completed', attributes);
+      signatures.length = 0;
+    }
+    return complete;
+  }
+
+  private meaning(input: EventInput, gate: GateDefinition): string | null {
+    if (input.meaning != null) return gate.meanings[input.meaning] ?? input.meaning;
+    const ids = Object.values(gate.meanings);
+    return ids.length === 1 ? ids[0]! : null;
+  }
+
+  private auditAttributes(input: EventInput, gate: GateDefinition): Record<string, unknown> {
+    const payload = input.payload ?? {};
+    return sortedRecord(gate.auditAttributes.filter((name) => Object.hasOwn(payload, name)).map((name) => [name, cloneValue(payload[name])]));
+  }
+
+  private record(inst: Instance, gate: GateDefinition, t: Edge, signer: string | null, actor: string | null, meaning: string | null, reason: string | null,
+    outcome: GateOutcome, attributes: Record<string, unknown>): void {
+    const actorId = actor === null ? null : (inst.chart.definition.actors[actor] ?? actor);
+    this.audit.push({ instance: this.instance, process: inst.chart.definition.id, gate: gate.id, transition: t.def.id, sequence: ++this.auditSequence,
+      signer, actor: actorId, meaning, reason, at: isoInstant(this.clock), outcome, attributes });
+  }
+
+  // ---- microstep ----
+
+  private microstep(inst: Instance, edges: readonly Edge[], initial: Node | null = null): void {
+    if (++this.micro > this.maxMicrosteps) throw new MacrostepOverflow();
+    const exited: string[] = [];
+    const entered: string[] = [];
+    const actions: string[] = [];
+    const chart = inst.chart;
+
+    // Exit, in reverse document order, recording history for the history children of the states being left.
+    const exitSet = new Set<Node>();
+    for (const t of edges) for (const s of this.exitSet(inst, t)) exitSet.add(s);
+    const exiting = [...exitSet].sort((a, b) => b.order - a.order);
+    for (const s of exiting) {
+      for (const h of s.children) {
+        if (h.type !== 'history') continue;
+        const recorded = h.def!.history === 'deep'
+          ? [...inst.config].filter((c) => isLeaf(c) && isDescendantOf(c, s))
+          : [...inst.config].filter((c) => c.parent === s);
+        inst.history.set(h.path, recorded.sort((a, b) => a.order - b.order));
+      }
+    }
+    for (const s of exiting) {
+      for (const name of s.def?.exit ?? []) {
+        actions.push(name);
+        this.runAction(inst, name);
+      }
+      this.cancel(inst, s);
+      inst.config.delete(s);
+      exited.push(s.path);
+    }
+
+    // Transition actions, in transition order.
+    for (const t of edges) {
+      for (const name of t.def.actions) {
+        actions.push(name);
+        this.runAction(inst, name);
+      }
+    }
+
+    // Entry, in document order.
+    const toEnter = new Set<Node>();
+    if (initial) {
+      this.addDescendants(inst, initial, toEnter);
+      this.addAncestors(inst, initial, chart.root, toEnter);
+    }
+    for (const t of edges) {
+      if (t.targets.length === 0) continue;
+      const domain = this.domain(inst, t);
+      for (const s of t.targets) this.addDescendants(inst, s, toEnter);
+      for (const s of this.effectiveTargets(inst, t)) this.addAncestors(inst, s, domain, toEnter);
+    }
+    const doneQueued = new Set<Node>();
+    for (const s of [...toEnter].sort((a, b) => a.order - b.order)) {
+      if (s.parent === null || inst.config.has(s)) continue;
+      inst.config.add(s);
+      entered.push(s.path);
+      for (const name of s.def!.entry) {
+        actions.push(name);
+        this.runAction(inst, name);
+      }
+      for (const timer of s.timers) inst.timers.push({ owner: inst, edge: timer, due: this.clock + timer.def.afterMs!, sequence: ++this.timerSequence });
+      this.startInvokes(inst, s);
+      if (s.type === 'final') {
+        const parent = s.parent;
+        if (parent.parent === null) {
+          inst.done = true;
+        } else {
+          // A final child completes a compound parent; a parallel state completes when every region is final, and that
+          // completion travels up through enclosing parallel states (each queued once per microstep).
+          if (parent.type !== 'parallel' && !doneQueued.has(parent)) {
+            doneQueued.add(parent);
+            inst.queue.push({ kind: 'done', key: parent.path });
+          }
+          for (let marker = parent.type === 'parallel' ? parent : parent.parent;
+            marker !== null && marker.type === 'parallel' && marker.parent !== null && marker.children.every((r) => this.inFinal(inst, r));
+            marker = marker.parent) {
+            if (!doneQueued.has(marker)) {
+              doneQueued.add(marker);
+              inst.queue.push({ kind: 'done', key: marker.path });
+            }
+          }
+        }
+      }
+    }
+    if (inst.done) {
+      inst.timers = [];
+      for (const p of inst.pending) this.cancelled.push({ process: chart.definition.id, invoke: p.invoke, type: chart.definition.invokes[p.invoke]!.type, state: p.state.path });
+      inst.pending = [];
+      inst.children.clear();
+      inst.queue = [];
+    }
+    this.microsteps.push({ transitions: edges.map((t) => t.def.id), exited, entered, actions });
+  }
+
+  private cancel(inst: Instance, s: Node): void {
+    inst.timers = inst.timers.filter((t) => t.edge.source !== s);
+    for (const p of inst.pending) {
+      if (p.state === s) this.cancelled.push({ process: inst.chart.definition.id, invoke: p.invoke, type: inst.chart.definition.invokes[p.invoke]!.type, state: s.path });
+    }
+    inst.pending = inst.pending.filter((p) => p.state !== s);
+    for (const name of s.def?.invoke ?? []) inst.children.delete(name);
+    for (const t of s.transitions) {
+      const signatures = inst.signatures.get(t.def.id);
+      const gate = t.def.gate !== null ? inst.chart.definition.gates[t.def.gate] : undefined;
+      if (gate && signatures && signatures.length > 0) {
+        this.record(inst, gate, t, null, null, null, null, 'discarded', {});
+        signatures.length = 0;
+      }
+    }
+  }
+
+  private startInvokes(inst: Instance, s: Node): void {
+    for (const name of s.def?.invoke ?? []) {
+      const invoke = inst.chart.definition.invokes[name];
+      if (!invoke) continue;
+      const program = invoke.type === 'process' && invoke.process !== null && inst.depth < 16 ? this.options.resolve?.(invoke.process) : undefined;
+      if (program) {
+        const child = this.create(program.definition, program.handlers as ChartHandlers<object>, inst, name, inst.depth + 1);
+        inst.children.set(name, child);
+        this.initContext(child, null);
+        this.startInstance(child);
+        if (child.done) {
+          child.reported = true;
+          inst.queue.push({ kind: 'invoke-done', key: name });
+        }
+        continue;
+      }
+      inst.pending.push({ invoke: name, state: s });
+      this.started.push({ process: inst.chart.definition.id, invoke: name, type: invoke.type, state: s.path });
+    }
+  }
+
+  private inFinal(inst: Instance, region: Node): boolean {
+    if (region.type === 'parallel') return region.children.every((r) => this.inFinal(inst, r));
+    if (region.type === 'final') return inst.config.has(region);
+    return region.children.some((c) => c.type === 'final' && inst.config.has(c));
+  }
+
+  // ---- exit and entry sets ----
+
+  private exitSet(inst: Instance, t: Edge): Set<Node> {
+    const set = new Set<Node>();
+    const domain = this.domain(inst, t);
+    if (domain) for (const s of inst.config) if (isDescendantOf(s, domain)) set.add(s);
+    return set;
+  }
+
+  private domain(inst: Instance, t: Edge): Node | null {
+    const targets = this.effectiveTargets(inst, t);
+    if (targets.length === 0) return null;
+    if (!t.def.external && targets.every((s) => s === t.source || isDescendantOf(s, t.source))) return t.source;
+    const all = [...targets, t.source];
+    for (const ancestor of all[0]!.ancestors) if (all.slice(1).every((s) => isDescendantOf(s, ancestor))) return ancestor;
+    return inst.chart.root;
+  }
+
+  private effectiveTargets(inst: Instance, t: Edge): Node[] {
+    const list: Node[] = [];
+    const effective = (s: Node, depth: number): void => {
+      if (s.type !== 'history') {
+        if (!list.includes(s)) list.push(s);
+        return;
+      }
+      const recorded = inst.history.get(s.path);
+      if (recorded && recorded.length > 0) for (const r of recorded) effective(r, depth + 1);
+      else if (s.defaultTarget && depth < 8) effective(s.defaultTarget, depth + 1);
+    };
+    for (const target of t.targets) effective(target, 0);
+    return list;
+  }
+
+  private addDescendants(inst: Instance, s: Node, toEnter: Set<Node>, depth = 0): void {
+    if (depth > 64) return;
+    if (s.type === 'history') {
+      const parent = s.parent!;
+      const recorded = inst.history.get(s.path);
+      if (recorded && recorded.length > 0) {
+        for (const r of recorded) this.addDescendants(inst, r, toEnter, depth + 1);
+        for (const r of recorded) this.addAncestors(inst, r, parent, toEnter, depth + 1);
+      } else if (s.defaultTarget) {
+        this.addDescendants(inst, s.defaultTarget, toEnter, depth + 1);
+        this.addAncestors(inst, s.defaultTarget, parent, toEnter, depth + 1);
+      }
+      return;
+    }
+    toEnter.add(s);
+    if (s.type === 'parallel') {
+      for (const region of s.children) {
+        if (region.type !== 'history' && ![...toEnter].some((x) => isDescendantOf(x, region))) this.addDescendants(inst, region, toEnter, depth + 1);
+      }
+    } else if (s.children.length > 0 && s.initial) {
+      this.addDescendants(inst, s.initial, toEnter, depth + 1);
+      this.addAncestors(inst, s.initial, s, toEnter, depth + 1);
+    }
+  }
+
+  private addAncestors(inst: Instance, s: Node, domain: Node | null, toEnter: Set<Node>, depth = 0): void {
+    const ancestors: Node[] = [];
+    for (const a of s.ancestors) {
+      if (a === domain) break;
+      ancestors.push(a);
+    }
+    if (domain !== null && domain.type === 'parallel') ancestors.push(domain);
+    for (const a of ancestors) {
+      if (a !== domain && a.parent !== null) toEnter.add(a);
+      if (a.type !== 'parallel') continue;
+      for (const region of a.children) {
+        if (region.type !== 'history' && ![...toEnter].some((x) => isDescendantOf(x, region))) this.addDescendants(inst, region, toEnter, depth + 1);
+      }
+    }
+  }
+
+  // ---- helpers ----
+
+  private refuse(reason: Refusal): void {
+    this.refusal ??= reason;
+  }
+
+  private view(name: string | null, actor: string | null, payload: [string, unknown][]): EventView {
+    return frozen({ name, actor, payload: cloneValue(sortedRecord(payload)) });
+  }
+
+  private contextView(inst: Instance): Record<string, unknown> {
+    return sortedRecord(Object.keys(inst.chart.definition.context).map((name) => [name, inst.context[name] ?? null]));
+  }
+
+  private activePaths(inst: Instance): readonly string[] {
+    return Object.freeze([...inst.config].filter((s) => s.parent !== null).sort((a, b) => a.order - b.order).map((s) => s.path));
+  }
+
+  private leaves(inst: Instance): Node[] {
+    return [...inst.config].filter((s) => s.parent !== null && isLeaf(s)).sort((a, b) => a.order - b.order);
+  }
+
+  private sortedChildren(inst: Instance): [string, Instance][] {
+    const id = (name: string): string => inst.chart.definition.invokes[name]?.id ?? name;
+    return [...inst.children].sort(([a], [b]) => (id(a) < id(b) ? -1 : id(a) > id(b) ? 1 : 0));
+  }
+
+  private allInstances(root: Instance): Instance[] {
+    const list: Instance[] = [];
+    const stack: Instance[] = [root];
+    while (stack.length > 0) {
+      const inst = stack.pop()!;
+      if (inst.done && inst.parent !== null) continue;
+      list.push(inst);
+      for (const [, child] of this.sortedChildren(inst).reverse()) stack.push(child);
+    }
+    return list;
+  }
+}
+
+function timerOrder(x: Timer, y: Timer): number {
+  return x.due - y.due || x.owner.depth - y.owner.depth || x.edge.source.order - y.edge.source.order || x.edge.index - y.edge.index || x.sequence - y.sequence;
+}
+
+function describe(value: unknown): string {
+  if (value === null || value === undefined) return 'nothing';
+  if (typeof value === 'string') return `the string '${value}'`;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return Array.isArray(value) ? 'a list' : 'an object';
+}
+}%}
+{{- end -}}
+{{- file "runtime/statechart.gen.ts" content -}}
+{{- end -}}

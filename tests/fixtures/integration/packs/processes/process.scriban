@@ -1,0 +1,10 @@
+{{ process.name }} ({{ process.use }}){{ if process.subject }} of {{ process.subject.name }}{{ end }}
+{{- for s in process.all_states }}
+state {{ state_path s }} {{ s.type }}{{ if s.bound_member }} = {{ s.bound_member.name }}{{ end }}
+{{- end }}
+{{- for t in process.transitions }}
+{{ t.source.path }} -> {{ if t.is_targetless }}(internal){{ else }}{{ for x in t.targets }}{{ x.path }}{{ end }}{{ end }}: {{ t.label }}{{ if t.after }} ({{ iso_duration_ms t.after }} ms){{ end }}
+{{- end }}
+{{- for g in process.gates }}
+gate {{ g.name }} {{ g.required }} of {{ g.signers.size }}: {{ for f in g.audit }}{{ f.name }}:{{ f.type }} {{ end }}
+{{- end }}

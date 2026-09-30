@@ -1,11 +1,14 @@
 {
   "name": "typescript",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "engine": ">=1.0 <2.0",
-  "description": "TypeScript for a Node service: one interface per entity, one module per enum, a barrel index.ts and, optionally, one zod schema per entity.",
+  "description": "TypeScript for a Node service: one interface per entity, one module per enum, a barrel index.ts, optionally one zod schema per entity, and for processes the states, definitions, contracts, handler, service, machine and store pairs, endpoints, a typed dispatcher, the interpreter and one node:test file per scenario.",
   "parameters": {
     "enumStyle": "union",
     "importExtension": ".js",
+    "processFolder": "processes",
+    "routePrefix": "/processes",
+    "testsFolder": "tests",
     "zod": true
   },
   "units": [
@@ -27,6 +30,118 @@
       "where": {
         "abstract": false
       }
+    },
+    {
+      "id": "process-states",
+      "template": "process-states.scriban",
+      "for": "each process",
+      "output": "{{ pack.params.processFolder }}/{{ kebab process.name }}/{{ kebab process.name }}.states.ts"
+    },
+    {
+      "id": "process-definition",
+      "template": "process-definition.scriban",
+      "for": "each process",
+      "output": "{{ pack.params.processFolder }}/{{ kebab process.name }}/{{ kebab process.name }}.definition.ts"
+    },
+    {
+      "id": "process-contracts",
+      "template": "process-contracts.scriban",
+      "for": "each process",
+      "output": "{{ pack.params.processFolder }}/{{ kebab process.name }}/{{ kebab process.name }}.contracts.ts"
+    },
+    {
+      "id": "process-handlers",
+      "template": "process-handlers.scriban",
+      "for": "each process",
+      "output": "{{ pack.params.processFolder }}/{{ kebab process.name }}/{{ kebab process.name }}.handlers.gen.ts",
+      "mode": "pair",
+      "companion": {
+        "template": "process-handlers.companion.scriban",
+        "output": "{{ pack.params.processFolder }}/{{ kebab process.name }}/{{ kebab process.name }}.handlers.ts"
+      }
+    },
+    {
+      "id": "process-services",
+      "template": "process-services.scriban",
+      "for": "each process",
+      "output": "{{ pack.params.processFolder }}/{{ kebab process.name }}/{{ kebab process.name }}.services.gen.ts",
+      "mode": "pair",
+      "companion": {
+        "template": "process-services.companion.scriban",
+        "output": "{{ pack.params.processFolder }}/{{ kebab process.name }}/{{ kebab process.name }}.services.ts"
+      }
+    },
+    {
+      "id": "process-machine",
+      "template": "process-machine.scriban",
+      "for": "each process",
+      "output": "{{ pack.params.processFolder }}/{{ kebab process.name }}/{{ kebab process.name }}.machine.gen.ts",
+      "mode": "pair",
+      "companion": {
+        "template": "process-machine.companion.scriban",
+        "output": "{{ pack.params.processFolder }}/{{ kebab process.name }}/{{ kebab process.name }}.machine.ts"
+      }
+    },
+    {
+      "id": "process-store",
+      "template": "process-store.scriban",
+      "for": "each process",
+      "output": "{{ pack.params.processFolder }}/{{ kebab process.name }}/{{ kebab process.name }}.store.gen.ts",
+      "mode": "pair",
+      "companion": {
+        "template": "process-store.companion.scriban",
+        "output": "{{ pack.params.processFolder }}/{{ kebab process.name }}/{{ kebab process.name }}.store.ts"
+      }
+    },
+    {
+      "id": "process-endpoints",
+      "template": "process-endpoints.scriban",
+      "for": "each process",
+      "output": "endpoints/{{ kebab process.name }}.endpoints.ts",
+      "mode": "regions"
+    },
+    {
+      "id": "dispatch",
+      "template": "dispatch.scriban",
+      "for": "model"
+    },
+    {
+      "id": "dispatch-companion",
+      "template": "dispatch.companion.scriban",
+      "for": "model",
+      "mode": "once"
+    },
+    {
+      "id": "dispatch-registry",
+      "template": "dispatch-registry.scriban",
+      "for": "model"
+    },
+    {
+      "id": "dispatch-behaviours",
+      "template": "dispatch-behaviours.scriban",
+      "for": "model"
+    },
+    {
+      "id": "interpreter",
+      "template": "interpreter.scriban",
+      "for": "model"
+    },
+    {
+      "id": "interpreter-companion",
+      "template": "interpreter.companion.scriban",
+      "for": "model",
+      "mode": "once"
+    },
+    {
+      "id": "actors",
+      "template": "actors.scriban",
+      "for": "model"
+    },
+    {
+      "id": "scenario-tests",
+      "template": "scenario-tests.scriban",
+      "for": "each scenario",
+      "output": "{{ pack.params.testsFolder }}/{{ kebab scenario.process.name }}/{{ kebab scenario.name }}.test.ts"
     }
   ]
 }

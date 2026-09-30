@@ -1,0 +1,167 @@
+{{-
+# The guards and actions of a process (the generated half of a pair). Guards and actions whose expression is in the
+# translatable subset (helpers.js cs_expression) are implemented here; every other one is a partial method the companion
+# <P>Handlers.cs implements, so a new stub fails the build until it is written. Methods are Guard<Name> and Action<Name>, so a
+# guard and an action may share a name. Also the command handler: load the instance
+# through the store, run the machine, save, and return the result with the events for the outbox.
+include "_csharp.scriban"
+include "_process.scriban"
+p = process
+name = p_name(p)
+ctx = name + "Context"
+call = "StatechartCall<" + ctx + ">"
+-}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using {{ dispatch_ns() }};
+using {{ runtime_ns() }};
+
+namespace {{ ns(p) }};
+
+/// <summary>The guards and actions of process {{ p.name }}.</summary>
+public sealed partial class {{ name }}Handlers : IStatechartBehaviour<{{ ctx }}>
+{
+    /// <inheritdoc/>
+    public bool Guard(string guard, {{ call }} call) => guard switch
+    {
+{{- for g in p.guards }}
+        {{ json g.name }} => Guard{{ pascal g.name }}(call),
+{{- end }}
+        _ => throw new ArgumentOutOfRangeException(nameof(guard), guard, "Not a guard of {{ p.name }}."),
+    };
+
+    /// <inheritdoc/>
+    public {{ ctx }} Action(string action, {{ call }} call) => action switch
+    {
+{{- for a in p.actions }}
+        {{ json a.name }} => Action{{ pascal a.name }}(call),
+{{- end }}
+        _ => throw new ArgumentOutOfRangeException(nameof(action), action, "Not an action of {{ p.name }}."),
+    };
+
+    /// <inheritdoc/>
+    public IReadOnlyList<string> Changed({{ ctx }} before, {{ ctx }} after) => {{ ctx }}.Changed(before, after);
+{{- for g in p.guards }}
+{{- cs = translate(p, g, "guard") }}
+
+    /// <summary>Guard {{ g.name }}{{ if g.expression }}: <c>{{ cs_line g.expression | escape_xml }}</c>{{ end }}{{ if cs == "" }} (implemented in {{ name }}Handlers.cs){{ end }}.</summary>
+{{- if cs != "" }}
+    private static bool Guard{{ pascal g.name }}({{ call }} call) => {{ cs }};
+{{- else }}
+    private partial bool Guard{{ pascal g.name }}({{ call }} call);
+{{- end }}
+{{- end }}
+{{- for a in p.actions }}
+{{- cs = translate(p, a, "action") }}
+
+    /// <summary>Action {{ a.name }}{{ if a.expression }}: <c>{{ cs_line a.expression | escape_xml }}</c>{{ end }}{{ if cs == "" }} (implemented in {{ name }}Handlers.cs){{ end }}.</summary>
+{{- if cs != "" }}
+    private static {{ ctx }} Action{{ pascal a.name }}({{ call }} call) => {{ cs }};
+{{- else }}
+    private partial {{ ctx }} Action{{ pascal a.name }}({{ call }} call);
+{{- end }}
+{{- end }}
+}
+
+/// <summary>Handles the commands of process {{ p.name }}: loads the instance through the store, runs the machine and saves.</summary>
+/// <param name="machine">The machine.</param>
+/// <param name="store">The store.</param>
+public sealed partial class {{ name }}CommandHandler({{ name }}Machine machine, I{{ name }}Store store) :
+    ICommandHandler<{{ name }}StartControl>,
+{{- for e in p.events }}
+    ICommandHandler<{{ command_type(p, e) }}>,
+{{- end }}
+    ICommandHandler<{{ name }}InvokeResultControl>,
+    ICommandHandler<{{ name }}TimersDueControl>
+{
+    /// <inheritdoc/>
+    public async Task<CommandResult> HandleAsync({{ name }}StartControl command, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        if (await store.LoadAsync(command.Envelope.Instance, cancellationToken).ConfigureAwait(false) is { } existing)
+            return Result(machine.Refused(existing, Refusals.Instance, ":start"), []);
+        return await SaveAsync(machine.Start(command.Envelope.Instance, command.Context), cancellationToken).ConfigureAwait(false);
+    }
+{{- for e in p.events }}
+
+    /// <inheritdoc/>
+    public Task<CommandResult> HandleAsync({{ command_type(p, e) }} command, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        return RunAsync(command.Envelope.Instance, {{ json e.name }}, snapshot => machine.{{ pascal e.name }}(snapshot, command), cancellationToken);
+    }
+{{- end }}
+
+    /// <inheritdoc/>
+    public Task<CommandResult> HandleAsync({{ name }}InvokeResultControl command, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        return RunAsync(command.Envelope.Instance, command.Invoke, snapshot => machine.Complete(snapshot, command), cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public Task<CommandResult> HandleAsync({{ name }}TimersDueControl command, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        return RunAsync(command.Envelope.Instance, ":time", machine.Tick, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public async Task<CommandResult> RefuseAsync(string instance, string input, string refusal, CancellationToken cancellationToken)
+    {
+        var snapshot = await store.LoadAsync(instance, cancellationToken).ConfigureAwait(false);
+        return snapshot is null ? CommandResult.Refused(refusal) : Result(machine.Refused(machine.Restore(snapshot), refusal, input), []);
+    }
+
+    private async Task<CommandResult> RunAsync(string instance, string input, Func<ProcessSnapshot<{{ ctx }}>, StepResult<{{ ctx }}>> step, CancellationToken cancellationToken)
+    {
+        var snapshot = await store.LoadAsync(instance, cancellationToken).ConfigureAwait(false);
+        if (snapshot is null)
+            return CommandResult.Refused(Refusals.Instance);
+        return await SaveAsync(step(machine.Restore(snapshot)), cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<CommandResult> SaveAsync(StepResult<{{ ctx }}> step, CancellationToken cancellationToken)
+    {
+        var events = new List<object>();
+        if (step.Accepted || step.Audit.Count > 0)
+        {
+            // The store saves only over the version this command loaded, so two commands on one instance cannot both win.
+            var expected = step.Snapshot.Version;
+            step.Snapshot.Version = expected + 1;
+            await store.SaveAsync(step.Snapshot, expected, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (step.Accepted && step.Moved)
+        {
+            var moved = new {{ name }}Transitioned(step.Snapshot.Instance, step.From, step.States, step.Input, step.At);
+            await store.AppendHistoryAsync([moved], cancellationToken).ConfigureAwait(false);
+            events.Add(moved);
+        }
+
+        if (step.Audit.Count > 0)
+        {
+            await store.AppendAuditAsync(step.Audit, cancellationToken).ConfigureAwait(false);
+            foreach (var record in step.Audit)
+                events.Add(Typed(record));
+        }
+
+        machine.Publish(step);
+        return Result(step, events);
+    }
+
+    private static CommandResult Result(StepResult<{{ ctx }}> step, IReadOnlyList<object> events) =>
+        new(step.Accepted, step.Refusal, step.States, step.Changed, step.Final, step.Context, events) { Audit = step.Audit, Failure = step.Failure };
+
+    private static object Typed(GateAuditRecord record) => record.Gate switch
+    {
+{{- for g in p.gates }}
+        {{ json g.id }} => {{ name }}{{ pascal g.name }}AuditRecord.From(record),
+{{- end }}
+        _ => record,
+    };
+}

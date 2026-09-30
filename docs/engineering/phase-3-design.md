@@ -396,11 +396,13 @@ share (decision 6).
 (document order), `atomic_states`, `bound_states`, `transitions`, `gates`, `invokes`, `actors` (every actor referenced),
 `scenarios`, `initial`; a state has `name`, `path`, `type`, `parent`, `children`, `initial`, `history`, `entry`, `exit`,
 `invoke`, `is_final`, `bound_member`, `transitions_out`; a transition has `source`, `targets`, `trigger`, `event`,
-`after` (the duration text and `after_ms`), `guard`, `actions`, `external`, `gate`, `label`; an event has `name`,
+`after` (the duration text, `after_ms` and `after_ticks`), `guard` (and `guard_missing` for a guard that does not resolve), `actions`,
+`external`, `gate`, `label`; an event has `name`,
 `payload`, `actors`, `transitions`; a gate has `required`, `signers`, `required_actors`, `allow_repeat_signer`,
 `reason_required`, `meanings`, `audit` (§2.3 fields plus `auditAttributes`); an actor has `type`, `processes`, `events`,
 `gates`; a scenario has `process`, `start`, `steps` (each with names and paths resolved: event name, actor name, payload
-by attribute name, expected state paths) and `outcome`. Reads record `e:` dependency keys as today, so a scenario's unit
+by attribute name (an event payload attribute or a gate audit attribute), expected state paths, and `trace`, the engine
+interpreter's replay of the step: accepted, refusal, audit outcomes, state paths, final) and `outcome`. Reads record `e:` dependency keys as today, so a scenario's unit
 re-renders when its process changes.
 
 ### 4.4 API
@@ -653,10 +655,10 @@ for documentation:
 | `process-machine` | each process | `<P>Machine.g.cs` + companion `<P>Machine.cs` | pair | A typed facade (`Start`, `Restore`, one method per event) that teams extend with queries and conveniences in the partial partner |
 | `process-store` | each process | `<P>Store.g.cs` (`I<P>Store`: load and save the instance snapshot, append history, append audit records) + companion `<P>Store.cs` | pair | Where instances, history and audit records live is a mapping or template decision (decision 5): the companion adapts the interface to whatever the project mapped |
 | `process-endpoints` | each process | `Endpoints/<P>Endpoints.cs`: one endpoint per event, `POST <route>/{instance}/<event>`, mapping the request to the command and calling the dispatcher | regions | Many endpoints in one file whose set follows the events; per-endpoint request mapping and response shaping sit in one user-code region per endpoint and survive regeneration (committed roots only, MQ6015) |
-| `dispatch` | model | `Dispatch/Dispatch.g.cs` + companion `Dispatch/Pipeline.cs` | pair | The generated half holds the contracts and dispatcher; the companion, created once, orders the pipeline and holds the project's own behaviours |
+| `dispatch` (+ `dispatch-companion`) | model | `Dispatch/Dispatch.g.cs` + companion `Dispatch/Pipeline.cs` | overwrite + once (as built: file blocks written only when the model has processes) | The generated half holds the contracts and dispatcher; the companion, created once, orders the pipeline and holds the project's own behaviours |
 | `dispatch-registry` | model | `Dispatch/HandlerRegistry.g.cs` | overwrite | A complete, derived list; hand additions go in the `Pipeline.cs` partner |
 | `dispatch-behaviours` | model | `Dispatch/Behaviours.g.cs` | overwrite | Default behaviours derived from the model; their policy hooks are partial methods implemented in `Pipeline.cs` |
-| `interpreter` | model | `Runtime/Statechart.g.cs` + companion `Runtime/ProcessHost.cs` | pair | The small interpreter (§4.1 semantics) is generated and never edited; its extension points (clock, timer scheduler, invoke host) are interfaces the companion implements, created once with in-memory defaults |
+| `interpreter` (+ `interpreter-companion`) | model | `Runtime/Statechart.g.cs` + companion `Runtime/ProcessHost.cs` | overwrite + once (as built: file blocks written only when the model has processes) | The small interpreter (§4.1 semantics) is generated and never edited; its extension points (clock, timer scheduler, invoke host) are interfaces the companion implements, created once with in-memory defaults |
 | `actors` | model | `Processes/Actors.cs`: one constant per actor with its type, and each event's allowed actors | overwrite | Derived |
 | `scenario-tests` | each scenario | `<test root>/<P>/<Scenario>Tests.cs`: one test per scenario asserting, after each step, accepted or refused, the active states and the changed context, and the outcome, through the dispatcher and the generated interpreter with a manual clock | overwrite | Derived from the model; a failing test is fixed in the model or in a handler, never in the test |
 | `process-tables` (`sql-ddl`) | each process | `<db>/processes/<process>.sql`: instance, history and audit tables | overwrite | Off unless the parameter `processTables` is `true`: a template choice for projects that do not model these tables; the fixture maps modelled entities instead |
@@ -690,7 +692,8 @@ Generated code dispatches in-process and stays loosely coupled:
   registry is a typed map from command name to handler, checked to cover every command.
 - **Pipeline behaviours**, in this default order, each a generated class with partial-method hooks in `Pipeline.cs`:
   validation (payload attributes: required, length, range, allowed values), authorization by actor (the envelope's actor
-  is one of the event's actors; a gated event carries a signer; the hook maps the host's principal to actors), logging
+  is one of the event's actors; the hook maps the host's principal to actors; gates stay the interpreter's, so a gated event
+  without a signer is refused there with its audit record), logging
   (attributes marked `sensitive` are never logged), transaction (a unit-of-work hook around the handler and the store),
   outbox hand-off (the `<P>Transitioned` records and audit records are written to an outbox interface inside the same
   transaction).
@@ -724,7 +727,8 @@ hand-written partners, and `tools/gate3.sh`. Neither process comes from the owne
   `Resume`, the deep history of `Fulfilment`. `cancel` →
   `Cancelled` (final), guarded by `notShipped`. Context `total`, `creditLimit`; guards with expressions and one stub
   (`notShipped`). Scenarios: small order, credit approved with two signatures, credit rejected and resubmitted, hold and
-  release (deep history), payment overdue by time, cancel refused after shipping, repeat signer refused.
+  release (deep history), payment overdue by time, cancel refused after shipping, cancel before shipping (added by the P5
+  review, so that `notShipped` is exercised both ways), repeat signer refused.
 - **Domain Purchasing, `PurchaseApproval`** (orchestration; subject `PurchaseRequest`). Actors `Requester` (role),
   `Approver` (role), `FinanceController` (role), `ComplianceOfficer` (role), `ProcurementSystem` (external system),
   `BudgetHolder` (person, with the fixture's own `persona` stereotype and `goals`). `Drafting` → `submit` → `Review`,
@@ -745,7 +749,7 @@ The model maps `SalesOrder` (with a `configuration` json attribute for the activ
 | # | Criterion |
 | --- | --- |
 | 1 | `maquettiste validate` on the fixture: no error and no warning (MQ9005 infos allowed); every file canonical |
-| 2 | `maquettiste process verify`: all 13 scenarios pass in the engine interpreter |
+| 2 | `maquettiste process verify`: all 14 scenarios pass in the engine interpreter (13 until the P5 review added cancel before shipping) |
 | 3 | At least one scenario of each process was recorded through the editor's simulation panel (the walk step below records one more and it must pass in 2 and 5) |
 | 4 | `maquettiste generate` with `csharp-dapper` and `process-docs` into a copy, then the fixture's solution builds with `-warnaserror` (generated files plus the committed companions) |
 | 5 | The generated scenario tests pass: one test per scenario, every step's acceptance, states and context and the outcome asserted through the dispatcher and the generated interpreter |
@@ -1079,6 +1083,209 @@ left alone), `simulation`, `statechart-edits`, `statechart-model`, `canvas-model
 aria-activedescendant and the live region, axe), `simulation.mock-only.spec.ts` (the highlight and the flash) and the
 budget spec.
 
+**Status P5, stage a (resolved model, scopes, helpers), 2026-09-30:** built and verified. `ResolvedModel` gains `processes`,
+`actors` and `scenarios` (`Resolution/ResolvedProcesses.cs`, `ResolveRun.Processes.cs`; engine-design.md section 7.1a) with every
+member of section 4.3, and `entity.lifecycle`. The state tree, paths, document order, depth, initial children, history defaults and
+priority come from the interpreter's `StatechartModel`; `after_ms` and `iso_duration_ms` use its fixed spans; a transition's `label`
+follows the canvas's edge label (`ProcessText`, one rule with `chartModel.ts`, compared on the fixture by
+`statechart-label-parity.test.ts`). `pack.json`'s `each process`, `each actor` and `each scenario` plan one unit per element keyed
+by its id with the aliases `process`, `actor` and `scenario`; `where.database` and `where.abstract` on them are MQ6001 at pack load;
+`generation.skip` applies. `state_path` and `iso_duration_ms` join the built-ins (MQ6006 names a text that is not a duration). The
+Units grid's scope help, the Scope picker, the preview's element picker and the mock's template context know the three scopes;
+`GET /api/templates/context` lists their aliases, members and the two helpers. As built, where 4.3 and 7.1 left a choice:
+`atomic_states` and `is_atomic` are what a configuration reports as active leaves (atomic and final states, never history or
+choice); `depth` is 1 for a child of the root; `initial` is set on compound states only; `region_index` on the children of a
+parallel state; `bound_member` only on a lifecycle's bound root states (the enum member of the same name); `context` holds the
+declared attributes only (no stereotype virtual attributes: the interpreter's context has none); an action's `used_by` lists
+transitions, then the states whose entry or exit run it; an actor's `events` lists the events that name it (an event open to any
+actor is not listed on every actor); `gate.audit` is a list of `RAuditField` (`name`, `type`, `required`, `description`, `values`,
+`attribute`) whose fixed fields come first and whose `signer`, `actor`, `meaning` and `reason` are not required (a discarded record
+has none); scenario maps key by attribute or guard name; a transition's `display_name` is its `displayName`, else its label.
+Dependency keys: every process node lists its process file's `e:` key with the subject's and the bound enum's, plus the `e:` keys
+of the actors and processes it names; a scenario and its steps list the scenario's and the process's; the lists carry `k:process`,
+`k:actor` and `k:scenario`. Deviation from 4.3: `r:<process id>` sits on `process.scenarios`, not on the process object, because a
+process's referrers are its scenarios and the key on the object would re-render every process and sibling scenario unit on any
+scenario edit; an actor's `processes`, `events` and `gates` carry `r:<actor id>`. Tests: resolver golden
+`Resolution/Golden/processes/resolved.txt` and `ProcessResolutionTests` (keys, the interpreter's chart, durations),
+`ProcessScopeTests` (scopes, keys, `where` by tag, stereotype and package, skip hints, explain and preview wording), three
+MQ6001 cases in `PackLoaderTests`, `ProcessRenderTests` (reads and recorded keys, the helpers and their MQ6006, a JavaScript helper
+over an `RProcess` proxy), `ProcessGenerationTests` (editing a scenario re-renders only its unit; editing a process re-renders its
+unit, its seven scenarios' and the two actors whose events it declares; incremental equals forced; two cold runs byte-identical),
+the template context test, and the editor's `generate-units`, `preview-scope`, `mock-pack-authoring` and `statechart-label-parity`
+tests. The billing golden and the determinism tests are unchanged; the generation validation golden's MQ6021 message lists the
+three new scopes. Left for P5: the pack units of 7.2 (`csharp-dapper`, `process-docs`, `sql-ddl`'s `process-tables`), the
+TypeScript mirror, the generated interpreter's conformance and gate 3.
+
+**Status P5, stage b (packs, interpreter, dispatch, scenario tests, gate 3), 2026-09-30:** built and verified. `csharp-dapper`
+gains the fourteen units of 7.2 with their ids, outputs and modes (`process-states`, `-definition`, `-contracts` overwrite;
+`process-handlers`, `-services`, `-machine`, `-store`, `dispatch` and `interpreter` pairs; `process-endpoints` regions;
+`dispatch-registry`, `dispatch-behaviours` and `actors` overwrite; `scenario-tests`), shared functions in `_process.scriban`, and in
+`helpers.js` the 7.1 expression translator `cs_expression` (literals, `context.x`, `event.payload.x`, `event.name`/`actor`,
+comparison, `&&`, `||`, `!`, arithmetic, `?:`, and an action's object literal as `call.Context with { ... }`; anything else is a stub
+in the handlers companion with the expression as a comment), `ulid_uuid` and the `process_model` selector. `sql-ddl` gains
+`process-tables` (`<db>/processes/<process>.sql`: instances, history and audit tables with the gate audit fields and every audit
+attribute), off unless `processTables` is `true`. As built, where 7.2 to 7.4 left a choice: the model-level units (dispatch,
+registry, behaviours, interpreter, actors) run through a selector that returns the first process, so a model without processes
+gets none of them and the billing goldens do not move; per-process files are under `Processes/<Process>/` in the process's
+package namespace, the runtime in `<namespace>.Runtime`, the dispatcher in `.Dispatch`, the actors in `.Processes`; commands are
+`<P><Event>Command(ProcessEnvelope Envelope)` with the payload (and a gated event's audit attributes) as init properties, because a
+payload attribute may share a name with an envelope field (`reject`'s `reason`); besides the event commands each process has
+`<P>StartCommand`, `<P>InvokeResultCommand` and `<P>TimersDueCommand`, which the dispatcher routes like the others; `<P>Transitioned`
+is one record per input that moved the configuration (`From`, `To`: the active leaf paths); the audit record is one typed record
+per gate built from `gate.audit`, and `actor` and `meaning` hold names, as the envelope does. The command handler lives in the
+handlers pair (7.4's "handler stubs in pair mode"); the store companion starts as an in-memory store; the registry is a list of
+`HandlerRegistration<TCommand>` the dispatcher matches by pattern, with `Register(Action<Type>)` for a container; the pipeline's
+hooks are partial methods of `Pipeline` (`Authorize` and `BeginTransactionAsync` required, `OnValidate` and `OnLog` optional), and
+a behaviour's refusal reports the instance's states through the handler. The interpreter (`Runtime/Statechart.g.cs`) keeps no
+state between calls: it reads and writes `ProcessSnapshot<TContext>`; timers fire on `<P>TimersDueCommand` at the clock's
+instant, each as its own macrostep at its due instant; a sub-process invoke is handed to `IInvokeHost` and reports back like a
+service task (the engine runs it in the same interpreter; the fixture has none). Endpoints and scenario tests are written only
+when `endpointsFolder` (a committed root) and `testsFolder` are set. The fixture's settings gain `outputs.allow` (`db`,
+`src/Processes.Data/Custom` committed, the two `Generated/` folders built) and the pack parameters; `src/` holds the solution
+(isolation props, `Processes.Data` with the committed companions: `notShipped`, the two services and the review hook, the stores
+over the generated repositories of `SalesOrder` with `configuration`, `SalesOrderHistory`, `PurchaseRequest`, `ProcessInstance` and
+`GateSignature`, the authorization hook; `Processes.Tests` with `ScenarioHost` on in-memory SQLite built from `db/main/schema.sql`).
+`ProcessScopeTests` now writes under `db/` and `PackAuthoringTests` counts five `sql-ddl` units. Tests
+(`tests/Maquettiste.Packs.Tests/ProcessTests.cs`, 9): goldens `golden/csharp-dapper/processes` and `golden/sql-ddl/processes`;
+`--jobs 1` and `--jobs 8` byte-identical; a second forced run writes nothing and `--check` is clean; an edited companion and an
+endpoint region survive a forced run; no `System.Reflection`, `GetType` or `Activator` in the registry; the engine's replay of all
+13 scenarios (48 steps) equals the states, acceptance and outcome the generated tests assert; the fixture solution builds with
+`-warnaserror` and its 13 tests pass; with `notShipped` inverted, `CancelRefusedAfterShipping` fails. Gate 3
+(`tools/gate3.sh`, `.github/workflows/gate3.yml`, `src/editor/tests/e2e/gate3.spec.ts`), numbers from a run of the merged tree
+(stages a to d and the review fixes below, image `mattjcowan/maquettiste:p5fix`, 24 cores), end to end: prepare 6.5 s; walk 7.4 s
+(PurchaseApproval simulated and recorded as `RecordedInTheEditor`, and a SalesOrderLifecycle path recorded under the same name so
+each process has a panel-recorded scenario, then plan and apply); criterion 1 validate 0 errors, 0 warnings, every file canonical;
+2 and 3 verify 16 of 16 scenarios (the fixture's 14 and both recorded ones); 4 and 6 `generate --check` clean after the editor's
+apply, 110 files (the three packs) byte-identical at `--jobs 1`, `--jobs 24` and in the editor's apply, two exports of each process
+identical, the solution builds with `-warnaserror`; 5 16 of 16 generated scenario tests pass; 7 both processes export, import
+`--into` themselves and export again byte for byte; 8 bench (5,000 entities, 1,000 processes, 5 of 400 states, 5,000 scenarios,
+jobs 24): macrostep p95 0.006 ms (0.2), guard p95 0.003 ms (0.05), simulate 200 inputs 12.7 ms (30), rules of one 400-state
+process 2.9 ms (10), whole-model rules 359 ms added (400), replay 2.74 s (3), export 5.8 ms (50), import 8.3 ms (50); no miss.
+The generated process code documents every public member (no CS1591 with documentation on). Left: the P2 conformance charts are
+not replayed against the generated interpreter (the fixture's scenarios are; section 10).
+
+**Status P5, stage c (the TypeScript mirror), 2026-09-30:** built and verified. `samples/typescript-pack` (version 1.1.0) gains the
+section 7.2 units with the C# pack's ids: `process-states` (the state union of every path, path constants, the atomic states and,
+for a lifecycle, the bound enum's value per bound state with `<p>StatusOf`), `process-definition` (the chart as a `const` object
+`satisfies ChartDefinition`: states by path in document order, transitions in priority order, names for events, guards, actions,
+invokes, gates and actors, each with its model id), `process-contracts` (context type, one command per event with its typed
+payload plus a gate's audit attributes and the envelope, the `:start`, `:tick`, `<invoke>:done` and `<invoke>:error` commands,
+`<P>Transitioned`, one audit record type per gate), the pairs `process-handlers`, `process-services`, `process-machine` and
+`process-store` (`<p>.<part>.gen.ts` importing the companion `<p>.<part>.ts` through a declared interface checked with
+`satisfies`), `process-endpoints` (regions, one per event), `dispatch` with `dispatch-companion` (`dispatch/dispatch.gen.ts`,
+`dispatch/pipeline.ts`), `dispatch-registry` (a map from command type to handler `satisfies Registry`, a mapped type over every
+command type, so a missing handler fails the build; no reflection), `dispatch-behaviours` (validation, authorization, logging,
+transaction and outbox as composed functions), `interpreter` with `interpreter-companion` (`runtime/statechart.gen.ts`,
+`runtime/process-host.ts` with `ManualClock`, in-memory timers, invokes and process store), `actors` and `scenario-tests` (one
+`node:test` file per scenario); new parameters `processFolder`, `routePrefix` and `testsFolder`, and helpers `ts_value_type`,
+`ts_import` and `ts_comment`. As built, where 7.3 to 7.5 left a choice: the model-scope pairs are two units each (an overwrite unit
+and a `once` unit, both of file blocks written only when the model has processes) because a model-scope `pair` unit always writes
+its files and the billing output had to stay byte-identical (checked against the previous pack; the entity, model and schema
+templates are untouched); every input is a command through the dispatcher, including the start, invoke results and a clock tick
+(`<P>:tick` moves the instance's clock to the host clock's time, so the instance clock moves only on ticks as the engine's does);
+guard and action expressions are emitted as written on their own line inside typed functions, with the context typed from its
+attributes (numbers for every numeric type, as the interpreter holds JSON values) and the payload typed loosely; a stub guard's
+companion body starts as `return false` and a stub action's as `return {}`; the scenario tests run the companion's stubs and
+assert that each guard a step assumes answered as assumed, so a companion that disagrees with a scenario fails it; the actor and
+gate rules stay the interpreter's (refusals are audited), and the authorization behaviour only asks the pipeline's `mayActAs` hook;
+command handlers live on the machine (`handle`: load, apply, save, history, audit, host and service notifications); endpoints are
+framework-neutral (`{ method, path, handle(request, dispatcher) }`). Tests: `Maquettiste.Packs.Tests/TypeScriptPackTests.cs`
+generates the pack over the gate 3 fixture: `--jobs 1` and `--jobs 8` byte-identical, a second, a forced and a check run clean;
+a companion and an endpoint region keep their edits across a model change; billing gets no process file; with node 22.18 or later
+and the editor's `node_modules` (TypeScript 5.9 and node's types, or `MAQUETTISTE_NODE_MODULES`), `tsc --noEmit` is clean,
+`node --test` passes all 13 scenario tests, the result of the start and of every step (accepted, refusal, active states, changed
+context, final) equals the engine's `ScenarioReplayer` replay, and flipping `notShipped` in its companion fails
+`cancel-refused-after-shipping`. CI: job `typescript-pack` in `ci.yml` after `build-and-test` (node 24, `npm ci` in `src/editor`,
+`MAQUETTISTE_REQUIRE_TYPESCRIPT=1` turns a skip into a failure); not a gate 3 criterion. Not covered by the fixture: sub-process
+invokes (the interpreter runs them from the registry's programs) and audit attributes in a scenario step's payload (P5a resolves
+payload keys against event payloads and context only, so such a key stays an id).
+
+**Status P5, stage d (process-docs), 2026-09-30:** built and verified. `packs/process-docs` (1.0.0; parameters `diagrams`, default
+true, and `title`, the index page's heading) writes Markdown to a committed root: `process-page` (each process, `processes/<process>.md`),
+`actor-page` (each actor, `actors/<actor>.md`) and `scenario-page` (each scenario, `processes/<process>/<scenario>.md`), kebab-case
+names, all `overwrite`, plus an `index` unit (model; a file block `index.md` written only when the model has a process or an
+actor). Every page opens with `banner "<!--"` and holds no date. The process page: the description, a summary, the lifecycle
+binding (the bound states and their enum members), the state diagram in diagram text (`stateDiagram-v2` in a fenced block), then
+tables of states (type, initial child, history kind and default, region, entry, exit, invokes), transitions (numbered in priority
+order: source, trigger, guard, targets, actions, gate with its count), gates (signers, required actors, repeat signer, reason,
+meanings, and the audit record's fields from `gate.audit`), events (actors or "any actor", payload, transition numbers), context,
+guards (the expression, or a named stub), actions, invokes, the actors involved (what each raises, signs and performs) and links
+to the scenarios. The actor page: type, stereotypes, tags, `properties` (an array as a list, so a persona's goals), the processes,
+the events it raises, the gates it signs (its signature required or counted) and its tasks (the invokes naming it). The scenario
+page: the start instant and context, one table row per step (actor, input, accepted or **refused**, the expected active states,
+notes: signer and meaning, reason, payload, assumed guards, changed context, the step's description) and the outcome; it shows the
+recorded expectations, not a fresh run. As built for the diagram: a compound state is a nested block with `[*]` to its initial
+child and from each final child (the top level likewise); the regions of a parallel state are nested blocks separated by `--`; a
+choice state is the choice pseudo-state; a history state is a state labelled with its name and `H` or `H*`, with an edge `default`
+to its default target (an edge rather than a note: the default is a transition in statechart notation, and the states table
+repeats it); each transition with targets is one edge per target, labelled with `transition.label` (the canvas's edge label) and
+`(gate N of M)` when gated, declared in the innermost compound state holding both ends (a parallel state is passed over, since its
+body holds only its regions); a targetless transition is a note beside its source, one line `internal: <label>` each, as the
+canvas lists internal transitions inside the state; ids are the state names, except a name two states share or a keyword of the
+diagram text, which becomes `s_` and the path joined with `_`; `#`, `;`, `"`, `<` and `>` in diagram text are entity codes. The
+fence's language tag names the syntax, because renderers draw only a tagged block; the pack's README names it once, and the
+product's docs say "diagram text". The gate 3 fixture's `maquettiste.json` registers the pack (`packs.process-docs.output` `docs`)
+and allows `docs` as a committed root (section 10's open risk); the roots of `csharp-dapper` and `sql-ddl` are added with their
+process units for criterion 4. `ProcessScopeTests` now plans its in-memory units under `docs`, the fixture's allowed root. Tests:
+`ProcessDocsTests` (golden `tests/fixtures/golden/process-docs/processes/`, 24 pages; `--jobs 1` and `--jobs 8` byte-identical; a
+second run renders no unit and `--check` is clean; banner and final newline on every page; a syntax check of every diagram of its
+own, since no renderer of the syntax is among the editor's dependencies: the statement forms the pack writes, balanced blocks and
+notes, each id declared once, every edge's and note's ends declared, one initial edge per block, labels free of statement ends,
+over the fixture and over `process-basics` with a repeated name, a keyword name and a targetless transition inside a compound
+state; `diagrams: false`; the checker's own failing cases) and `PackLayoutTests` over the third pack. Left: embedding the pack in
+the CLI's starter packs (`init --pack`, `pack new --from`) and the bench, if wanted.
+
+**Status P5, review fixes, 2026-09-30:** built and verified. (1) The C# pack's model-wide units are `model` units whose templates
+write file blocks only when the model has processes, as the TypeScript pack's: `dispatch`, `dispatch-registry`,
+`dispatch-behaviours`, `interpreter` and `actors` overwrite, and the companions `Pipeline.cs` and `ProcessHost.cs` are the `once`
+units `dispatch-companion` and `interpreter-companion` (a model-scope `pair` always writes); the `process_model` selector is gone,
+so skipping the first process no longer removes the shared runtime, and billing still gets no process file. (2) The built-in
+commands end in `Control` and every event command in `Command` (C#: `<P>StartControl`, `<P>InvokeResultControl`,
+`<P>TimersDueControl`, descriptors `<P>:start`, `:invoke-result`, `:timers-due`, inputs `:start` and `:time`; TypeScript:
+`<P>StartControl`, `<P>TickControl`, `<P><Invoke>DoneControl` and `ErrorControl`), the TypeScript machine's methods are
+`send<Event>`, `complete<Invoke>` and `fail<Invoke>`, and a C# constant named like its nested class gets `Value`, so no event
+name collides; every C# command implements `IProcessCommand`. (3) `gate3.sh`'s bench step is binding locally and advisory on a
+GitHub-hosted runner (`RUNNER_ENVIRONMENT`, or `GATE3_BENCH_ADVISORY` 1 or 0): a MISS becomes a `::warning::` and the step
+passes; the workflow sets the variable. (4) The helper `cs_line` turns every line break into a space in every comment context of
+the C# process units, and `doc()` splits `\r\n` and `\r` too; the TypeScript pack's `ts_comment` already did. (5) The fixture
+gains `CancelBeforeShipping` (submit, then cancel with `notShipped` true into `Cancelled`, final; 14 scenarios, 50 steps), and
+BudgetRejected and ChangesRequested start at an amount of 25,000, above the fixture's `checkBudget` limit of 10,000; generated
+refusal steps assert the refusal reason and every step with audit records their outcomes, from the new resolved `step.trace`
+(the engine's replay, computed lazily once per scenario); the scenario host wires the services and fails a test whose service
+disagrees with the result the scenario reports; the TypeScript stub companion throws until implemented, the scenario tests also
+assert that no guard or action failed, and the tests write the rule before running; both packs' inversion tests flip `notShipped`
+both ways and see both cancel scenarios fail. (6) Endpoint regions are keyed by the event's id in both packs (the TypeScript
+endpoint now builds the command and the response outside its region); a renamed event keeps its region, with no MQ6010. (7) The
+translator stubs a division unless both operands are `decimal` or `double` (or one is and the other a literal), ordering and
+arithmetic on an operand that may be null or that is not a number, equality across kinds, decimal mixed with double, a `null`
+test of an attribute that cannot be null, and an action value that does not fit its attribute; the pack README lists the subset.
+(8) The C# interpreter reports a macrostep over the bound as the step's `Failure` and keeps the state reached, keeps the
+instance's clock in the snapshot (set by the start, moved only by timers-due commands), treats a transition naming an undeclared
+guard as never holding (`RTransition.GuardMissing`, `guardMissing`), writes actor and meaning ids in audit records, and the
+authorization behaviour checks actors only (gates are the interpreter's). (9) Section 10's conformance risk says what is done and
+leaves the P2 charts; `ProcessTests` runs the generated tests with the scenario host's trace on and compares acceptance, refusal,
+states, audit outcomes, audit actor and meaning ids, and final with the engine's replay after the start and every step (64), plus
+small charts for the bound, the clock and a missing guard. (10) A step's payload resolves gate audit attributes by name. (11)
+Guards and actions are `Guard<Name>` and `Action<Name>` in C#, `guard<Name>` and `action<Name>` in the TypeScript stub interface,
+which also passes the active state paths to stubs. (12) `ProcessSnapshot` carries `Version`; `I<P>Store.SaveAsync(snapshot,
+expectedVersion, ct)` saves over the version the command loaded and throws `ProcessConcurrencyException` otherwise; the in-memory
+companion and the fixture's stores check it (the fixture's over the version in the stored snapshot, no model change). (13) The
+docs above, the fixture README (the three packs and the schemas in the recipe, `docs/` ignored, the companions as they are) and
+the C# pack README match the tree. (14) A region of a parallel state gets its note for targetless transitions inside its own part
+of the parallel block; the tests name the fence tag once as `DiagramFence`. (15) `HandlerRegistry.Register(IHandlerRegistrar)`
+hands a container typed factories; the no-reflection test covers every generated `Dispatch/*.cs` and `Runtime/*.cs` and allows
+only the registry's `typeof(T)` for `IServiceProvider`. (16) `after_ticks` keeps sub-millisecond durations (`PT0.0005S` is 5,000
+ticks), and the C# pack schedules timers and advances test clocks in ticks. Tests: `ProcessTests` (10), `TypeScriptPackTests` (6),
+`ProcessDocsTests`, `ProcessResolutionTests` (durations, audit attribute names, missing guard, traces); goldens rewritten for
+the C# and process-docs processes and the resolved processes; the editor's recorded verify and simulate results re-recorded
+and its seed's BudgetRejected start set to 25,000. Totals: `dotnet build -warnaserror` clean; Engine 1900, Cli 161, Functions
+180, Bench 50, Packs 71 passed and 5 skipped (database containers); editor lint, typecheck, format and 667 unit tests clean, the
+mock Playwright project 91 passed and 2 skipped (one axe check on the templates page flaked under load and passed on rerun).
+Gate 3 over the merged tree (image `mattjcowan/maquettiste:p5fix`): every step passed with the numbers in stage b's paragraph
+(16 of 16 scenarios verified and tested, 110 files byte-identical, every budget met, the bench binding). Left: the P2
+conformance charts (section 10); the TypeScript store keeps no version (the finding named the C# interface); the TypeScript
+clock stays in milliseconds (a sub-millisecond `after` is rounded down there).
+
 ## 10. SPEC amendments and open risks
 
 Errata to add to `docs/engineering/spec-errata.md` for the owner to apply:
@@ -1104,12 +1311,17 @@ Errata to add to `docs/engineering/spec-errata.md` for the owner to apply:
   regions. The fixture wraps the parallel state in a compound `Fulfilment` holding `Processing` and the history `Resume`,
   which keeps the scenario (hold and release restore both regions). If the interpreter of P2 or an importer ever needs
   history directly under a parallel state, MQ9011 changes first.
-- The fixture settings name `csharp-dapper` and `sql-ddl`; gate criterion 4 needs `process-docs`, which P5 creates and
-  then adds to `tests/fixtures/models/processes/.maquettiste/maquettiste.json`.
-
+- Resolved in P5 (2026-09-30): gate criterion 4 needs `process-docs`, which the first fixture settings (`csharp-dapper` and
+  `sql-ddl` only) did not name. P5 created the pack and added it to `tests/fixtures/models/processes/.maquettiste/maquettiste.json`,
+  which now names the three packs and allows the roots `db`, `docs`, `src/Processes.Data/Custom` (committed) and the two
+  `Generated` folders (built); gate 3 generates the pages into its copy, and the fixture keeps `docs/` out of git.
 - The engine interpreter and the generated interpreters can drift on corner cases (conflicting transitions across
-  regions, history with parallel descendants, `done` ordering). The conformance suite of P2 is replayed against both
-  generated interpreters in P5; any difference is a bug in the pack.
+  regions, history with parallel descendants, `done` ordering). As built in P5, the gate 3 fixture's scenarios (14) are
+  replayed against both generated interpreters and compared with the engine's replay after the start and every step (C#:
+  `ProcessTests` runs the generated tests and compares what the running interpreter returned; TypeScript: the tests' step
+  diagnostics), plus small C# charts for the microstep bound and the clock; any difference is a bug in the pack. Left: the
+  conformance charts of P2 (built in C# test code) are not replayed against the generated interpreters, which would need a
+  generated definition for each.
 - Guards without expressions make scenarios depend on `assume` values: a scenario can pass while the real handler
   disagrees. The generated test calls the real handler and fails in that case, which is the intended signal.
 - The C# expression subset may surprise authors whose expressions fall outside it; the preview shows which guards became

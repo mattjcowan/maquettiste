@@ -1,0 +1,50 @@
+{{- include "_docs.scriban" -}}
+{{- sc = scenario -}}
+{{- p = sc.process -}}
+{{ banner "<!--" }} -->
+
+# {{ md_cell sc.display_name }}
+
+A scenario of [{{ md_cell p.display_name }}](../{{ kebab p.name }}.md).
+{{- if sc.description }}
+
+{{ sc.description }}
+{{- end }}
+
+| | |
+| --- | --- |
+| Name | {{ md_code sc.name }} |
+| Starts at | {{ md_code sc.start.at }} |
+{{- start = [] }}
+{{- for kv in sc.start.context }}{{ start[start.size] = (md_code kv.key) + " = " + (md_code (json kv.value)) }}{{ end }}
+{{- if start.size > 0 }}
+| Start context | {{ start | array.join ", " }} |
+{{- end }}
+| Steps | {{ sc.steps.size }} |
+| Outcome | {{ sc.outcome }} |
+
+## Walk-through
+
+One row per step: who acts, the input, whether the process accepts it, and the active states after it.
+
+| Step | Actor | Input | Result | States after | Notes |
+| --- | --- | --- | --- | --- | --- |
+{{- for st in sc.steps }}
+{{- notes = [] }}
+{{- if st.signer }}{{ notes[notes.size] = "signer " + (md_code st.signer) + (st.meaning ? " as " + (md_code st.meaning.name) : "") }}{{ end }}
+{{- if !st.signer && st.meaning }}{{ notes[notes.size] = "meaning " + (md_code st.meaning.name) }}{{ end }}
+{{- if st.reason }}{{ notes[notes.size] = "reason \"" + (md_cell st.reason) + "\"" }}{{ end }}
+{{- for kv in st.payload }}{{ notes[notes.size] = "payload " + (md_code kv.key) + " = " + (md_code (json kv.value)) }}{{ end }}
+{{- for kv in st.assume }}{{ notes[notes.size] = "guard " + (md_code kv.key) + " assumed " + (kv.value ? "true" : "false") }}{{ end }}
+{{- if st.expect }}{{ for kv in st.expect.context }}{{ notes[notes.size] = (md_code kv.key) + " becomes " + (md_code (json kv.value)) }}{{ end }}{{ end }}
+{{- input = st.input }}
+{{- if st.input == "event" }}{{ input = "event " + (st.event ? (md_code st.event.name) : "`?`") }}
+{{- else if st.input == "time" }}{{ input = "time passes: " + (md_code st.after) }}
+{{- else if st.input == "invoke-done" }}{{ input = (st.invoke ? (md_code st.invoke.name) : "`?`") + " done" }}
+{{- else if st.input == "invoke-error" }}{{ input = (st.invoke ? (md_code st.invoke.name) : "`?`") + " fails" }}{{ end }}
+| {{ st.index + 1 }} | {{ st.actor ? actor_link(st.actor, "../../") : "" }} | {{ input }} | {{ !st.expect ? "not checked" : (st.expect.accepted ? "accepted" : "**refused**") }} | {{ st.expect ? code_paths(st.expect.states) : "" }} | {{ notes | array.join "; " }}{{ if st.description }}{{ notes.size > 0 ? ". " : "" }}{{ md_inline(st.description) }}{{ end }} |
+{{- end }}
+
+## Outcome
+
+{{ sc.outcome == "final" ? "After the last step the process has reached a final state." : "After the last step the process is still active." }}

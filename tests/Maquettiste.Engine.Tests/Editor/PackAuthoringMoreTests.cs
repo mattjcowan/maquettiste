@@ -150,6 +150,28 @@ public sealed class PackAuthoringMoreTests
         Assert.Null(await repo.Service.GetTemplateContextAsync("sql-ddl", "ghost", Ct));
     }
 
+    [Theory]
+    [InlineData("each process", "process", "all_states")]
+    [InlineData("each actor", "actor", "gates")]
+    [InlineData("each scenario", "scenario", "steps")]
+    public async Task The_template_context_of_a_process_actor_or_scenario_unit_lists_its_alias_members_and_helpers(string scope, string alias, string member)
+    {
+        await using var repo = EditorRepo.Create();
+        var node = JsonNode.Parse(File.ReadAllText(PackPath(repo, "pack.json")))!;
+        node["units"]!.AsArray().Add(new JsonObject { ["id"] = "flow", ["template"] = "table.scriban", ["for"] = scope, ["output"] = "flow/{{ element.id }}.txt" });
+        File.WriteAllText(PackPath(repo, "pack.json"), node.ToJsonString());
+
+        var context = await repo.Service.GetTemplateContextAsync("sql-ddl", "flow", Ct);
+
+        Assert.NotNull(context);
+        Assert.Equal(scope, context.Scope);
+        Assert.Contains(context.Variables, v => v.Name == alias);
+        Assert.Contains(context.Members["element"], m => m.Name == member && m.Type == "list");
+        Assert.Contains(context.Members["model"], m => m.Name is "processes" or "actors" or "scenarios");
+        Assert.Contains("state_path", context.Helpers);
+        Assert.Contains("iso_duration_ms", context.Helpers);
+    }
+
     [Fact]
     public async Task The_template_context_and_the_pack_read_list_what_the_packs_own_scripts_register()
     {

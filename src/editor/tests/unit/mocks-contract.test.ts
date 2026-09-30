@@ -335,7 +335,7 @@ describe("mock contract", () => {
       start: { context: { "01JQATT0000000000000000201": 1 } },
       steps: [],
     });
-    expect((scenarioStart.payload as { context: Record<string, unknown> }).context["01JQATT0000000000000000201"]).toBe(2500);
+    expect((scenarioStart.payload as { context: Record<string, unknown> }).context["01JQATT0000000000000000201"]).toBe(25000);
     const draft = { ...(payload0 as { json: Record<string, unknown> }).json, name: "Draft" };
     expect((await call("post", `${id(PURCHASE_APPROVAL)}/simulate`, "/api/processes/{id}/simulate", { document: draft, steps })).status).toBe(200);
     expect(

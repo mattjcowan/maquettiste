@@ -1,0 +1,49 @@
+{{-
+# process-states: the state union type and the path constants of one process; for a lifecycle, the bound enum's value of each
+# bound state and a function that reads it off the active states.
+include "_process.scriban"
+P = pascal process.name
+p = camel process.name
+self = pmod(process, "states.ts")
+bound = process.use == "lifecycle" && process.bound_enum != null
+-}}
+{{ banner "//" }}
+{{ if bound }}
+import type { {{ pascal process.bound_enum.name }} } from {{ imp(self, (kebab process.bound_enum.name)) }};
+{{ end }}
+/** A state of {{ P }}, by its dotted path from the root. */
+export type {{ P }}State =
+{{- for s in process.all_states }}
+  | {{ ts_string s.path }}
+{{- end }};
+
+/** Every state's path, named after the path (document order). */
+export const {{ P }}States = {
+{{- for s in process.all_states }}
+  {{ path_key(s.path) }}: {{ ts_string s.path }},
+{{- end }}
+} as const satisfies Readonly<Record<string, {{ P }}State>>;
+
+/** The states a configuration reports as active leaves (atomic and final states), in document order. */
+export const {{ p }}AtomicStates = {{ str_list(paths(process.atomic_states)) }} as const satisfies readonly {{ P }}State[];
+{{- if bound }}
+{{- E = pascal process.bound_enum.name }}
+
+/**
+ * The {{ E }} value of each bound state (the root's children that are not history or choice states): {{ pascal process.subject.name }}.{{ camel process.bound_attribute.name }}
+ * holds the value of the root-level state that contains the active states.
+ */
+export const {{ p }}Status = {
+{{- for s in process.bound_states }}
+{{- if s.bound_member }}
+  {{ s.name }}: {{ ts_string (s.bound_member.code ?? s.bound_member.name) }},
+{{- end }}
+{{- end }}
+} as const satisfies Readonly<Record<string, {{ E }}>>;
+
+/** The {{ E }} value for a list of active state paths, or undefined when their root-level state is not bound. */
+export function {{ p }}StatusOf(states: readonly string[]): {{ E }} | undefined {
+  const root = states[0]?.split('.')[0];
+  return root !== undefined && Object.hasOwn({{ p }}Status, root) ? {{ p }}Status[root as keyof typeof {{ p }}Status] : undefined;
+}
+{{- end }}

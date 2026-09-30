@@ -2,17 +2,20 @@
 
 **Owner:** W10 Packs. See docs/engineering/engine-design.md sections 8, 9 and 18.
 
-This folder holds the two phase 1 example packs, and this file is the guide to writing a pack of your own.
+This folder holds the example packs (two from phase 1, `process-docs` from phase 3), and this file is the guide to writing a pack
+of your own.
 
 | Pack | Root | Generates |
 | --- | --- | --- |
-| [`sql-ddl`](sql-ddl/README.md) | committed (`db`) | Table DDL for PostgreSQL, SQL Server and SQLite, one schema script per database, `once` migrations from the schema diff, a `regions` seed script |
-| [`csharp-dapper`](csharp-dapper/README.md) | built (`src/Generated`) | Entity `pair` files, enums, value objects, a Dapper repository per mapped entity, one registration file per package, `types/csharp.json` |
+| [`sql-ddl`](sql-ddl/README.md) | committed (`db`) | Table DDL for PostgreSQL, SQL Server and SQLite, one schema script per database, `once` migrations from the schema diff, a `regions` seed script, and (with `processTables`) instance, history and audit tables per process |
+| [`csharp-dapper`](csharp-dapper/README.md) | built (`src/Generated`) | Entity `pair` files, enums, value objects, a Dapper repository per mapped entity, one registration file per package, `types/csharp.json`; per process the states, definition and contracts, handler, service, machine and store pairs, `regions` endpoints, a typed dispatcher with pipeline behaviours, a generated statechart interpreter and one xunit test per scenario |
+| [`process-docs`](process-docs/README.md) | committed (`docs`) | Markdown pages: one per process (a state diagram in diagram text, states, transitions, gates and their audit record, events, actors), one per actor, a walk-through per scenario, and an index |
 
-Both are embedded into the CLI: `maquettiste init --pack <name>` copies one into `.maquettiste/templates/<name>/`, and
-`maquettiste pack new <name> --from <pack>` starts a new pack from one. Their tests are in `tests/Maquettiste.Packs.Tests/`
-(golden output under `tests/fixtures/golden/`; `MAQUETTISTE_UPDATE_GOLDEN=1` rewrites it), and the bench generates them over a
-synthetic model of 5,000 entities.
+`sql-ddl` and `csharp-dapper` are embedded into the CLI: `maquettiste init --pack <name>` copies one into
+`.maquettiste/templates/<name>/`, and `maquettiste pack new <name> --from <pack>` starts a new pack from one; the bench generates
+them over a synthetic model of 5,000 entities. A project uses `process-docs` by copying its folder into `.maquettiste/templates/`
+(its README shows the settings). The tests of all three are in `tests/Maquettiste.Packs.Tests/` (golden output under
+`tests/fixtures/golden/`; `MAQUETTISTE_UPDATE_GOLDEN=1` rewrites it).
 
 ## Writing a pack
 
@@ -41,11 +44,13 @@ A pack is a folder `.maquettiste/templates/<name>/` whose `pack.json` has the sa
 
 - **Parameters** are defaults; a project overrides them in `maquettiste.json` under `packs.<name>.parameters`, and templates read
   them as `pack.params.<name>` (keys keep their spelling).
-- **`for`** is `model` (one unit), `each package|entity|relation|enum|value object|table` (one unit per element; `table` covers
-  every database), or `select <name>` with a JavaScript selector. There is no `each database`: register a selector that returns
+- **`for`** is `model` (one unit), `each package|entity|relation|enum|value object|table|reference type|seed|locale|process|actor|scenario`
+  (one unit per element; `table` covers every database), or `select <name>` with a JavaScript selector. There is no `each database`: register a selector that returns
   `model.databases`, as `sql-ddl` does, and the unit's element is then `database`.
 - **`where`** filters by tags, stereotypes, categories, packages, `database` (tables in it, entities and relations mapped there;
-  it also picks `mapping`), `abstract` and a JavaScript filter.
+  it also picks `mapping`), `abstract` and a JavaScript filter. On `each process`, `each actor` and `each scenario` it takes tags,
+  stereotypes, categories and packages only (a scenario's package is its process's; an actor has none): `database` and `abstract`
+  are refused when the pack loads (MQ6001).
 - **`output`** is a Scriban expression rendered with the unit's context, relative to `packs.<name>.output`. Never repeat that
   prefix: `init` sets it (`db` for sql-ddl, `src/Generated` for csharp-dapper), and a project may move it.
 
@@ -77,12 +82,28 @@ Templates are [Scriban](https://github.com/scriban/scriban). The context has `mo
 - `database.tables` (by schema and name), each with `columns` (by position), `primary_key`, `uniques`, `foreign_keys`
   (`referenced_table`, `on_delete`), `checks`, `indexes`, and per column `native_type`, `nullable`, `identity`, `default`,
   `default_sql`, `attribute_path`.
+- `process` (`each process`, or `model.processes`): `use`, `subject`, `bound_attribute`, `bound_enum`, `context`, `events`,
+  `guards`, `actions`, `states` (the tree), `all_states` (document order), `atomic_states`, `bound_states`, `transitions` (priority
+  order), `gates`, `invokes`, `actors`, `scenarios`, `initial`. A state has `name`, `path` (`Fulfilment.Shipping.Packed`), `type`,
+  `parent`, `children`, `initial`, `history`, `default_target`, `entry`, `exit`, `invoke`, `is_final`, `is_atomic`, `depth`,
+  `bound_member`, `transitions_out`, `region_index`; a transition `source`, `targets`, `trigger`, `event`, `after`, `after_ms`
+  (whole milliseconds), `after_ticks` (exact, in ticks of 100 ns), `invoke`, `guard`, `guard_missing` (it names a guard the
+  process does not declare, which never holds), `actions`, `external`, `gate`, `label` (the canvas's edge label), `is_targetless`; a gate `required`,
+  `signers`, `required_actors`, `allow_repeat_signer`, `reason_required`, `meanings`, `audit_attributes` and `audit` (the audit
+  record's fields: `name`, `type`, `required`, `values`, `attribute`). `actor`: `type`, `processes`, `events`, `gates`.
+  `scenario`: `process`, `start` (`context` by attribute name, `at`), `steps` (`index`, `input`, `event`, `after`, `after_ms`,
+  `after_ticks`, `actor`, `signer`, `meaning`, `payload` (event payload and gate audit attributes) and `assume` by name, `expect`
+  with `accepted`, `states`, `state_paths`, `context`, and `trace`: what the engine's interpreter did with the step when it
+  replayed the scenario, read once per scenario on first use, with `accepted`, `refusal`, `audit` (the audit records' outcomes),
+  `state_paths` and `final`, null when the replay stopped before the step) and `outcome`.
 - `schema_diff.<database>` when the pack sets `"usesSchemaDiff": true`: `from_revision`, `to_revision`, `is_empty` and ordered
   `tables` (`kind` added/renamed/altered/dropped, `columns`, constraint and index changes).
 
 Helpers: `pascal camel snake kebab upper_snake`, `pluralize singularize`, `type_of <attribute|column> "<target>"` (a
 `types/<target>.json` map or a SQL dialect), `sql_quote`, `sql_literal`, `indent`, `escape_xml`/`escape_json`/`escape_md`, `json`,
-`has_stereotype`, `has_tag`, `lookup`, `banner "<comment prefix>"` and `file`. Partials are templates included with
+`has_stereotype`, `has_tag`, `lookup`, `banner "<comment prefix>"`, `file`, `state_path <state>` (a state's dotted path) and
+`iso_duration_ms <text>` (an ISO 8601 duration in milliseconds, a month 30 days and a year 365 as the interpreter counts them; a
+text that is not a duration fails the unit with MQ6006). Partials are templates included with
 `{{ include "_name.scriban" arg }}` (paths relative to the pack folder); a partial that only defines functions is a good home for
 shared logic.
 

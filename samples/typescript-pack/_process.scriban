@@ -1,0 +1,100 @@
+{{-
+# Shared functions of the process units. Include this file once at the top of a template; it prints nothing.
+
+# The output path of one of a process's modules, without the ".ts" extension: <processFolder>/<process>/<process>.<part>.
+func pmod(p, part)
+  ret pack.params.processFolder + "/" + (kebab p.name) + "/" + (kebab p.name) + "." + part
+end
+
+# The import specifier of a module (given without extension) from the file being written.
+func imp(from, to)
+  ret ts_string (ts_import from to pack.params.importExtension)
+end
+
+# The TypeScript type of a context or payload attribute's value as the interpreter holds it (a JSON value): enum and reference
+# values are strings (the member or code the model writes), value objects are records, and every number is a number.
+func value_type(a)
+  if a.type.kind == "enum" || a.type.kind == "reference"
+    $t = "string"
+  else if a.type.kind == "value-object"
+    $t = "Record<string, unknown>"
+  else
+    $t = ts_value_type a.type.builtin
+  end
+  if a.collection
+    $t = $t + "[]"
+  end
+  ret $t
+end
+
+# A state path as a constant name: the path's names in PascalCase, joined ("Fulfilment.Processing" gives FulfilmentProcessing).
+func path_key(path)
+  $k = ""
+  for $seg in (path | string.split ".")
+    $k = $k + (pascal $seg)
+  end
+  ret $k
+end
+
+# A list of strings as a TypeScript array literal of single-quoted strings.
+func str_list(items)
+  $out = []
+  for $i in items
+    $out[$out.size] = ts_string $i
+  end
+  ret "[" + ($out | array.join ", ") + "]"
+end
+
+# The command type of a process event, an invoke result, a start or a clock tick. Event and invoke names are identifiers, so
+# the ":" forms never collide with an event.
+func cmd_event(p, e)
+  ret (pascal p.name) + "." + e.name
+end
+
+func cmd_invoke(p, i, outcome)
+  ret (pascal p.name) + "." + i.name + ":" + outcome
+end
+
+func cmd_start(p)
+  ret (pascal p.name) + ":start"
+end
+
+func cmd_tick(p)
+  ret (pascal p.name) + ":tick"
+end
+
+# The type-name stem of a process node: the process name and the node name in PascalCase (SalesOrderLifecycleSubmit).
+func stem(p, name)
+  ret (pascal p.name) + (pascal name)
+end
+
+# The service and human-task invokes of a process (sub-process invokes complete by themselves).
+func tasks(p)
+  $list = []
+  for $i in p.invokes
+    if $i.type != "process"
+      $list[$list.size] = $i
+    end
+  end
+  ret $list
+end
+-}}
+{{-
+# The paths of a list of states.
+func paths(states)
+  $out = []
+  for $s in states
+    $out[$out.size] = $s.path
+  end
+  ret $out
+end
+
+# The names of a list of named nodes (events, actions, actors, meanings).
+func names(items)
+  $out = []
+  for $i in items
+    $out[$out.size] = $i.name
+  end
+  ret $out
+end
+-}}

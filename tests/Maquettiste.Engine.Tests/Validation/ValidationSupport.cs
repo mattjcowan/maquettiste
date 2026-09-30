@@ -21,9 +21,13 @@ internal static class ValidationFixture
 {
     public static string RepoRoot(string family) => Fixtures.Path("validation", family);
 
-    public static ModelSnapshot Load(string family)
+    public static ModelSnapshot Load(string family) => LoadRepo(RepoRoot(family));
+
+    /// <summary>Loads any fixture repo folder (the one holding <c>.maquettiste</c>) the same way.</summary>
+    /// <param name="repo">The folder.</param>
+    /// <param name="change">Changes an element record after it is read (tags, hints), or <see langword="null"/>.</param>
+    public static ModelSnapshot LoadRepo(string repo, Func<Element, Element>? change = null)
     {
-        var repo = RepoRoot(family);
         var modelRoot = Path.Combine(repo, ".maquettiste");
         var settingsBytes = File.ReadAllBytes(Path.Combine(modelRoot, "maquettiste.json"));
         using (var settingsJson = JsonDocument.Parse(settingsBytes))
@@ -40,6 +44,8 @@ internal static class ValidationFixture
             Assert.True(KindInfo.TryGet(kind, out var info), $"{path}: unknown kind {kind}");
             AssertSchemaValid(info.SchemaFile, json.RootElement, path);
             var element = (Element)JsonSerializer.Deserialize(bytes, info.ClrType, EngineJson.Options)!;
+            if (change is not null)
+                element = change(element);
             var hash = ContentHash.Of(bytes);
             documents.Add(new ElementDocument(element, path, hash, HashBuilder.Of(hash, null), json.RootElement.Clone(), null));
         }

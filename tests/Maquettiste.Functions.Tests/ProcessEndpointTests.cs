@@ -55,7 +55,7 @@ public sealed class ProcessEndpointTests
     }
 
     [Fact]
-    public async Task Verify_passes_all_13_fixture_scenarios_and_names_a_failure()
+    public async Task Verify_passes_all_14_fixture_scenarios_and_names_a_failure()
     {
         await using var host = EditorHost.CreateModel("processes");
         var total = 0;
@@ -69,7 +69,7 @@ public sealed class ProcessEndpointTests
             Recorder.Json($"verifyScenarios.{(process == Purchase ? "purchase-approval" : "sales-order-lifecycle")}.json", verify);
         }
 
-        Assert.Equal(13, total);
+        Assert.Equal(14, total);
         var one = await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/verify", new { scenarios = new[] { "BudgetRejected" } });
         Assert.Equal(BudgetRejected, one.Json["results"]![0]!["scenario"]!.GetValue<string>());
         Assert.Equal(404, (await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/verify", new { scenarios = new[] { "SmallOrder" } })).Status);

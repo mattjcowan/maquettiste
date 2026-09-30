@@ -215,6 +215,57 @@ internal sealed class PackRepo : IDisposable
         return repo;
     }
 
+    /// <summary>
+    /// A fixture model (<c>tests/fixtures/models/&lt;fixture&gt;</c>) with only the TypeScript sample pack
+    /// (<c>samples/typescript-pack</c>), writing to the committed root <c>web</c>. Relative imports end in <c>.ts</c>, so node runs
+    /// the output with its type stripping, and zod schemas are off, so the output needs no package beyond node's types.
+    /// </summary>
+    /// <param name="fixture">The fixture folder name.</param>
+    /// <returns>The repo.</returns>
+    public static PackRepo TypeScript(string fixture)
+    {
+        var repo = new PackRepo();
+        CopyTree(Fixtures.Path("models", fixture, ".maquettiste"), repo.Repo.ModelRoot);
+        CopyTree(Path.Combine(Fixtures.RepoRoot, "samples", "typescript-pack"), Path.Combine(repo.Repo.ModelRoot, "templates", "typescript"));
+        repo.EditJson(".maquettiste/maquettiste.json", settings =>
+        {
+            settings["outputs"] = JsonNode.Parse("""{ "allow": [ { "path": "web", "commit": true } ] }""");
+            settings["packs"] = JsonNode.Parse("""{ "typescript": { "output": "web", "parameters": { "importExtension": ".ts", "zod": false } } }""");
+        });
+        return repo;
+    }
+
+    /// <summary>
+    /// The gate 3 fixture (<c>tests/fixtures/models/processes</c>, phase-3-design.md section 8.1) with every example pack its settings
+    /// name that exists under <c>packs/</c>. With <paramref name="sources"/> the fixture's C# solution comes along (its isolation files,
+    /// projects, the committed companions under <c>src/Processes.Data/Custom</c> and the test host), so the generated code can be built
+    /// and its scenario tests run.
+    /// </summary>
+    /// <param name="sources">Whether to copy the fixture's solution.</param>
+    /// <returns>The repo.</returns>
+    public static PackRepo Processes(bool sources = false)
+    {
+        var repo = new PackRepo();
+        var fixture = Fixtures.Path("models", "processes");
+        CopyTree(Path.Combine(fixture, ".maquettiste"), repo.Repo.ModelRoot);
+        var settings = JsonNode.Parse(File.ReadAllText(Path.Combine(fixture, ".maquettiste", "maquettiste.json")))!;
+        foreach (var (pack, _) in settings["packs"]!.AsObject())
+        {
+            var folder = Path.Combine(Fixtures.RepoRoot, "packs", pack);
+            if (Directory.Exists(folder))
+                CopyTree(folder, Path.Combine(repo.Repo.ModelRoot, "templates", pack));
+        }
+
+        if (sources)
+        {
+            foreach (var file in new[] { "Directory.Build.props", "Directory.Packages.props", ".editorconfig" })
+                File.Copy(Path.Combine(fixture, file), repo.PathOf(file));
+            CopyTree(Path.Combine(fixture, "src"), repo.PathOf("src"));
+        }
+
+        return repo;
+    }
+
     /// <summary>The id of the reference-data variants' PostgreSQL database.</summary>
     public const string MainDatabaseId = "01JRDD00000000000000000001";
 

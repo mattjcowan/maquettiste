@@ -1,0 +1,73 @@
+{{-
+# process-handlers (generated side): every guard and action of the process. An expression is emitted as written inside a typed
+# function; a guard or action without one is a stub, declared in an interface the companion implements, so a new stub fails
+# the build until the companion has it. The companion's methods are guard<Name> and action<Name>, so a guard and an action may
+# share a name.
+include "_process.scriban"
+P = pascal process.name
+p = camel process.name
+self = pmod(process, "handlers.gen.ts")
+C = "Readonly<" + P + "Context>"
+stubs = []
+for g in process.guards
+  if g.is_stub
+    stubs[stubs.size] = g
+  end
+end
+for a in process.actions
+  if a.is_stub
+    stubs[stubs.size] = a
+  end
+end
+-}}
+{{ banner "//" }}
+
+import type { ChartHandlers, EventView } from {{ imp(self, "runtime/statechart.gen") }};
+import type { {{ P }}Context } from {{ imp(self, pmod(process, "contracts")) }};
+import { handlers } from {{ imp(self, pmod(process, "handlers")) }};
+
+/**
+ * The guards and actions of {{ P }} that the model names without an expression. The companion
+ * ({{ kebab process.name }}.handlers.ts) implements them; a guard returns whether its transitions may be taken, an action
+ * returns the context attributes it changes. Both also get the paths of the active states (all levels, document order).
+ */
+export interface {{ P }}Handlers {
+{{- for n in stubs }}
+{{- if n.kind == "guard" }}
+  /** Guard {{ n.name }}{{ if n.description }}: {{ ts_comment n.description }}{{ end }} */
+  guard{{ pascal n.name }}(context: {{ C }}, event: EventView, states: readonly string[]): boolean;
+{{- else }}
+  /** Action {{ n.name }}{{ if n.description }}: {{ ts_comment n.description }}{{ end }} */
+  action{{ pascal n.name }}(context: {{ C }}, event: EventView, states: readonly string[]): Partial<{{ P }}Context>;
+{{- end }}
+{{- end }}
+}
+
+/** The companion's implementations, checked against the interface. */
+export const {{ p }}Stubs: {{ P }}Handlers = handlers;
+
+/** Every guard and action of {{ P }}: the model's expressions as written, and the companion's implementations of the stubs. */
+export const {{ p }}Handlers = {
+  guards: {{ if process.guards.size == 0 }}{},{{ else }}{
+{{- for g in process.guards }}
+{{- if g.is_stub }}
+    {{ g.name }}: (context: {{ C }}, event: EventView, states: readonly string[]): boolean => {{ p }}Stubs.guard{{ pascal g.name }}(context, event, states),
+{{- else }}
+    {{ g.name }}: (context: {{ C }}, event: EventView): boolean => (
+      {{ g.expression }}
+    ),
+{{- end }}
+{{- end }}
+  },{{ end }}
+  actions: {{ if process.actions.size == 0 }}{},{{ else }}{
+{{- for a in process.actions }}
+{{- if a.is_stub }}
+    {{ a.name }}: (context: {{ C }}, event: EventView, states: readonly string[]): Partial<{{ P }}Context> => {{ p }}Stubs.action{{ pascal a.name }}(context, event, states),
+{{- else }}
+    {{ a.name }}: (context: {{ C }}, event: EventView): Partial<{{ P }}Context> => (
+      {{ a.expression }}
+    ),
+{{- end }}
+{{- end }}
+  },{{ end }}
+} satisfies ChartHandlers<{{ P }}Context>;

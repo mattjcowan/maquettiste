@@ -116,12 +116,13 @@ internal static class BuiltinHelpers
     public static readonly FrozenSet<string> Names = FrozenSet.Create(StringComparer.Ordinal,
         "pascal", "camel", "snake", "kebab", "upper_snake", "pluralize", "singularize", "type_of", "sql_quote", "sql_literal",
         "indent", "dedent", "escape_md", "escape_xml", "escape_json", "json", "has_stereotype", "has_tag", "in_category", "lookup",
-        "banner", "file", "row", "row_uuid", "display_name", "plural_name", "description_of", "label_of", "translate", "has_translation");
+        "banner", "file", "row", "row_uuid", "display_name", "plural_name", "description_of", "label_of", "translate", "has_translation",
+        "state_path", "iso_duration_ms");
 
     /// <summary>The unit variables (engine-design.md section 8); pack helpers may not use these names either.</summary>
     public static readonly FrozenSet<string> Variables = FrozenSet.Create(StringComparer.Ordinal,
-        "model", "element", "package", "entity", "relation", "enum", "value_object", "table", "reference_type", "seed", "locale", "pack", "mapping", "mappings",
-        "schema_diff", "hints", "data", "unit");
+        "model", "element", "package", "entity", "relation", "enum", "value_object", "table", "reference_type", "seed", "locale", "process", "actor",
+        "scenario", "pack", "mapping", "mappings", "schema_diff", "hints", "data", "unit");
 
     private static readonly JavaScriptEncoder JsonEncoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
 
@@ -189,6 +190,8 @@ internal static class BuiltinHelpers
         Add(builtins, "lookup", 1, 1, (c, a) => Lookup(c, AsText(a[0])));
         Add(builtins, "row", 2, 2, (c, a) => Row(c, a[0], a[1]));
         Add(builtins, "row_uuid", 1, 1, (c, a) => RowUuid(c, a[0]));
+        Add(builtins, "state_path", 1, 1, (c, a) => StatePath(c, a[0]));
+        Add(builtins, "iso_duration_ms", 1, 1, (_, a) => IsoDurationMs(a[0]));
         LocalizationHelpers.Register((name, min, max, body) => Add(builtins, name, min, max, body));
         Add(builtins, "banner", 1, 1, (c, a) => Banner(AsText(a[0]), c.Unit.Planned.Pack.Name, c.Unit.Planned.Unit.Id));
         Add(builtins, "file", 2, 2, (c, a) => File(c, a[0], a[1]));
@@ -811,6 +814,9 @@ internal static class BuiltinHelpers
             case RElement element:
                 context.Recorder.RecordObject(element);
                 return element.HasStereotype(key);
+            case RProcessNode node:
+                context.Recorder.RecordObject(node);
+                return node.HasStereotype(key);
             case IResolvedObject other:
                 context.Recorder.RecordObject(other);
                 return false;
@@ -890,6 +896,34 @@ internal static class BuiltinHelpers
 
         context.Recorder.RecordObject(found);
         return found;
+    }
+
+    /// <summary><c>state_path &lt;state&gt;</c>: a process state's dotted path (<c>Fulfilment.Shipping.Packed</c>); a state id works too.</summary>
+    private static string? StatePath(TrackingTemplateContext context, object? value)
+    {
+        var unwrapped = TrackingTemplateContext.Unwrap(value);
+        var state = unwrapped switch
+        {
+            null => null,
+            RState s => s,
+            string id => Lookup(context, id) as RState ?? throw new RenderHelperException("MQ6006", $"`state_path`: '{id}' is not the id of a process state."),
+            _ => throw new RenderHelperException("MQ6006", $"`state_path` takes a process state (or its id), not a {TemplateValues.TypeName(unwrapped)}."),
+        };
+        if (state is null)
+            return null;
+        context.Recorder.RecordObject(state);
+        return state.Path;
+    }
+
+    /// <summary>
+    /// <c>iso_duration_ms &lt;text&gt;</c>: the milliseconds of an ISO 8601 duration with the interpreter's fixed spans (a month is 30
+    /// days, a year 365); a text that is not a duration fails the unit (MQ6006).
+    /// </summary>
+    private static long IsoDurationMs(object? value)
+    {
+        var text = AsText(TrackingTemplateContext.Unwrap(value));
+        return Resolution.ProcessText.Milliseconds(text)
+            ?? throw new RenderHelperException("MQ6006", $"`iso_duration_ms`: '{text}' is not an ISO 8601 duration (for example P5D or PT1H30M).");
     }
 
     /// <summary><c>row &lt;reference type&gt; "&lt;code&gt;"</c>: the type's row with that code, or null.</summary>

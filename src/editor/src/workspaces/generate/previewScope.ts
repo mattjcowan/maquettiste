@@ -27,6 +27,9 @@ const EACH: Record<string, { label: string; indexKind: ElementKind | null; varia
   "reference type": { label: "reference type", indexKind: "reference-type", variable: "reference_type" },
   seed: { label: "seed", indexKind: "seed", variable: "seed" },
   locale: { label: "locale", indexKind: null, variable: "locale" },
+  process: { label: "process", indexKind: "process", variable: "process" },
+  actor: { label: "actor", indexKind: "actor", variable: "actor" },
+  scenario: { label: "scenario", indexKind: "scenario", variable: "scenario" },
 };
 
 /** Plural kind words a selector may name, to call its elements by kind in messages ("select databases" → database). */
@@ -41,6 +44,9 @@ const SELECT_WORDS: [RegExp, string][] = [
   [/\bseeds?\b/, "seed"],
   [/\bpackages?\b/, "domain"],
   [/\blocales?\b/, "locale"],
+  [/\bprocess(?:es)?\b/, "process"],
+  [/\bactors?\b/, "actor"],
+  [/\bscenarios?\b/, "scenario"],
 ];
 
 export function unitScope(forExpr: string): UnitScope {

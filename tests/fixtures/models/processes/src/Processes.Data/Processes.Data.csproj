@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The data layer of the gate 3 fixture. Generated/ is the csharp-dapper pack's built root (gitignored): run
+    `maquettiste generate` before building. Custom/ is a committed root: the companions the pack wrote once (entities,
+    process handlers, services, machines, stores, the pipeline, the process host) with the fixture's hand-written code, and
+    the endpoint files with their user-code regions. The isolation files next to this folder's parent (Directory.Build.props,
+    Directory.Packages.props, .editorconfig) keep the repository's build settings away from this project.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Processes.Data</RootNamespace>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Package advisories are not this fixture's concern: they would fail the gate on a new advisory, not on a change here. -->
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The generated endpoints are ASP.NET Core minimal APIs. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Dapper" Version="2.1.66" />
+  </ItemGroup>
+
+</Project>

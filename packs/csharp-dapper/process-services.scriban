@@ -1,0 +1,80 @@
+{{-
+# The services a process invokes (the generated half of a pair): one interface per service task, which the companion
+# <P>Services.cs implements, and one notification hook per human task and sub-process. RunAsync routes a started invoke to
+# them and returns the result command to dispatch (null while a person or another process still has to answer).
+include "_csharp.scriban"
+include "_process.scriban"
+p = process
+name = p_name(p)
+services = []
+for i in p.invokes
+  if i.type == "service"
+    services[services.size] = i
+  end
+end
+-}}
+{{ header() }}
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using {{ runtime_ns() }};
+
+namespace {{ ns(p) }};
+{{- for i in services }}
+
+/// <summary>Service task {{ i.name }} of {{ p.name }}, started when {{ i.state.path }} is entered{{ if i.description }}: {{ cs_line i.description | string.strip | escape_xml }}{{ end }}.</summary>
+public interface I{{ name }}{{ pascal i.name }}Service
+{
+    /// <summary>Runs the service.</summary>
+    /// <param name="request">The started invoke.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>True when it succeeded (invoke done), false when it failed (invoke error).</returns>
+    Task<bool> {{ pascal i.name }}Async(InvokeRequest request, CancellationToken cancellationToken);
+}
+{{- end }}
+
+/// <summary>The services and human tasks of process {{ p.name }}.</summary>
+public sealed partial class {{ name }}Services{{ if services.size > 0 }} :{{ for i in services }} I{{ name }}{{ pascal i.name }}Service{{ if !for.last }},{{ end }}{{ end }}{{ end }}
+{
+    /// <summary>Runs a started invoke of the process.</summary>
+    /// <param name="request">The started invoke.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>The result command to dispatch, or null when the answer comes later (a human task, a sub-process).</returns>
+    public Task<{{ name }}InvokeResultControl?> RunAsync(InvokeRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        switch (request.Invoke)
+        {
+{{- for i in p.invokes }}
+            case {{ json i.name }}:
+{{- if i.type == "service" }}
+                return ResultAsync({{ pascal i.name }}Async(request, cancellationToken), request);
+{{- else if i.type == "human-task" }}
+                On{{ pascal i.name }}Assigned(request);
+                return Task.FromResult<{{ name }}InvokeResultControl?>(null);
+{{- else }}
+                On{{ pascal i.name }}Started(request);
+                return Task.FromResult<{{ name }}InvokeResultControl?>(null);
+{{- end }}
+{{- end }}
+            default:
+                return Task.FromResult<{{ name }}InvokeResultControl?>(null);
+        }
+    }
+
+    private static async Task<{{ name }}InvokeResultControl?> ResultAsync(Task<bool> service, InvokeRequest request) =>
+        new(new ProcessEnvelope(request.Instance), request.Invoke, !await service.ConfigureAwait(false));
+{{- for i in p.invokes }}
+{{- if i.type == "human-task" }}
+
+    /// <summary>Human task {{ i.name }} was assigned (to {{ for a in i.actors }}{{ if !for.first }}, {{ end }}{{ a.name }}{{ end }}): notify them. Optional.</summary>
+    /// <param name="request">The started invoke.</param>
+    partial void On{{ pascal i.name }}Assigned(InvokeRequest request);
+{{- else if i.type != "service" }}
+
+    /// <summary>Sub-process {{ i.name }} was started: start an instance of {{ i.process ? i.process.name : "it" }}. Optional.</summary>
+    /// <param name="request">The started invoke.</param>
+    partial void On{{ pascal i.name }}Started(InvokeRequest request);
+{{- end }}
+{{- end }}
+}

@@ -12,7 +12,22 @@ function diagnostic(rule: string, message: string, filePath: string | null): Dia
   return { rule, severity: "error", message, elementId: null, filePath, jsonPointer: null, line: null, column: null };
 }
 
-const HELPERS = ["camel", "date", "include", "json", "kebab", "lower", "pascal", "plural", "quote_ident", "singular", "snake", "upper"];
+const HELPERS = [
+  "camel",
+  "date",
+  "include",
+  "iso_duration_ms",
+  "json",
+  "kebab",
+  "lower",
+  "pascal",
+  "plural",
+  "quote_ident",
+  "singular",
+  "snake",
+  "state_path",
+  "upper",
+];
 const ELEMENT_MEMBERS: S["TemplateMember"][] = [
   { name: "attributes", type: "list" },
   { name: "description", type: "string" },
@@ -29,12 +44,73 @@ const TABLE_MEMBERS: S["TemplateMember"][] = [
   { name: "primary_key", type: "object" },
   { name: "schema", type: "string" },
 ];
+// The members of the process, actor and scenario records (phase-3-design.md 4.3), ordinal as the engine lists them.
+const PROCESS_MEMBERS: S["TemplateMember"][] = [
+  { name: "actions", type: "list" },
+  { name: "actors", type: "list" },
+  { name: "all_states", type: "list" },
+  { name: "atomic_states", type: "list" },
+  { name: "bound_attribute", type: "object" },
+  { name: "bound_enum", type: "object" },
+  { name: "bound_states", type: "list" },
+  { name: "context", type: "list" },
+  { name: "description", type: "string" },
+  { name: "display_name", type: "string" },
+  { name: "events", type: "list" },
+  { name: "gates", type: "list" },
+  { name: "guards", type: "list" },
+  { name: "id", type: "string" },
+  { name: "initial", type: "object" },
+  { name: "invokes", type: "list" },
+  { name: "kind", type: "string" },
+  { name: "name", type: "string" },
+  { name: "package", type: "object" },
+  { name: "scenarios", type: "list" },
+  { name: "states", type: "list" },
+  { name: "subject", type: "object" },
+  { name: "tags", type: "list" },
+  { name: "transitions", type: "list" },
+  { name: "use", type: "string" },
+];
+const ACTOR_MEMBERS: S["TemplateMember"][] = [
+  { name: "description", type: "string" },
+  { name: "display_name", type: "string" },
+  { name: "events", type: "list" },
+  { name: "gates", type: "list" },
+  { name: "id", type: "string" },
+  { name: "kind", type: "string" },
+  { name: "name", type: "string" },
+  { name: "processes", type: "list" },
+  { name: "stereotypes", type: "list" },
+  { name: "type", type: "string" },
+];
+const SCENARIO_MEMBERS: S["TemplateMember"][] = [
+  { name: "description", type: "string" },
+  { name: "display_name", type: "string" },
+  { name: "id", type: "string" },
+  { name: "kind", type: "string" },
+  { name: "name", type: "string" },
+  { name: "outcome", type: "string" },
+  { name: "package", type: "object" },
+  { name: "process", type: "object" },
+  { name: "start", type: "object" },
+  { name: "steps", type: "list" },
+];
+const SCOPE_MEMBERS: Record<string, S["TemplateMember"][]> = {
+  "each table": TABLE_MEMBERS,
+  "each process": PROCESS_MEMBERS,
+  "each actor": ACTOR_MEMBERS,
+  "each scenario": SCENARIO_MEMBERS,
+};
 const MODEL_MEMBERS: S["TemplateMember"][] = [
+  { name: "actors", type: "list" },
   { name: "databases", type: "list" },
   { name: "entities", type: "list" },
   { name: "enums", type: "list" },
   { name: "packages", type: "list" },
+  { name: "processes", type: "list" },
   { name: "relations", type: "list" },
+  { name: "scenarios", type: "list" },
   { name: "settings", type: "object" },
   { name: "value_objects", type: "list" },
 ];
@@ -106,7 +182,7 @@ export class MockPackAuthoring {
     }
     variables.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     const members: Record<string, S["TemplateMember"][]> = { model: MODEL_MEMBERS };
-    if (unit.for.startsWith("each ")) members.element = unit.for === "each table" ? TABLE_MEMBERS : ELEMENT_MEMBERS;
+    if (unit.for.startsWith("each ")) members.element = SCOPE_MEMBERS[unit.for] ?? ELEMENT_MEMBERS;
     const registrations = this.registrations(pack);
     const helpers = [...new Set([...HELPERS, ...registrations.filter((r) => r.kind === "helper").map((r) => r.name)])].sort();
     return { pack, unit: unitId, scope: unit.for, variables, members, helpers, registrations };

@@ -202,7 +202,7 @@ test("Replay scenario… steps through QuickApproval and stops at the failing st
   await panel.getByTestId("replay-close").click();
   await panel.getByTestId("simulation-from-scenario").selectOption({ label: "BudgetRejected" });
   await expect(rowsOf(panel, "trace-row")).toHaveCount(4);
-  await expect(panel.locator('[data-testid="start-row"][data-attribute="amount"] input')).toHaveValue("2500");
+  await expect(panel.locator('[data-testid="start-row"][data-attribute="amount"] input')).toHaveValue("25000");
   await expect(paths(panel)).toHaveText(["Review.Budget.BudgetRejected", "Review.Compliance.Cleared"]);
 });
 

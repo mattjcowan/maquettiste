@@ -8,7 +8,7 @@ namespace Maquettiste.Engine.Tests.Processes;
 
 /// <summary>
 /// The gate 3 fixture <c>tests/fixtures/models/processes</c> (phase-3-design.md section 8.1): it loads with no diagnostic, validates
-/// with no error and no warning, and holds the processes, actors, entities, mappings and thirteen scenarios the design lists.
+/// with no error and no warning, and holds the processes, actors, entities, mappings and fourteen scenarios the design lists.
 /// </summary>
 public sealed class ProcessFixtureTests
 {
@@ -48,9 +48,9 @@ public sealed class ProcessFixtureTests
             model.All<EnumType>().Single(e => e.Name == "SalesOrderStatus").Members.Select(m => m.Name));
 
         var scenarios = model.All<Scenario>();
-        Assert.Equal(13, scenarios.Count);
-        Assert.Equal(7, scenarios.Count(s => s.Process == sales.Id));
+        Assert.Equal(14, scenarios.Count);
+        Assert.Equal(8, scenarios.Count(s => s.Process == sales.Id));
         Assert.Equal(6, scenarios.Count(s => s.Process == purchase.Id));
-        Assert.Equal(48, scenarios.Sum(s => s.Steps.Count));
+        Assert.Equal(50, scenarios.Sum(s => s.Steps.Count));
     }
 }

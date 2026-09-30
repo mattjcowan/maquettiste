@@ -108,6 +108,13 @@ internal static class LocalizationHelpers
                 LocalizationIndex.DescriptionField => f.Description,
                 _ => null,
             }),
+            RProcessNode n => (n.Id, field switch
+            {
+                LocalizationIndex.DisplayNameField => n.DisplayName,
+                LocalizationIndex.DescriptionField => n.Description,
+                _ => null,
+            }),
+            RStep step => (step.Id, field == LocalizationIndex.DescriptionField ? step.Description : null),
             REnd end => (end.Id, Source(end.Id) ?? (field is LocalizationIndex.DisplayNameField or LocalizationIndex.PluralNameField ? end.Role : null)),
             string id when context.Unit.Run.Context.Model.Find(id) is { } found => Node(context, found, field, helper),
             string id => (id, Source(id)),

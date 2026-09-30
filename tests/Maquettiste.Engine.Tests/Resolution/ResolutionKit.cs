@@ -133,9 +133,103 @@ internal static partial class ResolutionKit
                 sb.Append("  view ").Append(v.Name).Append(": ").Append(v.Body).Append('\n');
         }
 
+        DumpProcesses(model, sb, L, V);
         foreach (var d in model.Diagnostics)
             sb.Append("diagnostic ").Append(d.Rule).Append(' ').Append(d.Severity).Append(' ').Append(L(d.Message)).Append('\n');
         return sb.ToString();
+    }
+
+    /// <summary>Processes, actors and scenarios (nothing for a model without them, so older goldens are unchanged).</summary>
+    private static void DumpProcesses(ResolvedModel model, StringBuilder sb, Func<string?, string> l, Func<object?, string> v)
+    {
+        string Names<T>(IEnumerable<T> items, Func<T, string> name) => items.Any() ? string.Join(',', items.Select(name)) : "-";
+        string Keys(IEnumerable<string> keys) => string.Join(' ', keys.Select(k => l(k)));
+        string Map(IReadOnlyDictionary<string, object?> map) => "{" + string.Join(',', map.Select(p => p.Key + "=" + Value(p.Value))) + "}";
+        string Value(object? value) => value is not string && value is IEnumerable<object?> list ? "[" + string.Join(',', list.Select(Value)) + "]" : v(value);
+        string Path(RState? state) => state?.Path ?? "-";
+
+        foreach (var p in model.Processes)
+        {
+            sb.Append("process ").Append(p.Name).Append(" display='").Append(p.DisplayName).Append("' package=").Append(p.Package?.QualifiedName ?? "-")
+                .Append(" use=").Append(p.Use).Append(" subject=").Append(p.Subject?.Name ?? "-").Append(" bound=").Append(p.BoundAttribute?.Name ?? "-")
+                .Append(" enum=").Append(p.BoundEnum?.Name ?? "-").Append(" initial=").Append(Path(p.Initial)).Append('\n');
+            sb.Append("  keys ").Append(Keys(p.Dependencies)).Append('\n');
+            foreach (var a in p.Context)
+                sb.Append("  context ").Append(a.Order).Append(' ').Append(a.Name).Append(": ").Append(a.Type.Kind).Append(' ').Append(a.Type.Name)
+                    .Append(" default=").Append(v(a.Default)).Append('\n');
+            foreach (var e in p.Events)
+                sb.Append("  event ").Append(e.Name).Append(" actors=").Append(Names(e.Actors, x => x.Name)).Append(" payload=")
+                    .Append(Names(e.Payload, x => x.Name + ":" + x.Type.Name + (x.Required ? "!" : ""))).Append(" transitions=").Append(e.Transitions.Count).Append('\n');
+            foreach (var g in p.Guards)
+                sb.Append("  guard ").Append(g.Name).Append(g.IsStub ? " stub" : " expr=" + g.Expression).Append(" used-by=").Append(Names(g.UsedBy, t => t.Label)).Append('\n');
+            foreach (var a in p.Actions)
+                sb.Append("  action ").Append(a.Name).Append(a.IsStub ? " stub" : " expr=" + a.Expression).Append(" raises=").Append(Names(a.Raises, x => x.Name))
+                    .Append(" used-by=").Append(Names(a.UsedBy, n => n switch { RTransition t => "t(" + t.Label + ")", RState st => "s(" + st.Path + ")", _ => n.Kind })).Append('\n');
+            sb.Append("  roots ").Append(Names(p.States, x => x.Name)).Append(" atomic=").Append(Names(p.AtomicStates, x => x.Path))
+                .Append(" bound=").Append(Names(p.BoundStates, x => x.Name + (x.BoundMember is { } m ? "=" + m.Name : ""))).Append('\n');
+            foreach (var s in p.AllStates)
+            {
+                sb.Append("  state ").Append(new string(' ', 2 * (s.Depth - 1))).Append(s.Path).Append(' ').Append(s.Type).Append(" depth=").Append(s.Depth)
+                    .Append(" parent=").Append(Path(s.Parent)).Append(" children=").Append(Names(s.Children, x => x.Name))
+                    .Append(s.Initial is { } i ? " initial=" + i.Name : "").Append(s.History is { } h ? " history=" + h + " default=" + Path(s.DefaultTarget) : "")
+                    .Append(s.IsFinal ? " final" : "").Append(s.IsAtomic ? " leaf" : "").Append(s.RegionIndex is { } r ? " region=" + r : "")
+                    .Append(s.Entry.Count > 0 ? " entry=" + Names(s.Entry, x => x.Name) : "").Append(s.Exit.Count > 0 ? " exit=" + Names(s.Exit, x => x.Name) : "")
+                    .Append(s.Invoke.Count > 0 ? " invoke=" + Names(s.Invoke, x => x.Name) : "")
+                    .Append(" out=").Append(s.TransitionsOut.Count).Append('\n');
+            }
+
+            foreach (var t in p.Transitions)
+            {
+                sb.Append("  transition '").Append(t.Label).Append("' ").Append(t.Source.Path).Append(" -> ").Append(t.IsTargetless ? "(targetless)" : Names(t.Targets, x => x.Path))
+                    .Append(" trigger=").Append(t.Trigger).Append(t.Event is { } e ? " event=" + e.Name : "").Append(t.After is { } a ? " after=" + a + " ms=" + v(t.AfterMs) : "")
+                    .Append(t.Invoke is { } iv ? " invoke=" + iv.Name : "").Append(t.Guard is { } g ? " guard=" + g.Name : "")
+                    .Append(t.Actions.Count > 0 ? " actions=" + Names(t.Actions, x => x.Name) : "").Append(t.External ? " external" : "")
+                    .Append(t.DisplayName != t.Label ? " display='" + t.DisplayName + "'" : "").Append(t.Gate is { } gate ? " gate=" + gate.Name : "").Append('\n');
+            }
+
+            foreach (var g in p.Gates)
+            {
+                sb.Append("  gate ").Append(g.Name).Append(" on '").Append(g.Transition.Label).Append("' required=").Append(g.Required)
+                    .Append(" signers=").Append(Names(g.Signers, x => x.Name)).Append(" required-actors=").Append(Names(g.RequiredActors, x => x.Name))
+                    .Append(" repeat=").Append(v(g.AllowRepeatSigner)).Append(" reason=").Append(v(g.ReasonRequired))
+                    .Append(" meanings=").Append(Names(g.Meanings, x => x.Name + "('" + x.DisplayName + "')")).Append('\n');
+                sb.Append("    audit ").Append(string.Join(' ', g.Audit.Select(f => f.Name + ":" + f.Type + (f.Required ? "!" : "") + (f.Values.Count > 0 ? "[" + string.Join('|', f.Values) + "]" : "")
+                    + (f.Attribute is not null ? "(attribute)" : "")))).Append('\n');
+            }
+
+            foreach (var i in p.Invokes)
+                sb.Append("  invoke ").Append(i.Name).Append(' ').Append(i.Type).Append(" state=").Append(i.State.Path).Append(" process=").Append(i.Process?.Name ?? "-")
+                    .Append(" actors=").Append(Names(i.Actors, x => x.Name)).Append('\n');
+            sb.Append("  actors ").Append(Names(p.Actors, x => x.Name)).Append(" membership ").Append(Keys(p.Actors.MembershipKeys)).Append('\n');
+            sb.Append("  scenarios ").Append(Names(p.Scenarios, x => x.Name)).Append(" membership ").Append(Keys(p.Scenarios.MembershipKeys)).Append('\n');
+        }
+
+        foreach (var a in model.Actors)
+        {
+            sb.Append("actor ").Append(a.Name).Append(' ').Append(a.Type).Append(" package=").Append(a.Package?.QualifiedName ?? "-")
+                .Append(" stereotypes=").Append(Names(a.Stereotypes, x => x.Key)).Append(" processes=").Append(Names(a.Processes, x => x.Name))
+                .Append(" events=").Append(Names(a.Events, x => x.Name)).Append(" gates=").Append(Names(a.Gates, x => x.Name)).Append('\n');
+            sb.Append("  keys ").Append(Keys(a.Dependencies)).Append(" lists ").Append(Keys(a.Processes.MembershipKeys)).Append('\n');
+        }
+
+        foreach (var sc in model.Scenarios)
+        {
+            sb.Append("scenario ").Append(sc.Name).Append(" process=").Append(sc.Process.Name).Append(" package=").Append(sc.Package?.QualifiedName ?? "-")
+                .Append(" outcome=").Append(sc.Outcome).Append(" at=").Append(sc.Start.At).Append(" context=").Append(Map(sc.Start.Context)).Append('\n');
+            sb.Append("  keys ").Append(Keys(sc.Dependencies)).Append('\n');
+            foreach (var st in sc.Steps)
+            {
+                sb.Append("  step ").Append(st.Index).Append(' ').Append(st.Input).Append(st.Event is { } e ? " event=" + e.Name : "")
+                    .Append(st.Invoke is { } i ? " invoke=" + i.Name : "").Append(st.After is { } a ? " after=" + a + " ms=" + v(st.AfterMs) : "")
+                    .Append(st.Actor is { } actor ? " actor=" + actor.Name : "").Append(st.Signer is { } s ? " signer=" + s : "")
+                    .Append(st.Meaning is { } m ? " meaning=" + m.Name : "").Append(st.Reason is { } r ? " reason='" + r + "'" : "")
+                    .Append(st.Payload.Count > 0 ? " payload=" + Map(st.Payload) : "").Append(st.Assume.Count > 0 ? " assume=" + Map(st.Assume) : "");
+                if (st.Expect is { } x)
+                    sb.Append(" expect accepted=").Append(v(x.Accepted)).Append(" states=").Append(Names(x.StatePaths, y => y))
+                        .Append(x.Context.Count > 0 ? " context=" + Map(x.Context) : "");
+                sb.Append('\n');
+            }
+        }
     }
 
     private static string Join(RJoinPath path) => string.Join(" ; ", path.Steps.Select(s =>
