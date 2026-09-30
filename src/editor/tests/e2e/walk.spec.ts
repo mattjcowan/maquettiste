@@ -1,5 +1,5 @@
 // The stage walk (phase2-design.md §4.10, mock project): open the editor, see Billing overview, select
-// Invoice, rename an attribute in the inspector, watch the Problems panel follow, open Database and read
+// Invoice, rename an attribute (the inspector opens the entity editor), watch the Problems panel follow, open Database and read
 // the DDL preview, then plan and apply.
 import { card, expect, openEditor, test, workspace } from "./fixtures";
 
@@ -12,7 +12,10 @@ test("open, select Invoice, rename, problems, DDL, plan and apply", async ({ pag
   const inspector = page.getByRole("region", { name: "Inspector: Invoice" });
   await expect(inspector.getByRole("heading", { name: "Invoice", level: 2 })).toBeVisible();
   await expect(page).toHaveURL(/[?&]sel=/);
-  const grid = page.getByTestId("attribute-grid");
+  // The inspector lists Invoice's attributes read-only; its grid is edited in the entity editor.
+  await inspector.getByRole("tab", { name: "Attributes" }).click();
+  await inspector.getByRole("button", { name: "Open editor" }).click();
+  const grid = page.getByRole("region", { name: "Editor: Invoice" }).getByTestId("attribute-grid");
   const nameCells = grid.locator('td[data-column="name"]');
   await expect(nameCells.nth(1)).toHaveText("number");
 

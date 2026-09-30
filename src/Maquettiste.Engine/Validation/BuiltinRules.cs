@@ -76,7 +76,19 @@ internal static partial class BuiltinRules
             case Seed seed:
                 ReferenceDataRules.CheckSeed(context, report.Document, seed, report);
                 break;
+            case Diagram diagram:
+                CheckDiagram(diagram, report);
+                break;
         }
+    }
+
+    // ---- MQ3022: a package diagram without a package ----
+
+    private static void CheckDiagram(Diagram diagram, Report report)
+    {
+        if (diagram.Membership == DiagramMembership.Package && string.IsNullOrEmpty(diagram.Package))
+            report.Add("MQ3022", $"Diagram '{diagram.Name}' follows a package (membership 'package') but names none; set its package, or set membership to 'explicit'.",
+                "/membership");
     }
 
     // ---- MQ2001, MQ2002, MQ2005: references ----

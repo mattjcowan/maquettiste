@@ -132,7 +132,7 @@ function StereotypesSettings() {
           }}
         >
           <Input aria-label="New stereotype key" placeholder="new-key" value={newKey} onChange={(e) => setNewKey(e.target.value)} className="font-mono" />
-          <Button type="submit" size="icon" aria-label="Add stereotype">
+          <Button type="submit" size="icon" label="Add stereotype">
             <Plus />
           </Button>
         </form>

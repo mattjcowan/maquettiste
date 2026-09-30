@@ -76,7 +76,7 @@ export function BottomPanel() {
             variant="ghost"
             size="icon-sm"
             className="mr-2"
-            aria-label={collapsed ? "Expand the bottom panel" : "Collapse the bottom panel"}
+            label={collapsed ? "Expand the bottom panel" : "Collapse the bottom panel"}
             title={`${collapsed ? "Show" : "Hide"} the bottom panel (${PANEL_KEYS.bottom.label})`}
             aria-expanded={!collapsed}
             data-testid={collapsed ? "show-bottom" : "hide-bottom"}

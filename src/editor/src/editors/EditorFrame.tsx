@@ -279,7 +279,7 @@ function GenerationHintsEditor({ id, json, edit, flush }: EditorContext) {
           <div key={name} className="flex flex-col gap-1 rounded-control border border-default p-2" data-testid="generation-pack">
             <div className="flex items-center justify-between gap-2">
               <span className="font-mono text-13">{name === "*" ? "* (every pack)" : name}</span>
-              <Button size="icon-sm" variant="ghost" aria-label={`Remove the hints for ${name}`} onClick={() => set(name, undefined)}>
+              <Button size="icon-sm" variant="ghost" label={`Remove the hints for ${name}`} onClick={() => set(name, undefined)}>
                 <Trash2 />
               </Button>
             </div>

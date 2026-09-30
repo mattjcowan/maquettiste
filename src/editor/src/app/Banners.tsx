@@ -32,7 +32,7 @@ export function Banners() {
           {banner.kind === "signed-out" ? "Sign in" : "Reload"}
         </Button>
       ) : null}
-      <Button size="icon-sm" variant="ghost" aria-label="Dismiss" onClick={() => store.getState().setBanner(null)}>
+      <Button size="icon-sm" variant="ghost" label="Dismiss" onClick={() => store.getState().setBanner(null)}>
         <X />
       </Button>
     </div>

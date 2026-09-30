@@ -131,7 +131,7 @@ export function FilterBar({
         />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Scopes" data-testid="explorer-scopes">
+            <Button variant="ghost" size="icon" label="Scopes" data-testid="explorer-scopes">
               <Bookmark />
             </Button>
           </DropdownMenuTrigger>
@@ -159,7 +159,7 @@ export function FilterBar({
         </DropdownMenu>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label={`Filters${count ? ` (${count} active)` : ""}`} data-testid="explorer-filters" className="relative">
+            <Button variant="ghost" size="icon" label={`Filters${count ? ` (${count} active)` : ""}`} data-testid="explorer-filters" className="relative">
               <Filter />
               {count ? (
                 <span aria-hidden className="absolute -right-0.5 -top-0.5 rounded-full bg-accent px-1 text-11 leading-4 text-accent-foreground">

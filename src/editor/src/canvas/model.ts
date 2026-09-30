@@ -86,7 +86,10 @@ export function cardPosition(index: number, dragging: Point | undefined, stored:
   return dragging ?? stored ?? { x: (index % GRID.columns) * GRID.x, y: Math.floor(index / GRID.columns) * GRID.y };
 }
 
-/** True when the view has cards but none (diagram) or some (package) have a stored position: lay out on open. */
+/**
+ * True when the view has cards and none has a stored position: the full automatic layout runs on open. When only some
+ * lack one, those are placed beside what is drawn (placement.ts) and the others stay where they are.
+ */
 export function needsLayout(
   view: CanvasView | null,
   entityIds: readonly string[],
@@ -94,8 +97,7 @@ export function needsLayout(
   packagePositions: Record<string, Point>,
 ): boolean {
   if (!view || !entityIds.length) return false;
-  if (view.type === "diagram") return entityIds.every((id) => storedPosition(view, members.get(id), packagePositions, id) === undefined);
-  return entityIds.some((id) => !packagePositions[id]);
+  return entityIds.every((id) => storedPosition(view, members.get(id), packagePositions, id) === undefined);
 }
 
 export interface EdgeEnds {

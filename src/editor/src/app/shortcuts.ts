@@ -2,11 +2,12 @@
 // regions (rail, explorer, center, inspector, bottom; phase2-design.md 4.8), Alt+Left and Alt+Right move back and
 // forward through selections and Shift+F12 lists where the selected element is used (explorer-redesign.md 3.3).
 // Alt+Shift+E, P, J, O and H hide or show the explorer, the inspector, the bottom panel, the editor tabs and the top
-// bar's controls (state/layout.ts PANEL_KEYS, by physical key; not while typing in a field). Escape closes no panel.
+// bar's controls; on the Database screen Alt+Shift+L and D hide or show the tables list and the DDL preview
+// (state/layout.ts PANEL_KEYS, by physical key; not while typing in a field). Escape closes no panel.
 import { useCallback, useEffect } from "react";
 import { useServices } from "./context";
 import { useEditorNavigation } from "./navigation";
-import { panelForKey } from "@/state/layout";
+import { SCREEN_PANELS, panelForKey } from "@/state/layout";
 
 export const REGIONS = ["rail", "explorer", "center", "inspector", "bottom"] as const;
 
@@ -47,7 +48,8 @@ export function useGlobalShortcuts(): void {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
       const panel = e.defaultPrevented || isTextTarget(e.target) ? null : panelForKey(e);
-      if (panel) {
+      const screen = panel ? SCREEN_PANELS[panel] : undefined;
+      if (panel && (!screen || store.getState().workspace === screen)) {
         e.preventDefault();
         store.getState().toggle(panel);
         return;

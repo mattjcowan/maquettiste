@@ -73,7 +73,7 @@ export function ReferencesPanel() {
             Show for the selection
           </Button>
         ) : null}
-        <Button size="icon-sm" variant="ghost" aria-label="Refresh the references" onClick={() => void server.refetch()}>
+        <Button size="icon-sm" variant="ghost" label="Refresh the references" onClick={() => void server.refetch()}>
           <RefreshCw />
         </Button>
       </div>

@@ -3649,6 +3649,12 @@ export interface components {
             package?: components["schemas"]["id"];
             /** @description Set when the diagram is that process's statechart: its members are then states of the process. */
             process?: components["schemas"]["id"];
+            /**
+             * @description explicit: the members list is the diagram; package: the diagram shows every entity of its package and its relationships, members only carry positions
+             * @default explicit
+             * @enum {unknown}
+             */
+            membership?: "explicit" | "package";
             description?: components["schemas"]["description"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];

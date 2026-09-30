@@ -202,16 +202,23 @@ export function UnitsTab({ pack, document, hash, files, focusUnit, onDirty }: Pr
         <Button size="sm" onClick={() => apply(insertUnit(draft, row))} data-testid="unit-add">
           <Plus className="size-3.5" /> Unit
         </Button>
-        <Button size="sm" variant="ghost" aria-label="Duplicate unit" disabled={!current} onClick={() => apply(duplicateUnit(draft, row))}>
+        <Button size="sm" variant="ghost" label="Duplicate unit" shortcut="Ctrl+D" disabled={!current} onClick={() => apply(duplicateUnit(draft, row))}>
           <Copy className="size-3.5" />
         </Button>
-        <Button size="sm" variant="ghost" aria-label="Move unit up" disabled={row === 0} onClick={() => apply(moveUnit(draft, row, -1))}>
+        <Button size="sm" variant="ghost" label="Move unit up" shortcut="Alt+Up" disabled={row === 0} onClick={() => apply(moveUnit(draft, row, -1))}>
           <ArrowUp className="size-3.5" />
         </Button>
-        <Button size="sm" variant="ghost" aria-label="Move unit down" disabled={row >= units.length - 1} onClick={() => apply(moveUnit(draft, row, 1))}>
+        <Button
+          size="sm"
+          variant="ghost"
+          label="Move unit down"
+          shortcut="Alt+Down"
+          disabled={row >= units.length - 1}
+          onClick={() => apply(moveUnit(draft, row, 1))}
+        >
           <ArrowDown className="size-3.5" />
         </Button>
-        <Button size="sm" variant="ghost" aria-label="Remove unit" disabled={!current} onClick={remove}>
+        <Button size="sm" variant="ghost" label="Remove unit" shortcut="Ctrl+Delete" disabled={!current} onClick={remove}>
           <Trash2 className="size-3.5" />
         </Button>
         <label className="ml-2 flex items-center gap-1 text-12 text-secondary" htmlFor="example-element">
@@ -226,7 +233,7 @@ export function UnitsTab({ pack, document, hash, files, focusUnit, onDirty }: Pr
         />
         <span className="ml-auto" />
         {dirty ? <Badge tone="warning">unsaved</Badge> : null}
-        <Button size="sm" variant="ghost" disabled={!dirty} onClick={() => setDraft(loaded.doc)} aria-label="Revert units">
+        <Button size="sm" variant="ghost" disabled={!dirty} onClick={() => setDraft(loaded.doc)} label="Revert units">
           <Undo2 className="size-3.5" />
         </Button>
         <Button size="sm" variant="primary" disabled={!dirty || busy} onClick={() => void save()} data-testid="units-save">

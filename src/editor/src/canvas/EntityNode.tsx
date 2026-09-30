@@ -47,6 +47,7 @@ function EntityNodeView({ id, data, selected }: NodeProps<EntityFlowNode>) {
             type="button"
             className="nodrag -ml-1 rounded-[3px] p-0.5 text-secondary hover:text-primary"
             aria-label={collapsed ? `Expand ${entity.name}` : `Collapse ${entity.name}`}
+            title={collapsed ? `Expand ${entity.name}` : `Collapse ${entity.name}`}
             onClick={(e) => {
               e.stopPropagation();
               data.onToggleCollapsed?.(id);

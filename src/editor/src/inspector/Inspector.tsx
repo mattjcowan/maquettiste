@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { TranslationsSection } from "@/l10n/TranslationsSection";
 import { CircleAlert, Loader2, Trash2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -34,6 +34,8 @@ import {
 } from "./fields";
 import { applicableExtensions, SchemaForm } from "./SchemaForm";
 import { emptyTitle, inspectorContext, type InspectorContext } from "./context";
+import { EntityAttributeList } from "./AttributeList";
+import { attributesView, INSPECTOR_TAB_LABELS, inspectorTabs, resolveInspectorTab } from "./tabs";
 
 /** The inspector's context from the store (see ./context): the pieces are stable references, the context is derived. */
 export function useInspectorContext(): InspectorContext {
@@ -62,6 +64,9 @@ export function useInspectorContext(): InspectorContext {
 }
 
 export function Inspector({ context }: { context: InspectorContext }) {
+  // The selected tab, remembered per kind while the inspector stays up (./tabs resolves it against the kind's tabs).
+  const [tabs, setTabs] = useState<Record<string, string>>({});
+  const onTab = useCallback((kind: ElementKind, tab: string) => setTabs((t) => (t[kind] === tab ? t : { ...t, [kind]: tab })), []);
   if (context.mode === "none") return null;
   if (context.mode === "pack") return <PackInspector key={context.pack} pack={context.pack} unit={context.unit} />;
   if (context.mode === "empty")
@@ -80,7 +85,7 @@ export function Inspector({ context }: { context: InspectorContext }) {
       </section>
     );
   if (context.ids.length > 1) return <BulkInspector ids={context.ids} />;
-  return <ElementInspector key={context.ids[0]} id={context.ids[0]} />;
+  return <ElementInspector key={context.ids[0]} id={context.ids[0]} tabs={tabs} onTab={onTab} />;
 }
 
 /** The Generate screen's context: the open pack, or the unit a tree row focused. */
@@ -148,14 +153,14 @@ export function statusBadge(status: string | undefined, saving: boolean) {
   return <Badge tone="success">Saved</Badge>;
 }
 
-function ElementInspector({ id }: { id: string }) {
+function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string, string>; onTab: (kind: ElementKind, tab: string) => void }) {
   const { element, draft, json, edit, flush } = useDraftDocument(id);
   const project = useProject();
   const index = useIndex();
   const { store } = useServices();
   const focus = useEditor(store, (s) => s.focus);
-  const [tab, setTab] = useState("properties");
   const kind = (json as { kind?: ElementKind } | undefined)?.kind;
+  const tab = kind ? resolveInspectorTab(kind, tabs[kind]) : "properties";
   const vocab = useVocabularies(kind ?? "entity");
   const summary = index.data?.find((r) => r.id === id);
 
@@ -163,14 +168,19 @@ function ElementInspector({ id }: { id: string }) {
     if (!focus?.pointer || focus.id !== id) return;
     // Reveal the field a problem points at: grid cells carry data-cell, inputs their ids.
     const match = /^\/attributes\/(\d+)(?:\/(\w+))?/.exec(focus.pointer);
-    requestAnimationFrame(() => {
+    // An attribute's problem shows on the Attributes tab where the grid lives there.
+    const toTab = !!match && !!kind && attributesView(kind) === "grid";
+    if (toTab) onTab(kind, "attributes");
+    const show = () => {
       const target = match
         ? document.querySelector<HTMLElement>(`[data-testid="attribute-grid"] [data-cell^="${match[1]}:"][data-column="${match[2] ?? "name"}"]`)
         : document.getElementById(`${id}-${focus.pointer!.split("/")[1]}`);
       target?.scrollIntoView({ block: "nearest" });
       target?.focus();
-    });
-  }, [focus, id]);
+    };
+    // A tab switch mounts the grid a frame later.
+    requestAnimationFrame(() => (toTab ? requestAnimationFrame(show) : show()));
+  }, [focus, id, kind, onTab]);
 
   // The index is loaded and has no row: the element was deleted; its cached document is never shown or edited.
   if (index.data && !summary) return <EmptyState title="This element no longer exists">It was deleted.</EmptyState>;
@@ -222,11 +232,13 @@ function ElementInspector({ id }: { id: string }) {
           </ul>
         ) : null}
       </header>
-      <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
+      <Tabs value={tab} onValueChange={(next) => onTab(kind, next)} className="flex min-h-0 flex-1 flex-col">
         <TabsList aria-label="Inspector views">
-          <TabsTrigger value="properties">Properties</TabsTrigger>
-          <TabsTrigger value="json">JSON</TabsTrigger>
-          <TabsTrigger value="references">Where used</TabsTrigger>
+          {inspectorTabs(kind).map((t) => (
+            <TabsTrigger key={t} value={t}>
+              {INSPECTOR_TAB_LABELS[t]}
+            </TabsTrigger>
+          ))}
         </TabsList>
         <TabsContent value="properties" className="overflow-auto p-2">
           <div className="flex flex-col gap-2">
@@ -234,7 +246,6 @@ function ElementInspector({ id }: { id: string }) {
             <TranslationsSection id={id} kind={kind} />
             {kind === "entity" ? <EntityFields {...props} /> : null}
             {kind === "relation" ? <RelationFields {...props} /> : null}
-            {kind === "value-object" || kind === "stereotype" ? <AttributesOnlyFields {...props} /> : null}
             {kind === "enum" ? <EnumFields {...props} /> : null}
             {kind === "scalar-type" ? <ScalarFields {...props} /> : null}
             {kind === "database" ? <DatabaseFields {...props} /> : null}
@@ -263,6 +274,11 @@ function ElementInspector({ id }: { id: string }) {
             ) : null}
           </div>
         </TabsContent>
+        {attributesView(kind) ? (
+          <TabsContent value="attributes" className="overflow-auto p-2">
+            {attributesView(kind) === "grid" ? <AttributesOnlyFields {...props} /> : <EntityAttributeList id={id} json={json} />}
+          </TabsContent>
+        ) : null}
         <TabsContent value="json" className="flex min-h-0 flex-col p-0">
           <JsonTab json={json} onChange={(next) => edit(() => next)} />
         </TabsContent>
@@ -363,7 +379,7 @@ function DeleteButton({ id, name }: { id: string; name: string }) {
   };
   return (
     <>
-      <Button size="icon-sm" variant="ghost" aria-label={`Delete ${name}`} disabled={busy} onClick={() => void run("refuse")}>
+      <Button size="icon-sm" variant="ghost" label={`Delete ${name}`} disabled={busy} onClick={() => void run("refuse")}>
         <Trash2 />
       </Button>
       <Dialog open={referrers !== null} onOpenChange={(open) => !open && setReferrers(null)}>

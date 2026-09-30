@@ -12,7 +12,7 @@ Built-in rules (`RuleCatalog` ids), extension schema evaluation, JavaScript rule
 | File | Rules |
 | --- | --- |
 | `ModelValidator.cs` | Orchestration: scope, load diagnostics, script pool, parallel per-file rules, `validation.rules` settings, dedupe, positions, sorted report |
-| `BuiltinRules.cs` | MQ2001 to MQ2007 (references through `ReferenceWalker`, stereotypes, categories, tags, rule ids), MQ3001 to MQ3012, MQ3015, MQ3016, MQ3018 |
+| `BuiltinRules.cs` | MQ2001 to MQ2007 (references through `ReferenceWalker`, stereotypes, categories, tags, rule ids), MQ3001 to MQ3012, MQ3015, MQ3016, MQ3018, MQ3022 (a package diagram without a package) |
 | `AttributeRules.cs` | MQ3013 (facets), MQ3017 (credential-looking defaults, `Credentials`), MQ3019 (literal defaults, with the `defaultExpression` hint), MQ2007 |
 | `PhysicalRules.cs` | MQ4001 to MQ4008, MQ4010, MQ2001 for a foreign key's missing table, MQ2002 for a schema or sequence of another database |
 | `MappingRules.cs` | MQ4004, MQ4009, MQ4011 |

@@ -2,7 +2,7 @@
 // browser and "Reset layout" clears it; the page state is kept per project and restored before the shell draws.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createEditorStore, watchLayout } from "@/state/store";
-import { DEFAULT_LAYOUT, LAYOUT_KEY, PANELS, PINNED_KEY, panelForKey, readLayout } from "@/state/layout";
+import { DEFAULT_LAYOUT, LAYOUT_KEY, PANEL_KEYS, PANELS, PINNED_KEY, SCREEN_PANELS, panelForKey, readLayout } from "@/state/layout";
 import { capturePage, forgetPage, pageChanged, pageKey, projectPageId, readPage, restorePage, watchPage, writePage } from "@/state/pageState";
 import { openTab } from "@/editors/tabs";
 
@@ -32,7 +32,7 @@ describe("layout", () => {
     expect(layout.explorerSize).toBe(300);
     expect(layout.inspectorSize).toBe(560);
     expect(layout.bottomSize).toBe(220);
-    expect(layout.collapsed).toEqual({ explorer: false, inspector: false, bottom: true, tabs: false, topbar: false });
+    expect(layout.collapsed).toEqual({ explorer: false, inspector: false, bottom: true, tabs: false, topbar: false, tables: false, ddl: false });
     localStorage.setItem(LAYOUT_KEY, "{not json");
     expect(readLayout()).toEqual(DEFAULT_LAYOUT);
   });
@@ -43,7 +43,7 @@ describe("layout", () => {
     for (const panel of PANELS) store.getState().toggle(panel);
     store.getState().pinExplorer("databases");
     stop();
-    expect(JSON.parse(localStorage.getItem(LAYOUT_KEY)!).collapsed).toEqual(["explorer", "inspector", "bottom", "tabs", "topbar"]);
+    expect(JSON.parse(localStorage.getItem(LAYOUT_KEY)!).collapsed).toEqual(["explorer", "inspector", "bottom", "tabs", "topbar", "tables", "ddl"]);
     const again = createEditorStore().getState();
     expect([again.explorerCollapsed, again.inspectorCollapsed, again.bottomCollapsed, again.tabsCollapsed, again.topbarCollapsed]).toEqual([
       true,
@@ -52,6 +52,7 @@ describe("layout", () => {
       true,
       true,
     ]);
+    expect([again.tablesCollapsed, again.ddlCollapsed]).toEqual([true, true]);
     expect(again.explorer.pinned).toBe("databases");
     // A toggle with an explicit value is idempotent.
     again.toggle("explorer", true);
@@ -77,16 +78,28 @@ describe("layout", () => {
     const stop = watchLayout(store);
     store.getState().toggle("inspector");
     store.getState().toggle("topbar");
+    store.getState().toggle("tables");
+    store.getState().toggle("ddl");
     store.getState().pinExplorer("diagrams");
     store.setState({ explorerSize: 400 });
     stop();
     store.getState().resetLayout();
     const s = store.getState();
     expect([s.explorerCollapsed, s.inspectorCollapsed, s.bottomCollapsed, s.tabsCollapsed, s.topbarCollapsed]).toEqual([false, false, false, false, false]);
+    expect([s.tablesCollapsed, s.ddlCollapsed]).toEqual([false, false]);
     expect(s.explorerSize).toBe(280);
     expect(s.explorer.pinned).toBeNull();
     expect(localStorage.getItem(LAYOUT_KEY)).toBeNull();
     expect(localStorage.getItem(PINNED_KEY)).toBeNull();
+  });
+
+  it("keeps the Database screen's two panels in the layout, keyed to that screen", () => {
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify({ collapsed: ["tables", "ddl"] }));
+    expect(readLayout().collapsed).toMatchObject({ tables: true, ddl: true, explorer: false });
+    expect(SCREEN_PANELS).toEqual({ tables: "database", ddl: "database" });
+    expect(PANEL_KEYS.tables.label).toBe("Alt+Shift+L");
+    expect(PANEL_KEYS.ddl.label).toBe("Alt+Shift+D");
+    expect(new Set(PANELS.map((p) => PANEL_KEYS[p].code)).size).toBe(PANELS.length);
   });
 
   it("maps Alt+Shift and a physical letter to a panel, and nothing else", () => {
@@ -95,6 +108,9 @@ describe("layout", () => {
     expect(panelForKey(key("KeyJ", { altKey: true, shiftKey: true }))).toBe("bottom");
     expect(panelForKey(key("KeyO", { altKey: true, shiftKey: true }))).toBe("tabs");
     expect(panelForKey(key("KeyH", { altKey: true, shiftKey: true }))).toBe("topbar");
+    expect(panelForKey(key("KeyL", { altKey: true, shiftKey: true }))).toBe("tables");
+    expect(panelForKey(key("KeyD", { altKey: true, shiftKey: true }))).toBe("ddl");
+    expect(panelForKey(key("KeyT", { altKey: true, shiftKey: true }))).toBeNull(); // the browser's toolbar
     expect(panelForKey(key("KeyE", { altKey: true }))).toBeNull();
     expect(panelForKey(key("KeyE", { altKey: true, shiftKey: true, ctrlKey: true }))).toBeNull();
     expect(panelForKey(key("Escape", {}))).toBeNull();

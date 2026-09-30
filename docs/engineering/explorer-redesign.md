@@ -316,6 +316,27 @@ Active filters show a count on the filter button, and counts in the tree reflect
 - **What the canvas loads.** The canvas loads only the members of the active diagram. Relations between members are found from the relation ends in the index (E5, built), not by loading every relation. The member documents arrive through batched reads (E5b, built) in chunks of up to 200 ids. The canvas's working set is therefore bounded by the diagram (at most 300 entities and their relations), whatever the model's size.
 - **What the tree loads.** The tree loads full elements only when an entity, relationship, enum or value object row is expanded (its attributes or members). Hovering or focusing a row for 300 ms prefetches that element's document, so the inspector and the editor open instantly.
 
+**As built (canvas arrangement, 2026-09-29).** The canvas no longer re-fits or re-lays out what the user arranged. Pan
+and zoom are saved on move end (debounced 300 ms, the canvas's own fit, restore and centring ignored) into the
+diagram's `viewport` through its draft, rounded to three decimals; a viewport-only save joins the diagram's last undo
+step (`state/drafts.ts` `viewportOnly`). Opening restores a saved viewport (x, y and zoom) and fits only when there is
+none or after an explicit Auto-layout, which also saves the fitted view. Cards without a position while others have one
+are placed by `canvas/placement.ts` `placeNodes` (beside the nearest related card, else rows under the bounding box,
+with the layout's 96/48 gaps, measured sizes, placed cards never moved); the full layout runs only when no card has a
+position. "All of <domain>" becomes the domain's own diagram on the first drag, Auto-layout, pan or zoom
+(`canvas/domainDiagram.ts`: a diagram in the domain with `"membership": "package"`, first named after it, created in
+one undoable step; its members then follow the domain), and positions kept per browser under `mq.pos.pkg.<id>` migrate
+into it once. The database canvas keeps positions and viewport per browser (`mq.pos.db.<id>`, `mq.viewport.db.<id>`)
+with the same placement. Tests: `tests/unit/canvas-placement.test.ts`, Playwright `canvas-arrangement.mock-only.spec.ts`.
+*Status 2026-09-29:* the domain's diagram is explicit, no longer recognised by its name: `schemas/v1/diagram.json`
+`membership` (`explicit`, the default and left out of the canonical form, or `package`: the diagram shows every entity
+of its package and their relationships, members carry positions only), the engine's `Diagram.Membership`, and MQ3022
+(a `package` diagram without a package). "All of <domain>" opens the first `package` diagram of the domain by ordinal
+id; member sync, the hidden "Add related" and the refused drops key off the membership; the diagram inspector shows it
+read-only. Renaming the domain or the diagram changes nothing. The Database screen's Tables list and DDL preview are
+panels of the layout (`tables`, `ddl` in `mq.layout`): header buttons, Alt+Shift+L and Alt+Shift+D on that screen
+only (Alt+Shift+T is the browser's), edge strips, Reset layout; Playwright `database-panels.mock-only.spec.ts`.
+
 ### 3.6 Element editors
 
 *New 2026-09-28.* Enter or a double click on an entity row opens its **entity editor** as a document tab in the centre area, beside the canvas; a single click opens it in a preview tab that the next single click replaces; editing or a double click pins it. The inspector stays the compact property view for canvas work. The layout is a band of top controls over tabs:

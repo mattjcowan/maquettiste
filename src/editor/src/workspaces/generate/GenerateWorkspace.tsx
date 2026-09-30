@@ -12,7 +12,7 @@ import type { FileChangeKind, JobInfo, RootSelection } from "@/api/types";
 import { useEditor } from "@/state/store";
 import { useServices } from "@/app/context";
 import { isFinished, jobOutcome } from "@/realtime/jobs";
-import { Button } from "@/components/ui/button";
+import { Button, iconLabel } from "@/components/ui/button";
 import { Badge, EmptyState, SectionTitle, Spinner, Toolbar } from "@/components/ui/misc";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select } from "@/components/ui/input";
@@ -377,8 +377,7 @@ export function GenerateWorkspace() {
             <button
               type="button"
               tabIndex={-1}
-              aria-label={`Close ${pack}`}
-              title="Close (Delete)"
+              {...iconLabel(`Close ${pack}`, "Delete")}
               className="grid size-6 place-items-center self-center rounded-[4px] text-secondary hover:bg-accent-subtle"
               onClick={() => close(pack)}
             >

@@ -152,7 +152,7 @@ function LocalesForm() {
                 </td>
                 <td className="py-1 text-right">
                   {l === draft.defaultLocale ? null : (
-                    <Button variant="ghost" size="icon" aria-label={`Remove locale ${l}`} onClick={() => setDraft(removeLocale(draft, l))}>
+                    <Button variant="ghost" size="icon" label={`Remove locale ${l}`} onClick={() => setDraft(removeLocale(draft, l))}>
                       <Trash2 />
                     </Button>
                   )}

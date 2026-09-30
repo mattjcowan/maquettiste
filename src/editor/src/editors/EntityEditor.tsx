@@ -238,7 +238,7 @@ function KeyControl({ id, json, edit, flush }: EditorContext) {
                     <Button
                       size="icon-sm"
                       variant="ghost"
-                      aria-label={`Remove alternate key ${k.name}`}
+                      label={`Remove alternate key ${k.name}`}
                       onClick={() =>
                         edit((j) => {
                           const en = j as EntityDoc;

@@ -80,7 +80,7 @@ test("above 300 tables the Database screen shows the list form, then a table wit
   await expect(page.getByTestId("database-canvas-count")).toContainText("pick one to draw it with its neighbours");
   await expect(page.locator(".react-flow__node")).toHaveCount(0);
 
-  const first = page.getByTestId("database-tables").getByRole("button").first();
+  const first = page.getByRole("list", { name: "Table list" }).getByRole("button").first();
   await first.click();
   await expect(page.getByTestId("database-list-form")).toHaveCount(0);
   await expect(page.getByTestId("database-canvas-count")).toContainText("and its neighbours");

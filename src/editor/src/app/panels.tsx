@@ -14,10 +14,9 @@ import {
   PanelTopClose,
   type LucideIcon,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Tooltip } from "@/components/ui/tooltip";
+import { Button, iconLabel } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
-import { PANEL_KEYS, PANEL_NAMES, type Panel } from "@/state/layout";
+import { PANEL_KEYS, PANEL_NAMES, SCREEN_PANELS, type Panel } from "@/state/layout";
 import { useEditor } from "@/state/store";
 import { useServices } from "./context";
 
@@ -27,9 +26,13 @@ const ICONS: Record<Panel, { hide: LucideIcon; show: LucideIcon }> = {
   bottom: { hide: PanelBottomClose, show: PanelBottomOpen },
   tabs: { hide: PanelTopClose, show: ChevronDown },
   topbar: { hide: ChevronsRight, show: ChevronsLeft },
+  tables: { hide: PanelLeftClose, show: PanelLeftOpen },
+  ddl: { hide: PanelRightClose, show: PanelRightOpen },
 };
 
-export const panelLabel = (panel: Panel, collapsed: boolean): string => `${collapsed ? "Show" : "Hide"} the ${PANEL_NAMES[panel]}`;
+/** The screen panels (the Database screen's) are named without an article: "Hide tables list". */
+export const panelLabel = (panel: Panel, collapsed: boolean): string =>
+  `${collapsed ? "Show" : "Hide"} ${SCREEN_PANELS[panel] ? "" : "the "}${PANEL_NAMES[panel]}`;
 
 /** The header button that hides a panel (or, for the top bar, shows its controls again). */
 export function PanelToggle({ panel, className }: { panel: Panel; className?: string }) {
@@ -38,19 +41,18 @@ export function PanelToggle({ panel, className }: { panel: Panel; className?: st
   const Icon = collapsed ? ICONS[panel].show : ICONS[panel].hide;
   const label = panelLabel(panel, collapsed);
   return (
-    <Tooltip content={`${label} (${PANEL_KEYS[panel].label})`}>
-      <Button
-        variant="ghost"
-        size="icon"
-        className={cn("size-5 shrink-0", className)}
-        aria-label={label}
-        aria-expanded={!collapsed}
-        data-testid={`${collapsed ? "show" : "hide"}-${panel}`}
-        onClick={() => store.getState().toggle(panel)}
-      >
-        <Icon />
-      </Button>
-    </Tooltip>
+    <Button
+      variant="ghost"
+      size="icon"
+      className={cn("size-5 shrink-0", className)}
+      label={label}
+      shortcut={PANEL_KEYS[panel].label}
+      aria-expanded={!collapsed}
+      data-testid={`${collapsed ? "show" : "hide"}-${panel}`}
+      onClick={() => store.getState().toggle(panel)}
+    >
+      <Icon />
+    </Button>
   );
 }
 
@@ -61,24 +63,22 @@ export function EdgeToggle({ panel, side, children }: { panel: Panel; side: "lef
   const label = panelLabel(panel, true);
   const vertical = side !== "top";
   return (
-    <Tooltip content={`${label} (${PANEL_KEYS[panel].label})`} side={side === "left" ? "right" : side === "right" ? "left" : "bottom"}>
-      <button
-        type="button"
-        aria-label={label}
-        aria-expanded={false}
-        data-testid={`show-${panel}`}
-        onClick={() => store.getState().toggle(panel, false)}
-        className={cn(
-          "group flex shrink-0 items-center justify-center bg-surface text-secondary hover:bg-accent-subtle hover:text-primary",
-          vertical ? "w-3 flex-col border-default" : "h-3 w-full gap-1 border-b border-default text-11",
-          side === "left" && "border-r",
-          side === "right" && "border-l",
-        )}
-      >
-        <Icon className={vertical ? "size-3" : "size-2.5"} aria-hidden />
-        {children}
-      </button>
-    </Tooltip>
+    <button
+      type="button"
+      {...iconLabel(label, PANEL_KEYS[panel].label)}
+      aria-expanded={false}
+      data-testid={`show-${panel}`}
+      onClick={() => store.getState().toggle(panel, false)}
+      className={cn(
+        "group flex shrink-0 items-center justify-center bg-surface text-secondary hover:bg-accent-subtle hover:text-primary",
+        vertical ? "w-3 flex-col border-default" : "h-3 w-full gap-1 border-b border-default text-11",
+        side === "left" && "border-r",
+        side === "right" && "border-l",
+      )}
+    >
+      <Icon className={vertical ? "size-3" : "size-2.5"} aria-hidden />
+      {children}
+    </button>
   );
 }
 

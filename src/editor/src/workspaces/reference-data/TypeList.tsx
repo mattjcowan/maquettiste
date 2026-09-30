@@ -84,7 +84,7 @@ export function TypeList({
             }}
             title="* contains (default), ^ starts with, ~ like with %, = equals"
           />
-          <Button size="icon-sm" variant="ghost" aria-label="New reference type" data-testid="new-reference-type" onClick={onNew}>
+          <Button size="icon-sm" variant="ghost" label="New reference type" data-testid="new-reference-type" onClick={onNew}>
             <Plus />
           </Button>
         </div>

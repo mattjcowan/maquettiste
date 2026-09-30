@@ -16,11 +16,27 @@ public sealed record Diagram : Element
     [ElementRef(ElementKind.Process)]
     public string? Process { get; init; }
 
+    /// <summary>What decides the diagram's elements: its members list (<see cref="DiagramMembership.Explicit"/>, the default), or its
+    /// package (<see cref="DiagramMembership.Package"/>: every entity of the package and their relationships; members carry positions
+    /// only). A package diagram needs a package (MQ3022).</summary>
+    public DiagramMembership Membership { get; init; }
+
     /// <summary>The elements shown, with positions.</summary>
     public IReadOnlyList<DiagramMember> Members { get; init; } = [];
 
     /// <summary>The saved viewport.</summary>
     public Viewport? Viewport { get; init; }
+}
+
+/// <summary>What decides the elements a diagram shows.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<DiagramMembership>))]
+public enum DiagramMembership
+{
+    /// <summary>The members list is the diagram (<c>explicit</c>).</summary>
+    [JsonStringEnumMemberName("explicit")] Explicit,
+
+    /// <summary>The diagram shows every entity of its package and the relationships between them; members only carry positions (<c>package</c>).</summary>
+    [JsonStringEnumMemberName("package")] Package,
 }
 
 /// <summary>One element on a diagram.</summary>

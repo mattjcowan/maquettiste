@@ -36,7 +36,7 @@ function rules(target: ModelEntry): { rule: string; message: string }[] {
     firstInScope: () => undefined,
   };
   return entryDiagnostics(target, ctx)
-    .filter((d) => ["MQ2005", "MQ2006", "MQ2008", "MQ3021"].includes(d.rule))
+    .filter((d) => ["MQ2005", "MQ2006", "MQ2008", "MQ3021", "MQ3022"].includes(d.rule))
     .map((d) => ({ rule: d.rule, message: d.message }));
 }
 
@@ -58,5 +58,14 @@ describe("mock domain vocabularies", () => {
   it("reports a domain vocabulary key that the global vocabulary already declares as MQ3021", () => {
     const found = rules(entries[4]);
     expect(found).toEqual([{ rule: "MQ3021", message: "Tag 'audited' is already declared by the model (global); a domain vocabulary cannot redeclare it." }]);
+  });
+});
+
+describe("mock diagram membership", () => {
+  it("reports a package diagram without a package as MQ3022, and accepts one with its package or an explicit one", () => {
+    const D = "01J92P0V0000000000000000D1";
+    expect(rules(entry(D, { kind: "diagram", name: "Sales", membership: "package", members: [] })).map((r) => r.rule)).toEqual(["MQ3022"]);
+    expect(rules(entry(D, { kind: "diagram", name: "Any", membership: "package", package: ROOT, members: [] }))).toEqual([]);
+    expect(rules(entry(D, { kind: "diagram", name: "Sales", members: [] }))).toEqual([]);
   });
 });

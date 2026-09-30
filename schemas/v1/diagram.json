@@ -12,6 +12,7 @@
     "pluralName",
     "package",
     "process",
+    "membership",
     "description",
     "stereotypes",
     "tags",
@@ -48,6 +49,11 @@
     "process": {
       "description": "Set when the diagram is that process's statechart: its members are then states of the process.",
       "$ref": "common.json#/$defs/id"
+    },
+    "membership": {
+      "description": "explicit: the members list is the diagram; package: the diagram shows every entity of its package and its relationships, members only carry positions",
+      "enum": ["explicit", "package"],
+      "default": "explicit"
     },
     "description": {
       "$ref": "common.json#/$defs/description"

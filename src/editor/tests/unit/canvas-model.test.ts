@@ -96,7 +96,9 @@ describe("positions", () => {
     expect(needsLayout(diagram, ["a", "b"], placed, {})).toBe(false);
     expect(needsLayout(diagram, ["b"], placed, {})).toBe(true);
     expect(needsLayout(diagram, [], placed, {})).toBe(false);
-    expect(needsLayout(pkg, ["a", "b"], placed, { a: { x: 0, y: 0 } })).toBe(true);
+    // Some placed: only the others are placed (placement.ts), no full layout.
+    expect(needsLayout(pkg, ["a", "b"], placed, { a: { x: 0, y: 0 } })).toBe(false);
+    expect(needsLayout(pkg, ["a", "b"], placed, {})).toBe(true);
     expect(needsLayout(pkg, ["a"], placed, { a: { x: 0, y: 0 } })).toBe(false);
   });
 

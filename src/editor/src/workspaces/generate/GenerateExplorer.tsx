@@ -120,7 +120,7 @@ export function GenerateExplorer() {
             variant="ghost"
             size="icon"
             className="size-5"
-            aria-label="New pack…"
+            label="New pack…"
             data-testid="new-pack"
             onClick={() => store.getState().setGeneration({ newPack: true })}
           >

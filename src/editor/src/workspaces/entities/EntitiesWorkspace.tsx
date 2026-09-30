@@ -14,18 +14,19 @@ import {
   type Connection,
   type NodeChange,
   type EdgeChange,
+  type Viewport,
 } from "@xyflow/react";
 import { Download, LayoutGrid, Link2, Plus, Share2 } from "lucide-react";
 import { activeTab } from "@/editors/tabs";
-import { applySaveResult, keys, loadElement, useElement, useElements, useIndex, useValidation } from "@/api/queries";
+import { applySaveResult, elementQuery, keys, loadElement, useElement, useElements, useIndex, useValidation } from "@/api/queries";
 import * as endpoints from "@/api/endpoints";
-import type { CategoryTreeDoc, DiagramDoc, EntityDoc, ModelJson, RelationDoc } from "@/api/types";
+import type { CategoryTreeDoc, DiagramDoc, EntityDoc, ModelJson, PackageDoc, RelationDoc } from "@/api/types";
 import { useEditor } from "@/state/store";
 import { indexLookup, categoryColorIndex } from "@/model/index";
 import { typeLabel } from "@/model/model";
 import { newId } from "@/lib/ids";
 import { local } from "@/lib/storage";
-import { loadPositions, measuredSizes, savePositions, type StoredPositions } from "@/lib/positions";
+import { loadPositions, measuredSizes, removePositions, type StoredPositions } from "@/lib/positions";
 import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
 import { Toolbar, EmptyState } from "@/components/ui/misc";
@@ -48,6 +49,8 @@ import { EntityNode, type DisplayMode, type EntityFlowNode } from "@/canvas/Enti
 import { RelationEdge, type Notation, type RelationFlowEdge } from "@/canvas/RelationEdge";
 import { MarkerDefs } from "@/canvas/markers";
 import { defaultLayoutEngine } from "@/canvas/layout";
+import { placeNodes, roundViewport, sameViewport, savedViewport } from "@/canvas/placement";
+import { diagramsInDomain, domainDiagramId, domainOfDiagram, newDomainDiagram, syncDomainMembers } from "@/canvas/domainDiagram";
 import { exportCanvas } from "@/canvas/export";
 import {
   applyPositions,
@@ -112,8 +115,10 @@ function EntitiesCanvas() {
   const allOfDomains = useMemo(() => {
     const counts = new Map<string, number>();
     for (const r of lookup.rows) if (r.kind === "entity" && r.package) counts.set(r.package, (counts.get(r.package) ?? 0) + 1);
-    return packages.filter((p) => (counts.get(p.id) ?? 0) <= ALL_OF_CAP);
-  }, [lookup, packages]);
+    // A domain that has its own diagram (domainDiagram.ts) is listed under Diagrams by its name instead.
+    const own = new Set(diagrams.filter((d) => d.package).map((d) => `${d.package}\u0000${d.name}`));
+    return packages.filter((p) => (counts.get(p.id) ?? 0) <= ALL_OF_CAP && !own.has(`${p.id}\u0000${p.name}`));
+  }, [lookup, packages, diagrams]);
   const view = parseView(activeDiagram);
 
   useEffect(() => {
@@ -128,6 +133,50 @@ function EntitiesCanvas() {
   const diagramJson = diagram.json as DiagramDoc | undefined;
   const members = useMemo(() => diagramJson?.members ?? [], [diagramJson]);
   const viewKey = keyOfView(view);
+
+  // A domain's canvas is its own diagram once the user has arranged it: "All of <domain>" opens that diagram.
+  // The domain's diagrams are read to find the one whose membership is "package" (the first in ordinal id order).
+  const domainCandidates = useMemo(() => (view?.type === "package" ? diagramsInDomain(lookup.rows, view.id) : []), [view?.type, view?.id, lookup]);
+  const candidateDocs = useElements(domainCandidates);
+  const domainDiagram = useMemo(
+    () =>
+      view?.type === "package"
+        ? domainDiagramId(
+            domainCandidates.flatMap((id) => {
+              const json = candidateDocs.byId.get(id)?.json as unknown as DiagramDoc | undefined;
+              return json ? [json] : [];
+            }),
+            view.id,
+          )
+        : null,
+    [view?.type, view?.id, domainCandidates, candidateDocs.byId],
+  );
+  useEffect(() => {
+    if (domainDiagram) openDiagram(domainDiagram, { keepEditors: true, replace: true });
+  }, [domainDiagram, openDiagram]);
+  // The open diagram is gone (deleted, or its creation undone): a diagram in a domain falls back to "All of <domain>",
+  // any other to the default pick.
+  const homeOf = useRef<{ id: string; home: string | null } | null>(null);
+  if (view?.type === "diagram" && diagramJson) homeOf.current = { id: view.id, home: diagramJson.package ?? null };
+  useEffect(() => {
+    if (view?.type !== "diagram" || !index.data || lookup.byId.has(view.id)) return;
+    const home = homeOf.current?.id === view.id ? homeOf.current.home : null;
+    openDiagram(home && lookup.byId.has(home) ? `pkg:${home}` : null, { keepEditors: true, replace: true });
+  }, [view?.type, view?.id, index.data, lookup, openDiagram]);
+  // The domain whose canvas the open diagram is (null for an ordinary diagram): its members follow the domain's entities,
+  // those that joined drawn where placement puts them, those that left dropped, all through the diagram's draft.
+  const diagramDomain = useMemo(() => (view?.type === "diagram" ? domainOfDiagram(diagramJson) : null), [view?.type, diagramJson]);
+  useEffect(() => {
+    if (view?.type !== "diagram" || !diagramDomain || !diagramJson || !syncDomainMembers(diagramJson.members ?? [], lookup.rows, diagramDomain)) return;
+    drafts.edit(
+      view.id,
+      (json) => {
+        const d = json as unknown as DiagramDoc;
+        d.members = syncDomainMembers(d.members ?? [], lookup.rows, diagramDomain) ?? d.members;
+      },
+      { followUp: true },
+    );
+  }, [view?.type, view?.id, diagramDomain, diagramJson, lookup, drafts]);
 
   const { entityIds, relationIds } = useMemo(() => viewElements(view, lookup.rows, members), [view, lookup, members]);
 
@@ -150,10 +199,20 @@ function EntitiesCanvas() {
     local.setJson(`mq.display.${viewKey}`, next);
   };
 
-  const [pkgPositions, setPkgPositions] = useState<StoredPositions>({});
-  useEffect(() => {
-    if (view?.type === "package") setPkgPositions(loadPositions(`pkg.${view.id}`));
-  }, [view?.type, view?.id]);
+  // A domain's canvas before it has a diagram: positions held in memory only (the automatic layout and placement), plus
+  // any the browser kept from before domains had diagrams, which move into the diagram created on open.
+  // Read as the view opens (not in an effect), so the first render of the view already has them.
+  const keptPositions = useMemo(() => (view?.type === "package" ? loadPositions(`pkg.${view.id}`) : {}), [view?.type, view?.id]);
+  const [placedInMemory, setPlacedInMemory] = useState<{ key: string; positions: StoredPositions }>({ key: "", positions: {} });
+  const pkgPositions = useMemo(
+    () => (placedInMemory.key === viewKey ? { ...keptPositions, ...placedInMemory.positions } : keptPositions),
+    [keptPositions, placedInMemory, viewKey],
+  );
+  const setPkgPositions = useCallback(
+    (update: (prev: StoredPositions) => StoredPositions) =>
+      setPlacedInMemory((prev) => ({ key: viewKey, positions: update(prev.key === viewKey ? prev.positions : {}) })),
+    [viewKey],
+  );
   const [dragging, setDragging] = useState<StoredPositions>({});
   // Controlled nodes: React Flow shows a node only once its measured size comes back through
   // onNodesChange as a `dimensions` change, so the sizes are kept here and passed back.
@@ -181,6 +240,7 @@ function EntitiesCanvas() {
   );
 
   const memberOf = useMemo(() => new Map(members.map((m) => [m.element, m])), [members]);
+  const relations = useMemo(() => relationLookup(lookup.rows), [lookup]);
   const unplaced = needsLayout(view, entityIds, memberOf, pkgPositions);
 
   const nodes: EntityFlowNode[] = useMemo(
@@ -251,18 +311,106 @@ function EntitiesCanvas() {
     [relationIds, docs.byId, draftsState, positionOf, canvasSelection, display.notation],
   );
 
-  const commitPositions = useCallback(
-    (positions: StoredPositions) => {
-      if (!view) return;
-      if (view.type === "package") {
-        const next = { ...loadPositions(`pkg.${view.id}`), ...positions };
-        savePositions(`pkg.${view.id}`, next);
-        setPkgPositions(next);
+  // The first arrangement of a domain's canvas (a drag, Auto-layout, a pan or zoom) creates the domain's diagram, with
+  // the entities where they are drawn, as one undoable step, and opens it; mere viewing creates nothing.
+  const creatingDomain = useRef<string | null>(null);
+  useEffect(() => {
+    creatingDomain.current = null;
+  }, [viewKey]);
+  const createDomainDiagram = useCallback(
+    async (packageId: string, positions: StoredPositions, viewport: Viewport | null) => {
+      if (creatingDomain.current === packageId) return;
+      creatingDomain.current = packageId;
+      const pkg = (await queryClient.fetchQuery(elementQuery(packageId))).json as unknown as PackageDoc;
+      const json = newDomainDiagram({
+        id: newId(),
+        domain: { id: packageId, name: pkg.name ?? lookup.nameOf(packageId) ?? "", displayName: pkg.displayName },
+        rows: lookup.rows,
+        positions,
+        viewport: viewport ? roundViewport(viewport) : null,
+      }) as unknown as ModelJson;
+      const result = await endpoints.createElement(json);
+      if (result.outcome !== "saved") {
+        creatingDomain.current = null;
+        store.getState().notify(`The domain's diagram was not saved: ${result.diagnostics[0]?.message ?? result.outcome}`, "error");
         return;
       }
-      drafts.edit(view.id, (json) => void applyPositions(json as unknown as DiagramDoc, positions));
+      applySaveResult(queryClient, result);
+      removePositions(`pkg.${packageId}`);
+      store.getState().pushUndo({
+        label: `New diagram ${String(json.name)}`,
+        ids: [String(json.id)],
+        before: [null],
+        after: [result.current!.json as ModelJson],
+        afterHashes: [result.hash],
+      });
+      openDiagram(String(json.id), { keepEditors: true, replace: true });
     },
-    [drafts, view],
+    [queryClient, lookup, store, openDiagram],
+  );
+  // Positions from before domains had diagrams (kept per browser): the user arranged this canvas, so it becomes the
+  // domain's diagram with them, once, and the browser's copy is removed.
+  // It waits until every card has a position (the others placed beside them in memory), so the diagram is complete.
+  useEffect(() => {
+    if (view?.type !== "package" || domainDiagram || !index.data || !nodesInitialized || !nodes.length) return;
+    if (!Object.keys(loadPositions(`pkg.${view.id}`)).length || nodes.some((n) => !pkgPositions[n.id])) return;
+    void createDomainDiagram(view.id, pkgPositions, null);
+  }, [view?.type, view?.id, domainDiagram, index.data, nodesInitialized, nodes, pkgPositions, createDomainDiagram]);
+
+  /** Writes positions: into the diagram's draft, or for a domain's canvas without a diagram into memory (`user`: the user arranged it, so the diagram is created). */
+  const commitPositions = useCallback(
+    (positions: StoredPositions, user: boolean) => {
+      if (!view) return;
+      if (view.type === "package") {
+        setPkgPositions((prev) => ({ ...prev, ...positions }));
+        if (user) {
+          const drawn = Object.fromEntries(flow.getNodes().map((n) => [n.id, n.position]));
+          void createDomainDiagram(view.id, { ...drawn, ...positions }, flow.getViewport());
+        }
+        return;
+      }
+      // What the canvas places on its own (a new card, the layout on open) joins the user's last undo step.
+      drafts.edit(view.id, (json) => void applyPositions(json as unknown as DiagramDoc, positions), { followUp: !user });
+    },
+    [drafts, view, flow, createDomainDiagram, setPkgPositions],
+  );
+
+  // ------------------------------------------------------------------ pan and zoom
+  // The viewport is saved in the diagram (x, y, zoom to three decimals) on the end of a pan or zoom, 300 ms after the
+  // last; opening a diagram restores it, and fits the view only when none is saved. The canvas's own moves (restoring,
+  // fitting, centring a card) are not saved.
+  const programmaticUntil = useRef(0);
+  const programmatic = useCallback(() => {
+    programmaticUntil.current = performance.now() + 400;
+  }, []);
+  const persistViewport = useCallback(
+    (viewport: Viewport) => {
+      if (!view) return;
+      const next = roundViewport(viewport);
+      if (view.type === "package") {
+        if (!domainDiagram) void createDomainDiagram(view.id, Object.fromEntries(flow.getNodes().map((n) => [n.id, n.position])), next);
+        return;
+      }
+      if (sameViewport(savedViewport((drafts.current(view.id) as unknown as DiagramDoc | undefined)?.viewport), next)) return;
+      drafts.edit(
+        view.id,
+        (json) => {
+          (json as unknown as DiagramDoc).viewport = next;
+        },
+        { followUp: true },
+      );
+    },
+    [view, domainDiagram, createDomainDiagram, flow, drafts],
+  );
+  const moveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(moveTimer.current), []);
+  const onMoveEnd = useCallback(
+    (_event: unknown, viewport: Viewport) => {
+      if (performance.now() < programmaticUntil.current) return;
+      clearTimeout(moveTimer.current);
+      moveTimer.current = setTimeout(() => persistViewport(viewport), 300);
+    },
+    [persistViewport],
   );
 
   // Controlled canvas: clicks, Shift+click, Enter on a focused card and box selection arrive as
@@ -296,32 +444,47 @@ function EntitiesCanvas() {
         return next;
       });
       queueMicrotask(() => {
-        if (Object.keys(done).length) commitPositions(done);
+        if (Object.keys(done).length) commitPositions(done, true);
       });
     },
     [commitPositions, applySelection],
   );
 
-  const autoLayout = useCallback(async () => {
-    if (!view) return;
-    setLayingOut(true);
-    try {
-      const input = layoutInput(flow.getNodes(), flow.getEdges());
-      const started = performance.now();
-      const positions = await defaultLayoutEngine().layout(input.nodes, input.edges);
-      setLayoutMs(Math.round(performance.now() - started));
-      commitPositions(Object.fromEntries(positions));
-      if (view.type === "diagram") await drafts.flush(view.id);
-      setFitPending(true);
-    } finally {
-      setLayingOut(false);
-    }
-  }, [view, flow, commitPositions, drafts]);
+  // The full automatic layout: the Auto-layout button (`explicit`: it re-lays out every card, fits the view and saves
+  // that view), or on open when no card has a position yet.
+  const restoredFor = useRef<string | null>(null);
+  const saveFit = useRef(false);
+  const autoLayout = useCallback(
+    async (explicit: boolean) => {
+      if (!view) return;
+      setLayingOut(true);
+      try {
+        const input = layoutInput(flow.getNodes(), flow.getEdges());
+        const started = performance.now();
+        const positions = Object.fromEntries(await defaultLayoutEngine().layout(input.nodes, input.edges));
+        setLayoutMs(Math.round(performance.now() - started));
+        restoredFor.current = viewKey;
+        if (view.type === "package" && explicit) {
+          // The domain's diagram is created with these positions and opened; with no viewport saved it fits on open.
+          setPkgPositions((prev) => ({ ...prev, ...positions }));
+          await createDomainDiagram(view.id, positions, null);
+          return;
+        }
+        commitPositions(positions, explicit);
+        if (view.type === "diagram") await drafts.flush(view.id);
+        saveFit.current = explicit && view.type === "diagram";
+        setFitPending(true);
+      } finally {
+        setLayingOut(false);
+      }
+    },
+    [view, viewKey, flow, commitPositions, drafts, createDomainDiagram, setPkgPositions],
+  );
 
   useEffect(() => {
     if (nodesInitialized && unplaced && nodes.length && laidOutFor.current !== viewKey) {
       laidOutFor.current = viewKey;
-      void autoLayout();
+      void autoLayout(false);
     }
   }, [nodesInitialized, unplaced, nodes.length, viewKey, autoLayout]);
 
@@ -329,18 +492,76 @@ function EntitiesCanvas() {
     if (!fitPending) return;
     const frame = requestAnimationFrame(() => {
       setFitPending(false);
-      void flow.fitView({ padding: 0.1, duration: 0 });
+      programmatic();
+      void flow.fitView({ padding: 0.1, duration: 0 }).then(() => {
+        if (saveFit.current) persistViewport(flow.getViewport());
+        saveFit.current = false;
+      });
     });
     return () => cancelAnimationFrame(frame);
-  }, [fitPending, nodes, flow]);
+  }, [fitPending, nodes, flow, programmatic, persistViewport]);
+
+  // On open: the saved viewport, else fit the cards (once they are measured; a canvas laid out on open fits after the layout).
+  const stored = view?.type === "diagram" ? savedViewport(diagramJson?.viewport) : null;
+  const viewReady = view?.type === "package" || !!diagramJson;
+  useEffect(() => {
+    if (!view || !viewReady || restoredFor.current === viewKey) return;
+    if (stored) {
+      restoredFor.current = viewKey;
+      programmatic();
+      void flow.setViewport(stored, { duration: 0 });
+      return;
+    }
+    if (!nodesInitialized || !nodes.length || unplaced) return;
+    restoredFor.current = viewKey;
+    programmatic();
+    void flow.fitView({ padding: 0.15, duration: 0 });
+  }, [view, viewKey, viewReady, stored, nodesInitialized, nodes.length, unplaced, flow, programmatic]);
+
+  // Cards with no position while others have one (a new entity, an entity that joined the domain, a member added
+  // without a position): only those are placed, beside a related card or under the drawing, and nothing else moves.
+  // A new card that is selected is scrolled into view without changing the zoom.
+  const placedFor = useRef("");
+  useEffect(() => {
+    if (!view || !nodesInitialized || !nodes.length || unplaced || layingOut) return;
+    const missing = nodes.filter((n) => !storedPosition(view, memberOf.get(n.id), pkgPositions, n.id)).map((n) => n.id);
+    if (!missing.length) return;
+    const key = `${viewKey}:${missing.join(",")}`;
+    if (placedFor.current === key) return;
+    placedFor.current = key;
+    const size = (id: string) => {
+      const m = flow.getInternalNode(id)?.measured;
+      return { width: m?.width || NODE_WIDTH, height: m?.height || NODE_HEIGHT };
+    };
+    const missingSet = new Set(missing);
+    const placed = nodes.filter((n) => !missingSet.has(n.id)).map((n) => ({ id: n.id, ...n.position, ...size(n.id) }));
+    const links = relationIds.flatMap((r) => {
+      const ends = relations.endsOf(r);
+      return ends && ends.length >= 2 ? [{ source: ends[0], target: ends[1] }] : [];
+    });
+    const positions = placeNodes({ placed, unplaced: missing.map((id) => ({ id, ...size(id) })), edges: links });
+    commitPositions(positions, false);
+    const shown = store.getState().selection.find((id) => missingSet.has(id));
+    const el = canvasRef.current;
+    if (shown && el && positions[shown]) {
+      const { x, y, zoom } = flow.getViewport();
+      const p = positions[shown];
+      const s = size(shown);
+      const left = p.x * zoom + x;
+      const top = p.y * zoom + y;
+      if (left < 0 || top < 0 || left + s.width * zoom > el.clientWidth || top + s.height * zoom > el.clientHeight) {
+        programmatic();
+        void flow.setCenter(p.x + s.width / 2, p.y + s.height / 2, { zoom, duration: 0 });
+      }
+    }
+  }, [view, viewKey, nodes, nodesInitialized, unplaced, layingOut, memberOf, pkgPositions, relationIds, relations, flow, commitPositions, store, programmatic]);
 
   // ------------------------------------------------------------------ in step with the explorer (3.5)
-  const relations = useMemo(() => relationLookup(lookup.rows), [lookup]);
   const [dropping, setDropping] = useState(false);
   const onCanvasDragOver = (e: DragEvent) => {
     if (!e.dataTransfer.types.includes(ELEMENTS_MIME)) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect = view?.type === "diagram" ? "copy" : "none";
+    e.dataTransfer.dropEffect = view?.type === "diagram" && !diagramDomain ? "copy" : "none";
     setDropping(true);
   };
   const onCanvasDrop = async (e: DragEvent) => {
@@ -355,7 +576,7 @@ function EntitiesCanvas() {
     } catch {
       return;
     }
-    if (view?.type !== "diagram") {
+    if (view?.type !== "diagram" || diagramDomain) {
       store.getState().notify("Choose a diagram to drop elements on; a domain's view already shows all of its entities.");
       return;
     }
@@ -390,13 +611,14 @@ function EntitiesCanvas() {
     const node = flow.getInternalNode(id);
     if (!node?.measured.width) return;
     handled.current.nonce = centerRequest.nonce;
+    programmatic();
     const p = node.internals.positionAbsolute;
     void flow.setCenter(p.x + (node.measured.width ?? NODE_WIDTH) / 2, p.y + (node.measured.height ?? NODE_HEIGHT) / 2, {
       zoom: Math.max(flow.getZoom(), 0.75),
       duration: 0,
     });
     setCentered(centerRequest.id);
-  }, [centerRequest, nodes, flow, lookup, relations]);
+  }, [centerRequest, nodes, flow, lookup, relations, programmatic]);
 
   const [newEntityOpen, setNewEntityOpen] = useState(false);
   // The palette's New entity (4.8) opens the same dialog as the toolbar button.
@@ -420,15 +642,15 @@ function EntitiesCanvas() {
       key: { attributes: [keyId], strategy: "uuid-v7" },
       attributes: [{ id: keyId, name: "id", type: "uuid", required: true }],
     } as unknown as ModelJson;
-    const center = flow.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-    if (view?.type === "diagram") {
-      const outcome = await createWithMember(services, json, view.id, { element: id, x: Math.round(center.x), y: Math.round(center.y) }, `New entity ${name}`);
+    // No position: the canvas places the new card beside the drawing (placement.ts) and scrolls it into view.
+    // A domain's own diagram gains it through the domain (or not, when it goes to another domain).
+    if (view?.type === "diagram" && !diagramDomain) {
+      const outcome = await createWithMember(services, json, view.id, { element: id }, `New entity ${name}`);
       if (!outcome.ok) return outcome.reason;
     } else {
       const result = await endpoints.createElement(json);
       if (result.outcome !== "saved") return result.diagnostics[0]?.message ?? result.outcome;
       applySaveResult(queryClient, result);
-      commitPositions({ [id]: center });
       store
         .getState()
         .pushUndo({ label: `New entity ${name}`, ids: [id], before: [null], after: [result.current!.json as ModelJson], afterHashes: [result.hash] });
@@ -572,7 +794,7 @@ function EntitiesCanvas() {
         >
           <Link2 /> New relation
         </Button>
-        {view.type === "diagram" ? (
+        {view.type === "diagram" && !diagramDomain ? (
           <div className="flex items-center gap-1">
             <Button size="sm" onClick={() => void addRelated()} data-testid="add-related">
               <Share2 /> Add related
@@ -589,7 +811,7 @@ function EntitiesCanvas() {
             </Select>
           </div>
         ) : null}
-        <Button size="sm" onClick={() => void autoLayout()} disabled={layingOut} data-testid="auto-layout">
+        <Button size="sm" onClick={() => void autoLayout(true)} disabled={layingOut} data-testid="auto-layout">
           <LayoutGrid /> {layingOut ? "Laying out…" : "Auto-layout"}
         </Button>
         <div className="ml-auto flex items-center gap-1">
@@ -652,9 +874,7 @@ function EntitiesCanvas() {
           onEdgesChange={onEdgesChange}
           onPaneClick={() => select([])}
           onConnect={(c: Connection) => c.source && c.target && setConnecting({ source: c.source, target: c.target })}
-          defaultViewport={{ x: diagramJson?.viewport?.x ?? 0, y: diagramJson?.viewport?.y ?? 0, zoom: diagramJson?.viewport?.zoom ?? 1 }}
-          fitView
-          fitViewOptions={{ padding: 0.15 }}
+          onMoveEnd={onMoveEnd}
           minZoom={0.1}
           onlyRenderVisibleElements={nodes.length > 100}
           proOptions={{ hideAttribution: false }}

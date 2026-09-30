@@ -4,10 +4,13 @@
 import { local } from "@/lib/storage";
 import type { ExplorerId } from "@/explorer/tree";
 
-/** Every panel that collapses and restores: the explorer sidebar, the inspector, the bottom panel, the editor tab strip
- * and the top bar's secondary controls. */
-export type Panel = "explorer" | "inspector" | "bottom" | "tabs" | "topbar";
-export const PANELS: readonly Panel[] = ["explorer", "inspector", "bottom", "tabs", "topbar"];
+/** Every panel that collapses and restores: the explorer sidebar, the inspector, the bottom panel, the editor tab strip,
+ * the top bar's secondary controls, and the Database screen's tables list and DDL preview. */
+export type Panel = "explorer" | "inspector" | "bottom" | "tabs" | "topbar" | "tables" | "ddl";
+export const PANELS: readonly Panel[] = ["explorer", "inspector", "bottom", "tabs", "topbar", "tables", "ddl"];
+
+/** The panels that belong to one screen: their shortcut acts only while that screen shows. */
+export const SCREEN_PANELS: Partial<Record<Panel, "database">> = { tables: "database", ddl: "database" };
 
 export const LIMITS = {
   explorer: { min: 240, max: 480 },
@@ -24,7 +27,7 @@ export interface Layout {
 }
 
 export const DEFAULT_LAYOUT: Layout = Object.freeze({
-  collapsed: Object.freeze({ explorer: false, inspector: false, bottom: false, tabs: false, topbar: false }),
+  collapsed: Object.freeze({ explorer: false, inspector: false, bottom: false, tabs: false, topbar: false, tables: false, ddl: false }),
   explorerSize: 280,
   inspectorSize: 360,
   bottomSize: 220,
@@ -72,13 +75,16 @@ export function clearLayout(): void {
 
 /** The keyboard shortcut per panel: Alt+Shift with a letter, by physical key (Option+Shift types a symbol on a Mac).
  * Chosen clear of the browsers' own (Alt+Shift+I, Alt+Shift+T and Alt+Shift+A in Chrome) and the editor's (Alt+M and
- * Alt+R in the type picker, Alt+1 to Alt+4 in the pack editor, Alt+arrows). */
+ * Alt+R in the type picker, Alt+1 to Alt+4 in the pack editor, Alt+arrows). The tables list takes L (for list) because
+ * Chrome keeps Alt+Shift+T for its toolbar. */
 export const PANEL_KEYS: Record<Panel, { code: string; label: string }> = {
   explorer: { code: "KeyE", label: "Alt+Shift+E" },
   inspector: { code: "KeyP", label: "Alt+Shift+P" },
   bottom: { code: "KeyJ", label: "Alt+Shift+J" },
   tabs: { code: "KeyO", label: "Alt+Shift+O" },
   topbar: { code: "KeyH", label: "Alt+Shift+H" },
+  tables: { code: "KeyL", label: "Alt+Shift+L" },
+  ddl: { code: "KeyD", label: "Alt+Shift+D" },
 };
 
 export const PANEL_NAMES: Record<Panel, string> = {
@@ -87,6 +93,8 @@ export const PANEL_NAMES: Record<Panel, string> = {
   bottom: "bottom panel",
   tabs: "editor tabs",
   topbar: "top bar controls",
+  tables: "tables list",
+  ddl: "DDL preview",
 };
 
 /** The panel a key event toggles, or null. */

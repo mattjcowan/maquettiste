@@ -48,8 +48,13 @@ export class DraftManager {
    * Applies an edit to the element's draft, creating the draft from the cached element (or `base`)
    * when there is none, and schedules the save.
    */
-  edit(id: string, update: (json: ModelJson) => ModelJson | void, options: { channel?: Draft["channel"]; base?: ElementDocument } = {}): void {
+  edit(
+    id: string,
+    update: (json: ModelJson) => ModelJson | void,
+    options: { channel?: Draft["channel"]; base?: ElementDocument; followUp?: boolean } = {},
+  ): void {
     let draft = this.state.drafts[id];
+    const followUp = !!options.followUp && (draft ? draft.followUp === true : true);
     if (!draft) {
       const doc = options.base ?? this.deps.queryClient.getQueryData<ElementDocument>(keys.element(id));
       if (!doc) throw new Error(`Element ${id} is not loaded; it cannot be edited yet.`);
@@ -73,6 +78,7 @@ export class DraftManager {
       json: next,
       status: this.inflight.has(id) ? "saving" : "dirty",
       error: null,
+      followUp,
     });
     this.schedule(id);
   }
@@ -176,13 +182,33 @@ export class DraftManager {
         applySaveResult(this.deps.queryClient, result);
         this.retriedDiagram.delete(id);
         const before = draft?.baseJson ?? null;
-        this.state.pushUndo({
-          label: `Edit ${(sent as { name?: string }).name ?? id}`,
-          ids: [id],
-          before: [before],
-          after: [clone(sent)],
-          afterHashes: [result.hash],
-        });
+        // A pan or zoom (view state) and a follow-up edit (a card the canvas placed, a domain's diagram following its
+        // domain) join the last undo step instead of taking one of their own: that step then undoes the user's action
+        // and its consequence together. The step's `after` for this element is updated (or added), so it still undoes cleanly.
+        const top = this.state.undo[this.state.undo.length - 1];
+        const slot = top ? top.ids.indexOf(id) : -1;
+        const join = !!draft && !!before && (draft.followUp === true || viewportOnly(before, sent));
+        if (top && join && (slot < 0 || top.afterHashes[slot] === draft!.baseHash)) {
+          const at = slot < 0 ? top.ids.length : slot;
+          const ids = [...top.ids];
+          const befores = [...top.before];
+          const after = [...top.after];
+          const afterHashes = [...top.afterHashes];
+          if (slot < 0) {
+            ids[at] = id;
+            befores[at] = clone(before!);
+          }
+          after[at] = clone(sent);
+          afterHashes[at] = result.hash;
+          this.state.setStacks([...this.state.undo.slice(0, -1), { ...top, ids, before: befores, after, afterHashes }], this.state.redo);
+        } else
+          this.state.pushUndo({
+            label: `Edit ${(sent as { name?: string }).name ?? id}`,
+            ids: [id],
+            before: [before],
+            after: [clone(sent)],
+            afterHashes: [result.hash],
+          });
         if (!draft) return;
         const baseJson = (result.current?.json as ModelJson | undefined) ?? sent;
         if (jsonEqual(draft.json, sent)) {
@@ -287,4 +313,15 @@ export function reapplyDiagram(disk: ModelJson, ours: ModelJson): ModelJson {
   const viewport = (ours as { viewport?: unknown }).viewport;
   if (viewport !== undefined) result.viewport = clone(viewport);
   return result;
+}
+
+/** True when two versions of a diagram differ only in their viewport. */
+export function viewportOnly(before: ModelJson | null, after: ModelJson): boolean {
+  if (!before || (after as { kind?: string }).kind !== "diagram") return false;
+  const strip = (json: ModelJson) => {
+    const copy = { ...(json as Record<string, unknown>) };
+    delete copy.viewport;
+    return copy as unknown as ModelJson;
+  };
+  return jsonEqual(strip(before), strip(after));
 }

@@ -44,7 +44,11 @@ export function DialogContent({
             )}
           </div>
           {hideClose ? null : (
-            <DialogPrimitive.Close className="rounded-control p-1 text-secondary hover:bg-accent-subtle hover:text-primary" aria-label="Close">
+            <DialogPrimitive.Close
+              className="rounded-control p-1 text-secondary hover:bg-accent-subtle hover:text-primary"
+              aria-label="Close"
+              title="Close (Esc)"
+            >
               <X className="size-4" />
             </DialogPrimitive.Close>
           )}

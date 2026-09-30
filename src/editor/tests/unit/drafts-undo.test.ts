@@ -144,4 +144,38 @@ describe("drafts and undo over the mock API", () => {
     expect((api.backend.model.get(IDS.invoice)!.json as Named).name).toBe("Bill");
     expect(store.getState().undo).toHaveLength(1);
   });
+
+  it("a follow-up edit and a pan join the last undo step, which then undoes both", async () => {
+    const { drafts, undo, store } = api.services;
+    type Diagram = { members: { element: string; x?: number; y?: number }[]; viewport?: { x: number; y: number; zoom: number } };
+    await load(IDS.invoice);
+    await load(IDS.overview);
+    drafts.edit(IDS.invoice, (json) => {
+      (json as Named).name = "Bill";
+    });
+    await drafts.flush(IDS.invoice);
+    // The canvas places a card on its own, then the user pans: no step of their own.
+    drafts.edit(IDS.overview, (json) => void ((json as unknown as Diagram).members[5] = { ...(json as unknown as Diagram).members[5], x: 900, y: 40 }), {
+      followUp: true,
+    });
+    await drafts.flush(IDS.overview);
+    drafts.edit(IDS.overview, (json) => void ((json as unknown as Diagram).viewport = { x: 10, y: 20, zoom: 1.5 }));
+    await drafts.flush(IDS.overview);
+    expect(store.getState().undo).toHaveLength(1);
+    expect(store.getState().undo[0].ids).toEqual([IDS.invoice, IDS.overview]);
+
+    expect((await undo.undo()).ok).toBe(true);
+    expect((api.backend.model.get(IDS.invoice)!.json as Named).name).toBe("Invoice");
+    const diagram = api.backend.model.get(IDS.overview)!.json as unknown as Diagram;
+    expect(diagram.members[5].x).toBeUndefined();
+    expect(diagram.viewport).toEqual({ zoom: 0.9 });
+  });
+
+  it("a pan with nothing to join is a step of its own", async () => {
+    const { drafts, store } = api.services;
+    await load(IDS.overview);
+    drafts.edit(IDS.overview, (json) => void ((json as unknown as { viewport: object }).viewport = { x: 1, y: 2, zoom: 1 }), { followUp: true });
+    await drafts.flush(IDS.overview);
+    expect(store.getState().undo).toHaveLength(1);
+  });
 });

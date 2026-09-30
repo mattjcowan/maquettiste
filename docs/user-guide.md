@@ -91,6 +91,14 @@ opened ("Select a pack in Generate" on Plan). **Settings** and **Reference data*
 their own panel. Going to an element from one of them (a translation queue's "Open element", a where-used row) opens
 the Domain model screen with the element selected.
 
+An element's inspector has four tabs, switched with the mouse or the arrow keys: **Properties** (its own fields, such
+as name, domain, stereotypes, tags and custom properties, plus the kind's settings), **Attributes** (only for kinds that
+have attributes: a value object's or stereotype's attribute grid, edited there; an entity's attributes as a read-only
+list of name, type and a `*` for required, with **Open editor** opening the entity editor on its Attributes tab, where
+the entity's grid is edited), **JSON** (the element's document, editable) and **Where used** (the elements that
+reference it; a row goes to the referring element). The inspector remembers the tab you chose for each kind of
+element; a kind without the chosen tab shows Properties.
+
 ### Search and filters
 
 The **Search the model** box filters the explorer as you type: rows that do not match are hidden, their domains and
@@ -180,6 +188,27 @@ database shows on the Database screen at once. The explorers remember which rows
   to select it and edit it in the inspector. The diagram picker lists the diagrams and, for each domain, "All of
   <domain>". "Add related" pulls in neighbours to a chosen depth, and Auto-layout untangles the diagram. Export
   writes SVG or PNG.
+
+  **Where the arrangement lives.** A diagram's file keeps each card's position and the canvas's pan and zoom: moving a
+  card, panning or zooming saves them there (the zoom a moment after you stop), and opening the diagram again shows it
+  exactly as you left it. The view is fitted to the cards only when the diagram has no saved pan and zoom. A pan or
+  zoom is not an undo step of its own. "All of <domain>" becomes a diagram the first time you arrange it (drag a card,
+  run Auto-layout, pan or zoom): a diagram in the domain, first named after it, with its entities where you see them
+  and its membership set to follow the domain. From then on the picker lists it under Diagrams and "All of <domain>"
+  opens it; it keeps following the domain, so an entity that joins the domain is added to it and one that leaves is
+  removed, and entities cannot be dropped onto it or added with "Add related". The inspector shows a diagram's
+  Membership as "Follows the domain" or "Explicit members" (an ordinary diagram, whose members are exactly what you put
+  on it). The membership decides it, not the name: renaming the diagram or the domain changes nothing, and when a
+  domain has several diagrams that follow it, "All of <domain>" opens the first by id. In the file this is
+  `"membership": "package"`; a diagram that follows a package but names none is reported (MQ3022). Only looking at
+  "All of <domain>" creates nothing, and Undo removes the diagram it created. Positions a browser kept for
+  "All of <domain>" before this move into that diagram the next time it opens.
+
+  **Auto-layout and new cards.** Auto-layout re-arranges every card of the diagram and fits the view; it is the only
+  thing that moves cards you placed. A diagram whose cards have no position yet is laid out the same way when it first
+  opens. A card that arrives later (a new entity, an entity added to the diagram without a position, one that joined
+  the domain) is placed on its own, in free space beside a card it has a relationship with, or else in a row under the
+  drawing; nothing else moves and the zoom stays, and a new card you just created is scrolled into view.
 - **Reference data**: the reference types and their rows. The Reference data explorer is the screen's list: the types
   nested by category with a count on every group, and the explorer's search operators (`*` contains, `^` starts with,
   `~` like with `%`, `=` equals); its **…** menu has **Types A to Z (no categories)** for one flat list. Clicking a
@@ -241,10 +270,15 @@ database shows on the Database screen at once. The explorers remember which rows
   and the attribute mapped onto the column (once the entity is expanded; a collapsed folder shows "n related").
   Enter or a double click on a table opens its screen with that table focused. The screen shows table diagrams per
   database, a Tables list with a filter (the first 300 matches), a dialect selector, and a live DDL preview for the
-  selected table. A database of more than 300 tables is not drawn whole: with no table selected the screen says
+  selected table. The Tables list and the DDL preview each hide from the button in their header ("Hide tables list",
+  "Hide DDL preview") or with Alt+Shift+L and Alt+Shift+D on this screen, and come back from the slim strip they leave
+  at the edge or the same shortcut; the palette has "Toggle tables list" and "Toggle DDL preview". Like the other
+  panels, what you hid stays hidden after a reload, and "Reset layout" shows both again. A database of more than 300 tables is not drawn whole: with no table selected the screen says
   "<n> tables are too many to draw at once" and keeps the list and the DDL preview of the whole database; pick a table
   and the diagram draws it with the tables its foreign keys connect it to, in both directions (at most 300, the header
-  saying how many more were left out). The database row's menu opens **Mappings**: an entity and its table side by side, where names mapped automatically are
+  saying how many more were left out). A database diagram's table positions and its pan and zoom are kept in your
+  browser (there is no diagram file for a database yet); a table added later is placed beside a table its foreign
+  keys connect it to, or under the drawing, without moving the others. The database row's menu opens **Mappings**: an entity and its table side by side, where names mapped automatically are
   muted and customised ones are highlighted.
 
   **What a database holds.** Entities are not turned into tables on their own: a database holds only what is mapped to

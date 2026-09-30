@@ -77,6 +77,7 @@ public static class RuleCatalog
         new("MQ3019", E, "Literal default does not match the attribute's type (use defaultExpression for now, today, new-uuid or new-ulid)."),
         new("MQ3020", E, "A stereotype's key cannot change."),
         new("MQ3021", E, "A domain vocabulary redeclares a tag key or category name of the global vocabulary or an enclosing domain's."),
+        new("MQ3022", E, "A diagram with membership 'package' and no package: it has nothing to follow; set the diagram's package, or set membership to 'explicit' so its members list is the diagram."),
 
         new("MQ4001", E, "Identifier longer than the dialect's limit."),
         new("MQ4002", E, "Duplicate table name in a schema."),

@@ -18,7 +18,7 @@ import type {
 } from "@/api/types";
 import { Field, Input, Select } from "@/components/ui/input";
 import { CheckboxField } from "@/components/ui/checkbox";
-import { Button } from "@/components/ui/button";
+import { Button, iconLabel } from "@/components/ui/button";
 import { SectionTitle } from "@/components/ui/misc";
 import { BUILTIN_TYPES, TYPE_KINDS } from "@/model/model";
 import { newId } from "@/lib/ids";
@@ -109,7 +109,7 @@ export function ChipsEditor({
             {options.find((o) => o.value === v)?.label ?? v}
             <button
               type="button"
-              aria-label={`Remove ${v} from ${label}`}
+              {...iconLabel(`Remove ${v} from ${label}`)}
               onClick={() => onChange(values.filter((x) => x !== v))}
               className="rounded-[3px] text-secondary hover:text-primary"
             >
@@ -242,6 +242,20 @@ export function CommonFields({ id, json, doc, edit, flush, diagnostics, inEditor
           </Select>
         </Field>
       ) : null}
+      {kind === "diagram" ? (
+        <Field
+          label="Membership"
+          htmlFor={`${id}-membership`}
+          hint={rec.membership === "package" ? "Shows every entity of its domain and their relationships; members carry positions only." : undefined}
+        >
+          <Input
+            id={`${id}-membership`}
+            data-testid="diagram-membership"
+            value={rec.membership === "package" ? "Follows the domain" : "Explicit members"}
+            readOnly
+          />
+        </Field>
+      ) : null}
       {inEditorHeader ? null : (
         <HeaderTextFields
           id={id}
@@ -302,10 +316,10 @@ export function CommonFields({ id, json, doc, edit, flush, diagnostics, inEditor
   );
 }
 
-export function EntityFields({ id, json, edit, flush, diagnostics }: FormProps) {
+/** The inspector's entity scalars; the attribute grid is the entity editor's (the inspector's Attributes tab lists it read-only). */
+export function EntityFields({ id, json, edit, flush }: FormProps) {
   const entity = json as EntityDoc;
   const vocab = useVocabularies("entity");
-  const typeOptions = TYPE_KINDS.flatMap((k) => vocab.lookup.ofKind(k));
   const definition = useDefinition();
   return (
     <div className="flex flex-col gap-2">
@@ -359,19 +373,6 @@ export function EntityFields({ id, json, edit, flush, diagnostics }: FormProps) 
         onChange={(v) => {
           edit((j) => setOptional(j as Rec, "abstract", v ? true : undefined));
           flush();
-        }}
-      />
-      <SectionTitle>Attributes</SectionTitle>
-      <AttributeGrid
-        label={`Attributes of ${entity.name}`}
-        attributes={entity.attributes ?? []}
-        keyIds={entity.key?.attributes ?? []}
-        typeOptions={typeOptions}
-        definition={definition}
-        diagnostics={diagnostics}
-        onChange={(update, commit) => {
-          edit((j) => update(j));
-          if (commit) flush();
         }}
       />
     </div>
@@ -636,7 +637,7 @@ export function EnumFields({ id, json, edit, flush }: FormProps) {
                 <Button
                   size="icon-sm"
                   variant="ghost"
-                  aria-label={`Remove member ${m.name}`}
+                  label={`Remove member ${m.name}`}
                   onClick={() => {
                     edit((j) => void ((j as EnumDoc).members = (j as EnumDoc).members!.filter((x) => x.id !== m.id)));
                     flush();

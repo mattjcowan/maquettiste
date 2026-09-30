@@ -304,6 +304,14 @@
     "canBeOff": true
   },
   {
+    "id": "MQ3022",
+    "defaultSeverity": "error",
+    "description": "A diagram with membership 'package' and no package: it has nothing to follow; set the diagram's package, or set membership to 'explicit' so its members list is the diagram.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
     "id": "MQ4001",
     "defaultSeverity": "error",
     "description": "Identifier longer than the dialect's limit.",

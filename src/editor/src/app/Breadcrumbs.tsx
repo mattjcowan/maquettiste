@@ -86,7 +86,7 @@ export function Breadcrumbs() {
       <Button
         size="icon-sm"
         variant="ghost"
-        aria-label="Back (Alt+Left)"
+        label="Back (Alt+Left)"
         title="Back (Alt+Left)"
         disabled={!history.back.length}
         onClick={() => travel("back")}
@@ -97,7 +97,7 @@ export function Breadcrumbs() {
       <Button
         size="icon-sm"
         variant="ghost"
-        aria-label="Forward (Alt+Right)"
+        label="Forward (Alt+Right)"
         title="Forward (Alt+Right)"
         disabled={!history.forward.length}
         onClick={() => travel("forward")}

@@ -225,6 +225,17 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
     const first = ctx.firstInScope(scope, entry);
     if (first) out.push(diag("MQ3001", "error", `The name '${String(json.name)}' is already used by ${first.path}.`, entry, "/name"));
   }
+  // MQ3022 a diagram that follows a package (membership "package") but names none
+  if (kind === "diagram" && json.membership === "package" && !json.package)
+    out.push(
+      diag(
+        "MQ3022",
+        "error",
+        `Diagram '${String(json.name)}' follows a package (membership 'package') but names none; set its package, or set membership to 'explicit'.`,
+        entry,
+        "/membership",
+      ),
+    );
   if (kind === "entity") {
     const attributes = arr(json.attributes);
     const key = json.key as { attributes?: string[] } | undefined;

@@ -1,9 +1,14 @@
-import { Tooltip as TooltipPrimitive } from "radix-ui";
+import { Slot, Tooltip as TooltipPrimitive } from "radix-ui";
 import type { ReactNode } from "react";
 
 export const TooltipProvider = TooltipPrimitive.Provider;
 
+/**
+ * A tooltip over its child. Text content is a native tooltip (the title attribute, the owner's rule: no custom
+ * tooltip layer for a plain label; a title already on the child wins); rich content (a card) keeps the floating layer.
+ */
 export function Tooltip({ content, children, side = "bottom" }: { content: ReactNode; children: ReactNode; side?: "top" | "right" | "bottom" | "left" }) {
+  if (typeof content === "string") return <Slot.Root title={content}>{children}</Slot.Root>;
   return (
     <TooltipPrimitive.Root delayDuration={400}>
       <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>

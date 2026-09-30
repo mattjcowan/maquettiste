@@ -4,7 +4,7 @@
 // (POST /api/templates/preview with sql-ddl/schema or sql-ddl/table), refreshed 400 ms after any
 // model.changed.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Background, Controls, MiniMap, ReactFlow, ReactFlowProvider, useNodesInitialized, useReactFlow, type NodeChange } from "@xyflow/react";
+import { Background, Controls, MiniMap, ReactFlow, ReactFlowProvider, useNodesInitialized, useReactFlow, type NodeChange, type Viewport } from "@xyflow/react";
 import { Download, LayoutGrid } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/menu";
 import { exportCanvas } from "@/canvas/export";
@@ -22,9 +22,11 @@ import { TableNode, type TableFlowNode } from "@/canvas/TableNode";
 import { ForeignKeyEdge, type ForeignKeyFlowEdge } from "@/canvas/ForeignKeyEdge";
 import { MarkerDefs } from "@/canvas/markers";
 import { defaultLayoutEngine } from "@/canvas/layout";
-import { loadPositions, measuredSizes, savePositions, type StoredPositions } from "@/lib/positions";
+import { loadPositions, loadViewport, measuredSizes, savePositions, saveViewport, type StoredPositions } from "@/lib/positions";
+import { placeNodes, roundViewport } from "@/canvas/placement";
 import { useDraftDocument } from "@/inspector/useDraft";
 import { DIALECTS } from "@/inspector/fields";
+import { EdgeToggle, PanelToggle } from "@/app/panels";
 
 const nodeTypes = { table: TableNode };
 const edgeTypes = { foreignKey: ForeignKeyEdge };
@@ -41,6 +43,10 @@ function DatabaseCanvas() {
   const { store, drafts } = useServices();
   const project = useProject();
   const activeDatabase = useEditor(store, (s) => s.activeDatabase);
+  // The tables list and the DDL preview hide and show like the shell's panels (header button, Alt+Shift+L and D, a slim
+  // edge to bring them back), kept in the saved layout.
+  const tablesCollapsed = useEditor(store, (s) => s.tablesCollapsed);
+  const ddlCollapsed = useEditor(store, (s) => s.ddlCollapsed);
   const { openDatabase, select } = useEditorNavigation();
   const flow = useReactFlow<TableFlowNode, ForeignKeyFlowEdge>();
   const initialized = useNodesInitialized();
@@ -64,6 +70,12 @@ function DatabaseCanvas() {
   const [dragging, setDragging] = useState<StoredPositions>({});
   const [measured, setMeasured] = useState<Record<string, { width: number; height: number }>>({});
   const laidOut = useRef<string | null>(null);
+  // The canvas's own moves (fit, restore, centring a table) are not saved as the user's pan and zoom.
+  const viewportFor = useRef<string | null>(null);
+  const programmaticUntil = useRef(0);
+  const programmatic = useCallback(() => {
+    programmaticUntil.current = performance.now() + 400;
+  }, []);
 
   useEffect(() => {
     if (activeDatabase) setPositions(loadPositions(`db.${activeDatabase}`));
@@ -130,19 +142,60 @@ function DatabaseCanvas() {
       flow.getNodes().map((n) => ({ id: n.id, width: n.measured?.width ?? 256, height: n.measured?.height ?? 200 })),
       edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
     );
-    const next = Object.fromEntries(result);
+    const next = { ...loadPositions(`db.${activeDatabase}`), ...Object.fromEntries(result) };
     savePositions(`db.${activeDatabase}`, next);
     setPositions(next);
-    requestAnimationFrame(() => void flow.fitView({ padding: 0.1 }));
-  }, [activeDatabase, edges, flow]);
+    viewportFor.current = layoutKey;
+    requestAnimationFrame(() => {
+      programmatic();
+      void flow.fitView({ padding: 0.1 });
+    });
+  }, [activeDatabase, edges, flow, layoutKey, programmatic]);
 
-  const unplaced = tables.some((t) => !positions[t.key]);
+  // Every table unplaced (a database seen for the first time): the full automatic layout, then fit. Some unplaced (a
+  // table just added): only those are placed, beside a table they share a foreign key with or under the drawing.
+  const missing = useMemo(() => tables.filter((t) => !positions[t.key]).map((t) => t.key), [tables, positions]);
+  const unplaced = missing.length > 0 && missing.length === tables.length;
   useEffect(() => {
     if (initialized && unplaced && nodes.length && laidOut.current !== layoutKey) {
       laidOut.current = layoutKey;
       void layout();
     }
   }, [initialized, unplaced, nodes.length, layoutKey, layout]);
+  useEffect(() => {
+    if (!initialized || !activeDatabase || !missing.length || unplaced) return;
+    const size = (id: string) => {
+      const m = flow.getInternalNode(id)?.measured;
+      return { width: m?.width || 256, height: m?.height || 200 };
+    };
+    const set = new Set(missing);
+    const placed = nodes.filter((n) => !set.has(n.id)).map((n) => ({ id: n.id, ...n.position, ...size(n.id) }));
+    const added = placeNodes({ placed, unplaced: missing.map((id) => ({ id, ...size(id) })), edges });
+    const next = { ...loadPositions(`db.${activeDatabase}`), ...added };
+    savePositions(`db.${activeDatabase}`, next);
+    setPositions(next);
+  }, [initialized, activeDatabase, missing, unplaced, nodes, edges, flow]);
+
+  // Pan and zoom are kept per browser beside the positions; opening restores them and fits only when none is kept.
+  useEffect(() => {
+    if (!initialized || !activeDatabase || !nodes.length || unplaced || viewportFor.current === layoutKey) return;
+    viewportFor.current = layoutKey;
+    const kept = loadViewport(`db.${activeDatabase}`);
+    programmatic();
+    if (kept) void flow.setViewport(kept, { duration: 0 });
+    else void flow.fitView({ padding: 0.1, duration: 0 });
+  }, [initialized, activeDatabase, nodes.length, unplaced, layoutKey, flow, programmatic]);
+  const moveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(moveTimer.current), []);
+  const onMoveEnd = useCallback(
+    (_event: unknown, viewport: Viewport) => {
+      if (!activeDatabase || performance.now() < programmaticUntil.current) return;
+      clearTimeout(moveTimer.current);
+      const key = `db.${activeDatabase}`;
+      moveTimer.current = setTimeout(() => saveViewport(key, roundViewport(viewport)), 300);
+    },
+    [activeDatabase],
+  );
 
   const onNodesChange = useCallback(
     (changes: NodeChange<TableFlowNode>[]) => {
@@ -180,9 +233,12 @@ function DatabaseCanvas() {
     (key: string) => {
       pickTable(key);
       centred.current = key;
-      requestAnimationFrame(() => void flow.fitView({ nodes: [{ id: key }], padding: 0.4, maxZoom: 1.2 }));
+      requestAnimationFrame(() => {
+        programmatic();
+        void flow.fitView({ nodes: [{ id: key }], padding: 0.4, maxZoom: 1.2 });
+      });
     },
-    [pickTable, flow],
+    [pickTable, flow, programmatic],
   );
   useEffect(() => {
     if (!selectedTable || centred.current === selectedTable || !initialized || !tables.some((t) => t.key === selectedTable)) return;
@@ -261,32 +317,45 @@ function DatabaseCanvas() {
         </span>
       </Toolbar>
       <div className="flex min-h-0 flex-1">
-        <section className="flex w-56 shrink-0 flex-col border-r border-default bg-surface" aria-label="Tables" data-testid="database-tables">
-          <div className="border-b border-default p-2">
-            <Input type="search" aria-label="Filter tables" placeholder="Filter tables" value={tableFilter} onChange={(e) => setTableFilter(e.target.value)} />
-          </div>
-          <ul className="min-h-0 flex-1 overflow-auto py-1 text-12" aria-label="Table list">
-            {listed.tables.map((t) => (
-              <li key={t.key}>
-                <button
-                  type="button"
-                  className={`flex w-full items-baseline gap-2 px-2 py-0.5 text-left hover:bg-accent-subtle ${selectedTable === t.key ? "bg-accent-subtle font-medium" : ""}`}
-                  aria-current={selectedTable === t.key ? "true" : undefined}
-                  onClick={() => focusTable(t.key)}
-                  data-testid={`database-table-${t.name}`}
-                >
-                  <span className="truncate">{t.schema ? `${t.schema}.${t.name}` : t.name}</span>
-                  <span className="ml-auto shrink-0 text-11 text-secondary">{t.columnCount}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-          <p className="border-t border-default px-2 py-1 text-11 text-secondary" data-testid="database-tables-count">
-            {listed.more > 0
-              ? `${listed.tables.length} of ${listed.total} shown; refine the filter`
-              : `${listed.total} ${listed.total === 1 ? "table" : "tables"}${tableFilter ? " match" : ""}`}
-          </p>
-        </section>
+        {tablesCollapsed ? <EdgeToggle panel="tables" side="left" /> : null}
+        {!tablesCollapsed && (
+          <section className={`flex w-56 shrink-0 flex-col border-r border-default bg-surface`} aria-label="Tables" data-testid="database-tables">
+            <div className="flex h-6 shrink-0 items-center gap-2 border-b border-default px-2" data-testid="tables-panel-header">
+              <span className="min-w-0 flex-1 truncate text-11 font-semibold uppercase tracking-wide text-secondary">Tables</span>
+              <PanelToggle panel="tables" />
+            </div>
+            <div className="border-b border-default p-2">
+              <Input
+                type="search"
+                aria-label="Filter tables"
+                placeholder="Filter tables"
+                value={tableFilter}
+                onChange={(e) => setTableFilter(e.target.value)}
+              />
+            </div>
+            <ul className="min-h-0 flex-1 overflow-auto py-1 text-12" aria-label="Table list">
+              {listed.tables.map((t) => (
+                <li key={t.key}>
+                  <button
+                    type="button"
+                    className={`flex w-full items-baseline gap-2 px-2 py-0.5 text-left hover:bg-accent-subtle ${selectedTable === t.key ? "bg-accent-subtle font-medium" : ""}`}
+                    aria-current={selectedTable === t.key ? "true" : undefined}
+                    onClick={() => focusTable(t.key)}
+                    data-testid={`database-table-${t.name}`}
+                  >
+                    <span className="truncate">{t.schema ? `${t.schema}.${t.name}` : t.name}</span>
+                    <span className="ml-auto shrink-0 text-11 text-secondary">{t.columnCount}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <p className="border-t border-default px-2 py-1 text-11 text-secondary" data-testid="database-tables-count">
+              {listed.more > 0
+                ? `${listed.tables.length} of ${listed.total} shown; refine the filter`
+                : `${listed.total} ${listed.total === 1 ? "table" : "tables"}${tableFilter ? " match" : ""}`}
+            </p>
+          </section>
+        )}
         <div className="relative min-w-0 flex-1" role="region" aria-label="Table diagram">
           <MarkerDefs />
           {view.isPending ? <Spinner label="Resolving tables" /> : null}
@@ -312,7 +381,7 @@ function DatabaseCanvas() {
               edgeTypes={edgeTypes}
               onNodesChange={onNodesChange}
               onPaneClick={() => scope.mode === "all" && setSelectedTable(null)}
-              fitView
+              onMoveEnd={onMoveEnd}
               minZoom={0.1}
               nodesConnectable={false}
               deleteKeyCode={null}
@@ -324,32 +393,40 @@ function DatabaseCanvas() {
             </ReactFlow>
           )}
         </div>
-        <aside className="flex w-[40%] min-w-80 max-w-[640px] flex-col border-l border-default bg-surface" aria-label="DDL preview" data-testid="ddl-preview">
-          <div className="flex h-7 items-center gap-2 border-b border-default px-2 text-12">
-            <span className="font-semibold">DDL preview</span>
-            <span className="truncate text-secondary">{table ? `sql-ddl/table · ${table.name}` : "sql-ddl/schema · whole database"}</span>
-            {preview.isFetching ? <Spinner label="Rendering" /> : null}
-          </div>
-          <div className="min-h-0 flex-1">
-            {!hasPack ? (
-              <EmptyState title="Install the sql-ddl pack to preview DDL">
-                Copy packs/sql-ddl into .maquettiste/templates/ and enable it in maquettiste.json.
-              </EmptyState>
-            ) : preview.data?.diagnostics.length && !preview.data.files.length ? (
-              <ul className="p-2 text-12 text-danger">
-                {preview.data.diagnostics.map((d, i) => (
-                  <li key={i}>
-                    {d.rule} {d.message}
-                  </li>
-                ))}
-              </ul>
-            ) : preview.data ? (
-              <CodeView language="sql" readOnly label="Generated DDL" value={preview.data.files.map((f) => f.text).join("\n")} />
-            ) : (
-              <Spinner label="Rendering the preview" />
-            )}
-          </div>
-        </aside>
+        {ddlCollapsed ? <EdgeToggle panel="ddl" side="right" /> : null}
+        {!ddlCollapsed && (
+          <aside
+            className={`flex w-[40%] min-w-80 max-w-[640px] flex-col border-l border-default bg-surface`}
+            aria-label="DDL preview"
+            data-testid="ddl-preview"
+          >
+            <div className="flex h-6 shrink-0 items-center gap-2 border-b border-default px-2 text-12" data-testid="ddl-panel-header">
+              <span className="font-semibold">DDL preview</span>
+              <span className="min-w-0 flex-1 truncate text-secondary">{table ? `sql-ddl/table · ${table.name}` : "sql-ddl/schema · whole database"}</span>
+              {preview.isFetching ? <Spinner label="Rendering" /> : null}
+              <PanelToggle panel="ddl" />
+            </div>
+            <div className="min-h-0 flex-1">
+              {!hasPack ? (
+                <EmptyState title="Install the sql-ddl pack to preview DDL">
+                  Copy packs/sql-ddl into .maquettiste/templates/ and enable it in maquettiste.json.
+                </EmptyState>
+              ) : preview.data?.diagnostics.length && !preview.data.files.length ? (
+                <ul className="p-2 text-12 text-danger">
+                  {preview.data.diagnostics.map((d, i) => (
+                    <li key={i}>
+                      {d.rule} {d.message}
+                    </li>
+                  ))}
+                </ul>
+              ) : preview.data ? (
+                <CodeView language="sql" readOnly label="Generated DDL" value={preview.data.files.map((f) => f.text).join("\n")} />
+              ) : (
+                <Spinner label="Rendering the preview" />
+              )}
+            </div>
+          </aside>
+        )}
       </div>
     </div>
   );

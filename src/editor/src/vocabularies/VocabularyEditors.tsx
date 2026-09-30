@@ -172,7 +172,7 @@ export function TagVocabularyEditor({ scope }: Scope) {
                   <Button
                     size="icon-sm"
                     variant="ghost"
-                    aria-label={`Remove tag ${d.key}`}
+                    label={`Remove tag ${d.key}`}
                     onClick={() => {
                       edit((j) => void ((j as unknown as TagVocabularyDoc).definitions = definitions.filter((_, k) => k !== i)));
                       void flush();
@@ -239,16 +239,16 @@ export function CategoryTreeEditor({ scope }: Scope) {
               }
               onBlur={() => void flush()}
             />
-            <Button size="icon-sm" variant="ghost" aria-label={`Move ${c.name} up`} onClick={() => move(c, -1)}>
+            <Button size="icon-sm" variant="ghost" label={`Move ${c.name} up`} onClick={() => move(c, -1)}>
               <ArrowUp />
             </Button>
-            <Button size="icon-sm" variant="ghost" aria-label={`Move ${c.name} down`} onClick={() => move(c, 1)}>
+            <Button size="icon-sm" variant="ghost" label={`Move ${c.name} down`} onClick={() => move(c, 1)}>
               <ArrowDown />
             </Button>
             <Button
               size="icon-sm"
               variant="ghost"
-              aria-label={`Add a category under ${c.name}`}
+              label={`Add a category under ${c.name}`}
               onClick={() => mutate((list) => void list.push({ id: newId(), name: "New category", parent: c.id, order: children(c.id).length + 1 }))}
             >
               <Plus />
@@ -256,7 +256,7 @@ export function CategoryTreeEditor({ scope }: Scope) {
             <Button
               size="icon-sm"
               variant="ghost"
-              aria-label={`Remove ${c.name}`}
+              label={`Remove ${c.name}`}
               disabled={children(c.id).length > 0}
               onClick={() =>
                 mutate(

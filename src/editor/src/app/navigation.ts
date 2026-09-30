@@ -74,13 +74,14 @@ export function useEditorNavigation() {
   );
 
   const openDiagram = useCallback(
-    (id: string | null, options?: { keepEditors?: boolean }) => {
+    (id: string | null, options?: { keepEditors?: boolean; replace?: boolean }) => {
       // The Domain model screen's default pick after load keeps the editors: an editor the user opened in the first
       // second (a double-click in the tree) must not be hidden by it. The user's own choice brings the screen forward.
       if (!options?.keepEditors) showScreen(store);
       store.getState().setActiveDiagram(id);
       store.getState().setWorkspace("entities");
-      navigate(buildUrl("entities", id, store.getState().selection, keep()));
+      // `replace`: a domain's canvas that is now its diagram replaces "All of <domain>" in the history, so Back skips it.
+      navigate(buildUrl("entities", id, store.getState().selection, keep()), options?.replace ? { replace: true } : undefined);
     },
     [navigate, store, keep],
   );

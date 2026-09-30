@@ -3,6 +3,7 @@
 // an edit, Enter or a double click in the explorer pins it. A middle click or the cross closes a tab; a dot marks one
 // with unsaved changes. "Follow selection" turns the shown tab into the General-mode editor.
 import { useEffect, type MouseEvent } from "react";
+import { iconLabel } from "@/components/ui/button";
 import { Crosshair, X } from "lucide-react";
 import { useIndex } from "@/api/queries";
 import { cn } from "@/lib/cn";
@@ -90,7 +91,7 @@ export function EditorTabBar({ workspace }: { workspace: Workspace }) {
               </button>
               <button
                 type="button"
-                aria-label={`Close ${name}`}
+                {...iconLabel(`Close ${name}`)}
                 className="rounded-[3px] p-0.5 opacity-60 hover:bg-accent-subtle hover:opacity-100"
                 onClick={() => update((s) => closeTab(s, tab.key))}
               >

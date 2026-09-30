@@ -78,19 +78,15 @@ export function TopBar() {
         {hidden ? null : (
           <>
             <LocaleSwitcher />
-            <Tooltip content="Undo (Ctrl+Z)">
-              <Button variant="ghost" size="icon" aria-label="Undo" disabled={!canUndo} onClick={() => void undo()}>
-                <Undo2 />
-              </Button>
-            </Tooltip>
-            <Tooltip content="Redo (Ctrl+Shift+Z)">
-              <Button variant="ghost" size="icon" aria-label="Redo" disabled={!canRedo} onClick={() => void redo()}>
-                <Redo2 />
-              </Button>
-            </Tooltip>
+            <Button variant="ghost" size="icon" label="Undo" shortcut="Ctrl+Z" disabled={!canUndo} onClick={() => void undo()}>
+              <Undo2 />
+            </Button>
+            <Button variant="ghost" size="icon" label="Redo" shortcut="Ctrl+Shift+Z" disabled={!canRedo} onClick={() => void redo()}>
+              <Redo2 />
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label={`Theme: ${theme}`} data-testid="theme-menu">
+                <Button variant="ghost" size="icon" label={`Theme: ${theme}`} data-testid="theme-menu">
                   <ThemeIcon />
                 </Button>
               </DropdownMenuTrigger>

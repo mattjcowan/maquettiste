@@ -1404,7 +1404,7 @@ function ExplorerHeader(props: {
       </span>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label={`New in ${props.title}`} title="New…" data-testid="explorer-new">
+          <Button variant="ghost" size="icon" label={`New in ${props.title}`} title="New…" data-testid="explorer-new">
             <Plus />
           </Button>
         </DropdownMenuTrigger>
@@ -1423,7 +1423,7 @@ function ExplorerHeader(props: {
       </DropdownMenu>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label={`${props.title} actions`} data-testid="explorer-header-menu">
+          <Button variant="ghost" size="icon" label={`${props.title} actions`} data-testid="explorer-header-menu">
             <MoreHorizontal />
           </Button>
         </DropdownMenuTrigger>

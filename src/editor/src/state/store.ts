@@ -32,6 +32,11 @@ export interface Draft {
   diagnostics: Diagnostic[];
   /** The disk version after a 409. */
   conflict: ElementDocument | null;
+  /**
+   * Only follow-up edits so far (the canvas placing a new card, a domain's diagram following its domain, a pan or zoom):
+   * the save joins the last undo step instead of taking one of its own.
+   */
+  followUp?: boolean;
   error: string | null;
 }
 
@@ -143,6 +148,10 @@ export interface EditorState {
   tabsCollapsed: boolean;
   /** The top bar's secondary controls are hidden. */
   topbarCollapsed: boolean;
+  /** The Database screen's tables list (with its filter) is hidden. */
+  tablesCollapsed: boolean;
+  /** The Database screen's DDL preview is hidden. */
+  ddlCollapsed: boolean;
   /** The Settings tab last shown: Settings opens on it when the address names none. */
   settingsTab: string | null;
   bottomTab: BottomTab;
@@ -320,6 +329,8 @@ export function createEditorStore(): EditorStore {
     bottomCollapsed: layout.collapsed.bottom,
     tabsCollapsed: layout.collapsed.tabs,
     topbarCollapsed: layout.collapsed.topbar,
+    tablesCollapsed: layout.collapsed.tables,
+    ddlCollapsed: layout.collapsed.ddl,
     settingsTab: null,
     bottomTab: "problems",
     theme: initialTheme(),
@@ -438,6 +449,8 @@ export function createEditorStore(): EditorStore {
         bottomCollapsed: false,
         tabsCollapsed: false,
         topbarCollapsed: false,
+        tablesCollapsed: false,
+        ddlCollapsed: false,
         explorer: { ...get().explorer, pinned: null },
       });
     },
@@ -507,6 +520,8 @@ type LayoutFields = Pick<
   | "bottomCollapsed"
   | "tabsCollapsed"
   | "topbarCollapsed"
+  | "tablesCollapsed"
+  | "ddlCollapsed"
   | "explorer"
 >;
 
@@ -519,6 +534,8 @@ export function layoutOf(state: LayoutFields): Layout {
       bottom: state.bottomCollapsed,
       tabs: state.tabsCollapsed,
       topbar: state.topbarCollapsed,
+      tables: state.tablesCollapsed,
+      ddl: state.ddlCollapsed,
     },
     explorerSize: state.explorerSize,
     inspectorSize: state.inspectorSize,

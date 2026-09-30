@@ -284,7 +284,7 @@ export function TemplatesTab({ pack, packHash, files, units, scopes, focusFile, 
             variant="ghost"
             className="size-5"
             title="New file"
-            aria-label="New file"
+            label="New file"
             onClick={() => startAction("new")}
             data-testid="template-new"
           >
@@ -295,7 +295,7 @@ export function TemplatesTab({ pack, packHash, files, units, scopes, focusFile, 
             variant="ghost"
             className="size-5"
             title="Rename"
-            aria-label="Rename"
+            label="Rename"
             disabled={!path}
             onClick={() => startAction("rename")}
             data-testid="template-rename"
@@ -307,7 +307,7 @@ export function TemplatesTab({ pack, packHash, files, units, scopes, focusFile, 
             variant="ghost"
             className="size-5"
             title="Delete"
-            aria-label="Delete"
+            label="Delete"
             disabled={!path}
             onClick={() => startAction("delete")}
             data-testid="template-delete"

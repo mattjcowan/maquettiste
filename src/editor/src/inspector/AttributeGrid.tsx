@@ -56,6 +56,11 @@ function typeValue(a: AttributeDoc): string {
   return isBuiltin(a.type) ? a.type : `ref:${typeRefId(a) ?? ""}`;
 }
 
+/** An attribute's type as the grid shows it (`decimal`, `Money[]`, `→ Unit of measure`). */
+export function attributeTypeLabel(a: AttributeDoc, typeOptions: ElementSummary[]): string {
+  return display(a, "type", typeOptions);
+}
+
 function display(a: AttributeDoc, key: ColumnKey, typeOptions: ElementSummary[]): string {
   switch (key) {
     case "type": {
@@ -411,7 +416,7 @@ export function AttributeGrid({
                     );
                   })}
                   <td className="px-1">
-                    <Button variant="ghost" size="icon-sm" aria-label={`Remove attribute ${a.name}`} onClick={() => removeRow(r)} tabIndex={-1}>
+                    <Button variant="ghost" size="icon-sm" label={`Remove attribute ${a.name}`} onClick={() => removeRow(r)} tabIndex={-1}>
                       <Trash2 />
                     </Button>
                   </td>

@@ -22,3 +22,19 @@ export function measuredSizes(
   }
   return sizes;
 }
+
+/** Forgets the browser's positions for a view (a domain's canvas once its positions moved into its diagram). */
+export function removePositions(key: string): void {
+  local.remove(`mq.pos.${key}`);
+}
+
+export type StoredViewport = { x: number; y: number; zoom: number };
+
+/** The pan and zoom kept per browser next to the positions (the database canvas). */
+export function loadViewport(key: string): StoredViewport | null {
+  return local.getJson<StoredViewport>(`mq.viewport.${key}`);
+}
+
+export function saveViewport(key: string, viewport: StoredViewport): void {
+  local.setJson(`mq.viewport.${key}`, viewport);
+}
