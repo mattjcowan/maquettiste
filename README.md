@@ -15,7 +15,7 @@ dotnet test maquettiste.slnx
 
 ## What is built
 
-Phases 1 and 2 of `SPEC.md` Section 21 are complete (product version 0.3.0); phase 3 opens with
+Phases 1 and 2 of `SPEC.md` Section 21 are complete (product version 0.4.0); phase 3 opens with
 `docs/engineering/phase-3-brief.md`.
 
 **Phase 1: engine and CLI.** The model as one JSON file per element under `.maquettiste/` (entities, relations, enums,
