@@ -39,8 +39,9 @@ export type InitialFlowNode = Node<Record<string, never>, "initial">;
 function Handles({ label }: { label: string }) {
   // Hidden ends React Flow needs to draw an edge; the transition edge computes its own ends from the states' boxes
   // (forward edges leave right and enter left, backward ones the other way), so two per state are enough. The third
-  // handle is the one the mouse draws from: it shows on the right edge of a hovered or selected state, and dragging it
-  // onto another state creates a transition (the canvas finishes the drag, so the target needs no handle).
+  // handle is the one the mouse draws from: a filled dot on the right edge of every state, grown while the pointer is on
+  // it; dragging it onto another state creates a transition (the canvas finishes the drag, so the target needs no
+  // handle).
   return (
     <>
       <Handle type="target" position={Position.Left} id="l" className="!size-1 !min-h-0 !min-w-0 !border-0 !opacity-0" isConnectable={false} />
@@ -49,7 +50,7 @@ function Handles({ label }: { label: string }) {
         type="source"
         position={Position.Right}
         id="draw"
-        className="mq-link-handle nodrag nopan !top-3 !size-2.5 !border-accent !bg-surface"
+        className="mq-link-handle nodrag nopan !top-3 !size-3 !rounded-full !border-2 !border-surface !bg-accent"
         title={label}
         aria-label={label}
         data-testid="chart-link-handle"

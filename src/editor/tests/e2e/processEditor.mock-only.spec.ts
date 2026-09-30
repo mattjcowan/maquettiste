@@ -39,6 +39,9 @@ test("a lifecycle opens on its chart and every tab shows its part of the process
   const states = rowsOf(editor, "states-grid");
   await expect(states).toHaveCount(4);
   await expect(cell(states.first(), "bound")).toHaveText("Draft");
+  // The details start folded on a process; the chevron shows the top controls.
+  await expect(editor.getByLabel("Use")).toHaveCount(0);
+  await editor.getByTestId("editor-details-toggle").click();
   await expect(editor.getByLabel("Use")).toHaveValue("lifecycle");
   await expect(editor.getByTestId("enum-drift")).toHaveCount(0);
 
@@ -136,6 +139,7 @@ test("a guard expression that does not parse carries the MQ9501 marker until it 
 
 test("the drifted enum is synced from the lifecycle after its dry run", async ({ page }) => {
   const editor = await openProcess(page, "PaymentLifecycle", "/?mock=drift");
+  await editor.getByTestId("editor-details-toggle").click();
   await expect(editor.getByTestId("enum-drift")).toBeVisible();
   await expect(rowsOf(editor, "states-grid").locator('[data-testid="cell-marker"][data-rule="MQ9203"]')).not.toHaveCount(0);
   await editor.getByTestId("sync-enum").click();

@@ -591,7 +591,7 @@ spacing 32, layer spacing 64, orthogonal edges, hierarchy-crossing edges handled
 move the selection to the nearest state in that direction within the container; Enter enters a container (selects its
 initial child), Escape selects the parent; Tab and Shift+Tab walk the selected state's outgoing edges; `N` adds a
 sibling state, `Shift+N` a child, `T` starts a transition from the selection (arrows or the mouse pick the target, Enter or
-a click confirms; a handle on the right edge of a hovered or selected state drags onto the target for the same result);
+a click confirms; a dot on the right edge of every state drags onto the target for the same result);
 F2 renames; Delete removes (a state with incoming transitions asks, listing them); F12 on an edge opens its event, guard
 or gate. Multi-selection moves and deletes together. Everything is one undo step per gesture.
 
@@ -1000,12 +1000,15 @@ diagram holds is one batch of the process and the diagram (also from the States 
 with it); the delete dialog lists the transitions entering the states and deletes them with the states; F12 on an edge
 opens its gate, else its guard, else its event; with nothing selected an arrow selects the initial state, Escape on a
 transition selects its source; in T mode the arrows pick among every state drawn. After P6, on the owner's request (the
-chart had no visible way to connect states): a handle on the right edge of a hovered or selected state (`chart-link-handle`)
+chart had no visible way to connect states): a handle on the right edge of every state (`chart-link-handle`, a filled dot
+that grows under the pointer)
 starts the drag through the library's connection machinery, the drop lands on whichever state is under the pointer
 (`elementsFromPoint`, so an edge's hit path over the state does not hide it), and in T mode a click on a state or
 hovering it picks the target; because the chart draws its edges above the open containers they cross (z 1000 plus the
 nesting depth), leaf states sit above every edge (`z-index: 2000` on a node holding `[data-leaf]`), which is also what
-lets the handle take the pointer where an outgoing edge starts. Budgets
+lets the handle take the pointer where an outgoing edge starts. The owner's second look (the dot was invisible on a
+chart squeezed under the header fields and the Problems panel) made a process start with its details folded
+(`mq.editor.details.process` defaults to hidden; the inspector carries the same fields) and the dot always visible. Budgets
 (`statechart-budget.mock-only.spec.ts`, `?mock=chart400`: 400 states nested three deep with parallel regions and 321
 transitions; run as the `mock` project's teardown, alone): first paint 228 to 236 ms (budget 250), layout in the worker
 265 to 270 ms on the first Layout and 160 to 177 ms after (budget 400). Tests: unit `statechart-model`,

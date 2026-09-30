@@ -327,7 +327,7 @@ export const CHART_LABELS = {
   layoutState: (state: string) => `Lay out the states of ${state}`,
   loading: "Laying out the chart…",
   notSaved: "Arrangement not saved yet: moving a state, Layout, pan or zoom saves it in the process diagram.",
-  hint: "Arrows move · Enter enters · Esc leaves · Tab walks transitions · N adds a state · T or a state's handle draws a transition · F2 renames · Delete deletes · F12 opens · Shift+F12 lists uses",
+  hint: "Drag a state's dot onto another state to draw a transition · Arrows move · Enter enters · Esc leaves · Tab walks transitions · N adds a state · T draws a transition · F2 renames · Delete deletes · F12 opens · Shift+F12 lists uses",
   linking: (source: string) => `New transition from ${source}: pick the target with the arrow keys or the mouse, Enter or a click confirms, Esc cancels.`,
   linkHandle: (source: string) => `Draw a transition from ${source} (drag onto the target state)`,
   renameState: (state: string) => `Rename ${state}`,

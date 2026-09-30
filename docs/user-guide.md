@@ -165,7 +165,7 @@ entity its key, **Base entity**, **Is abstract**, stereotypes, tags and category
 
 The chevron at the right of the editor's title row folds the details away (the display names, the description and the
 top controls; the inspector shows the same fields) so a chart or a grid gets the room; the choice is remembered in this
-browser per kind of element.
+browser per kind of element. A process starts folded, so its chart has the room.
 
 **Follow selection** on the tab bar turns the shown editor into **General mode**: it follows the selection in the
 explorer and on the canvas and keeps its tab, so you can walk twenty entities on the Mappings tab without reopening
@@ -469,8 +469,9 @@ A process opens in a document tab with its top controls: name and domain, **Use*
 chips. **Use** and **Subject** change both sides of a lifecycle at once: making a process a lifecycle (it needs a
 subject first), moving it to another entity, or turning it back into an orchestration also updates the entity's
 lifecycle and releases the entity's previous lifecycle, as one change. **Lifecycle** can be chosen only once a subject
-is set; until then the option reads "Lifecycle (choose a subject first)". The chevron at the right of the title row folds the display names, the description and the top controls away (the
-inspector shows the same fields), so the chart gets the room. It opens on **Chart**. The tabs:
+is set; until then the option reads "Lifecycle (choose a subject first)". The display names, the description and the
+top controls start folded away so the chart has the room (the inspector shows the same fields); the chevron at the
+right of the title row shows them. It opens on **Chart**. The tabs:
 
 - **Chart**: the statechart canvas with the simulation panel docked below it (both described next).
 - **States**: the state tree as a grid: name, type, initial, history, entry and exit actions, invokes, and the bound
@@ -533,11 +534,12 @@ and on a container Lay out its states and Collapse or Expand, then Delete); righ
 definition and Delete. A screen reader announces the state or transition selected while
 the focus stays on the chart.
 
-**Drawing a transition with the mouse.** Point at a state, or select it, and a small circle appears on its right edge.
-Drag the circle onto the target state and let go: the transition is created on a new event and selected, so the
+**Drawing a transition with the mouse.** Every state has a dot on its right edge; it grows when the pointer is on it.
+Drag the dot onto the target state and let go: the transition is created on a new event and selected, so the
 Transitions tab or F12 opens it to name the event, add a guard or a gate. Letting go on empty canvas draws nothing. The
 same drag works between a state and one inside a compound state, in either direction. The keyboard route (T, then the
-arrows or a click on the target) draws the same transition.
+arrows or a click on the target) draws the same transition. From the Domain model explorer, a process row under
+**Processes** opens its editor with a double click; a single click only shows it in the inspector.
 
 ### The simulation panel
 

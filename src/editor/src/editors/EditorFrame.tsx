@@ -88,8 +88,9 @@ export function EditorLayout({
   const current = list.some((t) => t.value === view && !t.disabled) ? view! : list[0]?.value;
   const diagnostics = draft?.status === "invalid" ? ctx.diagnostics : [];
   // The display names, the description and the top controls can be folded away (a chart or a grid then gets the room;
-  // the inspector shows the same fields); the choice is kept per browser and kind.
-  const [details, setDetails] = useState(() => local.get(`mq.editor.details.${kind}`) !== "hidden");
+  // the inspector shows the same fields); the choice is kept per browser and kind. A process starts folded: its chart
+  // is what it opens on, and the fields it hides are all in the inspector.
+  const [details, setDetails] = useState(() => (local.get(`mq.editor.details.${kind}`) ?? (kind === "process" ? "hidden" : "shown")) !== "hidden");
   const toggleDetails = () => {
     local.set(`mq.editor.details.${kind}`, details ? "hidden" : "shown");
     setDetails(!details);

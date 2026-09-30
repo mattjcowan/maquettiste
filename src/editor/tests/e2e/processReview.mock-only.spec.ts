@@ -84,6 +84,7 @@ test("an invoke is added on the selected state, and F12 on a transition's source
 test("Use turns a lifecycle into an orchestration with its entity, as one undo step", async ({ page }) => {
   const editor = await openProcess(page, "InvoiceLifecycle");
   const row = explorer(page).getByTestId("explorer-row-InvoiceLifecycle");
+  await editor.getByTestId("editor-details-toggle").click();
   await editor.getByLabel("Use").selectOption("orchestration");
   await expect(row).toContainText("orchestration");
   await expect(page.getByRole("tab", { name: /Problems/ })).toContainText("0");
