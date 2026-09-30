@@ -57,7 +57,8 @@ public sealed class InterpreterConformanceTests : IDisposable
             Fits = fits,
             Expressions = chart =>
             {
-                var session = ProcessExpressions.Get(chart.Process).Open(1, CancellationToken.None);
+                // A generous deadline: these tests check semantics, not the wall clock (the deadline has its own test).
+                var session = ProcessExpressions.Get(chart.Process).Open(1, CancellationToken.None, ProcessExpressions.Limits with { ScriptTimeoutMs = 60_000 });
                 _sessions.Add(session);
                 return session;
             },

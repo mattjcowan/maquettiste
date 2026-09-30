@@ -125,8 +125,31 @@ public sealed class ProcessExpressions
     /// <param name="ct">The run's cancellation.</param>
     /// <param name="limits">The limits of every expression run in the session.</param>
     /// <returns>The session; dispose it when done.</returns>
-    public ProcessExpressionSession Open(int size, CancellationToken ct, SandboxLimits limits) =>
-        new(_scripts.Count == 0 ? null : new ScriptSandboxPool(_scripts, limits, Math.Max(1, size), ct));
+    public ProcessExpressionSession Open(int size, CancellationToken ct, SandboxLimits limits)
+    {
+        if (_scripts.Count == 0)
+            return new ProcessExpressionSession(null);
+        var pool = new ScriptSandboxPool(_scripts, limits, Math.Max(1, size), ct);
+        WarmUp(pool, Compiled.First(), ct);
+        return new ProcessExpressionSession(pool);
+    }
+
+    // The first call into a fresh engine pays the runtime's one-time costs (code paths compiled on first use), which
+    // on a cold or slow host can exceed the per-expression deadline by itself. One throwaway evaluation of the first
+    // expression, with empty inputs and its outcome ignored, takes that cost before any real evaluation is timed.
+    private static void WarmUp(IScriptSandboxPool pool, string id, CancellationToken ct)
+    {
+        using var empty = JsonDocument.Parse("{}");
+        using var lease = pool.Rent();
+        try
+        {
+            lease.Sandbox.CallHelper(id, [empty.RootElement, empty.RootElement], new ScriptCallContext(null, "warm-up", ImmutableDictionary<string, object?>.Empty, ct));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // A throw or a limit on empty inputs is expected for many expressions; only the warm-up matters.
+        }
+    }
 
     private static string Wrap(string expression) => "(context, event) => (\n" + expression + "\n)";
 
