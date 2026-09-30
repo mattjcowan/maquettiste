@@ -263,6 +263,50 @@ test("the keyboard walks the chart: arrows, Enter into a container, Escape out, 
   await expect(page.getByTestId("inspector-transition")).toBeVisible();
 });
 
+test("the mouse draws a transition: a click picks the target in T mode, and a state's handle drags onto the target", async ({ page }) => {
+  await openProcess(page, "Purchase approval");
+  const labels = chart(page).getByTestId("transition-label");
+  const count = await labels.count();
+  const hint = chart(page).locator("xpath=..").getByTestId("chart-hint");
+
+  // T, then a click on the target.
+  await state(page, "Drafting").getByTitle("Drafting", { exact: true }).click();
+  await page.keyboard.press("t");
+  await expect(hint).toContainText("New transition from Drafting");
+  await state(page, "Approval").hover();
+  await expect(state(page, "Approval")).toHaveAttribute("data-link-target", "true");
+  await state(page, "Approval").getByTitle("Approval", { exact: true }).click();
+  await expect(labels).toHaveCount(count + 1);
+  await expect(page.getByTestId("inspector-transition")).toBeVisible();
+  await expect(hint).not.toContainText("New transition");
+
+  // The handle on a hovered state drags onto the target; a drop on the canvas draws nothing.
+  const handle = state(page, "Drafting").getByTestId("chart-link-handle");
+  await expect(handle).toHaveAttribute("title", "Draw a transition from Drafting (drag onto the target state)");
+  const drag = async (to: { x: number; y: number }) => {
+    await state(page, "Drafting").hover();
+    const from = (await handle.boundingBox())!;
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 40, from.y + 10, { steps: 4 });
+    await page.mouse.move(to.x, to.y, { steps: 8 });
+    await page.mouse.up();
+  };
+  const checking = (await state(page, "Checking").boundingBox())!;
+  await drag({ x: checking.x + checking.width / 2, y: checking.y + 10 });
+  await expect(labels).toHaveCount(count + 2);
+  await expect(page.getByTestId("inspector-transition")).toBeVisible();
+  const pane = (await chart(page).boundingBox())!;
+  await drag({ x: pane.x + pane.width - 8, y: pane.y + pane.height - 8 });
+  await expect(labels).toHaveCount(count + 2);
+  await expect(hint).not.toContainText("New transition");
+  // Two gestures, two undo steps.
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(labels).toHaveCount(count + 1);
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(labels).toHaveCount(count);
+});
+
 test("Delete asks when transitions enter the state, lists them, and the delete is one undo step with the diagram", async ({ page }) => {
   await openProcess(page, "Purchase approval");
   // On its name (the row under it is its timer, an internal transition).

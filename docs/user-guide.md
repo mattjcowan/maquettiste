@@ -522,9 +522,9 @@ again. Undo takes an arrangement back like any change.
 **Keys on the chart.** The arrow keys move the selection to the nearest state in that direction inside the same
 container; Enter enters a compound state (its initial child), Escape goes back to its parent; Tab and Shift+Tab walk the
 selected state's outgoing transitions. N adds a sibling state and Shift+N a child; T starts a transition from the
-selected state (pick the target with the arrows, Enter confirms, Escape cancels); F2 renames; Delete removes the
-selection, and when transitions enter the state from elsewhere a dialog lists them: each loses the state as a target,
-and one left with no target is deleted with it. While the process has changes that could not be saved (they do not
+selected state (pick the target with the arrows or the mouse, Enter or a click confirms, Escape cancels); F2 renames;
+Delete removes the selection, and when transitions enter the state from elsewhere a dialog lists them: each loses the
+state as a target, and one left with no target is deleted with it. While the process has changes that could not be saved (they do not
 validate, or someone else changed the process), a delete is refused until you fix or discard them. F12 on an edge
 opens its gate, guard or event on the matching tab; Shift+F12 lists where the selected state or transition is used.
 Shift-click states, or hold Shift and drag a box, to select several; they move and delete together. Each gesture is one
@@ -532,6 +532,12 @@ undo step. Right-click a state for the same actions as a menu (Add state, Add ch
 and on a container Lay out its states and Collapse or Expand, then Delete); right-click a transition for Go to
 definition and Delete. A screen reader announces the state or transition selected while
 the focus stays on the chart.
+
+**Drawing a transition with the mouse.** Point at a state, or select it, and a small circle appears on its right edge.
+Drag the circle onto the target state and let go: the transition is created on a new event and selected, so the
+Transitions tab or F12 opens it to name the event, add a guard or a gate. Letting go on empty canvas draws nothing. The
+same drag works between a state and one inside a compound state, in either direction. The keyboard route (T, then the
+arrows or a click on the target) draws the same transition.
 
 ### The simulation panel
 

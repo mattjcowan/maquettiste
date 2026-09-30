@@ -36,13 +36,24 @@ export interface StateNodeData extends Record<string, unknown> {
 export type StateFlowNode = Node<StateNodeData, "state">;
 export type InitialFlowNode = Node<Record<string, never>, "initial">;
 
-function Handles() {
+function Handles({ label }: { label: string }) {
   // Hidden ends React Flow needs to draw an edge; the transition edge computes its own ends from the states' boxes
-  // (forward edges leave right and enter left, backward ones the other way), so two per state are enough.
+  // (forward edges leave right and enter left, backward ones the other way), so two per state are enough. The third
+  // handle is the one the mouse draws from: it shows on the right edge of a hovered or selected state, and dragging it
+  // onto another state creates a transition (the canvas finishes the drag, so the target needs no handle).
   return (
     <>
       <Handle type="target" position={Position.Left} id="l" className="!size-1 !min-h-0 !min-w-0 !border-0 !opacity-0" isConnectable={false} />
       <Handle type="source" position={Position.Right} id="r" className="!size-1 !min-h-0 !min-w-0 !border-0 !opacity-0" isConnectable={false} />
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="draw"
+        className="mq-link-handle nodrag nopan !top-3 !size-2.5 !border-accent !bg-surface"
+        title={label}
+        aria-label={label}
+        data-testid="chart-link-handle"
+      />
     </>
   );
 }
@@ -134,6 +145,9 @@ function StateNodeView({ id, data, selected }: NodeProps<StateFlowNode>) {
     "data-active": active || undefined,
     "data-selected": selected || undefined,
     "data-link-target": linkTarget || undefined,
+    // A leaf (an atomic, pseudo or collapsed state) sits above the edges (index.css), so its transition handle takes
+    // the pointer where an edge's hit path would otherwise cover it.
+    "data-leaf": !open || undefined,
     // A tree item (its node is the tree): the canvas's aria-activedescendant points at it and it carries the selection,
     // so a screen reader follows the keyboard's selection while the focus stays on the canvas.
     id: stateDomId(state.id),
@@ -149,7 +163,7 @@ function StateNodeView({ id, data, selected }: NodeProps<StateFlowNode>) {
         {...common}
         className={cn("flex h-6 w-full items-center gap-1.5 rounded-control px-0.5 text-12 text-primary", ring, active && "bg-accent-subtle font-semibold")}
       >
-        <Handles />
+        <Handles label={CHART_LABELS.linkHandle(state.label)} />
         <Symbol state={state} />
         <Name data={data} />
         <ProblemBadge badges={state.badges} />
@@ -207,7 +221,7 @@ function StateNodeView({ id, data, selected }: NodeProps<StateFlowNode>) {
           ring,
         )}
       >
-        <Handles />
+        <Handles label={CHART_LABELS.linkHandle(state.label)} />
         {header}
         {data.separators.map((x) => (
           <span
@@ -232,7 +246,7 @@ function StateNodeView({ id, data, selected }: NodeProps<StateFlowNode>) {
         ring,
       )}
     >
-      <Handles />
+      <Handles label={CHART_LABELS.linkHandle(state.label)} />
       {header}
       {state.internal.map((row) => (
         <button

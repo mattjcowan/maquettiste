@@ -214,3 +214,20 @@
     stroke-width: 3px !important;
   }
 }
+
+/* The statechart's transition handle (StateNode): shown on a hovered or selected state and while a drag is in flight. */
+.mq-link-handle {
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.react-flow__node:hover .mq-link-handle,
+.react-flow__node.selected .mq-link-handle,
+.mq-link-handle.connectingfrom {
+  opacity: 1;
+}
+/* The chart draws its edges above the open containers they cross (zIndex 1000 in StatechartCanvas, plus the nesting
+   depth of the states they join); a leaf state sits above every edge, so they end at its border, its transition handle
+   takes the pointer, and a drop on it finds it. */
+.react-flow__node:has(> [data-leaf]) {
+  z-index: 2000 !important;
+}

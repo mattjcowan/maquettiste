@@ -590,7 +590,8 @@ spacing 32, layer spacing 64, orthogonal edges, hierarchy-crossing edges handled
 **Selection and keyboard** (the editor's model: arrows, Enter, Escape, F2, Delete, F12, Shift+F12, Ctrl/Cmd+Z): arrows
 move the selection to the nearest state in that direction within the container; Enter enters a container (selects its
 initial child), Escape selects the parent; Tab and Shift+Tab walk the selected state's outgoing edges; `N` adds a
-sibling state, `Shift+N` a child, `T` starts a transition from the selection (arrows pick the target, Enter confirms);
+sibling state, `Shift+N` a child, `T` starts a transition from the selection (arrows or the mouse pick the target, Enter or
+a click confirms; a handle on the right edge of a hovered or selected state drags onto the target for the same result);
 F2 renames; Delete removes (a state with incoming transitions asks, listing them); F12 on an edge opens its event, guard
 or gate. Multi-selection moves and deletes together. Everything is one undo step per gesture.
 
@@ -998,7 +999,13 @@ routes to the process editor's Chart tab (the Domain model picker leaves process
 diagram holds is one batch of the process and the diagram (also from the States grid; Delete process deletes the diagram
 with it); the delete dialog lists the transitions entering the states and deletes them with the states; F12 on an edge
 opens its gate, else its guard, else its event; with nothing selected an arrow selects the initial state, Escape on a
-transition selects its source; in T mode the arrows pick among every state drawn. Budgets
+transition selects its source; in T mode the arrows pick among every state drawn. After P6, on the owner's request (the
+chart had no visible way to connect states): a handle on the right edge of a hovered or selected state (`chart-link-handle`)
+starts the drag through the library's connection machinery, the drop lands on whichever state is under the pointer
+(`elementsFromPoint`, so an edge's hit path over the state does not hide it), and in T mode a click on a state or
+hovering it picks the target; because the chart draws its edges above the open containers they cross (z 1000 plus the
+nesting depth), leaf states sit above every edge (`z-index: 2000` on a node holding `[data-leaf]`), which is also what
+lets the handle take the pointer where an outgoing edge starts. Budgets
 (`statechart-budget.mock-only.spec.ts`, `?mock=chart400`: 400 states nested three deep with parallel regions and 321
 transitions; run as the `mock` project's teardown, alone): first paint 228 to 236 ms (budget 250), layout in the worker
 265 to 270 ms on the first Layout and 160 to 177 ms after (budget 400). Tests: unit `statechart-model`,

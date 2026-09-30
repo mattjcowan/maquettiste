@@ -486,7 +486,7 @@ function ChartCanvas({ pc }: { pc: ProcessContext }) {
         selected: selection.transition === e.transition,
         className: flash?.ids.has(e.transition) ? flashClass : undefined,
         ariaLabel: CHART_LABELS.transitionAria(e.label),
-        zIndex: 1000,
+        zIndex: 1000, // above open containers; leaf states sit above the edges (index.css)
         data: { from: a, to: b, transition: e.transition, label: e.label, gate: e.gate, badges: e.badges, onSelect: selectTransition },
       });
     }
@@ -780,6 +780,34 @@ function ChartCanvas({ pc }: { pc: ProcessContext }) {
     if (primary) setLinking({ source: primary, target: primary });
   }, [primary]);
 
+  /** Ends a transition being drawn (Enter, a click on the target, or a handle dropped on it): one undo step. */
+  const finishLink = useCallback(
+    (to: string) => {
+      const source = linking?.source;
+      setLinking(null);
+      if (!source || source === to || !chart.states.has(to)) return;
+      const created: string[] = [];
+      pc.change((p) => void created.push(linkStates(p, source, to)));
+      if (created[0]) setSelection([], created[0]);
+    },
+    [linking, chart.states, pc, setSelection],
+  );
+
+  /** The state under the pointer when a handle drag ends; the chart's own nodes only. */
+  const stateAt = (e: MouseEvent | TouchEvent): string | null => {
+    const point = "changedTouches" in e ? e.changedTouches[0] : e;
+    if (!point) return null;
+    // The whole stack under the pointer: an edge's hit path may lie over the state.
+    for (const hit of document.elementsFromPoint(point.clientX, point.clientY)) {
+      const el = hit.closest<HTMLElement>(".react-flow__node[data-id]");
+      if (!el) continue;
+      if (!canvasRef.current?.contains(el)) return null;
+      const id = el.dataset.id ?? "";
+      return chart.states.has(id) ? id : null;
+    }
+    return null;
+  };
+
   const openMenuFor = useCallback((kind: MenuAt["kind"], id: string) => {
     const el = kind === "state" ? canvasRef.current?.querySelector(`[data-id="${id}"]`) : canvasRef.current?.querySelector(`[data-transition="${id}"]`);
     const r = el?.getBoundingClientRect();
@@ -817,12 +845,7 @@ function ChartCanvas({ pc }: { pc: ProcessContext }) {
         }
       } else if (key === "Enter") {
         handled();
-        const { source, target: to } = linking;
-        setLinking(null);
-        if (source === to) return;
-        const created: string[] = [];
-        pc.change((p) => void created.push(linkStates(p, source, to)));
-        if (created[0]) setSelection([], created[0]);
+        finishLink(linking.target);
       } else if (key === "Escape") {
         handled();
         setLinking(null);
@@ -974,8 +997,29 @@ function ChartCanvas({ pc }: { pc: ProcessContext }) {
           onPaneClick={() => {
             setSelection([], null);
             setMenu(null);
+            setLinking(null);
           }}
-          onNodeClick={() => canvasRef.current?.focus({ preventScroll: true })}
+          onNodeClick={(_, node) => {
+            canvasRef.current?.focus({ preventScroll: true });
+            // In T mode a click picks the target.
+            if (linking && node.type === "state" && node.id !== linking.source) finishLink(node.id);
+          }}
+          onNodeMouseEnter={(_, node) => {
+            if (linking && node.type === "state" && node.id !== linking.source) setLinking({ ...linking, target: node.id });
+          }}
+          // The mouse draws from a state's handle (StateNode): the drag starts T mode from that state, and the drop
+          // lands on whichever state is under the pointer, so the target needs no handle of its own.
+          onConnectStart={(_, { nodeId }) => {
+            if (!nodeId || !chart.states.has(nodeId)) return;
+            setSelection([nodeId], null);
+            setLinking({ source: nodeId, target: nodeId });
+            canvasRef.current?.focus({ preventScroll: true });
+          }}
+          onConnectEnd={(e) => {
+            const to = stateAt(e);
+            if (to) finishLink(to);
+            else setLinking(null);
+          }}
           onEdgeClick={() => canvasRef.current?.focus({ preventScroll: true })}
           onNodeContextMenu={(e, node) => {
             if (node.type !== "state") return;
@@ -994,7 +1038,7 @@ function ChartCanvas({ pc }: { pc: ProcessContext }) {
           minZoom={0.1}
           maxZoom={2}
           onlyRenderVisibleElements={nodes.length > 150}
-          nodesConnectable={false}
+          nodesConnectable
           disableKeyboardA11y
           deleteKeyCode={null}
           multiSelectionKeyCode="Shift"
