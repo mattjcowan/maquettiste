@@ -10,7 +10,22 @@ import type { ExplorerId, Forest } from "./tree";
 import { nodeOf } from "./tree";
 
 export type CreateKind =
-  "package" | "sub-package" | "entity" | "relation" | "enum" | "value-object" | "scalar-type" | "reference-type" | "diagram" | "database";
+  | "package"
+  | "sub-package"
+  | "entity"
+  | "relation"
+  | "enum"
+  | "value-object"
+  | "scalar-type"
+  | "reference-type"
+  | "diagram"
+  | "database"
+  | "process"
+  | "actor"
+  | "scenario";
+
+/** The New actions whose dialogs are the process dialogs (explorer/processDialogs.tsx), not NewElementDialog. */
+export const PROCESS_CREATE: ReadonlySet<CreateKind> = new Set(["process", "actor", "scenario"]);
 
 /** The menu and button label of each New action. */
 export const CREATE_LABELS: Record<CreateKind, string> = {
@@ -24,6 +39,9 @@ export const CREATE_LABELS: Record<CreateKind, string> = {
   "reference-type": "New reference type",
   diagram: "New diagram",
   database: "New database",
+  process: "New process…",
+  actor: "New actor…",
+  scenario: "New scenario…",
 };
 
 /** The element kind a New action creates. */
@@ -38,6 +56,9 @@ export const CREATED_KIND: Record<CreateKind, string> = {
   "reference-type": "reference-type",
   diagram: "diagram",
   database: "database",
+  process: "process",
+  actor: "actor",
+  scenario: "scenario",
 };
 
 /** A domain row's New actions, in the order of section 1.8. */
@@ -49,6 +70,7 @@ export const EXPLORER_CREATE: Record<ExplorerId, readonly CreateKind[]> = {
   "reference-data": ["reference-type"],
   databases: ["database"],
   diagrams: ["diagram"],
+  processes: ["process", "actor", "scenario"],
 };
 
 /** Everything the first-run panel of an empty model offers. */
@@ -67,6 +89,9 @@ export function folderCreate(kind: string | undefined): CreateKind | null {
     case "reference-type":
     case "diagram":
     case "database":
+    case "process":
+    case "actor":
+    case "scenario":
       return kind;
     default:
       return null;
@@ -87,6 +112,17 @@ export function takesDomain(kind: CreateKind): boolean {
 }
 
 /** The domain of a row: the domain itself, an element's domain, a folder's or group's domain; null for none. */
+/** The process a row belongs to (the process row itself, or a folder or row under it), or null. */
+export function processOfKey(forest: Forest, key: string | null | undefined): string | null {
+  for (let k = key, guard = 0; k && guard < 64; guard++) {
+    const node = nodeOf(forest, k);
+    if (!node) return null;
+    if (node.id && forest.byId.get(node.id)?.kind === "process") return node.id;
+    k = node.parent;
+  }
+  return null;
+}
+
 export function domainOfKey(forest: Forest, key: string | null | undefined): string | null {
   for (let k = key, guard = 0; k && guard < 64; guard++) {
     const node = nodeOf(forest, k);
@@ -217,6 +253,11 @@ export function buildElement(kind: Exclude<CreateKind, "reference-type">, input:
     case "diagram":
       json = { kind, id, name, ...home };
       break;
+    case "process":
+    case "actor":
+    case "scenario":
+      // One batch each, built by processCreate.ts for the process dialogs.
+      throw new Error(`A ${kind} is created by its own dialog.`);
   }
   return json as unknown as ModelJson;
 }

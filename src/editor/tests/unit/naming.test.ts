@@ -48,7 +48,7 @@ describe("naming (EX section 2)", () => {
   });
 
   it("keeps the rail's words and the owner's order", () => {
-    expect(RAIL.map((r) => r.label)).toEqual(["Domain model", "Reference data", "Databases", "Diagrams", "Generate"]);
+    expect(RAIL.map((r) => r.label)).toEqual(["Domain model", "Processes", "Reference data", "Databases", "Diagrams", "Generate"]);
     expect(RAIL.map((r) => r.view).filter((v) => v !== "generate")).toEqual(Object.keys(EXPLORER_LABELS));
     for (const r of RAIL) if (r.view !== "generate") expect(r.label).toBe(EXPLORER_LABELS[r.view]);
     expect(RAIL_LABELS.databases.tooltip).toBe("Databases, schemas and tables");

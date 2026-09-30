@@ -1,0 +1,335 @@
+{
+  "id": "PurchaseApproval",
+  "initial": "Drafting",
+  "states": {
+    "Drafting": {
+      "id": "01JQSTA0000000000000000101",
+      "on": {
+        "submit": [
+          {
+            "target": "#01JQSTA0000000000000000102",
+            "meta": {
+              "maquettiste": {
+                "id": "01JQTRN0000000000000000015"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "Review": {
+      "id": "01JQSTA0000000000000000102",
+      "states": {
+        "Budget": {
+          "id": "01JQSTA0000000000000000103",
+          "initial": "Checking",
+          "states": {
+            "Checking": {
+              "id": "01JQSTA0000000000000000104",
+              "invoke": [
+                {
+                  "id": "checkBudget",
+                  "src": "checkBudget",
+                  "onDone": [
+                    {
+                      "target": "#01JQSTA0000000000000000105",
+                      "meta": {
+                        "maquettiste": {
+                          "id": "01JQTRN0000000000000000016"
+                        }
+                      }
+                    }
+                  ],
+                  "onError": [
+                    {
+                      "target": "#01JQSTA0000000000000000106",
+                      "meta": {
+                        "maquettiste": {
+                          "id": "01JQTRN0000000000000000017"
+                        }
+                      }
+                    }
+                  ],
+                  "meta": {
+                    "maquettiste": {
+                      "id": "01JQPRX0000000000000000019",
+                      "type": "service"
+                    }
+                  }
+                }
+              ]
+            },
+            "BudgetOk": {
+              "id": "01JQSTA0000000000000000105",
+              "type": "final"
+            },
+            "BudgetRejected": {
+              "id": "01JQSTA0000000000000000106",
+              "on": {
+                "requestChanges": [
+                  {
+                    "target": "#01JQSTA0000000000000000101",
+                    "meta": {
+                      "maquettiste": {
+                        "id": "01JQTRN0000000000000000018"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "meta": {
+            "maquettiste": {
+              "initialImplied": true
+            }
+          }
+        },
+        "Compliance": {
+          "id": "01JQSTA0000000000000000107",
+          "initial": "Pending",
+          "states": {
+            "Pending": {
+              "id": "01JQSTA0000000000000000108",
+              "invoke": [
+                {
+                  "id": "complianceReview",
+                  "src": "complianceReview",
+                  "onDone": [
+                    {
+                      "target": "#01JQSTA0000000000000000109",
+                      "meta": {
+                        "maquettiste": {
+                          "id": "01JQTRN0000000000000000019"
+                        }
+                      }
+                    }
+                  ],
+                  "meta": {
+                    "maquettiste": {
+                      "id": "01JQPRX0000000000000000020",
+                      "type": "human-task",
+                      "actors": [
+                        "01JQACT0000000000000000006"
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            "Cleared": {
+              "id": "01JQSTA0000000000000000109",
+              "type": "final"
+            }
+          },
+          "meta": {
+            "maquettiste": {
+              "initialImplied": true
+            }
+          }
+        }
+      },
+      "type": "parallel",
+      "onDone": [
+        {
+          "target": "#01JQSTA0000000000000000110",
+          "meta": {
+            "maquettiste": {
+              "id": "01JQTRN0000000000000000020"
+            }
+          }
+        }
+      ]
+    },
+    "Approval": {
+      "id": "01JQSTA0000000000000000110",
+      "on": {
+        "approve": [
+          {
+            "target": "#01JQSTA0000000000000000111",
+            "meta": {
+              "maquettiste": {
+                "id": "01JQTRN0000000000000000021",
+                "gate": {
+                  "id": "01JQPRX0000000000000000022",
+                  "name": "purchaseApproval",
+                  "displayName": "Purchase approval",
+                  "required": 2,
+                  "signers": [
+                    "01JQACT0000000000000000004",
+                    "01JQACT0000000000000000005"
+                  ],
+                  "requiredActors": [
+                    "01JQACT0000000000000000005"
+                  ],
+                  "meanings": [
+                    {
+                      "id": "01JQPRX0000000000000000023",
+                      "name": "approved",
+                      "displayName": "Approved for purchase"
+                    }
+                  ],
+                  "auditAttributes": [
+                    {
+                      "id": "01JQATT0000000000000000204",
+                      "name": "costCentre",
+                      "type": "string"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "reject": [
+          {
+            "target": "#01JQSTA0000000000000000113",
+            "meta": {
+              "maquettiste": {
+                "id": "01JQTRN0000000000000000022"
+              }
+            }
+          }
+        ]
+      },
+      "after": {
+        "432000000": [
+          {
+            "actions": [
+              "sendReminder"
+            ],
+            "meta": {
+              "maquettiste": {
+                "id": "01JQTRN0000000000000000023",
+                "after": "P5D"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "Ordering": {
+      "id": "01JQSTA0000000000000000111",
+      "invoke": [
+        {
+          "id": "createPurchaseOrder",
+          "src": "createPurchaseOrder",
+          "onDone": [
+            {
+              "target": "#01JQSTA0000000000000000112",
+              "meta": {
+                "maquettiste": {
+                  "id": "01JQTRN0000000000000000024"
+                }
+              }
+            }
+          ],
+          "meta": {
+            "maquettiste": {
+              "id": "01JQPRX0000000000000000021",
+              "type": "service",
+              "actors": [
+                "01JQACT0000000000000000007"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "Ordered": {
+      "id": "01JQSTA0000000000000000112",
+      "type": "final"
+    },
+    "Rejected": {
+      "id": "01JQSTA0000000000000000113",
+      "type": "final"
+    }
+  },
+  "context": {
+    "amount": 0,
+    "reminders": 0
+  },
+  "meta": {
+    "maquettiste": {
+      "id": "01JQPRC0000000000000000002",
+      "displayName": "Purchase approval",
+      "package": "01JQPKG0000000000000000002",
+      "subject": "01JQENT0000000000000000003",
+      "description": "A purchase request checked for budget and compliance in parallel, approved by two signers and ordered.",
+      "context": [
+        {
+          "id": "01JQATT0000000000000000201",
+          "name": "amount",
+          "type": "decimal"
+        },
+        {
+          "id": "01JQATT0000000000000000202",
+          "name": "reminders",
+          "type": "int32"
+        }
+      ],
+      "events": [
+        {
+          "id": "01JQPRX0000000000000000014",
+          "name": "submit",
+          "actors": [
+            "01JQACT0000000000000000003",
+            "01JQACT0000000000000000008"
+          ]
+        },
+        {
+          "id": "01JQPRX0000000000000000015",
+          "name": "requestChanges",
+          "actors": [
+            "01JQACT0000000000000000003",
+            "01JQACT0000000000000000008"
+          ]
+        },
+        {
+          "id": "01JQPRX0000000000000000016",
+          "name": "approve",
+          "actors": [
+            "01JQACT0000000000000000004",
+            "01JQACT0000000000000000005"
+          ]
+        },
+        {
+          "id": "01JQPRX0000000000000000017",
+          "name": "reject",
+          "payload": [
+            {
+              "id": "01JQATT0000000000000000203",
+              "name": "reason",
+              "type": "text",
+              "required": true
+            }
+          ],
+          "actors": [
+            "01JQACT0000000000000000004",
+            "01JQACT0000000000000000005"
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "id": "01JQPRX0000000000000000018",
+          "name": "sendReminder",
+          "expression": "({ reminders: context.reminders + 1 })"
+        }
+      ],
+      "transitions": [
+        "01JQTRN0000000000000000015",
+        "01JQTRN0000000000000000016",
+        "01JQTRN0000000000000000017",
+        "01JQTRN0000000000000000018",
+        "01JQTRN0000000000000000019",
+        "01JQTRN0000000000000000020",
+        "01JQTRN0000000000000000021",
+        "01JQTRN0000000000000000022",
+        "01JQTRN0000000000000000023",
+        "01JQTRN0000000000000000024"
+      ],
+      "initialImplied": true
+    }
+  }
+}

@@ -564,7 +564,7 @@ header; Translations collapsed. Tabs:
 | **Scenarios** | The process's scenarios: name, steps, status (passed, failed at step n, not run), Replay, Open, Refresh expectations, Delete |
 
 The inspector's sections for a canvas selection: **State** (general; entry and exit; invokes; bound member; description;
-translations; properties), **Transition** (trigger; source and targets; guard; actions; external; gate; actors, read-only
+translations, deferred (P3 review): the editor's localization does not cover process nodes yet; properties), **Transition** (trigger; source and targets; guard; actions; external; gate; actors, read-only
 from the event), **Process** when nothing is selected (the top controls, Code generation hints, and **Source**: import provenance and the
 XState data kept opaque by §5.2). A scenario opens in
 its own tab: header (process, outcome), a steps grid (input, event, actor, signer, meaning, reason, payload, assumptions,
@@ -889,6 +889,86 @@ request on simulate and record (exit 4 on the CLI) and MQ9305 at `/start/at` in 
 event, invoke, guard (`assume` keys) and actor names, resolved to ids when exactly one element has the name. MQ9502 to MQ9504
 have passing rows, and MQ9503 has separate rows for the statement limit and the deadline (`ProcessExpressions.Open` takes limits).
 No fixture expectation needed a correction; the 13 scenarios pass.
+
+**Status P3, stage (explorer, dialogs, menus), 2026-09-30:** built and verified. The rail has **Processes** after Domain
+model (`EXPLORERS`, `SIDEBAR_VIEWS`, the page-state and layout id lists, search place `processes`). The tree
+(`explorer/tree.ts`, root `@processes`) groups processes by domain, nested, hiding domains without processes; a process
+row (`@processes/p:<id>`, secondary "lifecycle · Invoice.status · 4 states": the attribute name once the row is expanded,
+read from the subject's document) holds States (nested) and Events from its document and Scenarios from the index (steps
+and status: passed, failed at step n, not run; the folder shows "✓ n passed" from the last verify, `explorer/processApi.ts`);
+the Actors folder lists type and stereotypes. `scenario` is a new kind folder with placement `processes`. The Processes tree
+is rebuilt rather than patched on a process, actor or scenario change. A state, event or scenario row opens the process
+editor on its tab and records the node in `app/processFocus.ts`; until P3b a placeholder frame (`app/PendingEditor.tsx`,
+wired in `editors/EditorTabs.tsx`; `EDITOR_KINDS` gains process, actor, scenario) shows the tabs and the node. Dialogs
+(`explorer/processDialogs.tsx`, models in `explorer/processCreate.ts`) save one batch each: New process (a lifecycle
+updates the subject's `lifecycle` and, for "New status attribute and enum", creates the enum and adds the attribute in the
+same batch; "Start from its members" is on by default), New actor (the goals field when a chosen stereotype's extension
+declares `goals`, from `GET /api/project` extensions), New scenario (Empty: one step on the first event; Record from
+simulation disabled until P4), Import XState (dry run preview, then Apply), and Delete process (its scenarios in the same
+batch). Menus: Open, Open in new tab, Simulate (disabled, with the note), Verify scenarios (Output panel), Export XState
+(download), Where used, Move, Rename, Delete; New process and Import XState on a domain group. Mock: `mocks/model/processSeed.ts`
+adds PurchaseApproval (the fixture's ids, three actors), InvoiceLifecycle (Invoice.status) and three scenarios; the
+`drift` scenario (`?mock=drift`) adds Payment.status and PaymentLifecycle with MQ9203 (the mock validator's
+`enumDrift`); `mocks/processHandlers.ts` answers the six operations (recordings `simulateProcess.budget-rejected.json`,
+`exportProcess.json`, `verifyScenarios.*.json`, `importProcess.json`, `syncEnumFromProcess.json`, recorded by
+`ProcessEndpointTests`; verify fails the scenarios `MOCK_FAILURES` lists). Left for P3b: the process, actor and scenario
+editors (6.2) and the Problems quick fixes.
+
+**Status P3, stage (process, actor and scenario editors), 2026-09-30:** built and verified. `editors/process/` replaces the
+placeholder frame (`app/PendingEditor.tsx` removed): `ProcessEditor` in the 3.6 frame with the top controls
+(`ProcessControls`: name, domain, use, subject, bound attribute with the MQ9203 badge and **Sync enum**: the dry run's
+added, removed, reordered and refused in a confirm, then the apply, one undo step on the enum) and the tabs States (tree
+grid; Ctrl+Enter a sibling, Ctrl+Shift+Enter a child, Ctrl+Delete refused while a transition enters the state),
+Transitions (with the Guards and Actions grids; the expression cell carries an MQ9501 marker from a parse-only check and
+from the engine's diagnostic; a gate is added or removed from its transition's row), Events (payload in the attribute
+grid), Gates (one form per gate, N of M), Context and Scenarios (Replay = verify one, Open, Refresh expectations = the
+`refresh-scenario` batch operation, Delete). One generic keyboard grid (`editors/process/Grid.tsx`, ROW_H, entered as
+the attribute grid, a cell kind per row, row problems from the Problems store, cell markers) serves every grid; each
+commit is one draft change and one undo step. The pure model is `model/process.ts`. The editor opens on States, or on the
+tab and node the explorer asked for (`useProcessFocus`, then `clearProcessFocus`). The selection inside the editor
+(`editors/process/selection.ts`) drives the inspector (`inspector/ProcessSections.tsx`): State, Transition, or Process
+(use, subject, bound attribute, Code generation hints, Source as read-only JSON); Actor (type, used by) and Scenario
+(process, outcome, steps, status). `editors/actor/ActorEditor.tsx` (name, type, chips, used by; Code generation; Where
+used) and `editors/scenario/ScenarioEditor.tsx` (name, process, outcome; the steps grid with each step's replay status).
+Mock: MQ9501 in `mocks/model/validate.ts`; `refresh-scenario` answered as a saved no-op in `mocks/model/store.ts` (it fell
+to the delete branch before). A state's display name is translated in the process's Translations section (no per-node
+section). Left: the Problems quick fixes (MQ9001 set-initial, MQ9203 sync-enum with the dry run, MQ9302-MQ9304
+refresh-scenario) in `problems/`, and P4.
+
+**Status P3, stage (Problems quick fixes, user guide), 2026-09-30:** built and verified; round P3 is complete. The Problems
+panel shows a fix button beside a saved diagnostic whose rule has a catalog `quickFix` or an editor-built fix
+(`problems/quickFix.ts`, pure: `hasQuickFix`, `fixDocuments`, `deriveQuickFix` per the derivation table;
+`problems/applyQuickFix.ts`: flush the drafts, re-derive from the saved documents, one batch, one undo entry over every
+document the fix may change, then the index and validation refresh; `problems/QuickFixButton.tsx`). MQ9001 **Set
+initial** (`set-initial`, `id` the process or the compound state at the pointer, `target` the first child, a picker when
+there are several; an initial on a non-compound state or with no children becomes **Remove initial**, a plain update);
+MQ9203 **Sync enum** (the dry run's plan in a confirm, then the apply of 4.4); MQ9302-MQ9304 **Update expectations from
+replay** (`refresh-scenario`); plain updates for MQ9013 (remove the node), MQ9016 (remove the member), MQ9102 (add to
+signers), MQ9105 (add the signer to the event's actors), MQ9205 (the subject's own bound attribute's `default` = the
+initial root state's name; none for an inherited or virtual attribute); MQ9201 **Set lifecycle on the subject**
+(pointer `/subject`) and **Make it this entity's lifecycle** (an entity's `/lifecycle` naming an orchestration) as
+`set-lifecycle`, built in the editor, so no per-diagnostic arguments were added to the catalog. As built: undoing the fix
+of an error re-introduces that error, which the element-save rule refuses (engine and mock alike), so such an undo
+reports "Cannot undo"; the undo of a warning fix restores the documents. The mock store answers `set-initial` and
+`set-lifecycle` (it fell to the delete branch before). The user guide has "Processes, actors and scenarios".
+
+**Status P3, review fixes, 2026-09-30:** built and verified. Grid rows are ROW_H (a 20 px `icon-row` button variant in
+`components/ui/button.tsx` for row actions in the process grids and the attribute grid; e2e asserts every `*-grid-row`
+height). Row keys: Ctrl+G adds or removes an event transition's gate, R replays and Shift+R refreshes a scenario; the
+Scenarios hint shows (Grid renders the hint with `onKey` or `onRemove`). A select cell moved by the keyboard commits once
+(Enter, Tab or blur); a pointer choice commits at once. F12 / Shift+F12 on reference cells (`GridColumn.definition`,
+`useGridTargets` in `shared.ts`): elements open, process nodes select on their tab. The selected state's Invokes grid
+(`StatesTab.tsx`: name, type, process, actors; a removal a transition waits on is refused). The gate's Required field is
+a draft edit saved on blur or Enter. New process: always starts from the enum's members (the checkbox is gone), the new
+status attribute defaults to `Initial` (MQ9205), and the subject's previous lifecycle is unbound in the same batch (a
+plain update: the engine's `set-lifecycle` reads the pre-batch snapshot, so it cannot target a process the batch
+creates). Use and Subject go through `set-lifecycle` (`editors/process/api.ts` `setLifecycle`, one undo entry over the
+process, the entity and the previous partners); Lifecycle is offered only once a subject is set. New scenario… from a
+process's row or folder presets that process (`processOfKey`). A collapsed lifecycle row reads Subject.attribute (the
+explorer reads the process and subject documents once per forest). Mock: `mocks/model/validate.ts` reports MQ9001, MQ9201
+(process side) and MQ9205; the seed binds Invoice to InvoiceLifecycle and the drift scenario binds Payment; the new
+`?mock=lifecycle` scenario has one finding per quick-fix kind (e2e `processReview.mock-only.spec.ts`); the contract suite
+calls every process operation and the process batch ops. Deferred with reason: per-state Translations (above).
 
 ## 10. SPEC amendments and open risks
 

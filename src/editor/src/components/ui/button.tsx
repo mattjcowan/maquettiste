@@ -18,6 +18,8 @@ export const buttonVariants = cva(
         md: "h-7 px-2.5 text-12",
         icon: "size-7 text-12",
         "icon-sm": "size-7 text-12",
+        /** A grid row's action: 20 px with a 14 px icon, so the row keeps ROW_H. */
+        "icon-row": "size-5 rounded-[4px] text-12 [&_svg]:size-3.5",
       },
     },
     defaultVariants: { variant: "secondary", size: "md" },
@@ -34,7 +36,7 @@ export const iconTitle = (label: string, shortcut?: string) => (shortcut ? `${la
  */
 export const iconLabel = (label: string, shortcut?: string) => ({ title: iconTitle(label, shortcut), "aria-label": label });
 
-type IconSize = "icon" | "icon-sm";
+type IconSize = "icon" | "icon-sm" | "icon-row";
 
 interface ButtonBaseProps extends ButtonHTMLAttributes<HTMLButtonElement>, Omit<VariantProps<typeof buttonVariants>, "size"> {
   /** The keyboard shortcut shown at the end of the tooltip, as "Collapse sidebar (Ctrl+B)". */

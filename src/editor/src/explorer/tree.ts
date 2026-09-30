@@ -18,6 +18,8 @@ import {
   KIND_LABELS,
   SUB_DOMAIN_LABEL,
   OTHER_FOLDER,
+  ACTOR_TYPE_LABELS,
+  PROCESS_LABELS,
   countOf,
   kindFolder,
   placementOf,
@@ -26,7 +28,7 @@ import {
 
 export type ExplorerId = keyof typeof EXPLORER_LABELS;
 /** The explorers in rail order. */
-export const EXPLORERS: readonly ExplorerId[] = ["domain-model", "reference-data", "databases", "diagrams"];
+export const EXPLORERS: readonly ExplorerId[] = ["domain-model", "processes", "reference-data", "databases", "diagrams"];
 
 export type NodeType = "root" | "group" | "domain" | "folder" | "element" | "database" | "schema" | "table" | "item";
 
@@ -127,6 +129,9 @@ export type IndexRow = Omit<ElementSummary, "kind"> & {
   fieldCount?: number | null;
 };
 type Row = IndexRow;
+
+/** A scenario's last verify result (phase-3-design.md 6.2): passed, or the 1-based step it failed at (0: the outcome). */
+export type ScenarioStatus = { passed: true } | { passed: false; step: number };
 /** The E5c addendum `enumId`, read when present. */
 type Summary = TableSummary & { enumId?: string | null };
 
@@ -164,6 +169,8 @@ export interface TreeInput {
   errors?: ReadonlyMap<string, number>;
   /** The Databases view option: Tables in folders named after the owning element's domain. */
   groupTablesByDomain?: boolean;
+  /** Scenario id → its last verify result (the Processes explorer's passed counts). */
+  scenarioStatus?: ReadonlyMap<string, ScenarioStatus>;
 }
 
 export interface RelatedMaps {
@@ -238,6 +245,7 @@ export interface PatchState {
 
 const ROOTS: Record<ExplorerId, string> = {
   "domain-model": "@domain-model",
+  processes: "@processes",
   "reference-data": "@reference-data",
   databases: "@databases",
   diagrams: "@diagrams",
@@ -289,7 +297,29 @@ function rowSecondary(byId: ReadonlyMap<string, Row>, r: Row): string | undefine
   }
   if (r.kind === "diagram") return plural(r.memberCount ?? 0, "member", "members");
   if (r.kind === "seed" && r.rowCount != null) return plural(r.rowCount, "row", "rows");
+  if (r.kind === "process") return processSecondary(r, r.subject ? nameOf(r.subject) : undefined, undefined);
+  if (r.kind === "actor") return actorSecondary(r);
   return undefined;
+}
+
+/** A process row's secondary text: "lifecycle · Invoice.status · 4 states" (the attribute once the document is loaded). */
+export function processSecondary(r: Pick<Row, "use" | "stateCount">, subject: string | undefined, attribute: string | undefined): string {
+  const use = r.use === "lifecycle" ? PROCESS_LABELS.lifecycle : PROCESS_LABELS.orchestration;
+  const parts: string[] = [use];
+  if (subject) parts.push(attribute ? `${subject}.${attribute}` : subject);
+  parts.push(plural(r.stateCount ?? 0, "state", "states"));
+  return parts.join(" · ");
+}
+
+/** An actor row's secondary text: its type, then its stereotypes ("person · persona"). */
+export function actorSecondary(r: Pick<Row, "actorType" | "stereotypes">): string {
+  return [r.actorType ? ACTOR_TYPE_LABELS[r.actorType] : "", ...(r.stereotypes ?? [])].filter(Boolean).join(" · ");
+}
+
+/** A scenario's status words: "passed", "failed at step 2", "not run". */
+export function scenarioStatusText(status: ScenarioStatus | undefined): string {
+  if (!status) return PROCESS_LABELS.notRun;
+  return status.passed ? PROCESS_LABELS.passed : PROCESS_LABELS.failedAt(status.step);
 }
 
 /** An element's own row (not registered in any map). */
@@ -340,6 +370,7 @@ function sameExtras(input: TreeInput, last: TreeInput): boolean {
     input.categoryParents === last.categoryParents &&
     input.categoryNames === last.categoryNames &&
     input.errors === last.errors &&
+    input.scenarioStatus === last.scenarioStatus &&
     !!input.groupTablesByDomain === !!last.groupTablesByDomain &&
     !!input.referenceFlat === !!last.referenceFlat
   );
@@ -390,6 +421,15 @@ export function patchForest(forest: Forest, patch: IndexPatch): Forest | null {
     ...patch.upserts.map((u): [Row | undefined, Row] => [byId.get(u.id), u as Row]),
     ...patch.deleted.map((id): [Row | undefined, undefined] => [byId.get(id), undefined]),
   ];
+
+  // The Processes explorer is rebuilt, not patched: a process, actor or scenario change, or a domain change while it lists
+  // processes (its groups are named after domains).
+  const listsProcesses = (nodes.get(ROOTS.processes)?.children?.length ?? 0) > 0;
+  const PHASE3 = ["process", "actor", "scenario"];
+  for (const [old, row] of steps) {
+    const kind = row?.kind ?? old?.kind ?? "";
+    if (PHASE3.includes(kind) || (kind === "package" && listsProcesses)) return null;
+  }
 
   // Plan: every change is checked before anything is touched.
   for (const [old, row] of steps) {
@@ -626,8 +666,16 @@ export function buildForest(input: TreeInput): Forest {
   const referenceTypes: Row[] = [];
   const vocabularies: Row[] = [];
   const unplaced: string[] = [];
+  const processRows: Row[] = [];
+  const actorRows: Row[] = [];
+  const scenarioRows: Row[] = [];
   for (const r of rows) {
+    if (r.kind === "process") processRows.push(r);
+    else if (r.kind === "actor") actorRows.push(r);
     switch (placementOf(r.kind)) {
+      case "processes":
+        scenarioRows.push(r);
+        break;
       case "package":
         packages.push(r);
         break;
@@ -1321,6 +1369,65 @@ export function buildForest(input: TreeInput): Forest {
   headers.diagrams = plural(diagrams.length, "diagram", "diagrams");
   rootNode("diagrams", diagramChildren);
 
+  // ------------------------------------------------------------------ Processes tree (phase-3-design.md 6.1)
+
+  // Processes grouped by domain, nested as in the Domain model (domains without processes are hidden), then Actors. A
+  // process row holds its Scenarios (from the index); its States and Events come with its document (documentChildren).
+  const scenariosOf = new Map<string, Row[]>();
+  for (const r of scenarioRows) push(scenariosOf, r.process ?? "", r);
+  const processKey = (id: string) => `${ROOTS.processes}/p:${id}`;
+  const processGroups = new Map<string, { node: TreeNode; members: TreeNode[]; total: number }>();
+  const processTop: TreeNode[] = [];
+  const processGroup = (pkg: string): { node: TreeNode; members: TreeNode[]; total: number } => {
+    let group = processGroups.get(pkg);
+    if (group) return group;
+    const label = nameOf(pkg) ?? pkg;
+    const node = newNode(`${ROOTS.processes}/d:${pkg}`, "group", "processes", label, "domain", label.toLowerCase());
+    node.id = pkg;
+    node.kind = "process";
+    add(node);
+    group = { node, members: [], total: 0 };
+    processGroups.set(pkg, group);
+    const up = byId.get(pkg)?.package;
+    if (isPackage(up) && up !== pkg) processGroup(up!).members.push(node);
+    else processTop.push(node);
+    return group;
+  };
+  const statusOf = input.scenarioStatus;
+  for (const r of processRows) {
+    const node = add(newElementNode(byId, r, "processes", processKey(r.id), errorsOf(r.id)));
+    node.load = "document";
+    const scenarios = (scenariosOf.get(r.id) ?? []).map((sc) => {
+      const row = elementNode(sc, "processes");
+      row.secondary = `${plural(sc.stepCount ?? 0, "step", "steps")} · ${scenarioStatusText(statusOf?.get(sc.id))}`;
+      return row;
+    });
+    const passed = scenarios.filter((sc) => statusOf?.get(sc.id!)?.passed).length;
+    const folder = folderNode(`${node.key}/scenarios`, "processes", kindFolder("scenario")!, scenarios, PROCESS_LABELS.scenarios);
+    if (passed) folder.secondary = PROCESS_LABELS.passedCount(passed);
+    attach(node, [folder]);
+    if (isPackage(r.package)) {
+      processGroup(r.package!).members.push(node);
+      for (let p: string | null | undefined = r.package, guard = 0; isPackage(p) && guard < 64; p = byId.get(p!)?.package, guard++) processGroup(p!).total++;
+    } else processTop.push(node);
+  }
+  for (const { node, members, total } of processGroups.values()) {
+    attach(node, members.sort(byLabel));
+    node.count = members.length;
+    node.secondary = plural(total, "process", "processes");
+  }
+  processTop.sort(byLabel);
+  if (actorRows.length) {
+    const actorNodes = actorRows.map((r) => add(newElementNode(byId, r, "processes", `${ROOTS.processes}/a:${r.id}`, errorsOf(r.id))));
+    const folder = folderNode(`${ROOTS.processes}/actors`, "processes", kindFolder("actor")!, actorNodes, PROCESS_LABELS.actors, kindFolder("actor")!.tooltip);
+    folder.home = false;
+    folder.secondary = fmt(actorNodes.length);
+    folder.sort = "\uffff";
+    processTop.push(folder);
+  }
+  headers.processes = [countOf(processRows.length, "process"), countOf(actorRows.length, "actor"), countOf(scenarioRows.length, "scenario")].join(" · ");
+  rootNode("processes", processTop);
+
   // ------------------------------------------------------------------ error roll-up, vocabularies
 
   if (input.errors?.size) for (const explorer of EXPLORERS) rollErrors(nodes, ROOTS[explorer]);
@@ -1623,9 +1730,10 @@ function mappingRows(forest: Forest, node: TreeNode, entity: string): TreeNode[]
 }
 
 /** Children that need the element's document: Attributes (entity, value object, relation) or Members (enum), first. */
-export function documentChildren(forest: Forest, key: string, doc: ElementDocument): readonly string[] {
+export function documentChildren(forest: Forest, key: string, doc: ElementDocument, boundAttribute?: string): readonly string[] {
   const node = nodeOf(forest, key);
   if (!node) return [];
+  if (node.kind === "process") return processChildren(forest, node, doc, boundAttribute);
   const rest = childKeys(forest, key).filter((k) => k !== `${key}/attributes` && k !== `${key}/members`);
   const json = doc.json as Record<string, unknown>;
   const nameOf = (id: string) => forest.byId.get(id)?.name;
@@ -1642,6 +1750,48 @@ export function documentChildren(forest: Forest, key: string, doc: ElementDocume
     }
   }
   node.children = added ? [added.key, ...rest] : [...rest];
+  return node.children;
+}
+
+type StateDoc = { id?: string; name?: string; type?: string; states?: StateDoc[] };
+
+/** A process row's States (nested) and Events folders from its document, before its Scenarios folder (6.1). */
+function processChildren(forest: Forest, node: TreeNode, doc: ElementDocument, attribute: string | undefined): readonly string[] {
+  const key = node.key;
+  const json = doc.json as { states?: StateDoc[]; events?: { id?: string; name?: string; actors?: string[] }[]; boundAttribute?: string; subject?: string };
+  const rest = childKeys(forest, key).filter((k) => k !== `${key}/states` && k !== `${key}/events`);
+  const stateItems = (holder: string, list: StateDoc[] | undefined): TreeNode[] =>
+    (list ?? []).map((st, i) => {
+      const row = item(forest, holder, st.id ?? String(i), st.name ?? "", st.type && st.type !== "atomic" ? st.type : undefined);
+      row.icon = "state";
+      row.kind = "state";
+      row.explorer = node.explorer;
+      if (st.states?.length) {
+        const children = stateItems(row.key, st.states);
+        row.children = children.map((c) => c.key);
+        row.count = children.length;
+      }
+      return row;
+    });
+  let total = 0;
+  const countAll = (list: StateDoc[] | undefined) => (list ?? []).forEach((st) => (total++, countAll(st.states)));
+  countAll(json.states);
+  const states = navFolder(forest, node, "states", PROCESS_LABELS.states, "state", stateItems(`${key}/states`, json.states), fmt(total));
+  const events = (json.events ?? []).map((e, i) => {
+    const row = item(forest, `${key}/events`, e.id ?? String(i), e.name ?? "", undefined);
+    row.icon = "event";
+    row.kind = "event";
+    row.explorer = node.explorer;
+    return row;
+  });
+  const eventFolder = navFolder(forest, node, "events", PROCESS_LABELS.events, "event", events.sort(byLabel), fmt(events.length));
+  // The bound attribute's name is in the subject's document (the caller reads it); the row then says Subject.attribute.
+  const row = node.id ? forest.byId.get(node.id) : undefined;
+  if (row && json.subject && attribute) {
+    const subject = forest.byId.get(json.subject);
+    node.secondary = processSecondary(row, subject ? subject.displayName || subject.name : undefined, attribute);
+  }
+  node.children = [states.key, eventFolder.key, ...rest];
   return node.children;
 }
 

@@ -13,13 +13,15 @@ import { MockJobQueue, type JobClock } from "./model/jobs";
 import { MockLocalization } from "./model/localization";
 import type { Seed } from "./model/store";
 import { billingSeed, emptySeed, mediumSeed } from "./model/seed";
+import { withDrift, withLifecycleProblems } from "./model/processSeed";
 import { truncateChangeEvent } from "./wire";
 
 /**
  * `?mock=` scenarios. `medium` is the in-browser 200-entity model; `large` is the 5,000-entity model
  * that scripts/gen-scale-model.mjs writes (browser.ts loads it and passes it as `seed`).
  */
-export type Scenario = "conflict" | "slow" | "empty" | "medium" | "wide" | "large" | "unauthenticated" | "presence" | "invalid" | "locales";
+export type Scenario =
+  "conflict" | "slow" | "empty" | "medium" | "wide" | "large" | "unauthenticated" | "presence" | "invalid" | "locales" | "drift" | "lifecycle";
 
 export interface MockBackendOptions {
   scenarios?: Scenario[];
@@ -63,7 +65,9 @@ export class MockBackend {
     const seed =
       options.seed ??
       (this.scenarios.has("empty") ? emptySeed() : this.scenarios.has("medium") ? mediumSeed() : this.scenarios.has("wide") ? mediumSeed(400) : billingSeed());
-    this.model = new MockModel(this.scenarios.has("locales") ? withLocales(seed) : seed, {
+    const lifecycle = this.scenarios.has("lifecycle") ? withLifecycleProblems(seed) : seed;
+    const drifted = this.scenarios.has("drift") ? withDrift(lifecycle) : lifecycle;
+    this.model = new MockModel(this.scenarios.has("locales") ? withLocales(drifted) : drifted, {
       newId,
       onChanged: (changes) => {
         // E5d: each change carries the element's index row as it is now.
@@ -156,6 +160,6 @@ function withLocales(seed: Seed): Seed {
 export function scenariosFrom(search: string): Scenario[] {
   const params = new URLSearchParams(search);
   const all = params.getAll("mock").flatMap((v) => v.split(","));
-  const known: Scenario[] = ["conflict", "slow", "empty", "medium", "wide", "large", "unauthenticated", "presence", "invalid", "locales"];
+  const known: Scenario[] = ["conflict", "slow", "empty", "medium", "wide", "large", "unauthenticated", "presence", "invalid", "locales", "drift", "lifecycle"];
   return all.filter((v): v is Scenario => (known as string[]).includes(v));
 }

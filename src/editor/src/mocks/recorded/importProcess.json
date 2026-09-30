@@ -1,0 +1,66 @@
+{
+  "document": {
+    "$schema": "../../.schema/v1/process.json",
+    "kind": "process",
+    "id": "01M3RAZBM65W8AGAKMZTBTDSH3",
+    "name": "Door",
+    "package": "01JQPKG0000000000000000002",
+    "events": [
+      {
+        "id": "01M3RAZBM628Q67RX7JCDSTN6F",
+        "name": "open"
+      },
+      {
+        "id": "01M3RAZBM64X2RPBTZRT4TSZXN",
+        "name": "close"
+      }
+    ],
+    "states": [
+      {
+        "id": "01M3RAZBM64CQQCMDD41MRR0V3",
+        "name": "Closed"
+      },
+      {
+        "id": "01M3RAZBM6DWFAPKYQ8TNCHDSN",
+        "name": "Opened"
+      }
+    ],
+    "initial": "01M3RAZBM64CQQCMDD41MRR0V3",
+    "transitions": [
+      {
+        "id": "01M3RAZBM6T5E0R45KSMPWEKD6",
+        "source": "01M3RAZBM64CQQCMDD41MRR0V3",
+        "event": "01M3RAZBM628Q67RX7JCDSTN6F",
+        "targets": [
+          "01M3RAZBM6DWFAPKYQ8TNCHDSN"
+        ]
+      },
+      {
+        "id": "01M3RAZBM6ZC8JZ1W3J42C07FP",
+        "source": "01M3RAZBM6DWFAPKYQ8TNCHDSN",
+        "event": "01M3RAZBM64X2RPBTZRT4TSZXN",
+        "targets": [
+          "01M3RAZBM64CQQCMDD41MRR0V3"
+        ]
+      }
+    ],
+    "source": {
+      "format": "xstate",
+      "name": "Door"
+    }
+  },
+  "diagnostics": [],
+  "created": [
+    "01M3RAZBM65W8AGAKMZTBTDSH3",
+    "01M3RAZBM64CQQCMDD41MRR0V3",
+    "01M3RAZBM6DWFAPKYQ8TNCHDSN",
+    "01M3RAZBM6T5E0R45KSMPWEKD6",
+    "01M3RAZBM628Q67RX7JCDSTN6F",
+    "01M3RAZBM6ZC8JZ1W3J42C07FP",
+    "01M3RAZBM64X2RPBTZRT4TSZXN"
+  ],
+  "removed": [],
+  "applied": false,
+  "id": "01M3RAZBM65W8AGAKMZTBTDSH3",
+  "hash": null
+}

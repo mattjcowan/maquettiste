@@ -56,6 +56,23 @@ export interface ValidationContext extends ModelGlobals {
   extensions: ValidationInput["extensions"];
   /** The entry that uses `scope` first in path order, when that is not `entry` itself (MQ3001). */
   firstInScope(scope: string, entry: ModelEntry): ModelEntry | undefined;
+  /** Another entry by id (MQ9203 reads the subject entity and its bound enum). */
+  lookup?(id: string): ModelEntry | undefined;
+}
+
+/** MQ9203: a lifecycle's root-level states (not history or choice) against its bound enum's members, in order. */
+export function enumDrift(json: Json, lookup: (id: string) => ModelEntry | undefined): { states: string[]; members: string[]; enumId: string } | null {
+  if (json.kind !== "process" || json.use !== "lifecycle" || typeof json.subject !== "string" || typeof json.boundAttribute !== "string") return null;
+  const subject = lookup(json.subject)?.json;
+  const attribute = arr(subject?.attributes).find((a) => a.id === json.boundAttribute);
+  const ref = (attribute?.type as Json | undefined)?.ref;
+  const enumEntry = typeof ref === "string" ? lookup(ref) : undefined;
+  if (!enumEntry || enumEntry.json.kind !== "enum") return null;
+  const states = arr(json.states)
+    .filter((st) => st.type !== "history" && st.type !== "choice")
+    .map((st) => String(st.name));
+  const members = arr(enumEntry.json.members).map((m) => String(m.name));
+  return states.join("\u0000") === members.join("\u0000") ? null : { states, members, enumId: enumEntry.id };
 }
 
 /** One tag vocabulary or category tree of a scope ("" is global, else the domain's package id). */
@@ -268,6 +285,43 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
       if (e.onDelete === "set-null" && e.min === 1) out.push(diag("MQ3011", "error", "set-null on a required end.", entry, `/ends/${i}/onDelete`));
     });
   }
+  // MQ9203 enum drift
+  if (kind === "process" && ctx.lookup) {
+    const drift = enumDrift(json, ctx.lookup);
+    if (drift)
+      out.push(
+        diag(
+          "MQ9203",
+          "error",
+          `The bound enum's members (${drift.members.join(", ")}) differ from the lifecycle's states (${drift.states.join(", ")}); sync the enum from the process.`,
+          entry,
+          "/boundAttribute",
+        ),
+      );
+  }
+  // MQ9001 initial, MQ9201 (process side) and MQ9205, as ProcessRules.cs reports them
+  if (kind === "process") out.push(...lifecycleDiagnostics(json, entry, ctx.lookup));
+  // MQ9501 guard and action expressions: one JavaScript expression each (parsed, never run)
+  if (kind === "process")
+    for (const field of ["guards", "actions"] as const)
+      arr(json[field]).forEach((g, i) => {
+        const source = typeof g.expression === "string" ? g.expression.trim() : "";
+        if (!source) return;
+        try {
+          new Function("context", "event", `"use strict"; return (\n${source}\n);`);
+        } catch (e) {
+          const what = field === "guards" ? "guard" : "action";
+          out.push(
+            diag(
+              "MQ9501",
+              "error",
+              `The ${what} '${String(g.name)}' does not parse: ${e instanceof Error ? e.message : String(e)}.`,
+              entry,
+              `/${field}/${i}/expression`,
+            ),
+          );
+        }
+      });
   // MQ5001 extension schemas
   for (const ext of ctx.extensions) {
     if (!ext.appliesTo.kinds.includes(kind)) continue;
@@ -300,10 +354,12 @@ export function validateModel(input: ValidationInput): Diagnostic[] {
     for (const sub of subElementIds(e.json)) owner.add(sub);
   }
   const names = new Map<string, ModelEntry>();
+  const byId = new Map([...entries].map((e) => [e.id, e]));
   const ctx: ValidationContext = {
     ...globalsOf(entries),
     hasId: (id) => owner.has(id),
     extensions: input.extensions,
+    lookup: (id) => byId.get(id),
     firstInScope: (scope, entry) => {
       const first = names.get(scope);
       if (!first) names.set(scope, entry);
@@ -325,4 +381,69 @@ export function applyRules(out: Diagnostic[], rules: Record<string, string> = {}
 
 export function diagnosticKey(d: Diagnostic): string {
   return `${d.rule}|${d.elementId}|${d.jsonPointer}|${d.message}`;
+}
+
+/** MQ9001 (an initial that is not a direct child, or an initial on a state that is not compound), MQ9201 (a lifecycle
+ * without a subject, or whose subject's lifecycle does not name it) and MQ9205 (the bound attribute's default is not
+ * the initial root state's name), as the engine's ProcessRules.cs reports them. */
+function lifecycleDiagnostics(json: Json, entry: ModelEntry, lookup: ValidationContext["lookup"]): Diagnostic[] {
+  const out: Diagnostic[] = [];
+  const name = String(json.name);
+  const checkInitial = (owner: Json, pointer: string, label: string) => {
+    const children = arr(owner.states);
+    if (typeof owner.initial === "string" && !children.some((c) => c.id === owner.initial))
+      out.push(
+        diag(
+          "MQ9001",
+          "error",
+          `${label} has initial '${owner.initial}', which is not one of its direct children. Set initial to a direct child, or remove it to use the first child.`,
+          entry,
+          `${pointer}/initial`,
+        ),
+      );
+  };
+  checkInitial(json, "", `Process '${name}'`);
+  const walk = (states: Json[], pointer: string) =>
+    states.forEach((st, i) => {
+      const at = `${pointer}/states/${i}`;
+      const compound = st.type === "compound" || (st.type === undefined && arr(st.states).length > 0);
+      if (compound) checkInitial(st, at, `State '${String(st.name)}' of process '${name}'`);
+      else if (typeof st.initial === "string" && st.type !== "parallel")
+        out.push(diag("MQ9001", "error", `State '${String(st.name)}' is not compound but sets initial; remove initial.`, entry, `${at}/initial`));
+      walk(arr(st.states), at);
+    });
+  walk(arr(json.states), "");
+  if (json.use !== "lifecycle") return out;
+  if (typeof json.subject !== "string") {
+    out.push(diag("MQ9201", "error", `Process '${name}' is a lifecycle without a subject; set subject to the entity it describes.`, entry, "/use"));
+    return out;
+  }
+  const subject = lookup?.(json.subject)?.json;
+  if (!subject || subject.kind !== "entity") return out;
+  if (subject.lifecycle !== entry.id)
+    out.push(
+      diag(
+        "MQ9201",
+        "error",
+        `Process '${name}' is the lifecycle of entity '${String(subject.name)}', but the entity's lifecycle is not this process; set the entity's lifecycle to this process.`,
+        entry,
+        "/subject",
+      ),
+    );
+  const attribute = arr(subject.attributes).find((a) => a.id === json.boundAttribute);
+  const roots = arr(json.states);
+  const initial = roots.find((st) => st.id === json.initial) ?? roots[0];
+  if (attribute && initial && initial.type !== "history" && initial.type !== "choice" && attribute.default !== initial.name) {
+    const current = attribute.default === undefined ? "is not set" : `is ${JSON.stringify(attribute.default)}`;
+    out.push(
+      diag(
+        "MQ9205",
+        "warning",
+        `The default of bound attribute '${String(attribute.name)}' ${current}, but process '${name}' starts in '${String(initial.name)}'; set the default to '${String(initial.name)}'.`,
+        entry,
+        "/boundAttribute",
+      ),
+    );
+  }
+  return out;
 }

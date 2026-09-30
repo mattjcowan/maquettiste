@@ -85,6 +85,9 @@ export class ModelIndex {
     this.sorted = null;
     if (global || packageChanged) this.globals = globalsOf(this.snapshot.values());
     if (global) for (const id of this.snapshot.keys()) affected.add(id);
+    // MQ9203 reads a lifecycle's subject entity and bound enum, which do not reference the process: re-check processes.
+    if (all.some((e) => e.json.kind === "enum" || e.json.kind === "entity"))
+      for (const [id, entry] of this.snapshot) if (entry.json.kind === "process") affected.add(id);
     const ctx = this.context();
     for (const id of affected) {
       const entry = this.snapshot.get(id);
@@ -130,6 +133,7 @@ export class ModelIndex {
       ...this.globals,
       extensions: this.extensions,
       hasId: (id) => (this.idCount.get(id) ?? 0) > 0,
+      lookup: (id) => this.snapshot.get(id),
       firstInScope: (scope, entry) => {
         const first = this.scopes.get(scope)?.[0];
         return first && first.id !== entry.id ? first : undefined;

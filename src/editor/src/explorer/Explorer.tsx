@@ -42,7 +42,7 @@ import { pageChanged } from "@/state/pageState";
 import { EXPLORER_LABELS } from "@/model/labels";
 import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
-import { activeTab, hasEditor } from "@/editors/tabs";
+import { activeTab, hasEditor, openTab, setView } from "@/editors/tabs";
 import { useDelayedPrefetch } from "./prefetch";
 import { isFiltering, type ExplorerFilter } from "./filter";
 import { FilterBar } from "./FilterBar";
@@ -64,6 +64,7 @@ import {
   isExpandable,
   nodeOf,
   positionOf,
+  processSecondary,
   prebuild,
   presenceCounts,
   relatedCounts,
@@ -86,13 +87,17 @@ import { menuFor, isMovable, type MenuActionId, type MenuTarget } from "./menus"
 import { useTreeKeyboard, type KeyRow, type TreeAction } from "./useTreeKeyboard";
 import { useExplorerActions } from "./actions";
 import { AddRelatedDialog, DeleteDialog, MapToDatabaseDialog, MoveDialog } from "./dialogs";
+import { DeleteProcessDialog, ImportXStateDialog, useCommit } from "./processDialogs";
+import { deleteProcessOps } from "./processCreate";
+import { exportProcess, useScenarioStatuses, verifyLines, verifyScenarios } from "./processApi";
+import { focusProcess, tabOfRow } from "@/app/processFocus";
 import { NewSchemaDialog } from "@/inspector/DatabaseSchemas";
 import { MarkDialog, PromoteDialog } from "./markDialogs";
 import type { MarkKind } from "./marks";
 import { ImportCsvDialog, ImportSeedsDialog } from "@/workspaces/reference-data/dialogs";
 import { exportAllSeeds } from "@/workspaces/reference-data/seedBundle";
 import { createTargetSeed } from "@/workspaces/reference-data/seedTargets";
-import { CREATE_LABELS, domainOfKey, EXPLORER_CREATE, startDomain, type CreateKind } from "./create";
+import { CREATE_LABELS, domainOfKey, EXPLORER_CREATE, processOfKey, startDomain, type CreateKind } from "./create";
 import { CreateButtons } from "./NewElementDialog";
 import { addToDiagram } from "@/workspaces/entities/actions";
 import { ELEMENTS_MIME, relatedWithin, type RelationLookup } from "@/canvas/model";
@@ -193,6 +198,7 @@ export function useForest(): { forest: Forest | null; rows: readonly ElementSumm
   const categoryNames = categoryMaps?.names;
   const { store } = useServices();
   const referenceFlat = useEditor(store, (s) => s.explorer.referenceFlat);
+  const scenarioStatus = useScenarioStatuses();
   // The search worker takes the same rows, table summaries and categories (3.1).
   useSearchRows(rows);
   useEffect(() => {
@@ -207,12 +213,12 @@ export function useForest(): { forest: Forest | null; rows: readonly ElementSumm
       rows
         ? perfSync(
             "explorer:build",
-            () => forestOf({ rows, tables, databases, errors, folders, categoryParents, categoryNames, referenceFlat }),
+            () => forestOf({ rows, tables, databases, errors, folders, categoryParents, categoryNames, referenceFlat, scenarioStatus }),
             // `patched`: the rows came from a model.changed or save patch, which forestOf applies in place (4.4).
             () => ({ elements: rows.length, patched: !!indexPatchOf(rows) }),
           )
         : null,
-    [rows, tables, databases, errors, folders, categoryParents, categoryNames, referenceFlat],
+    [rows, tables, databases, errors, folders, categoryParents, categoryNames, referenceFlat, scenarioStatus],
   );
   // In idle time, build the folders the first paint left pending (4.3), so a first search or expand finds them built.
   useEffect(() => {
@@ -412,6 +418,9 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   const [marking, setMarking] = useState<{ kind: MarkKind; ids: string[] } | null>(null);
   const [promoting, setPromoting] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string[] | null>(null);
+  const [importingInto, setImportingInto] = useState<{ domain: string | null } | null>(null);
+  const [deletingProcess, setDeletingProcess] = useState<string | null>(null);
+  const commit = useCommit();
   const [dropKey, setDropKey] = useState<string | null>(null);
   const dragged = useRef<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -454,6 +463,38 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
     if (cache.current.filtering) return;
     pageChanged();
   }, [version, id, view]);
+
+  // A collapsed lifecycle row says Subject.attribute too (phase-3-design.md 6.1): the attribute's name is in the subject's
+  // document, read (from the cache when it is there) once per forest for each visible lifecycle row.
+  useEffect(() => {
+    if (!forest || id !== "processes") return;
+    const done = labelledProcesses.get(forest) ?? new Set<string>();
+    labelledProcesses.set(forest, done);
+    const todo = rows.flatMap((r) => {
+      const node = nodeOf(forest, r.key);
+      const row = node?.kind === "process" && node.id ? forest.byId.get(node.id) : undefined;
+      return node && row?.use === "lifecycle" && row.subject && !done.has(r.key) ? [{ node, row }] : [];
+    });
+    if (!todo.length) return;
+    void Promise.all(
+      todo.map(async ({ node, row }) => {
+        done.add(node.key);
+        const doc = await queryClient.fetchQuery(elementQuery(row.id)).catch(() => null);
+        const bound = (doc?.json as { boundAttribute?: string } | undefined)?.boundAttribute;
+        if (!bound || !row.subject) return false;
+        const subject = await queryClient.fetchQuery(elementQuery(row.subject)).catch(() => null);
+        const attribute = ((subject?.json as { attributes?: { id?: string; name?: string }[] } | undefined)?.attributes ?? []).find(
+          (a) => a?.id === bound,
+        )?.name;
+        if (!attribute) return false;
+        const entity = forest.byId.get(row.subject);
+        node.secondary = processSecondary(row, entity ? entity.displayName || entity.name : undefined, attribute);
+        return true;
+      }),
+    ).then((changed) => {
+      if (changed.some(Boolean)) bump();
+    });
+  }, [forest, id, rows, version, queryClient]);
 
   // Each forest the tree commits, patched or built (the scale project times model.changed → tree updated with it).
   useLayoutEffect(() => {
@@ -585,7 +626,18 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
             // A table's children (1.3): its detail (E5f, else the database read) as Columns, keys and indexes.
             const view = await queryClient.fetchQuery(tableDetailQuery(database, node.table!.key));
             if (view) tableChildren(forest, key, view);
-          } else documentChildren(forest, key, await queryClient.fetchQuery(elementQuery(node.id!)));
+          } else {
+            const doc = await queryClient.fetchQuery(elementQuery(node.id!));
+            // A lifecycle row says Subject.attribute: the attribute's name is in the subject's document.
+            const json = doc.json as { subject?: string; boundAttribute?: string };
+            let attribute: string | undefined;
+            if (node.kind === "process" && json.subject && json.boundAttribute) {
+              const subject = await queryClient.fetchQuery(elementQuery(json.subject)).catch(() => null);
+              const list = ((subject?.json as { attributes?: { id?: string; name?: string }[] } | undefined)?.attributes ?? []).filter(Boolean);
+              attribute = list.find((a) => a.id === json.boundAttribute)?.name;
+            }
+            documentChildren(forest, key, doc, attribute);
+          }
           loaded.add(key);
         } catch {
           // The row expands with the children the index answers.
@@ -660,6 +712,20 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       if (!forest) return;
       const node = nodeOf(forest, key);
       if (!node) return;
+      // A state, event or scenario row of the Processes explorer opens its process's editor on that tab (6.1).
+      const tab = node.explorer === "processes" ? tabOfRow(node.kind) : null;
+      if (tab) {
+        let up: string | undefined = node.parent;
+        while (up && forest.nodes.get(up)?.kind !== "process") up = forest.nodes.get(up)?.parent;
+        const process = up ? forest.nodes.get(up)?.id : undefined;
+        const summary = process ? (forest.byId.get(process) as ElementSummary | undefined) : undefined;
+        if (summary) {
+          if (node.kind === "scenario" && node.id) select([node.id]);
+          focusProcess(summary.id, tab, node.id ?? null);
+          store.getState().updateEditors((e) => openTab(setView(e, "process", tab), { id: summary.id, kind: "process" }, { pin: how === "open" }));
+          return;
+        }
+      }
       const targetId = node.target ? forest.nodes.get(node.target)?.id : undefined;
       // Opening (not a click, which only selects) makes the element a recent one (3.3).
       const opened = targetId ?? node.id;
@@ -694,7 +760,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       }
       toggle(key);
     },
-    [forest, reveal, toggle, openEditor, openDatabase, store],
+    [forest, reveal, toggle, openEditor, openDatabase, store, select],
   );
   /** A double click: opens the row pinned (as Enter does). A folder, a schema or a database only toggles, which the
    * first click did already; a domain opens its editor without toggling again. */
@@ -814,7 +880,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         linked,
         favorite: !!element && favoriteSet.has(element),
         domainGroup,
-        explorer: creates ? node.explorer : undefined,
+        explorer: creates || domainGroup ? node.explorer : undefined,
       };
     },
     [forest, idOf, favoriteSet],
@@ -880,7 +946,10 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       return;
     }
     if (action.startsWith("new:")) {
-      store.getState().requestNew({ kind: action.slice(4) as CreateKind, domain: domainOfKey(forest, keys[0]) });
+      const kind = action.slice(4) as CreateKind;
+      // New scenario… from a process's row or its Scenarios folder starts on that process.
+      const source = kind === "scenario" ? (processOfKey(forest, keys[0]) ?? undefined) : undefined;
+      store.getState().requestNew({ kind, domain: domainOfKey(forest, keys[0]), ...(source ? { source } : {}) });
       return;
     }
     const key = keys[0];
@@ -990,9 +1059,76 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         setRenaming(key);
         break;
       case "delete":
-        if (ids.length) setDeleting(ids);
+        if (ids.length === 1 && forest.byId.get(ids[0])?.kind === "process") setDeletingProcess(ids[0]);
+        else if (ids.length) setDeleting(ids);
+        break;
+      case "open-new-tab": {
+        const row = ids[0] ? forest.byId.get(ids[0]) : undefined;
+        if (row) store.getState().updateEditors((e) => openTab(e, { id: row.id, kind: row.kind as "process" }, { pin: true }));
+        break;
+      }
+      case "verify-scenarios":
+        if (ids[0]) void verifyProcess(ids[0]);
+        break;
+      case "export-xstate":
+        if (ids[0]) void exportXState(ids[0]);
+        break;
+      case "import-xstate":
+        setImportingInto({ domain: node?.id && forest.byId.get(node.id)?.kind === "package" ? node.id : null });
+        break;
+      case "simulate":
         break;
     }
+  };
+
+  /** Verify scenarios (6.1): runs verify and shows the result in the Output panel. */
+  const verifyProcess = async (process: string) => {
+    const s = store.getState();
+    const name = forest?.byId.get(process)?.name ?? process;
+    try {
+      const result = await verifyScenarios(process);
+      const [head, ...rest] = verifyLines(name, result);
+      s.log(result.passed ? "success" : "error", head);
+      for (const line of rest) s.log(line.trimStart().startsWith("✓") ? "info" : "error", line);
+      s.setBottomTab("output");
+      s.notify(head, result.passed ? undefined : "error");
+    } catch (e) {
+      s.notify(`Verify failed: ${(e as Error).message}`, "error");
+    }
+  };
+
+  /** Export XState (6.1): downloads the process's statechart config. */
+  const exportXState = async (process: string) => {
+    const name = forest?.byId.get(process)?.name ?? "process";
+    try {
+      const text = await exportProcess(process);
+      const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${name}.xstate.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      store.getState().notify(`Exported ${name}.`);
+    } catch (e) {
+      store.getState().notify(`Export failed: ${(e as Error).message}`, "error");
+    }
+  };
+
+  /** Delete a process and its scenarios, in one batch. */
+  const deleteProcess = async (process: string) => {
+    if (!forest) return;
+    const scenarioIds = [...forest.byId.values()].filter((r) => r.kind === "scenario" && r.process === process).map((r) => r.id);
+    const docs = await Promise.all([process, ...scenarioIds].map((x) => queryClient.fetchQuery({ ...elementQuery(x), staleTime: 0 })));
+    const [own, ...scenarios] = docs;
+    const ops = deleteProcessOps(
+      { id: process, hash: own.hash },
+      scenarios.map((d, i) => ({ id: scenarioIds[i], hash: d.hash })),
+    );
+    const all = [process, ...scenarioIds];
+    const before = ops.map((o) => docs[all.indexOf((o as { id: string }).id)]?.json as Record<string, unknown>);
+    const failed = await commit(`Delete ${forest.byId.get(process)?.name ?? "process"}`, ops, before);
+    if (failed) store.getState().notify(`Not deleted: ${failed}`, "error");
+    else select([]);
   };
 
   // ------------------------------------------------------------------ keyboard (3.4)
@@ -1046,8 +1182,11 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       select(same ? (selected.has(id) ? own.filter((x) => x !== id) : [...own, id]) : [id]);
     } else if (a.type === "rename" && key && isMovable(kindOf(key)) && idOf(key)) setRenaming(key);
     else if (a.type === "delete") {
-      const ids = own.filter((s) => forest?.byId.has(s) && forest.nodes.get(forest.place.get(s) ?? "")?.explorer === id);
-      if (ids.length) setDeleting(ids);
+      const ids = own.filter(
+        (s) => forest?.byId.has(s) && (forest.nodes.get(forest.place.get(s) ?? "")?.explorer === id || (!!key && forest.nodes.get(key)?.id === s)),
+      );
+      if (ids.length === 1 && forest?.byId.get(ids[0])?.kind === "process") setDeletingProcess(ids[0]);
+      else if (ids.length) setDeleting(ids);
     } else if (a.type === "menu" && key) menuAtRow(key);
   };
   const page = Math.max(1, Math.floor((scrollRef.current?.clientHeight ?? 600) / rowHeight) - 1);
@@ -1245,6 +1384,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
                     <TreeRow
                       key={row.key}
                       node={node}
+                      secondary={node.secondary}
                       domId={domIdOf(id, row.key)}
                       depth={row.depth}
                       pos={pos}
@@ -1355,6 +1495,19 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
               void addTo(ids, depth);
             }}
           />
+          {importingInto ? <ImportXStateDialog domain={importingInto.domain} forest={forest} onClose={() => setImportingInto(null)} /> : null}
+          {deletingProcess ? (
+            <DeleteProcessDialog
+              name={namesOf([deletingProcess]).get(deletingProcess)!}
+              scenarios={[...forest.byId.values()].filter((r) => r.kind === "scenario" && r.process === deletingProcess).length}
+              onClose={() => setDeletingProcess(null)}
+              onDelete={() => {
+                const target = deletingProcess;
+                setDeletingProcess(null);
+                void deleteProcess(target);
+              }}
+            />
+          ) : null}
           <DeleteDialog
             names={deleting ? deleting.map((x) => namesOf([x]).get(x)!) : null}
             onClose={() => setDeleting(null)}
@@ -1372,6 +1525,8 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
 
 /** Rows whose document children were added (per forest: a rebuilt forest starts over). */
 const loadedDocs = new WeakMap<Forest, Set<string>>();
+/** The process rows whose Subject.attribute secondary text was read, per forest. */
+const labelledProcesses = new WeakMap<Forest, Set<string>>();
 
 const NOT_IN_DOMAIN_KEY = "@domain-model/not-in-domain";
 

@@ -5,7 +5,7 @@
 
 /** The kinds with an element editor in the centre area (a domain: General, Tags, Categories, 1.11). A reference type
  * opens in the Reference data screen. */
-export const EDITOR_KINDS = ["entity", "relation", "enum", "value-object", "scalar-type", "package"] as const;
+export const EDITOR_KINDS = ["entity", "relation", "enum", "value-object", "scalar-type", "package", "process", "actor", "scenario"] as const;
 export type EditorKind = (typeof EDITOR_KINDS)[number];
 
 export function hasEditor(kind: string | null | undefined): kind is EditorKind {

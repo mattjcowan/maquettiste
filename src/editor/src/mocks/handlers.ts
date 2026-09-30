@@ -13,6 +13,7 @@ import { baselineHandlers } from "./baseline";
 import { mentions, recordings, replayable, type Recording } from "./recorded";
 import { validPackPath } from "./model/packs";
 import { isUlid, readTag } from "./wire";
+import { processHandlers } from "./processHandlers";
 // Recorded by the functions test of GET /api/validation/rules, which fails when the catalog changes without a new recording.
 import validationRules from "./recorded/validation-rules.json";
 
@@ -110,6 +111,7 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
 
   return [
     gate,
+    ...processHandlers(backend, { baseUrl, recorded, pristine, answer, problem: problem as never }),
     http.get("/api/health", ({ response }) =>
       response(200).json({
         status: "ok",

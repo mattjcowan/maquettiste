@@ -9,7 +9,7 @@ test("the rail shows one explorer at a time, under a header with its totals", as
   await openEditor(page);
   const rail = page.getByRole("navigation", { name: "Explorers" });
   const names = await rail.getByRole("button").evaluateAll((buttons) => buttons.map((b) => b.getAttribute("aria-label")));
-  expect(names).toEqual(["Domain model", "Reference data", "Databases", "Diagrams", "Generate", "Settings", "Account"]);
+  expect(names).toEqual(["Domain model", "Processes", "Reference data", "Databases", "Diagrams", "Generate", "Settings", "Account"]);
 
   const side = explorer(page);
   await expect(side.getByRole("heading", { name: "Domain model" })).toBeVisible();

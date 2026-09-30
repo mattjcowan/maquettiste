@@ -79,6 +79,9 @@ const FOLDERS: Partial<Record<ElementKind, string>> = {
   diagram: "model/diagrams",
   stereotype: "model/vocabularies/stereotypes",
   "reference-type": "model/reference-types",
+  process: "model/processes",
+  actor: "model/actors",
+  scenario: "model/scenarios",
 };
 
 function emptyChangeSet(source: ChangeSet["source"] = "editor"): ChangeSet {
@@ -618,6 +621,36 @@ export class MockModel {
         }
         continue;
       }
+      if (op.op === "refresh-scenario") {
+        // The mock has no interpreter: the expectations stay as they are (the engine rewrites them from a replay).
+        const existing = candidate.get(op.id ?? "");
+        if (!existing || existing.json.kind !== "scenario") {
+          fail(this.notFound(op.id ?? ""));
+          continue;
+        }
+        items.push({ outcome: "saved", id: existing.id, hash: existing.hash, current: null, diagnostics: [], referrers: [], changes: null });
+        continue;
+      }
+      if (op.op === "set-initial" || op.op === "set-lifecycle") {
+        // The process quick fixes (phase-3-design.md 3): expanded into updates of the documents they change.
+        const target = (op as { target?: string }).target;
+        const changed = op.op === "set-initial" ? setInitialDocs(candidate, op.id ?? "", target) : setLifecycleDocs(candidate, op.id ?? "", target);
+        if (typeof changed === "string") {
+          fail(
+            this.invalid(op.id ?? null, [
+              { rule: "MQ9019", severity: "error", message: changed, elementId: op.id ?? null, filePath: null, jsonPointer: "", line: null, column: null },
+            ]),
+          );
+          continue;
+        }
+        for (const json of changed) {
+          const id = String(json.id);
+          const entry = this.entryFor(json, candidate.get(id));
+          candidate.set(id, entry);
+          items.push({ outcome: "saved", id, hash: entry.hash, current: null, diagnostics: [], referrers: [], changes: null });
+        }
+        continue;
+      }
       if (op.op === "create") {
         const json = clone(op.element!);
         if (typeof json.id !== "string") json.id = this.options.newId();
@@ -880,6 +913,18 @@ function e5(json: Json): Partial<ElementSummary> {
   }
   if (kind === "reference-type") out.fieldCount = Array.isArray(json.attributes) ? json.attributes.length : 0;
   if (kind === "diagram") out.memberCount = Array.isArray(json.members) ? json.members.length : 0;
+  // Phase 3 (phase-3-design.md 2.1): a process's use, subject and state count; an actor's type; a scenario's process and steps.
+  if (kind === "process") {
+    out.use = json.use === "lifecycle" ? "lifecycle" : "orchestration";
+    if (typeof json.subject === "string") out.subject = json.subject;
+    const count = (states: unknown): number => (Array.isArray(states) ? (states as Json[]).reduce((n, s) => n + 1 + count(s.states), 0) : 0);
+    out.stateCount = count(json.states);
+  }
+  if (kind === "actor" && (json.type === "person" || json.type === "role" || json.type === "external-system")) out.actorType = json.type;
+  if (kind === "scenario") {
+    if (typeof json.process === "string") out.process = json.process;
+    out.stepCount = Array.isArray(json.steps) ? json.steps.length : 0;
+  }
   if (kind === "relation" && Array.isArray(json.ends))
     out.ends = (json.ends as Json[]).map((end) => ({ entity: String(end.entity ?? ""), role: String(end.role ?? "") }));
   return out;
@@ -1046,4 +1091,56 @@ export function packRecord(json: Json): PackManifest {
       transforms: (u.transforms as string[] | undefined) ?? [],
     })),
   };
+}
+
+/** `set-initial`: the process or the compound state `id` (a state of some process) starts in its direct child `target`. */
+function setInitialDocs(entries: Map<string, { json: unknown }>, id: string, target: string | undefined): Json[] | string {
+  const own = entries.get(id)?.json as Json | undefined;
+  const find = (states: Json[] | undefined): Json | null => {
+    for (const state of states ?? []) {
+      if (state.id === id) return state;
+      const inner = find(state.states as Json[] | undefined);
+      if (inner) return inner;
+    }
+    return null;
+  };
+  for (const entry of entries.values()) {
+    const json = entry.json as Json;
+    if (json.kind !== "process" || (own && json.id !== id)) continue;
+    const next = clone(json);
+    const node = own ? next : find(next.states as Json[] | undefined);
+    if (!node) continue;
+    if (!((node.states as Json[] | undefined) ?? []).some((s) => s.id === target)) return `${String(target)} is not a direct child of ${id}.`;
+    node.initial = target;
+    return [next];
+  }
+  return `No process or compound state ${id}.`;
+}
+
+/** `set-lifecycle`: binds entity `id` and process `target` in one change and unbinds their previous partners. */
+function setLifecycleDocs(entries: Map<string, { json: unknown }>, id: string, target: string | undefined): Json[] | string {
+  const get = (key: unknown) => (typeof key === "string" ? (entries.get(key)?.json as Json | undefined) : undefined);
+  const entity = get(id);
+  if (entity?.kind !== "entity") return `No entity ${id}.`;
+  const process = target ? get(target) : undefined;
+  if (target && process?.kind !== "process") return `No process ${target}.`;
+  const changed = new Map<string, Json>();
+  const edit = (json: Json) => changed.get(String(json.id)) ?? changed.set(String(json.id), clone(json)).get(String(json.id))!;
+  const orchestrate = (json: Json) => {
+    const next = edit(json);
+    next.use = "orchestration";
+    delete next.subject;
+    delete next.boundAttribute;
+  };
+  const previous = get(entity.lifecycle);
+  if (previous && previous.id !== target) orchestrate(previous);
+  if (process) {
+    const partner = get(process.subject);
+    if (partner && partner.id !== id && partner.lifecycle === target) delete edit(partner).lifecycle;
+    const next = edit(process);
+    next.use = "lifecycle";
+    next.subject = id;
+    edit(entity).lifecycle = target;
+  } else delete edit(entity).lifecycle;
+  return [...changed.values()];
 }

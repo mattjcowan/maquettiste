@@ -24,8 +24,14 @@ export function RowMenu({ menu, onClose, onRun }: { menu: RowMenuState | null; o
           {menu.items.map((item, i) => (
             <Fragment key={item.id}>
               {item.danger && i > 0 ? <DropdownMenuSeparator /> : null}
-              <DropdownMenuItem className={item.danger ? "text-danger" : undefined} onSelect={() => onRun(item.id)}>
+              <DropdownMenuItem
+                className={item.danger ? "text-danger" : undefined}
+                disabled={!!item.disabledNote}
+                title={item.disabledNote}
+                onSelect={() => onRun(item.id)}
+              >
                 {item.label}
+                {item.disabledNote ? <span className="ml-2 text-12 text-secondary">{item.disabledNote}</span> : null}
               </DropdownMenuItem>
             </Fragment>
           ))}

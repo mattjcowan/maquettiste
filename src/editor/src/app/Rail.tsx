@@ -2,7 +2,7 @@
 // Diagrams and Generate at the top; Settings and the account menu at the bottom. An explorer icon shows that one
 // explorer in the sidebar and brings its home screen to the centre (the diagram canvas, or the Database screen);
 // the selection outlives the switch. Generate shows its packs in the sidebar and its screen in the centre.
-import { Boxes, CircleUserRound, Database, LogOut, Network, Settings, Wand2, Workflow, type LucideIcon } from "lucide-react";
+import { Boxes, CircleUserRound, Database, LogOut, Network, Route, Settings, Wand2, Workflow, type LucideIcon } from "lucide-react";
 import * as queries from "@/api/queries";
 import * as endpoints from "@/api/endpoints";
 import { useEditor, type SidebarView, type Workspace } from "@/state/store";
@@ -17,6 +17,7 @@ const item = (view: SidebarView, icon: LucideIcon, home: Workspace) => ({ view, 
 
 export const RAIL: { view: SidebarView; label: string; tooltip: string; icon: LucideIcon; home: Workspace }[] = [
   item("domain-model", Network, "entities"),
+  item("processes", Route, "entities"),
   item("reference-data", Boxes, "reference-data"),
   item("databases", Database, "database"),
   item("diagrams", Workflow, "entities"),

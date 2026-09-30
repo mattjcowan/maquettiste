@@ -1,0 +1,216 @@
+{
+  "processHash": "a37d2f92d2f049060f71ad3207a00033bdf8d5fcb8defbdc6f2d81b5ddb2c42d",
+  "trace": [
+    {
+      "index": -1,
+      "input": null,
+      "accepted": true,
+      "refusal": null,
+      "microsteps": [
+        {
+          "transitions": [],
+          "exited": [],
+          "entered": [
+            "01JQSTA0000000000000000101"
+          ],
+          "actions": []
+        }
+      ],
+      "guards": [],
+      "audit": [],
+      "configuration": [
+        "01JQSTA0000000000000000101"
+      ],
+      "context": {
+        "01JQATT0000000000000000201": 2500,
+        "01JQATT0000000000000000202": 0
+      },
+      "changed": {},
+      "clock": "2000-01-01T00:00:00Z",
+      "final": false,
+      "diagnostics": [],
+      "incomplete": false
+    },
+    {
+      "index": 0,
+      "input": {
+        "id": "01JQSTP0000000000000000035",
+        "input": "event",
+        "event": "01JQPRX0000000000000000014",
+        "invoke": null,
+        "after": null,
+        "actor": "01JQACT0000000000000000008",
+        "signer": null,
+        "meaning": null,
+        "reason": null,
+        "payload": {},
+        "assume": {},
+        "expect": null,
+        "description": null
+      },
+      "accepted": true,
+      "refusal": null,
+      "microsteps": [
+        {
+          "transitions": [
+            "01JQTRN0000000000000000015"
+          ],
+          "exited": [
+            "01JQSTA0000000000000000101"
+          ],
+          "entered": [
+            "01JQSTA0000000000000000102",
+            "01JQSTA0000000000000000103",
+            "01JQSTA0000000000000000104",
+            "01JQSTA0000000000000000107",
+            "01JQSTA0000000000000000108"
+          ],
+          "actions": []
+        }
+      ],
+      "guards": [],
+      "audit": [],
+      "configuration": [
+        "01JQSTA0000000000000000104",
+        "01JQSTA0000000000000000108"
+      ],
+      "context": {
+        "01JQATT0000000000000000201": 2500,
+        "01JQATT0000000000000000202": 0
+      },
+      "changed": {},
+      "clock": "2000-01-01T00:00:00Z",
+      "final": false,
+      "diagnostics": [],
+      "incomplete": false
+    },
+    {
+      "index": 1,
+      "input": {
+        "id": "01JQSTP0000000000000000036",
+        "input": "invoke-error",
+        "event": null,
+        "invoke": "01JQPRX0000000000000000019",
+        "after": null,
+        "actor": null,
+        "signer": null,
+        "meaning": null,
+        "reason": null,
+        "payload": {},
+        "assume": {},
+        "expect": null,
+        "description": null
+      },
+      "accepted": true,
+      "refusal": null,
+      "microsteps": [
+        {
+          "transitions": [
+            "01JQTRN0000000000000000017"
+          ],
+          "exited": [
+            "01JQSTA0000000000000000104"
+          ],
+          "entered": [
+            "01JQSTA0000000000000000106"
+          ],
+          "actions": []
+        }
+      ],
+      "guards": [],
+      "audit": [],
+      "configuration": [
+        "01JQSTA0000000000000000106",
+        "01JQSTA0000000000000000108"
+      ],
+      "context": {
+        "01JQATT0000000000000000201": 2500,
+        "01JQATT0000000000000000202": 0
+      },
+      "changed": {},
+      "clock": "2000-01-01T00:00:00Z",
+      "final": false,
+      "diagnostics": [],
+      "incomplete": false
+    },
+    {
+      "index": 2,
+      "input": {
+        "id": "01JQSTP0000000000000000037",
+        "input": "invoke-done",
+        "event": null,
+        "invoke": "01JQPRX0000000000000000020",
+        "after": null,
+        "actor": "01JQACT0000000000000000006",
+        "signer": null,
+        "meaning": null,
+        "reason": null,
+        "payload": {},
+        "assume": {},
+        "expect": null,
+        "description": "Compliance clears it, but the budget region never completes."
+      },
+      "accepted": true,
+      "refusal": null,
+      "microsteps": [
+        {
+          "transitions": [
+            "01JQTRN0000000000000000019"
+          ],
+          "exited": [
+            "01JQSTA0000000000000000108"
+          ],
+          "entered": [
+            "01JQSTA0000000000000000109"
+          ],
+          "actions": []
+        }
+      ],
+      "guards": [],
+      "audit": [],
+      "configuration": [
+        "01JQSTA0000000000000000106",
+        "01JQSTA0000000000000000109"
+      ],
+      "context": {
+        "01JQATT0000000000000000201": 2500,
+        "01JQATT0000000000000000202": 0
+      },
+      "changed": {},
+      "clock": "2000-01-01T00:00:00Z",
+      "final": false,
+      "diagnostics": [],
+      "incomplete": false
+    }
+  ],
+  "configuration": [
+    "01JQSTA0000000000000000106",
+    "01JQSTA0000000000000000109"
+  ],
+  "context": {
+    "01JQATT0000000000000000201": 2500,
+    "01JQATT0000000000000000202": 0
+  },
+  "enabled": [
+    {
+      "trigger": "event",
+      "event": "01JQPRX0000000000000000015",
+      "invoke": null,
+      "transitions": [
+        "01JQTRN0000000000000000018"
+      ],
+      "actors": [
+        "01JQACT0000000000000000003",
+        "01JQACT0000000000000000008"
+      ],
+      "guardUnknown": false,
+      "gate": null
+    }
+  ],
+  "pending": [],
+  "timers": [],
+  "gates": [],
+  "final": false,
+  "clock": "2000-01-01T00:00:00Z",
+  "diagnostics": []
+}

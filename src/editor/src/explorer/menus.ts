@@ -1,7 +1,7 @@
 // The explorer's context menus (explorer-redesign.md 1.8), as data: which actions a row, or a multi-selection of
 // rows of one kind, offers. RowMenu.tsx renders them; Explorer.tsx runs them. Only actions this editor can run are
 // listed; the rest of section 1.8's table arrives with the features they need.
-import { placementOf } from "@/model/labels";
+import { placementOf, PROCESS_LABELS } from "@/model/labels";
 import type { ExplorerId, NodeType } from "./tree";
 import { CREATE_LABELS, DOMAIN_CREATE, EXPLORER_CREATE, folderCreate, type CreateKind } from "./create";
 import { PROMOTABLE_KINDS } from "./promote";
@@ -37,6 +37,11 @@ export type MenuActionId =
   | "import-seeds"
   | "rename"
   | "delete"
+  | "open-new-tab"
+  | "simulate"
+  | "verify-scenarios"
+  | "export-xstate"
+  | "import-xstate"
   | `type:${TypeActionId}`;
 
 export interface MenuItem {
@@ -46,6 +51,8 @@ export interface MenuItem {
   multi: boolean;
   /** Drawn in the danger colour, after a separator. */
   danger?: boolean;
+  /** Shown but not offered yet: the note says when it arrives. */
+  disabledNote?: string;
 }
 
 /** What the menu needs to know about a row. */
@@ -66,6 +73,24 @@ export interface MenuTarget {
 
 const item = (id: MenuActionId, label: string, multi = false, danger = false): MenuItem => ({ id, label, multi, danger });
 const create = (kind: CreateKind): MenuItem => item(`new:${kind}`, CREATE_LABELS[kind]);
+
+/** Kinds of the Processes explorer (phase-3-design.md 6.1). */
+const PROCESS_KINDS: ReadonlySet<string> = new Set(["process", "actor", "scenario"]);
+
+/** A process, actor or scenario row's actions (6.1, after explorer-redesign.md 1.8). */
+function processMenu(t: MenuTarget): MenuItem[] {
+  const out: MenuItem[] = [item("open", "Open"), item("open-new-tab", "Open in new tab")];
+  if (t.kind === "process")
+    out.push(
+      { ...item("simulate", PROCESS_LABELS.simulate), disabledNote: PROCESS_LABELS.simulateLater },
+      item("verify-scenarios", PROCESS_LABELS.verify),
+      item("export-xstate", PROCESS_LABELS.exportXState),
+    );
+  out.push(item("where-used", "Where used"));
+  if (t.kind === "process") out.push(item("move", "Move to domain…", true));
+  out.push(item("rename", "Rename"), item("favorite", t.favorite ? "Remove from favorites" : "Add to favorites"), item("delete", "Delete", true, true));
+  return out;
+}
 
 /** Kinds whose rows offer Apply stereotype…, Tag… and Set category… (✱). */
 const MARKABLE: ReadonlySet<string> = new Set(["entity", "relation", "enum", "value-object", "scalar-type"]);
@@ -108,11 +133,14 @@ function single(t: MenuTarget): MenuItem[] {
           item("expand-all", "Expand all"),
         ]
       : [item("open-database", "Open Database screen"), item("open-mappings", "Open mappings"), item("expand-all", "Expand all")];
+  if (t.type === "group" && t.domainGroup && t.explorer === "processes")
+    return [create("process"), item("import-xstate", PROCESS_LABELS.importXState), item("expand-all", "Expand all")];
   if (t.type === "group" && t.domainGroup) return [create("diagram"), item("expand-all", "Expand all")];
   if (t.type === "group" && t.explorer) return [...EXPLORER_CREATE[t.explorer].filter((k) => k !== "package").map(create), item("expand-all", "Expand all")];
   if (t.type === "schema" || t.type === "group" || t.type === "root") return [item("expand-all", "Expand all")];
   if (t.type === "table") return [item("open", "Open"), ...(t.linked ? [item("go-to-entity", "Go to entity")] : [])];
   if (!t.element) return [item("open", "Open")];
+  if (t.kind && PROCESS_KINDS.has(t.kind)) return processMenu(t);
   const out: MenuItem[] = [item("open", "Open")];
   // A reference type's actions run in the Reference data screen (TypeMenu.tsx); Delete there checks its usages.
   if (t.kind === "reference-type")

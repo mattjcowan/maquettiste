@@ -17,6 +17,8 @@ export type Placement =
   | "databases"
   | "diagrams"
   | "reference-data"
+  /** The Processes explorer only (a scenario, under its process). */
+  | "processes"
   /** Not in any tree: the Settings screen's tabs (and, for scoped vocabularies, the domain editor). */
   | "settings";
 
@@ -86,6 +88,7 @@ export const KIND_FOLDERS: readonly KindFolder[] = [
   ),
   folder("seed", "Seed data", "seed", "seeds", "seed", 60, "domain", "Seed data of this domain's entities and relationships"),
   folder("process", "Processes", "process", "processes", "process", 70, "domain"),
+  folder("scenario", "Scenarios", "scenario", "scenarios", "scenario", 75, "processes", "Scenarios of this process"),
   folder("operation", "Operations", "operation", "operations", "operation", 80, "domain"),
   folder("business-event", "Business events", "business event", "business events", "event", 90, "domain"),
   folder("query", "Queries", "query", "queries", "query", 100, "domain"),
@@ -155,6 +158,7 @@ export function countOf(n: number, kind: string): string {
 /** The explorers' own names (the rail's words). */
 export const EXPLORER_LABELS = {
   "domain-model": "Domain model",
+  processes: "Processes",
   "reference-data": "Reference data",
   databases: "Databases",
   diagrams: "Diagrams",
@@ -224,6 +228,7 @@ export const SUB_DOMAIN_LABEL = "Sub-domain";
 /** The rail (explorer-redesign.md 1.0, the owner's order): each explorer's label and tooltip. */
 export const RAIL_LABELS = {
   "domain-model": { label: "Domain model", tooltip: "Domain model: domains, entities and relationships" },
+  processes: { label: "Processes", tooltip: "Processes: lifecycles, orchestrations, actors and scenarios" },
   "reference-data": { label: "Reference data", tooltip: "Reference data: reference types and their rows" },
   databases: { label: "Databases", tooltip: "Databases, schemas and tables" },
   diagrams: { label: "Diagrams", tooltip: "Diagrams" },
@@ -271,4 +276,43 @@ export const GLOSSARY = {
   businessEvent: "Business event: a thing that happened, raised by an operation or a process.",
   explorer: "Explorer: the sidebar tree a rail icon selects. Screen: a document in the centre.",
   mapped: "Mapped automatically: a table that follows the naming conventions needs no mapping file; a customised one has a mapping override.",
+} as const;
+
+/** The Processes explorer and the process dialogs (phase-3-design.md 6.1). */
+export const PROCESS_LABELS = {
+  states: "States",
+  events: "Events",
+  scenarios: "Scenarios",
+  actors: "Actors",
+  lifecycle: "lifecycle",
+  orchestration: "orchestration",
+  notRun: "not run",
+  passed: "passed",
+  failedAt: (step: number) => `failed at step ${step}`,
+  passedCount: (n: number) => `✓ ${n.toLocaleString("en-US")} passed`,
+  initialState: "Initial",
+  simulateLater: "Arrives with the simulation panel",
+  newProcess: "New process…",
+  newActor: "New actor…",
+  newScenario: "New scenario…",
+  importXState: "Import XState…",
+  exportXState: "Export XState",
+  verify: "Verify scenarios",
+  simulate: "Simulate",
+  newStatus: "New status attribute and enum",
+  recordFromSimulation: "Record from simulation",
+  empty: "Empty",
+} as const;
+
+/** An actor's type as a row shows it. */
+export const ACTOR_TYPE_LABELS = { person: "person", role: "role", "external-system": "external system" } as const;
+
+/** The process editor's tabs (6.2); the Chart tab arrives with the canvas (P4). */
+export const PROCESS_TAB_LABELS = {
+  states: "States",
+  transitions: "Transitions",
+  events: "Events",
+  gates: "Gates",
+  context: "Context",
+  scenarios: "Scenarios",
 } as const;

@@ -19,6 +19,9 @@ import { EntityEditor } from "./EntityEditor";
 import { RelationshipEditor } from "./RelationshipEditor";
 import { TypeEditor } from "./TypeEditor";
 import { DomainEditor } from "./DomainEditor";
+import { ProcessEditor } from "./process/ProcessEditor";
+import { ActorEditor } from "./actor/ActorEditor";
+import { ScenarioEditor } from "./scenario/ScenarioEditor";
 
 /** A draft that is not yet saved as it shows: the tab's dirty marker. */
 const UNSAVED = new Set(["dirty", "saving", "invalid", "conflict"]);
@@ -157,6 +160,12 @@ export function EditorArea() {
         <RelationshipEditor key={tab.id} id={tab.id} />
       ) : tab.kind === "package" ? (
         <DomainEditor key={tab.id} id={tab.id} />
+      ) : tab.kind === "process" ? (
+        <ProcessEditor key={tab.id} id={tab.id} />
+      ) : tab.kind === "actor" ? (
+        <ActorEditor key={tab.id} id={tab.id} />
+      ) : tab.kind === "scenario" ? (
+        <ScenarioEditor key={tab.id} id={tab.id} />
       ) : (
         <TypeEditor key={tab.id} id={tab.id} kind={tab.kind} />
       )}

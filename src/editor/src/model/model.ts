@@ -148,6 +148,19 @@ function indexMembers(json: Record<string, unknown>): Partial<ElementSummary> {
     if (typeof json.target === "string") out.target = json.target;
     out.rowCount = Array.isArray(json.rows) ? json.rows.length : 0;
   }
+  // Phase 3 (phase-3-design.md 2.1): a process's use, subject and state count; an actor's type; a scenario's process and steps.
+  if (kind === "process") {
+    out.use = json.use === "lifecycle" ? "lifecycle" : "orchestration";
+    if (typeof json.subject === "string") out.subject = json.subject;
+    const count = (states: unknown): number =>
+      Array.isArray(states) ? (states as Record<string, unknown>[]).reduce((n, st) => n + 1 + count(st.states), 0) : 0;
+    out.stateCount = count(json.states);
+  }
+  if (kind === "actor" && (json.type === "person" || json.type === "role" || json.type === "external-system")) out.actorType = json.type;
+  if (kind === "scenario") {
+    if (typeof json.process === "string") out.process = json.process;
+    out.stepCount = Array.isArray(json.steps) ? json.steps.length : 0;
+  }
   if (kind === "reference-type") out.fieldCount = Array.isArray(json.attributes) ? json.attributes.length : 0;
   if (kind === "diagram") out.memberCount = Array.isArray(json.members) ? json.members.length : 0;
   if (kind === "relation" && Array.isArray(json.ends))

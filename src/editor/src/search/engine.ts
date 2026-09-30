@@ -12,8 +12,8 @@ import { kindTest } from "@/explorer/filter";
 import { Tier, rankKey, tierFor, wordsOf, type Rankable } from "./rank";
 
 /** Where a match lives: an explorer of the rail, or the Settings screen. */
-export type SearchPlace = "domain-model" | "reference-data" | "databases" | "diagrams" | "settings";
-export const SEARCH_PLACES: readonly SearchPlace[] = ["domain-model", "reference-data", "databases", "diagrams", "settings"];
+export type SearchPlace = "domain-model" | "processes" | "reference-data" | "databases" | "diagrams" | "settings";
+export const SEARCH_PLACES: readonly SearchPlace[] = ["domain-model", "processes", "reference-data", "databases", "diagrams", "settings"];
 
 const FS = "\u001f";
 const RS = "\u001e";
@@ -183,7 +183,7 @@ interface Doc {
 /** The place (explorer or Settings) that lists a kind. */
 export const placeOf = (kind: string): SearchPlace => {
   const p = placementOf(kind);
-  return p === "databases" || p === "diagrams" || p === "reference-data" || p === "settings" ? p : "domain-model";
+  return p === "databases" || p === "diagrams" || p === "reference-data" || p === "settings" || p === "processes" ? p : "domain-model";
 };
 
 /** "Value objects", "value-object", "valueobject" → "valueobject"; a trailing plural s is dropped. */
@@ -194,7 +194,7 @@ const kindWord = (s: string) =>
     .replace(/(ies)$/, "y")
     .replace(/s$/, "");
 
-const zeroCounts = (): Record<SearchPlace, number> => ({ "domain-model": 0, "reference-data": 0, databases: 0, diagrams: 0, settings: 0 });
+const zeroCounts = (): Record<SearchPlace, number> => ({ "domain-model": 0, processes: 0, "reference-data": 0, databases: 0, diagrams: 0, settings: 0 });
 
 /** One encoded index row (`encodeRows`) as a document. */
 function rowDoc(rec: string): Doc {

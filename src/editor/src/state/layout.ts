@@ -36,7 +36,7 @@ export const DEFAULT_LAYOUT: Layout = Object.freeze({
 
 export const LAYOUT_KEY = "mq.layout";
 export const PINNED_KEY = "mq.explorer.pinned";
-const EXPLORER_IDS: readonly string[] = ["domain-model", "reference-data", "databases", "diagrams"];
+const EXPLORER_IDS: readonly string[] = ["domain-model", "processes", "reference-data", "databases", "diagrams"];
 
 const size = (value: unknown, limits: { min: number; max: number }, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) ? Math.min(limits.max, Math.max(limits.min, Math.round(value))) : fallback;

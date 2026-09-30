@@ -22,6 +22,7 @@ public sealed class ProcessEndpointTests
         Assert.Equal(["01JQSTA0000000000000000106", "01JQSTA0000000000000000109"], first.Json["configuration"]!.AsArray().Select(n => n!.GetValue<string>()));
         Assert.Equal([-1, 0, 1, 2], first.Json["trace"]!.AsArray().Select(t => t!["index"]!.GetValue<int>()));
         Assert.False(first.Json["final"]!.GetValue<bool>());
+        Recorder.Json("simulateProcess.budget-rejected.json", first);
         var again = await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/simulate", body);
         Assert.Equal(first.Text, again.Text);
 
@@ -65,6 +66,7 @@ public sealed class ProcessEndpointTests
             Contract.AssertResponse(verify, "/api/processes/{id}/verify");
             Assert.True(verify.Json["passed"]!.GetValue<bool>(), verify.Text);
             total += verify.Json["results"]!.AsArray().Count;
+            Recorder.Json($"verifyScenarios.{(process == Purchase ? "purchase-approval" : "sales-order-lifecycle")}.json", verify);
         }
 
         Assert.Equal(13, total);
@@ -125,6 +127,7 @@ public sealed class ProcessEndpointTests
         Assert.Equal("1", export.Headers["X-Maquettiste-Diagnostics"].ToString());
         Assert.Equal("0", export.Headers["X-Maquettiste-Warnings"].ToString());
         Assert.EndsWith("}\n", export.Text, StringComparison.Ordinal);
+        Recorder.Json("exportProcess.json", export);
         Assert.Equal(export.Text, (await host.GetAsync($"/api/processes/{Purchase}/export")).Text);
         Assert.Equal(400, (await host.GetAsync($"/api/processes/{Purchase}/export?format=scxml")).Status);
 
@@ -159,6 +162,7 @@ public sealed class ProcessEndpointTests
         Assert.Equal(200, dry.Status);
         Contract.AssertResponse(dry, "/api/processes/import");
         Assert.Equal("Door", dry.Json["document"]!["name"]!.GetValue<string>());
+        Recorder.Json("importProcess.json", dry);
         Assert.NotEmpty(dry.Json["created"]!.AsArray());
         Assert.False(File.Exists(host.PathOf(".maquettiste/model/processes/door.json")));
 
@@ -183,6 +187,7 @@ public sealed class ProcessEndpointTests
         await host.Store.RescanAsync(false, EditorHost.Ct);
         var dry = await host.SendJsonAsync("POST", $"/api/processes/{Sales}/sync-enum", new { dryRun = true });
         Assert.True(dry.Json["reordered"]!.GetValue<bool>());
+        Recorder.Json("syncEnumFromProcess.json", dry);
         Assert.False(dry.Json["applied"]!.GetValue<bool>());
         var stale = await host.SendJsonAsync("POST", $"/api/processes/{Sales}/sync-enum", new { expectedHash = new string('0', 64) });
         Assert.Equal(409, stale.Status);

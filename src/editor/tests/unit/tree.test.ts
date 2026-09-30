@@ -93,12 +93,13 @@ describe("tree over the billing fixture", () => {
   const forest = buildForest({ rows, tables });
 
   it("nests Catalog under Billing, a top-level domain, with rolled-up counts", () => {
-    expect(labels(forest, forest.roots["domain-model"])).toEqual(["Billing"]);
+    // The mock's actors (mocks/model/processSeed.ts) are in People and access.
+    expect(labels(forest, forest.roots["domain-model"])).toEqual(["Billing", "People and access"]);
     const billingNode = find(forest, "domain-model", "Billing");
     expect(billingNode.type).toBe("domain");
     expect(billingNode.tooltip).toBe("Domain: Billing");
     expect(billingNode.secondary).toBe("1 sub-domain · 5 entities");
-    expect(labels(forest, billingNode.key)).toEqual(["Catalog", "Entities", "Relationships", "Enums", "Value objects", "Custom types"]);
+    expect(labels(forest, billingNode.key)).toEqual(["Catalog", "Entities", "Relationships", "Enums", "Value objects", "Custom types", "Processes"]);
     expect(find(forest, "domain-model", "Billing", "Catalog").secondary).toBe("1 entity");
     expect(find(forest, "domain-model", "Billing", "Entities").count).toBe(4);
     expect(labels(forest, find(forest, "domain-model", "Billing", "Entities").key)).toEqual(["Customer", "Invoice", "InvoiceLine", "Payment"]);
@@ -115,7 +116,7 @@ describe("tree over the billing fixture", () => {
   it("reaches every index row, and places no vocabulary or stereotype", () => {
     expectReachable(forest, rows);
     expectKindFolders(forest);
-    expect(forest.unplaced.length).toBe(5);
+    expect(forest.unplaced.length).toBe(6); // five vocabularies and stereotypes of the fixture, and the mock's persona
   });
 
   it("reaches physical rows without the E5 database member, in Not in a database", () => {
@@ -232,7 +233,7 @@ describe("tree over the billing fixture", () => {
     expect(breadcrumb(forest, IDS.invoice)).toBe("Domain model › Billing › Entities › Invoice");
     const expanded = new Set<string>();
     const rowsNow = visibleRows(forest, "domain-model", expanded);
-    expect(rowsNow.map((r) => r.key)).toEqual([find(forest, "domain-model", "Billing").key]);
+    expect(rowsNow.map((r) => r.key)).toEqual([find(forest, "domain-model", "Billing").key, "@domain-model/people"]);
     for (const key of revealPath(forest, IDS.invoice).slice(1)) {
       expanded.add(key);
       expandAt(

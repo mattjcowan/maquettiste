@@ -95,6 +95,34 @@ export function referencesOf(doc: Json): Ref[] {
         }),
       );
       break;
+    case "process": {
+      push("/subject", "subject", doc.subject, false);
+      push("/boundAttribute", "boundAttribute", doc.boundAttribute, false);
+      arr(doc.events).forEach((e, i) =>
+        arr(e.actors).forEach((_, j) => push(`/events/${i}/actors/${j}`, "actors", (e.actors as unknown[])[j], false, `/events/${i}/actors/${j}`)),
+      );
+      const states = (list: unknown, base: string) =>
+        arr(list).forEach((st, i) => {
+          arr(st.invoke).forEach((inv, k) => {
+            push(`${base}/${i}/invoke/${k}/process`, "process", inv.process, false);
+            arr(inv.actors).forEach((a, j) => push(`${base}/${i}/invoke/${k}/actors/${j}`, "actors", a, false, `${base}/${i}/invoke/${k}/actors/${j}`));
+          });
+          states(st.states, `${base}/${i}/states`);
+        });
+      states(doc.states, "/states");
+      arr(doc.transitions).forEach((t, i) => {
+        const gate = t.gate as Json | undefined;
+        if (!gate) return;
+        arr(gate.signers).forEach((a, j) => push(`/transitions/${i}/gate/signers/${j}`, "signers", a, true));
+        arr(gate.requiredActors).forEach((a, j) =>
+          push(`/transitions/${i}/gate/requiredActors/${j}`, "requiredActors", a, false, `/transitions/${i}/gate/requiredActors/${j}`),
+        );
+      });
+      break;
+    }
+    case "scenario":
+      push("/process", "process", doc.process, true);
+      break;
     case "sequence":
     case "view":
       push("/database", "database", doc.database, true);
@@ -117,5 +145,25 @@ export function subElementIds(doc: Json): string[] {
   collect(doc.indexes);
   collect(doc.checks);
   if (doc.kind === "enum") collect(doc.members);
+  if (doc.kind === "process") {
+    collect(doc.context);
+    collect(doc.events);
+    collect(doc.guards);
+    collect(doc.actions);
+    const states = (list: unknown) =>
+      arr(list).forEach((st) => {
+        if (str(st.id)) ids.push(st.id as string);
+        collect(st.invoke);
+        states(st.states);
+      });
+    states(doc.states);
+    arr(doc.transitions).forEach((t) => {
+      if (str(t.id)) ids.push(t.id as string);
+      const gate = t.gate as Json | undefined;
+      if (gate && str(gate.id)) ids.push(gate.id as string);
+      if (gate) collect(gate.meanings);
+    });
+  }
+  if (doc.kind === "scenario") collect(doc.steps);
   return ids;
 }

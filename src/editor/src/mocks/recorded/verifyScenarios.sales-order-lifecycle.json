@@ -1,0 +1,55 @@
+{
+  "process": "01JQPRC0000000000000000001",
+  "results": [
+    {
+      "scenario": "01JQSCN0000000000000000006",
+      "name": "CancelRefusedAfterShipping",
+      "passed": true,
+      "steps": 4,
+      "failure": null
+    },
+    {
+      "scenario": "01JQSCN0000000000000000002",
+      "name": "CreditApproved",
+      "passed": true,
+      "steps": 3,
+      "failure": null
+    },
+    {
+      "scenario": "01JQSCN0000000000000000003",
+      "name": "CreditRejectedAndResubmitted",
+      "passed": true,
+      "steps": 3,
+      "failure": null
+    },
+    {
+      "scenario": "01JQSCN0000000000000000004",
+      "name": "HoldAndRelease",
+      "passed": true,
+      "steps": 4,
+      "failure": null
+    },
+    {
+      "scenario": "01JQSCN0000000000000000005",
+      "name": "PaymentOverdue",
+      "passed": true,
+      "steps": 3,
+      "failure": null
+    },
+    {
+      "scenario": "01JQSCN0000000000000000007",
+      "name": "RepeatSignerRefused",
+      "passed": true,
+      "steps": 3,
+      "failure": null
+    },
+    {
+      "scenario": "01JQSCN0000000000000000001",
+      "name": "SmallOrder",
+      "passed": true,
+      "steps": 4,
+      "failure": null
+    }
+  ],
+  "passed": true
+}

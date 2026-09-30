@@ -17,7 +17,7 @@ export interface PageState {
   settingsTab: string | null;
 }
 
-const EXPLORER_IDS: readonly ExplorerId[] = ["domain-model", "reference-data", "databases", "diagrams"];
+const EXPLORER_IDS: readonly ExplorerId[] = ["domain-model", "processes", "reference-data", "databases", "diagrams"];
 const EXPANDED_LIMIT = 2000;
 const TAB_LIMIT = 50;
 

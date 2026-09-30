@@ -392,6 +392,124 @@ database shows on the Database screen at once. The explorers remember which rows
   moves into the picker, whose arrows change the value. The same catalog is `GET /api/validation/rules` and the MCP tool
   `list_validation_rules`.
 
+## Processes, actors and scenarios
+
+A **process** is a statechart: a **lifecycle** describes the states of one entity (its subject), usually bound to an
+enum attribute of that entity whose members are the lifecycle's root-level states; an **orchestration** coordinates work
+and needs no subject. **Actors** are the people, roles and external systems that raise events and sign gates.
+**Scenarios** are recorded runs of a process, step by step, with what each step is expected to lead to; the engine
+replays them to check the process still behaves as written. The chart canvas and the simulation panel arrive next; for
+now a process is edited in its grids.
+
+### The Processes explorer
+
+The rail's **Processes** icon (after Domain model) opens it. Processes are grouped by domain (domains without processes
+are hidden); under a process its **States** (the state tree, nested), **Events** and **Scenarios**, each scenario with
+its last replay status (not run, passed, or failed at step N). The **Actors** folder follows the domains. Opening a
+state, event or scenario row opens the process editor on that tab with the row selected. Domain model's **Processes**
+kind folder lists the same process rows.
+
+Right-click a process for **Open**, **Open in new tab**, **Verify scenarios**, **Export XState**, **Where used**,
+**Move to domain…**, **Rename**, **Add to favorites** and **Delete**. **Simulate** is listed but disabled: it arrives with
+the simulation panel. Right-click a domain group for **New process…** and **Import XState…**. The header's **+** offers
+New process…, New actor… and New scenario….
+
+### New process…
+
+**Name**, **Domain** and **Use**:
+
+- **Lifecycle**: pick the **Subject entity**, then its **Bound attribute**: one of the subject's enum-typed attributes,
+  or **New status attribute and enum**, created in the same change (its default is `Initial`, the first state). With
+  an existing enum, the lifecycle starts with one root state per member, so the enum and the states agree. When the
+  subject already has a lifecycle, the dialog says so, and that process becomes an orchestration in the same change.
+- **Orchestration**: the subject entity is optional (None).
+
+The line under the fields says what the process starts with: one state per member, or one state, `Initial`. The new
+process opens in its editor, and Undo removes it.
+
+### New actor…
+
+**Name**, **Type** (person, role, external system) and the project's actor **Stereotypes**; a persona stereotype shows
+its **Goals** field (one per line).
+
+### New scenario…
+
+**Process**, **Name** and **Start**: **Empty** (one step to fill in). **Record from simulation** is shown disabled; it
+arrives with the simulation panel.
+
+### The process editor
+
+A process opens in a document tab with its top controls: name and domain, **Use**, **Subject**, **Bound attribute**
+(with a drift badge when the enum and the states differ, and **Sync enum** beside it), stereotype, tag and category
+chips. **Use** and **Subject** change both sides of a lifecycle at once: making a process a lifecycle (it needs a
+subject first), moving it to another entity, or turning it back into an orchestration also updates the entity's
+lifecycle and releases the entity's previous lifecycle, as one change. It opens on **States**. The tabs:
+
+- **States**: the state tree as a grid: name, type, initial, history, entry and exit actions, invokes, and the bound
+  enum member (read-only). Below it, the selected state's **Invokes** grid: name, type (process, service, human task),
+  the invoked process and the human task's actors. An invoke a transition still waits on is not removed.
+- **Transitions**: source, trigger, event or duration, guard, targets, actions, external and the gate badge; below it
+  the **Guards** and **Actions** grids. An expression that does not parse is marked MQ9501 at once. Ctrl+G on an event
+  transition adds a gate, or removes the one it has (the row's shield button does the same).
+- **Events**: name, actors allowed to raise it, and the selected event's payload attributes.
+- **Gates**: each gate's signers, required count (saved when you leave the field or press Enter), required actors,
+  meanings and audit attributes.
+- **Context**: the process's context attributes, in the attribute grid.
+- **Scenarios**: the process's scenarios with their status; each row's buttons **Replay**, **Open** and **Refresh the
+  expectations** (from a replay); Enter opens a scenario, R replays it, Shift+R refreshes its expectations and
+  Ctrl+Delete deletes it.
+
+Every grid is keyboard-driven like the attribute grid: arrows move, Enter or F2 edits, Escape cancels, Tab moves to
+the next cell, Ctrl+Enter adds a row, Ctrl+Delete removes one. In a list cell, the arrow keys move through the choices
+and Enter, Tab or leaving the cell saves the one chosen. F12 on a cell that names something (a source or target state,
+an event, a guard, an action, an actor, an invoked process, a scenario) goes to it, and Shift+F12 lists where it is
+used. Each change is one undo step (Ctrl/Cmd+Z).
+
+An **actor** opens in its own editor (name, type, chips; General lists the processes that use it). A **scenario** opens
+in its editor: process, outcome and the **Steps** grid, each step with its replay status; **Replay** runs it and shows
+the first failure.
+
+### The inspector for processes
+
+The inspector follows the selection inside the process editor: with a state selected it shows the **State** section
+(with **Entry and exit**, **Invokes**, **Bound member**, **Description** and **Properties**); with a transition
+selected, the **Transition** section (with its **Gate** and **Actors**); otherwise the **Process** section (the binding,
+**Code generation hints** and the **Source** JSON). An actor shows its type and the processes that use it; a scenario
+its process, outcome, steps and status.
+
+### Verify scenarios, Export XState and Import XState
+
+- **Verify scenarios** (a process's menu) replays every scenario of the process and writes one line per scenario to the
+  Output panel; the explorer's statuses follow.
+- **Export XState** downloads the process as an XState machine config (`<name>.xstate.json`). What has no XState
+  equivalent travels under `meta`, so importing the file back gives the same process.
+- **Import XState…** (a domain's menu) takes a pasted config or a file, previews what the import creates and the
+  diagnostics (**Preview**), then **Apply** writes the new process as one change.
+
+### Sync enum and the quick fixes
+
+When a lifecycle's bound enum and its root-level states differ (MQ9203), **Sync enum** (beside Bound attribute, or the
+fix in Problems) first shows the plan (members added, removed, reordered, and the removals it keeps because something
+still uses them), then **Apply** makes the enum follow the states.
+
+The **Problems** panel shows a fix button beside a diagnostic whose rule has one. Each fix is one change with one undo
+step, and the panel re-validates after it:
+
+| Rule | Fix button |
+| --- | --- |
+| MQ9001 | **Set initial**: asks which direct child (the first one preselected); **Remove initial** when the state is not compound |
+| MQ9203 | **Sync enum**: the plan first, then Apply |
+| MQ9302, MQ9303, MQ9304 | **Update expectations from replay**: rewrites the scenario's expectations and outcome from a replay |
+| MQ9013 | **Remove** the unused event, guard, action or invoke |
+| MQ9016 | **Remove the member** from the process diagram |
+| MQ9102 | **Add to signers**: the gate's missing required actor |
+| MQ9105 | **Add the signer to the event's actors** |
+| MQ9205 | **Set default to** the initial state's name, on the subject's bound attribute |
+| MQ9201 | **Set lifecycle on the subject** (the subject names another lifecycle), or **Make it this entity's lifecycle** (an entity names an orchestration) |
+
+Undo reverts a fix like any change, with one limit that applies to every save: a change that would bring an error back
+is refused, so undoing the fix of an error (Sync enum, Set initial) reports "Cannot undo" and the model stays fixed.
+
 ## Generation: how the model becomes files
 
 This chapter is for someone who has never written a template. Generation reads the model (the entities, tables,

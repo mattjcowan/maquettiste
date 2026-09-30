@@ -11,6 +11,7 @@ import {
   Boxes,
   ChevronDown,
   ChevronRight,
+  CircleDot,
   CircleHelp,
   Database,
   Eye,
@@ -19,6 +20,7 @@ import {
   Hash,
   Layers,
   Link2,
+  ListChecks,
   ListOrdered,
   Loader2,
   Package,
@@ -32,6 +34,7 @@ import {
   UserRound,
   Users,
   Workflow,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/misc";
@@ -49,7 +52,10 @@ const ICONS: Record<string, LucideIcon> = {
   seed: Sprout,
   process: Workflow,
   operation: Workflow,
-  event: Workflow,
+  event: Zap,
+  state: CircleDot,
+  scenario: ListChecks,
+  processes: Workflow,
   query: Workflow,
   projection: Workflow,
   actor: UserRound,
@@ -77,6 +83,8 @@ export function TreeIcon({ name, className }: { name: string; className?: string
 
 export interface TreeRowProps {
   node: TreeNode;
+  /** The node's secondary text, passed so the memoized row repaints when it is read later (a lifecycle's attribute). */
+  secondary?: string;
   /** The DOM id the tree's aria-activedescendant points at. */
   domId: string;
   depth: number;
@@ -150,7 +158,7 @@ export const TreeRow = memo(function TreeRow(props: TreeRowProps) {
   const counted =
     props.shown !== undefined && node.count !== undefined
       ? `${props.shown.toLocaleString("en-US")} of ${node.count.toLocaleString("en-US")}`
-      : (node.secondary ?? (node.count !== undefined ? node.count.toLocaleString("en-US") : undefined));
+      : (props.secondary ?? node.secondary ?? (node.count !== undefined ? node.count.toLocaleString("en-US") : undefined));
   return (
     <div
       id={props.domId}

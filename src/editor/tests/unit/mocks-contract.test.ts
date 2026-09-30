@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { openapi, validatorAt } from "@/mocks/contract";
 import { baselineOperations } from "@/mocks/baseline";
+import { BUDGET_REJECTED, INVOICE, INVOICE_LIFECYCLE, PURCHASE_APPROVAL } from "@/mocks/model/processSeed";
 import { IDS, useMockApi } from "./harness";
 
 type Json = Record<string, unknown>;
@@ -288,6 +289,27 @@ describe("mock contract", () => {
     expect((await call("put", "/api/presence", "/api/presence", { connectionId: "someone-else" })).status).toBe(404);
     const broken = await fetch(mock.url("/api/presence"), { method: "PUT", headers: { "Content-Type": "application/json" }, body: "{" });
     expect(broken.status).toBe(404);
+  });
+
+  it("answers the process operations and the process batch operations in contract shape", async () => {
+    const id = (x: string) => `/api/processes/${x}`;
+    await call("post", `${id(PURCHASE_APPROVAL)}/simulate`, "/api/processes/{id}/simulate", { scenario: BUDGET_REJECTED });
+    await call("post", `${id(PURCHASE_APPROVAL)}/verify`, "/api/processes/{id}/verify", { scenarios: [BUDGET_REJECTED] });
+    await call("get", `${id(PURCHASE_APPROVAL)}/export?format=xstate`, "/api/processes/{id}/export");
+    const recorded = await call("post", `${id(PURCHASE_APPROVAL)}/scenarios?dryRun=true`, "/api/processes/{id}/scenarios", { name: "Probe", steps: [] });
+    expect(recorded.status).toBe(200);
+    const config = { id: "probe", initial: "a", states: { a: { on: { go: "b" } }, b: {} } };
+    expect((await call("post", "/api/processes/import?dryRun=true", "/api/processes/import", { config })).status).toBe(200);
+    expect((await call("post", "/api/processes/import?dryRun=false", "/api/processes/import", { config: "{ not json" })).status).toBe(422);
+    expect((await call("post", `${id(INVOICE_LIFECYCLE)}/sync-enum`, "/api/processes/{id}/sync-enum", { dryRun: true })).status).toBe(200);
+    expect((await call("post", `${id(PURCHASE_APPROVAL)}/sync-enum`, "/api/processes/{id}/sync-enum", { dryRun: true })).status).toBe(422);
+
+    const { payload } = await call("get", `/api/model/elements/${PURCHASE_APPROVAL}`, "/api/model/elements/{id}");
+    const states = ((payload as { json: { states: { id: string }[] } }).json.states ?? []).map((st) => st.id);
+    const batch = (operations: unknown[]) => call("post", "/api/model/batch", "/api/model/batch", { operations });
+    expect((await batch([{ op: "set-initial", id: PURCHASE_APPROVAL, target: states[1] }])).status).toBe(200);
+    expect((await batch([{ op: "set-lifecycle", id: INVOICE, target: INVOICE_LIFECYCLE }])).status).toBe(200);
+    expect((await batch([{ op: "refresh-scenario", id: BUDGET_REJECTED }])).status).toBe(200);
   });
 
   it("answers every contract operation from the baseline (first example), in contract shape", () => {

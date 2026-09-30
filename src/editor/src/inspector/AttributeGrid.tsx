@@ -337,7 +337,7 @@ export function AttributeGrid({
             {table.getRowModel().rows.map((row, r) => {
               const a = row.original;
               return (
-                <tr key={row.id} className="border-t border-default" aria-rowindex={r + 2}>
+                <tr key={row.id} className="h-[var(--mq-row-h)] border-t border-default" aria-rowindex={r + 2}>
                   {columns.map((column, c) => {
                     const isActive = active.row === r && active.col === c;
                     const isEditing = isActive && editing !== null;
@@ -416,7 +416,7 @@ export function AttributeGrid({
                     );
                   })}
                   <td className="px-1">
-                    <Button variant="ghost" size="icon-sm" label={`Remove attribute ${a.name}`} onClick={() => removeRow(r)} tabIndex={-1}>
+                    <Button variant="ghost" size="icon-row" label={`Remove attribute ${a.name}`} onClick={() => removeRow(r)} tabIndex={-1}>
                       <Trash2 />
                     </Button>
                   </td>

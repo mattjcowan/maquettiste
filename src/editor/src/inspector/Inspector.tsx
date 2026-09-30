@@ -35,6 +35,7 @@ import {
 import { applicableExtensions, SchemaForm } from "./SchemaForm";
 import { emptyTitle, inspectorContext, type InspectorContext } from "./context";
 import { EntityAttributeList } from "./AttributeList";
+import { ActorInspectorSection, ProcessInspectorSection, ScenarioInspectorSection, useProcessNodeShown } from "./ProcessSections";
 import { attributesView, INSPECTOR_TAB_LABELS, inspectorTabs, resolveInspectorTab } from "./tabs";
 
 /** The inspector's context from the store (see ./context): the pieces are stable references, the context is derived. */
@@ -163,6 +164,8 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
   const tab = kind ? resolveInspectorTab(kind, tabs[kind]) : "properties";
   const vocab = useVocabularies(kind ?? "entity");
   const summary = index.data?.find((r) => r.id === id);
+  // A state or transition selected in the process editor: the inspector shows it in place of the process's fields.
+  const processNode = useProcessNodeShown(id, kind);
 
   useEffect(() => {
     if (!focus?.pointer || focus.id !== id) return;
@@ -241,38 +244,58 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
           ))}
         </TabsList>
         <TabsContent value="properties" className="overflow-auto p-2">
-          <div className="flex flex-col gap-2">
-            <CommonFields {...props} />
-            <TranslationsSection id={id} kind={kind} />
-            {kind === "entity" ? <EntityFields {...props} /> : null}
-            {kind === "relation" ? <RelationFields {...props} /> : null}
-            {kind === "enum" ? <EnumFields {...props} /> : null}
-            {kind === "scalar-type" ? <ScalarFields {...props} /> : null}
-            {kind === "database" ? <DatabaseFields {...props} /> : null}
-            {extensions.length ? (
-              <div className="flex flex-col gap-2">
-                <SectionTitle>Custom properties</SectionTitle>
-                <SchemaForm
-                  extensions={extensions}
-                  json={json}
-                  defaults={defaults}
-                  onChange={(name, value) =>
-                    edit((j) => {
-                      const record = j as { properties?: Record<string, unknown> };
-                      const next = { ...(record.properties ?? {}) };
-                      if (value === undefined) delete next[name];
-                      else next[name] = value;
-                      if (Object.keys(next).length) record.properties = next;
-                      else delete record.properties;
-                    })
-                  }
-                />
-              </div>
-            ) : null}
-            {!["entity", "relation", "value-object", "stereotype", "enum", "scalar-type", "database", "package", "diagram"].includes(kind) ? (
-              <p className="text-12 text-secondary">Every other property of this {KIND_LABELS[kind].toLowerCase()} is editable in the JSON view.</p>
-            ) : null}
-          </div>
+          {processNode ? (
+            <ProcessInspectorSection {...props} />
+          ) : (
+            <div className="flex flex-col gap-2">
+              <CommonFields {...props} />
+              <TranslationsSection id={id} kind={kind} />
+              {kind === "entity" ? <EntityFields {...props} /> : null}
+              {kind === "relation" ? <RelationFields {...props} /> : null}
+              {kind === "enum" ? <EnumFields {...props} /> : null}
+              {kind === "scalar-type" ? <ScalarFields {...props} /> : null}
+              {kind === "database" ? <DatabaseFields {...props} /> : null}
+              {kind === "process" ? <ProcessInspectorSection {...props} /> : null}
+              {kind === "actor" ? <ActorInspectorSection {...props} /> : null}
+              {kind === "scenario" ? <ScenarioInspectorSection {...props} /> : null}
+              {extensions.length ? (
+                <div className="flex flex-col gap-2">
+                  <SectionTitle>Custom properties</SectionTitle>
+                  <SchemaForm
+                    extensions={extensions}
+                    json={json}
+                    defaults={defaults}
+                    onChange={(name, value) =>
+                      edit((j) => {
+                        const record = j as { properties?: Record<string, unknown> };
+                        const next = { ...(record.properties ?? {}) };
+                        if (value === undefined) delete next[name];
+                        else next[name] = value;
+                        if (Object.keys(next).length) record.properties = next;
+                        else delete record.properties;
+                      })
+                    }
+                  />
+                </div>
+              ) : null}
+              {![
+                "entity",
+                "relation",
+                "value-object",
+                "stereotype",
+                "enum",
+                "scalar-type",
+                "database",
+                "package",
+                "diagram",
+                "process",
+                "actor",
+                "scenario",
+              ].includes(kind) ? (
+                <p className="text-12 text-secondary">Every other property of this {KIND_LABELS[kind].toLowerCase()} is editable in the JSON view.</p>
+              ) : null}
+            </div>
+          )}
         </TabsContent>
         {attributesView(kind) ? (
           <TabsContent value="attributes" className="overflow-auto p-2">

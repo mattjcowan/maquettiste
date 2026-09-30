@@ -91,7 +91,7 @@ export interface GenerationState {
 
 /** What the sidebar shows: one explorer (explorer-redesign.md 1.0), or Generate's packs and targets. */
 export type SidebarView = ExplorerId | "generate";
-export const SIDEBAR_VIEWS: SidebarView[] = ["domain-model", "reference-data", "databases", "diagrams", "generate"];
+export const SIDEBAR_VIEWS: SidebarView[] = ["domain-model", "processes", "reference-data", "databases", "diagrams", "generate"];
 
 /** One explorer's own view state: kept while another explorer shows (1.0), keyed by row key (4.3). */
 export interface ExplorerView {
@@ -256,7 +256,7 @@ function initialTheme(): ThemeChoice {
   return saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
 }
 
-const EXPLORER_IDS: ExplorerId[] = ["domain-model", "reference-data", "databases", "diagrams"];
+const EXPLORER_IDS: ExplorerId[] = ["domain-model", "processes", "reference-data", "databases", "diagrams"];
 
 /** The keys of the explorer state before page state (0.2.0): read by nothing, removed on the first page-state write, so
  * one project's expansions and active explorer never open another project (pageState.ts keeps them per project). */
@@ -283,7 +283,13 @@ function initialExplorer(): ExplorerSlice {
     // On by default (1.9): only an explicit "0" turns it off.
     highlightRelated: local.get("mq.explorer.highlight") !== "0",
     referenceFlat: local.get("mq.explorer.referenceFlat") === "1",
-    views: { "domain-model": view("domain-model"), "reference-data": view("reference-data"), databases: view("databases"), diagrams: view("diagrams") },
+    views: {
+      "domain-model": view("domain-model"),
+      processes: view("processes"),
+      "reference-data": view("reference-data"),
+      databases: view("databases"),
+      diagrams: view("diagrams"),
+    },
     version: 0,
     scopes: Array.isArray(scopes)
       ? scopes.flatMap((x) => {

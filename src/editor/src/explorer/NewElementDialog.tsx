@@ -19,7 +19,8 @@ import { newId } from "@/lib/ids";
 import { clone } from "@/lib/json";
 import { useEditor } from "@/state/store";
 import { createReferenceType } from "@/workspaces/reference-data/actions";
-import { buildElement, CREATE_LABELS, CREATED_KIND, currentDomain, nameProblem, startDomain, takesDomain, type CreateKind } from "./create";
+import { buildElement, CREATE_LABELS, CREATED_KIND, currentDomain, nameProblem, PROCESS_CREATE, startDomain, takesDomain, type CreateKind } from "./create";
+import { ProcessCreateDialog } from "./processDialogs";
 import { domainChoices } from "./dialogs";
 import { useForest } from "./Explorer";
 import type { Forest } from "./tree";
@@ -45,6 +46,16 @@ export function NewElementHost() {
   const request = useEditor(store, (s) => s.newElement);
   const { forest } = useForest();
   if (!request || !forest) return null;
+  if (PROCESS_CREATE.has(request.kind))
+    return (
+      <ProcessCreateDialog
+        key={`${request.kind}:${request.domain ?? ""}`}
+        kind={request.kind}
+        domain={request.domain}
+        source={request.source}
+        forest={forest}
+      />
+    );
   return (
     <NewElementDialog
       key={`${request.kind}:${request.domain ?? ""}:${request.source ?? ""}`}

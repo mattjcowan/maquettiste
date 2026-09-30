@@ -1,0 +1,48 @@
+{
+  "process": "01JQPRC0000000000000000002",
+  "results": [
+    {
+      "scenario": "01JQSCN0000000000000000010",
+      "name": "BudgetRejected",
+      "passed": true,
+      "steps": 3,
+      "failure": null
+    },
+    {
+      "scenario": "01JQSCN0000000000000000009",
+      "name": "ChangesRequested",
+      "passed": true,
+      "steps": 4,
+      "failure": null
+    },
+    {
+      "scenario": "01JQSCN0000000000000000011",
+      "name": "ComplianceFirstThenBudget",
+      "passed": true,
+      "steps": 3,
+      "failure": null
+    },
+    {
+      "scenario": "01JQSCN0000000000000000008",
+      "name": "HappyPath",
+      "passed": true,
+      "steps": 6,
+      "failure": null
+    },
+    {
+      "scenario": "01JQSCN0000000000000000013",
+      "name": "RejectionWithReason",
+      "passed": true,
+      "steps": 4,
+      "failure": null
+    },
+    {
+      "scenario": "01JQSCN0000000000000000012",
+      "name": "ReminderAfterFiveDays",
+      "passed": true,
+      "steps": 4,
+      "failure": null
+    }
+  ],
+  "passed": true
+}
