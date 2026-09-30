@@ -428,6 +428,11 @@ carries the process's name.
 
 **Name**, **Domain** and **Use**:
 
+A sentence under the choice says what each one means. A **lifecycle** describes the states one entity goes through (a
+sales order from Draft to Completed): it has a subject entity, and its root states can be bound to an enum attribute
+of that entity so the two never drift. An **orchestration** coordinates work across people, roles, systems and other
+processes (a purchase approval with parallel checks, tasks and signatures): a subject entity is optional.
+
 - **Lifecycle**: pick the **Subject entity**, then its **Bound attribute**: one of the subject's enum-typed attributes,
   or **New status attribute and enum**, created in the same change (its default is `Initial`, the first state). With
   an existing enum, the lifecycle starts with one root state per member, so the enum and the states agree. When the

@@ -108,7 +108,9 @@ test("New process, New actor and New scenario each save as one change", async ({
   await dialog.getByLabel("Subject entity").selectOption({ label: "Invoice" });
   await expect(dialog.getByLabel("Bound attribute")).toHaveValue("01J92P0V0VB1Z49SWERMAGR4TV");
   await expect(dialog).toContainText("Starts with 4 states, one per member.");
+  await expect(dialog.getByTestId("new-process-use-meaning")).toContainText("A lifecycle describes the states one entity goes through");
   await dialog.getByTestId("new-process-use-orchestration").check();
+  await expect(dialog.getByTestId("new-process-use-meaning")).toContainText("An orchestration coordinates work");
   await dialog.getByLabel("Subject entity (optional)").selectOption({ label: "None" });
   await dialog.getByTestId("new-process-create").click();
   await expect(side.getByTestId("explorer-row-InvoiceFlow")).toContainText("orchestration · 1 state");

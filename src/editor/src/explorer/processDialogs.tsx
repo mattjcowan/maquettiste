@@ -196,14 +196,19 @@ function NewProcessDialog({ domain, forest, onClose }: { domain: string | null; 
               ))}
             </Select>
           </Field>
-          <fieldset className="flex items-center gap-3 text-12" aria-label="Use">
-            <span className="text-secondary">Use</span>
-            {(["lifecycle", "orchestration"] as const).map((u) => (
-              <label key={u} className="flex h-6 items-center gap-1">
-                <input type="radio" name="new-process-use" value={u} checked={use === u} onChange={() => setUse(u)} data-testid={`new-process-use-${u}`} />
-                {u === "lifecycle" ? "Lifecycle" : "Orchestration"}
-              </label>
-            ))}
+          <fieldset className="flex flex-col gap-0.5 text-12" aria-label="Use" aria-describedby="new-process-use-meaning">
+            <div className="flex items-center gap-3">
+              <span className="text-secondary">Use</span>
+              {(["lifecycle", "orchestration"] as const).map((u) => (
+                <label key={u} className="flex h-6 items-center gap-1">
+                  <input type="radio" name="new-process-use" value={u} checked={use === u} onChange={() => setUse(u)} data-testid={`new-process-use-${u}`} />
+                  {u === "lifecycle" ? "Lifecycle" : "Orchestration"}
+                </label>
+              ))}
+            </div>
+            <p id="new-process-use-meaning" className="text-11 text-secondary" data-testid="new-process-use-meaning">
+              {PROCESS_LABELS.useMeaning[use]}
+            </p>
           </fieldset>
           <Field label={use === "lifecycle" ? "Subject entity" : "Subject entity (optional)"} htmlFor="new-process-subject">
             <Select

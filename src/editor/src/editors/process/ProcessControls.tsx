@@ -1,6 +1,7 @@
 // The process editor's top controls (phase-3-design.md 6.2), also the inspector's Process section: name, domain, use,
 // subject, the bound attribute with its MQ9203 badge and Sync enum (a dry run shown in a small confirm, then applied
 // as one undo step), and the stereotype, tag and category chips.
+import { PROCESS_LABELS } from "@/model/labels";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { RefreshCcw } from "lucide-react";
@@ -96,7 +97,12 @@ export function BindingFields({ ctx, dom }: { ctx: Pick<EditorContext, "id" | "j
   return (
     <>
       <Field label="Use" htmlFor={`${dom}-use`}>
-        <Select id={`${dom}-use`} value={use} onChange={(e) => setUse(e.target.value)}>
+        <Select
+          id={`${dom}-use`}
+          value={use}
+          title={PROCESS_LABELS.useMeaning[use as "lifecycle" | "orchestration"] ?? PROCESS_LABELS.useMeaning.orchestration}
+          onChange={(e) => setUse(e.target.value)}
+        >
           <option value="orchestration">Orchestration</option>
           <option value="lifecycle" disabled={!subject}>
             {subject ? "Lifecycle" : "Lifecycle (choose a subject first)"}

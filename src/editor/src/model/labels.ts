@@ -292,6 +292,13 @@ export const PROCESS_LABELS = {
   actors: "Actors",
   lifecycle: "lifecycle",
   orchestration: "orchestration",
+  /** What each Use means, shown under the choice in New process… and as the Use field's tooltip in the editor. */
+  useMeaning: {
+    lifecycle:
+      "A lifecycle describes the states one entity goes through (a sales order from Draft to Completed). It has a subject entity and can bind its root states to an enum attribute of that entity, so the two never drift.",
+    orchestration:
+      "An orchestration coordinates work across people, roles, systems and other processes (a purchase approval with parallel checks, tasks and signatures). A subject entity is optional.",
+  } as Record<"lifecycle" | "orchestration", string>,
   notRun: "not run",
   passed: "passed",
   failedAt: (step: number) => `failed at step ${step}`,
