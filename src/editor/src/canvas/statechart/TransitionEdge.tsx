@@ -1,14 +1,14 @@
 // A transition on the statechart canvas (phase-3-design.md 6.3): a stepped line with an arrow, its label on a pill
 // (`event [guard] / actions`, `after 30d`, `done`, `always`), the gate badge "2 of 3" with the signers in its tooltip,
 // and an MQ9006 finding as a badge. Routes are not saved: they follow the states' positions. A transition from a state
-// to itself loops over the state. The initial arrow (InitialEdge) runs from the initial dot to its state.
+// to itself loops over the state; one whose run would cross other states is lifted over them (routes.ts). The initial arrow (InitialEdge) runs from the initial dot to its state.
 import { memo } from "react";
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, getStraightPath, Position, type Edge, type EdgeProps } from "@xyflow/react";
-import { ROW_H } from "@/design/density";
 import { ShieldCheck, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { Box } from "../layout";
 import type { ChartBadge, GateBadge } from "./chartModel";
+import { detourPath, isForward, meet, type Detour } from "./routes";
 
 export interface TransitionEdgeData extends Record<string, unknown> {
   /** The source's and the target's boxes on the canvas: the edge leaves the side facing its target. */
@@ -18,6 +18,8 @@ export interface TransitionEdgeData extends Record<string, unknown> {
   label: string;
   gate: GateBadge | null;
   badges: ChartBadge[];
+  /** Lifted over the states its straight run would cross (routes.ts), else null. */
+  detour: Detour | null;
   onSelect: (transition: string) => void;
 }
 
@@ -43,12 +45,9 @@ export function ChartMarkers() {
   );
 }
 
-/** The height an edge meets a state at: a box's middle, a container's header row. */
-const meet = (b: Box) => b.y + (b.height > ROW_H * 2 ? ROW_H / 2 : b.height / 2);
-
 /** An edge's ends from its states' boxes: right to left when the target lies ahead, left to right when it lies behind. */
 export function edgeEnds(from: Box, to: Box, self: boolean) {
-  const forward = self || from.x + from.width / 2 <= to.x + to.width / 2;
+  const forward = self || isForward(from, to);
   return forward
     ? { sourceX: from.x + from.width, sourceY: meet(from), sourcePosition: Position.Right, targetX: to.x, targetY: meet(to), targetPosition: Position.Left }
     : { sourceX: from.x, sourceY: meet(from), sourcePosition: Position.Left, targetX: to.x + to.width, targetY: meet(to), targetPosition: Position.Right };
@@ -66,7 +65,8 @@ function TransitionEdgeView({ id, source, target, data, selected }: EdgeProps<Tr
     path = `M ${sourceX} ${sourceY} C ${sourceX + 40} ${top}, ${targetX - 40} ${top}, ${targetX} ${targetY}`;
     labelX = (sourceX + targetX) / 2;
     labelY = top + 8;
-  } else [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 6, offset: 16 });
+  } else if (data.detour) [path, labelX, labelY] = detourPath(sourceX, sourceY, targetX, targetY, data.detour);
+  else [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 6, offset: 16 });
   return (
     <>
       <BaseEdge

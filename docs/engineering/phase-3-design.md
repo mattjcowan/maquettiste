@@ -1008,7 +1008,12 @@ hovering it picks the target; because the chart draws its edges above the open c
 nesting depth), leaf states sit above every edge (`z-index: 2000` on a node holding `[data-leaf]`), which is also what
 lets the handle take the pointer where an outgoing edge starts. The owner's second look (the dot was invisible on a
 chart squeezed under the header fields and the Problems panel) made a process start with its details folded
-(`mq.editor.details.process` defaults to hidden; the inspector carries the same fields) and the dot always visible. Budgets
+(`mq.editor.details.process` defaults to hidden; the inspector carries the same fields) and the dot always visible. The
+owner's third look (a chain laid out in one row hid its skip transitions, drawn straight through the states between):
+`routes.ts` lifts a transition whose run would cross a drawn state over the states it crosses (a backward one below),
+in lanes from the inside out by the length of the stretch (clearance 20, lane gap 24), derived from the boxes on every
+render since routes are not saved; the layout itself is unchanged (a chain is one row, the lifted edges show the
+branches). Unit tests `statechart-routes`. Budgets
 (`statechart-budget.mock-only.spec.ts`, `?mock=chart400`: 400 states nested three deep with parallel regions and 321
 transitions; run as the `mock` project's teardown, alone): first paint 228 to 236 ms (budget 250), layout in the worker
 265 to 270 ms on the first Layout and 160 to 177 ms after (budget 400). Tests: unit `statechart-model`,

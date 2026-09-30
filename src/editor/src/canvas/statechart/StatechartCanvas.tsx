@@ -36,6 +36,7 @@ import { dotBox, grownSizes, INIT, isOpen, layoutChart, placeMissing, regionSepa
 import { collapsedStates, processDiagramId, savedPlacements, setCollapsed, writePlacements, type Placement, type Placements } from "./diagram";
 import { deleteStates, incomingFromOutside, linkStates, removedStates } from "./edits";
 import { directionOf, enterTarget, moveSelection, nearestInDirection, outgoing, parentTarget, walk } from "./keyboard";
+import { detours } from "./routes";
 import { InitialNode, StateNode, stateDomId, type InitialFlowNode, type StateFlowNode } from "./StateNode";
 import { ChartMarkers, edgeDomId, InitialEdge, TransitionEdge, type InitialFlowEdge, type TransitionFlowEdge } from "./TransitionEdge";
 
@@ -472,7 +473,17 @@ function ChartCanvas({ pc }: { pc: ProcessContext }) {
   const edges: FlowEdge[] = useMemo(() => {
     const out: FlowEdge[] = [];
     if (!drawable) return out;
-    for (const e of visibleEdges(chart, rep)) {
+    const visible = visibleEdges(chart, rep);
+    const drawn = [...absolute].filter(([id]) => rep.get(id) === id).map(([, box]) => box);
+    const lifted = detours(
+      visible.flatMap((e) => {
+        const from = absolute.get(e.source);
+        const to = absolute.get(e.target);
+        return from && to ? [{ id: e.id, from, to }] : [];
+      }),
+      drawn,
+    );
+    for (const e of visible) {
       const a = absolute.get(e.source);
       const b = absolute.get(e.target);
       if (!a || !b) continue;
@@ -487,7 +498,16 @@ function ChartCanvas({ pc }: { pc: ProcessContext }) {
         className: flash?.ids.has(e.transition) ? flashClass : undefined,
         ariaLabel: CHART_LABELS.transitionAria(e.label),
         zIndex: 1000, // above open containers; leaf states sit above the edges (index.css)
-        data: { from: a, to: b, transition: e.transition, label: e.label, gate: e.gate, badges: e.badges, onSelect: selectTransition },
+        data: {
+          from: a,
+          to: b,
+          transition: e.transition,
+          label: e.label,
+          gate: e.gate,
+          badges: e.badges,
+          detour: lifted.get(e.id) ?? null,
+          onSelect: selectTransition,
+        },
       });
     }
     const initial = (holder: string | null, target: string | null) => {

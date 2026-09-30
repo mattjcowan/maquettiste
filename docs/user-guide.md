@@ -541,6 +541,14 @@ same drag works between a state and one inside a compound state, in either direc
 arrows or a click on the target) draws the same transition. From the Domain model explorer, a process row under
 **Processes** opens its editor with a double click; a single click only shows it in the inspector.
 
+**How transitions are drawn.** A transition runs from the right side of its source to the left side of its target
+(the other way round when the target lies behind), as a stepped line with its label on a pill. When that run would
+pass through other states, the transition is lifted over them (a backward one runs below), and transitions that share
+the stretch take separate lanes, the longer one outside: in a chain Draft, Issued, Paid, Void, a transition from Draft
+to Paid arcs over Issued and one from Draft to Void arcs over both, so the alternative paths through a lifecycle stay
+visible. Layout puts the states of a chain in one row on purpose; the lifted transitions are what shows the branches.
+Routes are not saved: they follow the states wherever you move them.
+
 ### The simulation panel
 
 Under the chart, the **simulation panel** runs the process through the engine: the browser only sends the inputs and
