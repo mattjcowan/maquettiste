@@ -1,6 +1,7 @@
 # Phase 3 brief: processes
 
-**Status (2026-09-29): answered; the design exists in `phase-3-design.md`.** The owner answered all ten questions:
+**Status (2026-09-30): phase 3 is built (rounds P1 to P6) and gate 3 passed; the gate record and the close-out are in
+`phase-3-design.md` section 9 (the P5 review-fix and P6 status paragraphs). Answered 2026-09-29.** The owner answered all ten questions:
 (1) definitions and handler stubs only, with a small generated interpreter as a pack output; (2) a sales-order lifecycle
 and a purchase-approval orchestration as fixtures under `tests/fixtures/models`; (3) scenarios recorded in the
 simulation panel and turned into tests by a pack, C# first, TypeScript second; (4) the process owns the state list, drift
@@ -65,7 +66,8 @@ asks for and what the owner must answer before the phase 3 design document is wr
 
 ## Carried over from phases 1 and 2 (not built)
 
-None of these is built; question 10 decides which come before phase 3. Each names the design-document row it belongs to.
+None of these is built; question 10 decides which come before phase 3. At the phase 3 close-out (2026-09-30) all six
+are still open: the side track decision 10 allowed did not run, and L6 now also covers E26 and E27 to E37. Each names the design-document row it belongs to.
 
 - **L1 Explorer** (explorer-redesign.md §6): Create entity from table, Copy SELECT, Copy DDL; Diagrams of this domain; New
   schema and New table; Open in new tab.

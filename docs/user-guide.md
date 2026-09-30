@@ -21,6 +21,10 @@ A project lives under a `.maquettiste/` folder in a repository. It holds:
 - **Databases**: the physical side. A database holds only what is mapped to it: the domains it takes **by
   convention** (all of them, the ones you pick, or none) and the entities mapped to it one by one. Tables of mapped
   entities follow the naming conventions; a table that differs has a **customised mapping** (an override file).
+- **Processes**: statecharts. A **lifecycle** describes the states of one entity; an **orchestration** coordinates work
+  across people, systems and other processes. **Actors** are the people, roles and systems that raise their events and
+  sign their gates; **scenarios** are recorded runs of a process that the engine replays as tests (see "Processes, actors
+  and scenarios").
 - **Diagrams**: saved views of the canvas. A diagram only remembers which elements it shows and where.
 - **Templates**: the packs that turn all of the above into files (SQL, C#, TypeScript, docs).
 
@@ -35,7 +39,7 @@ The editor is laid out like an IDE:
 | Area | What it holds |
 | --- | --- |
 | Top bar | The project name (the whole model and its settings), git branch and changed-file count, the command palette (Ctrl+K or Cmd+K) and the theme |
-| Rail | The explorers: Domain model, Reference data, Databases, Diagrams and Generate; Settings and the account menu at the bottom |
+| Rail | The explorers: Domain model, Processes, Reference data, Databases, Diagrams and Generate; Settings and the account menu at the bottom |
 | Sidebar | The explorer the rail selected: a tree with a "Search the model" box, filterable by tag, category and stereotype |
 | Center | The current screen: the canvas, a grid or an editor |
 | Right | The inspector: the properties of what you are working on, editable (see below); none on Settings and Reference data |
@@ -75,7 +79,8 @@ Both are kept in this browser only: another browser, or a private window, opens 
 
 ### The rail: one explorer at a time
 
-The rail's icons, top to bottom, are **Domain model**, **Reference data**, **Databases**, **Diagrams** and **Generate**;
+The rail's icons, top to bottom, are **Domain model**, **Processes**, **Reference data**, **Databases**, **Diagrams** and
+**Generate**;
 **Settings** (the gear) and the **Account** menu sit at its foot. A click on an icon shows that explorer in the sidebar,
 and only that one: each explorer has its own tree, its own expanded rows and its own filter, kept when you switch away
 and back. A second explorer can stay open beside the first: the explorer header's menu has **Pin beside…** (and
@@ -388,7 +393,8 @@ database shows on the Database screen at once. The explorers remember which rows
     with the message; a hand edit shows it in Problems.
 - **Settings › Validation** <a id="settings-validation"></a> lists every built-in rule, grouped by family (Model files,
   References and vocabularies, Model structure, Databases and mappings, Extensions and script rules, Packs and
-  generation, Reference types, Seeds, Localization, Branding), with its id, description and default severity. Each row's
+  generation, Reference types, Seeds, Localization, Branding, Processes, Actors and gates, Lifecycles, Scenarios,
+  Process import and export, Process expressions and simulation), with its id, description and default severity. Each row's
   picker is **Default** (the engine's severity), `error`, `warning`, `info` or `off`; the model file rules (MQ1xxx) have
   no `off`. The filter box matches an id or a word of the description; a changed row shows a dot until you save, the
   count says how many rules are overridden, and **Reset all** sets every picker back to Default. Save writes only the
@@ -417,7 +423,9 @@ kind folder lists the same process rows.
 Right-click a process for **Open**, **Open in new tab**, **Simulate** (opens its chart with the simulation panel),
 **Verify scenarios**, **Export XState**, **Where used**, **Move to domain…**, **Rename**, **Add to favorites** and
 **Delete** (its scenarios and its chart's diagram go with it). Right-click a domain group for **New process…** and
-**Import XState…**. The header's **+** offers New process…, New actor… and New scenario….
+**Import XState…**. The header's **+** offers New process…, New actor… and New scenario…. An actor or a scenario row
+offers **Open**, **Open in new tab**, **Where used**, **Rename**, **Add to favorites** and **Delete**. New scenario… from a
+process's Scenarios folder starts on that process.
 
 A process's chart is a diagram like any other: once you have arranged it, the **Diagrams** explorer lists it under the
 process's domain as "statechart of <process>", and opening it there opens the process editor on its Chart tab. It has
@@ -431,7 +439,8 @@ carries the process's name.
 A sentence under the choice says what each one means. A **lifecycle** describes the states one entity goes through (a
 sales order from Draft to Completed): it has a subject entity, and its root states can be bound to an enum attribute
 of that entity so the two never drift. An **orchestration** coordinates work across people, roles, systems and other
-processes (a purchase approval with parallel checks, tasks and signatures): a subject entity is optional.
+processes (a purchase approval with parallel checks, tasks and signatures): a subject entity is optional. The same
+sentence is the tooltip of **Use** in the process editor.
 
 - **Lifecycle**: pick the **Subject entity**, then its **Bound attribute**: one of the subject's enum-typed attributes,
   or **New status attribute and enum**, created in the same change (its default is `Initial`, the first state). With
@@ -459,7 +468,9 @@ A process opens in a document tab with its top controls: name and domain, **Use*
 (with a drift badge when the enum and the states differ, and **Sync enum** beside it), stereotype, tag and category
 chips. **Use** and **Subject** change both sides of a lifecycle at once: making a process a lifecycle (it needs a
 subject first), moving it to another entity, or turning it back into an orchestration also updates the entity's
-lifecycle and releases the entity's previous lifecycle, as one change. It opens on **Chart**. The tabs:
+lifecycle and releases the entity's previous lifecycle, as one change. **Lifecycle** can be chosen only once a subject
+is set; until then the option reads "Lifecycle (choose a subject first)". The chevron at the right of the title row folds the display names, the description and the top controls away (the
+inspector shows the same fields), so the chart gets the room. It opens on **Chart**. The tabs:
 
 - **Chart**: the statechart canvas with the simulation panel docked below it (both described next).
 - **States**: the state tree as a grid: name, type, initial, history, entry and exit actions, invokes, and the bound
@@ -468,16 +479,18 @@ lifecycle and releases the entity's previous lifecycle, as one change. It opens 
 - **Transitions**: source, trigger, event or duration, guard, targets, actions, external and the gate badge; below it
   the **Guards** and **Actions** grids. An expression that does not parse is marked MQ9501 at once. Ctrl+G on an event
   transition adds a gate, or removes the one it has (the row's shield button does the same).
-- **Events**: name, actors allowed to raise it, and the selected event's payload attributes.
-- **Gates**: each gate's signers, required count (saved when you leave the field or press Enter), required actors,
-  meanings and audit attributes.
+- **Events**: name, actors allowed to raise it (none listed: any actor), where it is used, and the selected event's
+  payload attributes.
+- **Gates**: one form per gate: its name, the required count out of the signers (saved when you leave the field or press
+  Enter), signers, required actors, **Allow repeat signer**, **Reason required**, the meanings and the audit attributes.
 - **Context**: the process's context attributes, in the attribute grid.
 - **Scenarios**: the process's scenarios with their status; each row's buttons **Replay**, **Open** and **Refresh the
   expectations** (from a replay); Enter opens a scenario, R replays it, Shift+R refreshes its expectations and
   Ctrl+Delete deletes it.
 
 Every grid is keyboard-driven like the attribute grid: arrows move, Enter or F2 edits, Escape cancels, Tab moves to
-the next cell, Ctrl+Enter adds a row, Ctrl+Delete removes one. In a list cell, the arrow keys move through the choices
+the next cell, Ctrl+Enter adds a row (on States a sibling, and Ctrl+Shift+Enter a child), Ctrl+Delete removes one. In
+a list cell, the arrow keys move through the choices
 and Enter, Tab or leaving the cell saves the one chosen. F12 on a cell that names something (a source or target state,
 an event, a guard, an action, an actor, an invoked process, a scenario) goes to it, and Shift+F12 lists where it is
 used. Each change is one undo step (Ctrl/Cmd+Z).
@@ -514,8 +527,10 @@ selection, and when transitions enter the state from elsewhere a dialog lists th
 and one left with no target is deleted with it. While the process has changes that could not be saved (they do not
 validate, or someone else changed the process), a delete is refused until you fix or discard them. F12 on an edge
 opens its gate, guard or event on the matching tab; Shift+F12 lists where the selected state or transition is used.
-Shift-click or drag a box to select several states; they move and delete together. Each gesture is one undo step.
-Right-click a state for the same actions as a menu. A screen reader announces the state or transition selected while
+Shift-click states, or hold Shift and drag a box, to select several; they move and delete together. Each gesture is one
+undo step. Right-click a state for the same actions as a menu (Add state, Add child state, Draw a transition, Rename,
+and on a container Lay out its states and Collapse or Expand, then Delete); right-click a transition for Go to
+definition and Delete. A screen reader announces the state or transition selected while
 the focus stays on the chart.
 
 ### The simulation panel
@@ -525,8 +540,8 @@ shows the answer, so what you see is what the interpreter does. It starts folded
 its room; expand it with the chevron on that row (the choice is remembered in this browser), or open it with
 **Simulate** on the process's row or **Record from simulation** in New scenario…. Its sections (each collapses):
 
-- **Start**: the context attributes as a form, with their defaults. Editing a value restarts the simulation.
-  **From scenario…** loads a scenario's start and steps as the inputs.
+- **Start**: the context attributes as a form, with their defaults, and the **Clock start**. Editing a value restarts
+  the simulation. **From scenario…** loads a scenario's start and steps as the inputs.
 - **Enabled**: one row per input the process can take now: an event with its actor (only the actors the event allows),
   its payload fields, and for a gated event the signer, the meaning and the reason; a guard without an expression shows
   a true/false toggle whose value is recorded as an assumption. **Raise** (Enter on the row) sends it; the keys 1 to 9
@@ -539,14 +554,15 @@ its room; expand it with the chevron on that row (the choice is remembered in th
   missing), the actions run and what they changed in the context, the gate's signatures and audit records, or the
   refusal and its reason.
 - **Trace**: the inputs so far. Selecting one shows the state after it (the chart follows); Delete removes it and every
-  input after it. **Restart** clears them.
+  input after it. The title row's restart button (**Restart from the start**) clears them.
 
 While the process has unsaved edits, the simulation runs on the draft, so a chart edit is tried at once; an edit that
 does not validate is reported in the panel instead. Record and Replay work on the saved process, so they save your edits
-first and refuse while changes that could not be saved remain. **Record to scenario…** saves the inputs as a scenario of the
-process (name, and the outcome prefilled: final when the process ended, active otherwise), with each step's expected
-states and context filled from the run; one undo removes it. **Replay scenario…** steps through a scenario: the engine
-verifies it, each step shows passed or failed, and the replay stops at the first failure with the expected and actual
+first and refuse while changes that could not be saved remain. **Record to scenario…** (on the title row, available once
+an input exists) saves the inputs as a scenario of the process (name, and the outcome prefilled: final when the
+process ended, active otherwise), with each step's expected states and context filled from the run; one undo removes
+it. While New scenario… is recording, the title row shows **Recording <name>** with a button that stops it. **Replay
+scenario…** steps through a scenario: the engine verifies it, each step shows passed or failed, and the replay stops at the first failure with the expected and actual
 states side by side; the chart follows the selected step.
 
 ### The inspector for processes
@@ -590,6 +606,140 @@ step, and the panel re-validates after it:
 Undo reverts a fix like any change, with one limit that applies to every save: a change that would bring an error back
 is refused, so undoing the fix of an error (Sync enum, Set initial) reports "Cannot undo" and the model stays fixed.
 
+### The rules for processes (MQ9xxx)
+
+Every rule below has a row in **Settings › Validation**, where its severity can be changed. The structural rules (MQ9001
+to MQ9018, MQ9101 to MQ9106, MQ9201 to MQ9205 and MQ9501) run on every save and every `validate`; MQ9019 is the answer
+to a refused batch operation. The scenario rules (MQ93xx) and MQ9502 to MQ9507 come from replaying
+scenarios: `validate` replays every scenario of the processes it checks, **Verify scenarios** and `maquettiste process
+verify` replay on request, and the simulation panel shows them for its own run. A replay finding is reported on a save but
+does not refuse it, so a chart edit is saved and its scenarios can be refreshed afterwards. The import and export rules
+(MQ94xx) are returned by Import XState, Export XState and the `process import` and `process export` commands (the
+command's export prints MQ9404 but not the MQ9406 note).
+
+| Rule | Severity | What it reports | Fix button |
+| --- | --- | --- | --- |
+| MQ9001 | error | An initial state that is not a direct child of its compound state (or of the process), or an initial on a state that is not compound | **Set initial**, or **Remove initial** |
+| MQ9002 | error | A state whose type contradicts its children: an atomic, final, history or choice state with children, a compound or parallel state without | |
+| MQ9003 | warning | An unreachable state: nothing enters it from the initial state (guards ignored); reported once per unreachable subtree | |
+| MQ9004 | warning | A dead end: a reachable atomic state with no transition on itself or an ancestor and no invoke | |
+| MQ9005 | info | No final state is reachable, so the process never completes (normal for some lifecycles) | |
+| MQ9006 | warning | Overlapping transitions for one source and trigger: one after an unguarded one, or a guard tested twice, never fires | |
+| MQ9007 | error | Invalid targets: a state of another process, two targets in one region, or targets not in orthogonal regions of one parallel state | |
+| MQ9008 | error | Trigger fields that do not fit the trigger: an event trigger without an event, an `after` without a positive duration, `done` on a state that cannot complete, an invoke trigger naming no invoke of the source | |
+| MQ9009 | error | A cycle of unguarded eventless (`always`) transitions that would never end | |
+| MQ9010 | error | A choice state whose transitions are not all `always`, or whose last one is guarded (no default) | |
+| MQ9011 | error | A history state outside a compound parent, or a default target outside its parent | |
+| MQ9012 | error | A final state with outgoing transitions or invokes | |
+| MQ9013 | warning | An event, guard, action or invoke that nothing uses | **Remove** it |
+| MQ9014 | error | A reference to a state, event, guard, action or invoke of another process | |
+| MQ9015 | error | A sub-process invoke cycle, a process invoke without a process, or a human task without actors | |
+| MQ9016 | warning | A member of a process diagram that is not a state of that process | **Remove the member** |
+| MQ9017 | warning | A parallel state with one region | |
+| MQ9018 | warning | A `done` transition whose source can never reach a final state, so it never fires | |
+| MQ9019 | error | A process operation (Sync enum, set lifecycle, set initial, refresh a scenario) was refused: it names the wrong element, would remove an enum member still in use, cannot replay the scenario to its end, or shares a batch with a change to the same process, enum or scenario | |
+| MQ9101 | error | A gate needs more signatures than its signers can give | |
+| MQ9102 | error | A gate's required actors are not all among its signers | **Add to signers** |
+| MQ9103 | error | A gate on a transition whose trigger is not an event, or two gates on one source and event | |
+| MQ9104 | error | A gate without meanings | |
+| MQ9105 | warning | A gate signer the event does not allow to raise it | **Add the signer to the event's actors** |
+| MQ9106 | info | An actor no process uses | |
+| MQ9201 | error | A lifecycle and its subject that do not name each other: no subject, a subject whose lifecycle is another process, or an entity whose lifecycle is an orchestration or another entity's lifecycle | **Set lifecycle on the subject**, or **Make it this entity's lifecycle** |
+| MQ9202 | error | A bound attribute that is not a single-valued enum attribute of the subject, or one set on an orchestration | |
+| MQ9203 | error | Enum drift: the bound enum's members differ from the lifecycle's root-level states (missing, extra or out of order) | **Sync enum** |
+| MQ9204 | warning | The bound enum is used elsewhere too, so syncing it changes those uses | |
+| MQ9205 | warning | The bound attribute's default is not the lifecycle's initial root-level state | **Set default to** that state |
+| MQ9301 | error | A scenario step accepted while it expects a refusal, or refused while it expects to be accepted | |
+| MQ9302 | error | The active states after a step differ from what the step expects | **Update expectations from replay** |
+| MQ9303 | error | The context attributes a step changed differ from what the step expects | **Update expectations from replay** |
+| MQ9304 | error | Whether the process is final after the last step differs from the scenario's outcome | **Update expectations from replay** |
+| MQ9305 | error | A step whose fields do not fit: an unknown event, a time step without a duration, an invoke that is not pending, a payload value of the wrong type | |
+| MQ9306 | warning | A guard without an expression is evaluated and the step has no assumption for it, so the replay stops there | |
+| MQ9401 | warning | Imported configuration with no place in the model, kept as opaque data and written back on export | |
+| MQ9402 | warning | An inline function in an imported configuration became a named stub (its text kept in the description, never run) | |
+| MQ9403 | error | The import input is not a statechart configuration the importer accepts | |
+| MQ9404 | warning | A feature mapped approximately or dropped on import or export | |
+| MQ9405 | error | An id carried in the configuration belongs to another kind or another process, or is used twice; the node got a new id | |
+| MQ9406 | info | Export wrote model data with no equivalent in the format into `meta.maquettiste`, so an import restores it | |
+| MQ9501 | error | A guard or action expression does not parse | |
+| MQ9502 | error | An expression threw during a replay or a simulation | |
+| MQ9503 | error | An expression exceeded the sandbox's deadline (50 ms) or statement limit (100,000) | |
+| MQ9504 | warning | A guard returned something other than true or false (counted as false) | |
+| MQ9505 | warning | An action returned an attribute the context does not declare, or a value of the wrong type (ignored) | |
+| MQ9506 | warning | Two guarded transitions of one source and trigger were enabled at once; the first in priority order was taken | |
+| MQ9507 | error | One input ran more than 1,000 microsteps (an eventless loop, or events that keep raising each other) | |
+
+`GET /api/validation/rules` and the MCP tool `list_validation_rules` return the full descriptions.
+
+### Generating code from processes
+
+The engine runs no process in your application and creates no table for one: what a process becomes is what the packs
+write. Three scopes serve processes: `each process`, `each actor` and `each scenario`, one file each (a filter takes tags,
+stereotypes, categories and packages). The example packs use them as follows; the pack READMEs have every detail.
+
+**The C# example pack (`csharp-dapper`)** writes, for each process, under `Processes/<Process>/`:
+
+| Files | What they hold | Who changes them |
+| --- | --- | --- |
+| `<P>States.cs` | A constant per state path; for a lifecycle, the mapping from the active states to the bound enum | Generated, overwritten on every run |
+| `<P>Definition.cs` | The chart as static data: states, transitions in priority order, timers, gates and their meanings | Generated |
+| `<P>Contracts.cs` | The context record, one command per event (the typed payload and an envelope with the instance, actor, signer, meaning and reason), the start, invoke-result and timers-due commands, the transition record and one audit record per gate | Generated |
+| `<P>Handlers.g.cs` and `<P>Handlers.cs` | The guards and actions: the generated half implements the expressions it can translate and declares the others; the companion holds the code for those | A pair: the companion is written once, then it is the team's |
+| `<P>Services.g.cs` and `<P>Services.cs` | An interface per service task and a hook per human task; the companion implements them | A pair |
+| `<P>Machine.g.cs` and `<P>Machine.cs` | A typed facade: start, restore, one method per event; the companion adds the team's own queries | A pair |
+| `<P>Store.g.cs` and `<P>Store.cs` | The store interface (load and save the instance's snapshot over the version it loaded, append history and audit records); the companion starts as an in-memory store and is adapted to the entities the project mapped | A pair |
+| `Endpoints/<P>Endpoints.cs` | One `POST` endpoint per event, each with a user-code region where the request and the response can be reshaped | Regions: the code inside a region survives regeneration; written only when `endpointsFolder` is set, in a committed root |
+
+and, once for the model when it has a process:
+
+| Files | What they hold |
+| --- | --- |
+| `Dispatch/Dispatch.g.cs` and `Dispatch/Pipeline.cs` | The dispatcher that sends every command through the behaviours to its handler; the companion orders the behaviours and holds the policy hooks (which actors a caller may act as, the transaction) |
+| `Dispatch/HandlerRegistry.g.cs` | The typed list of handlers, with a registration method for a dependency-injection container; no reflection |
+| `Dispatch/Behaviours.g.cs` | Validation of the payload, authorization by actor, logging (attributes marked sensitive left out), the transaction and the hand-off of transition and audit records to an outbox |
+| `Runtime/Statechart.g.cs` and `Runtime/ProcessHost.cs` | The generated interpreter, with the engine's semantics; the companion holds the clock, the timer scheduler and the invoke host, in memory to start with |
+| `Processes/Actors.cs` | A constant per actor with its type, and the actors each event allows |
+
+A companion is created once and never overwritten: a guard, action or service that the model adds fails the build until
+its companion code is written, which is how the pack tells you what to implement. Keep companions in a committed output
+root (the pack's `partialFolder`).
+
+**Scenario tests.** With `testsFolder` set, each scenario becomes one test (`<P>/<Scenario>Tests.cs`). It starts the
+instance with the scenario's start context on a manual clock at the scenario's start instant, sends every step through the
+dispatcher to the generated interpreter, and asserts after each step that it was accepted, or refused with the reason the
+engine gives, the outcomes of the gate audit records the step wrote, the active states and the context attributes it
+changed, and after the last step whether the process is final. The tests call your real guards and services, not the
+scenario's assumptions, so a handler that disagrees with a scenario fails its test. Fix the model or the handler, never
+the test. The test project supplies a small `ScenarioHost` that wires the stores it chose.
+
+**Expressions.** Guards and actions are JavaScript expressions for the engine's sandbox. The C# pack translates a subset:
+literals, `context.x`, `event.payload.x`, `event.name` and `event.actor`, comparisons, `&&`, `||`, `!`, arithmetic, `? :`,
+and an action's object of context updates. Anything else (a function call, `Math`, a division of integers, arithmetic on a
+value that may be null, a comparison across kinds) becomes a stub in the handlers companion with the expression as a
+comment, because C# would compute it otherwise. Preview the handlers unit to see which guards became stubs;
+packs/csharp-dapper/README.md lists the subset exactly.
+
+**Tables.** The `sql-ddl` pack writes no table for processes unless its parameter `processTables` is `true`: then
+`<db>/processes/<process>.sql` holds an instances, a history and an audit table per process (no audit table without
+gates). These scripts are outside `schema.sql` and the migrations. A project that wants the tables in its model models
+entities for them, maps them to a database and adapts the store companion, as the gate 3 fixture does.
+
+**Documentation.** The `process-docs` pack writes Markdown to a committed root: a page per process (the description, a
+state diagram in diagram text, and tables of states, transitions, gates with their audit record, events, context,
+guards, actions and invokes), a page per actor (a persona's goals among them), a walk-through page per scenario and an
+index. Copy `packs/process-docs` into `.maquettiste/templates/`, set `packs.process-docs.output` (for example `docs`) and
+allow that root; packs/process-docs/README.md shows the settings.
+
+**TypeScript.** The sample pack `samples/typescript-pack` mirrors the C# units with the same ids: `*.gen.ts` modules with
+companions, the typed registry map, behaviours as composed functions, the interpreter module, endpoints with regions, and
+one `node:test` file per scenario.
+
+**Running the tests.** Build and test the generated code with its companions as any other project:
+`dotnet build <solution> -warnaserror` then `dotnet test <solution>` (tests/fixtures/models/processes/README.md walks
+through the gate 3 fixture's solution); for TypeScript, `npx tsc --noEmit` then `node --test` on the generated tests
+(samples/typescript-pack/README.md). `maquettiste process verify` replays the same scenarios in the engine, without
+generated code, and is the faster check while you model.
+
 ## Generation: how the model becomes files
 
 This chapter is for someone who has never written a template. Generation reads the model (the entities, tables,
@@ -603,8 +753,9 @@ keeps a part only when a condition holds. A template that prints `CREATE TABLE {
 `CREATE TABLE customers (` for the customers table.
 
 **A pack** is a folder, `.maquettiste/templates/<pack>/`, holding the templates and one `pack.json` that says what to
-run. The example packs are `sql-ddl` (database scripts) and `csharp-dapper` (classes and repositories); your own packs
-sit beside them and work the same way. A pack also has an **output base** (`packs.<pack>.output` in `maquettiste.json`),
+run. The example packs are `sql-ddl` (database scripts), `csharp-dapper` (classes and repositories, and the process
+code) and `process-docs` (Markdown pages for processes, actors and scenarios); your own packs sit beside them and work
+the same way. A pack also has an **output base** (`packs.<pack>.output` in `maquettiste.json`),
 the folder its paths start from, and can be switched off there (`enabled: false`).
 
 **A unit** is one line of a pack's work list. It names a template, which elements the template runs for (the scope),
@@ -617,6 +768,7 @@ and where the result goes (the output pattern). `sql-ddl` has five units: `table
 | `each table`, `each entity`, `each enum`, … | once per element of that kind | one file per element: 40 tables give 40 scripts |
 | `model` | once, with the whole model | one file for many: a template that loops over every entity writes them all into one file |
 | `each locale` | once per declared language | one file per language (a resource file, a dictionary) |
+| `each process`, `each actor`, `each scenario` | once per process, actor or scenario | one file each: a page per process, a test per scenario (see "Generating code from processes") |
 | `select <name>` | once per element a pack script returns | `select databases` gives one file per database |
 
 A **filter** (`where`) narrows a scope: only entities tagged `api`, only one package, not the abstract ones. An element
@@ -882,7 +1034,7 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | Command | What it does |
 | --- | --- |
 | `maquettiste init` | Creates `.maquettiste/` (`maquettiste.json`, the JSON schemas for editor completion, the `sql-ddl` starter pack) and a `.gitignore` block. `--pack csharp-dapper` or `--pack none` picks another starter; `--mcp`, `--skill` and `--agent-setup` register the agent server, and `--mcp --docker <image>` registers a `./mcp.sh` wrapper that runs it from the image (docs/mcp.md). The project is named by `--name <name>`, else the `name` of `package.json`, else the git remote's repository name, else the folder name (so a repository mounted at `/repo` in the image keeps its real name). Running it again keeps what is there. |
-| `maquettiste validate` | Validates the model and the packs; `--format sarif` for code-scanning tools. |
+| `maquettiste validate` | Validates the model and the packs, and replays every scenario of every process (MQ9301 to MQ9306 and MQ9502 to MQ9507); `--format sarif` for code-scanning tools. |
 | `maquettiste generate` | Renders the packs into the output roots of `maquettiste.json`, incrementally: only units whose inputs changed re-render. Prints one line per file (`A` added, `M` modified, `D` deleted, `K` kept). A generated file edited by hand stops the run (exit 3); `--hand-edits overwrite` replaces it. |
 | `maquettiste generate --check` | Renders without writing and exits 2 when the committed output differs from the model: the CI gate. |
 | `maquettiste generate --watch` | Regenerates on every change under `.maquettiste/` (a save in the editor, a template edit) until Ctrl+C. |
@@ -983,4 +1135,8 @@ not redeclare a key or category name of the global vocabulary or of an enclosing
 - packs/README.md: how to write a template pack.
 - docs/engineering/explorer-redesign.md: the rail, the explorers, search and the element editors.
 - docs/engineering/reference-types-seeds-localization.md: reference types, seeds and localization.
+- docs/engineering/phase-3-design.md: processes, actors and scenarios, the interpreter, import and export, and the
+  process units of the packs.
+- packs/csharp-dapper/README.md, packs/sql-ddl/README.md, packs/process-docs/README.md and
+  samples/typescript-pack/README.md: what each pack writes.
 - docs/mcp.md: the same operations for agents.

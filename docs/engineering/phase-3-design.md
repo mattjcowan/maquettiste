@@ -1286,9 +1286,51 @@ Gate 3 over the merged tree (image `mattjcowan/maquettiste:p5fix`): every step p
 conformance charts (section 10); the TypeScript store keeps no version (the finding named the C# interface); the TypeScript
 clock stays in milliseconds (a sub-millisecond `after` is rounded down there).
 
+**Status P6 and phase 3 close-out, 2026-09-30:** built and verified; phase 3 is complete. What each round delivered: P1
+the process, actor and scenario kinds with their schemas, the structural rules MQ9001 to MQ9018, MQ9101 to MQ9106 and MQ9201
+to MQ9205 with MQ9019 for refused operations, the `sync-enum`, `set-lifecycle` and `set-initial` operations and the gate 3
+fixture; P2 the engine interpreter, expressions in the sandbox, scenario replay (MQ93xx, MQ95xx), the XState projection
+(MQ94xx) and the six process operations over HTTP, MCP and the CLI with the bench cases; P3 the Processes explorer, the New
+process, New actor, New scenario and Import XState dialogs, the process, actor and scenario editors and the Problems quick
+fixes; P4 the statechart canvas with nested layered layout saved in the process diagram and the simulation panel that
+records and replays scenarios; P5 the resolved model and the three scopes, the `csharp-dapper` process units with the
+generated interpreter, dispatch and scenario tests, `sql-ddl`'s process tables, the `process-docs` pack, the TypeScript
+mirror and gate 3; P6 the documentation: `docs/user-guide.md` (its "Processes, actors and scenarios" chapter checked
+against the editor as built, with the rail, the actor and scenario menus, the details chevron, the Gates form, Shift-drag
+selection, the chart's menus, the Clock start, the restart button, recording and the Use explanation corrected or added;
+a new "The rules for processes (MQ9xxx)" table with all 49 rules, their severities and their fix buttons; a new
+"Generating code from processes" section; the Validation families, the scope table, the example packs and the CLI's
+`validate` row brought up to date), `docs/mcp.md` (46 tools, the `apply_batch` process operations, the import diagnostics,
+`quickFix` in `list_validation_rules`), `skills/maquettiste-modeling/SKILL.md` (a Processes part and the three folders),
+`README.md` (phase 3 and gate 3), `spec-errata.md` (E27 to E37, awaiting the owner), `docs/demo.md` (the rail order and the
+tool count), and a sweep for third-party product names over the prose P6 wrote and the product's own text (only the export
+format's name, the diagram syntax's fence tag and the pack README's one mention of it, the editor's font package, and
+ignore entries for an editor's settings folder remain there; `docs/demo.md`, `docs/mcp.md` and the skill still name the
+agent client, the container runtime and the code host a reader installs, and the pack id `csharp-dapper` names its
+library). **Gate 3: pass**, as recorded in the P5 review-fix run above over the merged tree (image
+`mattjcowan/maquettiste:p5fix`, 24 cores): validate 0 errors and 0 warnings, every file canonical; 16 of 16 scenarios
+verified (the fixture's 14 and one recorded in the simulation panel per process); `generate --check` clean, 110 files
+byte-identical at `--jobs 1`, `--jobs 24` and in the editor's apply, two exports of each process identical, the solution
+built with `-warnaserror`; 16 of 16 generated scenario tests passed; both processes round-tripped through XState byte for
+byte; every bench budget met. P6 changed documentation only (the Use explanation in New process… and on the editor's Use
+field was a separate editor change), so the gate was not run again. **Left**, gathered from the status paragraphs above and this round's checks: the P2
+conformance charts are not replayed against the generated interpreters (only the fixture's scenarios are; section 10);
+the TypeScript store keeps no version and the TypeScript clock counts milliseconds (a sub-millisecond `after` is rounded
+down there); neither fixture exercises a sub-process invoke in the generated code; the MQ9013 quick fix and an XState
+import `into` a process do not drop the diagram's members of removed states (the diagram's save is refused with MQ2001
+until they batch the diagram as `changeWithDiagram` does); a grown container may overlap a sibling until Layout; a Translations
+section per state (a state's display name is translated in the process's own section); the mock and the engine answer a reference
+error on a save differently, and the mock's stepper leaves out sub-process instances, MQ9505 and MQ9506; the gate 3 bench
+step is advisory on a hosted CI runner (binding locally); a scoped validate over the 5,000-entity model has a fixed
+cost of about 30 ms whatever it checks; `process-docs` is not embedded in the CLI's starter packs (`init --pack`, `pack
+new --from`) nor run by the bench; the `get_schema` tool's argument description does not name the kinds `process`, `actor`
+and `scenario`, which it accepts. Still open from `phase-3-brief.md`: L1 (explorer), L2 (performance), L3 (generation),
+L4 (reference data) and L5 (localization), none run as the side track decision 10 allowed, and L6, where the owner now
+applies E1 to E5 and E17 to E37 (E19 still waiting for generation-ui.md §10 Q3).
+
 ## 10. SPEC amendments and open risks
 
-Errata to add to `docs/engineering/spec-errata.md` for the owner to apply:
+Errata for the owner to apply, entered in `docs/engineering/spec-errata.md` as rows E27 to E37 (2026-09-30, P6), where they await the owner:
 
 | Id | SPEC | Proposed change |
 | --- | --- | --- |

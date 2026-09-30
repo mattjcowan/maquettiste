@@ -1,6 +1,6 @@
 ---
 name: maquettiste-modeling
-description: Editing a Maquettiste model (the JSON under .maquettiste/) in a repository that uses Maquettiste, validating it and generating code. Use when asked to add or change entities, relations, enums, types, reference data, seeds, translations, databases, mappings, diagrams or templates.
+description: Editing a Maquettiste model (the JSON under .maquettiste/) in a repository that uses Maquettiste, validating it and generating code. Use when asked to add or change entities, relations, enums, types, reference data, seeds, translations, databases, mappings, diagrams, processes, actors, scenarios or templates.
 ---
 
 # Modeling with Maquettiste
@@ -23,7 +23,10 @@ an id, never a name. The schemas are in `.maquettiste/.schema/v1/` and each file
 | locales/<locale>/ | translation shards (`kind: "locale-shard"`) keyed by id | only display name, plural name, description, and a row's label and description |
 | databases/<db>/ | database, tables (overlays), views, sequences | tables from entities store only overrides |
 | mappings/ | entity-to-table bindings that conventions cannot express | |
-| diagrams/ | canvas membership and positions only | never own elements |
+| processes/ | process: a statechart (states, transitions, events, guards, actions, invokes, gates, context) | `use` is `lifecycle` (a `subject` entity, optionally a bound enum attribute) or `orchestration` |
+| actors/ | actor: `type` person, role or external system | raises events, signs gates, completes human tasks; not in a domain |
+| scenarios/<process>/ | scenario: a recorded run of one process, each step with what it expects | owned by its process and deleted with it |
+| diagrams/ | canvas membership and positions only (a process's diagram holds its chart's places) | never own elements |
 | vocabularies/ | tags, categories, stereotypes | |
 
 Templates live in `.maquettiste/templates/<pack>/` (pack.json, *.scriban, helpers.js). Project settings, output
@@ -67,8 +70,35 @@ clobber a concurrent edit or leave a dangling id.
    (with `overlay` for unsaved text; writes nothing; an element outside the unit's scope returns MQ6026 naming the kind
    the template expects, and no files), `unit_paths` and `get_pack_outputs`.
 
+8. Processes: see "Processes" below.
+
 Every model read rescans the model folder and settings reads and saves check the file on disk, so edits made outside the server are seen; the resource `maquettiste://conventions`
 and the prompt `modeling-conventions` carry this text.
+
+## Processes
+
+A process is a statechart in one file: states nest in `states` (types atomic, compound, parallel, final, history, choice),
+`transitions` are in priority order, and events, guards, actions and invokes are declared in the process and referenced by
+id. Guards and actions carry an optional JavaScript `expression` (a guard returns a boolean, an action an object of context
+updates); one without an expression is a named stub that the generated code asks the team to implement. A lifecycle's
+root-level states must equal its bound enum's members, in order (MQ9203).
+
+- Tools: `simulate_process` runs inputs through the engine's interpreter and keeps no state (send the whole input list each
+  time; `enabled` says what can happen next); `record_scenario` saves a run as a scenario with every step's expectations
+  filled from the replay (`dryRun` to preview); `verify_scenarios` replays scenarios; `export_process` and `import_process`
+  (a dry run unless `apply`) move a process to and from an XState machine config; `sync_enum_from_process` (a dry run unless
+  `apply`) makes a lifecycle's bound enum follow its states and never removes a member still in use. `apply_batch` has the
+  process operations `sync-enum`, `set-lifecycle` (binds an entity and a process on both sides), `set-initial` and
+  `refresh-scenario`.
+- Scenarios are the process's tests: `validate` replays every scenario (MQ93xx), and the packs turn each scenario into a
+  generated test. When a chart change breaks a scenario on purpose, refresh its expectations (`refresh-scenario`) rather
+  than editing `expect` by hand; when it breaks by accident, fix the chart.
+- A scenario's `payload`, `start.context` and `expect.context` maps are keyed by attribute id; `assume` gives the result of a
+  guard without an expression.
+- From a terminal: `maquettiste process simulate|record|verify|export|import|sync-enum` (record, import and sync-enum only
+  preview until `--apply`; `verify` exits 1 on a failing scenario).
+- The engine creates no table and runs no process in the application: where instances, history and audit records live is
+  the project's mapping or a pack parameter (`processTables` in sql-ddl). Never add entities or databases for them unasked.
 
 ## Fallback: editing the files
 
