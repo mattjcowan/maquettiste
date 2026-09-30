@@ -13,13 +13,13 @@ CREATE TABLE northwind.sales_activities (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    contact_id uuid NULL,
-    opportunity_id uuid NULL,
-    owner_id uuid NOT NULL,
     party_id uuid NOT NULL,
+    contact_id uuid NULL,
+    owner_id uuid NOT NULL,
+    opportunity_id uuid NULL,
     CONSTRAINT pk_sales_activities PRIMARY KEY (id),
+    CONSTRAINT fk_sales_activities_party_id FOREIGN KEY (party_id) REFERENCES northwind.parties (id) ON DELETE CASCADE,
     CONSTRAINT fk_sales_activities_contact_id FOREIGN KEY (contact_id) REFERENCES northwind.contacts (id) ON DELETE SET NULL,
-    CONSTRAINT fk_sales_activities_opportunity_id FOREIGN KEY (opportunity_id) REFERENCES northwind.opportunities (id) ON DELETE SET NULL,
     CONSTRAINT fk_sales_activities_owner_id FOREIGN KEY (owner_id) REFERENCES northwind.employees (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_sales_activities_party_id FOREIGN KEY (party_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
+    CONSTRAINT fk_sales_activities_opportunity_id FOREIGN KEY (opportunity_id) REFERENCES northwind.opportunities (id) ON DELETE SET NULL
 );

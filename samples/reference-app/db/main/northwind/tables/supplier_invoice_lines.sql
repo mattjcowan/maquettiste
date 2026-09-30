@@ -10,11 +10,11 @@ CREATE TABLE northwind.supplier_invoice_lines (
     unit_cost_currency varchar(3) NOT NULL,
     line_total_amount numeric(19,4) NOT NULL,
     line_total_currency varchar(3) NOT NULL,
+    supplier_invoice_id uuid NOT NULL,
     ledger_account_id uuid NULL,
     purchase_order_line_id uuid NULL,
-    supplier_invoice_id uuid NOT NULL,
     CONSTRAINT pk_supplier_invoice_lines PRIMARY KEY (id),
+    CONSTRAINT fk_supplier_invoice_lines_supplier_invoice_id FOREIGN KEY (supplier_invoice_id) REFERENCES northwind.supplier_invoices (id) ON DELETE CASCADE,
     CONSTRAINT fk_supplier_invoice_lines_ledger_account_id FOREIGN KEY (ledger_account_id) REFERENCES northwind.ledger_accounts (id) ON DELETE SET NULL,
-    CONSTRAINT fk_supplier_invoice_lines_purchase_order_line_id FOREIGN KEY (purchase_order_line_id) REFERENCES northwind.purchase_order_lines (id) ON DELETE SET NULL,
-    CONSTRAINT fk_supplier_invoice_lines_supplier_invoice_id FOREIGN KEY (supplier_invoice_id) REFERENCES northwind.supplier_invoices (id) ON DELETE CASCADE
+    CONSTRAINT fk_supplier_invoice_lines_purchase_order_line_id FOREIGN KEY (purchase_order_line_id) REFERENCES northwind.purchase_order_lines (id) ON DELETE SET NULL
 );

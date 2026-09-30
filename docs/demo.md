@@ -106,7 +106,7 @@ domain, New entity, New enum, New reference type, New diagram and New database. 
 - In a second terminal, `maquettiste generate --watch`, then save something in the editor: it regenerates within a
   second. If it does not react, Docker Desktop is not forwarding file events; run `maquettiste generate` by hand in
   part 2 instead.
-- Claude Code in `$REPO` with the `.mcp.json` and `mcp.sh` from step 3.1 lists 38 tools under `/mcp` (docs/mcp.md lists them; re-check the count on the Mac).
+- Claude Code in `$REPO` with the `.mcp.json` and `mcp.sh` from step 3.1 lists 39 tools under `/mcp` (docs/mcp.md lists them; re-check the count on the Mac).
 
 Also before the talk: a second terminal tab in `$REPO`, the repository open in a code editor, Claude Code logged in,
 the browser zoomed to 125% for Zoom, and port 8080 free (`lsof -nP -iTCP:8080 -sTCP:LISTEN` prints nothing).
@@ -352,13 +352,13 @@ partner's model.
 | Step | Do | Expected |
 | --- | --- | --- |
 | 3.1 (45 s) | `maquettiste init --mcp --docker mattjcowan/maquettiste:0.3.0 --skill`, then `cat .mcp.json` | `created mcp.sh (runs maquettiste mcp in mattjcowan/maquettiste:0.3.0; log in .maquettiste/.cache/mcp.log)`, `created .mcp.json (server maquettiste: ./mcp.sh)`, `created .claude/skills/maquettiste-modeling/SKILL.md`. The file registers `{"type": "stdio", "command": "./mcp.sh", "args": []}`; `mcp.sh` runs `docker run -i --rm --user <you> ... maquettiste mcp` from the editor's own image over the repository, with the same model and write path as the editor, and logs the server's messages to `.maquettiste/.cache/mcp.log`. (With the .NET tool fallback, drop `--docker ...`: `init --mcp` then writes `{"type": "stdio", "command": "maquettiste", "args": ["mcp"]}`.) |
-| 3.2 (30 s) | `claude`, approve the project server `maquettiste` when asked, type `/mcp` | maquettiste connected, 38 tools (get_model_index, get_element, create_element, apply_batch, validate, plan, get_plan_diff, apply_plan, reference_type_usage, get_translations, ...). |
+| 3.2 (30 s) | `claude`, approve the project server `maquettiste` when asked, type `/mcp` | maquettiste connected, 39 tools (get_model_index, get_element, create_element, apply_batch, validate, plan, get_plan_diff, apply_plan, reference_type_usage, get_translations, ...). |
 | 3.3 (2 min) | Prompt: `Add a Shipment entity related to Order (an order has many shipments) with carrier, an optional trackingNumber, shippedAt and a status enum ShipmentStatus (Preparing, InTransit, Delivered). Then validate and generate.` | About 50 s. Claude sends one `apply_batch` (the enum ShipmentStatus, the entity Shipment, a composition `ships` from Order to many Shipments), then `validate`, `plan`, `apply_plan`. Files: `A src/generated/shipment.ts`, `shipment-status.ts`, `shipment.schema.ts`, `M src/generated/order.ts` (`shipments?: Shipment[]`), `M index.ts`, `A db/main/shop/tables/shipments.sql`, `A db/main/migrations/000N.sql` with `CREATE TABLE shop.shipments ... REFERENCES shop.orders (id) ON DELETE RESTRICT` (the default; add "cascade on delete" to the prompt for CASCADE). The editor shows Shipment in the explorer without a reload; **Add related** on Order puts it on the diagram. |
 | 3.4 (1.5 min) | Prompt: `What would change in the generated code and the database scripts if Product.sku became required? Do not change the model; answer in at most 8 lines.` | About 20 s. In rehearsal: `product.ts` drops the `?` on `sku`, `product.schema.ts` drops `.optional()`, `schema.sql` and `products.sql` get `sku varchar(40) NOT NULL`, the existing migrations stay and the next one (`0005.sql`, named correctly) adds `ALTER TABLE ... ALTER COLUMN sku SET NOT NULL`, with a warning about existing NULL rows; the model is unchanged. |
 | 3.5 (optional) | `npx tsc --noEmit` | Still compiles with the new Shipment types. |
 
 What was verified for part 3 (2026-09-29, from the image): `init --mcp --skill` keeping the Docker-form entry, the
-server's `initialize`, `tools/list` (38 tools) and `validate` over `docker run -i`, and prompts 3.3 and 3.4 word for word
+server's `initialize`, `tools/list` (39 tools) and `validate` over `docker run -i`, and prompts 3.3 and 3.4 word for word
 as headless Claude Code runs through this `.mcp.json` (`claude -p '<prompt>' --mcp-config .mcp.json --allowedTools
 mcp__maquettiste`): 50 s and 20 s, and `tsc` passed afterwards. The interactive session (approving the server, `/mcp`)
 was not run **(not verified)**; it uses the same file.

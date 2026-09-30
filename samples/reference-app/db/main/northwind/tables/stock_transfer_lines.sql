@@ -6,11 +6,11 @@ CREATE TABLE northwind.stock_transfer_lines (
     id uuid NOT NULL,
     quantity numeric(14,3) NOT NULL,
     received_quantity numeric(14,3) NULL,
+    stock_transfer_id uuid NOT NULL,
     lot_id uuid NULL,
     product_id uuid NOT NULL,
-    stock_transfer_id uuid NOT NULL,
     CONSTRAINT pk_stock_transfer_lines PRIMARY KEY (id),
+    CONSTRAINT fk_stock_transfer_lines_stock_transfer_id FOREIGN KEY (stock_transfer_id) REFERENCES northwind.stock_transfers (id) ON DELETE CASCADE,
     CONSTRAINT fk_stock_transfer_lines_lot_id FOREIGN KEY (lot_id) REFERENCES northwind.stock_lots (id) ON DELETE SET NULL,
-    CONSTRAINT fk_stock_transfer_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_stock_transfer_lines_stock_transfer_id FOREIGN KEY (stock_transfer_id) REFERENCES northwind.stock_transfers (id) ON DELETE CASCADE
+    CONSTRAINT fk_stock_transfer_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT
 );

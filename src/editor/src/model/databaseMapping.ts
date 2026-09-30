@@ -4,6 +4,8 @@
 // is empty, else the entities of `packages`. Free of React; the New database dialog, the "Map to database…" action,
 // the database's Mapping section and the mock server share it.
 
+import { conventionSchemas, entryOf, entryPackage, type ConventionEntry } from "./databaseSchemas";
+
 export type ByConvention = "all" | "packages" | "none";
 
 export interface DatabaseConvention {
@@ -13,34 +15,49 @@ export interface DatabaseConvention {
   explicit: boolean;
   /** The convention domains when the mode is `packages`. */
   packages: string[];
+  /** Package id → the schema id its conventional tables go to (entries that name one; erratum E26). */
+  schemas: Record<string, string>;
 }
 
 interface DatabaseLike {
   byConvention?: string | null;
-  packages?: readonly string[] | null;
+  packages?: readonly ConventionEntry[] | null;
 }
 
 /** The effective convention of a database document. */
 export function conventionOf(db: DatabaseLike): DatabaseConvention {
-  const packages = [...(db.packages ?? [])];
+  const packages = (db.packages ?? []).map(entryPackage);
+  const schemas = conventionSchemas(db as Record<string, unknown>);
   const mode = db.byConvention;
-  if (mode === "all" || mode === "none") return { mode, explicit: true, packages: [] };
-  if (mode === "packages") return { mode, explicit: true, packages };
-  return packages.length ? { mode: "packages", explicit: false, packages } : { mode: "all", explicit: false, packages: [] };
+  if (mode === "all" || mode === "none") return { mode, explicit: true, packages: [], schemas: {} };
+  if (mode === "packages") return { mode, explicit: true, packages, schemas };
+  return packages.length ? { mode: "packages", explicit: false, packages, schemas } : { mode: "all", explicit: false, packages: [], schemas: {} };
 }
 
-/** Writes the convention on a database document: `byConvention` always, `packages` only for the `packages` mode. */
-export function setConvention(json: Record<string, unknown>, mode: ByConvention, packages: readonly string[] = []): void {
+/**
+ * Writes the convention on a database document: `byConvention` always, `packages` only for the `packages` mode. Each
+ * entry keeps its schema (from `schemas`, else the document's current entry); an entry without one is the package id.
+ */
+export function setConvention(
+  json: Record<string, unknown>,
+  mode: ByConvention,
+  packages: readonly string[] = [],
+  schemas: Readonly<Record<string, string | null | undefined>> = conventionSchemas(json),
+): void {
   json.byConvention = mode;
   const list = mode === "packages" ? [...new Set(packages)].sort() : [];
-  if (list.length) json.packages = list;
+  if (list.length) json.packages = list.map((p) => entryOf(p, schemas[p]));
   else delete json.packages;
 }
 
 /** The convention member of a new database: none (the default), the picked domains, or all. */
-export function newDatabaseConvention(choice: "none" | "pick" | "all", picked: readonly string[]): { byConvention: ByConvention; packages?: string[] } {
+export function newDatabaseConvention(
+  choice: "none" | "pick" | "all",
+  picked: readonly string[],
+  schemas: Readonly<Record<string, string | null | undefined>> = {},
+): { byConvention: ByConvention; packages?: ConventionEntry[] } {
   if (choice === "all") return { byConvention: "all" };
-  if (choice === "pick" && picked.length) return { byConvention: "packages", packages: [...new Set(picked)].sort() };
+  if (choice === "pick" && picked.length) return { byConvention: "packages", packages: [...new Set(picked)].sort().map((p) => entryOf(p, schemas[p])) };
   return { byConvention: "none" };
 }
 

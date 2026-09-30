@@ -15,9 +15,9 @@ CREATE TABLE northwind.discount_rules (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    customer_group_id uuid NULL,
     product_category_id uuid NULL,
+    customer_group_id uuid NULL,
     CONSTRAINT pk_discount_rules PRIMARY KEY (id),
-    CONSTRAINT fk_discount_rules_customer_group_id FOREIGN KEY (customer_group_id) REFERENCES northwind.customer_groups (id) ON DELETE SET NULL,
-    CONSTRAINT fk_discount_rules_product_category_id FOREIGN KEY (product_category_id) REFERENCES northwind.product_categories (id) ON DELETE SET NULL
+    CONSTRAINT fk_discount_rules_product_category_id FOREIGN KEY (product_category_id) REFERENCES northwind.product_categories (id) ON DELETE SET NULL,
+    CONSTRAINT fk_discount_rules_customer_group_id FOREIGN KEY (customer_group_id) REFERENCES northwind.customer_groups (id) ON DELETE SET NULL
 );

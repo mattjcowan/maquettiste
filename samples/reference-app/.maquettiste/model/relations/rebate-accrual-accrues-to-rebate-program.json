@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1GXAVB31ZXZJS88GS88T5QN",
+  "name": "rebate accrual accrues to rebate program",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "Program the accrual belongs to.",
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "ends": [
+    {
+      "id": "01M1VEJJW3WP0S1E1H1P3F1HW3",
+      "entity": "01M1MQMRJC9DXDNBTZ62V1NVBQ",
+      "role": "rebateProgram",
+      "navigation": "rebateProgram",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M1VJ1FQ2HMT997RNCTQJG7MA",
+      "entity": "01M2JEP6SPY9HB6JD7RSDP7RX6",
+      "role": "accruals",
+      "navigation": "accruals"
+    }
+  ]
+}

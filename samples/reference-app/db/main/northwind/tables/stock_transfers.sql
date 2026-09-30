@@ -13,12 +13,12 @@ CREATE TABLE northwind.stock_transfers (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
+    to_warehouse_id uuid NOT NULL,
     carrier_id uuid NULL,
     from_warehouse_id uuid NOT NULL,
-    to_warehouse_id uuid NOT NULL,
     CONSTRAINT pk_stock_transfers PRIMARY KEY (id),
     CONSTRAINT uq_stock_transfers_transfer_number UNIQUE (transfer_number),
+    CONSTRAINT fk_stock_transfers_to_warehouse_id FOREIGN KEY (to_warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT,
     CONSTRAINT fk_stock_transfers_carrier_id FOREIGN KEY (carrier_id) REFERENCES northwind.parties (id) ON DELETE SET NULL,
-    CONSTRAINT fk_stock_transfers_from_warehouse_id FOREIGN KEY (from_warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_stock_transfers_to_warehouse_id FOREIGN KEY (to_warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT
+    CONSTRAINT fk_stock_transfers_from_warehouse_id FOREIGN KEY (from_warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT
 );

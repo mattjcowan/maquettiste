@@ -6,11 +6,19 @@ import "monaco-editor/languages/definitions/sql/register";
 import "monaco-editor/languages/definitions/csharp/register";
 import "monaco-editor/languages/definitions/javascript/register";
 import "monaco-editor/languages/definitions/markdown/register";
+// The suggest and hover contributions (the editor API alone has neither), for Scriban completion and hover. The outline
+// model service comes first: once these load, the diff editor's breadcrumbs contribution asks for it, and without it every
+// diff editor throws "depends on UNKNOWN service IOutlineModelService".
+import "monaco-editor/editor/contrib/documentSymbols/browser/outlineModel";
+import "monaco-editor/editor/contrib/snippet/browser/snippetController2";
+import "monaco-editor/editor/contrib/suggest/browser/suggestController";
+import "monaco-editor/editor/contrib/hover/browser/hoverContribution";
 import EditorWorker from "monaco-editor/editor/editor.worker?worker";
 import JsonWorker from "monaco-editor/languages/features/json/json.worker?worker";
 import { loader } from "@monaco-editor/react";
 import { toLongHex } from "@/lib/color";
 import { registerScriban } from "./scriban";
+import { registerScribanProviders } from "./scribanProviders";
 
 (self as unknown as { MonacoEnvironment: monaco.Environment }).MonacoEnvironment = {
   getWorker(_id: string, label: string) {
@@ -19,6 +27,7 @@ import { registerScriban } from "./scriban";
 };
 loader.config({ monaco });
 registerScriban(monaco);
+registerScribanProviders(monaco);
 
 function token(name: string): string {
   return toLongHex(getComputedStyle(document.documentElement).getPropertyValue(name));

@@ -12,16 +12,16 @@ CREATE TABLE northwind.goods_receipts (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    advance_ship_notice_id uuid NULL,
-    dock_door_id uuid NULL,
     purchase_order_id uuid NULL,
-    received_by_id uuid NULL,
+    advance_ship_notice_id uuid NULL,
     warehouse_id uuid NOT NULL,
+    received_by_id uuid NULL,
+    dock_door_id uuid NULL,
     CONSTRAINT pk_goods_receipts PRIMARY KEY (id),
     CONSTRAINT uq_goods_receipts_receipt_number UNIQUE (receipt_number),
-    CONSTRAINT fk_goods_receipts_advance_ship_notice_id FOREIGN KEY (advance_ship_notice_id) REFERENCES northwind.advance_ship_notices (id) ON DELETE SET NULL,
-    CONSTRAINT fk_goods_receipts_dock_door_id FOREIGN KEY (dock_door_id) REFERENCES northwind.dock_doors (id) ON DELETE SET NULL,
     CONSTRAINT fk_goods_receipts_purchase_order_id FOREIGN KEY (purchase_order_id) REFERENCES northwind.purchase_orders (id) ON DELETE SET NULL,
+    CONSTRAINT fk_goods_receipts_advance_ship_notice_id FOREIGN KEY (advance_ship_notice_id) REFERENCES northwind.advance_ship_notices (id) ON DELETE SET NULL,
+    CONSTRAINT fk_goods_receipts_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT,
     CONSTRAINT fk_goods_receipts_received_by_id FOREIGN KEY (received_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
-    CONSTRAINT fk_goods_receipts_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT
+    CONSTRAINT fk_goods_receipts_dock_door_id FOREIGN KEY (dock_door_id) REFERENCES northwind.dock_doors (id) ON DELETE SET NULL
 );

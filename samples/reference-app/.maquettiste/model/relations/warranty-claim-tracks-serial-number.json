@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1PCHAY3CFQCR9Q93H9RBH1E",
+  "name": "warranty claim tracks serial number",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "Failed unit.",
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "ends": [
+    {
+      "id": "01M1D7NAYNWSCCA6SZX1KXQ221",
+      "entity": "01M2JSJ9P18GDTRZZ4MS9MEPAC",
+      "role": "serialNumber",
+      "navigation": "serialNumber",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2ZTX97CE05GFR172AA96N1W",
+      "entity": "01M36YFEAJKTX0GEAR37WGKBNY",
+      "role": "warrantyClaims"
+    }
+  ]
+}

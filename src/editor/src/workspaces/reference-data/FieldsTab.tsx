@@ -3,6 +3,10 @@
 // length; label and description are marked as translated per locale), then the user fields in the entity
 // attribute grid, whose type picker offers built-ins, custom types, enums and reference types (not value objects or
 // entities, so a row stays one flat line, RS2).
+import { useIndex } from "@/api/queries";
+import { useBatchEdit } from "@/explorer/marks";
+import { clone } from "@/lib/json";
+import { dropSeedColumns, removedFieldIds } from "./rowsModel";
 import { Languages, Lock } from "lucide-react";
 import type { ModelJson, ReferenceTypeDoc } from "@/api/types";
 import { AttributeGrid } from "@/inspector/AttributeGrid";
@@ -25,6 +29,8 @@ export function FieldsTab({ typeId }: { typeId: string }) {
   const vocab = useVocabularies("reference-type");
   const definition = useDefinition();
   const diagnostics = useEditor(store, (s) => s.drafts[typeId]?.diagnostics) ?? [];
+  const index = useIndex();
+  const batch = useBatchEdit();
   if (!json) return <Spinner />;
   const type = json as unknown as ReferenceTypeDoc;
   const typeOptions = FIELD_KINDS.flatMap((k) => vocab.lookup.ofKind(k));
@@ -140,6 +146,18 @@ export function FieldsTab({ typeId }: { typeId: string }) {
         diagnostics={diagnostics}
         withKey={false}
         onChange={(update, commit) => {
+          // A removed field drops its column from the type's seeds in the same save (§2.7): one batch, one undo step.
+          const probe = clone(json) as ModelJson;
+          update(probe);
+          const removed = removedFieldIds(type, probe as unknown as ReferenceTypeDoc);
+          const seeds = removed.size ? (index.data ?? []).filter((r) => r.kind === "seed" && r.target === typeId).map((r) => r.id) : [];
+          if (commit && seeds.length) {
+            void batch(removed.size === 1 ? "Remove field" : "Remove fields", [typeId, ...seeds], (j) => {
+              if (j.id === typeId) update(j as unknown as ModelJson);
+              else dropSeedColumns(j as unknown as Parameters<typeof dropSeedColumns>[0], removed);
+            });
+            return;
+          }
           edit((j) => update(j as ModelJson));
           if (commit) void flush();
         }}

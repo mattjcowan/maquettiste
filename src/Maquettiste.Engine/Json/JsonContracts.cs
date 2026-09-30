@@ -100,6 +100,13 @@ public sealed class ObjectLayout
     /// <summary>For an array whose schema declares <c>"x-trim": "trailing-nulls"</c>: trailing <c>null</c> items are dropped.</summary>
     public bool TrimTrailingNulls { get; internal set; }
 
+    /// <summary>
+    /// For an object whose schema declares <c>"x-collapse": "&lt;key&gt;"</c>: when that key is the only one left after
+    /// normalization, the canonical writer writes its value in place of the object (a convention package entry without a schema
+    /// is written as the package id).
+    /// </summary>
+    public string? CollapseKey { get; internal set; }
+
     /// <summary>Whether the location is an object with declared keys.</summary>
     public bool HasKeys => _keys.Count > 0;
 

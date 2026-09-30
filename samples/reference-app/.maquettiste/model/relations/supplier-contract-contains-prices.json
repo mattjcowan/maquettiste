@@ -1,0 +1,27 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M20SGEC7M53D9K6R2EGFW5DR",
+  "name": "supplier contract contains prices",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "relationKind": "composition",
+  "description": "Contracted prices.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "ends": [
+    {
+      "id": "01M1N7Z1YM8FK4819H8T9H6MK3",
+      "entity": "01M1YBDE7K81GQ5NMW21JH5T14",
+      "role": "supplierContract",
+      "navigation": "supplierContract",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M357B0Y4D4HMPCAC4HEJMF0Z",
+      "entity": "01M1KJGAVWEYW5G736B2EFT27H",
+      "role": "prices",
+      "navigation": "prices"
+    }
+  ]
+}

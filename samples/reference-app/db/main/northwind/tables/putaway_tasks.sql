@@ -12,14 +12,14 @@ CREATE TABLE northwind.putaway_tasks (
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
     assigned_to_id uuid NULL,
-    from_bin_id uuid NULL,
-    goods_receipt_line_id uuid NULL,
     product_id uuid NOT NULL,
+    goods_receipt_line_id uuid NULL,
+    from_bin_id uuid NULL,
     to_bin_id uuid NOT NULL,
     CONSTRAINT pk_putaway_tasks PRIMARY KEY (id),
     CONSTRAINT fk_putaway_tasks_assigned_to_id FOREIGN KEY (assigned_to_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
-    CONSTRAINT fk_putaway_tasks_from_bin_id FOREIGN KEY (from_bin_id) REFERENCES northwind.bin_locations (id) ON DELETE SET NULL,
-    CONSTRAINT fk_putaway_tasks_goods_receipt_line_id FOREIGN KEY (goods_receipt_line_id) REFERENCES northwind.goods_receipt_lines (id) ON DELETE SET NULL,
     CONSTRAINT fk_putaway_tasks_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_putaway_tasks_goods_receipt_line_id FOREIGN KEY (goods_receipt_line_id) REFERENCES northwind.goods_receipt_lines (id) ON DELETE SET NULL,
+    CONSTRAINT fk_putaway_tasks_from_bin_id FOREIGN KEY (from_bin_id) REFERENCES northwind.bin_locations (id) ON DELETE SET NULL,
     CONSTRAINT fk_putaway_tasks_to_bin_id FOREIGN KEY (to_bin_id) REFERENCES northwind.bin_locations (id) ON DELETE RESTRICT
 );

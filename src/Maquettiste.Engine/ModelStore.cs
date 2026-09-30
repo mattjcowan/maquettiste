@@ -137,6 +137,7 @@ public sealed partial class ModelStore : IAsyncDisposable
     {
         if (!TryParseRequest(json, null, out var node, out var invalid))
             return invalid;
+        await DefaultSeedColumnsAsync(node, ct).ConfigureAwait(false);
         var result = await ExecuteAsync([new PlannedChange(BatchOp.Create, null, null, node, DeleteResolution.Refuse)], source, ct).ConfigureAwait(false);
         return result.Items[0];
     }
@@ -192,6 +193,7 @@ public sealed partial class ModelStore : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(batch);
         var changes = new List<PlannedChange>(batch.Operations.Count);
         var invalid = new SaveResult?[batch.Operations.Count];
+        var schemaOps = false;
         for (var i = 0; i < batch.Operations.Count; i++)
         {
             var o = batch.Operations[i];
@@ -202,6 +204,12 @@ public sealed partial class ModelStore : IAsyncDisposable
                 invalid[i] = new SaveResult(SaveOutcome.Invalid, o.Id, null, null,
                     [RuleCatalog.Create("MQ1002", pointer + " The translate operation is declared in the contract; its handler lands in a later step.", o.Id, null, pointer)], [], null);
                 changes.Add(new PlannedChange(BatchOp.Update, o.Id, o.ExpectedHash, null, DeleteResolution.Refuse));
+                continue;
+            }
+
+            if (IsSchemaOperation(o.Op))
+            {
+                schemaOps = true;
                 continue;
             }
 
@@ -216,6 +224,9 @@ public sealed partial class ModelStore : IAsyncDisposable
             var items = invalid.Select((r, i) => r ?? new SaveResult(SaveOutcome.Saved, batch.Operations[i].Id, null, null, [], [], null)).ToList();
             return Task.FromResult(new BatchResult(SaveOutcome.Invalid, items, null));
         }
+
+        if (schemaOps)
+            return ApplyWithSchemasAsync(batch, changes, invalid, source, ct);
 
         if (changes.Count == 0)
             return Task.FromResult(new BatchResult(SaveOutcome.Saved, [], ChangeSet.Empty(source)));
@@ -912,6 +923,22 @@ public enum BatchOp
 
     /// <summary><c>translate</c>: writes one translated field (reference-types-seeds-localization.md section 3.9); declared in the contract, applied in a later step.</summary>
     [JsonStringEnumMemberName("translate")] Translate,
+
+    /// <summary><c>add-schema</c>: adds a schema named <c>name</c> (id <c>schema</c>, or a new one) to database <c>id</c> (erratum E26).</summary>
+    [JsonStringEnumMemberName("add-schema")] AddSchema,
+
+    /// <summary><c>rename-schema</c>: renames schema <c>schema</c> of database <c>id</c> to <c>name</c>; the default follows.</summary>
+    [JsonStringEnumMemberName("rename-schema")] RenameSchema,
+
+    /// <summary>
+    /// <c>remove-schema</c>: removes schema <c>schema</c> of database <c>id</c>. Refused (MQ4015, listing what lives there) while tables,
+    /// views, sequences, convention entries or mappings live in it, unless <c>target</c> names the schema they move to; the default
+    /// schema is refused unless <c>default</c> names the schema that becomes the default.
+    /// </summary>
+    [JsonStringEnumMemberName("remove-schema")] RemoveSchema,
+
+    /// <summary><c>set-default-schema</c>: makes schema <c>schema</c> the default of database <c>id</c>.</summary>
+    [JsonStringEnumMemberName("set-default-schema")] SetDefaultSchema,
 }
 
 /// <summary>One batch operation.</summary>
@@ -922,8 +949,13 @@ public enum BatchOp
 /// <param name="Locale">The locale of a translation (translate).</param>
 /// <param name="Field">The translated field: displayName, pluralName, label or description (translate).</param>
 /// <param name="Value">The translated text, a sidecar reference, or null to remove it (translate).</param>
+/// <param name="Schema">The schema id (rename-schema, remove-schema, set-default-schema; optional for add-schema).</param>
+/// <param name="Name">The schema name (add-schema, rename-schema).</param>
+/// <param name="Target">The schema id that what lives in the removed schema moves to (remove-schema).</param>
+/// <param name="Default">The schema id that becomes the default when the removed schema is the default (remove-schema).</param>
 public sealed record BatchOperation(
-    BatchOp Op, string? Id, string? ExpectedHash, JsonElement? Element, string? Locale = null, string? Field = null, JsonElement? Value = null);
+    BatchOp Op, string? Id, string? ExpectedHash, JsonElement? Element, string? Locale = null, string? Field = null, JsonElement? Value = null,
+    string? Schema = null, string? Name = null, string? Target = null, string? Default = null);
 
 /// <summary>An atomic batch of operations.</summary>
 /// <param name="Operations">The operations, applied in order.</param>

@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1E00JNWFYEAHG6A7EKMW1EJ",
+  "name": "dock door is kept at warehouse",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Warehouse of the door.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M1J5RNXHN6MSAP0HMNQA18TW",
+      "entity": "01M1PN7QBBJ001FSBR7DTP2QS6",
+      "role": "warehouse",
+      "navigation": "warehouse",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M2PG78F6HTWJVN5KRGYQE2SR",
+      "entity": "01M2YP7N3SJSR5RNJJYQVGSA5B",
+      "role": "dockDoors",
+      "navigation": "dockDoors"
+    }
+  ]
+}

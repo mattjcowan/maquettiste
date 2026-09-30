@@ -36,23 +36,23 @@ entities:
     alternateKeys:
       sku: [sku]
     refs:
-      category: ProductCategory! back=products | Primary catalog category.
-      brand: Brand back=products | Brand the product is sold under.
-      manufacturer: Manufacturer | Who makes the product.
-      baseUnit: UnitOfMeasure! | Unit stock is counted in.
-      salesUnit: UnitOfMeasure | Unit the product is sold in when it differs from the base unit.
-      tariffCode: TariffCode | Harmonized System code for customs.
-      hazardClass: HazardClass | Dangerous goods class; null when not hazardous.
-      storageCondition: StorageCondition | Required storage condition.
-      preferredSupplier: Supplier | Supplier buyers source from by default.
+      category: ProductCategory! back=products name=product_is_classified_under_category | Primary catalog category.
+      brand: Brand back=products name=product_is_sold_under_brand | Brand the product is sold under.
+      manufacturer: Manufacturer name=product_is_made_by_manufacturer | Who makes the product.
+      baseUnit: UnitOfMeasure! name=product_is_stocked_in_base_unit | Unit stock is counted in.
+      salesUnit: UnitOfMeasure name=product_is_sold_in_sales_unit | Unit the product is sold in when it differs from the base unit.
+      tariffCode: TariffCode name=product_is_classified_by_tariff_code | Harmonized System code for customs.
+      hazardClass: HazardClass name=product_is_classified_as_hazard_class | Dangerous goods class; null when not hazardous.
+      storageCondition: StorageCondition name=product_requires_storage_condition | Required storage condition.
+      preferredSupplier: Supplier name=product_is_bought_from_preferred_supplier | Supplier buyers source from by default.
     children:
-      variants: ProductVariant | Sellable options of the product.
-      images: ProductImage ordered | Images in display order.
-      documents: ProductDocument | Datasheets, manuals and safety data sheets.
-      barcodes: ProductBarcode | Barcodes printed on the product and its packaging.
-      packagings: ProductPackaging | Packaging levels (inner, case, pallet).
-      translations: ProductTranslation | Localized names and descriptions.
-      attributeValues: ProductAttributeValue | Values of filterable product attributes.
+      variants: ProductVariant name=product_contains_variants | Sellable options of the product.
+      images: ProductImage ordered name=product_contains_images | Images in display order.
+      documents: ProductDocument name=product_contains_documents | Datasheets, manuals and safety data sheets.
+      barcodes: ProductBarcode name=product_contains_barcodes | Barcodes printed on the product and its packaging.
+      packagings: ProductPackaging name=product_contains_packagings | Packaging levels (inner, case, pallet).
+      translations: ProductTranslation name=product_contains_translations | Localized names and descriptions.
+      attributeValues: ProductAttributeValue name=product_contains_attribute_values | Values of filterable product attributes.
     mapping:
       description: The product status is a reference type, stored through a lookup table (the project convention) so reports can join its labels.
     overlay:
@@ -90,7 +90,7 @@ entities:
       sortOrder: int32! default=0 | Position among its siblings.
       isActive: bool! default=true | Whether the category is shown.
     refs:
-      parent: ProductCategory back=subcategories | Parent category; null for top-level categories.
+      parent: ProductCategory back=subcategories name=product_category_is_nested_under_parent | Parent category; null for top-level categories.
 
   Brand:
     description: A brand products are marketed under, which may differ from the manufacturer.
@@ -102,7 +102,7 @@ entities:
       logoUrl: string(400) | Logo image URL.
       website: string(200) | Brand website.
     refs:
-      manufacturer: Manufacturer back=brands | Company that owns the brand.
+      manufacturer: Manufacturer back=brands name=brand_is_made_by_manufacturer | Company that owns the brand.
 
   Manufacturer:
     description: A company that produces goods Northwind sells.
@@ -126,7 +126,7 @@ entities:
       unit: string(10) | Unit of numeric values, such as mm.
       isFilterable: bool! default=true | Whether the storefront offers it as a filter.
     children:
-      options: ProductAttributeOption ordered | Allowed values of an option attribute.
+      options: ProductAttributeOption ordered name=product_attribute_contains_options | Allowed values of an option attribute.
 
   ProductAttributeOption:
     description: An allowed value of an option attribute, such as Large for Glove size.
@@ -144,8 +144,8 @@ entities:
       numericValue: decimal(18,4) | Value of a number attribute.
       booleanValue: bool | Value of a boolean attribute.
     refs:
-      definition: ProductAttribute! restrict | Attribute the value is for.
-      option: ProductAttributeOption | Chosen option, for option attributes.
+      definition: ProductAttribute! restrict name=product_attribute_value_instantiates_definition | Attribute the value is for.
+      option: ProductAttributeOption name=product_attribute_value_selects_option | Chosen option, for option attributes.
 
   ProductImage:
     description: An image of a product, stored in the media CDN.
@@ -179,14 +179,14 @@ entities:
       price: Money! | Bundle price.
       isActive: bool! default=true | Whether the bundle can be ordered.
     children:
-      components: BundleComponent ordered | Products in the bundle.
+      components: BundleComponent ordered name=product_bundle_contains_components | Products in the bundle.
 
   BundleComponent:
     description: A product and quantity included in a bundle.
     attributes:
       quantity: decimal(12,3)! min=0 | Quantity per bundle, in the product's base unit.
     refs:
-      product: Product! | Component product.
+      product: Product! name=bundle_component_is_for_product | Component product.
 
   ProductBarcode:
     description: A barcode that identifies a product at a packaging level.
@@ -195,7 +195,7 @@ entities:
       value: string(48)! unique | Encoded value.
       isPrimary: bool! default=false | Barcode printed on labels by default.
     refs:
-      unit: UnitOfMeasure | Packaging unit the barcode identifies.
+      unit: UnitOfMeasure name=product_barcode_is_measured_in_unit | Packaging unit the barcode identifies.
 
   ProductPackaging:
     description: A packaging level of a product, such as a case of 12 or a pallet of 60 cases.
@@ -206,7 +206,7 @@ entities:
       grossWeight: Weight | Weight including packaging.
       gtin: string(14) | GTIN of the package.
     refs:
-      unit: UnitOfMeasure! | Unit of measure of the package.
+      unit: UnitOfMeasure! name=product_packaging_is_measured_in_unit | Unit of measure of the package.
 
   TariffCode:
     description: A Harmonized System tariff code with the default import duty rate.
@@ -216,7 +216,7 @@ entities:
       description: string(300)! | Official description.
       dutyRate: Percentage | General duty rate.
     refs:
-      country: Country | Country whose tariff schedule defines the code; null for the international six-digit code.
+      country: Country name=tariff_code_is_located_in_country | Country whose tariff schedule defines the code; null for the international six-digit code.
 
   HazardClass:
     description: A dangerous goods class for shipping and storage, such as 3 Flammable liquids.
@@ -249,8 +249,8 @@ entities:
       isPublished: bool! default=false | Whether the listing is live.
       publishedAt: datetimeoffset | When it went live.
     refs:
-      product: Product! cascade back=channelListings | Product listed.
-      salesChannel: SalesChannel! | Channel the product is listed on.
+      product: Product! cascade back=channelListings name=channel_listing_is_for_product | Product listed.
+      salesChannel: SalesChannel! name=channel_listing_is_sold_through_sales_channel | Channel the product is listed on.
 
   ProductCollection:
     description: A curated set of products, such as Back to school or Top sellers, used by merchandising.
@@ -271,7 +271,7 @@ entities:
       issuedBy: string(120) | Certification body.
       validity: DateRange! | Period the certificate is valid.
     refs:
-      product: Product! cascade back=certifications | Certified product.
+      product: Product! cascade back=certifications name=product_certification_is_for_product | Certified product.
 
   ProductSubstitute:
     description: A product that can replace another when it is out of stock, ranked by preference.
@@ -280,8 +280,8 @@ entities:
       priority: int16! default=1 min=1 | Rank among substitutes; 1 is preferred.
       requiresApproval: bool! default=true | Whether the customer must approve the substitution.
     refs:
-      product: Product! cascade back=substitutes | Product being replaced.
-      substitute: Product! | Replacement product.
+      product: Product! cascade back=substitutes name=product_substitute_is_for_product | Product being replaced.
+      substitute: Product! name=product_substitute_can_be_replaced_by_substitute | Replacement product.
 
   ProductTranslation:
     description: The name and descriptions of a product in another language.
@@ -290,7 +290,7 @@ entities:
       shortDescription: string(500) | Translated short description.
       longDescription: text | Translated long description.
     refs:
-      language: Language! | Language of the translation.
+      language: Language! name=product_translation_is_written_in_language | Language of the translation.
 
   ProductLifecycleEvent:
     description: A change of a product's lifecycle status, kept as history.
@@ -302,8 +302,8 @@ entities:
       occurredAt: datetimeoffset! | When the change happened.
       reason: string(300) | Why the status changed.
     refs:
-      product: Product! cascade back=lifecycleEvents | Product that changed.
-      changedBy: UserAccount | Who changed it.
+      product: Product! cascade back=lifecycleEvents name=product_lifecycle_event_is_for_product | Product that changed.
+      changedBy: UserAccount name=product_lifecycle_event_is_changed_by_user_account | Who changed it.
 
   ProductRecommendation:
     description: A cross-sell, up-sell or accessory suggestion from one product to another.
@@ -312,8 +312,8 @@ entities:
       score: decimal(5,4) min=0 max=1 | Relevance score from the recommender.
       isManual: bool! default=false | Whether merchandising added it by hand.
     refs:
-      product: Product! cascade back=recommendations | Product viewed.
-      recommended: Product! | Product suggested.
+      product: Product! cascade back=recommendations name=product_recommendation_is_for_product | Product viewed.
+      recommended: Product! name=product_recommendation_recommends_recommended | Product suggested.
 
 relations:
   - name: collection includes product

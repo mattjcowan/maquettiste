@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1SWAN4PE25MBGRS2RZY3T9Y",
+  "name": "pick list line fulfils sales order line",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "Line the pick is for.",
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "ends": [
+    {
+      "id": "01M2QCE9AXW8NEKBSPZ196D0KD",
+      "entity": "01M2JSECEQ3FD3TKWAQR961TJ0",
+      "role": "salesOrderLine",
+      "navigation": "salesOrderLine",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M1JMHDDJ9ERBKMXG8EWN3GYA",
+      "entity": "01M1NBGV6RCQPPD3FSTB6SVZWJ",
+      "role": "pickListLines"
+    }
+  ]
+}

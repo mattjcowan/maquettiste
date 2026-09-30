@@ -8,11 +8,11 @@ CREATE TABLE northwind.promotion_conditions (
     threshold_quantity numeric(12,3) NULL,
     threshold_amount_amount numeric(19,4) NULL,
     threshold_amount_currency varchar(3) NULL,
-    product_id uuid NULL,
     product_category_id uuid NULL,
+    product_id uuid NULL,
     promotion_id uuid NOT NULL,
     CONSTRAINT pk_promotion_conditions PRIMARY KEY (id),
-    CONSTRAINT fk_promotion_conditions_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE SET NULL,
     CONSTRAINT fk_promotion_conditions_product_category_id FOREIGN KEY (product_category_id) REFERENCES northwind.product_categories (id) ON DELETE SET NULL,
+    CONSTRAINT fk_promotion_conditions_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE SET NULL,
     CONSTRAINT fk_promotion_conditions_promotion_id FOREIGN KEY (promotion_id) REFERENCES northwind.promotions (id) ON DELETE CASCADE
 );

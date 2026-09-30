@@ -8,11 +8,11 @@ CREATE TABLE northwind.agreement_lines (
     agreed_price_currency varchar(3) NULL,
     discount numeric(5,2) NULL,
     minimum_quantity numeric(12,3) NULL,
-    product_id uuid NULL,
     product_category_id uuid NULL,
+    product_id uuid NULL,
     customer_price_agreement_id uuid NOT NULL,
     CONSTRAINT pk_agreement_lines PRIMARY KEY (id),
-    CONSTRAINT fk_agreement_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE SET NULL,
     CONSTRAINT fk_agreement_lines_product_category_id FOREIGN KEY (product_category_id) REFERENCES northwind.product_categories (id) ON DELETE SET NULL,
+    CONSTRAINT fk_agreement_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE SET NULL,
     CONSTRAINT fk_agreement_lines_customer_price_agreement_id FOREIGN KEY (customer_price_agreement_id) REFERENCES northwind.customer_price_agreements (id) ON DELETE CASCADE
 );

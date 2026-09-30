@@ -202,7 +202,7 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     /// <param name="ct">Cancellation.</param>
     /// <returns>The batch result.</returns>
     [McpServerTool(Name = "apply_batch", Title = "Apply batch", Destructive = true, OpenWorld = false)]
-    [Description("Applies several operations all or nothing. Each operation is {\"op\":\"create\",\"element\":{...}}, {\"op\":\"update\",\"id\":...,\"expectedHash\":...,\"element\":{...}} or {\"op\":\"delete\",\"id\":...,\"expectedHash\":...}. An element may appear in one operation only. When one fails nothing is written and the result says which and why.")]
+    [Description("Applies several operations all or nothing. Each operation is {\"op\":\"create\",\"element\":{...}}, {\"op\":\"update\",\"id\":...,\"expectedHash\":...,\"element\":{...}} or {\"op\":\"delete\",\"id\":...,\"expectedHash\":...}. Database schemas: {\"op\":\"add-schema\",\"id\":<database>,\"name\":...}, {\"op\":\"rename-schema\",\"id\":<database>,\"schema\":<schema id>,\"name\":...}, {\"op\":\"set-default-schema\",\"id\":<database>,\"schema\":...} and {\"op\":\"remove-schema\",\"id\":<database>,\"schema\":...,\"target\":<schema id to move its tables to>,\"default\":<new default when removing the default>}; a remove that would strand tables is refused with MQ4015 listing them. An element may appear in one operation only. When one fails nothing is written and the result says which and why.")]
     public Task<CallToolResult> ApplyBatch(
         [Description("The operations, applied in order; required.")] JsonElement? operations = null,
         CancellationToken ct = default) => GuardAsync(async () =>
@@ -360,6 +360,21 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
         return result is null ? NotFound("seed", id) : FromOutcome(result.Outcome, result.Preview, null);
     }, ct);
 
+    /// <summary>Creates a reference type's seed with the code, label and description columns.</summary>
+    /// <param name="type">The reference type id.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The save result.</returns>
+    [McpServerTool(Name = "create_seed", Title = "Create seed", Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Creates the seed of a reference type that has none, named after the type, with the columns code, label and description and no rows (then import_seed_csv or save_element adds rows). Returns the seed id; a type that has a seed returns that seed's id and changes nothing. A seed created with create_element for a reference type without columns gets the same three.")]
+    public Task<CallToolResult> CreateSeed([Description("The reference type id; required.")] string? type = null, CancellationToken ct = default) => GuardAsync(async () =>
+    {
+        if (string.IsNullOrEmpty(type))
+            return BadRequest("type is required.");
+        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var result = await _store.CreateSeedAsync(type, ChangeSource.Cli, ct).ConfigureAwait(false);
+        return result is null ? NotFound("reference type", type) : FromOutcome(result.Outcome, result, null);
+    }, ct);
+
     /// <summary>The attributes typed by a reference type (getReferenceTypeUsage).</summary>
     /// <param name="id">The reference type id.</param>
     /// <param name="ct">Cancellation.</param>
@@ -389,6 +404,12 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
             return NotFound("element", id);
         return Ok(await _store.GetReferencesAsync(id, ct).ConfigureAwait(false));
     }, ct);
+
+    /// <summary>The built-in rule catalog (listValidationRules).</summary>
+    /// <returns>Every rule with its default severity, description, family and whether it can be turned off.</returns>
+    [McpServerTool(Name = "list_validation_rules", Title = "Validation rules", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("The built-in validation rules, ordered by id: id, defaultSeverity, description, family (the hundreds group such as MQ72xx) and familyLabel, and canBeOff (false for MQ1xxx). Override a rule's severity with validation.rules in the settings (get_settings, save_settings): error, warning, info or off.")]
+    public CallToolResult ListValidationRules() => Ok(RuleCatalog.Describe());
 
     /// <summary>Validates the model or a scope (validate).</summary>
     /// <param name="elementIds">The scope.</param>

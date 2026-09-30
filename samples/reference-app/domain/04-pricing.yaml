@@ -31,9 +31,9 @@ entities:
       isDefault: bool! default=false | List used when a customer has no other list.
       pricesIncludeTax: bool! default=false | Whether prices are tax-inclusive.
     refs:
-      currency: Currency! | Currency of the prices.
+      currency: Currency! name=price_list_is_denominated_in_currency | Currency of the prices.
     children:
-      entries: PriceListEntry | Prices in the list.
+      entries: PriceListEntry name=price_list_contains_entries | Prices in the list.
 
   PriceListEntry:
     description: The price of a product or variant on a price list.
@@ -45,11 +45,11 @@ entities:
       minimumQuantity: decimal(12,3) min=0 | Smallest quantity the price applies to.
       validity: DateRange | Period the entry is valid, within the list's period.
     refs:
-      product: Product! | Priced product.
-      variant: ProductVariant | Priced variant, when the price is variant-specific.
-      unit: UnitOfMeasure | Unit the price is per; defaults to the product's sales unit.
+      product: Product! name=price_list_entry_is_for_product | Priced product.
+      variant: ProductVariant name=price_list_entry_is_for_variant | Priced variant, when the price is variant-specific.
+      unit: UnitOfMeasure name=price_list_entry_is_measured_in_unit | Unit the price is per; defaults to the product's sales unit.
     children:
-      tiers: PriceTier ordered | Quantity breaks.
+      tiers: PriceTier ordered name=price_list_entry_contains_tiers | Quantity breaks.
 
   PriceTier:
     description: A quantity break of a price list entry, such as 5 percent off from 100 cases.
@@ -68,10 +68,10 @@ entities:
       approvedOn: date | Approval date.
       notes: text | Negotiation notes.
     refs:
-      customer: Customer! back=priceAgreements | Customer the agreement is with.
-      approvedBy: Employee | Pricing manager who approved it.
+      customer: Customer! back=priceAgreements name=customer_price_agreement_belongs_to_customer | Customer the agreement is with.
+      approvedBy: Employee name=customer_price_agreement_is_approved_by_employee | Pricing manager who approved it.
     children:
-      lines: AgreementLine | Covered products and categories.
+      lines: AgreementLine name=customer_price_agreement_contains_lines | Covered products and categories.
 
   AgreementLine:
     description: A price or discount for a product or a whole category within a customer agreement.
@@ -80,8 +80,8 @@ entities:
       discount: Percentage | Discount off list price, when no fixed price is agreed.
       minimumQuantity: decimal(12,3) min=0 | Minimum order quantity for the price.
     refs:
-      product: Product | Covered product.
-      productCategory: ProductCategory | Covered category, when the line covers a category.
+      product: Product name=agreement_line_is_for_product | Covered product.
+      productCategory: ProductCategory name=agreement_line_is_classified_under_product_category | Covered category, when the line covers a category.
 
   DiscountRule:
     description: An automatic discount, such as 3 percent off janitorial supplies for buying group A.
@@ -95,8 +95,8 @@ entities:
       isStackable: bool! default=false | Whether it combines with other discounts.
       validity: DateRange | When the rule applies.
     refs:
-      customerGroup: CustomerGroup | Customers the rule applies to.
-      productCategory: ProductCategory | Products the rule applies to.
+      customerGroup: CustomerGroup name=discount_rule_is_grouped_in_customer_group | Customers the rule applies to.
+      productCategory: ProductCategory name=discount_rule_is_classified_under_product_category | Products the rule applies to.
 
   Promotion:
     description: A time-boxed marketing promotion with conditions and rewards, such as buy 10 cases get 1 free.
@@ -110,8 +110,8 @@ entities:
       budget: Money | Maximum discount spend.
       maxRedemptions: int32 min=1 | Cap on redemptions across all customers.
     children:
-      conditions: PromotionCondition | What an order must contain.
-      rewards: PromotionReward | What the customer gets.
+      conditions: PromotionCondition name=promotion_contains_conditions | What an order must contain.
+      rewards: PromotionReward name=promotion_contains_rewards | What the customer gets.
 
   PromotionCondition:
     description: A condition an order must meet for a promotion to apply.
@@ -120,8 +120,8 @@ entities:
       thresholdQuantity: decimal(12,3) min=0 | Minimum quantity.
       thresholdAmount: Money | Minimum amount.
     refs:
-      product: Product | Product counted.
-      productCategory: ProductCategory | Category counted.
+      product: Product name=promotion_condition_is_for_product | Product counted.
+      productCategory: ProductCategory name=promotion_condition_is_classified_under_product_category | Category counted.
 
   PromotionReward:
     description: A benefit granted when a promotion's conditions are met.
@@ -130,7 +130,7 @@ entities:
       value: decimal(12,4)! min=0 | Percentage, amount or price, depending on the type.
       freeQuantity: decimal(12,3) min=0 | Free units, for free goods.
     refs:
-      freeProduct: Product | Product given free.
+      freeProduct: Product name=promotion_reward_gives_away_free_product | Product given free.
 
   Coupon:
     description: A code customers enter to redeem a promotion.
@@ -141,8 +141,8 @@ entities:
       usedCount: int32! default=0 min=0 | Redemptions so far.
       expiresOn: date | Last day the code works.
     refs:
-      promotion: Promotion! cascade back=coupons | Promotion redeemed.
-      customer: Customer | Customer the code is reserved for.
+      promotion: Promotion! cascade back=coupons name=coupon_is_granted_by_promotion | Promotion redeemed.
+      customer: Customer name=coupon_belongs_to_customer | Customer the code is reserved for.
 
   CouponRedemption:
     description: One use of a coupon on a sales order.
@@ -151,8 +151,8 @@ entities:
       redeemedAt: datetimeoffset! | When the coupon was applied.
       discountAmount: Money! | Discount granted.
     refs:
-      coupon: Coupon! back=redemptions | Coupon used.
-      salesOrder: SalesOrder! cascade | Order it was used on.
+      coupon: Coupon! back=redemptions name=coupon_redemption_is_redeemed_with_coupon | Coupon used.
+      salesOrder: SalesOrder! cascade name=coupon_redemption_fulfils_sales_order | Order it was used on.
 
   RebateProgram:
     description: A volume rebate agreement that pays a customer back a percentage of purchases over a period.
@@ -165,7 +165,7 @@ entities:
       rebateRate: Percentage! | Rebate percentage of eligible sales.
       thresholdAmount: Money | Purchases required before rebates accrue.
     refs:
-      customer: Customer! back=rebatePrograms | Customer earning the rebate.
+      customer: Customer! back=rebatePrograms name=rebate_program_belongs_to_customer | Customer earning the rebate.
 
   RebateAccrual:
     description: A rebate accrued on an invoice under a rebate program.
@@ -176,8 +176,8 @@ entities:
       rebateAmount: Money! | Rebate accrued.
       isSettled: bool! default=false | Whether it was paid out or credited.
     refs:
-      rebateProgram: RebateProgram! cascade back=accruals | Program the accrual belongs to.
-      invoice: Invoice | Invoice the accrual is based on.
+      rebateProgram: RebateProgram! cascade back=accruals name=rebate_accrual_accrues_to_rebate_program | Program the accrual belongs to.
+      invoice: Invoice name=rebate_accrual_is_settled_against_invoice | Invoice the accrual is based on.
 
   PriceChangeRequest:
     description: A requested change to a list price, reviewed by pricing before it takes effect.
@@ -189,9 +189,9 @@ entities:
       decision: string(20)! default=pending | pending, approved or rejected.
       decidedAt: datetimeoffset | When the decision was made.
     refs:
-      priceListEntry: PriceListEntry! cascade | Entry whose price would change.
-      requestedBy: Employee! | Who asked.
-      decidedBy: Employee | Who decided.
+      priceListEntry: PriceListEntry! cascade name=price_change_request_is_priced_by_price_list_entry | Entry whose price would change.
+      requestedBy: Employee! name=price_change_request_is_requested_by_employee | Who asked.
+      decidedBy: Employee name=price_change_request_is_decided_by_employee | Who decided.
 
   StandardCost:
     description: The standard cost of a product for a period, used for margin reporting and inventory valuation.
@@ -202,7 +202,7 @@ entities:
       validity: DateRange! | Period the cost applies.
       costingMethod: string(20)! default=standard | standard, average or last-purchase.
     refs:
-      product: Product! cascade back=standardCosts | Costed product.
+      product: Product! cascade back=standardCosts name=standard_cost_is_for_product | Costed product.
 
   Surcharge:
     description: An extra charge added to orders, such as a fuel surcharge or a small-order fee.
@@ -216,7 +216,7 @@ entities:
       amount: Money | Amount, for flat surcharges.
       validity: DateRange | When the surcharge applies.
     refs:
-      productCategory: ProductCategory | Category the surcharge applies to; null for all.
+      productCategory: ProductCategory name=surcharge_is_classified_under_product_category | Category the surcharge applies to; null for all.
 
 relations:
   - name: price list serves customer group

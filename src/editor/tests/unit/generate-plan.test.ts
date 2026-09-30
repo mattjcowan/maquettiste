@@ -2,7 +2,18 @@
 // summary line per pack.
 import { describe, expect, it } from "vitest";
 import type { FileChange, PlanUnit } from "@/api/types";
-import { countsText, filterGroups, flattenGroups, groupOf, groupPlan, packSummaryLine, planSummary, whySentence } from "@/workspaces/generate/planModel";
+import {
+  countsText,
+  filterGroups,
+  flattenGroups,
+  groupOf,
+  groupPlan,
+  moreNotesText,
+  orderDiagnostics,
+  packSummaryLine,
+  planSummary,
+  whySentence,
+} from "@/workspaces/generate/planModel";
 
 function unit(key: string, patch: Partial<PlanUnit> = {}): PlanUnit {
   const [head, element = null] = key.split(":");
@@ -109,5 +120,22 @@ describe("plan explanation model", () => {
     expect(packSummaryLine("sql-ddl", big)).toBe("sql-ddl: 4 units, 12 files to add, 3 to modify, 1 orphan to delete");
     const quiet = { units: [unit("sql-ddl/table:t", { skipped: true, reason: "unchanged" })], changes: [change("db/t.sql", "unchanged", "sql-ddl/table:t")] };
     expect(packSummaryLine("sql-ddl", quiet)).toBe("sql-ddl: 0 units, nothing to write, 1 unit unchanged");
+  });
+});
+
+describe("plan diagnostics under the summary", () => {
+  const note = (severity: string, rule: string, n: number) => ({ severity, rule, message: `${rule} #${n}` });
+  it("lists errors first, then warnings, then notes, keeping the engine's order inside a severity", () => {
+    const { shown, more } = orderDiagnostics([note("info", "MQ7204", 1), note("warning", "MQ6024", 2), note("info", "MQ7204", 3), note("error", "MQ6018", 4)]);
+    expect(shown.map((d) => d.message)).toEqual(["MQ6018 #4", "MQ6024 #2", "MQ7204 #1", "MQ7204 #3"]);
+    expect(more).toBe(0);
+  });
+  it("caps the list and counts the rest so notes never hide a warning", () => {
+    const many = [...Array.from({ length: 7 }, (_, i) => note("info", "MQ7204", i)), note("warning", "MQ6024", 9)];
+    const { shown, more, counts } = orderDiagnostics(many);
+    expect(shown[0].severity).toBe("warning");
+    expect(shown).toHaveLength(5);
+    expect(more).toBe(3);
+    expect(moreNotesText(more, counts)).toBe("+3 more in Problems (1 warning, 7 notes in all)");
   });
 });

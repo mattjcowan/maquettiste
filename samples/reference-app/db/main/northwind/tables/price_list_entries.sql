@@ -15,11 +15,11 @@ CREATE TABLE northwind.price_list_entries (
     updated_by varchar(64) NULL,
     price_list_id uuid NOT NULL,
     product_id uuid NOT NULL,
-    unit_code varchar(3) NULL,
     variant_id uuid NULL,
+    unit_code varchar(3) NULL,
     CONSTRAINT pk_price_list_entries PRIMARY KEY (id),
     CONSTRAINT fk_price_list_entries_price_list_id FOREIGN KEY (price_list_id) REFERENCES northwind.price_lists (id) ON DELETE CASCADE,
     CONSTRAINT fk_price_list_entries_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_price_list_entries_unit_code FOREIGN KEY (unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE SET NULL,
-    CONSTRAINT fk_price_list_entries_variant_id FOREIGN KEY (variant_id) REFERENCES northwind.product_variants (id) ON DELETE SET NULL
+    CONSTRAINT fk_price_list_entries_variant_id FOREIGN KEY (variant_id) REFERENCES northwind.product_variants (id) ON DELETE SET NULL,
+    CONSTRAINT fk_price_list_entries_unit_code FOREIGN KEY (unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE SET NULL
 );

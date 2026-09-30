@@ -29,6 +29,10 @@ public sealed record Mapping : Element
     [ElementRef(ElementKind.Table)]
     public string? Table { get; init; }
 
+    /// <summary>For an entity: the id of the database schema its conventional table goes to (erratum E26).</summary>
+    [ElementRef(IndexKinds = ["schema"])]
+    public string? Schema { get; init; }
+
     /// <summary>Whether the element is not stored in this database.</summary>
     public bool Ignore { get; init; }
 

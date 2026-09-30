@@ -120,8 +120,10 @@ export interface SearchHit {
 
 export type ToWorker =
   /** The rows encoded by `encodeRows`, or the index's JSON text (an `ElementSummary[]`) to parse and encode here. */
-  | { type: "rows"; version: number; data: string; json?: undefined }
-  | { type: "rows"; version: number; json: string; data?: undefined; first?: boolean; more?: boolean }
+  | { type: "rows"; version: number; data: string; json?: undefined; bytes?: undefined }
+  | { type: "rows"; version: number; json: string; data?: undefined; bytes?: undefined; first?: boolean; more?: boolean }
+  /** The index body's UTF-8 bytes, transferred: decoded and parsed here. */
+  | { type: "rows"; version: number; bytes: ArrayBuffer; data?: undefined; json?: undefined }
   /** An index patch (api/indexPatch.ts): encoded upserts, removed ids, and the rows that took a new position. */
   | { type: "update"; data: string; deleted: readonly string[]; moves: readonly (readonly [string, string | null])[] }
   | { type: "tables"; db: string; data: string | null }
@@ -488,6 +490,12 @@ export function createSearchHandler(index = new SearchIndex()): (msg: ToWorker) 
   return (msg) => {
     switch (msg.type) {
       case "rows": {
+        if (msg.bytes !== undefined) {
+          const start = performance.now();
+          const rows = JSON.parse(new TextDecoder().decode(msg.bytes)) as ElementSummary[];
+          index.loadRows(msg.version, encodeRows(rows));
+          return { type: "ready", version: msg.version, count: index.size, ms: performance.now() - start };
+        }
         if (msg.json !== undefined) {
           if (msg.first) parts = [];
           parts.push(msg.json);

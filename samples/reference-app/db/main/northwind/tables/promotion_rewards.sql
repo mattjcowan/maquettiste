@@ -7,9 +7,9 @@ CREATE TABLE northwind.promotion_rewards (
     reward_type varchar(4) NOT NULL,
     value numeric(12,4) NOT NULL,
     free_quantity numeric(12,3) NULL,
-    free_product_id uuid NULL,
     promotion_id uuid NOT NULL,
+    free_product_id uuid NULL,
     CONSTRAINT pk_promotion_rewards PRIMARY KEY (id),
-    CONSTRAINT fk_promotion_rewards_free_product_id FOREIGN KEY (free_product_id) REFERENCES northwind.products (id) ON DELETE SET NULL,
-    CONSTRAINT fk_promotion_rewards_promotion_id FOREIGN KEY (promotion_id) REFERENCES northwind.promotions (id) ON DELETE CASCADE
+    CONSTRAINT fk_promotion_rewards_promotion_id FOREIGN KEY (promotion_id) REFERENCES northwind.promotions (id) ON DELETE CASCADE,
+    CONSTRAINT fk_promotion_rewards_free_product_id FOREIGN KEY (free_product_id) REFERENCES northwind.products (id) ON DELETE SET NULL
 );

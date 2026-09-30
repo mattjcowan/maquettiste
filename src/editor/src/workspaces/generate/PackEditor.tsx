@@ -179,6 +179,7 @@ export function PackEditor({ pack }: { pack: string }) {
           <TemplatesTab
             key={pack}
             pack={pack}
+            packHash={d.hash}
             files={d.files}
             units={((json.units as { id?: string }[] | undefined) ?? []).map((u) => u.id ?? "").filter(Boolean)}
             scopes={Object.fromEntries(

@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2Y6VDJNHQAGEKHR9JSPZQ7K",
+  "name": "sign in attempt is made as user account",
+  "package": "01M1F99DBQ9B1T1RVMQRR1GS7V",
+  "description": "Matched account; null when the user name is unknown.",
+  "category": "01M38C3WQ4HSCF45E03KGN6AF5",
+  "ends": [
+    {
+      "id": "01M31R0ARBHJHZTEFDNYWSJ9S6",
+      "entity": "01M2CMF5JR3GW828G267AZ0M1E",
+      "role": "userAccount",
+      "navigation": "userAccount",
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M1JC2PRXE465S76S13JYBA0B",
+      "entity": "01M245ZGAQNMAKQMCEM2NPCD22",
+      "role": "signInAttempts"
+    }
+  ]
+}

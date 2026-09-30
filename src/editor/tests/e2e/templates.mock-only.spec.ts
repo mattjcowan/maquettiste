@@ -123,3 +123,72 @@ test("the preview renders only elements of the unit's scope, and a partial throu
   await files.getByRole("button", { name: /^_shared\.scriban/ }).click();
   await expect(page.getByTestId("preview-note")).toContainText("is a partial: previewing unit");
 });
+
+test("complete from the template context, match template and output lines, and create, rename and delete files", async ({ page }) => {
+  await page.goto("/generate");
+  await workspace(page, "Generate");
+  await page.getByRole("tree", { name: "Packs" }).getByTestId("pack-row-p:sql-ddl").getByText("sql-ddl", { exact: true }).click();
+  await page.keyboard.press("Alt+3");
+  const tab = page.getByTestId("templates-tab");
+  const files = tab.getByRole("navigation", { name: "Pack files" });
+  const code = page.getByTestId("code-scriban");
+  await files.getByRole("button", { name: "table.scriban", exact: true }).click();
+  await expect(page.getByTestId("preview-text").first()).not.toBeEmpty();
+
+  // The cursor's template line highlights the output lines it matched (by text, and the pane says so).
+  await code.locator(".view-lines").click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type("\n-- line map probe");
+  const preview = page.getByTestId("template-preview");
+  await expect(preview.locator("[data-match=true]").first()).toHaveText("-- line map probe");
+  await expect(page.getByTestId("preview-match-note")).toContainText("approximate");
+  // And back: an output line highlights the template lines that match it.
+  await preview.locator("[data-line]", { hasText: "-- line map probe" }).first().click();
+  await expect(code).toHaveAttribute("data-highlight", /^\d+$/);
+
+  // Completion inside a code block: the unit's model members after `model.`, helpers and pipe functions after `|`.
+  await code.locator(".view-lines").click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type("\n{{ model.");
+  const suggest = page.locator(".suggest-widget");
+  await expect(suggest).toContainText("entities");
+  await page.keyboard.press("Escape");
+  await page.keyboard.type("entities | ");
+  await page.keyboard.press("Control+Space");
+  await expect(suggest).toContainText("array.add");
+  await page.keyboard.press("Escape");
+
+  // A file a unit names cannot be deleted: the refusal says who uses it.
+  await page.getByTestId("template-delete").click();
+  await page.getByTestId("template-file-action").getByRole("button", { name: "Delete" }).click();
+  await expect(page.getByTestId("template-file-error")).toContainText("was not deleted");
+  await expect(page.getByTestId("template-file-error")).toContainText("unit:table");
+  await page.getByTestId("template-file-action").getByRole("button", { name: "Cancel" }).click();
+
+  // New: an empty file, opened.
+  await page.getByTestId("template-new").click();
+  await page.getByRole("textbox", { name: "New file path" }).fill("partials/probe.scriban");
+  await page.getByTestId("template-file-action").getByRole("button", { name: "Create" }).click();
+  await expect(tab.getByTestId("template-path")).toHaveText("partials/probe.scriban");
+  await expect(files.getByRole("button", { name: /^probe\.scriban/ })).toBeVisible();
+
+  // Rename it, then delete it.
+  await page.getByTestId("template-rename").click();
+  await page.getByRole("textbox", { name: "New path" }).fill("partials/renamed.scriban");
+  await page.getByTestId("template-file-action").getByRole("button", { name: "Rename" }).click();
+  await expect(tab.getByTestId("template-path")).toHaveText("partials/renamed.scriban");
+  await expect(files.getByRole("button", { name: /^probe\.scriban/ })).toHaveCount(0);
+  await page.getByTestId("template-delete").click();
+  await page.getByTestId("template-file-action").getByRole("button", { name: "Delete" }).click();
+  await expect(files.getByRole("button", { name: /^renamed\.scriban/ })).toHaveCount(0);
+
+  // Renaming a unit's template rewrites the unit in pack.json in the same change.
+  await files.getByRole("button", { name: "schema.scriban", exact: true }).click();
+  await expect(tab.getByTestId("template-path")).toHaveText("schema.scriban");
+  await page.getByTestId("template-rename").click();
+  await page.getByRole("textbox", { name: "New path" }).fill("database-schema.scriban");
+  await page.getByTestId("template-file-action").getByRole("button", { name: "Rename" }).click();
+  await expect(tab.getByTestId("template-path")).toHaveText("database-schema.scriban");
+  const pack = await page.evaluate(() => fetch("/api/packs/sql-ddl").then((r) => r.json()));
+  expect((pack.document.units as { id: string; template: string }[]).find((u) => u.id === "schema")?.template).toBe("database-schema.scriban");
+});

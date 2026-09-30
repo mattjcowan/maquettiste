@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1W0HN2T67W27QTKN6TT9XMZ",
+  "name": "return inspection is traced to return line",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "Line inspected.",
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "ends": [
+    {
+      "id": "01M33MFYXMF5N3K9QBPJZ0RS7K",
+      "entity": "01M2XYYP2TX3CAXKCVF4SJ4A57",
+      "role": "returnLine",
+      "navigation": "returnLine",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M2XJ72GEG1D7E41DDKEHQMVH",
+      "entity": "01M2G3F0QRHJQDX7XH86FZ40ZQ",
+      "role": "inspections",
+      "navigation": "inspections"
+    }
+  ]
+}

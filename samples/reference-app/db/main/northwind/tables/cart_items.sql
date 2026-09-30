@@ -8,11 +8,11 @@ CREATE TABLE northwind.cart_items (
     added_at timestamptz(6) NOT NULL,
     unit_price_snapshot_amount numeric(19,4) NULL,
     unit_price_snapshot_currency varchar(3) NULL,
+    cart_id uuid NOT NULL,
     product_id uuid NOT NULL,
     variant_id uuid NULL,
-    cart_id uuid NOT NULL,
     CONSTRAINT pk_cart_items PRIMARY KEY (id),
+    CONSTRAINT fk_cart_items_cart_id FOREIGN KEY (cart_id) REFERENCES northwind.carts (id) ON DELETE CASCADE,
     CONSTRAINT fk_cart_items_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_cart_items_variant_id FOREIGN KEY (variant_id) REFERENCES northwind.product_variants (id) ON DELETE SET NULL,
-    CONSTRAINT fk_cart_items_cart_id FOREIGN KEY (cart_id) REFERENCES northwind.carts (id) ON DELETE CASCADE
+    CONSTRAINT fk_cart_items_variant_id FOREIGN KEY (variant_id) REFERENCES northwind.product_variants (id) ON DELETE SET NULL
 );

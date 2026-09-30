@@ -13,6 +13,8 @@ import { baselineHandlers } from "./baseline";
 import { mentions, recordings, replayable, type Recording } from "./recorded";
 import { validPackPath } from "./model/packs";
 import { isUlid, readTag } from "./wire";
+// Recorded by the functions test of GET /api/validation/rules, which fails when the catalog changes without a new recording.
+import validationRules from "./recorded/validation-rules.json";
 
 type Json = Record<string, unknown>;
 
@@ -342,6 +344,7 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
       if (!refs) return problem(404, "not-found", `No element has the id ${params.id}.`);
       return HttpResponse.json(refs);
     }),
+    http.get("/api/validation/rules", () => HttpResponse.json(validationRules as never)),
     http.post("/api/validate", async ({ request }) => {
       const body = await jsonBody(request);
       if (!body.ok) return body.response;

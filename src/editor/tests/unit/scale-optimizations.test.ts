@@ -39,14 +39,25 @@ describe("search worker handoff from the index text", () => {
     expect(sliced({ type: "rows", version: 3, json: text.slice(50) })).toMatchObject({ type: "ready", version: 3, count: encoded.count });
     const { ms: _c, ...slicedAnswer } = sliced(ask) as Extract<FromWorker, { type: "rank" }>;
     expect(slicedAnswer).toEqual(expected);
+    // As transferred bytes (the worker decodes and parses them): the same answer.
+    const fromBytes = createSearchHandler();
+    const bytes = new TextEncoder().encode(text).buffer;
+    expect(fromBytes({ type: "rows", version: 4, bytes })).toMatchObject({ type: "ready", version: 4, count: encoded.count });
+    const { ms: _d, ...bytesAnswer } = fromBytes(ask) as Extract<FromWorker, { type: "rank" }>;
+    expect(bytesAnswer).toEqual(expected);
   });
 
   it("keeps the text beside the parsed rows until it is taken once", async () => {
     const text = JSON.stringify(ROWS);
     const loader = createIndexLoader({ fetch: async () => ({ notModified: false, text, etag: '"e"' }) as never });
     const rows = await loader.load();
-    expect(takeIndexText(rows)).toBe(text);
+    expect(takeIndexText(rows)).toEqual({ text, bytes: undefined });
     expect(takeIndexText(rows)).toBeUndefined();
+    // With the body's bytes (the network path): kept beside the text, for the worker to take as a transferable.
+    const bytes = new TextEncoder().encode(text).buffer;
+    const withBytes = createIndexLoader({ fetch: async () => ({ notModified: false, text, bytes, etag: '"f"' }) as never });
+    const rows2 = await withBytes.load();
+    expect(takeIndexText(rows2)?.bytes).toBe(bytes);
     const other: unknown[] = [];
     rememberIndexText(other, "[]");
     expect(takeIndexText([])).toBeUndefined();

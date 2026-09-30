@@ -252,6 +252,27 @@ public sealed class ReferenceDataStoreTests
     }
 
     [Fact]
+    public async Task A_new_reference_type_seed_declares_code_label_and_description()
+    {
+        var (h, store) = await OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+        const string Speed = "01JRDF00000000000000000001";
+        var type = Encoding.UTF8.GetBytes($$"""{ "kind": "reference-type", "id": "{{Speed}}", "name": "Speed", "code": { "id": "01JRDF00000000000000000002" }, "label": { "id": "01JRDF00000000000000000003" } }""");
+        Assert.Equal(SaveOutcome.Saved, (await store.CreateAsync(type, ChangeSource.Editor, Ct)).Outcome);
+
+        // create_element without columns gets the three built-ins; CreateSeedAsync makes one and then returns it.
+        var bare = Encoding.UTF8.GetBytes($$"""{ "kind": "seed", "name": "SpeedRows", "target": "{{Speed}}", "rows": [] }""");
+        var created = await store.CreateAsync(bare, ChangeSource.Cli, Ct);
+        Assert.Equal(SaveOutcome.Saved, created.Outcome);
+        Assert.Equal(["code", "label", "description"], store.Current!.Get<Seed>(created.Id!)!.Columns.Select(c => c.ToString()));
+        var again = await store.CreateSeedAsync(Speed, ChangeSource.Cli, Ct);
+        Assert.Equal(created.Id, again!.Id);
+        Assert.Null(again.Changes);
+        Assert.Null(await store.CreateSeedAsync(Recipe, ChangeSource.Cli, Ct));
+    }
+
+    [Fact]
     public async Task Patched_and_full_indexes_agree_on_code_references()
     {
         var (h, store) = await OpenAsync();

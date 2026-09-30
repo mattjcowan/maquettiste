@@ -237,6 +237,23 @@ public sealed class ModelWriteTests
     }
 
     [Fact]
+    public async Task Batch_schema_operations_add_and_refuse_a_remove_that_strands_objects()
+    {
+        await using var host = EditorHost.Create();
+        const string Database = "01J92P0V1QRN2181XM2ZWE02W4";
+
+        var added = await host.SendJsonAsync("POST", "/api/model/batch", $$"""{ "operations": [ { "op": "add-schema", "id": "{{Database}}", "schema": "01J92P0V1RC04SKQ5353EAKHG3", "name": "archive" } ] }""");
+        var refused = await host.SendJsonAsync("POST", "/api/model/batch", $$"""{ "operations": [ { "op": "remove-schema", "id": "{{Database}}", "schema": "01J92P0V1RC04SKQ5353EAKHG2", "default": "01J92P0V1RC04SKQ5353EAKHG3" } ] }""");
+
+        Assert.Equal(200, added.Status);
+        Contract.AssertResponse(added, "/api/model/batch");
+        Assert.Contains("\"archive\"", File.ReadAllText(host.PathOf(".maquettiste/model/databases/main/database.json")), StringComparison.Ordinal);
+        Assert.Equal(422, refused.Status);
+        Contract.AssertResponse(refused, "/api/model/batch");
+        Assert.Contains("MQ4015", refused.Json.ToJsonString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Validate_takes_no_body_a_scope_or_answers_400()
     {
         await using var host = EditorHost.Create();

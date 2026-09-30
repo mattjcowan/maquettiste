@@ -398,17 +398,19 @@ export function compile(domain) {
           else throw new Error(`${name}.${role}: unknown ref flag ${t}`);
         }
         const tgt = entityRef(target, `${name}.${role}`);
-        const rname = relName ?? `${words(name).toLowerCase()} ${words(role).toLowerCase()}`;
+        // The id key is the entity and role, never `name=`: naming (or renaming) a relation keeps its id, ends and columns.
+        const rkey = `${words(name).toLowerCase()} ${words(role).toLowerCase()}`;
+        const rname = relName ?? rkey;
         const manyRole = back ?? (one ? camel(name) : camel(pluralize(name)));
         addNavigation(name, role, rname);
         if (back) addNavigation(target, back, rname);
         addRelation(p.package, {
-          kind: "relation", id: id(`relation:${rname}`), name: rname, package: pkgOf(p.package, rname),
+          kind: "relation", id: id(`relation:${rkey}`), name: rname, package: pkgOf(p.package, rname),
           description: desc ?? `Each ${words(name).toLowerCase()} ${required ? "references its" : "may reference a"} ${words(role).toLowerCase()} (${words(target).toLowerCase()}).`,
           category: categoryOf.get(p.package),
           ends: [
-            { id: id(`end:${rname}#0`), entity: tgt.id, role, navigation: role, min: required ? 1 : 0, max: 1, onDelete },
-            { id: id(`end:${rname}#1`), entity: entities.get(name).id, role: manyRole, navigation: back, max: one ? 1 : undefined },
+            { id: id(`end:${rkey}#0`), entity: tgt.id, role, navigation: role, min: required ? 1 : 0, max: 1, onDelete },
+            { id: id(`end:${rkey}#1`), entity: entities.get(name).id, role: manyRole, navigation: back, max: one ? 1 : undefined },
           ],
         });
       }
@@ -418,19 +420,24 @@ export function compile(domain) {
         const child = tokens.shift();
         const ordered = tokens.includes("ordered");
         const aggregation = tokens.includes("aggregation");
-        for (const t of tokens) if (t !== "ordered" && t !== "aggregation") throw new Error(`${name}.${role}: unknown child flag ${t}`);
+        let relName;
+        for (const t of tokens) {
+          if (t.startsWith("name=")) relName = t.slice(5).replaceAll("_", " ");
+          else if (t !== "ordered" && t !== "aggregation") throw new Error(`${name}.${role}: unknown child flag ${t}`);
+        }
         const ch = entityRef(child, `${name}.${role}`);
-        const rname = `${words(name).toLowerCase()} ${words(role).toLowerCase()}`;
+        const rkey = `${words(name).toLowerCase()} ${words(role).toLowerCase()}`; // id key, as for refs
+        const rname = relName ?? rkey;
         const parentRole = camel(name);
         addNavigation(name, role, rname);
         addNavigation(child, parentRole, rname);
         addRelation(p.package, {
-          kind: "relation", id: id(`relation:${rname}`), name: rname, package: pkgOf(p.package, rname), relationKind: aggregation ? "aggregation" : "composition",
+          kind: "relation", id: id(`relation:${rkey}`), name: rname, package: pkgOf(p.package, rname), relationKind: aggregation ? "aggregation" : "composition",
           description: desc ?? `A ${words(name).toLowerCase()} ${aggregation ? "groups" : "owns"} its ${words(role).toLowerCase()}.`,
           category: categoryOf.get(p.package),
           ends: [
-            { id: id(`end:${rname}#0`), entity: entities.get(name).id, role: parentRole, navigation: parentRole, min: aggregation ? 0 : 1, max: 1, onDelete: aggregation ? "set-null" : "cascade" },
-            { id: id(`end:${rname}#1`), entity: ch.id, role, navigation: role, ordered: ordered || undefined },
+            { id: id(`end:${rkey}#0`), entity: entities.get(name).id, role: parentRole, navigation: parentRole, min: aggregation ? 0 : 1, max: 1, onDelete: aggregation ? "set-null" : "cascade" },
+            { id: id(`end:${rkey}#1`), entity: ch.id, role, navigation: role, ordered: ordered || undefined },
           ],
         });
       }

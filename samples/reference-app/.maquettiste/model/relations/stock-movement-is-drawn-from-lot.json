@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2WHWDNEQRA7N9DYZXYKSZ3Y",
+  "name": "stock movement is drawn from lot",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Lot moved.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M20MJRGSGB9T50WRM244MFB2",
+      "entity": "01M1KXX9R3RW3ATAD1NCYF0QP0",
+      "role": "lot",
+      "navigation": "lot",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2QGMJT8Q30QHCETWXPBEE1Y",
+      "entity": "01M1W2WMX2WKTS2Y5S4W94NB7Y",
+      "role": "stockMovements"
+    }
+  ]
+}

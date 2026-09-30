@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import { useLocation, useNavigate } from "react-router";
 import type { ElementSummary } from "@/api/types";
-import { WORKSPACES, type EditorStore, type Workspace } from "@/state/store";
+import { WORKSPACES, type EditorStore, type SidebarView, type Workspace } from "@/state/store";
 import { keys } from "@/api/queries";
 import { placeOf } from "@/search/engine";
 import { useServices } from "./context";
@@ -104,9 +104,9 @@ export function useEditorNavigation() {
   );
 
   const select = useCallback(
-    (ids: string[], pointer: string | null = null) => {
+    (ids: string[], pointer: string | null = null, explorer?: SidebarView) => {
       const s = store.getState();
-      s.select(ids, { pointer });
+      s.select(ids, { pointer }, explorer);
       navigate(buildUrl(s.workspace, segmentFor(s.workspace), ids, keep()), { replace: true });
     },
     [navigate, store, segmentFor, keep],

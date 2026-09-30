@@ -87,7 +87,22 @@ exists and otherwise emits a `::warning::`; an explicit `--baseline` path that d
 
 **`bench/baseline-ci.json`** is the CI runner's own baseline (round 7). Record it with the `bench` workflow's dispatch input
 `record-ci-baseline` (on the runner the tag runs use, default `ubuntu-latest`): the run uses `--advisory-budgets`, writes its report
-as `baseline-ci.json` and uploads it as the `bench-baseline-ci` artifact; download it and commit it as `bench/baseline-ci.json`.
+as `baseline-ci.json`, uploads it as the `bench-baseline-ci` artifact, and the `commit-baseline` job commits it as
+`bench/baseline-ci.json` to the branch the workflow was dispatched on (the workflow's own token, `contents: write` on that job
+only; skipped when dispatched on a tag, and when the bench failed).
+
+The one-time dispatch, from the default branch (or the branch the tags are cut from):
+
+```sh
+gh workflow run bench.yml --ref main -f record-ci-baseline=true      # -f runner=<label> for another runner class
+gh run watch                                                          # about 15 to 25 minutes on ubuntu-latest
+git pull                                                              # brings "Record the bench CI baseline on ..."
+```
+
+Or in the Actions tab: **bench** › **Run workflow**, pick the branch, tick "Record bench/baseline-ci.json…". A protected branch
+that refuses pushes from `github-actions[bot]` fails the commit step: allow the bot in the branch rule, or download the
+`bench-baseline-ci` artifact and commit it as `bench/baseline-ci.json` by hand. Pushes made with the workflow token start no
+other workflow runs.
 Once that file is committed, tag runs compare against it with the 10% regression gate and `--advisory-budgets`, and the step
 fails the workflow on a regression, a drift in the check run or a determinism mismatch. `--advisory-budgets` keeps the absolute
 budgets in the report but lets only the regression gate, the check run and the determinism cross-check decide; without it (on a
@@ -334,7 +349,8 @@ the same options give the same bytes; with 0 the model is byte-identical to one 
 
 `dotnet run -c Release --project bench/Maquettiste.Bench -- time-load --model <dir> [--rounds 3] [--warm-cache]` times a cold load (a
 new model store over an empty cache folder), the localizable-node index and the completeness pass. It only reads the model. With
-`--warm-cache` every round uses one cache folder, filled by an untimed round 0, so each round is a restart over the cache volume.
+`--warm-cache` every round uses one cache folder, filled by an untimed round 0, so each round is a restart over the cache volume; the
+line ends with the number of parsed-shard cache files (`<cache>/shards/<hash>.bin`) the round read.
 
 Measured at the write-model defaults (26,616 element files, 146,753 localizable nodes and 199,395 fields per locale, 41 shards and
 about 26 MB per locale; 24 cores, WSL2), rounds 2 to 5 (the first is a cold process):
@@ -346,6 +362,8 @@ about 26 MB per locale; 24 cores, WSL2), rounds 2 to 5 (the first is a cold proc
 | `--locales 4`, after the 2026-09-29 pass | 841-1,556 ms | 106-120 ms | 27-39 ms | 974-1,715 ms |
 | `--locales 4 --warm-cache`, after the pass | 664-1,210 ms | 93-146 ms | 27-38 ms | 795-1,337 ms |
 | No locales, `--warm-cache` | 436-520 ms | - | 0 ms | 436-520 ms |
+| `--locales 4 --warm-cache`, with the parsed-shard cache (close-out) | 449-747 ms | 87-103 ms | 25-30 ms | 569-871 ms |
+| `--locales 4`, with the parsed-shard cache (first open; round 1 a cold process) | 796-1,720 ms | 83-136 ms | 24-42 ms | 921-1,899 ms |
 
 Four complete locales add about 1.2 to 1.4 s to the cold load, against the ≤ 400 ms target of
 reference-types-seeds-localization.md section 5: the target is **not met** (see that section for the breakdown and next steps).

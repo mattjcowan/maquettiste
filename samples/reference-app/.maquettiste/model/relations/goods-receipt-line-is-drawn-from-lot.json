@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2KSKM7H30S2E59P2JTM6KBP",
+  "name": "goods receipt line is drawn from lot",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "Lot received.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "ends": [
+    {
+      "id": "01M32Q3M6AD8KT60X518WXX0PJ",
+      "entity": "01M1KXX9R3RW3ATAD1NCYF0QP0",
+      "role": "lot",
+      "navigation": "lot",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M31WEX8A29V19Z4WAHR5VJKE",
+      "entity": "01M2GBMZTV29WK7A5V2BAQSNCF",
+      "role": "goodsReceiptLines"
+    }
+  ]
+}

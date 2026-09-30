@@ -26,3 +26,32 @@ export function databaseList<T extends { id: string; kind: string; name: string 
   const at = (id: string) => order.get(id) ?? Number.MAX_SAFE_INTEGER;
   return index.filter((r) => r.kind === "database").sort((a, b) => at(a.id) - at(b.id) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }
+
+/** The Database screen draws at most this many tables (explorer-redesign.md 1.3). */
+export const CANVAS_CAP = 300;
+
+export type TableScope = { mode: "all" } | { mode: "scoped"; focus: string; keys: Set<string>; more: number } | { mode: "list"; total: number };
+
+/**
+ * What the Database screen draws: every table up to the cap; above it, the selected table and its foreign-key
+ * neighbours (both directions, sorted by key, the focus first, at most `cap`; `more` counts the neighbours left
+ * out), or with no table selected the list-and-DDL form (no canvas). Pure and deterministic.
+ */
+export function scopeTables(
+  tables: readonly { key: string; foreignKeys: readonly { referencedTable: string }[] }[],
+  focus: string | null,
+  cap = CANVAS_CAP,
+): TableScope {
+  if (tables.length <= cap) return { mode: "all" };
+  if (!focus || !tables.some((t) => t.key === focus)) return { mode: "list", total: tables.length };
+  const neighbours = new Set<string>();
+  for (const t of tables) {
+    if (t.key === focus) for (const fk of t.foreignKeys) neighbours.add(fk.referencedTable);
+    else if (t.foreignKeys.some((fk) => fk.referencedTable === focus)) neighbours.add(t.key);
+  }
+  neighbours.delete(focus);
+  const known = new Set(tables.map((t) => t.key));
+  const sorted = [...neighbours].filter((k) => known.has(k)).sort();
+  const shown = sorted.slice(0, Math.max(0, cap - 1));
+  return { mode: "scoped", focus, keys: new Set([focus, ...shown]), more: sorted.length - shown.length };
+}

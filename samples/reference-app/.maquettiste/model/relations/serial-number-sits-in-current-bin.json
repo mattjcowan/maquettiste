@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1VCH27SF7D4YKD73W2QRHEX",
+  "name": "serial number sits in current bin",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Where the unit is stored.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M1MCR9NVAB1F6R68KV0M8VAW",
+      "entity": "01M23889DSDTV8CMFDQXJCF0NM",
+      "role": "currentBin",
+      "navigation": "currentBin",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2NMVR9DHS7C42YF58D4G7YX",
+      "entity": "01M2JSJ9P18GDTRZZ4MS9MEPAC",
+      "role": "serialNumbers"
+    }
+  ]
+}

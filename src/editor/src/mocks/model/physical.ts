@@ -5,6 +5,7 @@
 // plausible, not the engine's exact result, and the mocks' hashes and names are never compared
 // with real ones.
 import { conventionOf, placesEntity } from "@/model/databaseMapping";
+import { schemaForEntity, schemasOf } from "@/model/databaseSchemas";
 import type { ColumnView, DatabaseView, ForeignKeyView, TableView } from "@/api/types";
 
 type Json = Record<string, unknown>;
@@ -189,7 +190,7 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
   const defaultSchema = typeof db.defaultSchema === "string" ? db.defaultSchema : null;
   // What the database holds (D46): its byConvention (a file without it: every entity, or its packages') plus the
   // entities a mapping names, less the ignored ones.
-  const convention = conventionOf(db as { byConvention?: string; packages?: string[] });
+  const convention = conventionOf(db as Parameters<typeof conventionOf>[0]);
   const parentOf = (id: string) => {
     const parent = input.docs.get(id)?.parent;
     return typeof parent === "string" ? parent : null;
@@ -197,6 +198,12 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
 
   const all = [...input.docs.values()];
   const entityMapping = new Map(all.filter((d) => d.kind === "mapping" && d.database === databaseId && d.entity).map((d) => [String(d.entity), d]));
+  // A conventional table's schema: the entity's mapping, else the nearest convention entry, else the default (erratum E26).
+  const declared = new Map(schemasOf(db).map((x) => [x.id, x.name]));
+  const schemaOfEntity = (entity: Json) => {
+    const sid = schemaForEntity(db, typeof entity.package === "string" ? entity.package : null, entityMapping.get(String(entity.id)), parentOf);
+    return (sid ? declared.get(sid) : undefined) ?? defaultSchema;
+  };
   const entities = all
     .filter(
       (d) =>
@@ -347,7 +354,7 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
     const table: TableView = {
       key: `${id}@${databaseId}`,
       name,
-      schema: defaultSchema,
+      schema: schemaOfEntity(entity),
       origin: "synthesized",
       entityId: id,
       relationId: null,

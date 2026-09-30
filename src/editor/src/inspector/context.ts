@@ -13,7 +13,9 @@ export type InspectorContext =
   | { mode: "none" };
 
 export type ContextInput = Pick<EditorState, "workspace" | "editors" | "generation" | "selectionBy"> & {
-  explorer: { active: SidebarView };
+  explorer: { active: SidebarView; pinned?: SidebarView | null };
+  /** The explorer the last selection was made in (the pinned second explorer keeps its own selection). */
+  selectionFrom?: SidebarView | null;
   /** Whether an element still exists (the loaded index); a deleted element never shows, even before the store is pruned. */
   exists?: (id: string) => boolean;
 };
@@ -28,7 +30,9 @@ export function inspectorContext(s: ContextInput): InspectorContext {
     const focus = s.generation.packFocus;
     return { mode: "pack", pack, unit: focus && focus.pack === pack ? (focus.unit ?? null) : null };
   }
-  const active = s.explorer.active;
+  const shown = s.explorer.active;
+  // A selection made in the pinned second explorer shows while that explorer is still pinned beside the active one.
+  const active = s.selectionFrom && s.selectionFrom !== shown && s.selectionFrom === s.explorer.pinned ? s.selectionFrom : shown;
   const ids = (s.selectionBy[active] ?? []).filter((id) => !s.exists || s.exists(id));
   if (!ids.length) return { mode: "empty", place: RAIL_LABELS[active].label, noun: active === "generate" ? "a pack" : "an element" };
   return { mode: "element", ids, source: "explorer" };

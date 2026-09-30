@@ -59,7 +59,12 @@ export function referencesOf(doc: Json): Ref[] {
       arr(doc.members).forEach((m, i) => push(`/members/${i}/element`, "element", m.element, false, `/members/${i}`));
       break;
     case "database":
-      arr(doc.packages).forEach((p, i) => push(`/packages/${i}`, "packages", p, false, `/packages/${i}`));
+      // An entry is a package id or { package, schema } (erratum E26).
+      (Array.isArray(doc.packages) ? (doc.packages as unknown[]) : []).forEach((p, i) =>
+        typeof p === "string"
+          ? push(`/packages/${i}`, "packages", p, false, `/packages/${i}`)
+          : push(`/packages/${i}/package`, "packages", (p as { package?: unknown }).package, false, `/packages/${i}`),
+      );
       break;
     case "mapping":
       push("/database", "database", doc.database, true);

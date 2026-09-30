@@ -2,6 +2,7 @@ import { DropdownMenu as Menu } from "radix-ui";
 import { Check } from "lucide-react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { cn } from "@/lib/cn";
+import { POPOVER_MARGIN } from "@/ui/usePopoverPlacement";
 
 export const DropdownMenu = Menu.Root;
 export const DropdownMenuTrigger = Menu.Trigger;
@@ -11,7 +12,11 @@ export function DropdownMenuContent({ children, className, ...props }: Component
     <Menu.Portal>
       <Menu.Content
         sideOffset={4}
-        className={cn("z-50 min-w-44 rounded-panel border border-default bg-raised p-1 text-12 text-primary shadow-float", className)}
+        collisionPadding={POPOVER_MARGIN}
+        className={cn(
+          "mq-scroll z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-44 overflow-y-auto rounded-panel border border-default bg-raised p-1 text-12 text-primary shadow-float",
+          className,
+        )}
         {...props}
       >
         {children}

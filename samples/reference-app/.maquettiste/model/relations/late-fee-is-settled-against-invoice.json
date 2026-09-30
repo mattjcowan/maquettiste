@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1Z55B0ZP4CV8NJ6MTZ3T9PJ",
+  "name": "late fee is settled against invoice",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "Overdue invoice.",
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "ends": [
+    {
+      "id": "01M1KA5S13R41FM7CAQ8TJERM9",
+      "entity": "01M2AXW23BB6G1HZZ8CBAXJQXB",
+      "role": "invoice",
+      "navigation": "invoice",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M34FYYP46X1XGHP220AN3XAK",
+      "entity": "01M2GZ7CDQBV3AYDJG2TSYK8MJ",
+      "role": "lateFees",
+      "navigation": "lateFees"
+    }
+  ]
+}

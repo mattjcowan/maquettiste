@@ -19,7 +19,7 @@ import { truncateChangeEvent } from "./wire";
  * `?mock=` scenarios. `medium` is the in-browser 200-entity model; `large` is the 5,000-entity model
  * that scripts/gen-scale-model.mjs writes (browser.ts loads it and passes it as `seed`).
  */
-export type Scenario = "conflict" | "slow" | "empty" | "medium" | "large" | "unauthenticated" | "presence" | "invalid" | "locales";
+export type Scenario = "conflict" | "slow" | "empty" | "medium" | "wide" | "large" | "unauthenticated" | "presence" | "invalid" | "locales";
 
 export interface MockBackendOptions {
   scenarios?: Scenario[];
@@ -60,7 +60,9 @@ export class MockBackend {
     const newId = options.newId ?? randomId;
     this.clock = options.clock ?? { now: () => new Date(), setTimeout: (fn, ms) => setTimeout(fn, ms) };
     this.validationDelay = options.validationDelayMs ?? 150;
-    const seed = options.seed ?? (this.scenarios.has("empty") ? emptySeed() : this.scenarios.has("medium") ? mediumSeed() : billingSeed());
+    const seed =
+      options.seed ??
+      (this.scenarios.has("empty") ? emptySeed() : this.scenarios.has("medium") ? mediumSeed() : this.scenarios.has("wide") ? mediumSeed(400) : billingSeed());
     this.model = new MockModel(this.scenarios.has("locales") ? withLocales(seed) : seed, {
       newId,
       onChanged: (changes) => {
@@ -83,6 +85,7 @@ export class MockBackend {
     this.packs = new MockPacks(this.model);
     this.packAuthoring = new MockPackAuthoring(this.model, this.generation, (pack) => this.packs.registrations(pack));
     this.localization = new MockLocalization(this.model, this.scenarios.has("locales"), newId);
+    this.model.modelDiagnostics = (rules) => this.localization.diagnostics(rules);
     this.jobs = new MockJobQueue(
       this.generation,
       this.clock,
@@ -153,6 +156,6 @@ function withLocales(seed: Seed): Seed {
 export function scenariosFrom(search: string): Scenario[] {
   const params = new URLSearchParams(search);
   const all = params.getAll("mock").flatMap((v) => v.split(","));
-  const known: Scenario[] = ["conflict", "slow", "empty", "medium", "large", "unauthenticated", "presence", "invalid", "locales"];
+  const known: Scenario[] = ["conflict", "slow", "empty", "medium", "wide", "large", "unauthenticated", "presence", "invalid", "locales"];
   return all.filter((v): v is Scenario => (known as string[]).includes(v));
 }

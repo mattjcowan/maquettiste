@@ -22,13 +22,13 @@ CREATE TABLE northwind.leads (
     updated_by varchar(64) NULL,
     deleted_at timestamptz(6) NULL,
     converted_customer_id uuid NULL,
-    industry_id integer NULL,
     owner_id uuid NULL,
     source_id integer NULL,
+    industry_id integer NULL,
     CONSTRAINT pk_leads PRIMARY KEY (id),
     CONSTRAINT fk_leads_converted_customer_id FOREIGN KEY (converted_customer_id) REFERENCES northwind.parties (id) ON DELETE SET NULL,
-    CONSTRAINT fk_leads_industry_id FOREIGN KEY (industry_id) REFERENCES northwind.industries (id) ON DELETE SET NULL,
     CONSTRAINT fk_leads_owner_id FOREIGN KEY (owner_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
-    CONSTRAINT fk_leads_source_id FOREIGN KEY (source_id) REFERENCES northwind.lead_sources (id) ON DELETE SET NULL
+    CONSTRAINT fk_leads_source_id FOREIGN KEY (source_id) REFERENCES northwind.lead_sources (id) ON DELETE SET NULL,
+    CONSTRAINT fk_leads_industry_id FOREIGN KEY (industry_id) REFERENCES northwind.industries (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_leads_email ON northwind.leads (email);

@@ -32,6 +32,14 @@ public sealed class InitTests
             Assert.Equal("src/Generated", allow[1].GetProperty("path").GetString());
             Assert.False(allow[1].TryGetProperty("commit", out _));
             Assert.Equal("db", root.GetProperty("packs").GetProperty("sql-ddl").GetProperty("output").GetString());
+
+            // The three standard reference-data strategies the sql-ddl starter realizes, with the collection support of each.
+            var strategies = root.GetProperty("referenceData").GetProperty("strategies");
+            Assert.Equal(["check", "lookup-table", "native"], strategies.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
+            Assert.True(strategies.GetProperty("lookup-table").GetProperty("collections").GetBoolean());
+            Assert.False(strategies.GetProperty("check").TryGetProperty("collections", out _)); // false is the default, trimmed
+            Assert.True(strategies.GetProperty("native").GetProperty("collections").GetProperty("postgresql").GetBoolean());
+            Assert.False(strategies.GetProperty("native").GetProperty("collections").GetProperty("*").GetBoolean());
         }
 
         // Every embedded schema, byte for byte.

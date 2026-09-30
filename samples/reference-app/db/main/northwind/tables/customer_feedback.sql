@@ -9,13 +9,13 @@ CREATE TABLE northwind.customer_feedback (
     channel varchar(20) NULL,
     comments text NULL,
     follow_up_required boolean NOT NULL DEFAULT false,
-    contact_id uuid NULL,
     customer_id uuid NULL,
     sales_order_id uuid NULL,
+    contact_id uuid NULL,
     service_case_id uuid NULL,
     CONSTRAINT pk_customer_feedback PRIMARY KEY (id),
-    CONSTRAINT fk_customer_feedback_contact_id FOREIGN KEY (contact_id) REFERENCES northwind.contacts (id) ON DELETE SET NULL,
     CONSTRAINT fk_customer_feedback_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE SET NULL,
     CONSTRAINT fk_customer_feedback_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE SET NULL,
+    CONSTRAINT fk_customer_feedback_contact_id FOREIGN KEY (contact_id) REFERENCES northwind.contacts (id) ON DELETE SET NULL,
     CONSTRAINT fk_customer_feedback_service_case_id FOREIGN KEY (service_case_id) REFERENCES northwind.service_cases (id) ON DELETE SET NULL
 );

@@ -10,9 +10,9 @@ CREATE TABLE northwind.party_notes (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    author_id uuid NULL,
     party_id uuid NOT NULL,
+    author_id uuid NULL,
     CONSTRAINT pk_party_notes PRIMARY KEY (id),
-    CONSTRAINT fk_party_notes_author_id FOREIGN KEY (author_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL,
-    CONSTRAINT fk_party_notes_party_id FOREIGN KEY (party_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
+    CONSTRAINT fk_party_notes_party_id FOREIGN KEY (party_id) REFERENCES northwind.parties (id) ON DELETE CASCADE,
+    CONSTRAINT fk_party_notes_author_id FOREIGN KEY (author_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL
 );

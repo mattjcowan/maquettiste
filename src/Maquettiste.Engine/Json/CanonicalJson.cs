@@ -12,7 +12,7 @@ namespace Maquettiste.Engine.Json;
 /// The canonical JSON writer (SPEC section 11): UTF-8 without BOM, LF, two-space indent, one space after <c>:</c>, trailing
 /// newline, minimal escaping; keys in the schema's <c>x-order</c>, free-form maps ordinal, arrays in their order except those
 /// whose schema declares <c>x-sort</c> (stable-sorted by that integer key, missing = 0); values equal to their schema default
-/// (unless an <c>x-default-unless</c> sibling is present) and nulls omitted; <c>$schema</c> first and computed from the document path. Numbers read from text
+/// (unless an <c>x-default-unless</c> sibling is present) and nulls omitted; an object whose schema declares <c>x-collapse</c> written as that key's value when it is the only key; <c>$schema</c> first and computed from the document path. Numbers read from text
 /// keep their text; numbers from CLR values are written by <see cref="Utf8JsonWriter"/>.
 /// </summary>
 /// <param name="schemas">The schema registry that supplies layouts.</param>
@@ -174,6 +174,12 @@ internal sealed class CanonicalJson(ISchemaRegistry schemas) : ICanonicalJson
                 {
                     if (value is not null)
                         result[key] = Normalize(value, ObjectLayout.FreeForm);
+                }
+
+                if (layout.CollapseKey is { } collapse && result.Count == 1 && result.TryGetPropertyValue(collapse, out var only))
+                {
+                    result.Remove(collapse);
+                    return only;
                 }
 
                 return result;

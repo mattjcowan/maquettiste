@@ -1,0 +1,28 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2BK78BN5VSQ5TTMW4M8H9R8",
+  "name": "standing order contains lines",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "relationKind": "composition",
+  "description": "Products ordered each time.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "ends": [
+    {
+      "id": "01M1H90XGVYZ4MMKSYJRC73V6W",
+      "entity": "01M33RY9G59ZRWXQSAY6YKZMCH",
+      "role": "standingOrder",
+      "navigation": "standingOrder",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M1XGZ0A6E9Z633JKGNKHW2PH",
+      "entity": "01M1Z07H8911C6G8XMGB68QRV0",
+      "role": "lines",
+      "navigation": "lines",
+      "ordered": true
+    }
+  ]
+}

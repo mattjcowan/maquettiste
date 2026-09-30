@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2GDDY5GMG399NQE69FTQKCD",
+  "name": "return authorization is approved by employee",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "Who approved it.",
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "ends": [
+    {
+      "id": "01M2PS6CVHG5T95HTCZQB0Q8HA",
+      "entity": "01M1RJC20E0YQ2SZNHD9NJW74W",
+      "role": "approvedBy",
+      "navigation": "approvedBy",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1MWRPQ1VHKN8X9K2BWRJ2GH",
+      "entity": "01M1E3YR0WSPEYKSWJAT9DXN0N",
+      "role": "returnAuthorizations"
+    }
+  ]
+}

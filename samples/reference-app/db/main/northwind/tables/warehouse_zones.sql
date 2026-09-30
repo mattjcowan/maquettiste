@@ -11,9 +11,9 @@ CREATE TABLE northwind.warehouse_zones (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    storage_condition_id integer NULL,
     warehouse_id uuid NOT NULL,
+    storage_condition_id integer NULL,
     CONSTRAINT pk_warehouse_zones PRIMARY KEY (id),
-    CONSTRAINT fk_warehouse_zones_storage_condition_id FOREIGN KEY (storage_condition_id) REFERENCES northwind.storage_conditions (id) ON DELETE SET NULL,
-    CONSTRAINT fk_warehouse_zones_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE CASCADE
+    CONSTRAINT fk_warehouse_zones_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE CASCADE,
+    CONSTRAINT fk_warehouse_zones_storage_condition_id FOREIGN KEY (storage_condition_id) REFERENCES northwind.storage_conditions (id) ON DELETE SET NULL
 );

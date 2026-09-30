@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M204W1AK5FVAVTW8PRJ17CTK",
+  "name": "return inspection is inspected by employee",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "Inspector.",
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "ends": [
+    {
+      "id": "01M1YJD0X9CH484VKHV5W0Y57D",
+      "entity": "01M1RJC20E0YQ2SZNHD9NJW74W",
+      "role": "inspector",
+      "navigation": "inspector",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1KT2C0MWXWSAMKDN42P9B2T",
+      "entity": "01M2G3F0QRHJQDX7XH86FZ40ZQ",
+      "role": "returnInspections"
+    }
+  ]
+}

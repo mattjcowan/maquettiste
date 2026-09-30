@@ -11,10 +11,10 @@ CREATE TABLE northwind.cost_centers (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    manager_id uuid NULL,
     parent_id uuid NULL,
+    manager_id uuid NULL,
     CONSTRAINT pk_cost_centers PRIMARY KEY (id),
     CONSTRAINT uq_cost_centers_code UNIQUE (code),
-    CONSTRAINT fk_cost_centers_manager_id FOREIGN KEY (manager_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
-    CONSTRAINT fk_cost_centers_parent_id FOREIGN KEY (parent_id) REFERENCES northwind.cost_centers (id) ON DELETE SET NULL
+    CONSTRAINT fk_cost_centers_parent_id FOREIGN KEY (parent_id) REFERENCES northwind.cost_centers (id) ON DELETE SET NULL,
+    CONSTRAINT fk_cost_centers_manager_id FOREIGN KEY (manager_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );

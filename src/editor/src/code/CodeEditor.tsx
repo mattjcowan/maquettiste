@@ -1,6 +1,8 @@
 import Editor, { DiffEditor, type OnMount } from "@monaco-editor/react";
 import { useEffect, useRef, useState } from "react";
 import { monacoTheme, monaco } from "./monaco-setup";
+import { setCompletionData } from "./scribanProviders";
+import type { TemplateCompletionData } from "./scribanCompletion";
 
 function useTheme(): string {
   const [theme, setTheme] = useState(() => monacoTheme());
@@ -48,21 +50,64 @@ export interface CodeEditorProps {
    * keystrokes); `value` replaces the text only when the revision changes (reverting to the disk text, say).
    */
   revision?: number;
+  /** Scriban completion and hover data (a unit's template context). */
+  completion?: TemplateCompletionData | null;
+  /** The 1-based line of the cursor, on every move. */
+  onCursorLine?: (line: number) => void;
+  /** 1-based lines to highlight (the lines of a template that match a chosen output line). */
+  highlightLines?: number[];
 }
 
 const SEVERITY = { error: 8, warning: 4, info: 2 } as const;
 
-export default function CodeEditor({ language, value, onChange, readOnly, label, path, onSave, markers, revision }: CodeEditorProps) {
+export default function CodeEditor({
+  language,
+  value,
+  onChange,
+  readOnly,
+  label,
+  path,
+  onSave,
+  markers,
+  revision,
+  completion,
+  onCursorLine,
+  highlightLines,
+}: CodeEditorProps) {
   const theme = useTheme();
   const saveRef = useRef(onSave);
   useEffect(() => {
     saveRef.current = onSave;
   }, [onSave]);
   const [editor, setEditor] = useState<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const cursorRef = useRef(onCursorLine);
+  useEffect(() => {
+    cursorRef.current = onCursorLine;
+  }, [onCursorLine]);
   const handleMount: OnMount = (instance) => {
     instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveRef.current?.());
+    instance.onDidChangeCursorPosition((e) => cursorRef.current?.(e.position.lineNumber));
     setEditor(instance);
   };
+  useEffect(() => {
+    const uri = editor?.getModel()?.uri.toString();
+    if (!uri || !completion) return;
+    setCompletionData(uri, completion);
+    return () => setCompletionData(uri, null);
+  }, [editor, completion, path]);
+  const decorations = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
+  useEffect(() => {
+    if (!editor) return;
+    decorations.current ??= editor.createDecorationsCollection();
+    const lines = highlightLines ?? [];
+    decorations.current.set(
+      lines.map((line) => ({
+        range: new monaco.Range(line, 1, line, 1),
+        options: { isWholeLine: true, className: "mq-line-match", linesDecorationsClassName: "mq-line-match-gutter" },
+      })),
+    );
+    if (lines.length) editor.revealLineInCenterIfOutsideViewport(lines[0]);
+  }, [editor, highlightLines, path]);
   const latest = useRef(value);
   useEffect(() => {
     latest.current = value;
@@ -89,7 +134,7 @@ export default function CodeEditor({ language, value, onChange, readOnly, label,
     );
   }, [editor, markers, path, value]);
   return (
-    <div className="h-full min-h-40" data-testid={`code-${language}`}>
+    <div className="h-full min-h-40" data-testid={`code-${language}`} data-highlight={highlightLines?.length ? highlightLines.join(",") : undefined}>
       <Editor
         language={language}
         {...(revision === undefined ? { value } : { defaultValue: value })}
@@ -123,9 +168,25 @@ export function CodeDiffEditor({
     editorRef.current = editor;
     onMount?.(() => editor.getModifiedEditor().getValue());
   };
+  // Detach the models from the diff editor before they are disposed (the library, left to it, disposes the models first and
+  // Monaco reports "TextModel got disposed before DiffEditorWidget model got reset"). This cleanup runs before the child's.
+  useEffect(
+    () => () => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      const model = editor.getModel();
+      editor.setModel(null);
+      model?.original.dispose();
+      model?.modified.dispose();
+      editorRef.current = null;
+    },
+    [],
+  );
   return (
     <div className="h-full min-h-72">
       <DiffEditor
+        keepCurrentOriginalModel
+        keepCurrentModifiedModel
         language="json"
         original={original}
         modified={modified}

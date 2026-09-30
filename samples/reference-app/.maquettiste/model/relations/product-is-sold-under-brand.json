@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M3721BXK4MMH8SCW9TRMF1CJ",
+  "name": "product is sold under brand",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "Brand the product is sold under.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "ends": [
+    {
+      "id": "01M1TGR573N98321J4VP5HZYWR",
+      "entity": "01M1DM9WKXNHCGJDYBWDP5R6J7",
+      "role": "brand",
+      "navigation": "brand",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1Y84G86NTG0HKXRY88D0R9W",
+      "entity": "01M20RAEF2QZ5W8HV57RBX5PQV",
+      "role": "products",
+      "navigation": "products"
+    }
+  ]
+}

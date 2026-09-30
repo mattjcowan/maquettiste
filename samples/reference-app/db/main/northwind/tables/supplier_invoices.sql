@@ -17,12 +17,12 @@ CREATE TABLE northwind.supplier_invoices (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    journal_entry_id bigint NULL,
     purchase_order_id uuid NULL,
+    journal_entry_id bigint NULL,
     supplier_id uuid NOT NULL,
     CONSTRAINT pk_supplier_invoices PRIMARY KEY (id),
-    CONSTRAINT fk_supplier_invoices_journal_entry_id FOREIGN KEY (journal_entry_id) REFERENCES northwind.journal_entries (id) ON DELETE SET NULL,
     CONSTRAINT fk_supplier_invoices_purchase_order_id FOREIGN KEY (purchase_order_id) REFERENCES northwind.purchase_orders (id) ON DELETE SET NULL,
+    CONSTRAINT fk_supplier_invoices_journal_entry_id FOREIGN KEY (journal_entry_id) REFERENCES northwind.journal_entries (id) ON DELETE SET NULL,
     CONSTRAINT fk_supplier_invoices_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT
 );
 CREATE INDEX ix_supplier_invoices_due_date ON northwind.supplier_invoices (due_date);

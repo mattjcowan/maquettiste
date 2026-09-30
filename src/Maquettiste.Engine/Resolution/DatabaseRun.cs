@@ -428,7 +428,8 @@ internal sealed partial class DatabaseRun
             };
             if (!ownsTable)
                 continue;
-            p.Table = NewEntityTable(p.Entity.Id + "@" + _db.Id, p.Entity, null, _overlays.GetValueOrDefault("entity:" + p.Entity.Id), p.Entity.Id);
+            p.Table = NewEntityTable(p.Entity.Id + "@" + _db.Id, p.Entity, null, _overlays.GetValueOrDefault("entity:" + p.Entity.Id), p.Entity.Id,
+                DatabaseScope.SchemaFor(_run.Model, _db, p.Source.Package, p.Mapping));
         }
 
         foreach (var p in _placementOrder)
@@ -452,7 +453,7 @@ internal sealed partial class DatabaseRun
         }
     }
 
-    private TableBuild NewEntityTable(string key, REntity entity, RRelation? relation, Table? overlay, string sourceElementId)
+    private TableBuild NewEntityTable(string key, REntity entity, RRelation? relation, Table? overlay, string sourceElementId, string? conventionSchema = null)
     {
         var name = overlay is { Name.Length: > 0 } ? overlay.Name : TableNameFor(entity.Name, ExplicitPlural(entity.Id));
         var r = new RTable
@@ -460,7 +461,7 @@ internal sealed partial class DatabaseRun
             Id = key,
             Key = key,
             Name = name,
-            Schema = SchemaName(overlay?.Schema),
+            Schema = SchemaName(overlay?.Schema ?? conventionSchema),
             Database = _rdb,
             Origin = "synthesized",
             Entity = entity,

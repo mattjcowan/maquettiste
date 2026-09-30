@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M20KFKQWM55B2FED0BHVJSG6",
+  "name": "customer price agreement belongs to customer",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "Customer the agreement is with.",
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "ends": [
+    {
+      "id": "01M31H5G4YD8172ZMQHKMRTNET",
+      "entity": "01M1ECZKYNSKVNCWW2XM34E20X",
+      "role": "customer",
+      "navigation": "customer",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M1X6H6G36CRHX2SP91GS2WMZ",
+      "entity": "01M2Q6WMJ0KQXMQV0R0QFGYX21",
+      "role": "priceAgreements",
+      "navigation": "priceAgreements"
+    }
+  ]
+}

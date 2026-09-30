@@ -8,9 +8,9 @@ CREATE TABLE northwind.warehouse_shifts (
     starts_at time(6) NOT NULL,
     ends_at time(6) NOT NULL,
     weekdays varchar(20) NOT NULL,
-    supervisor_id uuid NULL,
     warehouse_id uuid NOT NULL,
+    supervisor_id uuid NULL,
     CONSTRAINT pk_warehouse_shifts PRIMARY KEY (id),
-    CONSTRAINT fk_warehouse_shifts_supervisor_id FOREIGN KEY (supervisor_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
-    CONSTRAINT fk_warehouse_shifts_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE CASCADE
+    CONSTRAINT fk_warehouse_shifts_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE CASCADE,
+    CONSTRAINT fk_warehouse_shifts_supervisor_id FOREIGN KEY (supervisor_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );

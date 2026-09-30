@@ -12,9 +12,9 @@ CREATE TABLE northwind.backorders (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    purchase_order_line_id uuid NULL,
     sales_order_line_id char(26) NOT NULL,
+    purchase_order_line_id uuid NULL,
     CONSTRAINT pk_backorders PRIMARY KEY (id),
-    CONSTRAINT fk_backorders_purchase_order_line_id FOREIGN KEY (purchase_order_line_id) REFERENCES northwind.purchase_order_lines (id) ON DELETE SET NULL,
-    CONSTRAINT fk_backorders_sales_order_line_id FOREIGN KEY (sales_order_line_id) REFERENCES northwind.sales_order_lines (id) ON DELETE CASCADE
+    CONSTRAINT fk_backorders_sales_order_line_id FOREIGN KEY (sales_order_line_id) REFERENCES northwind.sales_order_lines (id) ON DELETE CASCADE,
+    CONSTRAINT fk_backorders_purchase_order_line_id FOREIGN KEY (purchase_order_line_id) REFERENCES northwind.purchase_order_lines (id) ON DELETE SET NULL
 );

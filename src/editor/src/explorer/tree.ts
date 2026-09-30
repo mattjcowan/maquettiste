@@ -134,6 +134,8 @@ export interface DatabaseInfo {
   dialect?: string | null;
   version?: string | null;
   defaultSchema?: string | null;
+  /** The declared schema names (erratum E26): each gets a row, empty or not. */
+  schemas?: readonly string[];
 }
 
 export interface TablesInput {
@@ -1115,6 +1117,8 @@ export function buildForest(input: TreeInput): Forest {
       if (!b) schemas.set(name, (b = { tables: [], views: [], sequences: [] }));
       return b;
     };
+    // Declared schemas show even while empty, so a new schema appears at once (erratum E26).
+    if ((info?.schemas?.length ?? 0) > 1) for (const name of info!.schemas!) bucket(name);
     const tableKey = new Map<string, string>();
     const ownerTable = new Map<string, TreeNode>();
     if (loaded) {
@@ -1178,7 +1182,10 @@ export function buildForest(input: TreeInput): Forest {
       .sort(([a], [b]) => (a === b ? 0 : a === "" ? -1 : b === "" ? 1 : a < b ? -1 : 1))
       .map(([name, s]) => {
         const key = `${db.id}/s:${name}`;
+        // With several schemas the default one says so (its unqualified tables land there).
+        const isDefault = schemas.size > 1 && !!name && name === info?.defaultSchema;
         const phrase = [
+          isDefault ? "default" : "",
           s.tables.length ? countOf(s.tables.length, "table") : "",
           s.views.length ? countOf(s.views.length, "view") : "",
           s.sequences.length ? countOf(s.sequences.length, "sequence") : "",
@@ -1191,7 +1198,7 @@ export function buildForest(input: TreeInput): Forest {
             type: "schema",
             explorer: "databases",
             label: name || GROUP_LABELS.defaultSchema,
-            tooltip: name ? `Schema: ${name}` : "Objects with no schema",
+            tooltip: name ? `Schema: ${name}${isDefault ? " (Default schema)" : ""}` : "Objects with no schema",
             icon: "schema",
             home: true,
             secondary: phrase,
@@ -1824,6 +1831,20 @@ export function relatedCounts(forest: Forest, related: ReadonlySet<string>): Map
   const out = new Map<string, number>();
   for (const key of related)
     for (let p = forest.parent.get(key), guard = 0; p !== undefined && guard < 256; p = forest.parent.get(p), guard++) out.set(p, (out.get(p) ?? 0) + 1);
+  return out;
+}
+
+/**
+ * Membership dots (3.5) on the rows above the members of the active diagram: for every ancestor of a member's row,
+ * how many members it holds, so a collapsed domain or folder says the canvas shows something inside it.
+ */
+export function canvasCounts(forest: Forest, members: ReadonlySet<string>): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const id of members) {
+    const key = forest.place.get(id);
+    if (!key) continue;
+    for (let p = forest.parent.get(key), guard = 0; p !== undefined && guard < 256; p = forest.parent.get(p), guard++) out.set(p, (out.get(p) ?? 0) + 1);
+  }
   return out;
 }
 

@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M27FN6T2WTG1STHA1MMNCZV6",
+  "name": "goods receipt line receives purchase order line",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "Order line received.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "ends": [
+    {
+      "id": "01M21HGXV55Q9CZV1HDCKZBW1S",
+      "entity": "01M1TQ7YZ23DXXYR1CF7BFFWFS",
+      "role": "purchaseOrderLine",
+      "navigation": "purchaseOrderLine",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M23F2MMFPRN4BMEQXS4FC26H",
+      "entity": "01M2GBMZTV29WK7A5V2BAQSNCF",
+      "role": "goodsReceiptLines"
+    }
+  ]
+}

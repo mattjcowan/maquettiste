@@ -1,0 +1,27 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1Z9DWKCYRQNZN6ES3JTWPG5",
+  "name": "product contains variants",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "relationKind": "composition",
+  "description": "Sellable options of the product.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "ends": [
+    {
+      "id": "01M33AT80YH2DXEZ1J7FPC7YCQ",
+      "entity": "01M20RAEF2QZ5W8HV57RBX5PQV",
+      "role": "product",
+      "navigation": "product",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M2JFXYA4CC4MEH3M5DDR048V",
+      "entity": "01M1KG55EGGS6MGV2175NWVN2N",
+      "role": "variants",
+      "navigation": "variants"
+    }
+  ]
+}

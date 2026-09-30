@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import { useElements, useIndex } from "@/api/queries";
 import { indexLookup } from "@/model/index";
 import { conventionLabel, conventionOf, setConvention, type ByConvention } from "@/model/databaseMapping";
+import { schemasOf } from "@/model/databaseSchemas";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/input";
 import { SectionTitle } from "@/components/ui/misc";
@@ -20,7 +21,8 @@ interface Props {
 export function DatabaseMappingSection({ id, json, edit, flush }: Props) {
   const index = useIndex();
   const lookup = useMemo(() => indexLookup(index.data), [index.data]);
-  const convention = conventionOf(json as { byConvention?: string; packages?: string[] });
+  const convention = conventionOf(json as Parameters<typeof conventionOf>[0]);
+  const schemas = schemasOf(json);
   const nameOf = (x: string) => lookup.byId.get(x)?.name ?? x;
   // A domain shows as its path (Billing › Catalog), as in the New database dialog: two sub-domains may share a name.
   const pathOf = (domain: string) => {
@@ -43,8 +45,8 @@ export function DatabaseMappingSection({ id, json, edit, flush }: Props) {
   const names = (list: typeof rows) => list.map((m) => nameOf(m.entity!)).sort((a, b) => a.localeCompare(b));
   const mapped = names(rows.filter((m) => !ignored(m.id)));
   const ignoring = names(rows.filter((m) => ignored(m.id)));
-  const write = (mode: ByConvention, packages: readonly string[] = convention.packages) => {
-    edit((j) => setConvention(j, mode, packages));
+  const write = (mode: ByConvention, packages: readonly string[] = convention.packages, bySchema: Record<string, string | null> = convention.schemas) => {
+    edit((j) => setConvention(j, mode, packages, bySchema));
     flush();
   };
 
@@ -75,7 +77,24 @@ export function DatabaseMappingSection({ id, json, edit, flush }: Props) {
                 checked={convention.packages.includes(d.id)}
                 onChange={(e) => write("packages", e.target.checked ? [...convention.packages, d.id] : convention.packages.filter((x) => x !== d.id))}
               />
-              {d.path}
+              <span className="min-w-0 flex-1 truncate">{d.path}</span>
+              {/* With several schemas, each convention domain may go to its own (erratum E26). */}
+              {schemas.length > 1 && convention.packages.includes(d.id) ? (
+                <select
+                  className="h-5 rounded-sm border border-default bg-surface text-11"
+                  aria-label={`Schema of ${d.path}`}
+                  data-testid={`convention-schema-${d.id}`}
+                  value={convention.schemas[d.id] ?? ""}
+                  onChange={(e) => write("packages", convention.packages, { ...convention.schemas, [d.id]: e.target.value || null })}
+                >
+                  <option value="">Default schema</option>
+                  {schemas.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
             </label>
           ))}
         </fieldset>

@@ -56,24 +56,24 @@ entities:
       grandTotal: Money! | Amount the customer owes.
       notes: text | Instructions from the customer.
     refs:
-      customer: Customer! back=salesOrders | Customer who placed the order.
-      contact: Contact | Buyer who placed the order.
-      salesRep: Employee | Rep credited with the sale.
-      priceList: PriceList | Price list used.
-      currency: Currency! | Currency of the order.
-      paymentTerm: PaymentTerm | Payment terms of the order.
-      shipFromWarehouse: Warehouse | Warehouse that fulfills the order.
-      salesChannel: SalesChannel | Channel the order came through.
-      quote: SalesQuote | Quote the order was created from.
-      cancellationReason: CancellationReason | Why the order was cancelled.
+      customer: Customer! back=salesOrders name=sales_order_belongs_to_customer | Customer who placed the order.
+      contact: Contact name=sales_order_involves_contact | Buyer who placed the order.
+      salesRep: Employee name=sales_order_is_credited_to_sales_rep | Rep credited with the sale.
+      priceList: PriceList name=sales_order_is_priced_from_price_list | Price list used.
+      currency: Currency! name=sales_order_is_denominated_in_currency | Currency of the order.
+      paymentTerm: PaymentTerm name=sales_order_is_payable_on_payment_term | Payment terms of the order.
+      shipFromWarehouse: Warehouse name=sales_order_ships_from_ship_from_warehouse | Warehouse that fulfills the order.
+      salesChannel: SalesChannel name=sales_order_is_sold_through_sales_channel | Channel the order came through.
+      quote: SalesQuote name=sales_order_is_converted_from_quote | Quote the order was created from.
+      cancellationReason: CancellationReason name=sales_order_is_cancelled_for_cancellation_reason | Why the order was cancelled.
     children:
-      lines: SalesOrderLine ordered | Ordered products.
-      charges: OrderCharge | Freight, handling and surcharges.
-      holds: OrderHold | Holds placed on the order.
-      comments: SalesOrderNote | Internal and customer-visible notes.
-      statusChanges: SalesOrderStatusChange | Status history.
-      attachments: SalesOrderAttachment | Files attached to the order.
-      appliedPromotions: AppliedPromotion | Promotions applied to the order.
+      lines: SalesOrderLine ordered name=sales_order_contains_lines | Ordered products.
+      charges: OrderCharge name=sales_order_contains_charges | Freight, handling and surcharges.
+      holds: OrderHold name=sales_order_contains_holds | Holds placed on the order.
+      comments: SalesOrderNote name=sales_order_contains_comments | Internal and customer-visible notes.
+      statusChanges: SalesOrderStatusChange name=sales_order_contains_status_changes | Status history.
+      attachments: SalesOrderAttachment name=sales_order_contains_attachments | Files attached to the order.
+      appliedPromotions: AppliedPromotion name=sales_order_contains_applied_promotions | Promotions applied to the order.
     mapping:
       description: The two embedded addresses get short bill_ and ship_ column prefixes.
       prefix:
@@ -105,10 +105,10 @@ entities:
       status: OrderLineStatus! default=Open | Fulfillment state.
       requestedOn: date | Requested delivery date, when it differs from the order's.
     refs:
-      product: Product! | Product ordered.
-      variant: ProductVariant | Variant ordered.
-      unit: UnitOfMeasure! | Unit of the quantity.
-      warehouse: Warehouse | Warehouse the line ships from, when split.
+      product: Product! name=sales_order_line_is_for_product | Product ordered.
+      variant: ProductVariant name=sales_order_line_is_for_variant | Variant ordered.
+      unit: UnitOfMeasure! name=sales_order_line_is_measured_in_unit | Unit of the quantity.
+      warehouse: Warehouse name=sales_order_line_ships_from_warehouse | Warehouse the line ships from, when split.
     mapping:
       description: Line status is stored as its integer value to keep this high-volume table narrow.
       storage:
@@ -130,11 +130,11 @@ entities:
       totalAmount: Money | Quoted total.
       notes: text | Terms and remarks.
     refs:
-      customer: Customer! back=quotes | Customer quoted.
-      preparedBy: Employee | Rep who prepared it.
-      currency: Currency! | Currency of the quote.
+      customer: Customer! back=quotes name=sales_quote_belongs_to_customer | Customer quoted.
+      preparedBy: Employee name=sales_quote_is_prepared_by_employee | Rep who prepared it.
+      currency: Currency! name=sales_quote_is_denominated_in_currency | Currency of the quote.
     children:
-      lines: SalesQuoteLine ordered | Quoted products.
+      lines: SalesQuoteLine ordered name=sales_quote_contains_lines | Quoted products.
 
   SalesQuoteLine:
     description: A quoted product and price.
@@ -144,8 +144,8 @@ entities:
       discount: Percentage | Quoted discount.
       lineTotal: Money | Line total.
     refs:
-      product: Product! | Quoted product.
-      unit: UnitOfMeasure | Unit of the quantity.
+      product: Product! name=sales_quote_line_is_for_product | Quoted product.
+      unit: UnitOfMeasure name=sales_quote_line_is_measured_in_unit | Unit of the quantity.
 
   OrderHold:
     description: A hold that blocks an order from shipping until released, such as a credit hold.
@@ -155,9 +155,9 @@ entities:
       releasedAt: datetimeoffset | When it was released.
       comment: string(500) | Explanation.
     refs:
-      reason: HoldReason! | Why the order is held.
-      placedBy: UserAccount | Who placed it; null for automatic holds.
-      releasedBy: UserAccount | Who released it.
+      reason: HoldReason! name=order_hold_is_explained_by_reason | Why the order is held.
+      placedBy: UserAccount name=order_hold_is_placed_by_user_account | Who placed it; null for automatic holds.
+      releasedBy: UserAccount name=order_hold_is_released_by_user_account | Who released it.
 
   HoldReason:
     description: A reason for holding an order, such as Credit limit exceeded or Price below cost.
@@ -174,7 +174,7 @@ entities:
       body: text! | Note text.
       isCustomerVisible: bool! default=false | Shown on the customer portal.
     refs:
-      author: UserAccount | Who wrote the note.
+      author: UserAccount name=sales_order_note_is_written_by_author | Who wrote the note.
 
   SalesOrderStatusChange:
     description: A status transition of a sales order, kept as history.
@@ -186,7 +186,7 @@ entities:
       changedAt: datetimeoffset! | When the change happened.
       reason: string(300) | Why it changed.
     refs:
-      changedBy: UserAccount | Who changed it; null for automatic transitions.
+      changedBy: UserAccount name=sales_order_status_change_is_changed_by_user_account | Who changed it; null for automatic transitions.
 
   Backorder:
     description: A quantity of an order line that could not be allocated and waits for replenishment.
@@ -198,8 +198,8 @@ entities:
       customerNotifiedAt: datetimeoffset | When the customer was told.
       isFulfilled: bool! default=false | Whether it has been allocated since.
     refs:
-      salesOrderLine: SalesOrderLine! cascade back=backorders | Line backordered.
-      purchaseOrderLine: PurchaseOrderLine | Inbound purchase that will cover it.
+      salesOrderLine: SalesOrderLine! cascade back=backorders name=backorder_fulfils_sales_order_line | Line backordered.
+      purchaseOrderLine: PurchaseOrderLine name=backorder_receives_purchase_order_line | Inbound purchase that will cover it.
 
   BlanketOrder:
     description: A long-term purchase commitment by a customer, released in smaller orders over time.
@@ -212,10 +212,10 @@ entities:
       releasedAmount: Money! | Amount released so far.
       isClosed: bool! default=false | Whether the commitment is closed.
     refs:
-      customer: Customer! back=blanketOrders | Committing customer.
-      currency: Currency! | Currency of the commitment.
+      customer: Customer! back=blanketOrders name=blanket_order_belongs_to_customer | Committing customer.
+      currency: Currency! name=blanket_order_is_denominated_in_currency | Currency of the commitment.
     children:
-      lines: BlanketOrderLine | Committed products.
+      lines: BlanketOrderLine name=blanket_order_contains_lines | Committed products.
 
   BlanketOrderLine:
     description: A product and quantity committed on a blanket order.
@@ -224,7 +224,7 @@ entities:
       releasedQuantity: decimal(12,3)! default=0 min=0 | Quantity released so far.
       unitPrice: Money! | Committed price.
     refs:
-      product: Product! | Committed product.
+      product: Product! name=blanket_order_line_is_for_product | Committed product.
 
   OrderCharge:
     description: A charge added to a sales order, such as freight, handling or a fuel surcharge.
@@ -234,7 +234,7 @@ entities:
       amount: Money! | Charge amount.
       isTaxable: bool! default=false | Whether sales tax applies.
     refs:
-      surcharge: Surcharge | Surcharge rule that produced the charge.
+      surcharge: Surcharge name=order_charge_applies_surcharge | Surcharge rule that produced the charge.
 
   AppliedPromotion:
     description: A promotion applied to a sales order or one of its lines, with the discount it granted.
@@ -242,8 +242,8 @@ entities:
       discountAmount: Money! | Discount granted.
       appliedAt: datetimeoffset! | When it was applied.
     refs:
-      promotion: Promotion! | Promotion applied.
-      salesOrderLine: SalesOrderLine cascade | Line it applies to; null for order-level promotions.
+      promotion: Promotion! name=applied_promotion_is_granted_by_promotion | Promotion applied.
+      salesOrderLine: SalesOrderLine cascade name=applied_promotion_fulfils_sales_order_line | Line it applies to; null for order-level promotions.
 
   Cart:
     description: A customer portal shopping cart that becomes a sales order at checkout.
@@ -253,11 +253,11 @@ entities:
       lastActivityAt: datetimeoffset! | Last change to the cart.
       isAbandoned: bool! default=false | Flagged by the abandoned-cart job.
     refs:
-      userAccount: UserAccount! | Portal user who owns the cart.
-      customer: Customer! | Customer account the cart orders for.
-      convertedOrder: SalesOrder | Order created at checkout.
+      userAccount: UserAccount! name=cart_is_opened_by_user_account | Portal user who owns the cart.
+      customer: Customer! name=cart_belongs_to_customer | Customer account the cart orders for.
+      convertedOrder: SalesOrder name=cart_converts_to_converted_order | Order created at checkout.
     children:
-      items: CartItem ordered | Products in the cart.
+      items: CartItem ordered name=cart_contains_items | Products in the cart.
 
   CartItem:
     description: A product in a portal cart.
@@ -266,8 +266,8 @@ entities:
       addedAt: datetimeoffset! | When it was added.
       unitPriceSnapshot: Money | Price shown when it was added.
     refs:
-      product: Product! | Product in the cart.
-      variant: ProductVariant | Variant in the cart.
+      product: Product! name=cart_item_is_for_product | Product in the cart.
+      variant: ProductVariant name=cart_item_is_for_variant | Variant in the cart.
 
   StandingOrder:
     description: A recurring order that the scheduler places automatically, such as weekly cleaning supplies.
@@ -279,18 +279,18 @@ entities:
       isActive: bool! default=true | Whether it is running.
       validity: DateRange | When it runs.
     refs:
-      customer: Customer! back=standingOrders | Ordering customer.
-      shipTo: PartyAddress | Delivery address.
+      customer: Customer! back=standingOrders name=standing_order_belongs_to_customer | Ordering customer.
+      shipTo: PartyAddress name=standing_order_is_delivered_to_ship_to | Delivery address.
     children:
-      lines: StandingOrderLine ordered | Products ordered each time.
+      lines: StandingOrderLine ordered name=standing_order_contains_lines | Products ordered each time.
 
   StandingOrderLine:
     description: A product and quantity ordered on every run of a standing order.
     attributes:
       quantity: decimal(12,3)! min=0 | Quantity per run.
     refs:
-      product: Product! | Product ordered.
-      unit: UnitOfMeasure | Unit of the quantity.
+      product: Product! name=standing_order_line_is_for_product | Product ordered.
+      unit: UnitOfMeasure name=standing_order_line_is_measured_in_unit | Unit of the quantity.
 
   SalesOrderAttachment:
     description: A file attached to a sales order, such as the customer's PO PDF.
@@ -303,7 +303,7 @@ entities:
       storageKey: string(400)! | Object storage key.
       uploadedAt: datetimeoffset! | When it was uploaded.
     refs:
-      uploadedBy: UserAccount | Who uploaded it.
+      uploadedBy: UserAccount name=sales_order_attachment_is_uploaded_by_user_account | Who uploaded it.
 
   CancellationReason:
     description: A reason for cancelling an order, such as Customer changed mind or Duplicate order.
@@ -324,8 +324,8 @@ entities:
       isPaid: bool! default=false | Whether payroll paid it.
       paidOn: date | Payroll date.
     refs:
-      salesRep: Employee! | Rep who earned it.
-      salesOrder: SalesOrder! cascade back=commissions | Order it was earned on.
+      salesRep: Employee! name=sales_commission_is_credited_to_sales_rep | Rep who earned it.
+      salesOrder: SalesOrder! cascade back=commissions name=sales_commission_fulfils_sales_order | Order it was earned on.
 
 diagram:
   name: Sales orders

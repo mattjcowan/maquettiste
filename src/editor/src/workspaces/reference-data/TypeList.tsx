@@ -9,6 +9,9 @@ import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
+import { Tooltip } from "@/components/ui/tooltip";
+import { useElements, useIndex } from "@/api/queries";
+import { firstCodes } from "./rowsModel";
 import { countLabel, listRows, type RefTypeItem } from "./listModel";
 
 export function TypeList({
@@ -138,34 +141,62 @@ export function TypeList({
               );
             const item = row.item;
             return (
-              <div
-                key={row.key}
-                role="treeitem"
-                aria-level={row.depth + 1}
-                aria-selected={item.id === selected}
-                data-testid={`reference-type-${item.name}`}
-                title={`${item.name}${item.categoryPath.length ? ` · ${item.categoryPath.join(" › ")}` : ""} · ${item.fields} ${item.fields === 1 ? "field" : "fields"}`}
-                style={style}
-                className={cn(
-                  "flex cursor-default items-center gap-1 pr-2 text-13 hover:bg-accent-subtle",
-                  item.id === selected && "bg-accent-subtle text-accent",
-                )}
-                onClick={() => onSelect(item.id)}
-                onContextMenu={(e) => {
-                  if (!onMenu) return;
-                  e.preventDefault();
-                  onSelect(item.id);
-                  onMenu(item.id, e.clientX, e.clientY);
-                }}
-              >
-                <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                <span className="text-11 text-secondary">{item.rows}</span>
-              </div>
+              <Tooltip key={row.key} side="right" content={<TypeCard item={item} />}>
+                <div
+                  role="treeitem"
+                  aria-level={row.depth + 1}
+                  aria-selected={item.id === selected}
+                  data-testid={`reference-type-${item.name}`}
+                  style={style}
+                  className={cn(
+                    "flex cursor-default items-center gap-1 pr-2 text-13 hover:bg-accent-subtle",
+                    item.id === selected && "bg-accent-subtle text-accent",
+                  )}
+                  onClick={() => onSelect(item.id)}
+                  onContextMenu={(e) => {
+                    if (!onMenu) return;
+                    e.preventDefault();
+                    onSelect(item.id);
+                    onMenu(item.id, e.clientX, e.clientY);
+                  }}
+                >
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  <span className="text-11 text-secondary">{item.rows}</span>
+                </div>
+              </Tooltip>
             );
           })}
         </div>
         {list.rows.length === 0 && items.length > 0 ? <p className="p-2 text-12 text-secondary">No type matches.</p> : null}
       </div>
     </aside>
+  );
+}
+
+/** The hover card of a type row: name, category, field count and the first codes of its seeds (loaded when shown). */
+function TypeCard({ item }: { item: RefTypeItem }) {
+  const index = useIndex();
+  const seedIds = useMemo(() => (index.data ?? []).filter((r) => r.kind === "seed" && r.target === item.id).map((r) => r.id), [index.data, item.id]);
+  const seeds = useElements(seedIds);
+  const docs = seedIds.map((id) => seeds.byId.get(id)?.json as unknown as Parameters<typeof firstCodes>[0][number] | undefined).filter((d) => !!d);
+  const { codes, more } = firstCodes(docs);
+  return (
+    <div className="flex max-w-72 flex-col gap-1" data-testid="type-card">
+      <span className="font-semibold">
+        {item.name}
+        {item.categoryPath.length ? <span className="font-normal text-secondary"> · {item.categoryPath.join(" › ")}</span> : null}
+      </span>
+      <span className="text-secondary">
+        {item.fields} {item.fields === 1 ? "field" : "fields"} · {item.rows} {item.rows === 1 ? "row" : "rows"}
+      </span>
+      {codes.length ? (
+        <span className="font-mono text-11">
+          {codes.join(", ")}
+          {more ? ` and ${more} more` : ""}
+        </span>
+      ) : seedIds.length && docs.length < seedIds.length ? null : (
+        <span className="text-secondary">No rows yet.</span>
+      )}
+    </div>
   );
 }

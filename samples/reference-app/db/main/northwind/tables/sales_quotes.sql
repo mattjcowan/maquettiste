@@ -16,12 +16,12 @@ CREATE TABLE northwind.sales_quotes (
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
     deleted_at timestamptz(6) NULL,
-    currency_code varchar(3) NOT NULL,
     customer_id uuid NOT NULL,
+    currency_code varchar(3) NOT NULL,
     prepared_by_id uuid NULL,
     CONSTRAINT pk_sales_quotes PRIMARY KEY (id),
     CONSTRAINT uq_sales_quotes_quote_number UNIQUE (quote_number),
-    CONSTRAINT fk_sales_quotes_currency_code FOREIGN KEY (currency_code) REFERENCES northwind.currencies (code) ON DELETE RESTRICT,
     CONSTRAINT fk_sales_quotes_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_sales_quotes_currency_code FOREIGN KEY (currency_code) REFERENCES northwind.currencies (code) ON DELETE RESTRICT,
     CONSTRAINT fk_sales_quotes_prepared_by_id FOREIGN KEY (prepared_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );

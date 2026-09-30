@@ -183,7 +183,7 @@ public sealed class ReferenceDataTests
 
     /// <summary>The scripts of one database: schema, first migration, seed, then the seed after adding the code "cup" and after
     /// retiring it again.</summary>
-    private sealed record Scripts(string Schema, string Migration, string Seed, string SeedAdded, string SeedRetired)
+    internal sealed record Scripts(string Schema, string Migration, string Seed, string SeedAdded, string SeedRetired)
     {
         /// <summary>Schema, seed twice, the seed with the new code (a row uses it, then stops using it), the seed without it.</summary>
         public string Chain(string query) =>
@@ -192,7 +192,7 @@ public sealed class ReferenceDataTests
             + query + SeedRetired + query;
     }
 
-    private static async Task<Scripts> ScriptsAsync(string strategy, string database)
+    internal static async Task<Scripts> ScriptsAsync(string strategy, string database)
     {
         using var repo = PackRepo.ReferenceData(strategy);
         await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);

@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1X7R6VEHKQA7MP0Q5YH24C0",
+  "name": "product attribute value selects option",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "Chosen option, for option attributes.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "ends": [
+    {
+      "id": "01M36TNFCAE1C6WJR8N4FDF7YY",
+      "entity": "01M24F5G7KR5ZKQVE1B4HKMP65",
+      "role": "option",
+      "navigation": "option",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2WKXE8C5S6CFKYC01KHMKTY",
+      "entity": "01M1EX8055X3HF127S2A1CTRD1",
+      "role": "productAttributeValues"
+    }
+  ]
+}

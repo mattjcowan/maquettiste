@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1XE1DKV69MZQZ0C1DV2RFY1",
+  "name": "party prefers preferred currency",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "Currency used on documents by default.",
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "ends": [
+    {
+      "id": "01M1VRST2P6YECQ3WD1SYCT4N7",
+      "entity": "01M32FRDS6GBKX8Q2GRAAJB5YM",
+      "role": "preferredCurrency",
+      "navigation": "preferredCurrency",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M220D3B3301AWPV3GY4GZN42",
+      "entity": "01M2FA89Y26C424MWK7D3TQPT5",
+      "role": "parties"
+    }
+  ]
+}

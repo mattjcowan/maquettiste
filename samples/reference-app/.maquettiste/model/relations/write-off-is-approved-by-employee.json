@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2PYZYXB9BX3GP5PZFYEV2B6",
+  "name": "write off is approved by employee",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "Controller who approved it.",
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "ends": [
+    {
+      "id": "01M2NK0Z2MF73VPJWA33JC8WVS",
+      "entity": "01M1RJC20E0YQ2SZNHD9NJW74W",
+      "role": "approvedBy",
+      "navigation": "approvedBy",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1TSZNKH4H8VPFT77ST0N3CT",
+      "entity": "01M1JB5KP4X1QZ0YD2TYHE2E3Y",
+      "role": "writeOffs"
+    }
+  ]
+}

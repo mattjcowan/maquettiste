@@ -44,6 +44,31 @@ internal static class MappingRules
                 $"byConvention is '{value}', so the packages listed here are not used; set byConvention to 'packages' or clear the list.",
                 "/packages");
         }
+
+        for (var i = 0; i < database.Packages.Count; i++)
+        {
+            if (database.Packages[i].Schema is { } schema && !database.Schemas.Any(s => string.Equals(s.Id, schema, StringComparison.Ordinal)))
+            {
+                report.Add("MQ4014",
+                    $"The convention entry for package '{database.Packages[i].Package}' names schema '{schema}', which this database does not declare; add it to schemas or pick one of them.",
+                    Ptr.At("/packages", i) + "/schema");
+            }
+        }
+    }
+
+    /// <summary>MQ4014 and MQ4009 for a mapping's <c>schema</c>: an entity mapping may name a schema of its own database.</summary>
+    private static void CheckMappingSchema(ValidationContext context, Mapping mapping, Report report)
+    {
+        if (mapping.Schema is not { } schema)
+            return;
+        if (mapping.Entity is null)
+        {
+            report.Add("MQ4009", "Only an entity mapping places a table in a schema.", "/schema");
+            return;
+        }
+
+        if (context.Model.Get<Database>(mapping.Database) is { } database && !database.Schemas.Any(s => string.Equals(s.Id, schema, StringComparison.Ordinal)))
+            report.Add("MQ4014", $"Schema '{schema}' is not declared in database '{database.Name}'; add it to the database's schemas or pick one of them.", "/schema");
     }
 
     /// <summary>Checks a mapping file.</summary>
@@ -52,6 +77,7 @@ internal static class MappingRules
     /// <param name="report">The report.</param>
     public static void CheckMapping(ValidationContext context, Mapping mapping, Report report)
     {
+        CheckMappingSchema(context, mapping, report);
         if (mapping.Entity is not null && mapping.Relation is not null)
         {
             report.Add("MQ4009", "A mapping names either an entity or a relation, not both.", "/relation");

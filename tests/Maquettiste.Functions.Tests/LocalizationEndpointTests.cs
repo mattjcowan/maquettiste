@@ -188,7 +188,7 @@ public sealed class LocalizationEndpointTests
     {
         await using var host = EditorHost.CreateReferenceData();
         const string Allergen = "01JRDA00000000000000000010";
-        var units = new JsonObject { ["seed"] = UnitSeed, ["content"] = "@code,@label,factor\nmg,Milligram,0.001\n" };
+        var units = new JsonObject { ["seed"] = UnitSeed, ["content"] = "@code,@label,factor,@label:fr\nmg,Milligram,0.001,Milligramme\n" };
         var allergens = new JsonObject { ["seed"] = Allergen, ["content"] = "@code,@label\nsesame,Sesame\n" };
         JsonObject Body(params JsonObject[] files) => new() { ["files"] = new JsonArray([.. files.Select(f => (JsonNode)f.DeepClone())]) };
 
@@ -217,6 +217,8 @@ public sealed class LocalizationEndpointTests
         Assert.All(applied.Json["items"]!.AsArray(), i => Assert.True(i!["applied"]!.GetValue<bool>()));
         Assert.Equal(4, (await host.GetAsync("/api/model/elements/" + UnitSeed)).Json["json"]!["rows"]!.AsArray().Count);
         Assert.Equal(4, (await host.GetAsync("/api/model/elements/" + Allergen)).Json["json"]!["rows"]!.AsArray().Count);
+        // The translations the files carry are written after the rows (the engine's batch has no translate operation yet).
+        Assert.Contains("Milligramme", (await host.GetAsync("/api/seeds/" + UnitSeed + "/csv?locale=fr")).Text, StringComparison.Ordinal);
         Assert.Equal(400, twice.Status);
         Assert.Equal(400, empty.Status);
     }

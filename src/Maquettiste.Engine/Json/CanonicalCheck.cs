@@ -65,6 +65,8 @@ internal static class CanonicalCheck
         switch (value.ValueKind)
         {
             case JsonValueKind.Object when layout.HasKeys:
+                if (layout.CollapseKey is not null)
+                    return false; // the node-based writer decides whether the object collapses to its one value
                 writer.WriteStartObject();
                 if (!WriteDeclared(writer, value, layout, comparer))
                     return false;

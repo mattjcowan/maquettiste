@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M32QCH881KTR1A2EEXV8CDJ0",
+  "name": "goods receipt line is stored in bin",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "Staging bin.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "ends": [
+    {
+      "id": "01M2H4447V69HPFXK45S4K23D1",
+      "entity": "01M23889DSDTV8CMFDQXJCF0NM",
+      "role": "bin",
+      "navigation": "bin",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1V7HT2CXES8EN16RKTV3TVQ",
+      "entity": "01M2GBMZTV29WK7A5V2BAQSNCF",
+      "role": "goodsReceiptLines"
+    }
+  ]
+}

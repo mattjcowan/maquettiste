@@ -19,10 +19,10 @@ CREATE TABLE northwind.billing_accounts (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    currency_code varchar(3) NULL,
     customer_id uuid NOT NULL,
+    currency_code varchar(3) NULL,
     CONSTRAINT pk_billing_accounts PRIMARY KEY (id),
     CONSTRAINT uq_billing_accounts_account_number UNIQUE (account_number),
-    CONSTRAINT fk_billing_accounts_currency_code FOREIGN KEY (currency_code) REFERENCES northwind.currencies (code) ON DELETE SET NULL,
-    CONSTRAINT fk_billing_accounts_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
+    CONSTRAINT fk_billing_accounts_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE CASCADE,
+    CONSTRAINT fk_billing_accounts_currency_code FOREIGN KEY (currency_code) REFERENCES northwind.currencies (code) ON DELETE SET NULL
 );

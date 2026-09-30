@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1ZNB8071DD2A1ENEVHEGERC",
+  "name": "purchase order is payable on payment term",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "Payment terms.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "ends": [
+    {
+      "id": "01M1KX26ZMX8V2C61WBMGGY7HM",
+      "entity": "01M34TDE50KP64ZCX6H1J0PC9K",
+      "role": "paymentTerm",
+      "navigation": "paymentTerm",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2P39J6GS38SW1AXTRAXN64J",
+      "entity": "01M2PKYF42VBPP64C8WV8TWXZ6",
+      "role": "purchaseOrders"
+    }
+  ]
+}

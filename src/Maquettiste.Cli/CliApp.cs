@@ -158,6 +158,7 @@ public sealed class CliApp(CliEnvironment environment)
           l10n prune            List orphan translations (MQ7203); --apply removes them
           l10n set-default <locale>
                                 Preview making a locale the default (texts swap between files and shards); --apply
+          seed new <type>       Create a reference type's seed with the code, label and description columns
           seed export <seed>    A seed's rows as CSV (seed id or name, or the id or name of the element it seeds)
                                   --locale <tag> (repeatable: its label and description columns), --out <file>
           seed import <seed> <file>

@@ -19,10 +19,10 @@ CREATE TABLE northwind.contacts (
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
     deleted_at timestamptz(6) NULL,
-    language_code varchar(5) NULL,
     party_id uuid NOT NULL,
+    language_code varchar(5) NULL,
     CONSTRAINT pk_contacts PRIMARY KEY (id),
-    CONSTRAINT fk_contacts_language_code FOREIGN KEY (language_code) REFERENCES northwind.languages (code) ON DELETE SET NULL,
-    CONSTRAINT fk_contacts_party_id FOREIGN KEY (party_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
+    CONSTRAINT fk_contacts_party_id FOREIGN KEY (party_id) REFERENCES northwind.parties (id) ON DELETE CASCADE,
+    CONSTRAINT fk_contacts_language_code FOREIGN KEY (language_code) REFERENCES northwind.languages (code) ON DELETE SET NULL
 );
 CREATE INDEX ix_contacts_email ON northwind.contacts (email);

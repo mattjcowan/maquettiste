@@ -452,6 +452,20 @@ internal sealed partial class ChangePlanner
         // A diagram member without its element means nothing: drop the member.
         if (referrerKind == ElementKind.Diagram && segments.Length == 3 && segments[0] == "members" && segments[2] == "element")
             pointer = "/members/" + segments[1];
+        // A convention package entry is the package id or { package, schema }: without its package the entry goes; without its
+        // schema it becomes the package id (erratum E26).
+        if (referrerKind == ElementKind.Database && segments.Length == 3 && segments[0] == "packages")
+        {
+            if (segments[2] == "schema" && JsonPointer.TryGetParent(root, "/packages/" + segments[1], out var list, out var index)
+                && list is JsonArray entries && JsonPointer.TryIndex(index, out var at) && at < entries.Count && entries[at] is JsonObject entry)
+            {
+                entries[at] = entry["package"]?.DeepClone();
+                return null;
+            }
+
+            pointer = "/packages/" + segments[1];
+            segments = ["packages", segments[1]];
+        }
         if (!JsonPointer.TryGetParent(root, pointer, out var parent, out var last))
             return NotFound;
         // A seed cell keeps its column: an end cell or a single code becomes null (a required end then fails MQ7003); a code in a

@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1WNNRCJT6007KZWJ0G4DSAH",
+  "name": "purchase order is governed by contract",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "Contract the prices come from.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "ends": [
+    {
+      "id": "01M2MST6TKHFM73JCW0XBNZKD4",
+      "entity": "01M1YBDE7K81GQ5NMW21JH5T14",
+      "role": "contract",
+      "navigation": "contract",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M350C2DP0M6Z6KSGE6SNPQT1",
+      "entity": "01M2PKYF42VBPP64C8WV8TWXZ6",
+      "role": "purchaseOrders"
+    }
+  ]
+}

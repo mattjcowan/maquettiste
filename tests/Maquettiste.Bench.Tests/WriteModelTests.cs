@@ -1,6 +1,7 @@
 using Maquettiste.Bench.Synthetic;
 using Maquettiste.Engine;
 using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine.Localization;
 using Maquettiste.Engine.Model;
 
 namespace Maquettiste.Bench.Tests;
@@ -318,5 +319,53 @@ public sealed class WriteModelTests
         Assert.All(lines, l => Assert.Contains("2 locales", l, StringComparison.Ordinal));
         Assert.All(lines, l => Assert.Contains("(0 missing)", l, StringComparison.Ordinal));
         Assert.Equal(4, await TimeLoad.RunAsync(["--rounds"], output, error, Ct));
+    }
+
+    [Fact]
+    public async Task A_restart_reads_parsed_shards_from_the_shard_cache_keyed_by_hash()
+    {
+        using var temp = new TempFolder();
+        var repo = Path.Combine(temp.Path, "repo");
+        await WriteModel.WriteAsync(repo, Scaled() with { Locales = 1 }, Ct);
+        var cache = Path.Combine(temp.Path, "cache");
+
+        IReadOnlyList<LocaleShardDocument> first;
+        await using (var store = new ModelStore(new EngineOptions { RepoRoot = repo, CacheDirectory = cache }))
+            first = (await store.GetSnapshotAsync(Ct)).LocaleShards;
+        Assert.NotEmpty(first);
+        var cached = Directory.GetFiles(Path.Combine(cache, "shards"), "*.bin").Select(f => Path.GetFileNameWithoutExtension(f)).Order(StringComparer.Ordinal);
+        Assert.Equal(first.Select(s => s.Hash).Distinct().Order(StringComparer.Ordinal), cached);
+
+        // A restart over the cache folder gives the same entries; a cache file that is not a shard is ignored (the JSON is read).
+        File.WriteAllText(Path.Combine(cache, "shards", first[0].Hash + ".bin"), "not a shard");
+        await using (var store = new ModelStore(new EngineOptions { RepoRoot = repo, CacheDirectory = cache }))
+        {
+            var again = (await store.GetSnapshotAsync(Ct)).LocaleShards.ToDictionary(s => s.Path, StringComparer.Ordinal);
+            Assert.Equal(first.Count, again.Count);
+            foreach (var shard in first)
+            {
+                var other = again[shard.Path].Shard;
+                Assert.Equal(shard.Shard.Entries.Keys.Order(StringComparer.Ordinal), other.Entries.Keys.Order(StringComparer.Ordinal));
+                Assert.All(shard.Shard.Entries, e => Assert.Equal(e.Value.Label, other.Entries[e.Key].Label));
+                Assert.All(shard.Shard.Entries, e => Assert.Equal(e.Value.Description?.Text, other.Entries[e.Key].Description?.Text));
+                Assert.All(shard.Shard.Entries, e => Assert.Equal(e.Value.Src.OrderBy(p => p.Key, StringComparer.Ordinal), other.Entries[e.Key].Src.OrderBy(p => p.Key, StringComparer.Ordinal)));
+            }
+        }
+
+        // A shard that changes gets a new cache file, and the old one is pruned.
+        var edited = first.First(s => s.Shard.Entries.Values.Any(e => e.DisplayName is not null));
+        var path = Path.Combine(repo, edited.Path);
+        var text = File.ReadAllText(path);
+        var at = text.IndexOf("\"displayName\": \"", StringComparison.Ordinal) + "\"displayName\": \"".Length;
+        File.WriteAllText(path, text[..at] + "x" + text[at..]);
+        await using (var store = new ModelStore(new EngineOptions { RepoRoot = repo, CacheDirectory = cache }))
+            Assert.NotEqual(edited.Hash, (await store.GetSnapshotAsync(Ct)).LocaleShards.Single(s => s.Path == edited.Path).Hash);
+        Assert.False(File.Exists(Path.Combine(cache, "shards", edited.Hash + ".bin")));
+        Assert.Equal(first.Select(s => s.Hash).Distinct().Count(), Directory.GetFiles(Path.Combine(cache, "shards"), "*.bin").Length);
+
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        Assert.Equal(0, await TimeLoad.RunAsync(["--model", repo, "--rounds", "1", "--warm-cache"], output, error, Ct));
+        Assert.Contains("shard cache " + first.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + " files", output.ToString(), StringComparison.Ordinal);
     }
 }

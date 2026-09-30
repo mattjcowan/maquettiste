@@ -310,10 +310,18 @@ func table_phase_statements(tc, phase, groups, out)
   end
 end
 
-# The column statements of a renamed or altered table.
+# The column statements of a renamed or altered table: drops first, so a column that is replaced by one of the same name (a
+# new identity, such as a relation whose id changed) is dropped before it is added again.
 func table_column_statements(tc, out)
   for cc in tc.columns
-    column_statements(tc.table, cc, tc.old_name, out)
+    if cc.kind == "dropped"
+      column_statements(tc.table, cc, tc.old_name, out)
+    end
+  end
+  for cc in tc.columns
+    if cc.kind != "dropped"
+      column_statements(tc.table, cc, tc.old_name, out)
+    end
   end
 end
 

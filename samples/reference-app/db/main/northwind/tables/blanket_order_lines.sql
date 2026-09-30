@@ -8,9 +8,9 @@ CREATE TABLE northwind.blanket_order_lines (
     released_quantity numeric(12,3) NOT NULL DEFAULT 0,
     unit_price_amount numeric(19,4) NOT NULL,
     unit_price_currency varchar(3) NOT NULL,
-    product_id uuid NOT NULL,
     blanket_order_id uuid NOT NULL,
+    product_id uuid NOT NULL,
     CONSTRAINT pk_blanket_order_lines PRIMARY KEY (id),
-    CONSTRAINT fk_blanket_order_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_blanket_order_lines_blanket_order_id FOREIGN KEY (blanket_order_id) REFERENCES northwind.blanket_orders (id) ON DELETE CASCADE
+    CONSTRAINT fk_blanket_order_lines_blanket_order_id FOREIGN KEY (blanket_order_id) REFERENCES northwind.blanket_orders (id) ON DELETE CASCADE,
+    CONSTRAINT fk_blanket_order_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT
 );

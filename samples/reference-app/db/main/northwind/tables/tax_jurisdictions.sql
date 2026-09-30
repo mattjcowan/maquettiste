@@ -12,11 +12,11 @@ CREATE TABLE northwind.tax_jurisdictions (
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
     country_code varchar(2) NOT NULL,
-    parent_id uuid NULL,
     state_province_id integer NULL,
+    parent_id uuid NULL,
     CONSTRAINT pk_tax_jurisdictions PRIMARY KEY (id),
     CONSTRAINT uq_tax_jurisdictions_code UNIQUE (code),
     CONSTRAINT fk_tax_jurisdictions_country_code FOREIGN KEY (country_code) REFERENCES northwind.countries (code) ON DELETE RESTRICT,
-    CONSTRAINT fk_tax_jurisdictions_parent_id FOREIGN KEY (parent_id) REFERENCES northwind.tax_jurisdictions (id) ON DELETE SET NULL,
-    CONSTRAINT fk_tax_jurisdictions_state_province_id FOREIGN KEY (state_province_id) REFERENCES northwind.state_provinces (id) ON DELETE SET NULL
+    CONSTRAINT fk_tax_jurisdictions_state_province_id FOREIGN KEY (state_province_id) REFERENCES northwind.state_provinces (id) ON DELETE SET NULL,
+    CONSTRAINT fk_tax_jurisdictions_parent_id FOREIGN KEY (parent_id) REFERENCES northwind.tax_jurisdictions (id) ON DELETE SET NULL
 );

@@ -7,8 +7,9 @@ using Maquettiste.Engine.Model;
 namespace Maquettiste.Cli.Commands;
 
 /// <summary>
-/// <c>maquettiste seed export|import</c> (reference-types-seeds-localization.md section 2.3): a seed's rows as CSV, and a CSV import
-/// previewed, then applied with <c>--apply</c> as one save checked against the seed's hash as read.
+/// <c>maquettiste seed new|export|import</c> (reference-types-seeds-localization.md section 2.3): a reference type's empty seed with
+/// the code, label and description columns, a seed's rows as CSV, and a CSV import previewed, then applied with <c>--apply</c> as one
+/// save checked against the seed's hash as read.
 /// </summary>
 internal static class SeedCommand
 {
@@ -19,9 +20,12 @@ internal static class SeedCommand
     public static async Task<int> RunAsync(GlobalContext context, CancellationToken ct)
     {
         var line = context.Line;
-        var verb = line.Positionals.Count > 1 ? line.Positionals[1] : throw new UsageException("'seed' needs a verb: export or import.");
+        var verb = line.Positionals.Count > 1 ? line.Positionals[1] : throw new UsageException("'seed' needs a verb: new, export or import.");
         switch (verb)
         {
+            case "new":
+                line.Expect("seed new", 3);
+                break;
             case "export":
                 line.Expect("seed export", 3, "--locale", "--out");
                 break;
@@ -29,7 +33,7 @@ internal static class SeedCommand
                 line.Expect("seed import", 4, "--mode", "--format", "--apply", "--dry-run", "--check");
                 break;
             default:
-                throw new UsageException($"Unknown seed verb '{verb}': use export or import.");
+                throw new UsageException($"Unknown seed verb '{verb}': use new, export or import.");
         }
 
         var json = verb == "import" && line.Choice("--format", "text", "text", "json") == "json";
@@ -43,12 +47,43 @@ internal static class SeedCommand
         await using (store.ConfigureAwait(false))
         {
             await store.LoadAsync(ct).ConfigureAwait(false);
+            if (verb == "new")
+                return await NewAsync(context, store, line.Positionals[2], ct).ConfigureAwait(false);
             if (await ResolveAsync(context, store, line.Positionals[2], ct).ConfigureAwait(false) is not { } seed)
                 return Program.ExitCodes.Invalid;
             return verb == "export"
                 ? await ExportAsync(context, store, seed, ct).ConfigureAwait(false)
                 : await ImportAsync(context, store, seed, line.Positionals[3], mode == "replace", json, ct).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>Creates the seed of a reference type (by id, else by name) with the code, label and description columns.</summary>
+    private static async Task<int> NewAsync(GlobalContext context, ModelStore store, string key, CancellationToken ct)
+    {
+        var index = await store.GetIndexAsync(ct).ConfigureAwait(false);
+        var types = index.Where(e => e.Kind == "reference-type").ToList();
+        var matches = types.Where(t => t.Id == key).ToList();
+        if (matches.Count == 0)
+            matches = [.. types.Where(t => string.Equals(t.Name, key, StringComparison.Ordinal))];
+        if (matches.Count == 0)
+            matches = [.. types.Where(t => string.Equals(t.Name, key, StringComparison.OrdinalIgnoreCase))];
+        if (matches.Count != 1)
+            throw new UsageException(matches.Count == 0
+                ? $"no reference type has the id or name '{key}'."
+                : $"'{key}' names {matches.Count} reference types; pass one id: {string.Join(", ", matches.Select(m => m.Id + " (" + m.Name + ")"))}.");
+        var type = matches[0];
+        var result = (await store.CreateSeedAsync(type.Id, ChangeSource.Cli, ct).ConfigureAwait(false))!;
+        if (result.Outcome != SaveOutcome.Saved)
+        {
+            foreach (var d in result.Diagnostics)
+                await context.Error.WriteLineAsync(DiagnosticOutput.Line(d)).ConfigureAwait(false);
+            return Program.ExitCodes.Invalid;
+        }
+
+        await context.Out.WriteLineAsync(result.Changes is null
+            ? $"{type.Name} already has a seed ({result.Id})."
+            : $"created seed {type.Name} ({result.Id}) with the columns code, label and description.").ConfigureAwait(false);
+        return Program.ExitCodes.Success;
     }
 
     /// <summary>A seed by id, else by name (exact, then ignoring case), else by the id or name of the element it seeds.</summary>

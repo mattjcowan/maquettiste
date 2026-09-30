@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M27XE54YJ917AWW2Q5JMEA0N",
+  "name": "stock transfer is shipped by carrier",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Carrier moving it.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M2GGBZ7KEHZG0T3KPT0PPAN4",
+      "entity": "01M1G2SEEYS4QSB6TPNAN1D1TC",
+      "role": "carrier",
+      "navigation": "carrier",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1QGR2FGGVJQ02K2J1SSC44G",
+      "entity": "01M2GFXG35ZVVY61FKPBPFYVJZ",
+      "role": "stockTransfers"
+    }
+  ]
+}

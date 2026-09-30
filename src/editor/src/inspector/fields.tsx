@@ -1,5 +1,6 @@
 // Property forms for the kinds the phase 2 workspaces edit. Every edit goes through the draft;
 // text fields save 600 ms after the last keystroke or on blur.
+import { HeaderTextFields } from "@/l10n/HeaderTextFields";
 import { useDefinition } from "./definition";
 import { useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
@@ -15,7 +16,7 @@ import type {
   ScalarTypeDoc,
   StereotypeDoc,
 } from "@/api/types";
-import { Field, Input, Select, Textarea } from "@/components/ui/input";
+import { Field, Input, Select } from "@/components/ui/input";
 import { CheckboxField } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { SectionTitle } from "@/components/ui/misc";
@@ -26,6 +27,8 @@ import { indexLookup } from "@/model/index";
 import { categoryOptions, markDomainOf, tagOptions, vocabulariesOnChain } from "@/model/vocabularies";
 import { AttributeGrid } from "./AttributeGrid";
 import { DatabaseMappingSection } from "./DatabaseMapping";
+import { DatabaseSchemasSection } from "./DatabaseSchemas";
+import { schemasOf } from "@/model/databaseSchemas";
 import type { Diagnostic } from "@/api/types";
 import { GROUP_LABELS, KIND_LABELS } from "@/model/labels";
 
@@ -216,24 +219,6 @@ export function CommonFields({ id, json, doc, edit, flush, diagnostics, inEditor
         onChange={(v) => edit((j) => void ((j as Rec).name = v))}
         onBlur={flush}
       />
-      {inEditorHeader ? null : (
-        <div className="grid grid-cols-2 gap-2">
-          <TextField
-            id={`${id}-display`}
-            label="Display name"
-            value={String(rec.displayName ?? "")}
-            onChange={(v) => edit((j) => setOptional(j as Rec, "displayName", v))}
-            onBlur={flush}
-          />
-          <TextField
-            id={`${id}-plural`}
-            label="Plural name"
-            value={String(rec.pluralName ?? "")}
-            onChange={(v) => edit((j) => setOptional(j as Rec, "pluralName", v))}
-            onBlur={flush}
-          />
-        </div>
-      )}
       {hasPackage || kind === "package" ? (
         <Field label={kind === "package" ? `Parent ${KIND_LABELS.package.toLowerCase()}` : KIND_LABELS.package} htmlFor={`${id}-package`}>
           <Select
@@ -257,20 +242,18 @@ export function CommonFields({ id, json, doc, edit, flush, diagnostics, inEditor
           </Select>
         </Field>
       ) : null}
-      {inEditorHeader ? null : typeof description === "object" && description !== null ? (
-        <Field label="Description" hint={`Kept in ${(description as { file: string }).file} next to the model file; edit that file on disk.`}>
-          <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-control border border-default bg-app p-2 text-12">{doc?.sidecarText ?? ""}</pre>
-        </Field>
-      ) : (
-        <Field label="Description" htmlFor={`${id}-description`}>
-          <Textarea
-            id={`${id}-description`}
-            value={String(description ?? "")}
-            onChange={(e) => edit((j) => setOptional(j as Rec, "description", e.target.value))}
-            onBlur={flush}
-            rows={3}
-          />
-        </Field>
+      {inEditorHeader ? null : (
+        <HeaderTextFields
+          id={id}
+          dom={id}
+          rec={rec}
+          edit={(change) => edit((j) => change(j as Rec))}
+          flush={flush}
+          rows={3}
+          sidecar={
+            typeof description === "object" && description !== null ? { file: (description as { file: string }).file, text: doc?.sidecarText ?? "" } : null
+          }
+        />
       )}
       {!["tag-vocabulary", "category-tree"].includes(kind) ? (
         <>
@@ -733,14 +716,17 @@ export function DatabaseFields({ id, json, edit, flush }: FormProps) {
         onChange={(v) => edit((j) => setOptional(j as Rec, "version", v))}
         onBlur={flush}
       />
-      <TextField
-        id={`${id}-schema`}
-        label="Default schema"
-        value={db.defaultSchema ?? ""}
-        onChange={(v) => edit((j) => setOptional(j as Rec, "defaultSchema", v))}
-        onBlur={flush}
-        mono
-      />
+      {/* With declared schemas the Schemas section sets the default (erratum E26). */}
+      {schemasOf(json as unknown as Rec).length ? null : (
+        <TextField
+          id={`${id}-schema`}
+          label="Default schema"
+          value={db.defaultSchema ?? ""}
+          onChange={(v) => edit((j) => setOptional(j as Rec, "defaultSchema", v))}
+          onBlur={flush}
+          mono
+        />
+      )}
       <Field label="Quoting" htmlFor={`${id}-quoting`}>
         <Select
           id={`${id}-quoting`}
@@ -757,6 +743,7 @@ export function DatabaseFields({ id, json, edit, flush }: FormProps) {
           ))}
         </Select>
       </Field>
+      <DatabaseSchemasSection id={id} json={json as unknown as Rec} flush={flush} />
       <DatabaseMappingSection id={id} json={json as unknown as Rec} edit={(u) => edit((j) => u(j as unknown as Rec))} flush={flush} />
     </div>
   );

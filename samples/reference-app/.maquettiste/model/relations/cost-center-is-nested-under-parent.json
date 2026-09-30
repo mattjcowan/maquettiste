@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1WFP7A54RMMWE7GG70X9M88",
+  "name": "cost center is nested under parent",
+  "package": "01M1EYTWAA6REG1KFCR9N7XQ27",
+  "description": "Enclosing cost center.",
+  "category": "01M1E9BTZZTKGKC2S6YTG3CKTZ",
+  "ends": [
+    {
+      "id": "01M383H3VXB7J7M0G27GQKP74Z",
+      "entity": "01M2CS3TZ92TERS04MA3196AS4",
+      "role": "parent",
+      "navigation": "parent",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1E1R3PDV275QXN7C2G2E93G",
+      "entity": "01M2CS3TZ92TERS04MA3196AS4",
+      "role": "subCostCenters",
+      "navigation": "subCostCenters"
+    }
+  ]
+}

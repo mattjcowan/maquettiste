@@ -122,7 +122,7 @@ export function Breadcrumbs() {
                     {crumb.label}
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="max-h-80 overflow-auto">
+                <DropdownMenuContent align="start" className="max-h-[min(20rem,var(--radix-dropdown-menu-content-available-height))]">
                   {crumb.id ? <DropdownMenuItem onSelect={() => goTo(crumb.id!)}>Go to {crumb.label}</DropdownMenuItem> : null}
                   <DropdownMenuLabel>{crumb.id ? "Siblings" : crumb.label}</DropdownMenuLabel>
                   {crumb.siblings.map((s) => (

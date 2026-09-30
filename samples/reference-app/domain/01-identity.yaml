@@ -28,8 +28,8 @@ entities:
       failedSignInCount: int16! default=0 min=0 | Consecutive failed attempts since the last success.
       preferredLanguage: string(5) | BCP 47 tag of the interface language.
     refs:
-      employee: Employee one back=userAccount | The employee this account belongs to, for staff accounts.
-      contact: Contact one back=portalAccount | The customer contact this account belongs to, for portal accounts.
+      employee: Employee one back=userAccount name=user_account_belongs_to_employee | The employee this account belongs to, for staff accounts.
+      contact: Contact one back=portalAccount name=user_account_belongs_to_contact | The customer contact this account belongs to, for portal accounts.
 
   Role:
     description: A named set of permissions granted to user accounts, such as Order desk or Warehouse lead.
@@ -60,8 +60,8 @@ entities:
       name: string(100)! | Department name.
       isActive: bool! default=true | Whether employees can be assigned.
     refs:
-      parent: Department back=subDepartments | Parent department; null for the top level.
-      costCenter: CostCenter | Cost center that absorbs the department's expenses.
+      parent: Department back=subDepartments name=department_is_nested_under_parent | Parent department; null for the top level.
+      costCenter: CostCenter name=department_is_charged_to_cost_center | Cost center that absorbs the department's expenses.
 
   Employee:
     description: A person employed by Northwind, from warehouse associates to account managers.
@@ -79,9 +79,9 @@ entities:
     alternateKeys:
       employeeNumber: [employeeNumber]
     refs:
-      department: Department! back=employees | Department the employee belongs to.
-      manager: Employee back=directReports | Line manager; null for the chief executive.
-      homeWarehouse: Warehouse | Warehouse the employee usually works at, for warehouse staff.
+      department: Department! back=employees name=employee_belongs_to_department | Department the employee belongs to.
+      manager: Employee back=directReports name=employee_reports_to_manager | Line manager; null for the chief executive.
+      homeWarehouse: Warehouse name=employee_is_based_at_home_warehouse | Warehouse the employee usually works at, for warehouse staff.
 
   Team:
     description: A working group that shares a queue or a territory, such as the Northeast inside sales team.
@@ -91,7 +91,7 @@ entities:
       purpose: string(300) | What the team does.
       email: EmailAddress | Shared mailbox.
     refs:
-      lead: Employee | Team lead.
+      lead: Employee name=team_originates_from_lead | Team lead.
 
   UserSession:
     description: A signed-in session of a user account, kept to support sign-out everywhere and anomaly detection.
@@ -105,7 +105,7 @@ entities:
       userAgent: string(400) | Client user agent string.
       revokedAt: datetimeoffset | When the session was revoked; null while valid.
     refs:
-      userAccount: UserAccount! cascade back=sessions | Account that signed in.
+      userAccount: UserAccount! cascade back=sessions name=user_session_signs_in_as_user_account | Account that signed in.
 
   ApiClient:
     description: A machine client (EDI gateway, marketplace connector, carrier webhook) that calls Northwind APIs.
@@ -131,7 +131,7 @@ entities:
       lastUsedAt: datetimeoffset | Most recent use.
       revokedAt: datetimeoffset | When the key was revoked.
     refs:
-      apiClient: ApiClient! cascade back=keys | Client that owns the key.
+      apiClient: ApiClient! cascade back=keys name=api_key_acts_for_api_client | Client that owns the key.
 
   SignInAttempt:
     description: One sign-in attempt, successful or not, used for lockout and security reviews.
@@ -144,7 +144,7 @@ entities:
       failureReason: string(60) | Why it failed, such as bad-password or locked.
       ipAddress: string(45)! pii | Client IP address.
     refs:
-      userAccount: UserAccount cascade | Matched account; null when the user name is unknown.
+      userAccount: UserAccount cascade name=sign_in_attempt_is_made_as_user_account | Matched account; null when the user name is unknown.
 
   PasswordReset:
     description: A single-use password reset request sent by email.
@@ -156,7 +156,7 @@ entities:
       expiresAt: datetimeoffset! | When the token stops working.
       usedAt: datetimeoffset | When the token was used.
     refs:
-      userAccount: UserAccount! cascade | Account being reset.
+      userAccount: UserAccount! cascade name=password_reset_resets_user_account | Account being reset.
 
   AuditEvent:
     description: An append-only record of a security-relevant or business-critical action, such as a role grant or a credit limit change.
@@ -170,7 +170,7 @@ entities:
       details: json | Before and after values.
       ipAddress: string(45) pii | Client IP address.
     refs:
-      actor: UserAccount | Who did it; null for system jobs.
+      actor: UserAccount name=audit_event_is_performed_by_actor | Who did it; null for system jobs.
     overlay:
       description: Details are stored as jsonb so auditors can query inside them.
       columns:

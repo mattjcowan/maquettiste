@@ -77,6 +77,9 @@ describe("context menus (1.8)", () => {
       "edit-seed-data",
       "import-seed-csv",
       "go-to-table",
+      "apply-stereotype",
+      "tag",
+      "set-category",
       "move",
       "rename",
       "favorite",
@@ -87,6 +90,9 @@ describe("context menus (1.8)", () => {
       "add-to-diagram",
       "go-to-ends",
       "where-used",
+      "apply-stereotype",
+      "tag",
+      "set-category",
       "move",
       "rename",
       "favorite",
@@ -99,13 +105,22 @@ describe("context menus (1.8)", () => {
     expect(menuFor([entity]).find((i) => i.id === "favorite")?.label).toBe("Add to favorites");
     expect(menuFor([{ ...entity, favorite: true }]).find((i) => i.id === "favorite")?.label).toBe("Remove from favorites");
     expect(ids([{ type: "folder", kind: "entity", element: false }])).toEqual(["new:entity", "select-all", "expand-all"]);
-    expect(ids([{ type: "database", kind: "database", element: true }])).toEqual(["open-database", "open-mappings", "expand-all"]);
+    expect(ids([{ type: "database", kind: "database", element: true }])).toEqual(["open-database", "open-mappings", "new-schema", "expand-all"]);
     expect(ids([{ type: "table", kind: "table", element: false, linked: true }])).toEqual(["open", "go-to-entity"]);
     expect(menuFor([entity]).find((i) => i.id === "delete")?.danger).toBe(true);
   });
 
   it("keeps only the multi-selection actions valid for every row, and nothing across kinds", () => {
-    expect(ids([entity, { ...entity, linked: false }])).toEqual(["add-to-diagram", "add-with-related", "map-to-database", "move", "delete"]);
+    expect(ids([entity, { ...entity, linked: false }])).toEqual([
+      "add-to-diagram",
+      "add-with-related",
+      "map-to-database",
+      "apply-stereotype",
+      "tag",
+      "set-category",
+      "move",
+      "delete",
+    ]);
     expect(ids([entity, { type: "element", kind: "relation", element: true }])).toEqual([]);
     expect(ids([])).toEqual([]);
   });

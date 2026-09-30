@@ -10,9 +10,9 @@ CREATE TABLE northwind.rebate_accruals (
     rebate_amount_amount numeric(19,4) NOT NULL,
     rebate_amount_currency varchar(3) NOT NULL,
     is_settled boolean NOT NULL DEFAULT false,
-    invoice_id uuid NULL,
     rebate_program_id uuid NOT NULL,
+    invoice_id uuid NULL,
     CONSTRAINT pk_rebate_accruals PRIMARY KEY (id),
-    CONSTRAINT fk_rebate_accruals_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE SET NULL,
-    CONSTRAINT fk_rebate_accruals_rebate_program_id FOREIGN KEY (rebate_program_id) REFERENCES northwind.rebate_programs (id) ON DELETE CASCADE
+    CONSTRAINT fk_rebate_accruals_rebate_program_id FOREIGN KEY (rebate_program_id) REFERENCES northwind.rebate_programs (id) ON DELETE CASCADE,
+    CONSTRAINT fk_rebate_accruals_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE SET NULL
 );

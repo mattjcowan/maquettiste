@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2VKJW8T4C8FB0A9Z02MF3KB",
+  "name": "campaign is owned by owner",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "Marketer responsible.",
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "ends": [
+    {
+      "id": "01M3638MR20107XTMS0Q196C7A",
+      "entity": "01M1RJC20E0YQ2SZNHD9NJW74W",
+      "role": "owner",
+      "navigation": "owner",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M23C2P6X2SGTWB95MJ5K4Y1E",
+      "entity": "01M1KC0P5WJ1VA5JA0Y6YBZW8S",
+      "role": "campaigns"
+    }
+  ]
+}

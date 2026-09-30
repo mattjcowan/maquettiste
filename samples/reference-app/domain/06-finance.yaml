@@ -31,8 +31,8 @@ entities:
       isPostable: bool! default=true | Whether journal lines may post to it; summary accounts are not postable.
       isActive: bool! default=true | Whether it can be used.
     refs:
-      parent: LedgerAccount back=subAccounts | Summary account above it.
-      currency: Currency | Currency the account is restricted to; null for any.
+      parent: LedgerAccount back=subAccounts name=ledger_account_is_nested_under_parent | Summary account above it.
+      currency: Currency name=ledger_account_is_denominated_in_currency | Currency the account is restricted to; null for any.
 
   FiscalPeriod:
     description: A monthly accounting period of a fiscal year.
@@ -60,11 +60,11 @@ entities:
       sourceDocument: string(40) | Kind of source, such as invoice or goods-receipt.
       postedAt: datetimeoffset | When it was posted.
     refs:
-      fiscalPeriod: FiscalPeriod! | Period the entry posts to.
-      postedBy: UserAccount | Who posted it.
-      reversalOf: JournalEntry | Entry this one reverses.
+      fiscalPeriod: FiscalPeriod! name=journal_entry_falls_in_fiscal_period | Period the entry posts to.
+      postedBy: UserAccount name=journal_entry_is_posted_by_user_account | Who posted it.
+      reversalOf: JournalEntry name=journal_entry_reverses_reversal_of | Entry this one reverses.
     children:
-      lines: JournalLine ordered | Debit and credit lines.
+      lines: JournalLine ordered name=journal_entry_contains_lines | Debit and credit lines.
     overlay:
       description: Journal entry keys come from the named, uncached journal_entry_seq.
       columns:
@@ -81,8 +81,8 @@ entities:
       credit: Money | Credit amount; null on debit lines.
       memo: string(200) | Line memo.
     refs:
-      ledgerAccount: LedgerAccount! | Account posted to.
-      costCenter: CostCenter | Cost center charged.
+      ledgerAccount: LedgerAccount! name=journal_line_posts_to_ledger_account | Account posted to.
+      costCenter: CostCenter name=journal_line_is_charged_to_cost_center | Cost center charged.
 
   CostCenter:
     description: A unit that collects costs for management reporting, such as Denver warehouse or Inside sales.
@@ -93,8 +93,8 @@ entities:
       name: string(120)! | Cost center name.
       isActive: bool! default=true | Whether it can be charged.
     refs:
-      manager: Employee | Budget owner.
-      parent: CostCenter back=subCostCenters | Enclosing cost center.
+      manager: Employee name=cost_center_reports_to_manager | Budget owner.
+      parent: CostCenter back=subCostCenters name=cost_center_is_nested_under_parent | Enclosing cost center.
 
   TaxRate:
     description: A sales tax rate of a jurisdiction for a tax category and period.
@@ -106,8 +106,8 @@ entities:
       taxCategory: string(30)! | Goods category, such as general or food.
       validity: DateRange! | Period the rate applies.
     refs:
-      jurisdiction: TaxJurisdiction! cascade back=rates | Jurisdiction levying the tax.
-      salesTaxAccount: LedgerAccount | Liability account the tax posts to.
+      jurisdiction: TaxJurisdiction! cascade back=rates name=tax_rate_is_levied_by_jurisdiction | Jurisdiction levying the tax.
+      salesTaxAccount: LedgerAccount name=tax_rate_posts_tax_to_sales_tax_account | Liability account the tax posts to.
 
   TaxJurisdiction:
     description: An authority that levies sales tax - a country, state, county or city.
@@ -118,9 +118,9 @@ entities:
       name: string(120)! | Name.
       level: string(20)! | country, state, county, city or district.
     refs:
-      country: Country! | Country of the jurisdiction.
-      stateProvince: StateProvince | State of the jurisdiction.
-      parent: TaxJurisdiction back=subJurisdictions | Enclosing jurisdiction.
+      country: Country! name=tax_jurisdiction_is_located_in_country | Country of the jurisdiction.
+      stateProvince: StateProvince name=tax_jurisdiction_is_located_in_state_province | State of the jurisdiction.
+      parent: TaxJurisdiction back=subJurisdictions name=tax_jurisdiction_is_nested_under_parent | Enclosing jurisdiction.
 
   ExchangeRate:
     description: A currency conversion rate on a date, loaded daily from the central bank feed.
@@ -132,8 +132,8 @@ entities:
       rateType: string(10)! default=spot | spot, average or budget.
       source: string(40) | Feed the rate came from.
     refs:
-      fromCurrency: Currency! | Source currency.
-      toCurrency: Currency! | Target currency.
+      fromCurrency: Currency! name=exchange_rate_converts_from_from_currency | Source currency.
+      toCurrency: Currency! name=exchange_rate_converts_to_to_currency | Target currency.
 
   Budget:
     description: An approved spending budget for a fiscal year and cost center.
@@ -145,9 +145,9 @@ entities:
       isApproved: bool! default=false | Whether finance approved it.
       notes: text | Assumptions.
     refs:
-      costCenter: CostCenter | Cost center budgeted; null for the company budget.
+      costCenter: CostCenter name=budget_is_charged_to_cost_center | Cost center budgeted; null for the company budget.
     children:
-      lines: BudgetLine | Amounts by account and period.
+      lines: BudgetLine name=budget_contains_lines | Amounts by account and period.
 
   BudgetLine:
     description: A budgeted amount for one ledger account and period.
@@ -155,8 +155,8 @@ entities:
     attributes:
       amount: Money! | Budgeted amount.
     refs:
-      ledgerAccount: LedgerAccount! | Account budgeted.
-      fiscalPeriod: FiscalPeriod! | Period budgeted.
+      ledgerAccount: LedgerAccount! name=budget_line_posts_to_ledger_account | Account budgeted.
+      fiscalPeriod: FiscalPeriod! name=budget_line_falls_in_fiscal_period | Period budgeted.
 
 diagram:
   name: Finance and ledger

@@ -1,0 +1,31 @@
+{
+  "$schema": "../../../.schema/v1/database.json",
+  "kind": "database",
+  "id": "01JSCH00000000000000000021",
+  "name": "main",
+  "dialect": "postgresql",
+  "version": "16",
+  "defaultSchema": "sales",
+  "schemas": [
+    {
+      "id": "01JSCH00000000000000000022",
+      "name": "sales"
+    },
+    {
+      "id": "01JSCH00000000000000000023",
+      "name": "ops"
+    },
+    {
+      "id": "01JSCH00000000000000000024",
+      "name": "audit"
+    }
+  ],
+  "byConvention": "packages",
+  "packages": [
+    "01JSCH00000000000000000001",
+    {
+      "package": "01JSCH00000000000000000002",
+      "schema": "01JSCH00000000000000000023"
+    }
+  ]
+}

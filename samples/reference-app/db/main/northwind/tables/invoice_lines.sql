@@ -13,15 +13,15 @@ CREATE TABLE northwind.invoice_lines (
     tax_rate numeric(5,2) NULL,
     line_total_amount numeric(19,4) NOT NULL,
     line_total_currency varchar(3) NOT NULL,
-    product_id uuid NULL,
-    revenue_account_id uuid NULL,
-    sales_order_line_id char(26) NULL,
-    shipment_line_id uuid NULL,
     invoice_id uuid NOT NULL,
+    sales_order_line_id char(26) NULL,
+    product_id uuid NULL,
+    shipment_line_id uuid NULL,
+    revenue_account_id uuid NULL,
     CONSTRAINT pk_invoice_lines PRIMARY KEY (id),
-    CONSTRAINT fk_invoice_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE SET NULL,
-    CONSTRAINT fk_invoice_lines_revenue_account_id FOREIGN KEY (revenue_account_id) REFERENCES northwind.ledger_accounts (id) ON DELETE SET NULL,
+    CONSTRAINT fk_invoice_lines_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE CASCADE,
     CONSTRAINT fk_invoice_lines_sales_order_line_id FOREIGN KEY (sales_order_line_id) REFERENCES northwind.sales_order_lines (id) ON DELETE SET NULL,
+    CONSTRAINT fk_invoice_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE SET NULL,
     CONSTRAINT fk_invoice_lines_shipment_line_id FOREIGN KEY (shipment_line_id) REFERENCES northwind.shipment_lines (id) ON DELETE SET NULL,
-    CONSTRAINT fk_invoice_lines_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE CASCADE
+    CONSTRAINT fk_invoice_lines_revenue_account_id FOREIGN KEY (revenue_account_id) REFERENCES northwind.ledger_accounts (id) ON DELETE SET NULL
 );

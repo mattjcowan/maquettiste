@@ -12,12 +12,12 @@ CREATE TABLE northwind.cycle_counts (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    assigned_to_id uuid NULL,
     warehouse_id uuid NOT NULL,
+    assigned_to_id uuid NULL,
     zone_id uuid NULL,
     CONSTRAINT pk_cycle_counts PRIMARY KEY (id),
     CONSTRAINT uq_cycle_counts_count_number UNIQUE (count_number),
-    CONSTRAINT fk_cycle_counts_assigned_to_id FOREIGN KEY (assigned_to_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_cycle_counts_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_cycle_counts_assigned_to_id FOREIGN KEY (assigned_to_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_cycle_counts_zone_id FOREIGN KEY (zone_id) REFERENCES northwind.warehouse_zones (id) ON DELETE SET NULL
 );

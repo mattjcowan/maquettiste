@@ -38,9 +38,88 @@ public sealed record Database : Element
     /// </summary>
     public ConventionMapping? ByConvention { get; init; }
 
-    /// <summary>Ids of the packages whose entities (and sub-packages') map here by convention; see <see cref="ByConvention"/>.</summary>
+    /// <summary>
+    /// The packages whose entities (and sub-packages') map here by convention, each with the schema its conventional tables go to;
+    /// see <see cref="ByConvention"/>. In JSON an entry without a schema is the package id.
+    /// </summary>
+    [JsonConverter(typeof(ConventionPackageListConverter))]
+    public IReadOnlyList<ConventionPackage> Packages { get; init; } = [];
+}
+
+/// <summary>One package a database takes by convention (D6, D46; erratum E26).</summary>
+public sealed record ConventionPackage
+{
+    /// <summary>The package id.</summary>
     [ElementRef(ElementKind.Package)]
-    public IReadOnlyList<string> Packages { get; init; } = [];
+    public required string Package { get; init; }
+
+    /// <summary>The id of the database schema the package's conventional tables go to; <see langword="null"/> uses the default.</summary>
+    [ElementRef(IndexKinds = ["schema"])]
+    public string? Schema { get; init; }
+
+    /// <summary>An entry without a schema.</summary>
+    /// <param name="package">The package id.</param>
+    public static implicit operator ConventionPackage(string package) => new() { Package = package };
+}
+
+/// <summary>Reads a convention package list whose entries are a package id or <c>{ "package", "schema" }</c>; writes the id when there is no schema.</summary>
+internal sealed class ConventionPackageListConverter : JsonConverter<IReadOnlyList<ConventionPackage>>
+{
+    /// <inheritdoc/>
+    public override IReadOnlyList<ConventionPackage> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.StartArray)
+            throw new JsonException("Expected an array of convention packages.");
+        var list = new List<ConventionPackage>();
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+        {
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                list.Add(new ConventionPackage { Package = reader.GetString()! });
+                continue;
+            }
+
+            if (reader.TokenType != JsonTokenType.StartObject)
+                throw new JsonException("A convention package is an id or an object.");
+            string? package = null, schema = null;
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+            {
+                var name = reader.GetString();
+                reader.Read();
+                if (name == "package")
+                    package = reader.GetString();
+                else if (name == "schema")
+                    schema = reader.TokenType == JsonTokenType.Null ? null : reader.GetString();
+                else
+                    reader.Skip();
+            }
+
+            list.Add(new ConventionPackage { Package = package ?? throw new JsonException("A convention package names its package."), Schema = schema });
+        }
+
+        return list;
+    }
+
+    /// <inheritdoc/>
+    public override void Write(Utf8JsonWriter writer, IReadOnlyList<ConventionPackage> value, JsonSerializerOptions options)
+    {
+        writer.WriteStartArray();
+        foreach (var entry in value)
+        {
+            if (entry.Schema is null)
+            {
+                writer.WriteStringValue(entry.Package);
+                continue;
+            }
+
+            writer.WriteStartObject();
+            writer.WriteString("package", entry.Package);
+            writer.WriteString("schema", entry.Schema);
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
+    }
 }
 
 /// <summary>Which entities a database takes by convention (D46).</summary>

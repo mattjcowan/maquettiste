@@ -21,6 +21,7 @@ export const keys = {
   element: (id: string) => ["element", id] as const,
   references: (id: string) => ["references", id] as const,
   validation: ["validation"] as const,
+  validationRules: ["validationRules"] as const,
   databaseViews: ["databaseView"] as const,
   databaseView: (id: string) => ["databaseView", id] as const,
   tables: ["tables"] as const,
@@ -88,6 +89,8 @@ export const loadIndex = (): Promise<ElementSummary[]> => indexLoader.load();
 export const indexQuery = { queryKey: keys.index, queryFn: loadIndex, structuralSharing: false } as const;
 export const useIndex = () => useQuery(indexQuery);
 export const useValidation = () => useQuery({ queryKey: keys.validation, queryFn: () => endpoints.validate({}) });
+/** The built-in rule catalog: fixed for a running engine, so it is fetched once. */
+export const useValidationRules = () => useQuery({ queryKey: keys.validationRules, queryFn: endpoints.listValidationRules, staleTime: Infinity });
 
 /** Element documents leave the cache 5 minutes after their last observer (EX 4.2); the rest keeps the default. */
 export const ELEMENT_GC_TIME = 5 * 60_000;

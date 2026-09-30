@@ -185,3 +185,129 @@ export function planSummary(plan: Pick<GenerationPlan, "packs" | "changes" | "un
   const packs = [...new Set([...plan.packs, ...plan.changes.map((c) => c.pack)])];
   return packs.map((p) => packSummaryLine(p, plan));
 }
+
+/** Where a cause leads: the element, the template in its pack, the settings tab, the pack's parameter or unit. */
+export type CauseLink =
+  | { type: "element"; id: string }
+  | { type: "template"; pack: string; path: string }
+  | { type: "setting"; tab: string }
+  | { type: "parameter"; pack: string; name: string }
+  | { type: "unit"; pack: string; unit: string };
+
+/** The planned file changes one cause explains: "Template table.scriban changed: 412 files". */
+export interface CauseGroup {
+  id: string;
+  kind: string;
+  detail: string;
+  files: number;
+  units: number;
+  link: CauseLink | null;
+}
+
+/** Changes that write something (an unchanged file and a kept companion do not). */
+const writes = (c: FileChange) => c.kind !== "unchanged" && c.kind !== "kept";
+
+const SETTING_TABS: Record<string, string> = { conventions: "conventions", localization: "locales" };
+const PACK_SCOPED = new Set(["parameter", "unit", "scripts", "output-base", "formatter", "pack-version"]);
+
+/** The link of one cause of a unit, or null when it leads nowhere to edit (a deleted element, an output, the state). */
+export function causeLink(cause: PlanUnit["causes"][number], unit: Pick<PlanUnit, "pack" | "unit">): CauseLink | null {
+  if (cause.kind === "absent") return null;
+  if (cause.elementId) return { type: "element", id: cause.elementId };
+  if (cause.kind === "template" && cause.key.startsWith("t:")) {
+    const rest = cause.key.slice(2);
+    const slash = rest.indexOf("/");
+    return slash > 0 ? { type: "template", pack: rest.slice(0, slash), path: rest.slice(slash + 1) } : null;
+  }
+  if (cause.kind === "setting" && cause.key.startsWith("s:")) return { type: "setting", tab: SETTING_TABS[cause.key.slice(2)] ?? "project" };
+  if (cause.kind === "translation" || cause.kind === "localization") return { type: "setting", tab: "locales" };
+  if (cause.kind === "parameter" && unit.pack) return { type: "parameter", pack: unit.pack, name: cause.key };
+  if (cause.kind === "unit" && unit.pack) return { type: "unit", pack: unit.pack, unit: cause.key };
+  return null;
+}
+
+/**
+ * The plan's written files grouped by cause, most files first (then by sentence, ordinal): each unit's causes (or, with
+ * none recorded, its reason) count the files that unit writes. A unit with several causes counts in each of them.
+ */
+export function causeGroups(plan: Pick<GenerationPlan, "changes" | "units">): CauseGroup[] {
+  const filesByUnit = new Map<string, number>();
+  for (const c of plan.changes) if (writes(c)) filesByUnit.set(c.unitKey, (filesByUnit.get(c.unitKey) ?? 0) + 1);
+  const groups = new Map<string, CauseGroup>();
+  const add = (id: string, kind: string, detail: string, files: number, link: CauseLink | null) => {
+    const g = groups.get(id) ?? { id, kind, detail, files: 0, units: 0, link };
+    g.files += files;
+    g.units++;
+    groups.set(id, g);
+  };
+  for (const u of plan.units) {
+    const files = filesByUnit.get(u.key) ?? 0;
+    if (u.skipped || !files) continue;
+    if (!u.causes.length) {
+      add(`reason|${u.reason ?? ""}`, "reason", u.reason ? (REASON_TEXT[u.reason] ?? u.reason) : "Reason not recorded", files, null);
+      continue;
+    }
+    for (const cause of u.causes) {
+      const detail = cause.kind === "inputs" ? "Inputs changed (not recorded one by one)" : cause.detail;
+      const scope = PACK_SCOPED.has(cause.kind) ? `${u.pack ?? ""}|` : "";
+      add(`${cause.kind}|${scope}${cause.key}|${detail}`, cause.kind, detail, files, causeLink(cause, u));
+    }
+  }
+  const ordinal = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+  return [...groups.values()].sort((a, b) => b.files - a.files || ordinal(a.detail, b.detail));
+}
+
+/** "Template table.scriban changed: 412 files". */
+export const causeSentence = (g: CauseGroup): string => `${g.detail}: ${plural(g.files, "file", "files")}`;
+
+export interface RootGroup {
+  root: string;
+  files: number;
+  counts: Partial<Record<FileChangeKind, number>>;
+}
+
+/**
+ * The written files grouped by output root: the longest known root (a pack's output base) the path lies under, else the
+ * path's first folder, else "(project root)". Ordinal by root.
+ */
+export function rootGroups(plan: Pick<GenerationPlan, "changes">, roots: readonly string[]): RootGroup[] {
+  const known = [...new Set(roots.map((r) => r.replace(/\/+$/, "")).filter(Boolean))].sort((a, b) => b.length - a.length);
+  const groups = new Map<string, RootGroup>();
+  for (const c of plan.changes) {
+    if (!writes(c)) continue;
+    const root = known.find((r) => c.path.startsWith(`${r}/`)) ?? (c.path.includes("/") ? c.path.slice(0, c.path.indexOf("/")) : "(project root)");
+    const g = groups.get(root) ?? { root, files: 0, counts: {} };
+    g.files++;
+    g.counts[c.kind] = (g.counts[c.kind] ?? 0) + 1;
+    groups.set(root, g);
+  }
+  return [...groups.values()].sort((a, b) => (a.root < b.root ? -1 : a.root > b.root ? 1 : 0));
+}
+
+// Plan diagnostics under the summary: errors first, then warnings, then notes (info), each group in the engine's order;
+// the first `limit` are listed and the rest counted (a project with several locales reports one MQ7204 note per shard).
+const SEVERITY_RANK: Record<string, number> = { error: 0, warning: 1, info: 2 };
+
+export type PlanNote = { severity: string; rule: string; message: string };
+
+export function orderDiagnostics<T extends PlanNote>(
+  diagnostics: readonly T[],
+  limit = 5,
+): { shown: T[]; more: number; counts: Record<"error" | "warning" | "info", number> } {
+  const counts = { error: 0, warning: 0, info: 0 };
+  for (const d of diagnostics) if (d.severity in counts) counts[d.severity as keyof typeof counts] += 1;
+  const sorted = diagnostics
+    .map((d, i) => [d, i] as const)
+    .sort((a, b) => (SEVERITY_RANK[a[0].severity] ?? 3) - (SEVERITY_RANK[b[0].severity] ?? 3) || a[1] - b[1])
+    .map(([d]) => d);
+  return { shown: sorted.slice(0, limit), more: Math.max(0, sorted.length - limit), counts };
+}
+
+export function moreNotesText(more: number, counts: Record<"error" | "warning" | "info", number>): string {
+  const parts = [
+    counts.error ? plural(counts.error, "error", "errors") : "",
+    counts.warning ? plural(counts.warning, "warning", "warnings") : "",
+    counts.info ? plural(counts.info, "note", "notes") : "",
+  ].filter(Boolean);
+  return `+${more} more in Problems (${parts.join(", ")} in all)`;
+}

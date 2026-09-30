@@ -17,13 +17,13 @@ CREATE TABLE northwind.purchase_order_lines (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    product_id uuid NOT NULL,
-    supplier_product_id uuid NULL,
-    unit_code varchar(3) NOT NULL,
     purchase_order_id uuid NOT NULL,
+    product_id uuid NOT NULL,
+    unit_code varchar(3) NOT NULL,
+    supplier_product_id uuid NULL,
     CONSTRAINT pk_purchase_order_lines PRIMARY KEY (id),
+    CONSTRAINT fk_purchase_order_lines_purchase_order_id FOREIGN KEY (purchase_order_id) REFERENCES northwind.purchase_orders (id) ON DELETE CASCADE,
     CONSTRAINT fk_purchase_order_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_purchase_order_lines_supplier_product_id FOREIGN KEY (supplier_product_id) REFERENCES northwind.supplier_products (id) ON DELETE SET NULL,
     CONSTRAINT fk_purchase_order_lines_unit_code FOREIGN KEY (unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE RESTRICT,
-    CONSTRAINT fk_purchase_order_lines_purchase_order_id FOREIGN KEY (purchase_order_id) REFERENCES northwind.purchase_orders (id) ON DELETE CASCADE
+    CONSTRAINT fk_purchase_order_lines_supplier_product_id FOREIGN KEY (supplier_product_id) REFERENCES northwind.supplier_products (id) ON DELETE SET NULL
 );

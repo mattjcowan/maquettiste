@@ -75,7 +75,7 @@ public static class TimeLoad
                     var shards = snapshot.Localization.Shards.Count;
                     var missing = completeness.Sum(c => c.Missing);
                     await output.WriteLineAsync(string.Create(CultureInfo.InvariantCulture,
-                        $"round {(round == 0 ? "0 (fills the cache)" : round)}{(warm && round > 0 ? " warm cache" : "")}: {snapshot.Documents.Count} elements, {snapshot.Localization.Locales.Count} locales, {shards} shards; load {load.TotalMilliseconds:F0} ms, localizable nodes {index.TotalMilliseconds:F0} ms ({nodes}), completeness {pass.TotalMilliseconds:F0} ms ({missing} missing), total {(load + index + pass).TotalMilliseconds:F0} ms"))
+                        $"round {(round == 0 ? "0 (fills the cache)" : round)}{(warm && round > 0 ? " warm cache" : "")}: {snapshot.Documents.Count} elements, {snapshot.Localization.Locales.Count} locales, {shards} shards; load {load.TotalMilliseconds:F0} ms, localizable nodes {index.TotalMilliseconds:F0} ms ({nodes}), completeness {pass.TotalMilliseconds:F0} ms ({missing} missing), total {(load + index + pass).TotalMilliseconds:F0} ms{(warm ? $"; shard cache {ShardFiles(cache)} files" : "")}"))
                         .ConfigureAwait(false);
                 }
             }
@@ -87,5 +87,12 @@ public static class TimeLoad
         }
 
         return 0;
+    }
+
+    /// <summary>The parsed-shard cache files under a cache folder (the engine's <c>shards/</c>), which a warm round reads.</summary>
+    private static int ShardFiles(string cache)
+    {
+        var folder = Path.Combine(cache, "shards");
+        return Directory.Exists(folder) ? Directory.GetFiles(folder, "*.bin").Length : 0;
     }
 }

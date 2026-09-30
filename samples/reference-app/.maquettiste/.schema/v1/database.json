@@ -53,6 +53,7 @@
       "type": "string"
     },
     "defaultSchema": {
+      "description": "The name of the schema that tables, views and sequences without a schema go to; absent means the dialect's (PostgreSQL public, SQL Server dbo).",
       "type": "string",
       "minLength": 1
     },
@@ -146,7 +147,31 @@
       "enum": ["all", "packages", "none"]
     },
     "packages": {
-      "$ref": "common.json#/$defs/idList",
+      "description": "The packages whose entities (and sub-packages') map here by convention. An entry is a package id, or an object that also names the schema (the id of one of this database's schemas) the package's conventional tables go to; an entry without a schema is written as the id.",
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "common.json#/$defs/id"
+          },
+          {
+            "title": "Convention package",
+            "type": "object",
+            "x-order": ["package", "schema"],
+            "x-collapse": "package",
+            "properties": {
+              "package": {
+                "$ref": "common.json#/$defs/id"
+              },
+              "schema": {
+                "$ref": "common.json#/$defs/id"
+              }
+            },
+            "required": ["package"],
+            "additionalProperties": false
+          }
+        ]
+      },
       "default": []
     },
     "properties": {

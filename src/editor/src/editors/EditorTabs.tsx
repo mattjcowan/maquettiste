@@ -149,7 +149,9 @@ export function EditorArea() {
   return (
     <div className="absolute inset-0 z-10 bg-surface" data-testid="editor-area">
       {tab.kind === "entity" ? (
-        <EntityEditor key={tab.id} id={tab.id} />
+        // No key: the entity editor stays mounted from one entity to the next (General mode walks entities, §4.5), so
+        // React updates its DOM in place instead of rebuilding it; state tied to an entity resets on the id.
+        <EntityEditor id={tab.id} />
       ) : tab.kind === "relation" ? (
         <RelationshipEditor key={tab.id} id={tab.id} />
       ) : tab.kind === "package" ? (

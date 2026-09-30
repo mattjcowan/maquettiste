@@ -10,8 +10,9 @@ name: bench
 # class that produced it (see bench/README.md): when the cores, --jobs, OS, architecture, GC mode or runtime overrides differ from
 # the baseline's, the harness skips the regression gate (the report says why) instead of failing, and this workflow warns.
 #
-# CI baseline (bench/README.md): the dispatch input record-ci-baseline runs the bench on the runner with --advisory-budgets and
-# uploads its report as the bench-baseline-ci artifact (baseline-ci.json); commit it as bench/baseline-ci.json. When that file is
+# CI baseline (bench/README.md): the dispatch input record-ci-baseline runs the bench on the runner with --advisory-budgets,
+# uploads its report as the bench-baseline-ci artifact (baseline-ci.json), and the commit-baseline job commits it as
+# bench/baseline-ci.json to the branch the workflow was dispatched on, with the workflow's token. When that file is
 # committed, every run compares against it with the 10% regression gate and --advisory-budgets, and the step is binding. Without
 # it the older run applies: bench/baseline.json (a developer machine's), absolute budgets, advisory on the shared runner.
 
@@ -33,7 +34,7 @@ on:
         required: false
         default: "10"
       record-ci-baseline:
-        description: "Record bench/baseline-ci.json on this runner (uploaded as the bench-baseline-ci artifact; commit it to enable the gate)"
+        description: "Record bench/baseline-ci.json on this runner and commit it to the dispatched branch (enables the gate)"
         type: boolean
         required: false
         default: false
@@ -133,3 +134,39 @@ jobs:
           name: bench-report
           path: bench/results/report.json
           if-no-files-found: ignore
+
+  # One-time (or after a runner class change): commits the recorded baseline to the branch the workflow was dispatched on. The
+  # only job with write access; it runs only on a record-ci-baseline dispatch from a branch whose bench passed.
+  commit-baseline:
+    name: commit the CI baseline
+    needs: bench
+    if: inputs.record-ci-baseline && github.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: bench-baseline-ci
+          path: ${{ runner.temp }}/baseline
+
+      - name: Commit bench/baseline-ci.json
+        env:
+          BRANCH: ${{ github.ref_name }}
+          RUNNER_LABEL: ${{ inputs.runner || 'ubuntu-latest' }}
+        run: |
+          cp "$RUNNER_TEMP/baseline/baseline-ci.json" bench/baseline-ci.json
+          if git diff --quiet -- bench/baseline-ci.json && git ls-files --error-unmatch bench/baseline-ci.json >/dev/null 2>&1; then
+            echo "bench/baseline-ci.json is unchanged; nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bench/baseline-ci.json
+          git commit -m "Record the bench CI baseline on $RUNNER_LABEL (run $GITHUB_RUN_ID)"
+          git push origin "HEAD:$BRANCH"
+          echo "::notice file=bench/baseline-ci.json::Committed to $BRANCH; tag runs now gate on a 10% regression against it."

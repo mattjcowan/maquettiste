@@ -7,9 +7,9 @@ CREATE TABLE northwind.coupon_redemptions (
     redeemed_at timestamptz(6) NOT NULL,
     discount_amount_amount numeric(19,4) NOT NULL,
     discount_amount_currency varchar(3) NOT NULL,
-    coupon_id uuid NOT NULL,
     sales_order_id uuid NOT NULL,
+    coupon_id uuid NOT NULL,
     CONSTRAINT pk_coupon_redemptions PRIMARY KEY (id),
-    CONSTRAINT fk_coupon_redemptions_coupon_id FOREIGN KEY (coupon_id) REFERENCES northwind.coupons (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_coupon_redemptions_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE
+    CONSTRAINT fk_coupon_redemptions_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE,
+    CONSTRAINT fk_coupon_redemptions_coupon_id FOREIGN KEY (coupon_id) REFERENCES northwind.coupons (id) ON DELETE RESTRICT
 );

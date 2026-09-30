@@ -266,7 +266,9 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
             return results;
         var done = 0;
         var parallel = new ParallelOptions { MaxDegreeOfParallelism = options.EffectiveParallelism, CancellationToken = ct };
-        await Parallel.ForEachAsync(Enumerable.Range(0, modelPaths.Length), parallel, async (i, token) =>
+        // Locale shards first: they are the largest files, and started last they would form the tail of the parallel read.
+        var order = Enumerable.Range(0, modelPaths.Length).OrderBy(i => ModelPaths.Classify(modelPaths[i]) == ModelFileKind.LocaleShard ? 0 : 1).ToArray();
+        await Parallel.ForEachAsync(order, parallel, async (i, token) =>
         {
             var path = modelPaths[i];
             previous.Entries.TryGetValue(path, out var old);
@@ -336,6 +338,9 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         {
             parsed = kind switch
             {
+                // A validated shard whose parsed form is in the shard cache skips its JSON (reference-types-seeds-localization.md §5).
+                ModelFileKind.LocaleShard when trusted && ShardCache.TryRead(ShardCache.PathOf(options.CacheDirectory, hash)) is { } cached
+                    => DocumentReader.TrustedShard(cached, repoPath, trustedCanonical),
                 // Files dispatch on their kind: a shard outside model/locales/<locale>/ loads as a shard, with MQ1005 (section 3.3).
                 ModelFileKind.Element when LocaleShardReader.IsShard(bytes) => MisplacedShard(_reader.ReadLocaleShard(bytes, repoPath, trusted, trustedCanonical), repoPath),
                 ModelFileKind.Element => _reader.ReadElement(bytes, repoPath, trusted, trustedCanonical),
@@ -579,6 +584,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
     private async Task<bool> WriteCacheIfChangedAsync(Dictionary<string, FileEntry> entries, CancellationToken ct)
     {
         await Task.Yield(); // runs beside the snapshot assembly
+        WriteShardCache(entries, ct);
         var records = entries.Values
             .Where(e => e.Hash.Length > 0)
             .Select(e => new CacheRecord(e.ModelPath, e.Length, e.LastWriteTicks, e.Hash, e.Flags, e.Bytes))
@@ -592,6 +598,16 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
             return false;
         _diskCache = records.ToDictionary(r => r.Path, StringComparer.Ordinal);
         return true;
+    }
+
+    /// <summary>Fills the parsed-shard cache with every valid shard loaded now, in parallel, and removes the files of shards gone.</summary>
+    private void WriteShardCache(Dictionary<string, FileEntry> entries, CancellationToken ct)
+    {
+        var shards = entries.Values.Where(e => e.Kind == ModelFileKind.LocaleShard && e.Hash.Length > 0 && e.Parsed is { Valid: true, LocaleShard: not null }).ToList();
+        var live = shards.Select(e => e.Hash).ToHashSet(StringComparer.Ordinal);
+        Parallel.ForEach(shards, new ParallelOptions { MaxDegreeOfParallelism = options.EffectiveParallelism, CancellationToken = ct },
+            e => ShardCache.TryWrite(options.CacheDirectory, e.Hash, e.Parsed.LocaleShard!, paths));
+        ShardCache.Prune(options.CacheDirectory, live, paths);
     }
 
     private HashSet<string> Enumerate()

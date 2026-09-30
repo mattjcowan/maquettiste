@@ -7,12 +7,12 @@ CREATE TABLE northwind.serial_numbers (
     serial varchar(60) NOT NULL,
     status varchar(20) NOT NULL DEFAULT 'in-stock',
     received_at timestamptz(6) NULL,
-    current_bin_id uuid NULL,
     lot_id uuid NULL,
     product_id uuid NOT NULL,
+    current_bin_id uuid NULL,
     CONSTRAINT pk_serial_numbers PRIMARY KEY (id),
     CONSTRAINT uq_serial_numbers_serial UNIQUE (serial),
-    CONSTRAINT fk_serial_numbers_current_bin_id FOREIGN KEY (current_bin_id) REFERENCES northwind.bin_locations (id) ON DELETE SET NULL,
     CONSTRAINT fk_serial_numbers_lot_id FOREIGN KEY (lot_id) REFERENCES northwind.stock_lots (id) ON DELETE SET NULL,
-    CONSTRAINT fk_serial_numbers_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT
+    CONSTRAINT fk_serial_numbers_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_serial_numbers_current_bin_id FOREIGN KEY (current_bin_id) REFERENCES northwind.bin_locations (id) ON DELETE SET NULL
 );

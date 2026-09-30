@@ -16,17 +16,17 @@ CREATE TABLE northwind.service_cases (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    assigned_to_id uuid NULL,
-    contact_id uuid NULL,
     customer_id uuid NOT NULL,
-    product_id uuid NULL,
     sales_order_id uuid NULL,
+    assigned_to_id uuid NULL,
+    product_id uuid NULL,
+    contact_id uuid NULL,
     CONSTRAINT pk_service_cases PRIMARY KEY (id),
     CONSTRAINT uq_service_cases_case_number UNIQUE (case_number),
-    CONSTRAINT fk_service_cases_assigned_to_id FOREIGN KEY (assigned_to_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
-    CONSTRAINT fk_service_cases_contact_id FOREIGN KEY (contact_id) REFERENCES northwind.contacts (id) ON DELETE SET NULL,
     CONSTRAINT fk_service_cases_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_service_cases_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE SET NULL,
+    CONSTRAINT fk_service_cases_assigned_to_id FOREIGN KEY (assigned_to_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_service_cases_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE SET NULL,
-    CONSTRAINT fk_service_cases_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE SET NULL
+    CONSTRAINT fk_service_cases_contact_id FOREIGN KEY (contact_id) REFERENCES northwind.contacts (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_service_cases_sla_due_at ON northwind.service_cases (sla_due_at);

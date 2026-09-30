@@ -16,11 +16,11 @@ CREATE TABLE northwind.opportunities (
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
     customer_id uuid NOT NULL,
-    owner_id uuid NOT NULL,
     stage_id integer NOT NULL,
+    owner_id uuid NOT NULL,
     CONSTRAINT pk_opportunities PRIMARY KEY (id),
     CONSTRAINT fk_opportunities_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_opportunities_owner_id FOREIGN KEY (owner_id) REFERENCES northwind.employees (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_opportunities_stage_id FOREIGN KEY (stage_id) REFERENCES northwind.opportunity_stages (id) ON DELETE RESTRICT
+    CONSTRAINT fk_opportunities_stage_id FOREIGN KEY (stage_id) REFERENCES northwind.opportunity_stages (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_opportunities_owner_id FOREIGN KEY (owner_id) REFERENCES northwind.employees (id) ON DELETE RESTRICT
 );
 CREATE INDEX ix_opportunities_expected_close_on ON northwind.opportunities (expected_close_on);

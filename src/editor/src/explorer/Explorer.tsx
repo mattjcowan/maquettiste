@@ -16,13 +16,15 @@ import {
   tableDetailQuery,
   tablesQuery,
   useElement,
+  useElements,
   useIndex,
   useSettings,
   useValidation,
   type TablesState,
 } from "@/api/queries";
-import { perfOnce, perfStart, perfSync } from "@/lib/perf";
+import { editorPerf, perfOnce, perfStart, perfSync } from "@/lib/perf";
 import type { CategoryTreeDoc, ElementSummary } from "@/api/types";
+import { mergeCategoryTrees, type CategoryMaps } from "@/model/vocabularies";
 import { EmptyState, Spinner } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import {
@@ -65,6 +67,7 @@ import {
   prebuild,
   presenceCounts,
   relatedCounts,
+  canvasCounts,
   relatedKeys,
   revealPath,
   visibleRows,
@@ -74,13 +77,18 @@ import {
   type TablesInput,
   type TreeNode,
   type VisibleRow,
+  type DatabaseInfo,
 } from "./tree";
+import { schemasOf } from "@/model/databaseSchemas";
 import { TreeRow } from "./TreeRow";
 import { RowMenu, type RowMenuState } from "./RowMenu";
 import { menuFor, isMovable, type MenuActionId, type MenuTarget } from "./menus";
 import { useTreeKeyboard, type KeyRow, type TreeAction } from "./useTreeKeyboard";
 import { useExplorerActions } from "./actions";
 import { AddRelatedDialog, DeleteDialog, MapToDatabaseDialog, MoveDialog } from "./dialogs";
+import { NewSchemaDialog } from "@/inspector/DatabaseSchemas";
+import { MarkDialog, PromoteDialog } from "./markDialogs";
+import type { MarkKind } from "./marks";
 import { ImportCsvDialog, ImportSeedsDialog } from "@/workspaces/reference-data/dialogs";
 import { exportAllSeeds } from "@/workspaces/reference-data/seedBundle";
 import { createTargetSeed } from "@/workspaces/reference-data/seedTargets";
@@ -99,6 +107,7 @@ function once<T>(source: object | undefined | null, build: () => T): T | undefin
   if (!derived.has(source)) derived.set(source, build());
   return derived.get(source) as T;
 }
+let lastDatabases: { signature: string; map: Map<string, DatabaseInfo> } | null = null;
 let lastTables: { signature: string; map: Map<string, TablesInput | undefined> } | null = null;
 const NOT_IN_DOMAIN = "@domain-model/not-in-domain";
 
@@ -147,23 +156,39 @@ export function useForest(): { forest: Forest | null; rows: readonly ElementSumm
       ),
     [settings.data],
   );
-  const categoryTreeId = rows?.find((r) => r.kind === "category-tree" && !r.package)?.id ?? null;
-  const categoryTree = useElement(categoryTreeId);
-  // One derived pair per category-tree document (`once` caches one value per source object).
-  const categoryMaps = useMemo(
+  // Every category tree, the global one first, then each domain's (§1.11): the filter's sub-categories and the
+  // project-defined folders follow the domain-scoped trees too.
+  const categoryTreeIds = useMemo(
     () =>
-      once(categoryTree.data, () => {
-        const doc = categoryTree.data?.json as CategoryTreeDoc | undefined;
-        return doc?.categories
-          ? {
-              parents: new Map(doc.categories.map((c) => [c.id, (c as { parent?: string | null }).parent ?? null])),
-              names: new Map(doc.categories.map((c) => [c.id, c.name])),
-              list: doc.categories.map((c) => ({ id: c.id, name: c.name, parent: (c as { parent?: string | null }).parent ?? null })),
-            }
-          : undefined;
-      }),
-    [categoryTree.data],
+      (rows ?? [])
+        .filter((r) => r.kind === "category-tree")
+        .sort((a, b) => Number(!!a.package) - Number(!!b.package) || a.id.localeCompare(b.id))
+        .map((r) => r.id),
+    [rows],
   );
+  const categoryTrees = useElements(categoryTreeIds);
+  // Each database's declared schemas and default (erratum E26): the tree shows every declared schema as a row.
+  const databaseDocs = useElements(databaseIds);
+  const databaseSignature = databaseIds.map((x) => databaseDocs.byId.get(x)?.hash ?? "").join(",");
+  const databases = useMemo(() => {
+    // Shared across every useForest caller (as the tables are), so the forest cache sees one map per signature.
+    if (lastDatabases?.signature === databaseSignature) return lastDatabases.map;
+    const map = new Map<string, DatabaseInfo>();
+    for (const x of databaseIds) {
+      const json = databaseDocs.byId.get(x)?.json as Record<string, unknown> | undefined;
+      if (!json) continue;
+      map.set(x, {
+        dialect: String(json.dialect ?? ""),
+        defaultSchema: typeof json.defaultSchema === "string" ? json.defaultSchema : null,
+        schemas: schemasOf(json).map((s) => s.name),
+      });
+    }
+    lastDatabases = { signature: databaseSignature, map };
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the signature stands for the documents
+  }, [databaseSignature]);
+  const categoryDocs = categoryTreeIds.map((x) => categoryTrees.byId.get(x)?.json as CategoryTreeDoc | undefined);
+  const categoryMaps = categoryMapsOf(categoryDocs);
   const categoryParents = categoryMaps?.parents;
   const categoryNames = categoryMaps?.names;
   const { store } = useServices();
@@ -182,16 +207,23 @@ export function useForest(): { forest: Forest | null; rows: readonly ElementSumm
       rows
         ? perfSync(
             "explorer:build",
-            () => forestOf({ rows, tables, errors, folders, categoryParents, categoryNames, referenceFlat }),
+            () => forestOf({ rows, tables, databases, errors, folders, categoryParents, categoryNames, referenceFlat }),
             // `patched`: the rows came from a model.changed or save patch, which forestOf applies in place (4.4).
             () => ({ elements: rows.length, patched: !!indexPatchOf(rows) }),
           )
         : null,
-    [rows, tables, errors, folders, categoryParents, categoryNames, referenceFlat],
+    [rows, tables, databases, errors, folders, categoryParents, categoryNames, referenceFlat],
   );
   // In idle time, build the folders the first paint left pending (4.3), so a first search or expand finds them built.
   useEffect(() => {
-    if (!forest || !forest.pending.size) return;
+    if (!forest) return;
+    // A forest with nothing pending is settled at once; one with pending folders when its prebuild ends (the scale project
+    // waits on this flag: a forest patched from a prebuilt one can have nothing pending and so records no prebuilt entry).
+    if (!forest.pending.size) {
+      editorPerf().explorerSettled = true;
+      return;
+    }
+    editorPerf().explorerSettled = false;
     let handle = 0;
     const idle = (cb: (deadline: { timeRemaining(): number }) => void) =>
       typeof requestIdleCallback === "function" ? requestIdleCallback(cb, { timeout: 2000 }) : window.setTimeout(() => cb({ timeRemaining: () => 8 }), 50);
@@ -200,7 +232,10 @@ export function useForest(): { forest: Forest | null; rows: readonly ElementSumm
     const step = (deadline: { timeRemaining(): number }) => {
       const sliceEnd = performance.now() + 4;
       if (prebuild(forest, () => deadline.timeRemaining() > 2 && performance.now() < sliceEnd)) handle = idle(step);
-      else started({ rows: forest.nodes.size });
+      else {
+        started({ rows: forest.nodes.size });
+        editorPerf().explorerSettled = true;
+      }
     };
     handle = idle(step);
     return () => cancel(handle);
@@ -218,7 +253,19 @@ interface FilterResult {
   ms: number;
 }
 
+/**
+ * One derived value per set of category-tree documents, module-wide like `once`: the forest is cached on the maps'
+ * identity, so every explorer on screen (and one mounted after a rail switch) shares the same forest.
+ */
+let lastCategories: { docs: (CategoryTreeDoc | undefined)[]; maps: CategoryMaps | undefined } | null = null;
+function categoryMapsOf(docs: (CategoryTreeDoc | undefined)[]): CategoryMaps | undefined {
+  if (!lastCategories || lastCategories.docs.length !== docs.length || lastCategories.docs.some((d, i) => d !== docs[i]))
+    lastCategories = { docs, maps: mergeCategoryTrees(docs) };
+  return lastCategories.maps;
+}
+
 const NO_MEMBERS: ReadonlySet<string> = new Set();
+const NO_IDS: string[] = [];
 
 /**
  * The elements on the active canvas (explorer-redesign.md 3.5, membership dots): a diagram's members (its draft while
@@ -312,6 +359,9 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   const { store, realtime, queryClient } = services;
   const { forest, rows: indexRows, pending, error } = useForest();
   const selection = useEditor(store, (s) => s.selection);
+  // Each explorer's own selection (the rows it shows selected, what a Ctrl+click extends): the store records every
+  // selection under the explorer it was made in. The related highlight and follow-selection read the global one.
+  const own = useEditor(store, (s) => s.selectionBy[id] ?? NO_IDS);
   const drafts = useEditor(store, (s) => s.drafts);
   const presence = useEditor(store, (s) => s.presence);
   const view = useEditor(store, (s) => s.explorer.views[id]);
@@ -319,7 +369,9 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   const referenceFlat = useEditor(store, (s) => s.explorer.referenceFlat);
   const followSelection = useEditor(store, (s) => s.explorer.followSelection);
   const pinnedId = useEditor(store, (s) => s.explorer.pinned);
-  const { reveal, select, openDatabase, openWorkspace, openDiagram, openEditor, openSeedData } = useEditorNavigation();
+  const { reveal, select: selectIn, openDatabase, openWorkspace, openDiagram, openEditor, openSeedData } = useEditorNavigation();
+  // The pinned second explorer keeps its own selection (1.0); the inspector follows it while it is pinned.
+  const select = useCallback((ids: string[]) => selectIn(ids, null, pinned ? id : undefined), [selectIn, pinned, id]);
   const [importingSeeds, setImportingSeeds] = useState(false);
   const [importingCsv, setImportingCsv] = useState<{ id: string; name: string } | null>(null);
   const exportSeeds = (domain?: { id: string; name: string }) =>
@@ -353,9 +405,12 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   const [anchorKey, setAnchorKey] = useState<string | null>(null);
   const [menu, setMenu] = useState<(RowMenuState & { keys: string[] }) | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [newSchemaFor, setNewSchemaFor] = useState<string | null>(null);
   const [loading, setLoading] = useState<ReadonlySet<string>>(new Set());
   const [moving, setMoving] = useState<string[] | null>(null);
   const [mappingTo, setMappingTo] = useState<string[] | null>(null);
+  const [marking, setMarking] = useState<{ kind: MarkKind; ids: string[] } | null>(null);
+  const [promoting, setPromoting] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string[] | null>(null);
   const [dropKey, setDropKey] = useState<string | null>(null);
   const dragged = useRef<string[]>([]);
@@ -443,7 +498,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
     [forest, store],
   );
 
-  const selected = useMemo(() => new Set(selection), [selection]);
+  const selected = useMemo(() => new Set(own), [own]);
   const keyIndex = useMemo(() => {
     const map = new Map<string, number>();
     rows.forEach((r, i) => map.set(r.key, i));
@@ -504,6 +559,10 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   const selectedKey = forest && selection.length === 1 ? forest.place.get(selection[0]) : undefined;
   const focusKey = forest && explorerItem && forest.nodes.has(explorerItem) ? explorerItem : selectedKey;
   const related = useMemo(() => (forest && highlight && focusKey ? relatedKeys(forest, focusKey) : new Set<string>()), [forest, highlight, focusKey]);
+  const onCanvasCount = useMemo(
+    () => (forest && canvasMembers.size ? canvasCounts(forest, canvasMembers) : new Map<string, number>()),
+    [forest, canvasMembers],
+  );
   const relatedCount = useMemo(() => (forest && related.size ? relatedCounts(forest, related) : new Map<string, number>()), [forest, related]);
   // The commit that paints a new highlight (the scale project times selection -> related rows highlighted with it).
   useLayoutEffect(() => {
@@ -713,8 +772,8 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       if (!node) return;
       const elementId = idOf(key);
       if ((e.ctrlKey || e.metaKey) && elementId) {
-        const sameKind = selection.every((s) => forest.byId.get(s)?.kind === node.kind);
-        select(sameKind ? (selected.has(elementId) ? selection.filter((x) => x !== elementId) : [...selection, elementId]) : [elementId]);
+        const sameKind = own.every((s) => forest.byId.get(s)?.kind === node.kind);
+        select(sameKind ? (selected.has(elementId) ? own.filter((x) => x !== elementId) : [...own, elementId]) : [elementId]);
         setAnchorKey(key);
         return;
       }
@@ -735,7 +794,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         if (elementId) select([elementId]);
       } else openRow(key);
     },
-    [forest, id, idOf, selection, selected, select, anchorKey, keyIndex, kindOf, selectKeys, toggle, openRow, doubleClickRow, awaitsSecondClick],
+    [forest, id, idOf, own, selected, select, anchorKey, keyIndex, kindOf, selectKeys, toggle, openRow, doubleClickRow, awaitsSecondClick],
   );
 
   // ------------------------------------------------------------------ menus
@@ -764,13 +823,13 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
     (key: string, at: { x: number; y: number }) => {
       if (!forest) return;
       const id = idOf(key);
-      const keys = id && selected.has(id) && selection.length > 1 ? selection.map((s) => forest.place.get(s)).filter((k): k is string => !!k) : [key];
+      const keys = id && selected.has(id) && own.length > 1 ? own.map((s) => forest.place.get(s)).filter((k): k is string => !!k) : [key];
       if (id && !selected.has(id)) select([id]);
       const targets = keys.map(targetOf).filter((t): t is MenuTarget => !!t);
       const title = keys.length > 1 ? `${keys.length} selected` : (nodeOf(forest, key)?.label ?? "");
       setMenu({ ...at, title, items: menuFor(targets), keys });
     },
-    [forest, idOf, selected, selection, select, targetOf],
+    [forest, idOf, selected, own, select, targetOf],
   );
   const onContextMenu = useCallback(
     (key: string, e: MouseEvent) => {
@@ -844,6 +903,9 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       case "open-mappings":
         openWorkspace("mappings");
         break;
+      case "new-schema":
+        if (node?.id) setNewSchemaFor(node.id);
+        break;
       case "show-on-canvas": {
         const target = ids[0];
         if (!target) break;
@@ -901,6 +963,14 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         break;
       case "map-to-database":
         if (ids.length) setMappingTo(ids);
+        break;
+      case "apply-stereotype":
+      case "tag":
+      case "set-category":
+        if (ids.length) setMarking({ kind: action === "apply-stereotype" ? "stereotype" : action === "tag" ? "tag" : "category", ids });
+        break;
+      case "promote":
+        if (ids[0]) setPromoting(ids[0]);
         break;
       case "edit-seed-data":
         if (ids[0] && forest.byId.has(ids[0])) openSeedData(forest.byId.get(ids[0]) as ElementSummary);
@@ -972,11 +1042,11 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       const id = idOf(key);
       if (!id) return;
       const kind = kindOf(key);
-      const same = selection.every((s) => forest?.byId.get(s)?.kind === kind);
-      select(same ? (selected.has(id) ? selection.filter((x) => x !== id) : [...selection, id]) : [id]);
+      const same = own.every((s) => forest?.byId.get(s)?.kind === kind);
+      select(same ? (selected.has(id) ? own.filter((x) => x !== id) : [...own, id]) : [id]);
     } else if (a.type === "rename" && key && isMovable(kindOf(key)) && idOf(key)) setRenaming(key);
     else if (a.type === "delete") {
-      const ids = selection.filter((s) => forest?.byId.has(s) && forest.nodes.get(forest.place.get(s) ?? "")?.explorer === id);
+      const ids = own.filter((s) => forest?.byId.has(s) && forest.nodes.get(forest.place.get(s) ?? "")?.explorer === id);
       if (ids.length) setDeleting(ids);
     } else if (a.type === "menu" && key) menuAtRow(key);
   };
@@ -988,14 +1058,14 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
     (key: string, e: DragEvent) => {
       const id = idOf(key);
       if (!id) return;
-      dragged.current = selected.has(id) ? selection.filter((s) => isMovable(forest?.byId.get(s)?.kind)) : [id];
+      dragged.current = selected.has(id) ? own.filter((s) => isMovable(forest?.byId.get(s)?.kind)) : [id];
       e.dataTransfer.effectAllowed = "copyMove";
       e.dataTransfer.setData("text/plain", dragged.current.join(","));
       // Onto the canvas (3.5): the entities and relationships among the dragged rows.
       const onCanvas = dragged.current.filter((x) => ["entity", "relation"].includes(forest?.byId.get(x)?.kind ?? ""));
       if (onCanvas.length) e.dataTransfer.setData(ELEMENTS_MIME, JSON.stringify(onCanvas));
     },
-    [idOf, selected, selection, forest],
+    [idOf, selected, own, forest],
   );
   const dropTargetOf = useCallback(
     (key: string): string | null | undefined => {
@@ -1121,6 +1191,15 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         onCollapseAll={collapseAll}
         onExportSeeds={() => exportSeeds()}
         onImportSeeds={() => setImportingSeeds(true)}
+        schemaDatabase={
+          id === "databases" && forest
+            ? ((selection[0] && forest.byId.get(selection[0])?.kind === "database" ? selection[0] : undefined) ??
+              (selection[0] && forest.byId.get(selection[0])?.database) ??
+              (activeRow ? databaseOf(forest, activeRow.key) : undefined) ??
+              null)
+            : null
+        }
+        onNewSchema={setNewSchemaFor}
         onNew={(kind) => {
           const key = selection[0] && forest ? forest.place.get(selection[0]) : undefined;
           const current = forest && key && forest.nodes.get(key)?.explorer === id ? domainOfKey(forest, key) : null;
@@ -1178,6 +1257,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
                       active={item.index === active}
                       related={related.has(row.key)}
                       onCanvas={!!elementId && canvasMembers.has(elementId)}
+                      onCanvasCount={onCanvasCount.get(row.key) ?? 0}
                       relatedCount={relatedCount.get(row.key) ?? 0}
                       draft={!!elementId && !!drafts[elementId]}
                       presence={elementId ? others.get(elementId) : undefined}
@@ -1215,6 +1295,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
           run(action, keys);
         }}
       />
+      {newSchemaFor ? <NewSchemaDialog database={newSchemaFor} onClose={() => setNewSchemaFor(null)} /> : null}
       {forest ? (
         <>
           <ImportSeedsDialog open={importingSeeds} onOpenChange={setImportingSeeds} />
@@ -1243,6 +1324,17 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
               );
             }}
           />
+          {marking ? <MarkDialog forest={forest} request={marking} onClose={() => setMarking(null)} /> : null}
+          {promoting ? (
+            <PromoteDialog
+              id={promoting}
+              onClose={() => setPromoting(null)}
+              onDone={(entity) => {
+                setPromoting(null);
+                select([entity]);
+              }}
+            />
+          ) : null}
           <MoveDialog
             forest={forest}
             ids={moving}
@@ -1295,6 +1387,9 @@ function ExplorerHeader(props: {
   referenceFlat: boolean;
   onCollapseAll: () => void;
   onNew: (kind: CreateKind) => void;
+  /** The database the New menu's New schema… adds to (a database row or a row inside one), if any. */
+  schemaDatabase?: string | null;
+  onNewSchema?: (database: string) => void;
   onExportSeeds: () => void;
   onImportSeeds: () => void;
 }) {
@@ -1319,6 +1414,11 @@ function ExplorerHeader(props: {
               {CREATE_LABELS[kind]}
             </DropdownMenuItem>
           ))}
+          {props.schemaDatabase ? (
+            <DropdownMenuItem onSelect={() => props.onNewSchema?.(props.schemaDatabase!)} data-testid="explorer-new-schema">
+              New schema…
+            </DropdownMenuItem>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
       <DropdownMenu>

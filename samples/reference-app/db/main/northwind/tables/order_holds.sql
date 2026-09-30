@@ -11,13 +11,13 @@ CREATE TABLE northwind.order_holds (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    placed_by_id uuid NULL,
     reason_id integer NOT NULL,
+    placed_by_id uuid NULL,
     released_by_id uuid NULL,
     sales_order_id uuid NOT NULL,
     CONSTRAINT pk_order_holds PRIMARY KEY (id),
-    CONSTRAINT fk_order_holds_placed_by_id FOREIGN KEY (placed_by_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL,
     CONSTRAINT fk_order_holds_reason_id FOREIGN KEY (reason_id) REFERENCES northwind.hold_reasons (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_order_holds_placed_by_id FOREIGN KEY (placed_by_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL,
     CONSTRAINT fk_order_holds_released_by_id FOREIGN KEY (released_by_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL,
     CONSTRAINT fk_order_holds_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE
 );

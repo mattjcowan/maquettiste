@@ -1,0 +1,930 @@
+[
+  {
+    "id": "MQ1001",
+    "defaultSeverity": "error",
+    "description": "Invalid JSON.",
+    "family": "MQ10xx",
+    "familyLabel": "Model files",
+    "canBeOff": false
+  },
+  {
+    "id": "MQ1002",
+    "defaultSeverity": "error",
+    "description": "Schema violation.",
+    "family": "MQ10xx",
+    "familyLabel": "Model files",
+    "canBeOff": false
+  },
+  {
+    "id": "MQ1003",
+    "defaultSeverity": "warning",
+    "description": "File is not in canonical form; run maquettiste format to rewrite it.",
+    "family": "MQ10xx",
+    "familyLabel": "Model files",
+    "canBeOff": false
+  },
+  {
+    "id": "MQ1004",
+    "defaultSeverity": "error",
+    "description": "Duplicate id.",
+    "family": "MQ10xx",
+    "familyLabel": "Model files",
+    "canBeOff": false
+  },
+  {
+    "id": "MQ1005",
+    "defaultSeverity": "warning",
+    "description": "File is in the wrong folder or its name does not match the element.",
+    "family": "MQ10xx",
+    "familyLabel": "Model files",
+    "canBeOff": false
+  },
+  {
+    "id": "MQ1006",
+    "defaultSeverity": "error",
+    "description": "Invalid ULID.",
+    "family": "MQ10xx",
+    "familyLabel": "Model files",
+    "canBeOff": false
+  },
+  {
+    "id": "MQ1007",
+    "defaultSeverity": "error",
+    "description": "Unsupported model format version.",
+    "family": "MQ10xx",
+    "familyLabel": "Model files",
+    "canBeOff": false
+  },
+  {
+    "id": "MQ1008",
+    "defaultSeverity": "warning",
+    "description": "The .schema folder is out of date.",
+    "family": "MQ10xx",
+    "familyLabel": "Model files",
+    "canBeOff": false
+  },
+  {
+    "id": "MQ1009",
+    "defaultSeverity": "error",
+    "description": "A second tag vocabulary or category tree in the same scope (global or one domain); the ordinally first file is used.",
+    "family": "MQ10xx",
+    "familyLabel": "Model files",
+    "canBeOff": false
+  },
+  {
+    "id": "MQ2001",
+    "defaultSeverity": "error",
+    "description": "Dangling reference.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2002",
+    "defaultSeverity": "error",
+    "description": "Reference to an element of the wrong kind.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2003",
+    "defaultSeverity": "error",
+    "description": "Unknown stereotype.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2004",
+    "defaultSeverity": "error",
+    "description": "Stereotype not applicable to this kind.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2005",
+    "defaultSeverity": "error",
+    "description": "Unknown category.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2006",
+    "defaultSeverity": "info",
+    "description": "Undeclared tag (an error when the tag vocabulary is strict).",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2007",
+    "defaultSeverity": "error",
+    "description": "Attribute validation names an unknown rule.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ2008",
+    "defaultSeverity": "error",
+    "description": "A tag or category is declared only in a domain vocabulary outside the element's domain chain.",
+    "family": "MQ20xx",
+    "familyLabel": "References and vocabularies",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3001",
+    "defaultSeverity": "error",
+    "description": "Duplicate name in scope.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3002",
+    "defaultSeverity": "error",
+    "description": "Inheritance cycle.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3003",
+    "defaultSeverity": "error",
+    "description": "Package cycle.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3004",
+    "defaultSeverity": "error",
+    "description": "Category cycle.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3005",
+    "defaultSeverity": "error",
+    "description": "Entity without a key.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3006",
+    "defaultSeverity": "error",
+    "description": "Key names a missing attribute.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3007",
+    "defaultSeverity": "error",
+    "description": "Duplicate attribute name, virtual attributes included.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3008",
+    "defaultSeverity": "error",
+    "description": "Relation end count does not match its kind.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3009",
+    "defaultSeverity": "error",
+    "description": "Navigation collides with a member of the entity.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3010",
+    "defaultSeverity": "error",
+    "description": "Invalid cardinality.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3011",
+    "defaultSeverity": "error",
+    "description": "Set-null on a required end.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3012",
+    "defaultSeverity": "error",
+    "description": "Enum member name or code duplicated, or a flags value that is not a power of two.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3013",
+    "defaultSeverity": "error",
+    "description": "Facet invalid for the type.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3014",
+    "defaultSeverity": "error",
+    "description": "Custom scalar base is not a built-in type.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3015",
+    "defaultSeverity": "error",
+    "description": "Value object containment cycle.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3016",
+    "defaultSeverity": "error",
+    "description": "Composition child with two owners.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3017",
+    "defaultSeverity": "warning",
+    "description": "Default value looks like a credential.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3018",
+    "defaultSeverity": "error",
+    "description": "Invalid name for the element kind.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3019",
+    "defaultSeverity": "error",
+    "description": "Literal default does not match the attribute's type (use defaultExpression for now, today, new-uuid or new-ulid).",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3020",
+    "defaultSeverity": "error",
+    "description": "A stereotype's key cannot change.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3021",
+    "defaultSeverity": "error",
+    "description": "A domain vocabulary redeclares a tag key or category name of the global vocabulary or an enclosing domain's.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4001",
+    "defaultSeverity": "error",
+    "description": "Identifier longer than the dialect's limit.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4002",
+    "defaultSeverity": "error",
+    "description": "Duplicate table name in a schema.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4003",
+    "defaultSeverity": "error",
+    "description": "Duplicate column name.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4004",
+    "defaultSeverity": "error",
+    "description": "Two mappings for one element in one database.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4005",
+    "defaultSeverity": "error",
+    "description": "Foreign key column type does not match the referenced column.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4006",
+    "defaultSeverity": "warning",
+    "description": "Native type unknown to the dialect map.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4007",
+    "defaultSeverity": "error",
+    "description": "Overlay references a missing column key.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4008",
+    "defaultSeverity": "error",
+    "description": "Constraint or index names a missing column.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4009",
+    "defaultSeverity": "error",
+    "description": "Mapping option invalid for the element.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4010",
+    "defaultSeverity": "error",
+    "description": "View body missing for the database's dialect.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4011",
+    "defaultSeverity": "error",
+    "description": "Relation between bound tables names no foreign key or junction end binding.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4012",
+    "defaultSeverity": "info",
+    "description": "An entity lands in no database: no database takes its domain by convention and no mapping names it.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4013",
+    "defaultSeverity": "warning",
+    "description": "A database lists convention packages that its byConvention setting does not use.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4014",
+    "defaultSeverity": "error",
+    "description": "A convention package entry or an entity mapping names a schema that its database does not declare.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4015",
+    "defaultSeverity": "error",
+    "description": "A schema operation was refused: the schema is unknown or its name is taken, it still holds tables, views, sequences, convention entries or mappings and no target was given, or it is the default and no other schema becomes the default.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ5001",
+    "defaultSeverity": "error",
+    "description": "Property fails its extension schema.",
+    "family": "MQ50xx",
+    "familyLabel": "Extensions and script rules",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ5002",
+    "defaultSeverity": "error",
+    "description": "Validation rule script error.",
+    "family": "MQ50xx",
+    "familyLabel": "Extensions and script rules",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ5003",
+    "defaultSeverity": "error",
+    "description": "Validation rule exceeded a sandbox limit.",
+    "family": "MQ50xx",
+    "familyLabel": "Extensions and script rules",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ5004",
+    "defaultSeverity": "error",
+    "description": "Invalid extension file.",
+    "family": "MQ50xx",
+    "familyLabel": "Extensions and script rules",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6001",
+    "defaultSeverity": "error",
+    "description": "Invalid pack.json.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6002",
+    "defaultSeverity": "error",
+    "description": "Engine version range not satisfied.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6003",
+    "defaultSeverity": "error",
+    "description": "Template parse error.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6004",
+    "defaultSeverity": "error",
+    "description": "Output path refused.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6005",
+    "defaultSeverity": "error",
+    "description": "Duplicate or case-colliding output path.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6006",
+    "defaultSeverity": "error",
+    "description": "Render error.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6007",
+    "defaultSeverity": "error",
+    "description": "Sandbox limit exceeded.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6008",
+    "defaultSeverity": "error",
+    "description": "Formatter failed or its version does not match.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6009",
+    "defaultSeverity": "error",
+    "description": "Hand edit.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6010",
+    "defaultSeverity": "error",
+    "description": "Protected region lost.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6011",
+    "defaultSeverity": "warning",
+    "description": "Text outside file blocks in a unit without output.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6012",
+    "defaultSeverity": "error",
+    "description": "Non-deterministic builtin used.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6013",
+    "defaultSeverity": "error",
+    "description": "Helper name collides with a builtin.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6014",
+    "defaultSeverity": "warning",
+    "description": "Unit names an unknown formatter.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6015",
+    "defaultSeverity": "error",
+    "description": "Regions mode on a built root.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6016",
+    "defaultSeverity": "error",
+    "description": "Script error.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6017",
+    "defaultSeverity": "error",
+    "description": "Selector returned an unknown id.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6018",
+    "defaultSeverity": "error",
+    "description": "Stale schema snapshot.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6019",
+    "defaultSeverity": "error",
+    "description": "A unit's output path cannot stay under an allowed output root.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6020",
+    "defaultSeverity": "error",
+    "description": "Two elements of one unit render the same output path.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6021",
+    "defaultSeverity": "error",
+    "description": "A unit's scope (for) is not a known scope.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6022",
+    "defaultSeverity": "error",
+    "description": "A unit names a template or companion template that is not in the pack.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6023",
+    "defaultSeverity": "error",
+    "description": "A project parameter value fails the pack's parameter schema.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6024",
+    "defaultSeverity": "warning",
+    "description": "A project parameter value names a parameter the pack does not declare.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6025",
+    "defaultSeverity": "warning",
+    "description": "A pack file that no unit reaches does not parse.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6026",
+    "defaultSeverity": "error",
+    "description": "A preview names an element outside its unit's scope.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7001",
+    "defaultSeverity": "error",
+    "description": "Duplicate code in a reference type, across all its seeds.",
+    "family": "MQ70xx",
+    "familyLabel": "Reference types",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7002",
+    "defaultSeverity": "warning",
+    "description": "Two codes of one reference type differ only by case.",
+    "family": "MQ70xx",
+    "familyLabel": "Reference types",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7003",
+    "defaultSeverity": "error",
+    "description": "A row misses a required field.",
+    "family": "MQ70xx",
+    "familyLabel": "Reference types",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7004",
+    "defaultSeverity": "error",
+    "description": "A seed cell does not match its column's type or facets.",
+    "family": "MQ70xx",
+    "familyLabel": "Reference types",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7005",
+    "defaultSeverity": "error",
+    "description": "A seed column names neither a field nor an end of the target, names one twice, or a row has more values than columns.",
+    "family": "MQ70xx",
+    "familyLabel": "Reference types",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7006",
+    "defaultSeverity": "error",
+    "description": "A collection attribute whose effective reference storage strategy in a database does not support collections.",
+    "family": "MQ70xx",
+    "familyLabel": "Reference types",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7007",
+    "defaultSeverity": "error",
+    "description": "A storage choice names a strategy the project has not declared.",
+    "family": "MQ70xx",
+    "familyLabel": "Reference types",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7008",
+    "defaultSeverity": "error",
+    "description": "Storage options fail the strategy's option schema.",
+    "family": "MQ70xx",
+    "familyLabel": "Reference types",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7009",
+    "defaultSeverity": "error",
+    "description": "A seed cell names a row that does not exist.",
+    "family": "MQ70xx",
+    "familyLabel": "Reference types",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7010",
+    "defaultSeverity": "error",
+    "description": "Invalid reference type field: code type, field type or reserved field name.",
+    "family": "MQ70xx",
+    "familyLabel": "Reference types",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7011",
+    "defaultSeverity": "error",
+    "description": "An allowedValues entry on a reference-typed attribute names a code that is not in the type's rows.",
+    "family": "MQ70xx",
+    "familyLabel": "Reference types",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7012",
+    "defaultSeverity": "error",
+    "description": "The enum lookup-table storage option ('lookup') is retired: convert the enum to a reference type, whose storage strategy then decides the lookup table.",
+    "family": "MQ70xx",
+    "familyLabel": "Reference types",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7013",
+    "defaultSeverity": "error",
+    "description": "A uuid code is not a UUID in canonical form: 8-4-4-4-12 lowercase hexadecimal digits with hyphens.",
+    "family": "MQ70xx",
+    "familyLabel": "Reference types",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7101",
+    "defaultSeverity": "error",
+    "description": "A seed targets an abstract entity.",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7102",
+    "defaultSeverity": "error",
+    "description": "A seed key cell is missing, or two rows of one target share a key value.",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7103",
+    "defaultSeverity": "warning",
+    "description": "Required row references form a cycle, so no insert order exists.",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7104",
+    "defaultSeverity": "warning",
+    "description": "A seed has more than 10,000 rows or 5 MB.",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7105",
+    "defaultSeverity": "error",
+    "description": "A column of an entity seed names a to-many end.",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7106",
+    "defaultSeverity": "error",
+    "description": "A relation link stated twice: an entity seed has an end column of a relation that also has seeds.",
+    "family": "MQ71xx",
+    "familyLabel": "Seeds",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7201",
+    "defaultSeverity": "error",
+    "description": "Invalid localization settings: a locale that is not BCP 47, a default not in the locales, a fallback naming an undeclared locale, a fallback cycle, or a required node kind that does not exist.",
+    "family": "MQ72xx",
+    "familyLabel": "Localization",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7202",
+    "defaultSeverity": "warning",
+    "description": "A locale folder for an undeclared locale or for the default locale; its files are not loaded.",
+    "family": "MQ72xx",
+    "familyLabel": "Localization",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7203",
+    "defaultSeverity": "warning",
+    "description": "An orphan translation: its id is not a localizable node of the model, or it has a field the node does not have.",
+    "family": "MQ72xx",
+    "familyLabel": "Localization",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7204",
+    "defaultSeverity": "info",
+    "description": "A locale is incomplete in a shard: the counts of missing and stale texts, for the required kinds.",
+    "family": "MQ72xx",
+    "familyLabel": "Localization",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7205",
+    "defaultSeverity": "info",
+    "description": "A missing translation, one per node and field (off unless validation.rules gives it a severity).",
+    "family": "MQ72xx",
+    "familyLabel": "Localization",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7206",
+    "defaultSeverity": "info",
+    "description": "Stale translations in a shard: made from a default text that has changed since.",
+    "family": "MQ72xx",
+    "familyLabel": "Localization",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7207",
+    "defaultSeverity": "warning",
+    "description": "A translation entry in the wrong shard (its node moved); it still applies.",
+    "family": "MQ72xx",
+    "familyLabel": "Localization",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7208",
+    "defaultSeverity": "error",
+    "description": "A translated description's Markdown sidecar does not exist.",
+    "family": "MQ72xx",
+    "familyLabel": "Localization",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7209",
+    "defaultSeverity": "error",
+    "description": "One id in two shards of one locale; the ordinally first path applies.",
+    "family": "MQ72xx",
+    "familyLabel": "Localization",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7210",
+    "defaultSeverity": "warning",
+    "description": "A shard whose locale differs from its folder, or whose scope differs from its path; it applies to its declared locale and scope.",
+    "family": "MQ72xx",
+    "familyLabel": "Localization",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ7211",
+    "defaultSeverity": "warning",
+    "description": "A plural name on a to-one relation end, or its translation; it is never read.",
+    "family": "MQ72xx",
+    "familyLabel": "Localization",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ8001",
+    "defaultSeverity": "error",
+    "description": "A branding color that is not a hex color (#rrggbb or #rgb).",
+    "family": "MQ80xx",
+    "familyLabel": "Branding",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ8002",
+    "defaultSeverity": "error",
+    "description": "The branding icon is not an .svg or .png file under branding/ in the model folder, or the file does not exist.",
+    "family": "MQ80xx",
+    "familyLabel": "Branding",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ8003",
+    "defaultSeverity": "error",
+    "description": "The branding icon is not a safe SVG (scripts, event handlers, external references) or a PNG of at most 512 KB.",
+    "family": "MQ80xx",
+    "familyLabel": "Branding",
+    "canBeOff": true
+  }
+]

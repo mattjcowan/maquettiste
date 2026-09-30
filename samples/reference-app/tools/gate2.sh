@@ -100,7 +100,7 @@ step_check() {
   # The walk's two edits reached the model and both packs' output.
   model="$dir/.maquettiste/model"
   grep -q '"name": "receivingHours"' "$model/entities/warehouse.json" || { echo "gate2: attribute receivingHours is not in the model" >&2; exit 1; }
-  test -f "$model/relations/delivery-route-depot.json" || { echo "gate2: relation delivery route depot is not in the model" >&2; exit 1; }
+  test -f "$model/relations/delivery-route-departs-from-depot.json" || { echo "gate2: relation delivery route departs from depot is not in the model" >&2; exit 1; }
   grep -q receiving_hours "$dir/db/main/northwind/tables/warehouses.sql" || { echo "gate2: warehouses.sql lacks receiving_hours" >&2; exit 1; }
   grep -q ReceivingHours "$gen/Inventory/Warehouse.g.cs" || { echo "gate2: Warehouse.g.cs lacks ReceivingHours" >&2; exit 1; }
   cli --repo "$dir" validate

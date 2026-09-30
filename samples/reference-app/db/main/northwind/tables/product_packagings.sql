@@ -13,9 +13,9 @@ CREATE TABLE northwind.product_packagings (
     gross_weight_value numeric(12,3) NULL,
     gross_weight_unit varchar(3) NULL,
     gtin varchar(14) NULL,
-    unit_code varchar(3) NOT NULL,
     product_id uuid NOT NULL,
+    unit_code varchar(3) NOT NULL,
     CONSTRAINT pk_product_packagings PRIMARY KEY (id),
-    CONSTRAINT fk_product_packagings_unit_code FOREIGN KEY (unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE RESTRICT,
-    CONSTRAINT fk_product_packagings_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
+    CONSTRAINT fk_product_packagings_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE,
+    CONSTRAINT fk_product_packagings_unit_code FOREIGN KEY (unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE RESTRICT
 );

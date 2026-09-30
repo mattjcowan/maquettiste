@@ -142,6 +142,9 @@ export interface NewElementInput {
   /** A database's "Map domains by convention" choice (none by default) and the picked domains. */
   convention?: "none" | "pick" | "all";
   packages?: readonly string[];
+  /** A new database's schemas (the first is the default) and the schema each picked domain goes to (erratum E26). */
+  schemas?: readonly { id: string; name: string }[];
+  packageSchemas?: Readonly<Record<string, string>>;
   /** A relationship's ends. */
   source?: string;
   target?: string;
@@ -200,7 +203,14 @@ export function buildElement(kind: Exclude<CreateKind, "reference-type">, input:
       break;
     case "database":
       // A new database holds nothing until something is mapped to it (D46): the member is always written.
-      json = { kind: "database", id, name, dialect: input.dialect ?? "postgresql", ...newDatabaseConvention(input.convention ?? "none", input.packages ?? []) };
+      json = {
+        kind: "database",
+        id,
+        name,
+        dialect: input.dialect ?? "postgresql",
+        ...(input.schemas?.length ? { defaultSchema: input.schemas[0].name, schemas: input.schemas.map((x) => ({ id: x.id, name: x.name })) } : {}),
+        ...newDatabaseConvention(input.convention ?? "none", input.packages ?? [], input.packageSchemas ?? {}),
+      };
       break;
     case "enum":
     case "value-object":

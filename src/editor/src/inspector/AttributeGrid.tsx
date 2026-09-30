@@ -29,6 +29,8 @@ const COLUMNS: { key: ColumnKey; label: string; kind: "toggle" | "text" | "numbe
 ];
 
 export interface AttributeGridProps {
+  /** The element the attributes belong to: a different one resets the active cell and closes the editor. */
+  owner?: string;
   label: string;
   attributes: AttributeDoc[];
   keyIds?: string[];
@@ -98,6 +100,7 @@ export function AttributeGrid({
   onChange,
   withKey = true,
   definition,
+  owner,
 }: AttributeGridProps) {
   const columns = useMemo(() => COLUMNS.filter((c) => withKey || c.key !== "key"), [withKey]);
   const table = useReactTable({
@@ -109,6 +112,14 @@ export function AttributeGrid({
   const [active, setActive] = useState<{ row: number; col: number }>({ row: 0, col: withKey ? 1 : 0 });
   // `select` selects the editor's text when it opens (a new row's generated name is replaced by typing).
   const [editing, setEditing] = useState<{ value: string; select?: boolean } | null>(null);
+  // The entity editor keeps the grid mounted from one entity to the next (General mode, §4.5): another owner starts
+  // on its first row with no cell open (state reset during render, before the stale cell could show).
+  const [shownOwner, setShownOwner] = useState(owner);
+  if (owner !== shownOwner) {
+    setShownOwner(owner);
+    setActive({ row: 0, col: withKey ? 1 : 0 });
+    setEditing(null);
+  }
   const gridRef = useRef<HTMLTableElement>(null);
   // Focus follows the grid state after React renders it: the active cell, or its editor while editing. The request
   // stays pending until the target exists, so a row added through the draft is focused once it is rendered.

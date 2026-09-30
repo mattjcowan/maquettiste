@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2S1V1ZHRK062QGBNVEKCBRA",
+  "name": "sales order is converted from quote",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "Quote the order was created from.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "ends": [
+    {
+      "id": "01M2YSPTDPJVHKV2DCDZ93BSVH",
+      "entity": "01M1X8D633QD4FHDVREPQ0K8JN",
+      "role": "quote",
+      "navigation": "quote",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1MFFQDXAHRK1X60C62Q2JPT",
+      "entity": "01M1GBW3NDKS6WCM5FAXYVHV7B",
+      "role": "salesOrders"
+    }
+  ]
+}

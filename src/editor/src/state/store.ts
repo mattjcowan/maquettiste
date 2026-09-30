@@ -121,6 +121,9 @@ export interface EditorState {
   selection: string[];
   /** Each sidebar view's own selection (the inspector follows the active one): the last selection made while it showed. */
   selectionBy: Partial<Record<SidebarView, string[]>>;
+  /** The explorer the last selection was made in: the active one, or the pinned second explorer (1.0); null after a
+   * rail switch. The inspector follows it while that explorer shows. */
+  selectionFrom: SidebarView | null;
   /** Problem navigation: the element and JSON pointer to reveal in the inspector. */
   focus: { id: string; pointer: string | null } | null;
   activeDiagram: string | null;
@@ -193,7 +196,7 @@ export interface EditorActions {
   toggleFavorite(id: string): void;
   /** Announces an in-place change to a view's expansion. */
   touchExplorer(): void;
-  select(ids: string[], focus?: { pointer: string | null }): void;
+  select(ids: string[], focus?: { pointer: string | null }, explorer?: SidebarView): void;
   /** Drops ids that no longer exist from the selection and from every explorer's remembered selection (after a delete). */
   pruneSelection(exists: (id: string) => boolean): void;
   setExplorerItem(key: string | null): void;
@@ -303,6 +306,7 @@ export function createEditorStore(): EditorStore {
     explorer: initialExplorer(),
     selection: [],
     selectionBy: {},
+    selectionFrom: null,
     focus: null,
     activeDiagram: null,
     activeDatabase: null,
@@ -344,7 +348,7 @@ export function createEditorStore(): EditorStore {
     setWorkspace: (workspace) => set((s) => ({ workspace, editors: s.workspace === workspace ? s.editors : activate(s.editors, null) })),
     setSidebar: (active) => {
       const pinned = get().explorer.pinned === active ? null : get().explorer.pinned;
-      set({ explorer: { ...get().explorer, active, pinned } });
+      set({ explorer: { ...get().explorer, active, pinned }, selectionFrom: null });
     },
     pinExplorer: (pinned) => {
       local.set("mq.explorer.pinned", pinned ?? "");
@@ -383,12 +387,13 @@ export function createEditorStore(): EditorStore {
       set({ explorer: { ...e, favorites } });
     },
     touchExplorer: () => set({ explorer: { ...get().explorer, version: get().explorer.version + 1 } }),
-    select: (ids, focus) => {
+    select: (ids, focus, explorer) => {
       // A selection is not an open: the Recent strip (3.3) changes only when an element is opened, so a click on a
       // tree row never grows the strip and shifts the tree under the pointer between the two clicks of a double click.
       set({
         selection: ids,
-        selectionBy: { ...get().selectionBy, [get().explorer.active]: ids },
+        selectionBy: { ...get().selectionBy, [explorer ?? get().explorer.active]: ids },
+        selectionFrom: explorer ?? get().explorer.active,
         explorerItem: null,
         focus: ids.length === 1 && focus ? { id: ids[0], pointer: focus.pointer } : null,
         history: visit(get().history, ids),

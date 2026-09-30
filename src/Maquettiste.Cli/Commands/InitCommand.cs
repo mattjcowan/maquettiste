@@ -398,6 +398,10 @@ internal static class InitCommand
         };
         if (pack != "none")
             settings["packs"] = new JsonObject { [pack] = new JsonObject { ["output"] = StarterPacks.OutputFolder(pack) } };
+        // The sql-ddl starter realizes lookup-table, check and native, so the project declares them (reference-types-seeds-localization.md
+        // section 1.4); without the declaration the New reference type dialog offers only Template-defined.
+        if (pack == "sql-ddl")
+            settings["referenceData"] = new JsonObject { ["strategies"] = StarterPacks.StandardReferenceStrategies() };
         return json.Write(settings, "maquettiste.json", "maquettiste.json");
     }
 

@@ -1,5 +1,5 @@
 // The Settings workspace (phase2-design.md 4.8; owner decision 7: phase 2 edits conventions and
-// vocabularies only; General (name and branding) came with the 2026-09-29 live test). The global tags and categories (vocabularies/VocabularyEditors; a domain's own are on the domain editor), stereotypes (list and form), conventions for the project and per database, locales (l10n/LocalesSettings),
+// vocabularies only; General (name and branding) came with the 2026-09-29 live test). The global tags and categories (vocabularies/VocabularyEditors; a domain's own are on the domain editor), stereotypes (list and form), conventions for the project and per database, locales (l10n/LocalesSettings), validation rule severities (ValidationSettings),
 // saved through PUT /api/project/settings with the inherited value as placeholder. Type maps,
 // output allowlist and formatters are read-only.
 import { useEffect, useMemo, useState } from "react";
@@ -29,8 +29,10 @@ import { TYPE_KINDS } from "@/model/model";
 import { LocalesSettings } from "@/l10n/LocalesSettings";
 import { CategoryTreeEditor, TagVocabularyEditor } from "@/vocabularies/VocabularyEditors";
 import { GeneralSettings } from "./GeneralSettings";
+import { StrategiesHint } from "./StrategiesHint";
+import { ValidationSettings } from "./ValidationSettings";
 
-const TABS = ["general", "tags", "categories", "stereotypes", "conventions", "locales", "project", "explorer"] as const;
+const TABS = ["general", "tags", "categories", "stereotypes", "conventions", "locales", "validation", "project", "explorer"] as const;
 
 export function SettingsWorkspace() {
   const location = useLocation();
@@ -45,6 +47,7 @@ export function SettingsWorkspace() {
         <TabsTrigger value="stereotypes">Stereotypes</TabsTrigger>
         <TabsTrigger value="conventions">Conventions</TabsTrigger>
         <TabsTrigger value="locales">Locales</TabsTrigger>
+        <TabsTrigger value="validation">Validation</TabsTrigger>
         <TabsTrigger value="project">Type maps, outputs, formatters</TabsTrigger>
         <TabsTrigger value="explorer">Explorer</TabsTrigger>
       </TabsList>
@@ -59,9 +62,14 @@ export function SettingsWorkspace() {
           ) : t === "stereotypes" ? (
             <StereotypesSettings />
           ) : t === "conventions" ? (
-            <ConventionsSettings />
+            <>
+              <StrategiesHint />
+              <ConventionsSettings />
+            </>
           ) : t === "locales" ? (
             <LocalesSettings />
+          ) : t === "validation" ? (
+            <ValidationSettings />
           ) : t === "explorer" ? (
             <ExplorerPreferences />
           ) : (

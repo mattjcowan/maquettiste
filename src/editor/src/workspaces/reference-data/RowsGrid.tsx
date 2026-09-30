@@ -15,7 +15,7 @@ import type { Diagnostic, ModelJson, ReferenceTypeDoc, SeedDoc } from "@/api/typ
 import type { AppServices } from "@/app/context";
 import { useServices } from "@/app/context";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, Select } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/misc";
 import { useDraftDocument } from "@/inspector/useDraft";
 import { cn } from "@/lib/cn";
@@ -53,6 +53,7 @@ import {
   type GridAction,
   type GridColumn,
   type GridRow,
+  csvSeedFor,
 } from "./rowsModel";
 
 const NO_LOCALES: string[] = [];
@@ -167,6 +168,9 @@ export function SeedGrid({
   );
   const rows = useMemo(() => withTranslatedLabels(gridRows(seedDocs), labels.out, labels.descriptions), [seedDocs, labels]);
   const primary = seedDocs[0] ?? null;
+  // Import CSV and Export CSV work on one seed: the one named after the target unless the user picks another.
+  const [csvSeedId, setCsvSeedId] = useState<string | null>(null);
+  const csvSeed = csvSeedFor(seedDocs, csvSeedId);
 
   const errors = useMemo(() => {
     const out = new Map<string, Diagnostic>();
@@ -394,15 +398,30 @@ export function SeedGrid({
         <Button size="sm" variant="ghost" onClick={() => void insertBelow()}>
           <Plus /> Add row
         </Button>
-        <Button size="sm" variant="ghost" disabled={!primary} onClick={() => setImporting(true)} title={`Import a CSV file into ${primary?.name ?? name}`}>
+        {seedDocs.length > 1 ? (
+          <Select
+            aria-label="Seed for Import CSV and Export CSV"
+            data-testid="csv-seed"
+            className="w-auto"
+            value={csvSeed?.id ?? ""}
+            onChange={(e) => setCsvSeedId(e.target.value)}
+          >
+            {seedDocs.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </Select>
+        ) : null}
+        <Button size="sm" variant="ghost" disabled={!csvSeed} onClick={() => setImporting(true)} title={`Import a CSV file into ${csvSeed?.name ?? name}`}>
           <Upload /> Import CSV
         </Button>
         <Button
           size="sm"
           variant="ghost"
-          disabled={!primary}
-          title={`Download ${primary?.name ?? name} as a CSV file`}
-          onClick={() => primary && void exportCsv(primary).catch((e: Error) => store.getState().notify(e.message, "error"))}
+          disabled={!csvSeed}
+          title={`Download ${csvSeed?.name ?? name} as a CSV file`}
+          onClick={() => csvSeed && void exportCsv(csvSeed).catch((e: Error) => store.getState().notify(e.message, "error"))}
         >
           <Download /> Export CSV
         </Button>
@@ -631,7 +650,7 @@ export function SeedGrid({
           Enter edits · Tab moves · Ctrl+Enter inserts · Ctrl+D duplicates · Ctrl+Delete deletes · Alt+Up/Down moves
         </span>
       </footer>
-      {primary ? <ImportCsvDialog open={importing} onOpenChange={setImporting} seed={primary} /> : null}
+      {csvSeed ? <ImportCsvDialog open={importing} onOpenChange={setImporting} seed={csvSeed} /> : null}
     </div>
   );
 }

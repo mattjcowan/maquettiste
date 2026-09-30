@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Model batch",
-  "description": "An atomic batch of element creates, updates and deletes, from the editor, a refactoring or an AI proposal.",
+  "description": "An atomic batch of element creates, updates and deletes and database schema operations, from the editor, a refactoring or an AI proposal.",
   "type": "object",
   "x-order": ["operations"],
   "properties": {
@@ -10,10 +10,10 @@
       "items": {
         "title": "Batch operation",
         "type": "object",
-        "x-order": ["op", "id", "expectedHash", "element", "locale", "field", "value"],
+        "x-order": ["op", "id", "expectedHash", "element", "locale", "field", "value", "schema", "name", "target", "default"],
         "properties": {
           "op": {
-            "enum": ["create", "update", "delete", "translate"]
+            "enum": ["create", "update", "delete", "translate", "add-schema", "rename-schema", "remove-schema", "set-default-schema"]
           },
           "id": {
             "$ref": "common.json#/$defs/id"
@@ -42,6 +42,23 @@
                 "type": "null"
               }
             ]
+          },
+          "schema": {
+            "description": "The database schema id (rename-schema, remove-schema, set-default-schema; optional for add-schema).",
+            "$ref": "common.json#/$defs/id"
+          },
+          "name": {
+            "description": "The schema name (add-schema, rename-schema).",
+            "type": "string",
+            "minLength": 1
+          },
+          "target": {
+            "description": "The schema id that the tables, views, sequences, convention entries and mappings of the removed schema move to (remove-schema).",
+            "$ref": "common.json#/$defs/id"
+          },
+          "default": {
+            "description": "The schema id that becomes the default when the removed schema is the default (remove-schema).",
+            "$ref": "common.json#/$defs/id"
           }
         },
         "required": ["op"],
@@ -81,6 +98,42 @@
             },
             "then": {
               "required": ["locale", "id", "field", "value"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "op": {
+                  "enum": ["add-schema", "rename-schema", "remove-schema", "set-default-schema"]
+                }
+              }
+            },
+            "then": {
+              "required": ["id"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "op": {
+                  "enum": ["add-schema", "rename-schema"]
+                }
+              }
+            },
+            "then": {
+              "required": ["name"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "op": {
+                  "enum": ["rename-schema", "remove-schema", "set-default-schema"]
+                }
+              }
+            },
+            "then": {
+              "required": ["schema"]
             }
           }
         ]

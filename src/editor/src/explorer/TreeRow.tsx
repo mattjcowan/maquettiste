@@ -107,6 +107,8 @@ export interface TreeRowProps {
   draggable: boolean;
   /** A member of the active diagram or domain view (3.5). */
   onCanvas?: boolean;
+  /** Members of the active diagram under this row (a collapsed domain or folder shows a hollow dot). */
+  onCanvasCount?: number;
   style: CSSProperties;
   rowHeight: number;
   onRowClick(key: string, e: MouseEvent): void;
@@ -234,6 +236,15 @@ export const TreeRow = memo(function TreeRow(props: TreeRowProps) {
       ) : null}
       {props.onCanvas ? (
         <span role="img" className="size-1.5 shrink-0 rounded-full bg-success" aria-label="On the canvas" title="On the canvas" data-part="on-canvas" />
+      ) : null}
+      {!props.onCanvas && props.onCanvasCount && !expanded ? (
+        <span
+          role="img"
+          className="size-1.5 shrink-0 rounded-full border border-success"
+          aria-label={`${props.onCanvasCount} on the canvas`}
+          title={`${props.onCanvasCount} on the canvas`}
+          data-part="on-canvas-count"
+        />
       ) : null}
       {props.draft ? <span className="size-1.5 shrink-0 rounded-full bg-accent" aria-label="unsaved changes" /> : null}
       {props.favorite !== undefined ? (

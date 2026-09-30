@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { TranslationsSection } from "@/l10n/TranslationsSection";
 import { CircleAlert, Loader2, Trash2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { applyBatchResult, applySaveResult, keys, loadElement, useIndex, usePack, useProject, useReferences } from "@/api/queries";
+import { applySaveResult, keys, useIndex, usePack, useProject, useReferences } from "@/api/queries";
 import * as endpoints from "@/api/endpoints";
 import type { ElementKind, EntityDoc, ModelJson, ReferenceInfo, StereotypeDoc } from "@/api/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -20,6 +20,7 @@ import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
 import { KindIcon } from "@/app/icons";
 import { useDraftDocument } from "./useDraft";
+import { useBatchEdit } from "@/explorer/marks";
 import {
   AttributesOnlyFields,
   CommonFields,
@@ -42,6 +43,8 @@ export function useInspectorContext(): InspectorContext {
   const editors = useEditor(store, (s) => s.editors);
   const generation = useEditor(store, (s) => s.generation);
   const selectionBy = useEditor(store, (s) => s.selectionBy);
+  const pinned = useEditor(store, (s) => s.explorer.pinned);
+  const selectionFrom = useEditor(store, (s) => s.selectionFrom);
   const index = useIndex();
   const exists = useMemo(() => {
     if (!index.data) return undefined;
@@ -53,8 +56,8 @@ export function useInspectorContext(): InspectorContext {
     if (exists) store.getState().pruneSelection(exists);
   }, [exists, store]);
   return useMemo(
-    () => inspectorContext({ workspace, explorer: { active }, editors, generation, selectionBy, exists }),
-    [workspace, active, editors, generation, selectionBy, exists],
+    () => inspectorContext({ workspace, explorer: { active, pinned }, selectionFrom, editors, generation, selectionBy, exists }),
+    [workspace, active, pinned, selectionFrom, editors, generation, selectionBy, exists],
   );
 }
 
@@ -389,7 +392,7 @@ function DeleteButton({ id, name }: { id: string; name: string }) {
 
 /** Multi-select: bulk edits as one batch (apply a stereotype or a tag to many elements). */
 function BulkInspector({ ids }: { ids: string[] }) {
-  const { store, queryClient, drafts } = useServices();
+  useServices();
   const index = useIndex();
   const lookup = indexLookup(index.data);
   const rows = ids.map((id) => lookup.byId.get(id)).filter((r): r is NonNullable<typeof r> => !!r);
@@ -403,26 +406,11 @@ function BulkInspector({ ids }: { ids: string[] }) {
   const [tag, setTag] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const batchEdit = useBatchEdit();
   const apply = async (label: string, mutate: (json: ModelJson) => void) => {
     setBusy(true);
     try {
-      await drafts.flushAll();
-      const docs = await Promise.all(ids.map((id) => queryClient.fetchQuery({ queryKey: keys.element(id), queryFn: () => loadElement(id) })));
-      const after = docs.map((d) => {
-        const json = clone(d.json as ModelJson);
-        mutate(json);
-        return json;
-      });
-      const result = await endpoints.applyBatch({
-        operations: docs.map((d, i) => ({ op: "update" as const, id: ids[i], expectedHash: d.hash, element: after[i] as never })),
-      });
-      if (!endpoints.isBatchResult(result) || result.outcome !== "saved") {
-        store.getState().notify(`${label} failed: ${endpoints.isBatchResult(result) ? result.outcome : "invalid batch"}`, "error");
-        return;
-      }
-      applyBatchResult(queryClient, result);
-      store.getState().pushUndo({ label, ids, before: docs.map((d) => clone(d.json as ModelJson)), after, afterHashes: result.items.map((i) => i.hash) });
-      store.getState().notify(`${label}: ${ids.length} elements saved in one batch.`);
+      await batchEdit(label, ids, (json) => mutate(json as unknown as ModelJson));
     } finally {
       setBusy(false);
     }

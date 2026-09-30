@@ -135,7 +135,7 @@ export function FilterBar({
               <Bookmark />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="max-h-96 overflow-auto">
+          <DropdownMenuContent align="end" className="max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))]">
             <DropdownMenuLabel>Your scopes</DropdownMenuLabel>
             {mine.length === 0 ? <p className="px-2 py-1 text-12 text-secondary">None saved</p> : null}
             {mine.map((s) => (
@@ -168,7 +168,7 @@ export function FilterBar({
               ) : null}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="max-h-96 overflow-auto">
+          <DropdownMenuContent align="end" className="max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))]">
             <DropdownMenuCheckboxItem checked={filter.errors} onCheckedChange={(on) => setFilter({ ...filter, errors: !!on })}>
               Has errors
             </DropdownMenuCheckboxItem>

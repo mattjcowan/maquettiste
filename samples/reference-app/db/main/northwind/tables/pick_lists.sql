@@ -12,12 +12,12 @@ CREATE TABLE northwind.pick_lists (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    picker_id uuid NULL,
     warehouse_id uuid NOT NULL,
+    picker_id uuid NULL,
     wave_id uuid NULL,
     CONSTRAINT pk_pick_lists PRIMARY KEY (id),
     CONSTRAINT uq_pick_lists_pick_list_number UNIQUE (pick_list_number),
-    CONSTRAINT fk_pick_lists_picker_id FOREIGN KEY (picker_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_pick_lists_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_pick_lists_picker_id FOREIGN KEY (picker_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_pick_lists_wave_id FOREIGN KEY (wave_id) REFERENCES northwind.pick_waves (id) ON DELETE SET NULL
 );

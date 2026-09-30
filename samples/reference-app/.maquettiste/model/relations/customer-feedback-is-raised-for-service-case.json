@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2MXDGDCGEKNE7G5MZWTJCAR",
+  "name": "customer feedback is raised for service case",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "Case rated.",
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "ends": [
+    {
+      "id": "01M2B5PJKW6EVGDY3Q79X9XGRM",
+      "entity": "01M2NPNWREHQKBV15PJMWZPKRK",
+      "role": "serviceCase",
+      "navigation": "serviceCase",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2D8QZ4WM4FG3Q3BTY45DXDK",
+      "entity": "01M1MJZYBD0T8P93CJNST5EH65",
+      "role": "customerFeedbacks"
+    }
+  ]
+}

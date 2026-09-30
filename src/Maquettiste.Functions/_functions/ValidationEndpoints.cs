@@ -5,9 +5,19 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Maquettiste.Functions;
 
-/// <summary><c>POST /api/validate</c>.</summary>
+/// <summary><c>POST /api/validate</c> and <c>GET /api/validation/rules</c>.</summary>
 public static class ValidationEndpoints
 {
+    /// <summary>The built-in rule catalog: id, default severity, description, family and whether <c>validation.rules</c> may turn it off.</summary>
+    /// <param name="context">The request.</param>
+    /// <returns>200 with the rules, ordered by id.</returns>
+    [HttpGet("/api/validation/rules")]
+    public static Task<IResult> ListRules(HttpContext context) => Api.GuardAsync(context, () =>
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        return Task.FromResult(Api.Json(RuleCatalog.Describe()));
+    });
+
     /// <summary>Validates the whole model (an empty body or <c>{}</c>) or a scope; load diagnostics included, never truncated.</summary>
     /// <param name="context">The request.</param>
     /// <param name="store">The model store.</param>

@@ -10,11 +10,11 @@ CREATE TABLE northwind.sales_quote_lines (
     discount numeric(5,2) NULL,
     line_total_amount numeric(19,4) NULL,
     line_total_currency varchar(3) NULL,
+    sales_quote_id uuid NOT NULL,
     product_id uuid NOT NULL,
     unit_code varchar(3) NULL,
-    sales_quote_id uuid NOT NULL,
     CONSTRAINT pk_sales_quote_lines PRIMARY KEY (id),
+    CONSTRAINT fk_sales_quote_lines_sales_quote_id FOREIGN KEY (sales_quote_id) REFERENCES northwind.sales_quotes (id) ON DELETE CASCADE,
     CONSTRAINT fk_sales_quote_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_sales_quote_lines_unit_code FOREIGN KEY (unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE SET NULL,
-    CONSTRAINT fk_sales_quote_lines_sales_quote_id FOREIGN KEY (sales_quote_id) REFERENCES northwind.sales_quotes (id) ON DELETE CASCADE
+    CONSTRAINT fk_sales_quote_lines_unit_code FOREIGN KEY (unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE SET NULL
 );

@@ -1,0 +1,5 @@
+{
+  "$schema": ".schema/v1/maquettiste.json",
+  "formatVersion": 1,
+  "name": "schemas"
+}

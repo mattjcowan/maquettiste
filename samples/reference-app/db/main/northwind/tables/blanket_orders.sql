@@ -16,10 +16,10 @@ CREATE TABLE northwind.blanket_orders (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    currency_code varchar(3) NOT NULL,
     customer_id uuid NOT NULL,
+    currency_code varchar(3) NOT NULL,
     CONSTRAINT pk_blanket_orders PRIMARY KEY (id),
     CONSTRAINT uq_blanket_orders_blanket_number UNIQUE (blanket_number),
-    CONSTRAINT fk_blanket_orders_currency_code FOREIGN KEY (currency_code) REFERENCES northwind.currencies (code) ON DELETE RESTRICT,
-    CONSTRAINT fk_blanket_orders_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT
+    CONSTRAINT fk_blanket_orders_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_blanket_orders_currency_code FOREIGN KEY (currency_code) REFERENCES northwind.currencies (code) ON DELETE RESTRICT
 );

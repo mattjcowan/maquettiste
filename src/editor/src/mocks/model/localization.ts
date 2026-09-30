@@ -5,6 +5,7 @@
 // placed in per-domain shards (RT 3.1 and 3.3) with their source fingerprints, so stale entries show.
 import { sha256Hex } from "@/lib/sha256";
 import type { MockModel } from "./store";
+import type { Diagnostic } from "@/api/types";
 
 type Json = Record<string, unknown>;
 type State = "translated" | "missing" | "stale" | "fallback";
@@ -291,6 +292,36 @@ export class MockLocalization {
     return { defaultLocale: this.defaultLocale, declared: this.declared, locales };
   }
 
+  /** The engine's completeness rules (LocalizationRules): MQ7204 per (locale, shard) with missing or stale texts, MQ7206 per
+   * shard with stale ones, and MQ7205 per missing node and field, only when validation.rules gives MQ7205 a severity. */
+  diagnostics(rules: Record<string, string>): Diagnostic[] {
+    const out: Diagnostic[] = [];
+    const at = (rule: string, message: string, filePath: string, elementId: string | null = null, jsonPointer = ""): Diagnostic => ({
+      rule,
+      severity: "info",
+      message,
+      elementId,
+      filePath,
+      jsonPointer,
+      line: null,
+      column: null,
+    });
+    const status = this.status() as { locales: { locale: string; shards: { shard: string; expected: number; missing: number; stale: number }[] }[] };
+    for (const l of status.locales)
+      for (const c of l.shards) {
+        if (c.missing + c.stale > 0)
+          out.push(at("MQ7204", `'${l.locale}' is incomplete in this shard: ${c.missing} of ${c.expected} texts missing, ${c.stale} stale.`, c.shard));
+        if (c.stale > 0)
+          out.push(at("MQ7206", `${c.stale} '${l.locale}' translations in this shard were made from a default text that has changed since.`, c.shard));
+      }
+    if (["error", "warning", "info"].includes(rules.MQ7205 ?? ""))
+      for (const locale of this.declared.filter((l) => this.isTranslated(l)))
+        for (const n of this.nodes().filter((n) => this.required(n) && !(n.kind === "reference-row" && n.field === "description" && n.source === null)))
+          if (this.stateOf(locale, n).state === "missing")
+            out.push(at("MQ7205", `The ${n.kind} ${n.id} has no '${locale}' ${n.field}.`, this.shardPath(locale, n.stem), n.id, `/entries/${n.id}/${n.field}`));
+    return out;
+  }
+
   entries(
     locale: string,
     query: { owner?: string | null; shard?: string | null; missing?: boolean; cursor?: string | null },
@@ -489,7 +520,7 @@ export class MockLocalization {
   }
 
   /**
-   * Several seed CSV imports as one change (POST /api/seeds/csv): every file is previewed first; applying writes none when a
+   * Several seed CSV imports (POST /api/seeds/csv): every file is previewed first; applying writes none when a
    * seed changed since its preview (409) or any file has an error (422), else every seed.
    */
   importSeedsCsv(

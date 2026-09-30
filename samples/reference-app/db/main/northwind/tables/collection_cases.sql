@@ -16,10 +16,10 @@ CREATE TABLE northwind.collection_cases (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    assigned_to_id uuid NULL,
     customer_id uuid NOT NULL,
+    assigned_to_id uuid NULL,
     CONSTRAINT pk_collection_cases PRIMARY KEY (id),
     CONSTRAINT uq_collection_cases_case_number UNIQUE (case_number),
-    CONSTRAINT fk_collection_cases_assigned_to_id FOREIGN KEY (assigned_to_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
-    CONSTRAINT fk_collection_cases_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT
+    CONSTRAINT fk_collection_cases_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_collection_cases_assigned_to_id FOREIGN KEY (assigned_to_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );

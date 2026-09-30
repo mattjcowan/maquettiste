@@ -3,7 +3,7 @@
 // output path computed for an example element from POST /api/templates/paths (debounced 250 ms, against the
 // unsaved row). The side panel explains the focused field and the row's scope in plain language. Save sends the
 // whole pack.json document with If-Match; the grid never drops a member it does not show.
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Copy, Filter, Plus, Save, Trash2, Undo2 } from "lucide-react";
 import * as endpoints from "@/api/endpoints";
@@ -114,6 +114,18 @@ export function UnitsTab({ pack, document, hash, files, focusUnit, onDirty }: Pr
   const units = unitsOf(draft);
   const saved = useMemo(() => new Map(unitsOf(document).map((u) => [str(u.id), u])), [document]);
   const current = units[Math.min(row, units.length - 1)];
+  // A row the user focuses in the grid drives the Generate inspector as a pack tree row does (packFocus); the row
+  // the grid opens on does not, so opening the Units tab leaves the inspector on the pack.
+  const currentId = current ? str(current.id) : null;
+  const shownId = useRef(currentId);
+  useEffect(() => {
+    if (shownId.current === currentId) return;
+    shownId.current = currentId;
+    if (!currentId || !saved.has(currentId)) return;
+    const focus = store.getState().generation.packFocus;
+    if (focus?.pack === pack && focus.unit === currentId) return;
+    store.getState().setGeneration({ packFocus: { pack, unit: currentId } });
+  }, [currentId, saved, pack, store]);
 
   const save = async (overwrite = false) => {
     if (units.some((u, i) => unitIdError(draft, i, str(u.id)))) {

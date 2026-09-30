@@ -4,6 +4,7 @@
 // checks and remove-references, atomic batches, references, validation and settings. Hashes are
 // SHA-256 of the mock's own JSON text, not the engine's canonical bytes; nothing may compare them
 // with real hashes.
+import { applySchemaOperation, SCHEMA_OPS, type SchemaOp } from "@/model/databaseSchemas";
 import type {
   BatchResult,
   BatchParseResult,
@@ -249,9 +250,13 @@ export class MockModel {
     return validateModel({ entries: list, extensions: this.extensions, rules: this.rules() });
   }
 
+  /** Diagnostics of the whole model that no entry owns (the backend sets it: localization completeness), before validation.rules applies. */
+  modelDiagnostics: (rules: Record<string, string>) => Diagnostic[] = () => [];
+
   /** Every diagnostic of the current model, from the incrementally maintained per-entry results. */
   private currentDiagnostics(): Diagnostic[] {
-    return applyRules(this.derived().diagnostics(), this.rules());
+    const rules = this.rules();
+    return applyRules([...this.derived().diagnostics(), ...this.modelDiagnostics(rules)], rules);
   }
 
   validate(scope: ValidationScope = {}): ValidationReport {
@@ -585,6 +590,34 @@ export class MockModel {
       failure ??= result.outcome;
     };
     for (const op of operations) {
+      if (SCHEMA_OPS.has(op.op)) {
+        // A database schema operation (erratum E26): expands into updates of the database and what it moves.
+        const docs = new Map([...candidate].map(([k, e]) => [k, e.json as Json]));
+        const outcome = applySchemaOperation(docs, op as unknown as SchemaOp, this.options.newId);
+        if ("error" in outcome) {
+          fail(
+            this.invalid(op.id ?? null, [
+              {
+                rule: "MQ4015",
+                severity: "error",
+                message: outcome.error,
+                elementId: op.id ?? null,
+                filePath: null,
+                jsonPointer: "",
+                line: null,
+                column: null,
+              },
+            ]),
+          );
+          continue;
+        }
+        for (const [id, json] of outcome.changed) {
+          const entry = this.entryFor(json, candidate.get(id));
+          candidate.set(id, entry);
+          items.push({ outcome: "saved", id, hash: entry.hash, current: null, diagnostics: [], referrers: [], changes: null });
+        }
+        continue;
+      }
       if (op.op === "create") {
         const json = clone(op.element!);
         if (typeof json.id !== "string") json.id = this.options.newId();

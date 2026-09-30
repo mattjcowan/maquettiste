@@ -9,11 +9,11 @@ CREATE TABLE northwind.inventory_cost_layers (
     remaining_quantity numeric(14,3) NOT NULL,
     unit_cost_amount numeric(19,4) NOT NULL,
     unit_cost_currency varchar(3) NOT NULL,
-    goods_receipt_line_id uuid NULL,
     product_id uuid NOT NULL,
     warehouse_id uuid NOT NULL,
+    goods_receipt_line_id uuid NULL,
     CONSTRAINT pk_inventory_cost_layers PRIMARY KEY (id),
-    CONSTRAINT fk_inventory_cost_layers_goods_receipt_line_id FOREIGN KEY (goods_receipt_line_id) REFERENCES northwind.goods_receipt_lines (id) ON DELETE SET NULL,
     CONSTRAINT fk_inventory_cost_layers_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_inventory_cost_layers_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT
+    CONSTRAINT fk_inventory_cost_layers_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_inventory_cost_layers_goods_receipt_line_id FOREIGN KEY (goods_receipt_line_id) REFERENCES northwind.goods_receipt_lines (id) ON DELETE SET NULL
 );

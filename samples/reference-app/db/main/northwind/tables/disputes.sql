@@ -16,10 +16,10 @@ CREATE TABLE northwind.disputes (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    card_payment_id uuid NOT NULL,
     invoice_id uuid NULL,
+    card_payment_id uuid NOT NULL,
     CONSTRAINT pk_disputes PRIMARY KEY (id),
     CONSTRAINT uq_disputes_dispute_number UNIQUE (dispute_number),
-    CONSTRAINT fk_disputes_card_payment_id FOREIGN KEY (card_payment_id) REFERENCES northwind.card_payments (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_disputes_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE SET NULL
+    CONSTRAINT fk_disputes_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE SET NULL,
+    CONSTRAINT fk_disputes_card_payment_id FOREIGN KEY (card_payment_id) REFERENCES northwind.card_payments (id) ON DELETE RESTRICT
 );

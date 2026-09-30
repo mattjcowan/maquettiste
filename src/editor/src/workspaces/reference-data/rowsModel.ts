@@ -485,3 +485,40 @@ export function endRowOptions(seeds: readonly SeedDoc[]): EndOption[] {
 export function newSeedDocument(id: string, target: { id: string; name: string }, columns: readonly string[]): SeedDoc {
   return { kind: "seed", id, name: target.name, target: target.id, columns: [...columns], rows: [] } as unknown as SeedDoc;
 }
+
+/** The seed Import CSV and Export CSV use: the picked one while the target still has it, else the first (the one named after the target). */
+export function csvSeedFor<T extends { id: string }>(seeds: T[], picked: string | null): T | null {
+  return seeds.find((s) => s.id === picked) ?? seeds[0] ?? null;
+}
+
+/** The ids of the fields a type edit removes (before minus after). */
+export function removedFieldIds(before: { attributes?: { id: string }[] | null }, after: { attributes?: { id: string }[] | null }): Set<string> {
+  const kept = new Set((after.attributes ?? []).map((a) => a.id));
+  return new Set((before.attributes ?? []).map((a) => a.id).filter((id) => !kept.has(id)));
+}
+
+/**
+ * Drops the columns of removed fields from a seed and the matching cell of every row (§2.7), in place; true when the
+ * seed listed one. A row shorter than the columns (trailing nulls trimmed) loses only the cells it has.
+ */
+export function dropSeedColumns(seed: { columns: string[]; rows?: { values: unknown[] }[] | null }, removed: ReadonlySet<string>): boolean {
+  const drop = seed.columns.map((c, i) => (removed.has(c) ? i : -1)).filter((i) => i >= 0);
+  if (drop.length === 0) return false;
+  seed.columns = seed.columns.filter((_, i) => !drop.includes(i));
+  for (const row of seed.rows ?? []) row.values = row.values.filter((_, i) => !drop.includes(i));
+  return true;
+}
+
+/** The hover card's first codes of a type's seeds, in row order, and how many more there are. */
+export function firstCodes(seeds: { columns: string[]; rows?: { values: unknown[] }[] | null }[], count = 5): { codes: string[]; more: number } {
+  const all = seeds.flatMap((s) => {
+    const at = s.columns.indexOf("code");
+    return at < 0
+      ? []
+      : (s.rows ?? [])
+          .map((r) => r.values[at])
+          .filter((v) => v !== null && v !== undefined)
+          .map(String);
+  });
+  return { codes: all.slice(0, count), more: Math.max(0, all.length - count) };
+}

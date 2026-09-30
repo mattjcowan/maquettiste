@@ -229,6 +229,50 @@ public sealed partial class ModelStore
     }
 
     /// <summary>
+    /// The columns a new seed of a reference type declares: the three built-in fields, as the editor's New seed does
+    /// (reference-types-seeds-localization.md section 2.1).
+    /// </summary>
+    public static IReadOnlyList<string> ReferenceSeedColumns { get; } = ["code", "label", "description"];
+
+    /// <summary>
+    /// Creates the seed of a reference type that has none, named after the type, with <see cref="ReferenceSeedColumns"/> and no rows
+    /// (the CLI's <c>seed new</c> and the MCP tool <c>create_seed</c>).
+    /// </summary>
+    /// <param name="typeId">The reference type id.</param>
+    /// <param name="source">Who makes the change.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The save result, the existing seed's id with <see cref="SaveOutcome.Saved"/> and no change when the type has a seed, or
+    /// <see langword="null"/> when <paramref name="typeId"/> names no reference type.</returns>
+    public async Task<SaveResult?> CreateSeedAsync(string typeId, ChangeSource source, CancellationToken ct)
+    {
+        var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
+        if (snapshot.Get<Element>(typeId) is not ReferenceType type)
+            return null;
+        if (snapshot.Documents.Select(d => d.Element).OfType<Seed>().Where(s => s.Target == type.Id).OrderBy(s => s.Id, StringComparer.Ordinal).FirstOrDefault() is { } existing)
+            return new SaveResult(SaveOutcome.Saved, existing.Id, snapshot.GetDocument(existing.Id)?.Hash, null, [], [], null);
+        var document = new JsonObject
+        {
+            ["kind"] = "seed",
+            ["name"] = type.Name,
+            ["target"] = type.Id,
+            ["columns"] = new JsonArray([.. ReferenceSeedColumns.Select(c => (JsonNode)c)]),
+            ["rows"] = new JsonArray(),
+        };
+        return await CreateAsync(Encoding.UTF8.GetBytes(document.ToJsonString()), source, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>A seed created without <c>columns</c> for a reference type gets <see cref="ReferenceSeedColumns"/>.</summary>
+    private async Task DefaultSeedColumnsAsync(JsonNode? node, CancellationToken ct)
+    {
+        if (node is not JsonObject o || o.ContainsKey("columns") || o["kind"] is not JsonValue kind || !kind.TryGetValue<string>(out var k) || k != "seed"
+            || o["target"] is not JsonValue target || !target.TryGetValue<string>(out var targetId))
+            return;
+        var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
+        if (snapshot.Get<Element>(targetId) is ReferenceType)
+            o["columns"] = new JsonArray([.. ReferenceSeedColumns.Select(c => (JsonNode)c)]);
+    }
+
+    /// <summary>
     /// A seed's rows as CSV (section 2.3): <c>@id</c>, then the seed's columns in order (<c>@code</c>, <c>@label</c>, <c>@description</c>
     /// for built-in ones, attribute names and end roles otherwise), then <c>@label:&lt;locale&gt;</c> and <c>@description:&lt;locale&gt;</c>
     /// per requested locale.
@@ -300,7 +344,9 @@ public sealed partial class ModelStore
     /// <summary>
     /// Previews or applies CSV imports into several seeds at once (the editor's Import seed data…). Each file is read as
     /// <see cref="ImportSeedCsvAsync"/> reads one; applying saves every changed seed in one all-or-nothing change (a stale hash or a
-    /// new error in any seed writes none of them), then writes the translations the files carry.
+    /// new error in any seed writes none of them), then writes the translations the files carry, one save per seed and locale.
+    /// The translations are not part of that change: when one of their saves fails, the rows stay saved and the outcome is that
+    /// save's (the batch <c>translate</c> operation that would join them is still to be built).
     /// </summary>
     /// <param name="files">The seeds and their CSV text, each with the hash read for its preview (or <see langword="null"/>).</param>
     /// <param name="replace">Replace (else merge).</param>

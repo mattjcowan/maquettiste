@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1HCMEZJBEK4VVQKD3YJMNE4",
+  "name": "reorder suggestion fulfils purchase order",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Purchase order created from it.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M271J0E5Z9GYJ4KST5KXEVYD",
+      "entity": "01M2PKYF42VBPP64C8WV8TWXZ6",
+      "role": "purchaseOrder",
+      "navigation": "purchaseOrder",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1HWJ1S66QQRW37X6Q8YT5A7",
+      "entity": "01M1WB5JSXR6GGW8C3TYKPG50A",
+      "role": "reorderSuggestions"
+    }
+  ]
+}

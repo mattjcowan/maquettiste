@@ -1,0 +1,28 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1Q4W3FEK5KA403BVSF38KBK",
+  "name": "product contains images",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "relationKind": "composition",
+  "description": "Images in display order.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "ends": [
+    {
+      "id": "01M2YR1ER3P2D406V8V21RE5DR",
+      "entity": "01M20RAEF2QZ5W8HV57RBX5PQV",
+      "role": "product",
+      "navigation": "product",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M2BG1PDXVD73TE8YX49AA4JW",
+      "entity": "01M1YKMM6N69TF9A0YDH4E0HYP",
+      "role": "images",
+      "navigation": "images",
+      "ordered": true
+    }
+  ]
+}

@@ -2,13 +2,14 @@
 // display names and the description, a band of top controls, and sub-tabs. The sub-tab shown is kept per kind in the
 // editor store, so moving to another element of the kind keeps it.
 import { TranslationsSection } from "@/l10n/TranslationsSection";
+import { HeaderTextFields } from "@/l10n/HeaderTextFields";
 import { useState, type ReactNode } from "react";
 import { CircleAlert, Plus, Trash2 } from "lucide-react";
 import { useIndex, useProject } from "@/api/queries";
 import type { ElementSummary, StereotypeDoc } from "@/api/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState, Spinner } from "@/components/ui/misc";
-import { Field, Input, Select, Textarea } from "@/components/ui/input";
+import { Field, Input, Select } from "@/components/ui/input";
 import { SectionTitle } from "@/components/ui/misc";
 import { KindIcon } from "@/app/icons";
 import { useServices } from "@/app/context";
@@ -151,37 +152,16 @@ function HeaderFields({ id, kind, json, doc, edit, flush }: EditorContext) {
   const description = rec.description;
   return (
     <div className="flex flex-col gap-2">
-      <div className="grid grid-cols-2 gap-2">
-        <TextField
-          id={`${dom}-display`}
-          label="Display name"
-          value={String(rec.displayName ?? "")}
-          onChange={(v) => edit((j) => setOptional(j as Rec, "displayName", v))}
-          onBlur={flush}
-        />
-        <TextField
-          id={`${dom}-plural`}
-          label="Plural name"
-          value={String(rec.pluralName ?? "")}
-          onChange={(v) => edit((j) => setOptional(j as Rec, "pluralName", v))}
-          onBlur={flush}
-        />
-      </div>
-      {typeof description === "object" && description !== null ? (
-        <Field label="Description" hint={`Kept in ${(description as { file: string }).file} next to the model file; edit that file on disk.`}>
-          <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded-control border border-default bg-app p-2 text-12">{doc?.sidecarText ?? ""}</pre>
-        </Field>
-      ) : (
-        <Field label="Description" htmlFor={`${dom}-description`}>
-          <Textarea
-            id={`${dom}-description`}
-            value={String(description ?? "")}
-            onChange={(e) => edit((j) => setOptional(j as Rec, "description", e.target.value))}
-            onBlur={flush}
-            rows={2}
-          />
-        </Field>
-      )}
+      <HeaderTextFields
+        id={id}
+        dom={dom}
+        rec={rec}
+        edit={(change) => edit((j) => change(j as Rec))}
+        flush={flush}
+        sidecar={
+          typeof description === "object" && description !== null ? { file: (description as { file: string }).file, text: doc?.sidecarText ?? "" } : null
+        }
+      />
       {inInspector ? null : <TranslationsSection id={id} kind={kind} />}
     </div>
   );

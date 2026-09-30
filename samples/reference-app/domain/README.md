@@ -42,12 +42,15 @@ Every element and attribute needs a description; the build fails without one.
 - `key`: `uuid-v7` (the default), `ulid`, `identity` (int64), `identity32`, `sequence` (int64 from a named sequence, see
   `overlay`), or the name of an attribute for an application-assigned natural key. The surrogate `id` attribute is added.
   Derived entities (`base`) have no key.
-- `refs` are many-to-one relations: `role: <Entity>[!] [restrict|cascade|set-null|none] [back=<role>] [one] | description`.
+- `refs` are many-to-one relations: `role: <Entity>[!] [restrict|cascade|set-null|none] [back=<role>] [one] [name=<words>] | description`.
   The role names the navigation on this entity and the foreign key; `!` makes it required (default on delete `restrict`,
-  else `set-null`); `back=` adds the collection navigation on the target; `one` makes it one-to-one. The relation is
-  named `<entity words> <role words>`, such as `sales order customer`.
-- `children` are compositions: `role: <Entity> [ordered] [aggregation] | description`. The child gets a required
-  navigation back to the parent named after it, deleted with the parent.
+  else `set-null`); `back=` adds the collection navigation on the target; `one` makes it one-to-one. `name=` names the
+  relation, underscores for spaces: a verb phrase read from this entity to the other end, such as
+  `name=sales_order_belongs_to_customer` or `name=shipment_is_shipped_by_carrier` (relation names are unique in a domain, so the
+  phrase carries its two ends). Without it the relation is named `<entity words> <role words>`, such as `sales order customer`.
+- `children` are compositions: `role: <Entity> [ordered] [aggregation] [name=<words>] | description`. The child gets a
+  required navigation back to the parent named after it, deleted with the parent. `name=` as for `refs`
+  (`name=sales_order_contains_lines`); without it, `<entity words> <role words>`.
 - `mapping` (only where conventions are not enough): `inheritance` (`tph`, `tpt`), `discriminator`, `storage`
   (`attribute: int|string|lookup|json|table|embedded`), `prefix` (`attribute: column_prefix_`).
 - `overlay` is a synthesized table overlay in `main`: `columns` (`attribute: {nativeType, defaultSql, sequence, comment}`),
@@ -65,5 +68,7 @@ every relation between two of them.
 ## Ids
 
 Ids are ULIDs derived from each element's domain key (`entity:SalesOrder`, `attr:SalesOrder.orderNumber`,
-`relation:sales order customer`, ...; `tools/lib/ids.mjs`). Renaming something in YAML therefore gives it a new id; keep
+`relation:sales order customer`, ...; `tools/lib/ids.mjs`). A `refs` or `children` relation takes its key from its entity and
+role (`<entity words> <role words>`), not from `name=`, so naming or renaming it keeps its id, its ends and its database
+columns. Renaming anything else in YAML (an entity, an attribute, a role, an explicit relation) gives it a new id; keep those
 names stable once other work depends on them.

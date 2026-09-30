@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M34DCZQ8GH822KP2GCZDYT4Y",
+  "name": "repair order is serviced by employee",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "Technician.",
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "ends": [
+    {
+      "id": "01M1GRKN7VBC9QCENF4A023922",
+      "entity": "01M1RJC20E0YQ2SZNHD9NJW74W",
+      "role": "technician",
+      "navigation": "technician",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M226CDDVZ7GT1W4EP296T5V7",
+      "entity": "01M20WRVKPBD33DKT9AJDHG02M",
+      "role": "repairOrders"
+    }
+  ]
+}

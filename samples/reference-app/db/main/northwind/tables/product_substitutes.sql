@@ -7,9 +7,9 @@ CREATE TABLE northwind.product_substitutes (
     reason varchar(200) NULL,
     priority smallint NOT NULL DEFAULT 1,
     requires_approval boolean NOT NULL DEFAULT true,
-    product_id uuid NOT NULL,
     substitute_id uuid NOT NULL,
+    product_id uuid NOT NULL,
     CONSTRAINT pk_product_substitutes PRIMARY KEY (id),
-    CONSTRAINT fk_product_substitutes_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE,
-    CONSTRAINT fk_product_substitutes_substitute_id FOREIGN KEY (substitute_id) REFERENCES northwind.products (id) ON DELETE RESTRICT
+    CONSTRAINT fk_product_substitutes_substitute_id FOREIGN KEY (substitute_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_product_substitutes_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );

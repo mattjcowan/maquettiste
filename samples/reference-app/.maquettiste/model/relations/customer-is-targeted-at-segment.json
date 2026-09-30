@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2QP4NQDJX68AJR6KTD5BWQV",
+  "name": "customer is targeted at segment",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "Marketing segment.",
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "ends": [
+    {
+      "id": "01M1WNHJ0K9GMJQQQ9AGE87VAF",
+      "entity": "01M2S99HP8J0AGSW9K89VDT178",
+      "role": "segment",
+      "navigation": "segment",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M27GXE15SMMNMQJ21FACNHK2",
+      "entity": "01M1ECZKYNSKVNCWW2XM34E20X",
+      "role": "customers"
+    }
+  ]
+}

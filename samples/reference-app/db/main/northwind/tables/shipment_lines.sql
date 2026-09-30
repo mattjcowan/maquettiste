@@ -5,13 +5,13 @@
 CREATE TABLE northwind.shipment_lines (
     id uuid NOT NULL,
     quantity numeric(12,3) NOT NULL,
+    shipment_id uuid NOT NULL,
+    sales_order_line_id char(26) NOT NULL,
     lot_id uuid NULL,
     product_id uuid NOT NULL,
-    sales_order_line_id char(26) NOT NULL,
-    shipment_id uuid NOT NULL,
     CONSTRAINT pk_shipment_lines PRIMARY KEY (id),
-    CONSTRAINT fk_shipment_lines_lot_id FOREIGN KEY (lot_id) REFERENCES northwind.stock_lots (id) ON DELETE SET NULL,
-    CONSTRAINT fk_shipment_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_shipment_lines_shipment_id FOREIGN KEY (shipment_id) REFERENCES northwind.shipments (id) ON DELETE CASCADE,
     CONSTRAINT fk_shipment_lines_sales_order_line_id FOREIGN KEY (sales_order_line_id) REFERENCES northwind.sales_order_lines (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_shipment_lines_shipment_id FOREIGN KEY (shipment_id) REFERENCES northwind.shipments (id) ON DELETE CASCADE
+    CONSTRAINT fk_shipment_lines_lot_id FOREIGN KEY (lot_id) REFERENCES northwind.stock_lots (id) ON DELETE SET NULL,
+    CONSTRAINT fk_shipment_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT
 );

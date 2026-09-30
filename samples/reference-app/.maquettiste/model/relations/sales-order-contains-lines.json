@@ -1,0 +1,28 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2FXZ2BADTZKSJ3R2BKP30H3",
+  "name": "sales order contains lines",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "relationKind": "composition",
+  "description": "Ordered products.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "ends": [
+    {
+      "id": "01M2S1T0PEMA0NJ6QA3203X3BK",
+      "entity": "01M1GBW3NDKS6WCM5FAXYVHV7B",
+      "role": "salesOrder",
+      "navigation": "salesOrder",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M2VXSFDMPFZ9Q4Y9QGTDRH41",
+      "entity": "01M2JSECEQ3FD3TKWAQR961TJ0",
+      "role": "lines",
+      "navigation": "lines",
+      "ordered": true
+    }
+  ]
+}

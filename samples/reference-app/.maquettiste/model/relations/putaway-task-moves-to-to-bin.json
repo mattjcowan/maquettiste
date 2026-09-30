@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1EF5DD8GJP03KE0FA08677X",
+  "name": "putaway task moves to to bin",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Target bin.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M2RGP7FYQ48Q0SCTDD4WWRKC",
+      "entity": "01M23889DSDTV8CMFDQXJCF0NM",
+      "role": "toBin",
+      "navigation": "toBin",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M34ZG2G59MP3YKHCN6SJ9EB2",
+      "entity": "01M1NT9EH5DJSZTWAYCX8SVYB1",
+      "role": "putawayTasks"
+    }
+  ]
+}

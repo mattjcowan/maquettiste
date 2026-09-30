@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2HG0N4W4NYE2PRGWXJHWG2Y",
+  "name": "goods receipt line is for product",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "Product received.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "ends": [
+    {
+      "id": "01M35XBHA95B760119WKMS6W0D",
+      "entity": "01M20RAEF2QZ5W8HV57RBX5PQV",
+      "role": "product",
+      "navigation": "product",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M2WRKEKBYD61SWVVMJX57AVF",
+      "entity": "01M2GBMZTV29WK7A5V2BAQSNCF",
+      "role": "goodsReceiptLines"
+    }
+  ]
+}

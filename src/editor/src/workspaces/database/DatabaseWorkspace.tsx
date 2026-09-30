@@ -16,7 +16,7 @@ import { useEditorNavigation } from "@/app/navigation";
 import { Toolbar, EmptyState, Spinner } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
-import { databaseList, filterTables } from "./tableList";
+import { CANVAS_CAP, databaseList, filterTables, scopeTables } from "./tableList";
 import { CodeView } from "@/code";
 import { TableNode, type TableFlowNode } from "@/canvas/TableNode";
 import { ForeignKeyEdge, type ForeignKeyFlowEdge } from "@/canvas/ForeignKeyEdge";
@@ -72,7 +72,15 @@ function DatabaseCanvas() {
     shownDatabase.current = activeDatabase;
   }, [activeDatabase, setSelectedTable]);
 
-  const tables = useMemo(() => view.data?.view?.tables ?? [], [view.data]);
+  const allTables = useMemo(() => view.data?.view?.tables ?? [], [view.data]);
+  // Above 300 tables the canvas shows the selected table and its foreign-key neighbours, else the list-and-DDL form.
+  const scope = useMemo(() => scopeTables(allTables, selectedTable), [allTables, selectedTable]);
+  // Auto-layout runs once per database, and once per focus while the canvas is scoped.
+  const layoutKey = scope.mode === "scoped" ? `${activeDatabase}:${scope.focus}` : activeDatabase;
+  const tables = useMemo(
+    () => (scope.mode === "all" ? allTables : scope.mode === "scoped" ? allTables.filter((t) => scope.keys.has(t.key)) : []),
+    [allTables, scope],
+  );
   const nodes: TableFlowNode[] = useMemo(
     () =>
       tables.map((table, i) => ({
@@ -130,11 +138,11 @@ function DatabaseCanvas() {
 
   const unplaced = tables.some((t) => !positions[t.key]);
   useEffect(() => {
-    if (initialized && unplaced && nodes.length && laidOut.current !== activeDatabase) {
-      laidOut.current = activeDatabase;
+    if (initialized && unplaced && nodes.length && laidOut.current !== layoutKey) {
+      laidOut.current = layoutKey;
       void layout();
     }
-  }, [initialized, unplaced, nodes.length, activeDatabase, layout]);
+  }, [initialized, unplaced, nodes.length, layoutKey, layout]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<TableFlowNode>[]) => {
@@ -244,7 +252,13 @@ function DatabaseCanvas() {
             <DropdownMenuItem onSelect={() => void exportCanvas("png", flow.getNodes(), `database-${databaseName}`, rootRef.current)}>PNG</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <span className="ml-auto text-12 text-secondary">{tables.length} tables</span>
+        <span className="ml-auto text-12 text-secondary" data-testid="database-canvas-count">
+          {scope.mode === "all"
+            ? `${tables.length} tables`
+            : scope.mode === "scoped"
+              ? `${tables.length} of ${allTables.length} tables: ${allTables.find((t) => t.key === scope.focus)?.name ?? "the table"} and its neighbours${scope.more ? ` (${scope.more} more not drawn)` : ""}`
+              : `${allTables.length} tables: pick one to draw it with its neighbours`}
+        </span>
       </Toolbar>
       <div className="flex min-h-0 flex-1">
         <section className="flex w-56 shrink-0 flex-col border-r border-default bg-surface" aria-label="Tables" data-testid="database-tables">
@@ -276,7 +290,14 @@ function DatabaseCanvas() {
         <div className="relative min-w-0 flex-1" role="region" aria-label="Table diagram">
           <MarkerDefs />
           {view.isPending ? <Spinner label="Resolving tables" /> : null}
-          {view.data && !view.data.view ? (
+          {scope.mode === "list" ? (
+            <div data-testid="database-list-form" className="h-full">
+              <EmptyState title={`${scope.total} tables are too many to draw at once`}>
+                Pick a table in the list to draw it with the tables its foreign keys connect it to (at most {CANVAS_CAP}). The DDL preview shows the whole
+                database.
+              </EmptyState>
+            </div>
+          ) : view.data && !view.data.view ? (
             <EmptyState title="The model has errors, so its tables cannot be resolved">
               {view.data.diagnostics
                 .slice(0, 3)
@@ -290,7 +311,7 @@ function DatabaseCanvas() {
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
               onNodesChange={onNodesChange}
-              onPaneClick={() => setSelectedTable(null)}
+              onPaneClick={() => scope.mode === "all" && setSelectedTable(null)}
               fitView
               minZoom={0.1}
               nodesConnectable={false}

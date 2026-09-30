@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M31TG271K8B1JQ08EGYY5Y73",
+  "name": "refund applies credit note",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "Credit note paid out.",
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "ends": [
+    {
+      "id": "01M2G08RQM98DM8S7KD9W5KSXP",
+      "entity": "01M1QQ79VKEFGQTFWBGNS5B00J",
+      "role": "creditNote",
+      "navigation": "creditNote",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2S819VA5HSQV4E9GEDRKFP8",
+      "entity": "01M1MNW48RMMQ7NV6ZC5F8QER5",
+      "role": "refunds"
+    }
+  ]
+}

@@ -63,3 +63,60 @@ export function storageLabel(storage: Record<string, StorageChoice> | undefined,
   const others = Object.entries(storage ?? {}).filter(([key, choice]) => key !== "*" && (choice.strategy ?? null) !== strategy).length;
   return others ? `${label} +${others}` : label;
 }
+
+/**
+ * The standard strategies the sql-ddl pack realizes, as `maquettiste init --pack sql-ddl` declares them
+ * (StarterPacks.StandardReferenceStrategies): Settings offers them in one click to a project that declares none.
+ */
+export const STANDARD_STRATEGIES = {
+  "lookup-table": {
+    description: "Table keyed by code, FK from each column",
+    collections: true,
+    options: { schema: { type: "string" }, tableName: { type: "string" } },
+  },
+  check: { description: "CHECK (col IN (...codes))" },
+  native: { description: "CREATE TYPE ... AS ENUM on PostgreSQL", collections: { "*": false, postgresql: true } },
+} as const;
+
+/** Settings with the standard strategies added (the ones already declared are kept as they are). */
+export function withStandardStrategies<T extends { referenceData?: { strategies?: Record<string, unknown> | null } | null }>(settings: T): T {
+  const referenceData = { ...(settings.referenceData ?? {}) };
+  const strategies = { ...(referenceData.strategies ?? {}) };
+  for (const [key, value] of Object.entries(STANDARD_STRATEGIES)) if (!(key in strategies)) strategies[key] = structuredClone(value);
+  return { ...settings, referenceData: { ...referenceData, strategies } };
+}
+
+/** Whether Settings shows "Declare the standard storage strategies": the project declares no strategy at all. */
+export function needsStandardStrategies(settings: { referenceData?: { strategies?: Record<string, unknown> | null } | null } | undefined): boolean {
+  return !!settings && Object.keys(settings.referenceData?.strategies ?? {}).length === 0;
+}
+
+/**
+ * The statements of a rendered seed script that realize one reference type: the blank-line separated statements that
+ * name its table or native type (snake case, singular or plural) or quote one of its codes. The preview on the
+ * Storage tab shows these, so it follows the realization the pack picks for the type.
+ */
+export function typeStatements(script: string, names: readonly string[], codes: readonly string[]): string[] {
+  const words = names.filter(Boolean).map((n) => n.toLowerCase());
+  const quoted = codes.map((c) => `'${c.replaceAll("'", "''")}'`);
+  return script
+    .split(/\n\s*\n/)
+    .map((s) => s.trim())
+    .filter((s) => s && !s.startsWith("-- Generated") && !s.startsWith("-- maquettiste:"))
+    .filter((s) => {
+      const lower = s.toLowerCase();
+      return words.some((w) => new RegExp(`\\b${w}(_t)?\\b`).test(lower)) || quoted.some((q) => s.includes(q));
+    });
+}
+
+/** snake_case of a type name, and its plural from the plural name or a trailing "s": the names the pack's objects use. */
+export function snakeNames(name: string, pluralName?: string | null): string[] {
+  const snake = (s: string) =>
+    s
+      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+      .replace(/[\s-]+/g, "_")
+      .toLowerCase();
+  const one = snake(name);
+  const many = pluralName ? snake(pluralName) : `${one}s`;
+  return one === many ? [one] : [one, many];
+}

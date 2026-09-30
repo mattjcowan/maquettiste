@@ -233,3 +233,29 @@ export function marksLeavingScope(
   }
   return out;
 }
+
+export interface CategoryMaps {
+  parents: Map<string, string | null>;
+  names: Map<string, string>;
+  list: { id: string; name: string; parent: string | null }[];
+}
+
+/**
+ * The category nodes of every category tree, the global one and each domain's (§1.11), as the maps the explorer's
+ * category filter and project-defined folders read: node → parent, node → name. A node id declared twice keeps its
+ * first entry (the global tree comes first). Undefined when no tree has a category.
+ */
+export function mergeCategoryTrees(docs: readonly (CategoryTreeDoc | undefined)[]): CategoryMaps | undefined {
+  const parents = new Map<string, string | null>();
+  const names = new Map<string, string>();
+  const list: CategoryMaps["list"] = [];
+  for (const doc of docs)
+    for (const c of doc?.categories ?? []) {
+      if (names.has(c.id)) continue;
+      const parent = (c as { parent?: string | null }).parent ?? null;
+      parents.set(c.id, parent);
+      names.set(c.id, c.name);
+      list.push({ id: c.id, name: c.name, parent });
+    }
+  return list.length ? { parents, names, list } : undefined;
+}

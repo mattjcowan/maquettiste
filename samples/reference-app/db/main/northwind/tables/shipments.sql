@@ -27,17 +27,17 @@ CREATE TABLE northwind.shipments (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
+    sales_order_id uuid NULL,
+    warehouse_id uuid NOT NULL,
     carrier_id uuid NULL,
     carrier_service_id uuid NULL,
     delivery_route_id uuid NULL,
-    sales_order_id uuid NULL,
-    warehouse_id uuid NOT NULL,
     CONSTRAINT pk_shipments PRIMARY KEY (id),
     CONSTRAINT uq_shipments_shipment_number UNIQUE (shipment_number),
+    CONSTRAINT fk_shipments_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE SET NULL,
+    CONSTRAINT fk_shipments_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT,
     CONSTRAINT fk_shipments_carrier_id FOREIGN KEY (carrier_id) REFERENCES northwind.parties (id) ON DELETE SET NULL,
     CONSTRAINT fk_shipments_carrier_service_id FOREIGN KEY (carrier_service_id) REFERENCES northwind.carrier_services (id) ON DELETE SET NULL,
-    CONSTRAINT fk_shipments_delivery_route_id FOREIGN KEY (delivery_route_id) REFERENCES northwind.delivery_routes (id) ON DELETE SET NULL,
-    CONSTRAINT fk_shipments_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE SET NULL,
-    CONSTRAINT fk_shipments_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT
+    CONSTRAINT fk_shipments_delivery_route_id FOREIGN KEY (delivery_route_id) REFERENCES northwind.delivery_routes (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_shipments_tracking_number ON northwind.shipments (tracking_number);

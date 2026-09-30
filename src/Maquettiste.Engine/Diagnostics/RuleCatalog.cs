@@ -14,6 +14,15 @@ public sealed record RuleInfo(string Id, DiagnosticSeverity DefaultSeverity, str
     public bool CanBeDisabled => !Id.StartsWith("MQ1", StringComparison.Ordinal);
 }
 
+/// <summary>A built-in rule as the editor's Validation settings and the MCP tool list it: <see cref="RuleInfo"/> with its family.</summary>
+/// <param name="Id">The rule id.</param>
+/// <param name="DefaultSeverity">The severity unless <c>validation.rules</c> overrides it.</param>
+/// <param name="Description">The short description.</param>
+/// <param name="Family">The rule's hundreds group, for example <c>MQ72xx</c>.</param>
+/// <param name="FamilyLabel">What the family's rules cover, for example <c>Localization</c>.</param>
+/// <param name="CanBeOff">Whether <c>validation.rules</c> may set the rule to <c>off</c> (false for MQ1xxx).</param>
+public sealed record RuleCatalogEntry(string Id, DiagnosticSeverity DefaultSeverity, string Description, string Family, string FamilyLabel, bool CanBeOff);
+
 /// <summary>The built-in rule catalog (engine-design.md section 6). JavaScript rules use <c>x/&lt;id&gt;</c> and are not listed here.</summary>
 public static class RuleCatalog
 {
@@ -77,6 +86,8 @@ public static class RuleCatalog
         new("MQ4011", E, "Relation between bound tables names no foreign key or junction end binding."),
         new("MQ4012", I, "An entity lands in no database: no database takes its domain by convention and no mapping names it."),
         new("MQ4013", W, "A database lists convention packages that its byConvention setting does not use."),
+        new("MQ4014", E, "A convention package entry or an entity mapping names a schema that its database does not declare."),
+        new("MQ4015", E, "A schema operation was refused: the schema is unknown or its name is taken, it still holds tables, views, sequences, convention entries or mappings and no target was given, or it is the default and no other schema becomes the default."),
 
         new("MQ5001", E, "Property fails its extension schema."),
         new("MQ5002", E, "Validation rule script error."),
@@ -149,6 +160,39 @@ public static class RuleCatalog
     ];
 
     private static readonly FrozenDictionary<string, RuleInfo> ById = Rules.ToFrozenDictionary(r => r.Id, StringComparer.Ordinal);
+
+    private static readonly FrozenDictionary<string, string> FamilyLabels = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["MQ10xx"] = "Model files",
+        ["MQ20xx"] = "References and vocabularies",
+        ["MQ30xx"] = "Model structure",
+        ["MQ40xx"] = "Databases and mappings",
+        ["MQ50xx"] = "Extensions and script rules",
+        ["MQ60xx"] = "Packs and generation",
+        ["MQ70xx"] = "Reference types",
+        ["MQ71xx"] = "Seeds",
+        ["MQ72xx"] = "Localization",
+        ["MQ80xx"] = "Branding",
+    }.ToFrozenDictionary(StringComparer.Ordinal);
+
+    /// <summary>The hundreds group of a rule id: <c>MQ7204</c> is in <c>MQ72xx</c>.</summary>
+    /// <param name="id">A built-in rule id.</param>
+    /// <returns>The family key.</returns>
+    public static string FamilyOf(string id)
+    {
+        ArgumentNullException.ThrowIfNull(id);
+        return id.Length >= 4 ? string.Concat(id.AsSpan(0, 4), "xx") : id;
+    }
+
+    /// <summary>What a family's rules cover.</summary>
+    /// <param name="family">A family key from <see cref="FamilyOf"/>.</param>
+    /// <returns>The label, or the key itself for an unknown family.</returns>
+    public static string FamilyLabel(string family) => FamilyLabels.TryGetValue(family, out var label) ? label : family;
+
+    /// <summary>Every built-in rule with its family and whether it can be turned off, ordered by id.</summary>
+    /// <returns>The catalog entries.</returns>
+    public static IReadOnlyList<RuleCatalogEntry> Describe() =>
+        [.. Rules.Select(r => new RuleCatalogEntry(r.Id, r.DefaultSeverity, r.Description, FamilyOf(r.Id), FamilyLabel(FamilyOf(r.Id)), r.CanBeDisabled))];
 
     /// <summary>Every built-in rule, ordered by id.</summary>
     public static IReadOnlyList<RuleInfo> All => Rules;

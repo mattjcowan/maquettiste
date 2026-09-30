@@ -187,7 +187,7 @@ public sealed class ModelStoreHardeningTests
 
         Assert.Equal(SaveOutcome.Invalid, refused.Outcome);
         var d = Assert.Single(refused.Diagnostics, x => x.Rule == "MQ2001");
-        Assert.Equal((main.Element.Id, "/packages/0"), (d.ElementId, d.JsonPointer));
+        Assert.Equal((main.Element.Id, "/packages/0/package"), (d.ElementId, d.JsonPointer));
         Assert.Contains("every package", d.Message, StringComparison.Ordinal);
         Assert.Equal(before, s.Files());
 

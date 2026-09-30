@@ -262,6 +262,16 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 yield return peer;
         }
 
+        // MQ4014 on a mapping depends on its database's schemas.
+        if (element is Database schemaOwner)
+        {
+            foreach (var mapping in model.All<Mapping>())
+            {
+                if (mapping.Schema is not null && string.Equals(mapping.Database, schemaOwner.Id, StringComparison.Ordinal) && model.GetDocument(mapping.Id) is { } peer)
+                    yield return peer;
+            }
+        }
+
         // MQ4012 on an entity depends on every database's convention, on the entity's mappings and on the package chain.
         if (element is Database || (element is Package && model.All<Database>().Any(d => d.ByConvention is null ? d.Packages.Count > 0 : d.ByConvention == ConventionMapping.Packages)))
         {

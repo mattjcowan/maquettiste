@@ -279,6 +279,9 @@ internal sealed class SchemaRegistry : ISchemaRegistry
             if (node.TryGetProperty("x-layout", out var rowLayout) && rowLayout.ValueKind == JsonValueKind.String)
                 layout.RowPerLine |= rowLayout.ValueEquals("row-per-line");
 
+            if (node.TryGetProperty("x-collapse", out var collapse) && collapse.ValueKind == JsonValueKind.String)
+                layout.CollapseKey ??= collapse.GetString();
+
             if (node.TryGetProperty("x-trim", out var trim) && trim.ValueKind == JsonValueKind.String)
                 layout.TrimTrailingNulls |= trim.ValueEquals("trailing-nulls");
 
@@ -309,7 +312,7 @@ internal sealed class SchemaRegistry : ISchemaRegistry
 
         private static bool HasStructure(JsonElement node) =>
             node.TryGetProperty("properties", out _) || node.TryGetProperty("items", out _) || node.TryGetProperty("additionalProperties", out _)
-            || node.TryGetProperty("x-sort", out _) || node.TryGetProperty("x-layout", out _) || node.TryGetProperty("x-trim", out _)
+            || node.TryGetProperty("x-sort", out _) || node.TryGetProperty("x-layout", out _) || node.TryGetProperty("x-trim", out _) || node.TryGetProperty("x-collapse", out _)
             || node.TryGetProperty("allOf", out _) || node.TryGetProperty("anyOf", out _) || node.TryGetProperty("oneOf", out _);
 
         private static (string File, string Pointer) SplitRef(string currentFile, string reference)

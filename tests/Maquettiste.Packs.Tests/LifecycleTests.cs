@@ -47,6 +47,25 @@ public sealed class LifecycleTests
     }
 
     [Fact]
+    public async Task A_column_replaced_by_one_of_the_same_name_is_dropped_before_it_is_added_again()
+    {
+        using var repo = PackRepo.BillingDialects();
+        await repo.GenerateCleanlyAsync();
+
+        // A new id for the same attribute (as when a generator derives ids from names that changed): the diff sees a dropped
+        // column and an added column with the same name, and the migration must drop first or the ADD fails.
+        repo.EditJson(".maquettiste/model/entities/customer.json", customer =>
+        {
+            var since = customer["attributes"]!.AsArray().First(a => (string?)a!["name"] == "customerSince")!;
+            since["id"] = "01KZZZZZZZZZZZZZZZZZZZZZZZ";
+        });
+        await repo.GenerateCleanlyAsync();
+
+        var pg = repo.Read("db/main/migrations/0002.sql");
+        AssertBefore(pg, "ALTER TABLE billing.customers DROP COLUMN customer_since;", "ALTER TABLE billing.customers ADD COLUMN customer_since ");
+    }
+
+    [Fact]
     public async Task A_model_change_writes_the_next_migration_once_and_keeps_the_earlier_one()
     {
         using var repo = PackRepo.BillingDialects();

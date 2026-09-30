@@ -18,12 +18,12 @@ CREATE TABLE northwind.payments (
     updated_by varchar(64) NULL,
     customer_id uuid NOT NULL,
     deposit_account_id uuid NULL,
-    journal_entry_id bigint NULL,
     payment_batch_id uuid NULL,
+    journal_entry_id bigint NULL,
     CONSTRAINT pk_payments PRIMARY KEY (id),
     CONSTRAINT uq_payments_payment_number UNIQUE (payment_number),
     CONSTRAINT fk_payments_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
     CONSTRAINT fk_payments_deposit_account_id FOREIGN KEY (deposit_account_id) REFERENCES northwind.bank_accounts (id) ON DELETE SET NULL,
-    CONSTRAINT fk_payments_journal_entry_id FOREIGN KEY (journal_entry_id) REFERENCES northwind.journal_entries (id) ON DELETE SET NULL,
-    CONSTRAINT fk_payments_payment_batch_id FOREIGN KEY (payment_batch_id) REFERENCES northwind.payment_batches (id) ON DELETE SET NULL
+    CONSTRAINT fk_payments_payment_batch_id FOREIGN KEY (payment_batch_id) REFERENCES northwind.payment_batches (id) ON DELETE SET NULL,
+    CONSTRAINT fk_payments_journal_entry_id FOREIGN KEY (journal_entry_id) REFERENCES northwind.journal_entries (id) ON DELETE SET NULL
 );

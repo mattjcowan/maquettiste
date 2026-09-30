@@ -44,6 +44,39 @@ public sealed class ProjectAndModelTests
     }
 
     [Fact]
+    public async Task Validation_rules_lists_the_catalog_with_families_and_which_rules_can_be_off()
+    {
+        await using var host = EditorHost.Create();
+
+        var response = await host.GetAsync("/api/validation/rules");
+
+        Assert.Equal(200, response.Status);
+        Contract.AssertResponse(response, "/api/validation/rules");
+        var rules = response.Json.AsArray();
+        Assert.Equal(Maquettiste.Engine.Diagnostics.RuleCatalog.All.Count, rules.Count);
+        var ids = rules.Select(r => r!["id"]!.GetValue<string>()).ToList();
+        Assert.Equal(ids.Order(StringComparer.Ordinal), ids);
+        var first = rules[0]!;
+        Assert.Equal("MQ1001", first["id"]!.GetValue<string>());
+        Assert.Equal("error", first["defaultSeverity"]!.GetValue<string>());
+        Assert.Equal("MQ10xx", first["family"]!.GetValue<string>());
+        Assert.Equal("Model files", first["familyLabel"]!.GetValue<string>());
+        Assert.False(first["canBeOff"]!.GetValue<bool>());
+        var locale = rules.Single(r => r!["id"]!.GetValue<string>() == "MQ7204")!;
+        Assert.Equal("info", locale["defaultSeverity"]!.GetValue<string>());
+        Assert.Equal("MQ72xx", locale["family"]!.GetValue<string>());
+        Assert.Equal("Localization", locale["familyLabel"]!.GetValue<string>());
+        Assert.True(locale["canBeOff"]!.GetValue<bool>());
+        Assert.All(rules, r => Assert.NotEqual(r!["family"]!.GetValue<string>(), r["familyLabel"]!.GetValue<string>()));
+
+        // The editor's mock serves this recording; a new or changed rule needs MAQUETTISTE_RECORD=1 once.
+        Recorder.Json("validation-rules.json", response);
+        var recorded = File.ReadAllText(Path.Combine(Recorder.Folder, "validation-rules.json"));
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(recorded), response.Json),
+            "src/editor/src/mocks/recorded/validation-rules.json is out of date: run this test with MAQUETTISTE_RECORD=1.");
+    }
+
+    [Fact]
     public async Task Session_says_who_the_caller_is_and_sign_out_clears_the_cookie()
     {
         await using var host = EditorHost.Create();

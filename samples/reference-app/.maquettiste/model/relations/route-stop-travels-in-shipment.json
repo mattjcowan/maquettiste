@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1M7M3CR6W2XHF5TG4VC1Y38",
+  "name": "route stop travels in shipment",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "Shipment delivered at the stop.",
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "ends": [
+    {
+      "id": "01M2HA83BA077WGK0W3HF6AYJ4",
+      "entity": "01M2KGD56DK66D518GC8HV02RM",
+      "role": "shipment",
+      "navigation": "shipment",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M31K8G57AQWTZY9ANM2XDXB6",
+      "entity": "01M31X5XV10W9BZRF7DTE73C5Q",
+      "role": "routeStops"
+    }
+  ]
+}

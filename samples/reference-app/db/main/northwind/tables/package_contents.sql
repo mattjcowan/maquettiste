@@ -5,11 +5,11 @@
 CREATE TABLE northwind.package_contents (
     id uuid NOT NULL,
     quantity numeric(12,3) NOT NULL,
-    serial_number_id uuid NULL,
     shipment_line_id uuid NOT NULL,
+    serial_number_id uuid NULL,
     shipment_package_id uuid NOT NULL,
     CONSTRAINT pk_package_contents PRIMARY KEY (id),
-    CONSTRAINT fk_package_contents_serial_number_id FOREIGN KEY (serial_number_id) REFERENCES northwind.serial_numbers (id) ON DELETE SET NULL,
     CONSTRAINT fk_package_contents_shipment_line_id FOREIGN KEY (shipment_line_id) REFERENCES northwind.shipment_lines (id) ON DELETE CASCADE,
+    CONSTRAINT fk_package_contents_serial_number_id FOREIGN KEY (serial_number_id) REFERENCES northwind.serial_numbers (id) ON DELETE SET NULL,
     CONSTRAINT fk_package_contents_shipment_package_id FOREIGN KEY (shipment_package_id) REFERENCES northwind.shipment_packages (id) ON DELETE CASCADE
 );

@@ -1,8 +1,13 @@
+import { useState } from "react";
 // The Storage tab (reference-types-seeds-localization.md 1.4 and 4.3): per database, the effective strategy and
 // where it comes from (this type, the database's settings, the project default, or none: template-defined), and an
 // override chosen from the strategies the project declares, or Template-defined. The engine knows no strategy; the
 // packs realize the choice.
-import { useIndex, useSettings } from "@/api/queries";
+import { useElements, useIndex, useSettings } from "@/api/queries";
+import * as endpoints from "@/api/endpoints";
+import { Button } from "@/components/ui/button";
+import { firstCodes } from "./rowsModel";
+import { snakeNames, typeStatements } from "./storageChoices";
 import type { ReferenceTypeDoc, StorageChoice } from "@/api/types";
 import { Input, Select } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/misc";
@@ -144,6 +149,68 @@ export function StorageTab({ typeId }: { typeId: string }) {
           })}
         </tbody>
       </table>
+      <StoragePreview typeId={typeId} databases={databases} />
     </div>
+  );
+}
+
+/**
+ * Preview output: the sql-ddl pack's seed script of one database, rendered as generation would (nothing is written),
+ * narrowed to the statements that realize this type, so the effect of the storage choice shows here.
+ */
+function StoragePreview({ typeId, databases }: { typeId: string; databases: { id: string; name: string }[] }) {
+  const [database, setDatabase] = useState<string>("");
+  const [result, setResult] = useState<{ text: string[]; path?: string; error?: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const index = useIndex();
+  const seedIds = (index.data ?? []).filter((r) => r.kind === "seed" && r.target === typeId).map((r) => r.id);
+  const loaded = useElements([typeId, ...seedIds]);
+  const chosen = database || databases[0]?.id || "";
+  if (databases.length === 0) return null;
+  const preview = async () => {
+    const type = loaded.byId.get(typeId)?.json as unknown as ReferenceTypeDoc | undefined;
+    if (!type) return;
+    setBusy(true);
+    try {
+      const seeds = seedIds.map((id) => loaded.byId.get(id)?.json as unknown as Parameters<typeof firstCodes>[0][number] | undefined).filter((d) => !!d);
+      const codes = firstCodes(seeds, Number.MAX_SAFE_INTEGER).codes;
+      const answer = await endpoints.previewTemplate({ pack: "sql-ddl", unit: "seed", elementId: chosen });
+      const file = answer.files?.[0];
+      const statements = file ? typeStatements(file.text, snakeNames(type.name, type.pluralName), codes) : [];
+      setResult(
+        answer.diagnostics?.some((d) => d.severity === "error")
+          ? { text: [], error: answer.diagnostics.find((d) => d.severity === "error")?.message }
+          : { text: statements, path: file?.path },
+      );
+    } catch (e) {
+      setResult({ text: [], error: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section aria-label="Preview output" className="mt-3 flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <span className="text-12 font-semibold">Preview output</span>
+        <Select aria-label="Database to preview" className="w-auto" value={chosen} onChange={(e) => setDatabase(e.target.value)}>
+          {databases.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
+        </Select>
+        <Button size="sm" variant="secondary" disabled={busy} onClick={() => void preview()}>
+          Preview output
+        </Button>
+      </div>
+      {result?.error ? <p className="text-12 text-danger">{result.error}</p> : null}
+      {result && !result.error ? (
+        <pre data-testid="storage-preview" className="max-h-80 overflow-auto rounded-control border border-default bg-app p-2 font-mono text-12">
+          {result.text.length
+            ? `-- ${result.path ?? "seed.sql"} (sql-ddl), the statements for this type\n\n${result.text.join("\n\n")}`
+            : "The sql-ddl seed script has no statement for this type in this database (no field of a table mapped to it uses the type)."}
+        </pre>
+      ) : null}
+    </section>
   );
 }

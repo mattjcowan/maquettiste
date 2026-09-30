@@ -13,10 +13,10 @@ CREATE TABLE northwind.write_offs (
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
     approved_by_id uuid NULL,
-    invoice_id uuid NOT NULL,
     journal_entry_id bigint NULL,
+    invoice_id uuid NOT NULL,
     CONSTRAINT pk_write_offs PRIMARY KEY (id),
     CONSTRAINT fk_write_offs_approved_by_id FOREIGN KEY (approved_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
-    CONSTRAINT fk_write_offs_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_write_offs_journal_entry_id FOREIGN KEY (journal_entry_id) REFERENCES northwind.journal_entries (id) ON DELETE SET NULL
+    CONSTRAINT fk_write_offs_journal_entry_id FOREIGN KEY (journal_entry_id) REFERENCES northwind.journal_entries (id) ON DELETE SET NULL,
+    CONSTRAINT fk_write_offs_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE RESTRICT
 );

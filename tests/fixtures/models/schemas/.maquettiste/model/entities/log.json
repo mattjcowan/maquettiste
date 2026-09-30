@@ -1,0 +1,20 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JSCH00000000000000000012",
+  "name": "Log",
+  "package": "01JSCH00000000000000000002",
+  "key": {
+    "attributes": [
+      "01JSCH00000000000000000121"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01JSCH00000000000000000121",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    }
+  ]
+}

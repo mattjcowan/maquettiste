@@ -18,7 +18,7 @@
     "build": "tsc -b && vite build",
     "prebuild:mock": "node scripts/copy-fixture.mjs",
     "build:mock": "vite build --mode mock --outDir dist-mock",
-    "preview:mock": "vite preview --mode mock --outDir dist-mock --port 4173 --strictPort",
+    "preview:mock": "vite preview --mode mock --outDir dist-mock --strictPort",
     "gen": "node scripts/gen-api.mjs && node scripts/gen-mocks.mjs",
     "gen:api": "node scripts/gen-api.mjs",
     "gen:mocks": "node scripts/gen-mocks.mjs",

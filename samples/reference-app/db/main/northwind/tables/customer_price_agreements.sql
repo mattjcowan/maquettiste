@@ -14,10 +14,10 @@ CREATE TABLE northwind.customer_price_agreements (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    approved_by_id uuid NULL,
     customer_id uuid NOT NULL,
+    approved_by_id uuid NULL,
     CONSTRAINT pk_customer_price_agreements PRIMARY KEY (id),
     CONSTRAINT uq_customer_price_agreements_agreement_number UNIQUE (agreement_number),
-    CONSTRAINT fk_customer_price_agreements_approved_by_id FOREIGN KEY (approved_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
-    CONSTRAINT fk_customer_price_agreements_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT
+    CONSTRAINT fk_customer_price_agreements_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_customer_price_agreements_approved_by_id FOREIGN KEY (approved_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );

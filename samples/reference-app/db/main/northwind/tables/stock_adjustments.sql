@@ -14,12 +14,12 @@ CREATE TABLE northwind.stock_adjustments (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    approved_by_id uuid NULL,
     inventory_item_id uuid NOT NULL,
+    approved_by_id uuid NULL,
     reason_id integer NOT NULL,
     CONSTRAINT pk_stock_adjustments PRIMARY KEY (id),
     CONSTRAINT uq_stock_adjustments_adjustment_number UNIQUE (adjustment_number),
-    CONSTRAINT fk_stock_adjustments_approved_by_id FOREIGN KEY (approved_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_stock_adjustments_inventory_item_id FOREIGN KEY (inventory_item_id) REFERENCES northwind.inventory_items (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_stock_adjustments_approved_by_id FOREIGN KEY (approved_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_stock_adjustments_reason_id FOREIGN KEY (reason_id) REFERENCES northwind.adjustment_reasons (id) ON DELETE RESTRICT
 );

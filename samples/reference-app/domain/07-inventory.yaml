@@ -36,10 +36,10 @@ entities:
       floorAreaSqm: decimal(10,2) min=0 | Floor area in square meters.
       isActive: bool! default=true | Whether it can receive and ship.
     refs:
-      manager: Employee | Site manager.
-      costCenter: CostCenter | Cost center of the site.
+      manager: Employee name=warehouse_reports_to_manager | Site manager.
+      costCenter: CostCenter name=warehouse_is_charged_to_cost_center | Cost center of the site.
     children:
-      zones: WarehouseZone | Zones of the warehouse.
+      zones: WarehouseZone name=warehouse_contains_zones | Zones of the warehouse.
 
   WarehouseZone:
     description: An area of a warehouse with one purpose, such as receiving, bulk storage, pick faces or a freezer.
@@ -49,9 +49,9 @@ entities:
       name: string(100)! | Zone name.
       zoneType: string(20)! | receiving, bulk, pick, staging, quarantine or shipping.
     refs:
-      storageCondition: StorageCondition | Condition the zone maintains.
+      storageCondition: StorageCondition name=warehouse_zone_requires_storage_condition | Condition the zone maintains.
     children:
-      bins: BinLocation | Bins in the zone.
+      bins: BinLocation name=warehouse_zone_contains_bins | Bins in the zone.
 
   BinLocation:
     description: A storage location addressed by aisle, rack, level and position.
@@ -77,9 +77,9 @@ entities:
       reorderPoint: decimal(14,3) min=0 | Quantity that triggers replenishment.
       lastCountedOn: date | Date of the last cycle count.
     refs:
-      product: Product! | Stocked product.
-      warehouse: Warehouse! cascade back=inventoryItems | Warehouse holding the stock.
-      defaultBin: BinLocation | Pick face of the product.
+      product: Product! name=inventory_item_is_for_product | Stocked product.
+      warehouse: Warehouse! cascade back=inventoryItems name=inventory_item_is_kept_at_warehouse | Warehouse holding the stock.
+      defaultBin: BinLocation name=inventory_item_is_put_away_in_default_bin | Pick face of the product.
     overlay:
       description: Allocation can never exceed what is on hand plus what is inbound.
       checks:
@@ -94,8 +94,8 @@ entities:
       manufacturedOn: date | Production date.
       expiresOn: date indexed | Expiry date, for first-expired-first-out picking.
     refs:
-      product: Product! | Product of the lot.
-      supplier: Supplier | Supplier the lot came from.
+      product: Product! name=stock_lot_is_for_product | Product of the lot.
+      supplier: Supplier name=stock_lot_is_supplied_by_supplier | Supplier the lot came from.
 
   SerialNumber:
     description: A serialized unit of a product, tracked from receipt to the customer.
@@ -104,9 +104,9 @@ entities:
       status: string(20)! default=in-stock | in-stock, shipped, returned or scrapped.
       receivedAt: datetimeoffset | When it was received.
     refs:
-      product: Product! | Product of the unit.
-      lot: StockLot | Lot the unit belongs to.
-      currentBin: BinLocation | Where the unit is stored.
+      product: Product! name=serial_number_is_for_product | Product of the unit.
+      lot: StockLot name=serial_number_is_drawn_from_lot | Lot the unit belongs to.
+      currentBin: BinLocation name=serial_number_sits_in_current_bin | Where the unit is stored.
 
   StockMovement:
     description: An immutable record of stock moving into, out of or within a warehouse; balances are derived from these.
@@ -119,11 +119,11 @@ entities:
       referenceDocument: string(40) | Source document number.
       unitCost: Money | Cost per unit for valuation.
     refs:
-      product: Product! | Product moved.
-      fromBin: BinLocation | Source bin.
-      toBin: BinLocation | Destination bin.
-      lot: StockLot | Lot moved.
-      performedBy: Employee | Who moved it.
+      product: Product! name=stock_movement_is_for_product | Product moved.
+      fromBin: BinLocation name=stock_movement_moves_from_from_bin | Source bin.
+      toBin: BinLocation name=stock_movement_moves_to_to_bin | Destination bin.
+      lot: StockLot name=stock_movement_is_drawn_from_lot | Lot moved.
+      performedBy: Employee name=stock_movement_is_performed_by_employee | Who moved it.
     overlay:
       description: Movements are read newest first.
       indexes:
@@ -141,9 +141,9 @@ entities:
       valueDelta: Money | Change in inventory value.
       notes: string(500) | Explanation.
     refs:
-      inventoryItem: InventoryItem! | Stock adjusted.
-      reason: AdjustmentReason! | Why.
-      approvedBy: Employee | Approver, for adjustments above the threshold.
+      inventoryItem: InventoryItem! name=stock_adjustment_adjusts_inventory_item | Stock adjusted.
+      reason: AdjustmentReason! name=stock_adjustment_is_explained_by_reason | Why.
+      approvedBy: Employee name=stock_adjustment_is_approved_by_employee | Approver, for adjustments above the threshold.
 
   AdjustmentReason:
     description: A reason for a stock adjustment, such as Damaged in warehouse or Count correction.
@@ -162,11 +162,11 @@ entities:
       status: string(20)! default=planned | planned, counting, review or closed.
       completedAt: datetimeoffset | When counting finished.
     refs:
-      warehouse: Warehouse! | Warehouse counted.
-      zone: WarehouseZone | Zone counted; null for the whole warehouse.
-      assignedTo: Employee | Counter.
+      warehouse: Warehouse! name=cycle_count_counts_stock_at_warehouse | Warehouse counted.
+      zone: WarehouseZone name=cycle_count_lies_in_zone | Zone counted; null for the whole warehouse.
+      assignedTo: Employee name=cycle_count_is_assigned_to_employee | Counter.
     children:
-      lines: CycleCountLine | Locations and products to count.
+      lines: CycleCountLine name=cycle_count_contains_lines | Locations and products to count.
 
   CycleCountLine:
     description: One product in one bin to count, with the expected and counted quantities.
@@ -176,9 +176,9 @@ entities:
       countedAt: datetimeoffset | When it was counted.
       varianceApproved: bool! default=false | Whether a variance was approved.
     refs:
-      product: Product! | Product counted.
-      bin: BinLocation! | Bin counted.
-      lot: StockLot | Lot counted.
+      product: Product! name=cycle_count_line_is_for_product | Product counted.
+      bin: BinLocation! name=cycle_count_line_is_stored_in_bin | Bin counted.
+      lot: StockLot name=cycle_count_line_is_drawn_from_lot | Lot counted.
 
   StockTransfer:
     description: A movement of stock between two Northwind warehouses.
@@ -191,11 +191,11 @@ entities:
       shippedAt: datetimeoffset | When it left the source.
       receivedAt: datetimeoffset | When it arrived.
     refs:
-      fromWarehouse: Warehouse! | Source warehouse.
-      toWarehouse: Warehouse! | Destination warehouse.
-      carrier: Carrier | Carrier moving it.
+      fromWarehouse: Warehouse! name=stock_transfer_leaves_from_from_warehouse | Source warehouse.
+      toWarehouse: Warehouse! name=stock_transfer_arrives_at_to_warehouse | Destination warehouse.
+      carrier: Carrier name=stock_transfer_is_shipped_by_carrier | Carrier moving it.
     children:
-      lines: StockTransferLine | Products transferred.
+      lines: StockTransferLine name=stock_transfer_contains_lines | Products transferred.
 
   StockTransferLine:
     description: A product and quantity on a stock transfer.
@@ -203,8 +203,8 @@ entities:
       quantity: decimal(14,3)! min=0 | Quantity shipped.
       receivedQuantity: decimal(14,3) min=0 | Quantity received.
     refs:
-      product: Product! | Product transferred.
-      lot: StockLot | Lot transferred.
+      product: Product! name=stock_transfer_line_is_for_product | Product transferred.
+      lot: StockLot name=stock_transfer_line_is_drawn_from_lot | Lot transferred.
 
   ReplenishmentRule:
     description: Min-max replenishment settings of a product in a warehouse.
@@ -216,9 +216,9 @@ entities:
       reorderQuantity: decimal(14,3) min=0 | Fixed order quantity, when used instead of max.
       isActive: bool! default=true | Whether the rule is evaluated.
     refs:
-      product: Product! | Product replenished.
-      warehouse: Warehouse! cascade | Warehouse replenished.
-      preferredSupplier: Supplier | Supplier to order from.
+      product: Product! name=replenishment_rule_is_for_product | Product replenished.
+      warehouse: Warehouse! cascade name=replenishment_rule_replenishes_warehouse | Warehouse replenished.
+      preferredSupplier: Supplier name=replenishment_rule_is_bought_from_preferred_supplier | Supplier to order from.
 
   StockReservation:
     description: A quantity of stock reserved for a sales order line.
@@ -229,8 +229,8 @@ entities:
       expiresAt: datetimeoffset | When a soft reservation lapses.
       status: string(20)! default=active | active, picked, released or expired.
     refs:
-      inventoryItem: InventoryItem! cascade back=reservations | Stock reserved.
-      salesOrderLine: SalesOrderLine! cascade back=reservations | Line the stock is for.
+      inventoryItem: InventoryItem! cascade back=reservations name=stock_reservation_adjusts_inventory_item | Stock reserved.
+      salesOrderLine: SalesOrderLine! cascade back=reservations name=stock_reservation_fulfils_sales_order_line | Line the stock is for.
 
   InventoryCostLayer:
     description: A FIFO cost layer created by a receipt and consumed by issues, for inventory valuation.
@@ -242,9 +242,9 @@ entities:
       remainingQuantity: decimal(14,3)! min=0 | Quantity not yet consumed.
       unitCost: Money! | Landed cost per unit.
     refs:
-      product: Product! | Product valued.
-      warehouse: Warehouse! | Warehouse holding it.
-      goodsReceiptLine: GoodsReceiptLine | Receipt that created the layer.
+      product: Product! name=inventory_cost_layer_is_for_product | Product valued.
+      warehouse: Warehouse! name=inventory_cost_layer_is_kept_at_warehouse | Warehouse holding it.
+      goodsReceiptLine: GoodsReceiptLine name=inventory_cost_layer_is_traced_to_goods_receipt_line | Receipt that created the layer.
 
   PutawayTask:
     description: A task to move received goods from the dock to a storage bin.
@@ -255,11 +255,11 @@ entities:
       quantity: decimal(14,3)! min=0 | Quantity to put away.
       completedAt: datetimeoffset | When it was done.
     refs:
-      product: Product! | Product to put away.
-      fromBin: BinLocation | Staging location.
-      toBin: BinLocation! | Target bin.
-      assignedTo: Employee | Warehouse associate.
-      goodsReceiptLine: GoodsReceiptLine | Receipt line being put away.
+      product: Product! name=putaway_task_is_for_product | Product to put away.
+      fromBin: BinLocation name=putaway_task_moves_from_from_bin | Staging location.
+      toBin: BinLocation! name=putaway_task_moves_to_to_bin | Target bin.
+      assignedTo: Employee name=putaway_task_is_assigned_to_employee | Warehouse associate.
+      goodsReceiptLine: GoodsReceiptLine name=putaway_task_is_traced_to_goods_receipt_line | Receipt line being put away.
 
   WarehouseEquipment:
     description: Material handling equipment of a warehouse, such as a forklift or a reach truck.
@@ -273,7 +273,7 @@ entities:
       lastInspectedOn: date | Last safety inspection.
       isOperational: bool! default=true | Whether it can be used.
     refs:
-      warehouse: Warehouse! back=equipment | Warehouse it belongs to.
+      warehouse: Warehouse! back=equipment name=warehouse_equipment_is_kept_at_warehouse | Warehouse it belongs to.
 
   DockDoor:
     description: A loading dock door of a warehouse, scheduled for inbound and outbound trailers.
@@ -283,7 +283,7 @@ entities:
       hasLeveler: bool! default=true | Whether it has a dock leveler.
       isActive: bool! default=true | Whether it can be scheduled.
     refs:
-      warehouse: Warehouse! cascade back=dockDoors | Warehouse of the door.
+      warehouse: Warehouse! cascade back=dockDoors name=dock_door_is_kept_at_warehouse | Warehouse of the door.
 
   WarehouseShift:
     description: A working shift of a warehouse, such as the night picking shift.
@@ -293,8 +293,8 @@ entities:
       endsAt: time! | End time.
       weekdays: string(20)! | Days worked, such as Mon-Fri.
     refs:
-      warehouse: Warehouse! cascade back=shifts | Warehouse of the shift.
-      supervisor: Employee | Shift supervisor.
+      warehouse: Warehouse! cascade back=shifts name=warehouse_shift_is_kept_at_warehouse | Warehouse of the shift.
+      supervisor: Employee name=warehouse_shift_is_supervised_by_employee | Shift supervisor.
 
   StorageCondition:
     description: A storage requirement, such as Ambient, Chilled 2-8 C or Frozen.
@@ -315,10 +315,10 @@ entities:
       sampleSize: int32 min=1 | Units inspected.
       notes: text | Findings.
     refs:
-      product: Product! | Product inspected.
-      lot: StockLot | Lot inspected.
-      inspector: Employee | Inspector.
-      goodsReceiptLine: GoodsReceiptLine | Receipt inspected.
+      product: Product! name=quality_inspection_is_for_product | Product inspected.
+      lot: StockLot name=quality_inspection_is_drawn_from_lot | Lot inspected.
+      inspector: Employee name=quality_inspection_is_inspected_by_employee | Inspector.
+      goodsReceiptLine: GoodsReceiptLine name=quality_inspection_is_traced_to_goods_receipt_line | Receipt inspected.
 
   InventoryHold:
     description: A hold that blocks stock from being picked, such as a recall or a failed inspection.
@@ -329,10 +329,10 @@ entities:
       releasedAt: datetimeoffset | When it was released.
       quantity: decimal(14,3) min=0 | Quantity held; null for everything in scope.
     refs:
-      product: Product! | Product held.
-      lot: StockLot | Lot held.
-      warehouse: Warehouse! | Warehouse where it applies.
-      placedBy: Employee | Who placed it.
+      product: Product! name=inventory_hold_is_for_product | Product held.
+      lot: StockLot name=inventory_hold_is_drawn_from_lot | Lot held.
+      warehouse: Warehouse! name=inventory_hold_is_kept_at_warehouse | Warehouse where it applies.
+      placedBy: Employee name=inventory_hold_is_placed_by_employee | Who placed it.
 
   ReorderSuggestion:
     description: A replenishment proposal computed nightly for a buyer to accept or dismiss.
@@ -343,10 +343,10 @@ entities:
       isAccepted: bool | Whether the buyer accepted it; null while undecided.
       dismissedReason: string(200) | Why it was dismissed.
     refs:
-      product: Product! | Product to order.
-      warehouse: Warehouse! | Warehouse to replenish.
-      supplier: Supplier | Suggested supplier.
-      purchaseOrder: PurchaseOrder | Purchase order created from it.
+      product: Product! name=reorder_suggestion_is_for_product | Product to order.
+      warehouse: Warehouse! name=reorder_suggestion_is_kept_at_warehouse | Warehouse to replenish.
+      supplier: Supplier name=reorder_suggestion_is_supplied_by_supplier | Suggested supplier.
+      purchaseOrder: PurchaseOrder name=reorder_suggestion_fulfils_purchase_order | Purchase order created from it.
 
 diagram:
   name: Inventory and warehousing

@@ -464,7 +464,7 @@ internal sealed partial class SyntheticModel
         _elements.Add(reporting);
         _elements.Add(edge);
 
-        var reportingPackages = new HashSet<string>(reporting.Packages, StringComparer.Ordinal);
+        var reportingPackages = new HashSet<string>(reporting.Packages.Select(p => p.Package), StringComparer.Ordinal);
         var enumIds = new HashSet<string>(_enums.Select(e => e.Id), StringComparer.Ordinal);
         var valueObjectIds = new HashSet<string>(_valueObjects.Select(v => v.Id), StringComparer.Ordinal);
         for (var i = 0; i < _entities.Count; i++)

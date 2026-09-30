@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M20CY4XZYYK3HRTVWJ96VXBT",
+  "name": "sales commission fulfils sales order",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "Order it was earned on.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "ends": [
+    {
+      "id": "01M1QWANT0ETGVHT129P61W6B1",
+      "entity": "01M1GBW3NDKS6WCM5FAXYVHV7B",
+      "role": "salesOrder",
+      "navigation": "salesOrder",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M1PCHD6P63TWCXAT2R5YK4K7",
+      "entity": "01M2XHGJFZKF467SJBM67ZQ9F4",
+      "role": "commissions",
+      "navigation": "commissions"
+    }
+  ]
+}

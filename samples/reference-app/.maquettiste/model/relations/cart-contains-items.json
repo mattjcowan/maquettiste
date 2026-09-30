@@ -1,0 +1,28 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2H4EMS0DA2W2KSZN452X4QZ",
+  "name": "cart contains items",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "relationKind": "composition",
+  "description": "Products in the cart.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "ends": [
+    {
+      "id": "01M2PAG8WJKGAPMMB96GHBWE15",
+      "entity": "01M1G2XC8VHF50WCS54G3Y5R96",
+      "role": "cart",
+      "navigation": "cart",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M2FA317F0B1WXVHPV7HB6Q65",
+      "entity": "01M2F67H1NJPNCPERPZKKZ4Y2R",
+      "role": "items",
+      "navigation": "items",
+      "ordered": true
+    }
+  ]
+}

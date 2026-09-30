@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2TGJBD5EQ0AVWCPVZFCM316",
+  "name": "user session signs in as user account",
+  "package": "01M1F99DBQ9B1T1RVMQRR1GS7V",
+  "description": "Account that signed in.",
+  "category": "01M38C3WQ4HSCF45E03KGN6AF5",
+  "ends": [
+    {
+      "id": "01M2AGG1PV543XMHEPRRKMVZWX",
+      "entity": "01M2CMF5JR3GW828G267AZ0M1E",
+      "role": "userAccount",
+      "navigation": "userAccount",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M2DWEGV451PN9RJB5807WCDY",
+      "entity": "01M33169ZNHEKKZGWZBFWA2FWS",
+      "role": "sessions",
+      "navigation": "sessions"
+    }
+  ]
+}

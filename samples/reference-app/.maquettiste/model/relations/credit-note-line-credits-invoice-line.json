@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2NQTBG7Z2SVNGSHJ8NAFYSV",
+  "name": "credit note line credits invoice line",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "Invoice line credited.",
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "ends": [
+    {
+      "id": "01M3072MN4XD0JB02WNFAP95HX",
+      "entity": "01M1G0CXN70ZE3GA6793X6HE47",
+      "role": "invoiceLine",
+      "navigation": "invoiceLine",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1FBVNVQEM1K7V1QBX0ENGD3",
+      "entity": "01M2PP8AVP0AZH2E3EFKJS3Y7B",
+      "role": "creditNoteLines"
+    }
+  ]
+}

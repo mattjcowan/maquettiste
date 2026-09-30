@@ -215,6 +215,20 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
         }
     }
 
+    /// <summary>A shard validated before, read from its bytes or from the parsed-shard cache (<see cref="ShardCache"/>).</summary>
+    /// <param name="shard">The shard.</param>
+    /// <param name="repoPath">The repo-relative path.</param>
+    /// <param name="canonical">Whether the bytes were canonical when validated.</param>
+    /// <returns>The result.</returns>
+    internal static ParsedFile TrustedShard(LocaleShard shard, string repoPath, bool canonical) => new()
+    {
+        LocaleShard = shard,
+        Diagnostics = canonical ? [] : [RuleCatalog.Create("MQ1003", "The file is not in canonical form; the next save rewrites it, or run maquettiste format.", null, repoPath, "")],
+        Valid = true,
+        Canonical = canonical,
+        SidecarReferences = LocaleShardReader.SidecarsOf(shard),
+    };
+
     /// <summary>
     /// Reads a locale shard (<c>model/locales/&lt;locale&gt;/*.json</c>; reference-types-seeds-localization.md section 3.3): schema
     /// failures are MQ1002, a non-canonical file MQ1003, as for element files. A shard is not an element and has no id.
@@ -228,16 +242,7 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
     {
         // A shard validated before is read in one forward pass, without a document tree (section 3.8).
         if (trusted && LocaleShardReader.TryRead(bytes, out var streamed))
-        {
-            return new ParsedFile
-            {
-                LocaleShard = streamed,
-                Diagnostics = trustedCanonical ? [] : [RuleCatalog.Create("MQ1003", "The file is not in canonical form; the next save rewrites it, or run maquettiste format.", null, repoPath, "")],
-                Valid = true,
-                Canonical = trustedCanonical,
-                SidecarReferences = LocaleShardReader.SidecarsOf(streamed),
-            };
-        }
+            return TrustedShard(streamed, repoPath, trustedCanonical);
 
         if (!TryParse(bytes, repoPath, "MQ1001", out var document, out var parseError))
             return new ParsedFile { Diagnostics = [parseError] };

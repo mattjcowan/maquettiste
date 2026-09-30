@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M33HQ0J870DDS9X5JCHYTHR0",
+  "name": "credit note line is for product",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "Product credited.",
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "ends": [
+    {
+      "id": "01M1K4PDFHGP3A1JRVNFN5BBCN",
+      "entity": "01M20RAEF2QZ5W8HV57RBX5PQV",
+      "role": "product",
+      "navigation": "product",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1QFY9DSVA57XTVH378H2XHH",
+      "entity": "01M2PP8AVP0AZH2E3EFKJS3Y7B",
+      "role": "creditNoteLines"
+    }
+  ]
+}

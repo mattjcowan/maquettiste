@@ -71,8 +71,7 @@ stay apart and renaming a project keeps it) and restored on reload: the explorer
 expanded rows and selection, the open editor tabs and the active one, the packs ticked on the Generate screen, and
 the Settings tab Settings opens on. The address still says which screen, diagram or database and which selection
 shows, and wins where the two differ, so a shared link opens what it names.
-The page state belongs to the project's name, so renaming the project starts from a fresh one. Both are kept in this
-browser only: another browser, or a private window, opens with the default layout and nothing open.
+Both are kept in this browser only: another browser, or a private window, opens with the default layout and nothing open.
 
 ### The rail: one explorer at a time
 
@@ -118,7 +117,14 @@ The keyboard walks the tree: the arrows move and expand, Enter opens, F2 renames
 click or an arrow selects several rows of one kind. Every row has a right-click menu (also Shift+F10) with the actions
 that fit it, such as **Where used**, **Show on canvas**, **Add to diagram**, **Move to domain…**, **Go to table** or
 **Open mappings**. **Move to domain…** warns before a tag or category declared by a domain would fall out of scope in
-the new place. F12 on a reference goes to its definition and Shift+F12 lists where the element is used.
+the new place. **Apply stereotype…**, **Tag…** and **Set category…** mark a row, or every selected row at once, in one
+change. **Promote to entity** on a value object or a custom type makes it an entity (an id key plus the value object's
+attributes, or one `value` attribute of the custom type's base) and turns each entity attribute typed as it into a
+relationship to the new entity. What pointed at a removed attribute follows: the owner's mapping drops its row for it
+(the relationship's foreign key maps by convention) and the owner's seed drops its column; a diagram that showed the
+promoted element shows the new entity. A use inside a value object, a relationship or a key, a seed left with no column,
+or any other element that refers to it blocks the promotion, and the dialog names each one and lists every rewrite.
+One undo reverses the whole promotion. F12 on a reference goes to its definition and Shift+F12 lists where the element is used.
 
 ### Element editors and General mode
 
@@ -130,11 +136,16 @@ entity its key, **Base entity**, **Is abstract**, stereotypes, tags and category
 - **Entity**: Attributes, Relationships, Indexes, Mappings, Inheritance, Seed data, References, Code generation. Under
   the attribute grid, **Inherited** lists the base entities' fields and **Virtual** the fields the entity's stereotypes
   add, both read-only. Relationships has **New relationship…**, which starts the New relationship dialog from this
-  entity. **Inheritance** (available once the entity has a base entity or another entity derives from it) shows the base
-  entity, the derived entities and, per database, the strategy (tph, tpt or tpc) with where it comes from: the root
-  entity's mapping, else the database's or the project's conventions.
-- **Relationship**: its ends at the top, then Attributes, Mappings (per database: the customised mapping's shape, or
-  "By convention", and the junction table), Code generation, References.
+  entity. **Inheritance** (available once the entity has a base entity or another entity derives from it) edits the hierarchy:
+  the **Base entity** picker (it refuses a base that would close a loop and says why), the derived entities, and under
+  **Mapping strategy**, per database, the strategy (**One table for the hierarchy (tph)**, **One table per entity,
+  joined (tpt)**, **One table per concrete entity (tpc)**, or **By convention**, which names the strategy the
+  conventions give) and the **Discriminator value**. The strategy is written on the root entity's mapping in that
+  database (disabled, with a tooltip, while the root has none); the discriminator value on this entity's mapping.
+- **Relationship**: its ends at the top, then Attributes, Mappings, Code generation, References. **Mappings** edits,
+  per database, the **Shape** (**Foreign key**, **Junction table**, **Promoted to an entity**, or **By convention**),
+  the **Junction table** name and the **Promoted entity name**; the first edit creates the relationship's mapping in
+  that database when it has none. Every edit here is one undo step.
 - **Enum**: Members; **value object**: Attributes; **custom type**: Definition; each with Code generation and References.
 - **Domain**: General, Tags and Categories. The display name, plural name and description are edited in the editor's
   header only, not again on General.
@@ -203,7 +214,12 @@ database shows on the Database screen at once. The explorers remember which rows
   **New reference type** asks for the name, display name, category and **Stored as**: Template-defined or one of the
   strategies the project declares (the example packs' `lookup-table`, `check` and `native` read Lookup table, Check
   constraint and Native type, where the dialect has one). Check constraint is preselected when the project declares it;
-  the choice applies to every database, and the Storage tab overrides it per database.
+  the choice applies to every database, and the Storage tab overrides it per database. `maquettiste init` declares the
+  three strategies the sql-ddl starter builds; a project that declares none sees **Declare the standard storage
+  strategies** under Settings › Conventions, one click away. The Storage tab's **Preview output** renders the sql-ddl
+  seed script of the chosen database without writing it and shows the statements for the type. Hovering a type in the
+  list shows its first codes. When a type has several seeds, a picker beside **Import CSV** and **Export CSV** chooses
+  the seed. Removing a field also removes its column from the type's seeds, in the same save (one undo step).
 
   To use a reference type as an attribute's type, open the attribute's **Type** cell: the list has sections (Recent,
   Built-in, Custom types, Enums, Reference data, Value objects) and one search across them. Each reference type shows
@@ -225,7 +241,10 @@ database shows on the Database screen at once. The explorers remember which rows
   and the attribute mapped onto the column (once the entity is expanded; a collapsed folder shows "n related").
   Enter or a double click on a table opens its screen with that table focused. The screen shows table diagrams per
   database, a Tables list with a filter (the first 300 matches), a dialect selector, and a live DDL preview for the
-  selected table. The database row's menu opens **Mappings**: an entity and its table side by side, where names mapped automatically are
+  selected table. A database of more than 300 tables is not drawn whole: with no table selected the screen says
+  "<n> tables are too many to draw at once" and keeps the list and the DDL preview of the whole database; pick a table
+  and the diagram draws it with the tables its foreign keys connect it to, in both directions (at most 300, the header
+  saying how many more were left out). The database row's menu opens **Mappings**: an entity and its table side by side, where names mapped automatically are
   muted and customised ones are highlighted.
 
   **What a database holds.** Entities are not turned into tables on their own: a database holds only what is mapped to
@@ -250,6 +269,23 @@ database shows on the Database screen at once. The explorers remember which rows
     lists the domains), and **Make explicit** writes that choice into the file; generated output does not change.
   - An entity that lands in no database is reported in Problems as MQ4012 (info, only once the model has a database); a
     domain list that the convention does not use (All or None) is MQ4013 (warning).
+
+  **Schemas.** A PostgreSQL or SQL Server database can hold several schemas (namespaces such as `sales` or `ops`).
+
+  - **New schema…** on a database (its context menu, or the New menu while a database is selected) adds one. The
+    database inspector's **Schemas** section lists them with the **Default schema** marked, and renames, removes or
+    makes one the default. A rename changes nothing else: tables, views, sequences and mappings point at the schema,
+    not at its name.
+  - **Where a table goes.** A table file (a designed table, or a customised mapping's override) says its own schema. A
+    mapped entity's table otherwise goes to the schema its **Mappings** tab picks, else to the schema picked for its
+    domain (or the nearest parent domain) in the database's convention list, else to the default schema. When a
+    database has more than one schema, New database, the convention list and the Mappings tab offer the schema, and
+    the Databases explorer groups the tables under one row per schema.
+  - **Removing a schema** shows what still lives in it and asks for the schema to move it to; the default schema can
+    be removed only by making another one the default at the same time. A schema named by a convention entry or a
+    mapping but not declared in the database is MQ4014; a refused schema change is MQ4015.
+  - Moving a table to another schema is, for sql-ddl's migrations, a drop and a create of the table (not a move that
+    keeps its rows): move data yourself when that matters.
 - **Diagrams**: the saved diagrams outside the domains.
 - **Seed data**: an entity's or a relationship's initial rows, in its editor's **Seed data** tab and in the domain's
   Seed data folder; a reference type's rows are its Rows tab. A seed lists its columns once and holds one row per line,
@@ -276,9 +312,11 @@ database shows on the Database screen at once. The explorers remember which rows
   share a name); a domain's menu in the Domain model explorer has **Export this domain's seed data**, the same for the
   seeds whose entity, reference type or relation sits in that domain or its sub-domains (`<domain> seed data.zip`).
   Both menus have **Import seed data…**, which takes such a ZIP or several CSV files, matches each file to the seed its
-  name names, previews every seed's changes, then imports them together as one change and one undo step. Files that
-  match no seed are listed and skipped; no seed is written when one of the files has an error or a seed changed since
-  the preview.
+  name names, previews every seed's changes, then imports the rows of every seed together as one change and one undo
+  step. Files that match no seed are listed and skipped; no seed is written when one of the files has an error or a seed
+  changed since the preview. Translation columns (`@label:<locale>`, `@description:<locale>`) are saved after the rows,
+  one save per seed and locale: if one of those saves fails the rows stay imported, and Undo takes back the rows, not
+  the translations (fix or remove them in the Translations section or with `maquettiste l10n`).
 - **Generate**: Plan renders every template unit and shows what would change, grouped by unit with the reason each
   renders (see "How the plan explains itself" below); pick a file to see its diff; Apply writes the plan. Generation runs as a job and reports progress; the run history stays in the panel. The Generate
   explorer and the pack editor (below) show and change what each pack does.
@@ -288,6 +326,7 @@ database shows on the Database screen at once. The explorers remember which rows
   - **Conventions**: the naming conventions, for the project (every database) or for one database picked at the top;
     they name the tables and columns of the entities mapped to a database, and never decide which entities that is.
   - **Locales**: the content locales (see "Translating the model in the editor").
+  - **Validation**: the severity of each built-in rule (see "Settings › Validation" below).
   - **Type maps, outputs, formatters**: the output allowlist (`outputs.allow`), the type maps, the formatters and the
     packs, shown read-only; edit `maquettiste.json` to change them.
   - **Explorer**: your preferences in this browser (Highlight related elements), your saved scopes and the team scopes
@@ -308,6 +347,16 @@ database shows on the Database screen at once. The explorers remember which rows
   - The rules: MQ8001 for a color that is not hex, MQ8002 for an icon that names no `.svg` or `.png` file under
     `branding/`, MQ8003 for an icon that is not a safe SVG or a PNG of at most 512 KB. A save that breaks one is refused
     with the message; a hand edit shows it in Problems.
+- **Settings › Validation** <a id="settings-validation"></a> lists every built-in rule, grouped by family (Model files,
+  References and vocabularies, Model structure, Databases and mappings, Extensions and script rules, Packs and
+  generation, Reference types, Seeds, Localization, Branding), with its id, description and default severity. Each row's
+  picker is **Default** (the engine's severity), `error`, `warning`, `info` or `off`; the model file rules (MQ1xxx) have
+  no `off`. The filter box matches an id or a word of the description; a changed row shows a dot until you save, the
+  count says how many rules are overridden, and **Reset all** sets every picker back to Default. Save writes only the
+  overrides to `validation.rules` in `maquettiste.json` (Default removes the rule's entry) and the Problems panel
+  revalidates; Discard drops the unsaved changes. The rows take the keyboard: the arrow keys move between rows, Enter
+  moves into the picker, whose arrows change the value. The same catalog is `GET /api/validation/rules` and the MCP tool
+  `list_validation_rules`.
 
 ## Generation: how the model becomes files
 
@@ -368,10 +417,22 @@ hand-written code that is created once and then left alone).
    typing: pick the **Unit** and one of the unit's elements (the picker lists only its kind: entities for an `each
    entity` unit, reference types for `each reference type`, locales for `each locale`), read the output path and the
    text it would write, and any error is marked at its line. A preview writes nothing.
+   Inside `{{ }}` the editor completes what the unit's templates can use: its variables (`model`, `element` and the
+   scope's own name such as `entity`, `pack.params.<name>`), the members of the model and of the element after a dot,
+   the built-in helpers and the pack's own after `|`, and the template language's functions (`string.upcase`,
+   `array.size`, ...); hovering a name shows what it holds. With the cursor on a template line, the preview highlights
+   the output lines it produced; click an output line to highlight the template lines behind it. The match is made on
+   the line's literal text (the template engine reports no positions), so it is approximate, a line of code alone
+   matches nothing, and the preview says so.
 4. **Save** (Ctrl+S) writes the file under `.maquettiste/templates/<pack>/`, where git sees it.
 5. Back on **Plan**, **Plan** shows every file the change touches; **Apply plan** writes them.
 
 To add a unit, use the **Units** tab (Ctrl+Enter), give it a template, a scope and an output pattern, and save.
+
+The buttons above the file tree create, rename and delete pack files. **New file** creates an empty file at the path
+you type (inside the pack folder, never `pack.json`). **Rename** moves the file; when a unit names it as its template or
+companion, the unit in `pack.json` is rewritten in the same change. Rename and **Delete** are refused while a template
+includes the file, and Delete also while a unit names it; the refusal says who uses it.
 
 ### How the plan explains itself
 
@@ -383,6 +444,11 @@ click a group to fold it. Each file shows its change, its path, its unit, its el
 "New: no recorded state from an earlier run" the first time, "Customer (entity) changed" or "Template table.scriban
 changed" after an edit, "… was edited on disk" when a generated file was changed by hand. Filter by change, pack, unit
 or any words.
+
+Below the summary lines, **By cause** counts the files each cause writes, most first ("Template table.scriban changed:
+412 files", "Customer (entity) changed: 3 files"); a cause that names something you can edit is a link to it: the
+element, the template in its pack, the pack's parameter or unit, or the settings tab. **By output root** counts the
+files under each pack's output base (`db: 12 files (8 to add, 4 to modify)`).
 
 Selecting a file opens its diff below and, on the right, **Why this file**: pack, unit, template, element, output path,
 the reason and every cause; **What it read** asks the engine for the inputs the unit recorded. Generation is
@@ -499,12 +565,17 @@ shows anywhere: no switcher, no Translations section, no locale columns.
   supported locales, each locale's fallbacks (for example `fr-CA` falls back to `fr`; left empty, a locale falls back to
   its shorter tag, then to the default) and which kinds count for completeness (none checked: every translatable field).
   Save writes the `localization` block of maquettiste.json. "Declare locales" starts the block when there is none.
+  A declared locale is optional: a text it lacks falls back along its chain to the default locale, and nothing fails.
+  Validation and the plan report the missing counts per shard as **notes** (MQ7204, severity info); to enforce a locale,
+  give MQ7205 (one entry per missing text) a severity under `validation.rules` in maquettiste.json, and to silence the
+  counts set MQ7204 to `off` there (`"validation": { "rules": { "MQ7204": "off" } }`); both are pickers in
+  [Settings › Validation](#settings-validation).
   The new-locale field corrects a tag as you type it: an underscore becomes a hyphen, the language turns lowercase, a
   script Titlecase and the region uppercase (`zh_cn` becomes `zh-CN`, `zh_hant_tw` becomes `zh-Hant-TW`). **Add locale**
   stays in place; while the tag cannot be added, the reason shows beside it ("use language-REGION with a hyphen, such as
   zh-CN, or a language alone, such as fr", or "already a supported locale"), and Save stays off while the block has a
-  problem MQ7201 would report. The CLI's `l10n` verbs and hand edits of `maquettiste.json` are not corrected this way:
-  write `zh-CN` there.
+  problem MQ7201 would report. The CLI's `l10n` verbs and `seed export --locale` correct a tag the same way; a hand edit
+  of `maquettiste.json` is not corrected, and MQ7201 names the hyphen form to write (`zh-CN`).
 - With two or more locales, the same tab shows the **completeness matrix**: one row per domain (plus Not in a domain and
   Reference data), one column per locale, the percent translated in each cell (stale translations count as not done).
   A cell opens the **translation queue** for that locale and domain: the default text on the left, the translation on
@@ -517,6 +588,9 @@ shows anywhere: no switcher, no Translations section, no locale columns.
   it): one row per locale with the display name, plural and description. An empty field shows, in italics, the text the
   fallback chain gives. A **stale** marker means the default text changed since the translation was made; **Confirm**
   keeps the translation and clears the marker. A field saves when you leave it or press Enter.
+- While a content locale other than the default is chosen, the **Display name**, **Plural name** and **Description**
+  fields of the editor header and the inspector edit that locale's translation (their labels name the locale, and the
+  default text is the placeholder); switch back to the default locale to edit the model's own text.
 - The Reference data screen's **Rows** grid gains a `label (<locale>)` column for the content locale (none while the
   content locale is the default), and **All locales** shows one per locale; the status bar shows how complete the
   content locale's labels are (`fr 75 %`). An empty cell shows the fallback label in italics; typing in it writes the
@@ -586,6 +660,7 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | `maquettiste l10n import fr <file>` | Previews what an XLIFF or CSV file adds, changes and confirms (a stale text the translator marked `translated`, `reviewed` or `final` without changing it), and names the units that match nothing; `--apply` plans again and writes it as one save, refused (exit 3) when a shard changes while the command runs; it prints what it wrote, which can differ from an earlier preview if the files changed in between. `--check` exits 2 when the file would change something. |
 | `maquettiste l10n prune` | Lists the orphan translations (MQ7203: an entry whose element is gone, or a field its element does not have); `--apply` removes them in one save, as the other `l10n` and `seed` verbs write only with `--apply`. `--check` exits 2 when there are orphans. |
 | `maquettiste l10n set-default fr` | Previews making French the default language: each French text moves into the element files and the text it replaces becomes an English translation; `--apply` writes it all in one change to review in git. Other locales' translations turn stale where their source text changed. Sidecar descriptions and orphans are not moved: they stay in the new default's locale folder, which is no longer loaded (MQ7202), and a sidecar-described element keeps its old-language description; the command lists them as skipped. Move or delete them by hand, or run `l10n prune` before switching. |
+| `maquettiste seed new <type>` | Creates a reference type's seed (by id or name), named after the type, with the columns code, label and description and no rows; a type that has a seed keeps it. |
 | `maquettiste seed export <seed>` | A seed's rows as CSV (the seed's id or name, or the id or name of the element it seeds); `--locale fr` adds the French label and description columns, `--out <file>` writes a file. |
 | `maquettiste seed import <seed> <file>` | Previews a CSV import (rows match by `@id`, else by `@code`): added, changed, removed and blocked rows; `--mode replace` also removes the rows the file leaves out, except rows still referenced; `--apply` plans again and writes it, refused (exit 3) when the seed file changes while the command runs; it prints what it wrote, which can differ from an earlier preview if the seed changed in between. |
 | `maquettiste pack new <name>` | Scaffolds a pack under `.maquettiste/templates/<name>/` (`--from empty`, `sql-ddl` or `csharp-dapper`). Give it an `output` under an allowed root in `maquettiste.json` before the next `generate` (packs/README.md). |

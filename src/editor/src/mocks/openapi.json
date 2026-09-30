@@ -2707,6 +2707,54 @@
         }
       }
     },
+    "/api/validation/rules": {
+      "get": {
+        "tags": [
+          "validation"
+        ],
+        "operationId": "listValidationRules",
+        "summary": "The built-in rule catalog",
+        "description": "Every built-in rule, ordered by id: its default severity, description, family (the hundreds group, for example `MQ72xx`, with a short label) and whether `validation.rules` in `maquettiste.json` may set it to `off` (every rule but MQ1xxx). The editor's Validation settings list it; overrides are saved through `PUT /api/project/settings`.",
+        "x-maquettiste-role": "viewer",
+        "x-maquettiste-engine": "RuleCatalog.Describe()",
+        "responses": {
+          "200": {
+            "description": "The rules, ordered by id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RuleCatalogEntry"
+                  }
+                },
+                "example": [
+                  {
+                    "id": "MQ1001",
+                    "defaultSeverity": "error",
+                    "description": "Invalid JSON.",
+                    "family": "MQ10xx",
+                    "familyLabel": "Model files",
+                    "canBeOff": false
+                  },
+                  {
+                    "id": "MQ7204",
+                    "defaultSeverity": "info",
+                    "description": "A locale is incomplete in a shard: the counts of missing and stale texts, for the required kinds.",
+                    "family": "MQ72xx",
+                    "familyLabel": "Localization",
+                    "canBeOff": true
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          }
+        }
+      }
+    },
     "/api/diagrams/{id}": {
       "parameters": [
         {
@@ -3636,7 +3684,7 @@
           "reference-data"
         ],
         "operationId": "importSeedsCsv",
-        "summary": "Preview or apply CSV imports into several seeds as one change",
+        "summary": "Preview or apply CSV imports into several seeds (rows in one change, then translations)",
         "description": "The editor's Import seed data…: one CSV per seed, each read as `POST /api/seeds/{id}/csv` reads one. `?dryRun=true`\n(the default) previews every file; applying saves every changed seed in one all-or-nothing change (a stale `hash` or a\nnew error in any seed writes none: 409 or 422 with the diagnostics on the file concerned), then writes the files'\n`@label:<locale>` and `@description:<locale>` translations. Two files for one seed are a 400.\n",
         "x-maquettiste-role": "editor",
         "parameters": [
@@ -8211,12 +8259,16 @@
       },
       "BatchOp": {
         "type": "string",
-        "description": "`translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`.",
+        "description": "`translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed.",
         "enum": [
           "create",
           "update",
           "delete",
-          "translate"
+          "translate",
+          "add-schema",
+          "rename-schema",
+          "remove-schema",
+          "set-default-schema"
         ]
       },
       "BatchOperation": {
@@ -8277,6 +8329,34 @@
           },
           "value": {
             "description": "The translated text, `{ \"file\": \"<sidecar>\" }`, or `null` to remove the translation (`translate`)."
+          },
+          "schema": {
+            "description": "The database schema id (`rename-schema`, `remove-schema`, `set-default-schema`; optional for `add-schema`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "The schema name (`add-schema`, `rename-schema`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target": {
+            "description": "The schema id that what lives in the removed schema moves to (`remove-schema`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default": {
+            "description": "The schema id that becomes the default when the removed schema is the default (`remove-schema`).",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -8358,6 +8438,43 @@
           "warning",
           "info"
         ]
+      },
+      "RuleCatalogEntry": {
+        "x-engine-record": "Maquettiste.Engine.Diagnostics.RuleCatalogEntry",
+        "type": "object",
+        "required": [
+          "id",
+          "defaultSeverity",
+          "description",
+          "family",
+          "familyLabel",
+          "canBeOff"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^MQ[1-9][0-9]{3}$"
+          },
+          "defaultSeverity": {
+            "$ref": "#/components/schemas/DiagnosticSeverity"
+          },
+          "description": {
+            "type": "string"
+          },
+          "family": {
+            "type": "string",
+            "pattern": "^MQ[1-9][0-9]xx$",
+            "description": "The hundreds group of the id, for example MQ72xx."
+          },
+          "familyLabel": {
+            "type": "string",
+            "description": "What the family's rules cover, for example Localization."
+          },
+          "canBeOff": {
+            "type": "boolean",
+            "description": "Whether validation.rules may set the rule to off (false for MQ1xxx)."
+          }
+        }
       },
       "Diagnostic": {
         "x-engine-record": "Maquettiste.Engine.Diagnostics.Diagnostic",
@@ -13353,6 +13470,7 @@
             "type": "string"
           },
           "defaultSchema": {
+            "description": "The name of the schema that tables, views and sequences without a schema go to; absent means the dialect's (PostgreSQL public, SQL Server dbo).",
             "type": "string",
             "minLength": 1
           },
@@ -13457,7 +13575,36 @@
             ]
           },
           "packages": {
-            "$ref": "#/components/schemas/idList",
+            "description": "The packages whose entities (and sub-packages') map here by convention. An entry is a package id, or an object that also names the schema (the id of one of this database's schemas) the package's conventional tables go to; an entry without a schema is written as the id.",
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/id"
+                },
+                {
+                  "title": "Convention package",
+                  "type": "object",
+                  "x-order": [
+                    "package",
+                    "schema"
+                  ],
+                  "x-collapse": "package",
+                  "properties": {
+                    "package": {
+                      "$ref": "#/components/schemas/id"
+                    },
+                    "schema": {
+                      "$ref": "#/components/schemas/id"
+                    }
+                  },
+                  "required": [
+                    "package"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
             "default": []
           },
           "properties": {
@@ -14318,6 +14465,7 @@
           "entity",
           "relation",
           "table",
+          "schema",
           "description",
           "stereotypes",
           "tags",
@@ -14366,6 +14514,10 @@
             "$ref": "#/components/schemas/id"
           },
           "table": {
+            "$ref": "#/components/schemas/id"
+          },
+          "schema": {
+            "description": "For an entity mapping: the id of the database schema the entity's conventional table goes to; it wins over the database's convention package entry and its default schema.",
             "$ref": "#/components/schemas/id"
           },
           "description": {
@@ -15371,7 +15523,7 @@
       "batch": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Model batch",
-        "description": "An atomic batch of element creates, updates and deletes, from the editor, a refactoring or an AI proposal.",
+        "description": "An atomic batch of element creates, updates and deletes and database schema operations, from the editor, a refactoring or an AI proposal.",
         "type": "object",
         "x-order": [
           "operations"
@@ -15389,7 +15541,11 @@
                 "element",
                 "locale",
                 "field",
-                "value"
+                "value",
+                "schema",
+                "name",
+                "target",
+                "default"
               ],
               "properties": {
                 "op": {
@@ -15397,7 +15553,11 @@
                     "create",
                     "update",
                     "delete",
-                    "translate"
+                    "translate",
+                    "add-schema",
+                    "rename-schema",
+                    "remove-schema",
+                    "set-default-schema"
                   ]
                 },
                 "id": {
@@ -15434,6 +15594,23 @@
                       "type": "null"
                     }
                   ]
+                },
+                "schema": {
+                  "description": "The database schema id (rename-schema, remove-schema, set-default-schema; optional for add-schema).",
+                  "$ref": "#/components/schemas/id"
+                },
+                "name": {
+                  "description": "The schema name (add-schema, rename-schema).",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "target": {
+                  "description": "The schema id that the tables, views, sequences, convention entries and mappings of the removed schema move to (remove-schema).",
+                  "$ref": "#/components/schemas/id"
+                },
+                "default": {
+                  "description": "The schema id that becomes the default when the removed schema is the default (remove-schema).",
+                  "$ref": "#/components/schemas/id"
                 }
               },
               "required": [
@@ -15490,6 +15667,60 @@
                       "id",
                       "field",
                       "value"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "op": {
+                        "enum": [
+                          "add-schema",
+                          "rename-schema",
+                          "remove-schema",
+                          "set-default-schema"
+                        ]
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "id"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "op": {
+                        "enum": [
+                          "add-schema",
+                          "rename-schema"
+                        ]
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "name"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "op": {
+                        "enum": [
+                          "rename-schema",
+                          "remove-schema",
+                          "set-default-schema"
+                        ]
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "schema"
                     ]
                   }
                 }

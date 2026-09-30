@@ -22,6 +22,8 @@ export interface IndexSnapshot {
 export interface IndexStore {
   etag(): Promise<string | null>;
   text(): Promise<string | null>;
+  /** The body's bytes (the text is decoded from them), when the store can give them; the search worker takes them. */
+  bytes?(): Promise<ArrayBuffer | null>;
   save(etag: string, text: string): void;
 }
 
@@ -60,6 +62,13 @@ export function browserIndexStore(): IndexStore | null {
         return null;
       }
     },
+    async bytes() {
+      try {
+        return (await (await entry())?.arrayBuffer()) ?? null;
+      } catch {
+        return null;
+      }
+    },
     save(etag, text) {
       void (async () => {
         try {
@@ -73,11 +82,11 @@ export function browserIndexStore(): IndexStore | null {
   };
 }
 
-function parse(text: string, source: string): ElementSummary[] {
+function parse(text: string, source: string, bytes?: ArrayBuffer): ElementSummary[] {
   const end = perfStart("index:parse");
   const rows = JSON.parse(text) as ElementSummary[];
   end({ bytes: text.length, rows: rows.length, source });
-  rememberIndexText(rows, text);
+  rememberIndexText(rows, text, bytes);
   return rows;
 }
 
@@ -93,16 +102,17 @@ export function createIndexLoader(deps: IndexLoaderDeps): IndexLoader {
     endFetch({ status: answer.notModified ? 304 : 200, conditional: etag !== null });
     if (answer.notModified) {
       if (last && last.etag === etag) return last.rows;
-      const text = await store?.text();
+      const bytes = store?.bytes ? await store.bytes() : null;
+      const text = bytes ? new TextDecoder().decode(bytes) : await store?.text();
       if (text !== null && text !== undefined) {
-        last = { etag, rows: parse(text, "storage") };
+        last = { etag, rows: parse(text, "storage", bytes ?? undefined) };
         return last.rows;
       }
       // The stored body is gone: ask again without a condition.
       answer = await deps.fetch(null);
       if (answer.notModified) throw new Error("The server answered 304 to an unconditional index request.");
     }
-    const rows = parse(answer.text, "network");
+    const rows = parse(answer.text, "network", answer.bytes);
     last = { etag: answer.etag, rows };
     if (answer.etag) store?.save(answer.etag, answer.text);
     return rows;

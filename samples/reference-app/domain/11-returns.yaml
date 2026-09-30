@@ -43,13 +43,13 @@ entities:
       restockingFeePercent: Percentage | Restocking fee charged.
       customerComments: text | What the customer said.
     refs:
-      customer: Customer! back=returns | Returning customer.
-      salesOrder: SalesOrder | Original order.
-      invoice: Invoice | Original invoice.
-      approvedBy: Employee | Who approved it.
-      receivingWarehouse: Warehouse | Where the goods go.
+      customer: Customer! back=returns name=return_authorization_belongs_to_customer | Returning customer.
+      salesOrder: SalesOrder name=return_authorization_fulfils_sales_order | Original order.
+      invoice: Invoice name=return_authorization_is_settled_against_invoice | Original invoice.
+      approvedBy: Employee name=return_authorization_is_approved_by_employee | Who approved it.
+      receivingWarehouse: Warehouse name=return_authorization_is_returned_to_receiving_warehouse | Where the goods go.
     children:
-      lines: ReturnLine | Products returned.
+      lines: ReturnLine name=return_authorization_contains_lines | Products returned.
 
   ReturnLine:
     description: A product and quantity on a return authorization, with its condition and disposition.
@@ -61,11 +61,11 @@ entities:
       disposition: string(20) | restock, scrap or return-to-vendor.
       creditAmount: Money | Credit granted for the line.
     refs:
-      product: Product! | Product returned.
-      reason: ReturnReason! | Why it was returned.
-      salesOrderLine: SalesOrderLine | Original order line.
-      serialNumber: SerialNumber | Serialized unit returned.
-      lot: StockLot | Lot returned.
+      product: Product! name=return_line_is_for_product | Product returned.
+      reason: ReturnReason! name=return_line_is_explained_by_reason | Why it was returned.
+      salesOrderLine: SalesOrderLine name=return_line_fulfils_sales_order_line | Original order line.
+      serialNumber: SerialNumber name=return_line_tracks_serial_number | Serialized unit returned.
+      lot: StockLot name=return_line_is_drawn_from_lot | Lot returned.
 
   ReturnReason:
     description: A reason for a return, such as Damaged in transit or Ordered in error.
@@ -84,8 +84,8 @@ entities:
       notes: text | Findings.
       photoUrl: string(400) | Photo of the goods.
     refs:
-      returnLine: ReturnLine! cascade back=inspections | Line inspected.
-      inspector: Employee | Inspector.
+      returnLine: ReturnLine! cascade back=inspections name=return_inspection_is_traced_to_return_line | Line inspected.
+      inspector: Employee name=return_inspection_is_inspected_by_employee | Inspector.
 
   WarrantyClaim:
     description: A claim that a product failed within its warranty, passed on to the manufacturer.
@@ -98,10 +98,10 @@ entities:
       claimAmount: Money | Amount claimed from the manufacturer.
       resolution: string(500) | Outcome.
     refs:
-      customer: Customer! | Claiming customer.
-      product: Product! | Failed product.
-      serialNumber: SerialNumber | Failed unit.
-      manufacturer: Manufacturer | Manufacturer claimed against.
+      customer: Customer! name=warranty_claim_belongs_to_customer | Claiming customer.
+      product: Product! name=warranty_claim_is_for_product | Failed product.
+      serialNumber: SerialNumber name=warranty_claim_tracks_serial_number | Failed unit.
+      manufacturer: Manufacturer name=warranty_claim_is_claimed_against_manufacturer | Manufacturer claimed against.
 
   ServiceCase:
     description: A customer service request, such as a missing delivery, a billing question or a product problem.
@@ -117,13 +117,13 @@ entities:
       slaDueAt: datetimeoffset indexed | When the first answer is due.
       resolvedAt: datetimeoffset | When it was resolved.
     refs:
-      customer: Customer! back=serviceCases | Customer.
-      contact: Contact | Contact who raised it.
-      assignedTo: Employee | Agent.
-      salesOrder: SalesOrder | Order concerned.
-      product: Product | Product concerned.
+      customer: Customer! back=serviceCases name=service_case_belongs_to_customer | Customer.
+      contact: Contact name=service_case_is_raised_by_contact | Contact who raised it.
+      assignedTo: Employee name=service_case_is_assigned_to_employee | Agent.
+      salesOrder: SalesOrder name=service_case_fulfils_sales_order | Order concerned.
+      product: Product name=service_case_is_for_product | Product concerned.
     children:
-      comments: ServiceCaseComment ordered | Conversation.
+      comments: ServiceCaseComment ordered name=service_case_contains_comments | Conversation.
 
   ServiceCaseComment:
     description: A message on a service case, from the customer or an agent.
@@ -132,7 +132,7 @@ entities:
       isInternal: bool! default=false | Hidden from the customer.
       postedAt: datetimeoffset! | When it was posted.
     refs:
-      author: UserAccount | Author.
+      author: UserAccount name=service_case_comment_is_written_by_author | Author.
 
   RepairOrder:
     description: A repair of a returned or warranty unit, in house or at a service partner.
@@ -146,11 +146,11 @@ entities:
       cost: Money | Repair cost.
       completedOn: date | Date finished.
     refs:
-      serviceCase: ServiceCase | Case that triggered it.
-      warrantyClaim: WarrantyClaim | Warranty claim covering it.
-      product: Product! | Product repaired.
-      serialNumber: SerialNumber | Unit repaired.
-      technician: Employee | Technician.
+      serviceCase: ServiceCase name=repair_order_is_raised_for_service_case | Case that triggered it.
+      warrantyClaim: WarrantyClaim name=repair_order_is_raised_under_warranty_claim | Warranty claim covering it.
+      product: Product! name=repair_order_is_for_product | Product repaired.
+      serialNumber: SerialNumber name=repair_order_tracks_serial_number | Unit repaired.
+      technician: Employee name=repair_order_is_serviced_by_employee | Technician.
 
   Replacement:
     description: A replacement sent for a returned or failed product before or instead of a credit.
@@ -161,9 +161,9 @@ entities:
       isCharged: bool! default=false | Whether the customer pays for it.
       notes: string(500) | Remarks.
     refs:
-      returnLine: ReturnLine! | Return line replaced.
-      product: Product! | Product sent.
-      shipment: Shipment | Shipment that carried it.
+      returnLine: ReturnLine! name=replacement_is_traced_to_return_line | Return line replaced.
+      product: Product! name=replacement_is_for_product | Product sent.
+      shipment: Shipment name=replacement_travels_in_shipment | Shipment that carried it.
 
   CustomerFeedback:
     description: A rating and comment from a customer after a delivery or a service case.
@@ -176,10 +176,10 @@ entities:
       comments: text | Free text.
       followUpRequired: bool! default=false | Whether someone should call back.
     refs:
-      customer: Customer | Customer.
-      contact: Contact | Contact who answered.
-      salesOrder: SalesOrder | Order rated.
-      serviceCase: ServiceCase | Case rated.
+      customer: Customer name=customer_feedback_belongs_to_customer | Customer.
+      contact: Contact name=customer_feedback_involves_contact | Contact who answered.
+      salesOrder: SalesOrder name=customer_feedback_fulfils_sales_order | Order rated.
+      serviceCase: ServiceCase name=customer_feedback_is_raised_for_service_case | Case rated.
 
 diagram:
   name: Returns and service

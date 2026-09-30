@@ -172,3 +172,19 @@ export function lineDiff(theirs: string, mine: string): { op: " " | "-" | "+"; t
   while (j < b.length) out.push({ op: "+", text: b[j++] });
   return out;
 }
+
+/** Why a new or renamed pack file path is refused, or null: inside the pack folder, not pack.json, not taken. */
+export function packPathProblem(path: string, existing: readonly string[]): string | null {
+  if (!path) return "Name the file, like partials/header.scriban.";
+  const parts = path.split("/");
+  if (path.startsWith("/") || path.includes("\\") || parts.some((p) => p === "" || p === "." || p === ".."))
+    return "Use a path inside the pack folder, like partials/header.scriban.";
+  if (path === "pack.json") return "pack.json is edited on the Units tab.";
+  if (existing.includes(path)) return `${path} already exists.`;
+  return null;
+}
+
+/** Whether a unit names the file (as its template or companion); a rename then rewrites those units in the same change. */
+export function namedByUnits(file: PackFileInfo | undefined): boolean {
+  return !!file?.usedBy.some((u) => u.startsWith("unit:") || u.startsWith("companion:"));
+}

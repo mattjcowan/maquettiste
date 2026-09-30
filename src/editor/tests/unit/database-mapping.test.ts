@@ -14,9 +14,9 @@ const BILLING = "01J92P0V01KDRN8GX5PGYCNKSX";
 
 describe("database convention", () => {
   it("reads a file without the member as before: all domains, or its packages", () => {
-    expect(conventionOf({})).toEqual({ mode: "all", explicit: false, packages: [] });
-    expect(conventionOf({ packages: ["a"] })).toEqual({ mode: "packages", explicit: false, packages: ["a"] });
-    expect(conventionOf({ byConvention: "none", packages: ["a"] })).toEqual({ mode: "none", explicit: true, packages: [] });
+    expect(conventionOf({})).toEqual({ mode: "all", explicit: false, packages: [], schemas: {} });
+    expect(conventionOf({ packages: ["a"] })).toEqual({ mode: "packages", explicit: false, packages: ["a"], schemas: {} });
+    expect(conventionOf({ byConvention: "none", packages: ["a"] })).toEqual({ mode: "none", explicit: true, packages: [], schemas: {} });
     expect(conventionLabel(conventionOf({}), (x) => x)).toBe("By convention: all domains (unspecified)");
     expect(conventionLabel(conventionOf({ byConvention: "packages" }), (x) => x)).toBe("By convention: nothing");
   });

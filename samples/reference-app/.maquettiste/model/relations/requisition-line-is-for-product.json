@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1MFB9XB81VRCQ3H4JA19XXA",
+  "name": "requisition line is for product",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "Catalog product, when stocked.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "ends": [
+    {
+      "id": "01M1EMRKA9Q5ETZJAQYS72CNFN",
+      "entity": "01M20RAEF2QZ5W8HV57RBX5PQV",
+      "role": "product",
+      "navigation": "product",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1KY6JPF0G2D0SYJX9GNZJ6Q",
+      "entity": "01M2CT5MQTB4BBCT99449QSBCM",
+      "role": "requisitionLines"
+    }
+  ]
+}

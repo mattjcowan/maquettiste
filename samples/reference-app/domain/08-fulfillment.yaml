@@ -45,14 +45,14 @@ entities:
       declaredValue: Money | Value declared for insurance.
       totalWeight: Weight | Gross weight of all packages.
     refs:
-      salesOrder: SalesOrder back=shipments | Order shipped; null for transfers and replacements.
-      warehouse: Warehouse! | Shipping warehouse.
-      carrier: Carrier | Carrier; null for own-fleet deliveries.
-      carrierService: CarrierService | Service level booked.
-      deliveryRoute: DeliveryRoute | Own-fleet route.
+      salesOrder: SalesOrder back=shipments name=shipment_fulfils_sales_order | Order shipped; null for transfers and replacements.
+      warehouse: Warehouse! name=shipment_is_kept_at_warehouse | Shipping warehouse.
+      carrier: Carrier name=shipment_is_shipped_by_carrier | Carrier; null for own-fleet deliveries.
+      carrierService: CarrierService name=shipment_is_shipped_with_carrier_service | Service level booked.
+      deliveryRoute: DeliveryRoute name=shipment_rides_on_delivery_route | Own-fleet route.
     children:
-      lines: ShipmentLine | Order lines shipped.
-      packages: ShipmentPackage ordered | Cartons and pallets.
+      lines: ShipmentLine name=shipment_contains_lines | Order lines shipped.
+      packages: ShipmentPackage ordered name=shipment_contains_packages | Cartons and pallets.
     mapping:
       description: Shipment status is a reference type stored through a lookup table; the delivery address columns get a ship_to_ prefix.
       prefix:
@@ -64,9 +64,9 @@ entities:
     attributes:
       quantity: decimal(12,3)! min=0 | Quantity shipped.
     refs:
-      salesOrderLine: SalesOrderLine! | Order line shipped.
-      product: Product! | Product shipped.
-      lot: StockLot | Lot shipped.
+      salesOrderLine: SalesOrderLine! name=shipment_line_fulfils_sales_order_line | Order line shipped.
+      product: Product! name=shipment_line_is_for_product | Product shipped.
+      lot: StockLot name=shipment_line_is_drawn_from_lot | Lot shipped.
 
   ShipmentPackage:
     description: A carton or pallet of a shipment with its own tracking number.
@@ -77,15 +77,15 @@ entities:
       dimensions: Dimensions | Outer dimensions.
       weight: Weight | Gross weight.
     children:
-      contents: PackageContent | What is inside.
+      contents: PackageContent name=shipment_package_contains_contents | What is inside.
 
   PackageContent:
     description: A quantity of a shipment line packed in a package.
     attributes:
       quantity: decimal(12,3)! min=0 | Quantity packed.
     refs:
-      shipmentLine: ShipmentLine! cascade | Line packed.
-      serialNumber: SerialNumber | Serialized unit packed.
+      shipmentLine: ShipmentLine! cascade name=package_content_is_traced_to_shipment_line | Line packed.
+      serialNumber: SerialNumber name=package_content_tracks_serial_number | Serialized unit packed.
 
   PickList:
     description: A list of picks assigned to one picker, generated when a wave is released.
@@ -97,11 +97,11 @@ entities:
       releasedAt: datetimeoffset | When it was released to the floor.
       completedAt: datetimeoffset | When the last pick was confirmed.
     refs:
-      warehouse: Warehouse! | Warehouse picked in.
-      wave: PickWave back=pickLists | Wave the list belongs to.
-      picker: Employee | Assigned picker.
+      warehouse: Warehouse! name=pick_list_is_kept_at_warehouse | Warehouse picked in.
+      wave: PickWave back=pickLists name=pick_list_is_picked_in_wave | Wave the list belongs to.
+      picker: Employee name=pick_list_is_picked_by_employee | Assigned picker.
     children:
-      lines: PickListLine ordered | Picks in walking order.
+      lines: PickListLine ordered name=pick_list_contains_lines | Picks in walking order.
 
   PickListLine:
     description: One pick - a product, a bin and a quantity for an order line.
@@ -111,10 +111,10 @@ entities:
       quantityPicked: decimal(12,3) min=0 | Quantity confirmed.
       pickedAt: datetimeoffset | When it was confirmed.
     refs:
-      product: Product! | Product to pick.
-      bin: BinLocation! | Bin to pick from.
-      salesOrderLine: SalesOrderLine! | Line the pick is for.
-      lot: StockLot | Lot to pick.
+      product: Product! name=pick_list_line_is_for_product | Product to pick.
+      bin: BinLocation! name=pick_list_line_is_stored_in_bin | Bin to pick from.
+      salesOrderLine: SalesOrderLine! name=pick_list_line_fulfils_sales_order_line | Line the pick is for.
+      lot: StockLot name=pick_list_line_is_drawn_from_lot | Lot to pick.
 
   PickWave:
     description: A batch of orders released to the warehouse floor together, such as the 10:00 parcel wave.
@@ -125,7 +125,7 @@ entities:
       plannedStartAt: datetimeoffset | Planned release time.
       releasedAt: datetimeoffset | Actual release time.
     refs:
-      warehouse: Warehouse! | Warehouse of the wave.
+      warehouse: Warehouse! name=pick_wave_is_kept_at_warehouse | Warehouse of the wave.
 
   CarrierService:
     description: A service a carrier offers, such as Ground, 2-day air or LTL standard.
@@ -138,7 +138,7 @@ entities:
       transitDays: int16 min=0 | Typical business days in transit.
       isActive: bool! default=true | Whether it can be booked.
     refs:
-      carrier: Carrier! cascade back=services | Carrier offering it.
+      carrier: Carrier! cascade back=services name=carrier_service_is_shipped_by_carrier | Carrier offering it.
 
   FreightRate:
     description: A contracted rate of a carrier service for a zone and weight band.
@@ -150,8 +150,8 @@ entities:
       rate: Money! | Rate for the band.
       validity: DateRange! | Contract period.
     refs:
-      carrierService: CarrierService! cascade back=rates | Service rated.
-      shippingZone: ShippingZone! | Destination zone.
+      carrierService: CarrierService! cascade back=rates name=freight_rate_is_shipped_with_carrier_service | Service rated.
+      shippingZone: ShippingZone! name=freight_rate_lies_in_shipping_zone | Destination zone.
 
   TrackingEvent:
     description: A scan event reported by a carrier for a shipment.
@@ -164,7 +164,7 @@ entities:
       city: string(80) | Scan location.
       countryCode: CountryCode | Scan country.
     refs:
-      shipment: Shipment! cascade back=trackingEvents | Shipment tracked.
+      shipment: Shipment! cascade back=trackingEvents name=tracking_event_travels_in_shipment | Shipment tracked.
 
   DeliveryRoute:
     description: A day's delivery run of an own-fleet truck, visiting stops in order.
@@ -176,11 +176,11 @@ entities:
       status: string(20)! default=planned | planned, loading, on-road or complete.
       plannedDistanceKm: decimal(8,1) min=0 | Planned distance.
     refs:
-      warehouse: Warehouse! | Depot.
-      vehicle: Vehicle | Truck.
-      driver: Driver | Driver.
+      warehouse: Warehouse! name=delivery_route_departs_from_warehouse | Depot.
+      vehicle: Vehicle name=delivery_route_is_driven_in_vehicle | Truck.
+      driver: Driver name=delivery_route_is_driven_by_driver | Driver.
     children:
-      stops: RouteStop ordered | Stops in driving order.
+      stops: RouteStop ordered name=delivery_route_contains_stops | Stops in driving order.
 
   RouteStop:
     description: A stop on a delivery route.
@@ -191,7 +191,7 @@ entities:
       plannedArrivalAt: datetimeoffset | Planned arrival.
       actualArrivalAt: datetimeoffset | Actual arrival.
     refs:
-      shipment: Shipment | Shipment delivered at the stop.
+      shipment: Shipment name=route_stop_travels_in_shipment | Shipment delivered at the stop.
 
   Vehicle:
     description: A truck or van of the own delivery fleet.
@@ -204,7 +204,7 @@ entities:
       isRefrigerated: bool! default=false | Whether it can carry chilled goods.
       isActive: bool! default=true | Whether it is in service.
     refs:
-      homeWarehouse: Warehouse | Depot the vehicle is based at.
+      homeWarehouse: Warehouse name=vehicle_is_based_at_home_warehouse | Depot the vehicle is based at.
 
   Driver:
     description: An employee licensed to drive the own fleet.
@@ -216,7 +216,7 @@ entities:
       licenseExpiresOn: date! | License expiry.
       mobilePhone: PhoneNumber pii | Phone carried on routes.
     refs:
-      employee: Employee! one back=driverProfile | Employee who drives.
+      employee: Employee! one back=driverProfile name=driver_involves_employee | Employee who drives.
 
   ProofOfDelivery:
     description: Evidence that a shipment was delivered - who signed, where and when.
@@ -230,7 +230,7 @@ entities:
       location: GeoCoordinate | Where it was captured.
       notes: string(500) | Driver's remarks.
     refs:
-      shipment: Shipment! cascade one back=proofOfDelivery | Shipment delivered.
+      shipment: Shipment! cascade one back=proofOfDelivery name=proof_of_delivery_travels_in_shipment | Shipment delivered.
 
   ShippingLabel:
     description: A carrier label generated for a package.
@@ -239,7 +239,7 @@ entities:
       storageKey: string(400)! | Object storage key of the label file.
       generatedAt: datetimeoffset! | When the label was generated.
     refs:
-      shipmentPackage: ShipmentPackage! cascade one back=label | Labeled package.
+      shipmentPackage: ShipmentPackage! cascade one back=label name=shipping_label_is_packed_in_shipment_package | Labeled package.
 
   FreightClaim:
     description: A claim against a carrier for lost, damaged or delayed freight.
@@ -254,8 +254,8 @@ entities:
       status: string(20)! default=filed | filed, under-review, settled or denied.
       notes: text | Claim narrative.
     refs:
-      shipment: Shipment! | Shipment concerned.
-      carrier: Carrier! | Carrier claimed against.
+      shipment: Shipment! name=freight_claim_travels_in_shipment | Shipment concerned.
+      carrier: Carrier! name=freight_claim_is_shipped_by_carrier | Carrier claimed against.
 
   ShippingZone:
     description: A destination zone used to rate freight, such as zone 5 from Denver.
@@ -265,8 +265,8 @@ entities:
       name: string(100)! | Zone name.
       description: string(300) | Postal code ranges in the zone.
     refs:
-      country: Country | Country of the zone.
-      originWarehouse: Warehouse | Warehouse the zone is measured from.
+      country: Country name=shipping_zone_is_located_in_country | Country of the zone.
+      originWarehouse: Warehouse name=shipping_zone_originates_at_origin_warehouse | Warehouse the zone is measured from.
 
 diagram:
   name: Fulfillment and shipping

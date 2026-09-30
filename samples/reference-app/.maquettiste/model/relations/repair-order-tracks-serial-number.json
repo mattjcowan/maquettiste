@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M36QTNV7E4F5HJ2SKKJ8VW1X",
+  "name": "repair order tracks serial number",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "Unit repaired.",
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "ends": [
+    {
+      "id": "01M1GTPR26G145B9F5GQ76509Y",
+      "entity": "01M2JSJ9P18GDTRZZ4MS9MEPAC",
+      "role": "serialNumber",
+      "navigation": "serialNumber",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1EZF2XYGB1KJ1N5Y0JMAMPZ",
+      "entity": "01M20WRVKPBD33DKT9AJDHG02M",
+      "role": "repairOrders"
+    }
+  ]
+}

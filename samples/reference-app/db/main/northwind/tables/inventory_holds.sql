@@ -13,12 +13,12 @@ CREATE TABLE northwind.inventory_holds (
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
     lot_id uuid NULL,
-    placed_by_id uuid NULL,
     product_id uuid NOT NULL,
     warehouse_id uuid NOT NULL,
+    placed_by_id uuid NULL,
     CONSTRAINT pk_inventory_holds PRIMARY KEY (id),
     CONSTRAINT fk_inventory_holds_lot_id FOREIGN KEY (lot_id) REFERENCES northwind.stock_lots (id) ON DELETE SET NULL,
-    CONSTRAINT fk_inventory_holds_placed_by_id FOREIGN KEY (placed_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_inventory_holds_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_inventory_holds_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT
+    CONSTRAINT fk_inventory_holds_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_inventory_holds_placed_by_id FOREIGN KEY (placed_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );

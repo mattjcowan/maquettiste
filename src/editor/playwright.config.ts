@@ -9,6 +9,9 @@ import { defineConfig, devices } from "@playwright/test";
 
 const ci = !!process.env.CI;
 const live = process.env.MAQUETTISTE_URL ?? "http://maquettiste.localhost:8080";
+// MOCK_PORT lets two checkouts run the mock project at the same time (default 4173, as vite.config.ts preview.port).
+const mockPort = process.env.MOCK_PORT ?? "4173";
+const mockUrl = `http://localhost:${mockPort}`;
 // Start only the servers the selected projects need (`--project=live` starts none).
 const projects = process.argv.flatMap((a, i, all) => (a.startsWith("--project=") ? [a.slice(10)] : a === "--project" ? [all[i + 1] ?? ""] : []));
 const wants = (name: string) => projects.length === 0 || projects.includes(name);
@@ -24,8 +27,8 @@ export default defineConfig({
   reporter: ci ? [["list"], ["html", { open: "never" }]] : [["list"]],
   use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, trace: "retain-on-failure" },
   projects: [
-    { name: "mock", testIgnore: /dev-smoke|scale/, use: { baseURL: "http://localhost:4173" } },
-    { name: "scale", testMatch: /scale\.spec\.ts/, retries: 0, use: { baseURL: "http://localhost:4173" } },
+    { name: "mock", testIgnore: /dev-smoke|scale/, use: { baseURL: mockUrl } },
+    { name: "scale", testMatch: /scale\.spec\.ts/, retries: 0, use: { baseURL: mockUrl } },
     { name: "dev", testMatch: /dev-smoke\.spec\.ts/, use: { baseURL: "http://localhost:5173" } },
     { name: "live", testIgnore: /dev-smoke|mock-only|scale/, use: { baseURL: live } },
   ],
@@ -33,8 +36,8 @@ export default defineConfig({
     ...(wants("mock") || wants("scale")
       ? [
           {
-            command: "npm run build:mock && npm run preview:mock",
-            url: "http://localhost:4173",
+            command: `npm run build:mock && npm run preview:mock -- --port ${mockPort}`,
+            url: mockUrl,
             reuseExistingServer: !ci,
             timeout: 180_000,
           },

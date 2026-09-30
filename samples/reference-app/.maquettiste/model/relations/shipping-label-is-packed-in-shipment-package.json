@@ -1,0 +1,27 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1Z0VCW3G0VSWQQKFX43K611",
+  "name": "shipping label is packed in shipment package",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "description": "Labeled package.",
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "ends": [
+    {
+      "id": "01M1DT7BQP9NV9J8NXX5H7MS73",
+      "entity": "01M1NR7G0RYYPWNCM445SA8RRR",
+      "role": "shipmentPackage",
+      "navigation": "shipmentPackage",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M2JT9NCQKRMTW5ZV74XT6RBK",
+      "entity": "01M1R6S1JXPMN2ESV2D5SF0RK6",
+      "role": "label",
+      "navigation": "label",
+      "max": 1
+    }
+  ]
+}

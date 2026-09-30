@@ -7,15 +7,15 @@ CREATE TABLE northwind.pick_list_lines (
     quantity_to_pick numeric(12,3) NOT NULL,
     quantity_picked numeric(12,3) NULL,
     picked_at timestamptz(6) NULL,
-    bin_id uuid NOT NULL,
+    pick_list_id uuid NOT NULL,
+    sales_order_line_id char(26) NOT NULL,
     lot_id uuid NULL,
     product_id uuid NOT NULL,
-    sales_order_line_id char(26) NOT NULL,
-    pick_list_id uuid NOT NULL,
+    bin_id uuid NOT NULL,
     CONSTRAINT pk_pick_list_lines PRIMARY KEY (id),
-    CONSTRAINT fk_pick_list_lines_bin_id FOREIGN KEY (bin_id) REFERENCES northwind.bin_locations (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_pick_list_lines_pick_list_id FOREIGN KEY (pick_list_id) REFERENCES northwind.pick_lists (id) ON DELETE CASCADE,
+    CONSTRAINT fk_pick_list_lines_sales_order_line_id FOREIGN KEY (sales_order_line_id) REFERENCES northwind.sales_order_lines (id) ON DELETE RESTRICT,
     CONSTRAINT fk_pick_list_lines_lot_id FOREIGN KEY (lot_id) REFERENCES northwind.stock_lots (id) ON DELETE SET NULL,
     CONSTRAINT fk_pick_list_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_pick_list_lines_sales_order_line_id FOREIGN KEY (sales_order_line_id) REFERENCES northwind.sales_order_lines (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_pick_list_lines_pick_list_id FOREIGN KEY (pick_list_id) REFERENCES northwind.pick_lists (id) ON DELETE CASCADE
+    CONSTRAINT fk_pick_list_lines_bin_id FOREIGN KEY (bin_id) REFERENCES northwind.bin_locations (id) ON DELETE RESTRICT
 );

@@ -332,6 +332,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/validation/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The built-in rule catalog
+         * @description Every built-in rule, ordered by id: its default severity, description, family (the hundreds group, for example `MQ72xx`, with a short label) and whether `validation.rules` in `maquettiste.json` may set it to `off` (every rule but MQ1xxx). The editor's Validation settings list it; overrides are saved through `PUT /api/project/settings`.
+         */
+        get: operations["listValidationRules"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/diagrams/{id}": {
         parameters: {
             query?: never;
@@ -605,7 +625,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Preview or apply CSV imports into several seeds as one change
+         * Preview or apply CSV imports into several seeds (rows in one change, then translations)
          * @description The editor's Import seed data…: one CSV per seed, each read as `POST /api/seeds/{id}/csv` reads one. `?dryRun=true`
          *     (the default) previews every file; applying saves every changed seed in one all-or-nothing change (a stale `hash` or a
          *     new error in any seed writes none: 409 or 422 with the diagnostics on the file concerned), then writes the files'
@@ -1855,10 +1875,10 @@ export interface components {
             changes: components["schemas"]["ChangeSet"] | null;
         };
         /**
-         * @description `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`.
+         * @description `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed.
          * @enum {string}
          */
-        BatchOp: "create" | "update" | "delete" | "translate";
+        BatchOp: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema";
         BatchOperation: {
             op: components["schemas"]["BatchOp"];
             id: string | null;
@@ -1872,6 +1892,14 @@ export interface components {
             field?: ("displayName" | "pluralName" | "label" | "description") | null;
             /** @description The translated text, `{ "file": "<sidecar>" }`, or `null` to remove the translation (`translate`). */
             value?: unknown;
+            /** @description The database schema id (`rename-schema`, `remove-schema`, `set-default-schema`; optional for `add-schema`). */
+            schema?: string | null;
+            /** @description The schema name (`add-schema`, `rename-schema`). */
+            name?: string | null;
+            /** @description The schema id that what lives in the removed schema moves to (`remove-schema`). */
+            target?: string | null;
+            /** @description The schema id that becomes the default when the removed schema is the default (`remove-schema`). */
+            default?: string | null;
         };
         ModelBatch: {
             operations: components["schemas"]["BatchOperation"][];
@@ -1887,6 +1915,17 @@ export interface components {
         };
         /** @enum {string} */
         DiagnosticSeverity: "error" | "warning" | "info";
+        RuleCatalogEntry: {
+            id: string;
+            defaultSeverity: components["schemas"]["DiagnosticSeverity"];
+            description: string;
+            /** @description The hundreds group of the id, for example MQ72xx. */
+            family: string;
+            /** @description What the family's rules cover, for example Localization. */
+            familyLabel: string;
+            /** @description Whether validation.rules may set the rule to off (false for MQ1xxx). */
+            canBeOff: boolean;
+        };
         Diagnostic: {
             rule: string;
             severity: components["schemas"]["DiagnosticSeverity"];
@@ -3230,6 +3269,7 @@ export interface components {
             /** @enum {unknown} */
             dialect: "postgresql" | "sqlserver" | "mysql" | "sqlite" | "oracle";
             version?: string;
+            /** @description The name of the schema that tables, views and sequences without a schema go to; absent means the dialect's (PostgreSQL public, SQL Server dbo). */
             defaultSchema?: string;
             description?: components["schemas"]["description"];
             /** @default [] */
@@ -3267,8 +3307,14 @@ export interface components {
              * @enum {unknown}
              */
             byConvention?: "all" | "packages" | "none";
-            /** @default [] */
-            packages?: components["schemas"]["idList"];
+            /**
+             * @description The packages whose entities (and sub-packages') map here by convention. An entry is a package id, or an object that also names the schema (the id of one of this database's schemas) the package's conventional tables go to; an entry without a schema is written as the id.
+             * @default []
+             */
+            packages?: (components["schemas"]["id"] | {
+                package: components["schemas"]["id"];
+                schema?: components["schemas"]["id"];
+            })[];
             /** @default {} */
             properties?: components["schemas"]["properties"];
             /** @default {} */
@@ -3511,6 +3557,8 @@ export interface components {
             entity?: components["schemas"]["id"];
             relation?: components["schemas"]["id"];
             table?: components["schemas"]["id"];
+            /** @description For an entity mapping: the id of the database schema the entity's conventional table goes to; it wins over the database's convention package entry and its default schema. */
+            schema?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
@@ -3817,12 +3865,12 @@ export interface components {
         };
         /**
          * Model batch
-         * @description An atomic batch of element creates, updates and deletes, from the editor, a refactoring or an AI proposal.
+         * @description An atomic batch of element creates, updates and deletes and database schema operations, from the editor, a refactoring or an AI proposal.
          */
         batch: {
             operations: ({
                 /** @enum {unknown} */
-                op: "create" | "update" | "delete" | "translate";
+                op: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema";
                 id?: components["schemas"]["id"];
                 expectedHash?: string;
                 element?: Record<string, never>;
@@ -3831,7 +3879,15 @@ export interface components {
                 field?: "displayName" | "pluralName" | "label" | "description";
                 /** @description The translated text, a sidecar reference, or null to remove the translation. */
                 value?: components["schemas"]["description"] | null;
-            } & (unknown & unknown & unknown))[];
+                /** @description The database schema id (rename-schema, remove-schema, set-default-schema; optional for add-schema). */
+                schema?: components["schemas"]["id"];
+                /** @description The schema name (add-schema, rename-schema). */
+                name?: string;
+                /** @description The schema id that the tables, views, sequences, convention entries and mappings of the removed schema move to (remove-schema). */
+                target?: components["schemas"]["id"];
+                /** @description The schema id that becomes the default when the removed schema is the default (remove-schema). */
+                default?: components["schemas"]["id"];
+            } & (unknown & unknown & unknown & unknown & unknown & unknown))[];
         };
         /**
          * Template pack
@@ -4828,6 +4884,47 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    listValidationRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rules, ordered by id. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example [
+                     *       {
+                     *         "id": "MQ1001",
+                     *         "defaultSeverity": "error",
+                     *         "description": "Invalid JSON.",
+                     *         "family": "MQ10xx",
+                     *         "familyLabel": "Model files",
+                     *         "canBeOff": false
+                     *       },
+                     *       {
+                     *         "id": "MQ7204",
+                     *         "defaultSeverity": "info",
+                     *         "description": "A locale is incomplete in a shard: the counts of missing and stale texts, for the required kinds.",
+                     *         "family": "MQ72xx",
+                     *         "familyLabel": "Localization",
+                     *         "canBeOff": true
+                     *       }
+                     *     ]
+                     */
+                    "application/json": components["schemas"]["RuleCatalogEntry"][];
+                };
+            };
             401: components["responses"]["Unauthenticated"];
         };
     };

@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2Q9F24230FGJKNXSRAR695N",
+  "name": "stock movement moves from from bin",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Source bin.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M2FMGAGKYXDP700JPH6PPPE2",
+      "entity": "01M23889DSDTV8CMFDQXJCF0NM",
+      "role": "fromBin",
+      "navigation": "fromBin",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M246CHKNCHVQYKE7E70J7K3Z",
+      "entity": "01M1W2WMX2WKTS2Y5S4W94NB7Y",
+      "role": "stockMovements"
+    }
+  ]
+}

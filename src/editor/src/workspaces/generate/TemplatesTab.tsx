@@ -5,14 +5,14 @@
 // under .maquettiste/templates/<pack>/ with its hash (If-Match); a 409 shows a bar to keep mine or take theirs.
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileCode2, Folder, Save } from "lucide-react";
+import { FileCode2, FilePlus, Folder, Pencil, Save, Trash2 } from "lucide-react";
 import * as endpoints from "@/api/endpoints";
 import type { PreviewRequest, PreviewResult } from "@/api/types";
 import { keys, useIndex } from "@/api/queries";
 import { CodeView } from "@/code";
 import type { CodeMarker } from "@/code/CodeEditor";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/input";
+import { Input, Select } from "@/components/ui/input";
 import { Badge, EmptyState, Spinner, Toolbar } from "@/components/ui/misc";
 import { cn } from "@/lib/cn";
 import { markUnsaved, useDraftState } from "./drafts";
@@ -23,15 +23,20 @@ import {
   fileTree,
   isDirty,
   languageOf,
+  namedByUnits,
+  packPathProblem,
   overlayOf,
   PreviewScheduler,
   unitsForFile,
   type Buffer,
   type Diagnostic,
 } from "./templatesModel";
+import { matchLines, type LineMap } from "./lineMap";
 
 interface Props {
   pack: string;
+  /** The pack.json hash read (a rename of a file a unit names rewrites pack.json with it). */
+  packHash: string;
   files: endpoints.PackDocument["files"];
   units: string[];
   /** Each unit's `for` (its scope), by unit id. */
@@ -49,7 +54,7 @@ interface Conflict {
 
 const PREVIEW_DELAY = 300;
 
-export function TemplatesTab({ pack, files, units, scopes, focusFile, onDirty }: Props) {
+export function TemplatesTab({ pack, packHash, files, units, scopes, focusFile, onDirty }: Props) {
   const qc = useQueryClient();
   const tree = useMemo(() => fileTree(files), [files]);
   const firstFile = tree.find((r) => r.file?.role === "template")?.path ?? tree.find((r) => !r.folder)?.path ?? null;
@@ -182,12 +187,175 @@ export function TemplatesTab({ pack, files, units, scopes, focusFile, onDirty }:
   for (const d of fileDiagnostics)
     if (d.line) markers.push({ line: d.line, column: d.column, message: `${d.rule} ${d.message}`, severity: d.severity === "error" ? "error" : "warning" });
 
+  // New, Rename and Delete in the file tree (generation-ui.md 3.3): through the pack file API, each one change on disk.
+  const [fileAction, setFileAction] = useState<{ kind: "new" | "rename" | "delete"; value: string } | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const startAction = (kind: "new" | "rename" | "delete") => {
+    setFileError(null);
+    const folder = path && path.includes("/") ? path.slice(0, path.lastIndexOf("/") + 1) : "";
+    setFileAction({ kind, value: kind === "new" ? `${folder}new.scriban` : (path ?? "") });
+  };
+  const refusal = (r: endpoints.PackWriteResult, fallback: string) => r.diagnostics.map((d) => d.message).join(" ") || fallback;
+  const runFileAction = async () => {
+    if (!fileAction || busy) return;
+    const target = fileAction.value.trim();
+    if (fileAction.kind !== "delete") {
+      const problem = packPathProblem(
+        target,
+        files.map((f) => f.path),
+      );
+      if (problem && !(fileAction.kind === "rename" && target === path)) return setFileError(problem);
+      if (fileAction.kind === "rename" && target === path) return setFileAction(null);
+    }
+    if (fileAction.kind !== "new" && (!path || !buffer)) return;
+    if (fileAction.kind === "rename" && isDirty(buffer)) return setFileError("Save the file before renaming it.");
+    setBusy(true);
+    try {
+      let answer: endpoints.PackWriteResult;
+      if (fileAction.kind === "new") answer = await endpoints.savePackFile(pack, target, "", null);
+      else if (fileAction.kind === "rename")
+        answer = await endpoints.movePackFile(pack, path!, target, buffer!.hash, namedByUnits(files.find((f) => f.path === path)) ? packHash : null);
+      else answer = await endpoints.deletePackFile(pack, path!, buffer!.hash);
+      if (answer.outcome !== "saved") {
+        const what =
+          fileAction.kind === "delete" ? `${path} was not deleted` : fileAction.kind === "rename" ? `${path} was not renamed` : `${target} was not created`;
+        return setFileError(
+          answer.outcome === "referenced"
+            ? `${what}: ${refusal(answer, "a unit or a template still uses it")}`
+            : answer.outcome === "conflict"
+              ? `${what}: it changed on disk; reload and try again.`
+              : `${what}: ${refusal(answer, answer.outcome)}`,
+        );
+      }
+      const gone = fileAction.kind !== "new" ? path : null;
+      if (gone) {
+        setBuffers((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k !== gone)));
+        setConflictFor(gone, null);
+      }
+      setSelected(fileAction.kind === "delete" ? null : target);
+      // The file that moved away is not read again (it would answer 404).
+      const fileKey = [...keys.pack(pack), "file", gone];
+      qc.removeQueries({ queryKey: fileKey, exact: true });
+      await qc.invalidateQueries({ queryKey: keys.pack(pack), predicate: (q) => JSON.stringify(q.queryKey) !== JSON.stringify(fileKey) });
+      await qc.invalidateQueries({ queryKey: keys.packs });
+      setFileAction(null);
+      setFileError(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Completion and hover from the preview unit's template context.
+  const scriban = !!path && languageOf(path) === "scriban";
+  const context = useQuery({
+    queryKey: [...keys.pack(pack), "context", unit],
+    queryFn: () => endpoints.getTemplateContext(pack, unit),
+    enabled: scriban && !!unit,
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  // Which output lines a template line produced, and back: a text match (the renderer reports no positions).
+  const [cursorLine, setCursorLine] = useState<number | null>(null);
+  const [outputPick, setOutputPick] = useState<{ file: string; line: number } | null>(null);
+  const templateText = scriban ? (buffer?.text ?? null) : null;
+  const lineMaps = useMemo(() => {
+    const maps = new Map<string, LineMap>();
+    if (templateText === null) return maps;
+    for (const f of preview.result?.files ?? []) maps.set(f.path, matchLines(templateText, f.text));
+    return maps;
+  }, [templateText, preview.result]);
+  const templateHighlight = outputPick ? (lineMaps.get(outputPick.file)?.toTemplate.get(outputPick.line) ?? []) : [];
+  const outputHighlight = useMemo(() => {
+    const out = new Map<string, Set<number>>();
+    if (outputPick) out.set(outputPick.file, new Set([outputPick.line]));
+    else if (cursorLine) for (const [file, map] of lineMaps) out.set(file, new Set(map.toOutput.get(cursorLine) ?? []));
+    return out;
+  }, [lineMaps, cursorLine, outputPick]);
+
   if (!files.some((f) => f.role !== "manifest"))
     return <EmptyState title="No template files">This pack has only pack.json. Add templates under .maquettiste/templates/{pack}/.</EmptyState>;
   return (
     <div className="flex h-full min-h-0" data-testid="templates-tab" onKeyDown={onKeyDown}>
-      <nav aria-label="Pack files" className="w-48 shrink-0 overflow-auto border-r border-default py-0.5 text-12">
-        <ul>
+      <nav aria-label="Pack files" className="flex w-48 shrink-0 flex-col overflow-auto border-r border-default text-12">
+        <div className="flex h-6 shrink-0 items-center gap-0.5 border-b border-default px-1" role="toolbar" aria-label="File actions">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-5"
+            title="New file"
+            aria-label="New file"
+            onClick={() => startAction("new")}
+            data-testid="template-new"
+          >
+            <FilePlus className="size-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-5"
+            title="Rename"
+            aria-label="Rename"
+            disabled={!path}
+            onClick={() => startAction("rename")}
+            data-testid="template-rename"
+          >
+            <Pencil className="size-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-5"
+            title="Delete"
+            aria-label="Delete"
+            disabled={!path}
+            onClick={() => startAction("delete")}
+            data-testid="template-delete"
+          >
+            <Trash2 className="size-3.5" />
+          </Button>
+        </div>
+        {fileAction ? (
+          <form
+            className="flex shrink-0 flex-col gap-0.5 border-b border-default p-1"
+            data-testid="template-file-action"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void runFileAction();
+            }}
+          >
+            {fileAction.kind === "delete" ? (
+              <span className="text-11">
+                Delete <span className="font-mono">{path}</span>?
+              </span>
+            ) : (
+              <Input
+                autoFocus
+                className="h-6 font-mono text-11"
+                aria-label={fileAction.kind === "new" ? "New file path" : "New path"}
+                value={fileAction.value}
+                onChange={(e) => setFileAction({ ...fileAction, value: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setFileAction(null);
+                }}
+              />
+            )}
+            {fileError ? (
+              <span role="alert" className="text-11 text-danger" data-testid="template-file-error">
+                {fileError}
+              </span>
+            ) : null}
+            <span className="flex gap-1">
+              <Button size="sm" type="submit" variant={fileAction.kind === "delete" ? "danger" : "primary"} disabled={busy}>
+                {fileAction.kind === "new" ? "Create" : fileAction.kind === "rename" ? "Rename" : "Delete"}
+              </Button>
+              <Button size="sm" variant="ghost" type="button" onClick={() => setFileAction(null)}>
+                Cancel
+              </Button>
+            </span>
+          </form>
+        ) : null}
+        <ul className="py-0.5">
           {tree.map((row) =>
             row.folder ? (
               <li key={row.path} className="flex h-6 items-center gap-1 text-secondary" style={{ paddingLeft: 4 + row.depth * 12 }}>
@@ -280,6 +448,12 @@ export function TemplatesTab({ pack, files, units, scopes, focusFile, onDirty }:
               onSave={() => void save()}
               markers={markers}
               label={`${pack}/${path}`}
+              completion={scriban ? (context.data ?? null) : null}
+              onCursorLine={(line) => {
+                setCursorLine(line);
+                setOutputPick(null);
+              }}
+              highlightLines={templateHighlight}
             />
           ) : disk.isError ? (
             <EmptyState title={`${path} could not be read`}>{(disk.error as Error).message}</EmptyState>
@@ -298,6 +472,8 @@ export function TemplatesTab({ pack, files, units, scopes, focusFile, onDirty }:
         scope={scope}
         onElement={(id) => setElementChoice((prev) => ({ ...prev, [unit]: id }))}
         preview={preview}
+        highlight={outputHighlight}
+        onPickLine={scriban ? (file, line) => setOutputPick(outputPick?.file === file && outputPick.line === line ? null : { file, line }) : undefined}
       />
     </div>
   );
@@ -389,8 +565,12 @@ function PreviewPane(props: {
   scope: UnitScope;
   onElement(id: string): void;
   preview: PreviewState;
+  /** Output lines matched to the template's cursor line (or the picked line), by file path. */
+  highlight: Map<string, Set<number>>;
+  onPickLine?: (file: string, line: number) => void;
 }) {
-  const { units, feeding, unit, preview, scope } = props;
+  const { units, feeding, unit, preview, scope, highlight } = props;
+  const matched = [...highlight.values()].some((s) => s.size > 0);
   const others = units.filter((u) => !feeding.includes(u));
   const result = preview.result;
   return (
@@ -436,6 +616,15 @@ function PreviewPane(props: {
           <span className="text-11 text-secondary">rendering…</span>
         ) : result ? (
           <span className="text-11 text-secondary">{result.elapsedMs} ms</span>
+        ) : null}
+        {matched ? (
+          <span
+            className="text-11 text-secondary"
+            title="The template engine reports no output positions: lines are matched by the template line's literal text, so a line of code only matches nothing."
+            data-testid="preview-match-note"
+          >
+            lines matched by text (approximate)
+          </span>
         ) : null}
       </Toolbar>
       {props.note ? (
@@ -484,8 +673,21 @@ function PreviewPane(props: {
                 </span>
                 {f.role !== "main" ? <span className="text-secondary">{f.role}</span> : null}
               </div>
-              <pre className="px-2 py-1 font-mono text-11 leading-[16px] whitespace-pre" data-testid="preview-text">
-                {f.text}
+              <pre className="py-1 font-mono text-11 leading-[16px] whitespace-pre" data-testid="preview-text">
+                {f.text.split("\n").map((line, i) => {
+                  const on = highlight.get(f.path)?.has(i + 1) ?? false;
+                  return (
+                    <div
+                      key={i}
+                      className={cn("px-2", on && "bg-accent-subtle", props.onPickLine && "cursor-pointer hover:bg-accent-subtle")}
+                      data-line={i + 1}
+                      data-match={on ? "true" : undefined}
+                      onClick={props.onPickLine ? () => props.onPickLine!(f.path, i + 1) : undefined}
+                    >
+                      {line || "\u200b"}
+                    </div>
+                  );
+                })}
               </pre>
             </div>
           ))

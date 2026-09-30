@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1PA37Y760T1BWF1Q3XHT81B",
+  "name": "quality inspection is for product",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Product inspected.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M223JQEPM9PPV58N6JEXPKDH",
+      "entity": "01M20RAEF2QZ5W8HV57RBX5PQV",
+      "role": "product",
+      "navigation": "product",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M1Y46Q1WESGPZKJYX1BMP60R",
+      "entity": "01M1J35XG4PXHGRSVTBAVRS2YP",
+      "role": "qualityInspections"
+    }
+  ]
+}

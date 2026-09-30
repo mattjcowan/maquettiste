@@ -12,10 +12,10 @@ CREATE TABLE northwind.sales_territories (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    manager_id uuid NULL,
     parent_id uuid NULL,
+    manager_id uuid NULL,
     CONSTRAINT pk_sales_territories PRIMARY KEY (id),
     CONSTRAINT uq_sales_territories_code UNIQUE (code),
-    CONSTRAINT fk_sales_territories_manager_id FOREIGN KEY (manager_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
-    CONSTRAINT fk_sales_territories_parent_id FOREIGN KEY (parent_id) REFERENCES northwind.sales_territories (id) ON DELETE SET NULL
+    CONSTRAINT fk_sales_territories_parent_id FOREIGN KEY (parent_id) REFERENCES northwind.sales_territories (id) ON DELETE SET NULL,
+    CONSTRAINT fk_sales_territories_manager_id FOREIGN KEY (manager_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );

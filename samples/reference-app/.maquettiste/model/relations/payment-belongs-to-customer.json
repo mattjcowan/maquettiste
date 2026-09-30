@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M30DCWHVZZXZZSJ3EGZT764V",
+  "name": "payment belongs to customer",
+  "package": "01M3305VG5Q9PSEM8788TC0QZC",
+  "description": "Paying customer.",
+  "category": "01M1ZKPCX7552MRHGNCDG2VV0Y",
+  "ends": [
+    {
+      "id": "01M34F8JFJ3N2BY1JTVZSMR2F2",
+      "entity": "01M1ECZKYNSKVNCWW2XM34E20X",
+      "role": "customer",
+      "navigation": "customer",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M1P2KADH1KZRHZ1643AV00GJ",
+      "entity": "01M1TQTM9KTF1VNQJV2M3WM130",
+      "role": "payments",
+      "navigation": "payments"
+    }
+  ]
+}

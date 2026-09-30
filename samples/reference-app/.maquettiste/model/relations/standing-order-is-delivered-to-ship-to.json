@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2SJ97YEMSEX7V9CHG3BR12B",
+  "name": "standing order is delivered to ship to",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "Delivery address.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "ends": [
+    {
+      "id": "01M1R899VQEXNN9792E3JMCCT9",
+      "entity": "01M2BKNW8ET53B7685KC3KZW3K",
+      "role": "shipTo",
+      "navigation": "shipTo",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M1SW4AX16E7F2JC54KF7ENRG",
+      "entity": "01M33RY9G59ZRWXQSAY6YKZMCH",
+      "role": "standingOrders"
+    }
+  ]
+}

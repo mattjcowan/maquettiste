@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2R138JVQ331KWM13FF1QMNA",
+  "name": "price list entry is measured in unit",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "Unit the price is per; defaults to the product's sales unit.",
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "ends": [
+    {
+      "id": "01M2YV1HJMWFJZ06XSQ0M7Z92N",
+      "entity": "01M1DQ616MEK35RH2FF7YJF9G8",
+      "role": "unit",
+      "navigation": "unit",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M21H2JF622ESNADQ4TXTP8ZS",
+      "entity": "01M2FXB60N1J83XJX22PWX3817",
+      "role": "priceListEntries"
+    }
+  ]
+}

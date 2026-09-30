@@ -7,11 +7,11 @@ CREATE TABLE northwind.campaign_responses (
     responded_at timestamptz(6) NOT NULL,
     response_type varchar(40) NOT NULL,
     notes varchar(500) NULL,
-    campaign_id uuid NOT NULL,
     contact_id uuid NULL,
+    campaign_id uuid NOT NULL,
     lead_id uuid NULL,
     CONSTRAINT pk_campaign_responses PRIMARY KEY (id),
-    CONSTRAINT fk_campaign_responses_campaign_id FOREIGN KEY (campaign_id) REFERENCES northwind.campaigns (id) ON DELETE CASCADE,
     CONSTRAINT fk_campaign_responses_contact_id FOREIGN KEY (contact_id) REFERENCES northwind.contacts (id) ON DELETE SET NULL,
+    CONSTRAINT fk_campaign_responses_campaign_id FOREIGN KEY (campaign_id) REFERENCES northwind.campaigns (id) ON DELETE CASCADE,
     CONSTRAINT fk_campaign_responses_lead_id FOREIGN KEY (lead_id) REFERENCES northwind.leads (id) ON DELETE SET NULL
 );

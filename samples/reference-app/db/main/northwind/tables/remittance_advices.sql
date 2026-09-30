@@ -10,9 +10,9 @@ CREATE TABLE northwind.remittance_advices (
     total_amount_currency varchar(3) NOT NULL,
     raw_document jsonb NULL,
     is_matched boolean NOT NULL DEFAULT false,
-    customer_id uuid NULL,
     payment_id uuid NULL,
+    customer_id uuid NULL,
     CONSTRAINT pk_remittance_advices PRIMARY KEY (id),
-    CONSTRAINT fk_remittance_advices_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE SET NULL,
-    CONSTRAINT fk_remittance_advices_payment_id FOREIGN KEY (payment_id) REFERENCES northwind.payments (id) ON DELETE SET NULL
+    CONSTRAINT fk_remittance_advices_payment_id FOREIGN KEY (payment_id) REFERENCES northwind.payments (id) ON DELETE SET NULL,
+    CONSTRAINT fk_remittance_advices_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE SET NULL
 );

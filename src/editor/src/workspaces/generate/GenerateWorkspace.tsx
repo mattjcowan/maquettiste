@@ -21,6 +21,7 @@ import { X } from "lucide-react";
 import { PackEditor } from "./PackEditor";
 import { ExplainForm, PlanChanges, type ExplainAsk, PlanSummary, UnchangedUnits, WhyPanel } from "./PlanExplain";
 import { closePackTab } from "./packTabs";
+import { moreNotesText, orderDiagnostics, type PlanNote } from "./planModel";
 import { discardDrafts, hasUnsaved } from "./drafts";
 
 /** Kinds an apply leaves alone: an unchanged file, and a companion that is kept as it is on disk. */
@@ -257,15 +258,7 @@ function PlanScreen() {
             <>
               <SectionTitle>Plan summary</SectionTitle>
               <PlanSummary plan={plan.data} />
-              {plan.data.diagnostics.length ? (
-                <ul className="text-12 text-warning">
-                  {plan.data.diagnostics.slice(0, 5).map((d, i) => (
-                    <li key={i}>
-                      {d.rule} {d.message}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
+              {plan.data.diagnostics.length ? <PlanNotes diagnostics={plan.data.diagnostics} /> : null}
               <PlanChanges planId={generation.planId} plan={plan.data} onExplain={(a) => setAsk((prev) => ({ ...a, seq: (prev?.seq ?? 0) + 1 }))} />
             </>
           ) : generation.planJob && !planJob.data ? (
@@ -396,5 +389,24 @@ export function GenerateWorkspace() {
       </div>
       <div className="min-h-0 flex-1">{active ? <PackEditor key={active} pack={active} /> : <PlanScreen />}</div>
     </div>
+  );
+}
+
+// The plan's diagnostics in their own severity: an error is red, a warning amber, a note (info, such as MQ7204's
+// incomplete-locale counts) plain; errors first, five listed, the rest counted.
+const NOTE_TONE: Record<string, string> = { error: "text-danger", warning: "text-warning", info: "text-secondary" };
+const NOTE_BADGE: Record<string, "danger" | "warning" | "neutral"> = { error: "danger", warning: "warning", info: "neutral" };
+
+function PlanNotes({ diagnostics }: { diagnostics: readonly PlanNote[] }) {
+  const { shown, more, counts } = orderDiagnostics(diagnostics);
+  return (
+    <ul className="text-12" data-testid="plan-notes">
+      {shown.map((d, i) => (
+        <li key={i} className={NOTE_TONE[d.severity] ?? "text-secondary"} data-severity={d.severity}>
+          <Badge tone={NOTE_BADGE[d.severity] ?? "neutral"}>{d.rule}</Badge> {d.message}
+        </li>
+      ))}
+      {more ? <li className="text-secondary">{moreNotesText(more, counts)}</li> : null}
+    </ul>
   );
 }

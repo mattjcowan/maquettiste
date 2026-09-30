@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2ERX0TK5WPVKTE3PB2GEWH4",
+  "name": "supplier invoice is recorded in journal entry",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "Posting in the ledger.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "ends": [
+    {
+      "id": "01M1PD015AETV8451GM8VRX5WM",
+      "entity": "01M1D4CTN6F0HS5SZQC5VH8H2N",
+      "role": "journalEntry",
+      "navigation": "journalEntry",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M26T0G72XWZTRJC0GQ2T0EX3",
+      "entity": "01M1MWDZA086JA1GBZQKRB5K1Q",
+      "role": "supplierInvoices"
+    }
+  ]
+}

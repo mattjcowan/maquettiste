@@ -90,18 +90,18 @@ test("gate 2: edit the reference application in the editor, plan and apply", asy
   await expect(page.getByTestId("save-status")).toHaveText("Saved", slow);
 
   // Rename a relation in the relationship editor: the name field saves on blur, and the tab follows the new name.
-  const relation = await openInEditor(page, "delivery route warehouse");
+  const relation = await openInEditor(page, "delivery route departs from warehouse");
   const name = relation.getByLabel("Name", { exact: true });
-  await expect(name).toHaveValue("delivery route warehouse");
-  await name.fill("delivery route depot");
+  await expect(name).toHaveValue("delivery route departs from warehouse");
+  await name.fill("delivery route departs from depot");
   // The region's name follows the draft as it is typed, so the locator above no longer matches: Tab from the focus.
   await page.keyboard.press("Tab");
-  await expect(page.getByRole("region", { name: "Editor: delivery route depot" })).toBeVisible(slow);
+  await expect(page.getByRole("region", { name: "Editor: delivery route departs from depot" })).toBeVisible(slow);
   await expect(page.getByTestId("save-status")).toHaveText("Saved", slow);
   const search = explorer(page).getByLabel("Search the model");
   await search.fill("delivery route");
-  await expect(explorer(page).getByTestId("explorer-row-delivery route depot")).toBeVisible();
-  await expect(explorer(page).getByTestId("explorer-row-delivery route warehouse")).toHaveCount(0);
+  await expect(explorer(page).getByTestId("explorer-row-delivery route departs from depot")).toBeVisible();
+  await expect(explorer(page).getByTestId("explorer-row-delivery route departs from warehouse")).toHaveCount(0);
   await search.fill("");
   await expect(page.getByRole("tab", { name: /Problems/ })).not.toContainText(/[1-9]/, slow);
 

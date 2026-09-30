@@ -67,6 +67,22 @@ function NewElementDialog({ kind, domain, presetSource, forest }: { kind: Create
   const [dialect, setDialect] = useState<string>("postgresql");
   const [convention, setConvention] = useState<"none" | "pick" | "all">("none");
   const [picked, setPicked] = useState<string[]>([]);
+  // A new database's schemas, comma-separated (the first is the default), with ids fixed for the dialog's life so the
+  // per-domain choice survives edits of the list (erratum E26).
+  const [schemaText, setSchemaText] = useState("");
+  const [schemaIds] = useState(() => new Map<string, string>());
+  const schemaList = [
+    ...new Set(
+      schemaText
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean),
+    ),
+  ].map((n) => {
+    if (!schemaIds.has(n)) schemaIds.set(n, newId());
+    return { id: schemaIds.get(n)!, name: n };
+  });
+  const [packageSchemas, setPackageSchemas] = useState<Record<string, string>>({});
   const entities = [...forest.byId.values()].filter((r) => r.kind === "entity").sort((a, b) => a.name.localeCompare(b.name));
   const inDomain = (id: string) => !home || forest.byId.get(id)?.package === home;
   const firstEntity = entities.find((e) => e.id === presetSource) ?? entities.find((e) => inDomain(e.id)) ?? entities[0];
@@ -128,6 +144,8 @@ function NewElementDialog({ kind, domain, presetSource, forest }: { kind: Create
           dialect,
           convention,
           packages: picked,
+          schemas: schemaList,
+          packageSchemas: Object.fromEntries(Object.entries(packageSchemas).filter(([, v]) => schemaList.some((x) => x.id === v))),
           source,
           target,
           sourceName: forest.byId.get(source)?.name,
@@ -195,6 +213,9 @@ function NewElementDialog({ kind, domain, presetSource, forest }: { kind: Create
           ) : null}
           {kind === "database" ? (
             <>
+              <Field label="Schemas" htmlFor="new-element-schemas" hint="Optional, comma-separated; the first is the default. Such as sales, billing.">
+                <Input id="new-element-schemas" value={schemaText} onChange={(e) => setSchemaText(e.target.value)} />
+              </Field>
               <Field
                 label="Map domains by convention"
                 htmlFor="new-element-convention"
@@ -216,7 +237,23 @@ function NewElementDialog({ kind, domain, presetSource, forest }: { kind: Create
                           checked={picked.includes(c.id)}
                           onChange={(e) => setPicked((p) => (e.target.checked ? [...p, c.id] : p.filter((x) => x !== c.id)))}
                         />
-                        {c.path}
+                        <span className="min-w-0 flex-1 truncate">{c.path}</span>
+                        {schemaList.length > 1 && picked.includes(c.id) ? (
+                          <select
+                            className="h-5 rounded-sm border border-default bg-surface text-11"
+                            aria-label={`Schema of ${c.path}`}
+                            data-testid={`new-database-schema-${c.id}`}
+                            value={packageSchemas[c.id] ?? ""}
+                            onChange={(e) => setPackageSchemas((m) => ({ ...m, [c.id]: e.target.value }))}
+                          >
+                            <option value="">Default schema</option>
+                            {schemaList.map((x) => (
+                              <option key={x.id} value={x.id}>
+                                {x.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : null}
                       </label>
                     ))
                   ) : (

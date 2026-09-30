@@ -1,0 +1,28 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2GCDZZ16KCT40NNB5C5R9J7",
+  "name": "pick list contains lines",
+  "package": "01M2MWTW25KN9XJAEDX7Q9W9AJ",
+  "relationKind": "composition",
+  "description": "Picks in walking order.",
+  "category": "01M3782KNWEVSQ63MXDYY1X3TY",
+  "ends": [
+    {
+      "id": "01M1FHSFDM0TKYW7EJBJ3X5KQ8",
+      "entity": "01M361WZGT03TXCK3ZS2SN07NE",
+      "role": "pickList",
+      "navigation": "pickList",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M1FRBMTKK2ZJ9KKACWAQ49Z1",
+      "entity": "01M1NBGV6RCQPPD3FSTB6SVZWJ",
+      "role": "lines",
+      "navigation": "lines",
+      "ordered": true
+    }
+  ]
+}

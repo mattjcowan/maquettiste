@@ -6,7 +6,7 @@ import { useEffect, useLayoutEffect, useSyncExternalStore } from "react";
 import type { ElementSummary, TableSummary } from "@/api/types";
 import { perfRecord, perfStart } from "@/lib/perf";
 import { patchesBetween } from "@/api/indexPatch";
-import { takeIndexText } from "@/api/indexText";
+import { onIndexText, takeIndexText } from "@/api/indexText";
 import {
   createSearchHandler,
   encodeRows,
@@ -26,7 +26,7 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 type Pending = { resolve(answer: FromWorker): void };
 
 export class SearchClient {
-  private readonly post: (msg: ToWorker) => void;
+  private readonly post: (msg: ToWorker, transfer?: Transferable[]) => void;
   /** Messages sent while the index text is still going over in slices; posted after the last slice, in order. */
   private queued: ToWorker[] | null = null;
   private slicing: ReturnType<typeof setTimeout> | null = null;
@@ -47,7 +47,7 @@ export class SearchClient {
   constructor(worker?: Worker | null) {
     if (worker) {
       worker.onmessage = (e: MessageEvent<FromWorker>) => this.receive(e.data);
-      this.post = (msg) => worker.postMessage(msg);
+      this.post = (msg, transfer) => worker.postMessage(msg, transfer ?? []);
     } else {
       const handle = createSearchHandler();
       this.post = (msg) =>
@@ -160,9 +160,21 @@ export class SearchClient {
     this.readyEnd = perfStart("search:ready");
     // The index's own JSON text when the rows were parsed from it (the worker parses and encodes it), in slices; else the
     // encoded rows in one message.
-    const json = takeIndexText(rows);
-    if (json !== undefined) {
-      this.sendText(this.version + 1, json, (detail) => perfRecord("search:handoff", Number(detail?.ms ?? 0), detail), rows.length);
+    const raw = takeIndexText(rows);
+    if (raw?.bytes && raw.bytes.byteLength > 0) {
+      // The bytes are transferred, not copied: the handoff is one postMessage, and the worker decodes and parses them.
+      const handoff = perfStart("search:handoff");
+      if (this.slicing) clearTimeout(this.slicing);
+      this.slicing = null;
+      const queued = this.queued ?? [];
+      this.queued = null;
+      this.post({ type: "rows", version: this.version + 1, bytes: raw.bytes }, [raw.bytes]);
+      for (const msg of queued) this.post(msg);
+      const detail: Record<string, unknown> = { rows: rows.length, raw: true, transferred: true, slices: 1 };
+      const entry = handoff(detail);
+      detail.totalMs = detail.longestMs = Math.round(entry.ms * 100) / 100;
+    } else if (raw !== undefined) {
+      this.sendText(this.version + 1, raw.text, (detail) => perfRecord("search:handoff", Number(detail?.ms ?? 0), detail), rows.length);
     } else {
       const handoff = perfStart("search:handoff");
       this.send({ type: "rows", version: this.version + 1, data: encodeRows(rows) });
@@ -230,6 +242,9 @@ export function searchClient(): SearchClient {
       }
     }
     client = new SearchClient(worker);
+    // With a worker, an index goes over the moment it is parsed (its bytes transferred), so the worker parses it while the
+    // explorer builds and paints (explorer-redesign.md 4.5, search worker ready after the index).
+    if (worker) onIndexText((rows) => client?.setRows(rows as readonly ElementSummary[]));
   }
   return client;
 }

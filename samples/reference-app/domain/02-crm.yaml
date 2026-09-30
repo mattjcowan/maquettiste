@@ -48,9 +48,9 @@ entities:
     alternateKeys:
       partyNumber: [partyNumber]
     refs:
-      preferredLanguage: Language | Language for documents and messages.
-      preferredCurrency: Currency | Currency used on documents by default.
-      paymentTerm: PaymentTerm | Payment terms agreed with the party, both directions.
+      preferredLanguage: Language name=party_prefers_preferred_language | Language for documents and messages.
+      preferredCurrency: Currency name=party_prefers_preferred_currency | Currency used on documents by default.
+      paymentTerm: PaymentTerm name=party_is_payable_on_payment_term | Payment terms agreed with the party, both directions.
     mapping:
       description: Customers, suppliers and carriers share the parties table (TPH) with a readable discriminator; the headquarters address columns get a short hq_ prefix.
       inheritance: tph
@@ -69,12 +69,12 @@ entities:
       isTaxExempt: bool! default=false | Whether sales tax is waived; requires a valid exemption certificate.
       annualRevenue: Money | Customer's reported annual revenue, used for segmentation.
     refs:
-      segment: CustomerSegment | Marketing segment.
-      customerGroup: CustomerGroup | Pricing group.
-      accountManager: Employee | Sales rep who owns the account.
-      territory: SalesTerritory | Sales territory of the account.
-      industry: Industry | Industry the customer operates in.
-      parentCustomer: Customer back=subsidiaries | Parent account for consolidated billing.
+      segment: CustomerSegment name=customer_is_targeted_at_segment | Marketing segment.
+      customerGroup: CustomerGroup name=customer_is_grouped_in_customer_group | Pricing group.
+      accountManager: Employee name=customer_is_managed_by_account_manager | Sales rep who owns the account.
+      territory: SalesTerritory name=customer_is_covered_by_territory | Sales territory of the account.
+      industry: Industry name=customer_operates_in_industry | Industry the customer operates in.
+      parentCustomer: Customer back=subsidiaries name=customer_is_a_subsidiary_of_parent_customer | Parent account for consolidated billing.
     mapping:
       description: Discriminator value of customers in the parties table.
       discriminator: CUSTOMER
@@ -118,8 +118,8 @@ entities:
       isPrimary: bool! default=false | Main contact of the party.
       isBillingContact: bool! default=false | Receives invoices and statements.
     refs:
-      party: Party! cascade back=contacts | Organization the contact works for.
-      language: Language | Language the contact prefers.
+      party: Party! cascade back=contacts name=contact_concerns_party | Organization the contact works for.
+      language: Language name=contact_is_written_in_language | Language the contact prefers.
     mapping:
       description: Additional phone numbers are stored as a JSON array rather than a child table.
       storage:
@@ -138,7 +138,7 @@ entities:
       isDefault: bool! default=false | Default address of its type.
       deliveryInstructions: string(500) | Dock hours, gate codes and the like.
     refs:
-      party: Party! cascade back=addresses | Party the address belongs to.
+      party: Party! cascade back=addresses name=party_address_concerns_party | Party the address belongs to.
 
   CustomerSegment:
     description: Marketing segment of a customer, such as Independent retailer or National chain.
@@ -166,8 +166,8 @@ entities:
       name: string(100)! | Territory name.
       annualQuota: Money | Revenue target for the fiscal year.
     refs:
-      parent: SalesTerritory back=subTerritories | Enclosing territory.
-      manager: Employee | Sales manager responsible for the territory.
+      parent: SalesTerritory back=subTerritories name=sales_territory_is_nested_under_parent | Enclosing territory.
+      manager: Employee name=sales_territory_reports_to_manager | Sales manager responsible for the territory.
 
   AccountAssignment:
     description: Assignment of an employee to a customer account in a role, such as inside sales or key account manager.
@@ -177,8 +177,8 @@ entities:
       validity: DateRange! | Period of the assignment.
       isPrimary: bool! default=false | Primary owner of the account.
     refs:
-      customer: Customer! cascade back=assignments | Customer account.
-      employee: Employee! | Assigned employee.
+      customer: Customer! cascade back=assignments name=account_assignment_belongs_to_customer | Customer account.
+      employee: Employee! name=account_assignment_involves_employee | Assigned employee.
 
   Lead:
     description: A prospective customer not yet qualified, captured from a trade show, the website or a referral.
@@ -194,10 +194,10 @@ entities:
       notes: text | Qualification notes.
       convertedOn: date | Date the lead became a customer.
     refs:
-      source: LeadSource | Where the lead came from.
-      owner: Employee | Rep working the lead.
-      industry: Industry | Prospect's industry.
-      convertedCustomer: Customer | Customer created from the lead.
+      source: LeadSource name=lead_is_sourced_from_source | Where the lead came from.
+      owner: Employee name=lead_is_owned_by_owner | Rep working the lead.
+      industry: Industry name=lead_operates_in_industry | Prospect's industry.
+      convertedCustomer: Customer name=lead_converts_to_converted_customer | Customer created from the lead.
 
   LeadSource:
     description: Origin of a lead, such as Trade show or Website form.
@@ -219,9 +219,9 @@ entities:
       closedOn: date | Date the deal was won or lost.
       lossReason: string(300) | Why the deal was lost.
     refs:
-      customer: Customer! back=opportunities | Customer the deal is with.
-      stage: OpportunityStage! | Current pipeline stage.
-      owner: Employee! | Rep who owns the deal.
+      customer: Customer! back=opportunities name=opportunity_belongs_to_customer | Customer the deal is with.
+      stage: OpportunityStage! name=opportunity_is_at_stage | Current pipeline stage.
+      owner: Employee! name=opportunity_is_owned_by_owner | Rep who owns the deal.
 
   OpportunityStage:
     description: A pipeline stage, such as Discovery, Proposal or Negotiation.
@@ -245,10 +245,10 @@ entities:
       completedAt: datetimeoffset | When it was done.
       notes: text | Outcome and details.
     refs:
-      party: Party! cascade back=activities | Organization the activity concerns.
-      contact: Contact | Person involved.
-      opportunity: Opportunity | Deal the activity advances.
-      owner: Employee! | Employee responsible.
+      party: Party! cascade back=activities name=sales_activity_concerns_party | Organization the activity concerns.
+      contact: Contact name=sales_activity_involves_contact | Person involved.
+      opportunity: Opportunity name=sales_activity_pursues_opportunity | Deal the activity advances.
+      owner: Employee! name=sales_activity_is_owned_by_owner | Employee responsible.
 
   PartyNote:
     description: A free-text note on a party, such as delivery quirks or negotiation history.
@@ -257,8 +257,8 @@ entities:
       body: text! | Note text in Markdown.
       isPinned: bool! default=false | Shown at the top of the party's page.
     refs:
-      party: Party! cascade back=notes | Party the note is about.
-      author: UserAccount | Who wrote the note.
+      party: Party! cascade back=notes name=party_note_concerns_party | Party the note is about.
+      author: UserAccount name=party_note_is_written_by_author | Who wrote the note.
 
   Campaign:
     description: A marketing campaign, such as a spring catalog mailing or a trade show.
@@ -270,7 +270,7 @@ entities:
       period: DateRange! | When the campaign runs.
       budget: Money | Approved spend.
     refs:
-      owner: Employee | Marketer responsible.
+      owner: Employee name=campaign_is_owned_by_owner | Marketer responsible.
 
   CampaignResponse:
     description: A response to a campaign by a contact or a lead, such as a click, a booth visit or a request for quote.
@@ -280,9 +280,9 @@ entities:
       responseType: string(40)! | Kind of response, such as clicked or visited-booth.
       notes: string(500) | Details.
     refs:
-      campaign: Campaign! cascade back=responses | Campaign responded to.
-      contact: Contact | Responding contact.
-      lead: Lead | Responding lead.
+      campaign: Campaign! cascade back=responses name=campaign_response_is_generated_by_campaign | Campaign responded to.
+      contact: Contact name=campaign_response_involves_contact | Responding contact.
+      lead: Lead name=campaign_response_originates_from_lead | Responding lead.
 
   CreditProfile:
     description: The credit standing of a customer, reviewed by the credit department before limits change.
@@ -295,7 +295,7 @@ entities:
       lastReviewedOn: date | Date of the last credit review.
       reviewNotes: text | Reviewer's notes.
     refs:
-      customer: Customer! cascade one back=creditProfile | Customer assessed.
+      customer: Customer! cascade one back=creditProfile name=credit_profile_belongs_to_customer | Customer assessed.
 
   TaxExemptionCertificate:
     description: A resale or exemption certificate a customer filed to buy without sales tax in a state.
@@ -307,8 +307,8 @@ entities:
       validity: DateRange! | Period the certificate covers.
       documentUrl: string(400) | Link to the scanned certificate.
     refs:
-      customer: Customer! cascade back=taxExemptions | Customer that filed the certificate.
-      stateProvince: StateProvince | State where the exemption applies.
+      customer: Customer! cascade back=taxExemptions name=tax_exemption_certificate_belongs_to_customer | Customer that filed the certificate.
+      stateProvince: StateProvince name=tax_exemption_certificate_is_located_in_state_province | State where the exemption applies.
 
   CommunicationPreference:
     description: A contact's opt-in or opt-out for a channel and topic, kept for anti-spam compliance.
@@ -320,7 +320,7 @@ entities:
       changedAt: datetimeoffset! | When the preference was last set.
       source: string(40) | Where it was set, such as portal or phone.
     refs:
-      contact: Contact! cascade back=communicationPreferences | Contact the preference belongs to.
+      contact: Contact! cascade back=communicationPreferences name=communication_preference_involves_contact | Contact the preference belongs to.
 
   Industry:
     description: Industry classification of a customer or lead, based on NAICS sectors.

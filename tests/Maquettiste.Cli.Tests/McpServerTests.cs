@@ -9,10 +9,10 @@ public sealed class McpSurfaceTests
 {
     private static readonly string[] Tools =
     [
-        "apply_batch", "apply_plan", "create_element", "delete_element", "delete_pack_file", "explain_unit", "export_seed_csv",
+        "apply_batch", "apply_plan", "create_element", "create_seed", "delete_element", "delete_pack_file", "explain_unit", "export_seed_csv",
         "get_database_view", "get_element", "get_model_index", "get_pack", "get_pack_outputs", "get_plan", "get_plan_diff", "get_project",
         "get_references", "get_schema", "get_settings", "get_template_context", "get_translations", "import_seed_csv", "list_pack_files",
-        "list_packs", "localization_status", "move_pack_file", "new_pack", "plan", "preview_unit", "read_pack_file", "reference_type_usage",
+        "list_packs", "list_validation_rules", "localization_status", "move_pack_file", "new_pack", "plan", "preview_unit", "read_pack_file", "reference_type_usage",
         "save_element", "save_pack", "save_pack_settings", "save_settings", "set_translations", "unit_paths", "validate", "write_pack_file",
     ];
 
@@ -229,6 +229,11 @@ public sealed class McpReadTests
         var settings = await session.OkAsync("get_settings");
         Assert.Equal((string)project["settingsHash"]!, (string)settings["hash"]!);
         Assert.Equal("billing", (string)settings["json"]!["name"]!);
+
+        var rules = (await session.OkAsync("list_validation_rules")).AsArray();
+        Assert.Equal("MQ1001", (string)rules[0]!["id"]!);
+        Assert.False((bool)rules[0]!["canBeOff"]!);
+        Assert.Equal("MQ72xx", (string)rules.Single(r => (string)r!["id"]! == "MQ7204")!["family"]!);
 
         var schema = await session.OkAsync("get_schema", new { kind = "entity" });
         Assert.Equal("entity.json", (string)schema["file"]!);

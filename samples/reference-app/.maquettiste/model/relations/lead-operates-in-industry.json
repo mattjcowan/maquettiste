@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2HQYB95X5N5KYTGG7Z2TBNR",
+  "name": "lead operates in industry",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "Prospect's industry.",
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "ends": [
+    {
+      "id": "01M1DGKRNZSQ1PYVCXMKZEFAN7",
+      "entity": "01M25DP2M0C04S4KCENQTV1KWB",
+      "role": "industry",
+      "navigation": "industry",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2YTEC63YNK7W1SPVYETR34K",
+      "entity": "01M2QFZSC4KWD20CENXN364C9Y",
+      "role": "leads"
+    }
+  ]
+}

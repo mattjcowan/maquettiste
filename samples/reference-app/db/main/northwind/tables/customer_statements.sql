@@ -11,9 +11,9 @@ CREATE TABLE northwind.customer_statements (
     closing_balance_currency varchar(3) NOT NULL,
     sent_at timestamptz(6) NULL,
     document_url varchar(400) NULL,
-    billing_account_id uuid NULL,
     customer_id uuid NOT NULL,
+    billing_account_id uuid NULL,
     CONSTRAINT pk_customer_statements PRIMARY KEY (id),
-    CONSTRAINT fk_customer_statements_billing_account_id FOREIGN KEY (billing_account_id) REFERENCES northwind.billing_accounts (id) ON DELETE SET NULL,
-    CONSTRAINT fk_customer_statements_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT
+    CONSTRAINT fk_customer_statements_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_customer_statements_billing_account_id FOREIGN KEY (billing_account_id) REFERENCES northwind.billing_accounts (id) ON DELETE SET NULL
 );

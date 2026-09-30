@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M36WF3Z7DE7YEAM348G848GE",
+  "name": "product lifecycle event is for product",
+  "package": "01M24CVQK5A8SM04F7S0Z3MAMA",
+  "description": "Product that changed.",
+  "category": "01M2W72KPZ37Q9NDMTV0Q2SGH0",
+  "ends": [
+    {
+      "id": "01M2CB5Y2N57HWPGEQAGBH1KHE",
+      "entity": "01M20RAEF2QZ5W8HV57RBX5PQV",
+      "role": "product",
+      "navigation": "product",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M2RFT9YQ6SR54TXYZPWCZH08",
+      "entity": "01M2GPE1118GZA4QY5E0XNMV9H",
+      "role": "lifecycleEvents",
+      "navigation": "lifecycleEvents"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2VRJAVNH10FR2CHC0RNF3P4",
+  "name": "blanket order belongs to customer",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "Committing customer.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "ends": [
+    {
+      "id": "01M1TVCQXX6A8P0XDG8QYBNTB4",
+      "entity": "01M1ECZKYNSKVNCWW2XM34E20X",
+      "role": "customer",
+      "navigation": "customer",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M2JQ65QN6KK03NK2WH22Y7C3",
+      "entity": "01M2MCP43J29YSHR3FTSX2PB4N",
+      "role": "blanketOrders",
+      "navigation": "blanketOrders"
+    }
+  ]
+}

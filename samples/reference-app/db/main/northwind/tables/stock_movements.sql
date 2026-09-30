@@ -10,16 +10,16 @@ CREATE TABLE northwind.stock_movements (
     reference_document varchar(40) NULL,
     unit_cost_amount numeric(19,4) NULL,
     unit_cost_currency varchar(3) NULL,
-    from_bin_id uuid NULL,
     lot_id uuid NULL,
-    performed_by_id uuid NULL,
     product_id uuid NOT NULL,
+    performed_by_id uuid NULL,
+    from_bin_id uuid NULL,
     to_bin_id uuid NULL,
     CONSTRAINT pk_stock_movements PRIMARY KEY (id),
-    CONSTRAINT fk_stock_movements_from_bin_id FOREIGN KEY (from_bin_id) REFERENCES northwind.bin_locations (id) ON DELETE SET NULL,
     CONSTRAINT fk_stock_movements_lot_id FOREIGN KEY (lot_id) REFERENCES northwind.stock_lots (id) ON DELETE SET NULL,
-    CONSTRAINT fk_stock_movements_performed_by_id FOREIGN KEY (performed_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_stock_movements_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_stock_movements_performed_by_id FOREIGN KEY (performed_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
+    CONSTRAINT fk_stock_movements_from_bin_id FOREIGN KEY (from_bin_id) REFERENCES northwind.bin_locations (id) ON DELETE SET NULL,
     CONSTRAINT fk_stock_movements_to_bin_id FOREIGN KEY (to_bin_id) REFERENCES northwind.bin_locations (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_stock_movements_occurred_at ON northwind.stock_movements (occurred_at DESC);

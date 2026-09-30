@@ -8,13 +8,13 @@ CREATE TABLE northwind.reorder_suggestions (
     suggested_on date NOT NULL,
     is_accepted boolean NULL,
     dismissed_reason varchar(200) NULL,
-    product_id uuid NOT NULL,
     purchase_order_id uuid NULL,
-    supplier_id uuid NULL,
+    product_id uuid NOT NULL,
     warehouse_id uuid NOT NULL,
+    supplier_id uuid NULL,
     CONSTRAINT pk_reorder_suggestions PRIMARY KEY (id),
-    CONSTRAINT fk_reorder_suggestions_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_reorder_suggestions_purchase_order_id FOREIGN KEY (purchase_order_id) REFERENCES northwind.purchase_orders (id) ON DELETE SET NULL,
-    CONSTRAINT fk_reorder_suggestions_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE SET NULL,
-    CONSTRAINT fk_reorder_suggestions_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT
+    CONSTRAINT fk_reorder_suggestions_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_reorder_suggestions_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_reorder_suggestions_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE SET NULL
 );

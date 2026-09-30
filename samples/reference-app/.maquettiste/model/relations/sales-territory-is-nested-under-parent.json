@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1KFF2S8AGRSGNW556YH6JP8",
+  "name": "sales territory is nested under parent",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "Enclosing territory.",
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "ends": [
+    {
+      "id": "01M1G5R6YA553YATAP07KXRT4Y",
+      "entity": "01M20WKPA5534RWHK392W0BWNH",
+      "role": "parent",
+      "navigation": "parent",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2HQ4HGW8B2BHEX899W6JTG5",
+      "entity": "01M20WKPA5534RWHK392W0BWNH",
+      "role": "subTerritories",
+      "navigation": "subTerritories"
+    }
+  ]
+}

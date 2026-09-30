@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text;
+using System.Text.Json.Nodes;
 
 namespace Maquettiste.Cli;
 
@@ -10,6 +11,32 @@ namespace Maquettiste.Cli;
 /// </summary>
 internal static class StarterPacks
 {
+    /// <summary>
+    /// The three standard reference-data storage strategies the sql-ddl starter implements (packs/sql-ddl/README.md), which
+    /// <c>init --pack sql-ddl</c> declares under <c>referenceData.strategies</c>: the engine gives none of these names a meaning, the
+    /// declaration is the project's, and the editor's Settings › Reference data offers the same set in one click.
+    /// </summary>
+    /// <returns>A new <c>strategies</c> object.</returns>
+    public static JsonObject StandardReferenceStrategies() => new()
+    {
+        ["lookup-table"] = new JsonObject
+        {
+            ["description"] = "Table keyed by code, FK from each column",
+            ["collections"] = true,
+            ["options"] = new JsonObject
+            {
+                ["schema"] = new JsonObject { ["type"] = "string" },
+                ["tableName"] = new JsonObject { ["type"] = "string" },
+            },
+        },
+        ["check"] = new JsonObject { ["description"] = "CHECK (col IN (...codes))" },
+        ["native"] = new JsonObject
+        {
+            ["description"] = "CREATE TYPE ... AS ENUM on PostgreSQL",
+            ["collections"] = new JsonObject { ["*"] = false, ["postgresql"] = true },
+        },
+    };
+
     /// <summary>The embedded resource prefix.</summary>
     public const string ResourcePrefix = "Maquettiste.Cli.Packs/";
 

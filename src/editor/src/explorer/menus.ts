@@ -4,12 +4,14 @@
 import { placementOf } from "@/model/labels";
 import type { ExplorerId, NodeType } from "./tree";
 import { CREATE_LABELS, DOMAIN_CREATE, EXPLORER_CREATE, folderCreate, type CreateKind } from "./create";
+import { PROMOTABLE_KINDS } from "./promote";
 import { TYPE_MENU, type TypeActionId } from "@/workspaces/reference-data/typeMenu";
 
 export type MenuActionId =
   | "open"
   | "open-database"
   | "open-mappings"
+  | "new-schema"
   | "show-on-canvas"
   | "add-to-diagram"
   | "add-with-related"
@@ -25,6 +27,10 @@ export type MenuActionId =
   | "favorite"
   | "move"
   | "map-to-database"
+  | "apply-stereotype"
+  | "tag"
+  | "set-category"
+  | "promote"
   | "edit-seed-data"
   | "import-seed-csv"
   | "export-seeds"
@@ -61,6 +67,9 @@ export interface MenuTarget {
 const item = (id: MenuActionId, label: string, multi = false, danger = false): MenuItem => ({ id, label, multi, danger });
 const create = (kind: CreateKind): MenuItem => item(`new:${kind}`, CREATE_LABELS[kind]);
 
+/** Kinds whose rows offer Apply stereotype…, Tag… and Set category… (✱). */
+const MARKABLE: ReadonlySet<string> = new Set(["entity", "relation", "enum", "value-object", "scalar-type"]);
+
 /** Kinds that live in a domain and can move to another one. */
 export function isMovable(kind: string | undefined): boolean {
   if (!kind) return false;
@@ -90,7 +99,15 @@ function single(t: MenuTarget): MenuItem[] {
           item("delete", "Delete", false, true),
         ]
       : [item("expand-all", "Expand all")];
-  if (t.type === "database") return [item("open-database", "Open Database screen"), item("open-mappings", "Open mappings"), item("expand-all", "Expand all")];
+  if (t.type === "database")
+    return t.element
+      ? [
+          item("open-database", "Open Database screen"),
+          item("open-mappings", "Open mappings"),
+          item("new-schema", "New schema…"),
+          item("expand-all", "Expand all"),
+        ]
+      : [item("open-database", "Open Database screen"), item("open-mappings", "Open mappings"), item("expand-all", "Expand all")];
   if (t.type === "group" && t.domainGroup) return [create("diagram"), item("expand-all", "Expand all")];
   if (t.type === "group" && t.explorer) return [...EXPLORER_CREATE[t.explorer].filter((k) => k !== "package").map(create), item("expand-all", "Expand all")];
   if (t.type === "schema" || t.type === "group" || t.type === "root") return [item("expand-all", "Expand all")];
@@ -113,6 +130,9 @@ function single(t: MenuTarget): MenuItem[] {
     out.push(item("add-to-diagram", "Add to diagram", true), item("go-to-ends", "Go to ends"), item("where-used", "Where used"));
   else if (t.kind === "diagram") out.push(item("duplicate", "Duplicate"));
   else out.push(item("where-used", "Where used"));
+  if (t.kind && MARKABLE.has(t.kind))
+    out.push(item("apply-stereotype", "Apply stereotype…", true), item("tag", "Tag…", true), item("set-category", "Set category…", true));
+  if (t.kind && PROMOTABLE_KINDS.has(t.kind)) out.push(item("promote", "Promote to entity"));
   if (isMovable(t.kind)) out.push(item("move", "Move to domain…", true), item("rename", "Rename"));
   out.push(item("favorite", t.favorite ? "Remove from favorites" : "Add to favorites"));
   out.push(item("delete", "Delete", true, true));

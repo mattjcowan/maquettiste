@@ -158,3 +158,57 @@ export function relationMappingRows(
     return { database: db.id, databaseName: db.name, mapping, shape: mapping?.shape ?? null, ignored: mapping?.ignore === true, tables };
   });
 }
+
+// ------------------------------------------------------------------ editing (the Inheritance and Mappings tabs)
+
+/**
+ * True when making `candidate` the base of `id` would close a loop: the candidate is the entity itself or derives
+ * from it (walking the candidate's base chain reaches `id`). A chain that already loops elsewhere stops after 256.
+ */
+export function wouldCycle(baseOf: (id: string) => string | null | undefined, id: string, candidate: string): boolean {
+  for (let c: string | null | undefined = candidate, guard = 0; c && guard < 256; c = baseOf(c), guard++) if (c === id) return true;
+  return false;
+}
+
+/** The entities that can be the base of `id` (none of them derives from it), sorted by name. */
+export function baseChoices<T extends { id: string; name: string; base?: string | null }>(entities: readonly T[], id: string): T[] {
+  const byId = new Map(entities.map((e) => [e.id, e]));
+  return entities.filter((e) => !wouldCycle((x) => byId.get(x)?.base, id, e.id)).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+}
+
+/** Sets or clears (null: follow the conventions) a mapping's inheritance strategy. */
+export function setInheritance(json: Record<string, unknown>, strategy: InheritanceStrategy | null): void {
+  if (strategy) json.inheritance = strategy;
+  else delete json.inheritance;
+}
+
+/** Sets or clears a mapping's discriminator value; a numeric text stays text (the column type decides). */
+export function setDiscriminator(json: Record<string, unknown>, value: string): void {
+  if (value.trim()) json.discriminatorValue = value.trim();
+  else delete json.discriminatorValue;
+}
+
+/**
+ * A relation mapping's shape and what goes with it: the junction table (a designed table's id) only with the
+ * junction shape, the promoted entity's name only with the promoted shape; null shape follows the conventions.
+ */
+export function setRelationShape(
+  json: Record<string, unknown>,
+  change: { shape?: RelationShape | null; junctionTable?: string | null; promotedName?: string | null },
+): void {
+  if (change.shape !== undefined) {
+    if (change.shape) json.shape = change.shape;
+    else delete json.shape;
+  }
+  const shape = json.shape as RelationShape | undefined;
+  if (change.junctionTable !== undefined) {
+    if (change.junctionTable) json.junctionTable = change.junctionTable;
+    else delete json.junctionTable;
+  }
+  if (change.promotedName !== undefined) {
+    if (change.promotedName?.trim()) json.promotedName = change.promotedName.trim();
+    else delete json.promotedName;
+  }
+  if (shape !== "junction") delete json.junctionTable;
+  if (shape !== "promoted") delete json.promotedName;
+}

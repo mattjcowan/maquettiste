@@ -195,6 +195,26 @@ internal sealed class PackRepo : IDisposable
         EditJson(model + "reference-types/allergen.json", type => type["storage"] = JsonNode.Parse(storage));
     }
 
+    private PackRepo() => Repo = new TempRepo();
+
+    /// <summary>
+    /// The schemas fixture (erratum E26) with the sql-ddl pack: PostgreSQL database <c>main</c> with schemas <c>sales</c> (the
+    /// default), <c>ops</c> and <c>audit</c>; package Sales by convention without a schema, package Ops into <c>ops</c>, and entity
+    /// Audit (in Ops) mapped into <c>audit</c>.
+    /// </summary>
+    public static PackRepo Schemas()
+    {
+        var repo = new PackRepo();
+        CopyTree(Fixtures.Path("models", "schemas", ".maquettiste"), repo.Repo.ModelRoot);
+        CopyTree(Path.Combine(Fixtures.RepoRoot, "packs", "sql-ddl"), Path.Combine(repo.Repo.ModelRoot, "templates", "sql-ddl"));
+        repo.EditJson(".maquettiste/maquettiste.json", settings =>
+        {
+            settings["outputs"] = JsonNode.Parse("""{ "allow": [ { "path": "db", "commit": true } ] }""");
+            settings["packs"] = JsonNode.Parse("""{ "sql-ddl": { "output": "db" } }""");
+        });
+        return repo;
+    }
+
     /// <summary>The id of the reference-data variants' PostgreSQL database.</summary>
     public const string MainDatabaseId = "01JRDD00000000000000000001";
 

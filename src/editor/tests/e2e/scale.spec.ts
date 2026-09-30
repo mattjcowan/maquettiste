@@ -36,13 +36,15 @@ async function searchReady(page: Page, tables = false): Promise<void> {
         timeout: 60_000,
       })
       .toBe(0);
-  // The forest rebuilt from the summaries has its folders built in idle time (explorer:prebuilt after the last build).
+  // The forest rebuilt from the summaries has its folders built in idle time. The wait is on the page's own flag for that state
+  // (__mqPerf.editor.explorerSettled), not on the last perf entry: a forest patched from a prebuilt one has nothing pending and
+  // records no explorer:prebuilt, so waiting for that entry could run out the test's time in a full run.
   if (tables)
     await expect
-      .poll(async () => (await editorEntries(page)).filter((e) => e.name === "explorer:build" || e.name === "explorer:prebuilt").at(-1)?.name, {
+      .poll(() => page.evaluate(() => (window as unknown as { __mqPerf: { editor?: { explorerSettled?: boolean } } }).__mqPerf.editor?.explorerSettled), {
         timeout: 30_000,
       })
-      .toBe("explorer:prebuilt");
+      .toBe(true);
 }
 
 /** Resolves when the canvas has the same nodes at the same places over two animation frames and the page has an idle period. */
@@ -66,7 +68,8 @@ async function canvasIdle(page: Page): Promise<void> {
   await page.evaluate(() => new Promise<void>((resolve) => requestIdleCallback(() => resolve(), { timeout: 5_000 })));
 }
 
-const BUILD_MISS = "The forest is built in one pass over every index row on the main thread (section 4.3); patching single changes is step 12.";
+const BUILD_MISS =
+  "Over four runs on 2026-09-29: first rows 27.3 to 38.6 ms, build 36.3 to 51.6 ms, index -> first paint 140.7 to 250.8 ms (noisy; the ranges straddle the budgets): the forest is built in one pass over every index row on the main thread (section 4.3).";
 const MEMORY_MISS = "The mock backend and its seed live in the page; the worker split (section 5 item 4) moves them out.";
 
 interface Measure {
@@ -121,9 +124,10 @@ function within(info: TestInfo, measure: Measure, knownMiss?: string): void {
 }
 
 const CHANGE_MISS =
-  "The index, tree and search patches take about 1 ms; the rest is the other panels (canvas, inspector, problems) re-rendering with the index in the same commit.";
-const HIGHLIGHT_MISS = "The highlight set is computed and the rows re-render in the same commit as the selection's other panels.";
-const REVEAL_MISS = "The reveal runs in an effect after the selection commit, then rebuilds the rows and scrolls in a second commit (section 3.5).";
+  "About 27 ms (2026-09-29): the index, tree and search patches take about 1 ms; the rest is the other panels (canvas, inspector, problems) re-rendering with the index in the same commit.";
+const HIGHLIGHT_MISS = "About 36 ms (2026-09-29): the highlight set is computed and the rows re-render in the same commit as the selection's other panels.";
+const REVEAL_MISS =
+  "About 137 ms (2026-09-29, twice): running the reveal and the scroll as layout effects (one commit) measured the same 138.7 ms, so the time is the canvas selection's own commit (canvas, inspector and the other panels at 5,000 entities), not the reveal's second commit (section 3.5).";
 
 /** Marks the first moment the explorer shows an element row (a MutationObserver installed before any script runs). */
 async function watchExplorer(page: Page): Promise<void> {
@@ -303,26 +307,13 @@ test.describe("explorer at scale (?mock=large)", () => {
     const handoff = entries.find((e) => e.name === "search:handoff")!;
     const indexAt = parse ? parse.at + parse.ms : ready.at;
     const ms = ready.at + ready.ms - indexAt;
-    within(
-      info,
-      record(info, { name: "search worker ready after the index", ms, mockMs: 0, targetMs: 500, detail: { ready, handoff } }),
-      "the worker parses the index text it receives in slices, which moved the handoff off the main thread but delayed readiness (about 430 to 620 ms); the worker fetching the index itself is the follow-up",
-    );
-    within(
-      info,
-      // The index's JSON text goes over in slices of 1 MB, one per task: the measure is the longest main-thread task of the
-      // handoff (the detail has the slice count and the total).
-      record(info, { name: "search worker handoff (main thread, longest task)", ms: handoff.ms, mockMs: 0, targetMs: 5, detail: handoff.detail }),
-      "each 1 MB slice of the index text is one structured-clone copy on the main thread; a transferable buffer would avoid it",
-    );
-    // The whole main-thread cost of the handoff, every slice summed, keeps the handoff's original 5 ms target: slicing moved
-    // the cost off any one task but did not remove it (section 4.5: the worker fetches the index, or takes a transferable).
+    // The index's bytes go over as a transferable the moment the index is parsed and the worker decodes and parses them itself
+    // (2026-09-29: ready 626 -> 238 ms after the index, handoff 9.2 -> 0.1 ms on the main thread): no known miss left.
+    within(info, record(info, { name: "search worker ready after the index", ms, mockMs: 0, targetMs: 500, detail: { ready, handoff } }));
+    within(info, record(info, { name: "search worker handoff (main thread, longest task)", ms: handoff.ms, mockMs: 0, targetMs: 5, detail: handoff.detail }));
+    // The whole main-thread cost of the handoff: with a transfer it is the one postMessage (the text fallback still slices).
     const totalMs = Number(handoff.detail?.totalMs ?? handoff.ms);
-    within(
-      info,
-      record(info, { name: "search worker handoff (main thread, all slices)", ms: totalMs, mockMs: 0, targetMs: 5, detail: handoff.detail }),
-      "the slices together still copy the whole index text through structured clone; the worker fetching the index, or a transferable buffer, is not built",
-    );
+    within(info, record(info, { name: "search worker handoff (main thread, all slices)", ms: totalMs, mockMs: 0, targetMs: 5, detail: handoff.detail }));
   });
 
   test("quick open keystroke -> ranked results painted", async ({ page }, info) => {
@@ -402,7 +393,8 @@ test.describe("explorer at scale (?mock=large)", () => {
     within(info, p);
     within(info, b, BUILD_MISS);
     within(info, r, BUILD_MISS);
-    // The total is the sum of the two measures above, so it carries their known miss until they are within budget.
+    // The total is the sum of the stages above plus the gaps between their tasks, so it carries their known miss: 193 ms before
+    // the search handoff stopped slicing, 140.7 to 250.8 ms over four runs after it (2026-09-29), against 188.
     within(info, total, BUILD_MISS);
   });
 
@@ -634,7 +626,7 @@ test.describe("explorer at scale (?mock=large)", () => {
     within(
       info,
       m,
-      "About 155 to 178 ms a step when first measured; profiled 2026-09-29: the vocabulary lookups and the filter bar's tag list are cached per index and the covered canvas no longer re-renders; what remains is the editor remounting per entity (its DOM rebuilt, one forced style recalculation in the tabs' presence check) and the explorer's selection commit.",
+      "About 155 to 178 ms a step when first measured; 100.3 to 106.1 ms median after the 2026-09-29 close-out (the entity editor stays mounted from one entity to the next, the base entity picker's 5,000 options are built once per index); what remains is the Mappings tab's per-entity queries and the explorer's selection commit.",
     );
   });
 

@@ -8,7 +8,8 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, TriangleAlert } from "lucide-react";
 import * as endpoints from "@/api/endpoints";
-import { keys, useIndex } from "@/api/queries";
+import { keys, useIndex, usePacks } from "@/api/queries";
+import { useEditorNavigation } from "@/app/navigation";
 import type { ExplainResult, FileChangeKind, GenerationPlan, PlanUnit } from "@/api/types";
 import { useEditor } from "@/state/store";
 import { useServices } from "@/app/context";
@@ -16,7 +17,21 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/misc";
 import { Input, Select } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
-import { countsText, filterGroups, flattenGroups, groupPlan, planSummary, type PlanFilter, type PlanRow, type UnitGroup } from "./planModel";
+import {
+  causeGroups,
+  causeSentence,
+  countsText,
+  filterGroups,
+  flattenGroups,
+  groupPlan,
+  planSummary,
+  rootGroups,
+  type CauseLink,
+  type PlanFilter,
+  type PlanRow,
+  type UnitGroup,
+} from "./planModel";
+import { openPackTab } from "./packTabs";
 
 export const KIND_TONE: Partial<Record<FileChangeKind, "success" | "danger" | "warning" | "accent" | "neutral">> = {
   added: "success",
@@ -40,14 +55,82 @@ const COLS = "grid grid-cols-[88px_minmax(0,1.3fr)_minmax(0,128px)_minmax(0,120p
 /** The summary lines: "sql-ddl: 4 units, 12 files to add, 3 to modify, 1 orphan to delete". */
 export function PlanSummary({ plan }: { plan: GenerationPlan }) {
   const lines = useMemo(() => planSummary(plan), [plan]);
+  const packs = usePacks();
+  const causes = useMemo(() => causeGroups(plan), [plan]);
+  const roots = useMemo(
+    () =>
+      rootGroups(
+        plan,
+        (packs.data ?? []).map((p) => p.output),
+      ),
+    [plan, packs.data],
+  );
+  const [allCauses, setAllCauses] = useState(false);
+  const { store } = useServices();
+  const { goTo, openSettings } = useEditorNavigation();
+  const follow = (link: CauseLink) => {
+    const g = store.getState().generation;
+    if (link.type === "element") goTo(link.id);
+    else if (link.type === "setting") openSettings(link.tab);
+    else if (link.type === "template") store.getState().setGeneration(openPackTab(g, link.pack, "templates", { file: link.path }));
+    else if (link.type === "parameter") store.getState().setGeneration(openPackTab(g, link.pack, "parameters", { parameter: link.name }));
+    else store.getState().setGeneration(openPackTab(g, link.pack, "units", { unit: link.unit }));
+  };
+  const shown = allCauses ? causes : causes.slice(0, 8);
   return (
-    <ul className="flex flex-col text-12" data-testid="plan-summary">
-      {lines.map((line) => (
-        <li key={line} className="leading-5">
-          {line}
-        </li>
-      ))}
-    </ul>
+    <div className="flex flex-col gap-1">
+      <ul className="flex flex-col text-12" data-testid="plan-summary">
+        {lines.map((line) => (
+          <li key={line} className="leading-5">
+            {line}
+          </li>
+        ))}
+      </ul>
+      {causes.length ? (
+        <section aria-label="Files by cause" data-testid="plan-causes">
+          <h4 className="text-11 font-semibold text-secondary">By cause</h4>
+          <ul className="flex flex-col text-12">
+            {shown.map((g) => (
+              <li key={g.id} className="leading-5" data-testid="plan-cause">
+                {g.link ? (
+                  <button
+                    type="button"
+                    className="text-left text-accent hover:underline"
+                    onClick={() => follow(g.link!)}
+                    title={`Open what this cause names (${g.kind})`}
+                  >
+                    {g.detail}
+                  </button>
+                ) : (
+                  g.detail
+                )}
+                <span className="text-secondary">: {causeSentence(g).slice(g.detail.length + 2)}</span>
+              </li>
+            ))}
+          </ul>
+          {causes.length > shown.length || allCauses ? (
+            <Button size="sm" variant="ghost" onClick={() => setAllCauses(!allCauses)}>
+              {allCauses ? "Fewer causes" : `${causes.length - shown.length} more causes`}
+            </Button>
+          ) : null}
+        </section>
+      ) : null}
+      {roots.length ? (
+        <section aria-label="Files by output root" data-testid="plan-roots">
+          <h4 className="text-11 font-semibold text-secondary">By output root</h4>
+          <ul className="flex flex-col text-12">
+            {roots.map((r) => (
+              <li key={r.root} className="leading-5" data-testid="plan-root">
+                <span className="font-mono">{r.root}</span>
+                <span className="text-secondary">
+                  : {r.files} {r.files === 1 ? "file" : "files"} ({countsText(r.counts)})
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </div>
   );
 }
 

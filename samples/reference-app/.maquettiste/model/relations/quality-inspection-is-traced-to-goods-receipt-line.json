@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M36XXHDGCZX3SHXT0QPG2J5F",
+  "name": "quality inspection is traced to goods receipt line",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Receipt inspected.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M24GCW9H1PY04BEKE0R880AH",
+      "entity": "01M2GBMZTV29WK7A5V2BAQSNCF",
+      "role": "goodsReceiptLine",
+      "navigation": "goodsReceiptLine",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M365166VDC20B9430DVG9P4Z",
+      "entity": "01M1J35XG4PXHGRSVTBAVRS2YP",
+      "role": "qualityInspections"
+    }
+  ]
+}

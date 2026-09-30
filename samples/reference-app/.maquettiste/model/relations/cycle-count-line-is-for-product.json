@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1YWDY2E0TPZ18TBDPP3SPM7",
+  "name": "cycle count line is for product",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Product counted.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M28EPMCB05F3HBWTYD7AVQKZ",
+      "entity": "01M20RAEF2QZ5W8HV57RBX5PQV",
+      "role": "product",
+      "navigation": "product",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M1MY89EEM19WK8EQEQ764SK9",
+      "entity": "01M21Y0KVFX1RBJ8PW4RYPAV3T",
+      "role": "cycleCountLines"
+    }
+  ]
+}

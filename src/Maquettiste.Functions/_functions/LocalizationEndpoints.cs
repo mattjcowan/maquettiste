@@ -199,7 +199,7 @@ public static class LocalizationEndpoints
         }
     });
 
-    /// <summary>Previews or applies CSV imports into several seeds as one change (Import seed data…).</summary>
+    /// <summary>Previews or applies CSV imports into several seeds (Import seed data…): the rows of every seed in one change, then the translations the files carry, one save per locale.</summary>
     /// <param name="mode"><c>merge</c> (default) or <c>replace</c>.</param>
     /// <param name="dryRun">Only preview (default true).</param>
     /// <param name="context">The request.</param>

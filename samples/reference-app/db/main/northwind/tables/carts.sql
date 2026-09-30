@@ -11,12 +11,12 @@ CREATE TABLE northwind.carts (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    converted_order_id uuid NULL,
     customer_id uuid NOT NULL,
+    converted_order_id uuid NULL,
     user_account_id uuid NOT NULL,
     CONSTRAINT pk_carts PRIMARY KEY (id),
     CONSTRAINT uq_carts_cart_token UNIQUE (cart_token),
-    CONSTRAINT fk_carts_converted_order_id FOREIGN KEY (converted_order_id) REFERENCES northwind.sales_orders (id) ON DELETE SET NULL,
     CONSTRAINT fk_carts_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_carts_converted_order_id FOREIGN KEY (converted_order_id) REFERENCES northwind.sales_orders (id) ON DELETE SET NULL,
     CONSTRAINT fk_carts_user_account_id FOREIGN KEY (user_account_id) REFERENCES northwind.user_accounts (id) ON DELETE RESTRICT
 );

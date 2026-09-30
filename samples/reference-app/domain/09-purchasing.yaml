@@ -32,16 +32,16 @@ entities:
       grandTotal: Money! | Total owed to the supplier.
       notes: text | Instructions to the supplier.
     refs:
-      supplier: Supplier! back=purchaseOrders | Supplier ordered from.
-      buyer: Employee | Buyer responsible.
-      warehouse: Warehouse! | Delivery warehouse.
-      currency: Currency! | Currency of the order.
-      paymentTerm: PaymentTerm | Payment terms.
-      contract: SupplierContract | Contract the prices come from.
-      requisition: PurchaseRequisition | Requisition fulfilled.
+      supplier: Supplier! back=purchaseOrders name=purchase_order_is_supplied_by_supplier | Supplier ordered from.
+      buyer: Employee name=purchase_order_is_bought_by_employee | Buyer responsible.
+      warehouse: Warehouse! name=purchase_order_is_delivered_to_warehouse | Delivery warehouse.
+      currency: Currency! name=purchase_order_is_denominated_in_currency | Currency of the order.
+      paymentTerm: PaymentTerm name=purchase_order_is_payable_on_payment_term | Payment terms.
+      contract: SupplierContract name=purchase_order_is_governed_by_contract | Contract the prices come from.
+      requisition: PurchaseRequisition name=purchase_order_fulfils_requisition | Requisition fulfilled.
     children:
-      lines: PurchaseOrderLine ordered | Ordered products.
-      approvals: PurchaseApproval | Approval steps.
+      lines: PurchaseOrderLine ordered name=purchase_order_contains_lines | Ordered products.
+      approvals: PurchaseApproval name=purchase_order_contains_approvals | Approval steps.
     overlay:
       description: PO number default from purchase_order_number_seq.
       columns:
@@ -62,9 +62,9 @@ entities:
       receivedQuantity: decimal(12,3)! default=0 min=0 | Quantity received so far.
       isClosed: bool! default=false | Whether no more receipts are expected.
     refs:
-      product: Product! | Product ordered.
-      supplierProduct: SupplierProduct | Supplier catalog item ordered.
-      unit: UnitOfMeasure! | Purchase unit.
+      product: Product! name=purchase_order_line_is_for_product | Product ordered.
+      supplierProduct: SupplierProduct name=purchase_order_line_orders_supplier_product | Supplier catalog item ordered.
+      unit: UnitOfMeasure! name=purchase_order_line_is_measured_in_unit | Purchase unit.
 
   PurchaseRequisition:
     description: An internal request to buy goods, turned into purchase orders by a buyer.
@@ -76,11 +76,11 @@ entities:
       status: string(20)! default=open | open, approved, ordered or rejected.
       justification: text | Business reason.
     refs:
-      requestedBy: Employee! | Requester.
-      warehouse: Warehouse | Delivery warehouse.
-      costCenter: CostCenter | Cost center charged, for non-stock purchases.
+      requestedBy: Employee! name=purchase_requisition_is_requested_by_employee | Requester.
+      warehouse: Warehouse name=purchase_requisition_is_requested_for_warehouse | Delivery warehouse.
+      costCenter: CostCenter name=purchase_requisition_is_charged_to_cost_center | Cost center charged, for non-stock purchases.
     children:
-      lines: RequisitionLine | Requested items.
+      lines: RequisitionLine name=purchase_requisition_contains_lines | Requested items.
 
   RequisitionLine:
     description: An item requested on a requisition.
@@ -89,8 +89,8 @@ entities:
       quantity: decimal(12,3)! min=0 | Quantity.
       estimatedCost: Money | Estimated unit cost.
     refs:
-      product: Product | Catalog product, when stocked.
-      suggestedSupplier: Supplier | Supplier the requester suggests.
+      product: Product name=requisition_line_is_for_product | Catalog product, when stocked.
+      suggestedSupplier: Supplier name=requisition_line_is_suggested_from_suggested_supplier | Supplier the requester suggests.
 
   SupplierProduct:
     description: A product as offered in a supplier's catalog, with the supplier's SKU, cost and lead time.
@@ -105,9 +105,9 @@ entities:
       leadTimeDays: int16 min=0 | Lead time for the item.
       isPreferred: bool! default=false | Preferred source for the product.
     refs:
-      supplier: Supplier! cascade back=catalogItems | Supplier offering it.
-      product: Product! back=supplierProducts | Northwind product it corresponds to.
-      purchaseUnit: UnitOfMeasure | Unit the supplier sells in.
+      supplier: Supplier! cascade back=catalogItems name=supplier_product_is_supplied_by_supplier | Supplier offering it.
+      product: Product! back=supplierProducts name=supplier_product_is_for_product | Northwind product it corresponds to.
+      purchaseUnit: UnitOfMeasure name=supplier_product_is_bought_in_purchase_unit | Unit the supplier sells in.
 
   SupplierContract:
     description: A purchasing contract with a supplier, fixing prices and commitments for a period.
@@ -120,10 +120,10 @@ entities:
       autoRenew: bool! default=false | Whether it renews automatically.
       spendCommitment: Money | Committed yearly spend.
     refs:
-      supplier: Supplier! back=contracts | Contracted supplier.
-      owner: Employee | Category manager who owns it.
+      supplier: Supplier! back=contracts name=supplier_contract_is_supplied_by_supplier | Contracted supplier.
+      owner: Employee name=supplier_contract_is_owned_by_owner | Category manager who owns it.
     children:
-      prices: ContractPrice | Contracted prices.
+      prices: ContractPrice name=supplier_contract_contains_prices | Contracted prices.
 
   ContractPrice:
     description: A contracted cost of a product under a supplier contract.
@@ -132,7 +132,7 @@ entities:
       minimumQuantity: decimal(12,3) min=0 | Minimum quantity for the cost.
       validity: DateRange | Validity within the contract.
     refs:
-      product: Product! | Product priced.
+      product: Product! name=contract_price_is_for_product | Product priced.
 
   GoodsReceipt:
     description: The receipt of goods at a warehouse dock, against a purchase order or an advance ship notice.
@@ -144,13 +144,13 @@ entities:
       deliveryNote: string(40) | Supplier's delivery note number.
       notes: string(500) | Damage or discrepancies noted.
     refs:
-      purchaseOrder: PurchaseOrder back=receipts | Order received against.
-      warehouse: Warehouse! | Receiving warehouse.
-      receivedBy: Employee | Receiving clerk.
-      dockDoor: DockDoor | Door unloaded at.
-      advanceShipNotice: AdvanceShipNotice | Notice the receipt matches.
+      purchaseOrder: PurchaseOrder back=receipts name=goods_receipt_fulfils_purchase_order | Order received against.
+      warehouse: Warehouse! name=goods_receipt_is_received_at_warehouse | Receiving warehouse.
+      receivedBy: Employee name=goods_receipt_is_received_by_employee | Receiving clerk.
+      dockDoor: DockDoor name=goods_receipt_is_unloaded_at_dock_door | Door unloaded at.
+      advanceShipNotice: AdvanceShipNotice name=goods_receipt_is_announced_by_advance_ship_notice | Notice the receipt matches.
     children:
-      lines: GoodsReceiptLine | Products received.
+      lines: GoodsReceiptLine name=goods_receipt_contains_lines | Products received.
 
   GoodsReceiptLine:
     description: A product and quantity received, with rejects.
@@ -160,10 +160,10 @@ entities:
       quantityRejected: decimal(12,3)! default=0 min=0 | Quantity refused.
       rejectionReason: string(200) | Why goods were refused.
     refs:
-      purchaseOrderLine: PurchaseOrderLine | Order line received.
-      product: Product! | Product received.
-      lot: StockLot | Lot received.
-      bin: BinLocation | Staging bin.
+      purchaseOrderLine: PurchaseOrderLine name=goods_receipt_line_receives_purchase_order_line | Order line received.
+      product: Product! name=goods_receipt_line_is_for_product | Product received.
+      lot: StockLot name=goods_receipt_line_is_drawn_from_lot | Lot received.
+      bin: BinLocation name=goods_receipt_line_is_stored_in_bin | Staging bin.
 
   SupplierInvoice:
     description: An invoice received from a supplier, matched to the order and the receipt before payment.
@@ -178,11 +178,11 @@ entities:
       status: string(20)! default=received | received, matched, approved, paid or disputed.
       matchedAt: datetimeoffset | When the three-way match succeeded.
     refs:
-      supplier: Supplier! back=supplierInvoices | Invoicing supplier.
-      purchaseOrder: PurchaseOrder | Order invoiced.
-      journalEntry: JournalEntry | Posting in the ledger.
+      supplier: Supplier! back=supplierInvoices name=supplier_invoice_is_supplied_by_supplier | Invoicing supplier.
+      purchaseOrder: PurchaseOrder name=supplier_invoice_fulfils_purchase_order | Order invoiced.
+      journalEntry: JournalEntry name=supplier_invoice_is_recorded_in_journal_entry | Posting in the ledger.
     children:
-      lines: SupplierInvoiceLine | Invoiced items.
+      lines: SupplierInvoiceLine name=supplier_invoice_contains_lines | Invoiced items.
 
   SupplierInvoiceLine:
     description: An invoiced item of a supplier invoice.
@@ -192,8 +192,8 @@ entities:
       unitCost: Money! | Cost per unit.
       lineTotal: Money! | Line total.
     refs:
-      purchaseOrderLine: PurchaseOrderLine | Order line invoiced.
-      ledgerAccount: LedgerAccount | Expense account, for non-stock lines.
+      purchaseOrderLine: PurchaseOrderLine name=supplier_invoice_line_receives_purchase_order_line | Order line invoiced.
+      ledgerAccount: LedgerAccount name=supplier_invoice_line_posts_to_ledger_account | Expense account, for non-stock lines.
 
   SupplierScorecard:
     description: A periodic rating of a supplier's delivery, fill rate and quality.
@@ -206,8 +206,8 @@ entities:
       overallScore: decimal(5,2) min=0 max=100 | Weighted score.
       comments: text | Reviewer's comments.
     refs:
-      supplier: Supplier! cascade back=scorecards | Supplier rated.
-      reviewedBy: Employee | Reviewer.
+      supplier: Supplier! cascade back=scorecards name=supplier_scorecard_is_supplied_by_supplier | Supplier rated.
+      reviewedBy: Employee name=supplier_scorecard_is_reviewed_by_employee | Reviewer.
 
   RequestForQuote:
     description: A request asking several suppliers to quote for a product.
@@ -219,8 +219,8 @@ entities:
       status: string(20)! default=open | open, evaluating, awarded or cancelled.
       description: text | Requirements.
     refs:
-      buyer: Employee | Buyer.
-      product: Product | Product sourced.
+      buyer: Employee name=request_for_quote_is_bought_by_employee | Buyer.
+      product: Product name=request_for_quote_is_for_product | Product sourced.
 
   SupplierQuote:
     description: A supplier's answer to a request for quote.
@@ -231,8 +231,8 @@ entities:
       validUntil: date | Last day the quote holds.
       isAwarded: bool! default=false | Whether the business was awarded.
     refs:
-      requestForQuote: RequestForQuote! cascade back=quotes | Request answered.
-      supplier: Supplier! | Quoting supplier.
+      requestForQuote: RequestForQuote! cascade back=quotes name=supplier_quote_answers_request_for_quote | Request answered.
+      supplier: Supplier! name=supplier_quote_is_supplied_by_supplier | Quoting supplier.
 
   PurchaseApproval:
     description: One approval step of a purchase order, by amount threshold.
@@ -243,7 +243,7 @@ entities:
       decidedAt: datetimeoffset | When the approver decided.
       comment: string(500) | Approver's comment.
     refs:
-      approver: Employee! | Approver.
+      approver: Employee! name=purchase_approval_is_approved_by_employee | Approver.
 
   AdvanceShipNotice:
     description: An EDI 856 advance ship notice announcing an inbound delivery.
@@ -256,8 +256,8 @@ entities:
       trackingNumber: string(60) | Tracking number.
       rawDocument: json | Original EDI document, as JSON.
     refs:
-      supplier: Supplier! | Shipping supplier.
-      purchaseOrder: PurchaseOrder | Order shipped against.
+      supplier: Supplier! name=advance_ship_notice_is_supplied_by_supplier | Shipping supplier.
+      purchaseOrder: PurchaseOrder name=advance_ship_notice_fulfils_purchase_order | Order shipped against.
 
   LandedCost:
     description: An extra cost of getting goods to the warehouse, such as freight, duty or brokerage, spread over a receipt.
@@ -267,8 +267,8 @@ entities:
       amount: Money! | Cost amount.
       allocationMethod: string(20)! default=value | value, weight or quantity.
     refs:
-      goodsReceipt: GoodsReceipt! cascade back=landedCosts | Receipt the cost applies to.
-      supplierInvoice: SupplierInvoice | Invoice that billed the cost.
+      goodsReceipt: GoodsReceipt! cascade back=landedCosts name=landed_cost_is_matched_to_goods_receipt | Receipt the cost applies to.
+      supplierInvoice: SupplierInvoice name=landed_cost_pays_supplier_invoice | Invoice that billed the cost.
 
   SupplierCertification:
     description: A certification held by a supplier, such as ISO 9001 or a food safety audit.
@@ -279,7 +279,7 @@ entities:
       validity: DateRange! | Validity.
       documentUrl: string(400) | Scanned certificate.
     refs:
-      supplier: Supplier! cascade back=certifications | Certified supplier.
+      supplier: Supplier! cascade back=certifications name=supplier_certification_is_supplied_by_supplier | Certified supplier.
 
 relations:
   - name: rfq invites supplier

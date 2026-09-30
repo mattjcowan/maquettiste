@@ -15,6 +15,11 @@ export interface PerfEntry {
 /** window.__mqPerf.editor: every stage in the order it finished, capped at MAX_ENTRIES. */
 export interface EditorPerf {
   entries: PerfEntry[];
+  /**
+   * Whether the explorer's current forest has every folder built (the idle prebuild done, or nothing pending): the state
+   * the scale project waits on before it measures on a settled page. False while a forest's prebuild is still running.
+   */
+  explorerSettled?: boolean;
 }
 
 const MAX_ENTRIES = 2000;

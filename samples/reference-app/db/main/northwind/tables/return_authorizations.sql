@@ -15,16 +15,16 @@ CREATE TABLE northwind.return_authorizations (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    approved_by_id uuid NULL,
     customer_id uuid NOT NULL,
-    invoice_id uuid NULL,
-    receiving_warehouse_id uuid NULL,
     sales_order_id uuid NULL,
+    approved_by_id uuid NULL,
+    receiving_warehouse_id uuid NULL,
+    invoice_id uuid NULL,
     CONSTRAINT pk_return_authorizations PRIMARY KEY (id),
     CONSTRAINT uq_return_authorizations_rma_number UNIQUE (rma_number),
-    CONSTRAINT fk_return_authorizations_approved_by_id FOREIGN KEY (approved_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_return_authorizations_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_return_authorizations_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE SET NULL,
+    CONSTRAINT fk_return_authorizations_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE SET NULL,
+    CONSTRAINT fk_return_authorizations_approved_by_id FOREIGN KEY (approved_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_return_authorizations_receiving_warehouse_id FOREIGN KEY (receiving_warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE SET NULL,
-    CONSTRAINT fk_return_authorizations_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE SET NULL
+    CONSTRAINT fk_return_authorizations_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE SET NULL
 );

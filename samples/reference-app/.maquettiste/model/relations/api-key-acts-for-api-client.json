@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2H1HCBSPEHPSE0W47DDS64F",
+  "name": "api key acts for api client",
+  "package": "01M1F99DBQ9B1T1RVMQRR1GS7V",
+  "description": "Client that owns the key.",
+  "category": "01M38C3WQ4HSCF45E03KGN6AF5",
+  "ends": [
+    {
+      "id": "01M270AH47RW2V4375V06E18PW",
+      "entity": "01M1NR7VGEMHMC1238QBWCKF9K",
+      "role": "apiClient",
+      "navigation": "apiClient",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M33P0SYQWS6J8T2YDACZ8KJK",
+      "entity": "01M28GY099TBPTE27DRD8DDTVH",
+      "role": "keys",
+      "navigation": "keys"
+    }
+  ]
+}

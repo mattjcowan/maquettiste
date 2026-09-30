@@ -17,15 +17,15 @@ CREATE TABLE northwind.repair_orders (
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
     product_id uuid NOT NULL,
-    serial_number_id uuid NULL,
     service_case_id uuid NULL,
-    technician_id uuid NULL,
     warranty_claim_id uuid NULL,
+    technician_id uuid NULL,
+    serial_number_id uuid NULL,
     CONSTRAINT pk_repair_orders PRIMARY KEY (id),
     CONSTRAINT uq_repair_orders_repair_number UNIQUE (repair_number),
     CONSTRAINT fk_repair_orders_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_repair_orders_serial_number_id FOREIGN KEY (serial_number_id) REFERENCES northwind.serial_numbers (id) ON DELETE SET NULL,
     CONSTRAINT fk_repair_orders_service_case_id FOREIGN KEY (service_case_id) REFERENCES northwind.service_cases (id) ON DELETE SET NULL,
+    CONSTRAINT fk_repair_orders_warranty_claim_id FOREIGN KEY (warranty_claim_id) REFERENCES northwind.warranty_claims (id) ON DELETE SET NULL,
     CONSTRAINT fk_repair_orders_technician_id FOREIGN KEY (technician_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
-    CONSTRAINT fk_repair_orders_warranty_claim_id FOREIGN KEY (warranty_claim_id) REFERENCES northwind.warranty_claims (id) ON DELETE SET NULL
+    CONSTRAINT fk_repair_orders_serial_number_id FOREIGN KEY (serial_number_id) REFERENCES northwind.serial_numbers (id) ON DELETE SET NULL
 );

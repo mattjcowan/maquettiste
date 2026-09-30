@@ -16,11 +16,11 @@ CREATE TABLE northwind.supplier_products (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    product_id uuid NOT NULL,
     purchase_unit_code varchar(3) NULL,
+    product_id uuid NOT NULL,
     supplier_id uuid NOT NULL,
     CONSTRAINT pk_supplier_products PRIMARY KEY (id),
-    CONSTRAINT fk_supplier_products_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_supplier_products_purchase_unit_code FOREIGN KEY (purchase_unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE SET NULL,
+    CONSTRAINT fk_supplier_products_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_supplier_products_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
 );

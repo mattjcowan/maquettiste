@@ -7,9 +7,9 @@ CREATE TABLE northwind.product_translations (
     name varchar(200) NOT NULL,
     short_description varchar(500) NULL,
     long_description text NULL,
-    language_code varchar(5) NOT NULL,
     product_id uuid NOT NULL,
+    language_code varchar(5) NOT NULL,
     CONSTRAINT pk_product_translations PRIMARY KEY (id),
-    CONSTRAINT fk_product_translations_language_code FOREIGN KEY (language_code) REFERENCES northwind.languages (code) ON DELETE RESTRICT,
-    CONSTRAINT fk_product_translations_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
+    CONSTRAINT fk_product_translations_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE,
+    CONSTRAINT fk_product_translations_language_code FOREIGN KEY (language_code) REFERENCES northwind.languages (code) ON DELETE RESTRICT
 );

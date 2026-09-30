@@ -8,9 +8,9 @@ CREATE TABLE northwind.sales_order_status_changes (
     to_status varchar(8) NOT NULL,
     changed_at timestamptz(6) NOT NULL,
     reason varchar(300) NULL,
-    changed_by_id uuid NULL,
     sales_order_id uuid NOT NULL,
+    changed_by_id uuid NULL,
     CONSTRAINT pk_sales_order_status_changes PRIMARY KEY (id),
-    CONSTRAINT fk_sales_order_status_changes_changed_by_id FOREIGN KEY (changed_by_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL,
-    CONSTRAINT fk_sales_order_status_changes_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE
+    CONSTRAINT fk_sales_order_status_changes_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE,
+    CONSTRAINT fk_sales_order_status_changes_changed_by_id FOREIGN KEY (changed_by_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL
 );

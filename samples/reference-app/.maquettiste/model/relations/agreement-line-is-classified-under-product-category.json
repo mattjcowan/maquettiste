@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2PPTJ60NFBYM37T5KRKKFYF",
+  "name": "agreement line is classified under product category",
+  "package": "01M1DE7C8B6C6SJ56R6QBZQJBT",
+  "description": "Covered category, when the line covers a category.",
+  "category": "01M1DAV43K3Q185051SG2CRJSN",
+  "ends": [
+    {
+      "id": "01M37N41AK7WTV2VJX78D8C87A",
+      "entity": "01M2124S65JEY623MSBN0P9FVJ",
+      "role": "productCategory",
+      "navigation": "productCategory",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M248ZFYHW55P3WRWV9ND68J4",
+      "entity": "01M23MARQX94BHXK3Y4EB4Q77C",
+      "role": "agreementLines"
+    }
+  ]
+}

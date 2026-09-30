@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M29B1EJYKWMAF1X14SG38D1S",
+  "name": "service case is raised by contact",
+  "package": "01M2HKCGBASZHCTZ8CKTBVG8RB",
+  "description": "Contact who raised it.",
+  "category": "01M1QNVKDMDN8496P6K46TZG03",
+  "ends": [
+    {
+      "id": "01M28GWFD2E90N0MEC51SYZVN2",
+      "entity": "01M2SNDY2SEQ9745HMSG6ZTDRC",
+      "role": "contact",
+      "navigation": "contact",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M25EX2V6FHPN3AXF5Y5X1MQR",
+      "entity": "01M2NPNWREHQKBV15PJMWZPKRK",
+      "role": "serviceCases"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2GW7K1YJKMTZRM5KRGNXKGT",
+  "name": "backorder receives purchase order line",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "Inbound purchase that will cover it.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "ends": [
+    {
+      "id": "01M38PV761J3VK7MVBTKXECHPG",
+      "entity": "01M1TQ7YZ23DXXYR1CF7BFFWFS",
+      "role": "purchaseOrderLine",
+      "navigation": "purchaseOrderLine",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2Q46D857Q6X19D0E1901B0M",
+      "entity": "01M2BMWZ1QVXGP8CRGD6645WZC",
+      "role": "backorders"
+    }
+  ]
+}

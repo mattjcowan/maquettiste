@@ -1,7 +1,7 @@
 // The entity editor (explorer-redesign.md 3.6): name, domain, key, base entity, Is abstract and the mark chips on
 // top; the tabs Attributes, Relationships, Indexes, Mappings, Seed data and References (and Code generation when an
 // extension schema applies). Every edit goes through the element's draft (state/drafts.ts).
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { KeyRound, Plus, Trash2 } from "lucide-react";
 import { useElements, useIndex, useSettings } from "@/api/queries";
 import type { AttributeDoc, components, ElementSummary, EntityDoc, RelationDoc, RelationEndDoc } from "@/api/types";
@@ -14,6 +14,7 @@ import { KindIcon } from "@/app/icons";
 import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
 import { indexLookup } from "@/model/index";
+import { defaultSchemaName, schemasOf } from "@/model/databaseSchemas";
 import { displayName, TYPE_KINDS, typeLabel } from "@/model/model";
 import { EDITOR_TAB_LABELS } from "@/model/labels";
 import { newId } from "@/lib/ids";
@@ -24,7 +25,18 @@ import { setOptional, useVocabularies } from "@/inspector/fields";
 import { domIdOf, EditorLayout, MarkChips, NameAndDomain, useCodeGenerationTab, useEditorContext, type EditorContext } from "./EditorFrame";
 import { baseChain, relatedOf } from "./related";
 import { SeedDataTab } from "./SeedDataTab";
-import { fieldSources, inHierarchy, inheritanceRows, SOURCE_LABELS, STRATEGY_LABELS, type InheritanceStrategy } from "./inheritance";
+import {
+  fieldSources,
+  inHierarchy,
+  inheritanceRows,
+  setDiscriminator,
+  setInheritance,
+  SOURCE_LABELS,
+  STRATEGY_LABELS,
+  wouldCycle,
+  type InheritanceStrategy,
+} from "./inheritance";
+import { useElementEdits } from "./mappingEdit";
 
 type Rec = Record<string, unknown>;
 type TableDoc = components["schemas"]["table"];
@@ -268,28 +280,63 @@ function KeyControl({ id, json, edit, flush }: EditorContext) {
 
 function BaseControl({ id, json, edit, flush }: EditorContext) {
   const entity = json as EntityDoc;
-  const vocab = useVocabularies("entity");
-  const definition = useDefinition();
   return (
-    <Field label="Base entity" htmlFor={`${domIdOf(id)}-base`}>
+    <BasePicker
+      id={id}
+      value={entity.base ?? ""}
+      label="Base entity"
+      domId={`${domIdOf(id)}-base`}
+      onPick={(base) => {
+        edit((j) => setOptional(j as Rec, "base", base));
+        flush();
+      }}
+    />
+  );
+}
+
+/**
+ * The base entity picker (top controls and the Inheritance tab). The options are built once per index, not per
+ * entity, so walking entities in General mode reuses them (§4.5); a pick that would close a loop is refused (the
+ * picked entity derives from this one).
+ */
+function BasePicker({ id, value, label, domId, onPick }: { id: string; value: string; label: string; domId: string; onPick: (base: string) => void }) {
+  const index = useIndex();
+  const { store } = useServices();
+  const definition = useDefinition();
+  const lookup = indexLookup(index.data);
+  const options = useMemo(
+    () =>
+      lookup
+        .ofKind("entity")
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+        .map((e) => (
+          <option key={e.id} value={e.id}>
+            {e.name}
+          </option>
+        )),
+    [lookup],
+  );
+  return (
+    <Field label={label} htmlFor={domId}>
       <Select
-        {...definition.props(entity.base)}
-        id={`${domIdOf(id)}-base`}
-        value={entity.base ?? ""}
+        {...definition.props(value || undefined)}
+        id={domId}
+        value={value}
         onChange={(e) => {
-          edit((j) => setOptional(j as Rec, "base", e.target.value));
-          flush();
+          const base = e.target.value;
+          if (base && wouldCycle((x) => lookup.byId.get(x)?.base, id, base)) {
+            const name = lookup.byId.get(base)?.name ?? base;
+            store
+              .getState()
+              .notify(base === id ? "An entity cannot be its own base." : `${name} derives from this entity: making it the base would close a loop.`, "error");
+            return;
+          }
+          onPick(base);
         }}
       >
         <option value="">(none)</option>
-        {vocab.lookup
-          .ofKind("entity")
-          .filter((e) => e.id !== id)
-          .map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.name}
-            </option>
-          ))}
+        {options}
       </Select>
     </Field>
   );
@@ -297,7 +344,7 @@ function BaseControl({ id, json, edit, flush }: EditorContext) {
 
 // ------------------------------------------------------------------ tabs
 
-function FieldsTab({ json, edit, flush, diagnostics }: EditorContext) {
+function FieldsTab({ id, json, edit, flush, diagnostics }: EditorContext) {
   const entity = json as EntityDoc;
   const vocab = useVocabularies("entity");
   const typeOptions = TYPE_KINDS.flatMap((k) => vocab.lookup.ofKind(k));
@@ -320,6 +367,7 @@ function FieldsTab({ json, edit, flush, diagnostics }: EditorContext) {
   return (
     <div className="flex flex-col gap-2">
       <AttributeGrid
+        owner={id}
         label={`Attributes of ${entity.name}`}
         attributes={entity.attributes ?? []}
         keyIds={entity.key?.attributes ?? []}
@@ -531,6 +579,10 @@ function MappingTab({ id }: { id: string }) {
   const { openWorkspace, select } = useEditorNavigation();
   const { mappings, tables } = relatedOf(index.data, id);
   const databaseOf = (r: ElementSummary) => (r.database ? (lookup.nameOf(r.database) ?? r.database) : undefined);
+  // Each mapping may place the entity's table in a schema of its database (erratum E26).
+  const mappingDocs = useElements(mappings.map((m) => m.id));
+  const databaseDocs = useElements([...new Set(mappings.map((m) => m.database).filter((x): x is string => !!x))]);
+  const edits = useElementEdits();
   return (
     <div className="flex flex-col gap-2" data-testid="editor-mapping">
       <p className="text-12 text-secondary">
@@ -550,11 +602,35 @@ function MappingTab({ id }: { id: string }) {
         <SectionTitle>Customised mappings</SectionTitle>
         {mappings.length ? (
           <ul>
-            {mappings.map((m) => (
-              <li key={m.id}>
-                <ElementLink summary={m} secondary={databaseOf(m)} pin={false} />
-              </li>
-            ))}
+            {mappings.map((m) => {
+              const db = m.database ? (databaseDocs.byId.get(m.database)?.json as Record<string, unknown> | undefined) : undefined;
+              const schemas = schemasOf(db);
+              const mapping = mappingDocs.byId.get(m.id)?.json as { schema?: string; entity?: string } | undefined;
+              return (
+                <li key={m.id} className="flex items-center gap-2">
+                  <ElementLink summary={m} secondary={databaseOf(m)} pin={false} />
+                  {schemas.length && mapping?.entity ? (
+                    <Select
+                      aria-label={`Schema in ${databaseOf(m) ?? ""}`}
+                      className="h-6 w-40"
+                      data-testid={`mapping-schema-${m.id}`}
+                      value={mapping.schema ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        void edits.update(m.id, (j) => setOptional(j as Record<string, unknown>, "schema", v || undefined));
+                      }}
+                    >
+                      <option value="">{`Default schema (${defaultSchemaName(db) ?? "none"})`}</option>
+                      {schemas.map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.name}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <p className="text-12 text-secondary">None: every database maps this entity by convention.</p>
@@ -576,7 +652,7 @@ function MappingTab({ id }: { id: string }) {
   );
 }
 
-function InheritanceTab({ id, json }: EditorContext) {
+function InheritanceTab({ id, json, edit, flush }: EditorContext) {
   const entity = json as EntityDoc;
   const index = useIndex();
   const settings = useSettings();
@@ -585,8 +661,9 @@ function InheritanceTab({ id, json }: EditorContext) {
   const root = chain[chain.length - 1] ?? id;
   const { derived } = relatedOf(index.data, id);
   const rootMappings = relatedOf(index.data, root).mappings;
-  const ownMappings = root === id ? [] : relatedOf(index.data, id).mappings;
-  const docs = useElements([...rootMappings, ...ownMappings].map((m) => m.id));
+  const ownMappings = relatedOf(index.data, id).mappings;
+  const docs = useElements([...new Set([...rootMappings, ...ownMappings].map((m) => m.id))]);
+  const edits = useElementEdits();
   type MappingJson = { database?: string; inheritance?: InheritanceStrategy; discriminatorValue?: string | number };
   const mappingJson = (list: ElementSummary[]) =>
     list.map((m) => (docs.byId.get(m.id)?.json as MappingJson | undefined) ?? { database: m.database ?? undefined });
@@ -600,15 +677,31 @@ function InheritanceTab({ id, json }: EditorContext) {
     perDatabase: project?.databases,
   });
   const rootSummary = lookup.byId.get(root);
+  const rootName = rootSummary?.name ?? "the root";
+  const dom = domIdOf(id);
   return (
     <div className="flex flex-col gap-2" data-testid="editor-inheritance">
       <section className="flex flex-col gap-1">
         <SectionTitle>Base entity</SectionTitle>
-        {entity.base && lookup.byId.get(entity.base) ? (
-          <ElementLink summary={lookup.byId.get(entity.base)!} secondary={chain.length > 1 ? `root ${rootSummary?.name ?? root}` : "root of the hierarchy"} />
-        ) : (
-          <p className="text-12 text-secondary">None: {entity.name} is the root of its hierarchy.</p>
-        )}
+        <div className="flex items-end gap-2">
+          <div className="w-64">
+            <BasePicker
+              id={id}
+              value={entity.base ?? ""}
+              label="Derives from"
+              domId={`${dom}-inheritance-base`}
+              onPick={(base) => {
+                edit((j) => setOptional(j as Rec, "base", base));
+                flush();
+              }}
+            />
+          </div>
+          {entity.base && lookup.byId.get(entity.base) ? (
+            <ElementLink summary={lookup.byId.get(entity.base)!} secondary={chain.length > 1 ? `root ${rootName}` : "root of the hierarchy"} />
+          ) : (
+            <p className="text-12 text-secondary">None: {entity.name} is the root of its hierarchy.</p>
+          )}
+        </div>
       </section>
       <section className="flex flex-col gap-1">
         <SectionTitle>Derived entities</SectionTitle>
@@ -627,7 +720,8 @@ function InheritanceTab({ id, json }: EditorContext) {
       <section className="flex flex-col gap-1">
         <SectionTitle>Mapping strategy</SectionTitle>
         <p className="text-12 text-secondary">
-          Read from the mapping of {rootSummary?.name ?? "the root"}, else the conventions; change it on that mapping or in Settings.
+          Set on the mapping of {rootName} in each database, else read from the conventions (Settings). A database where {rootName} has no mapping follows the
+          conventions; map it first (Map to database…) to choose.
         </p>
         {rows.length ? (
           <table className="w-full text-13" aria-label="Inheritance strategy per database" data-testid="editor-inheritance-strategies">
@@ -640,14 +734,54 @@ function InheritanceTab({ id, json }: EditorContext) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.database}>
-                  <td>{r.databaseName}</td>
-                  <td>{STRATEGY_LABELS[r.strategy]}</td>
-                  <td className="text-secondary">{SOURCE_LABELS[r.source]}</td>
-                  <td className="font-mono">{r.discriminatorValue ?? "—"}</td>
-                </tr>
-              ))}
+              {rows.map((r) => {
+                const rootMapping = rootMappings.find((m) => m.database === r.database);
+                const ownMapping = ownMappings.find((m) => m.database === r.database);
+                const explicit = rootMapping ? (docs.byId.get(rootMapping.id)?.json as MappingJson | undefined)?.inheritance : undefined;
+                return (
+                  <tr key={r.database} data-testid={`inheritance-row-${r.databaseName}`}>
+                    <td>{r.databaseName}</td>
+                    <td>
+                      <Select
+                        aria-label={`Strategy in ${r.databaseName}`}
+                        className="h-6 w-64"
+                        value={explicit ?? ""}
+                        disabled={!rootMapping}
+                        title={rootMapping ? undefined : `${rootName} has no mapping in ${r.databaseName}`}
+                        onChange={(e) => {
+                          if (!rootMapping) return;
+                          const v = (e.target.value || null) as InheritanceStrategy | null;
+                          void edits.update(rootMapping.id, (j) => setInheritance(j, v));
+                        }}
+                      >
+                        <option value="">{explicit ? "By convention" : `By convention: ${STRATEGY_LABELS[r.strategy]}`}</option>
+                        {(Object.keys(STRATEGY_LABELS) as InheritanceStrategy[]).map((k) => (
+                          <option key={k} value={k}>
+                            {STRATEGY_LABELS[k]}
+                          </option>
+                        ))}
+                      </Select>
+                    </td>
+                    <td className="text-secondary">{SOURCE_LABELS[r.source]}</td>
+                    <td>
+                      <Input
+                        aria-label={`Discriminator value in ${r.databaseName}`}
+                        className="h-6 w-32 font-mono"
+                        disabled={!ownMapping}
+                        title={ownMapping ? undefined : `${entity.name} has no mapping in ${r.databaseName}`}
+                        defaultValue={r.discriminatorValue != null ? String(r.discriminatorValue) : ""}
+                        key={`${r.database}:${r.discriminatorValue ?? ""}`}
+                        placeholder="—"
+                        onBlur={(e) => {
+                          if (!ownMapping || e.target.value.trim() === String(r.discriminatorValue ?? "")) return;
+                          const v = e.target.value;
+                          void edits.update(ownMapping.id, (j) => setDiscriminator(j, v));
+                        }}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         ) : (

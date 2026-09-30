@@ -13,12 +13,12 @@ CREATE TABLE northwind.inventory_items (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    default_bin_id uuid NULL,
     product_id uuid NOT NULL,
     warehouse_id uuid NOT NULL,
+    default_bin_id uuid NULL,
     CONSTRAINT pk_inventory_items PRIMARY KEY (id),
-    CONSTRAINT fk_inventory_items_default_bin_id FOREIGN KEY (default_bin_id) REFERENCES northwind.bin_locations (id) ON DELETE SET NULL,
     CONSTRAINT fk_inventory_items_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_inventory_items_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE CASCADE,
+    CONSTRAINT fk_inventory_items_default_bin_id FOREIGN KEY (default_bin_id) REFERENCES northwind.bin_locations (id) ON DELETE SET NULL,
     CONSTRAINT ck_inventory_items_allocation CHECK (quantity_allocated <= quantity_on_hand + quantity_on_order)
 );

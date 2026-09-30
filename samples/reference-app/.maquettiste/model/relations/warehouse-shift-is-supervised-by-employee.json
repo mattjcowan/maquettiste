@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1DGDDA95YDVNNVDQW7QD0GT",
+  "name": "warehouse shift is supervised by employee",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Shift supervisor.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M1SNM7DCNZT0BSA4Y5EKSDWT",
+      "entity": "01M1RJC20E0YQ2SZNHD9NJW74W",
+      "role": "supervisor",
+      "navigation": "supervisor",
+      "max": 1,
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M2EMX7VZB4DW68Z724FJK4P0",
+      "entity": "01M2WNBHAKV7D0A1DREE1M7648",
+      "role": "warehouseShifts"
+    }
+  ]
+}

@@ -1,7 +1,9 @@
 // The mock realtime transport and the cache patching it drives (phase2-design.md 4.3, 4.5).
-// Every wait is on the state a step needs (joined and connected, the event delivered, the query invalidated), never on a pause:
-// under a loaded run a fixed pause could end before the connection was up, and an event published then is dropped.
-import { describe, expect, it, vi } from "vitest";
+// Every wait is on the state a step needs (joined and connected, the event delivered, the query invalidated), never on a pause
+// and never on a poll: each wait subscribes to the thing that changes (the editor store, the query cache, the bus) and checks
+// its condition on every notification, so a loaded run only makes the wait longer (bounded by the test timeout), where a
+// 5 s poll could time out before the connection was up or the invalidation had landed (the flake seen under two agents' load).
+import { describe, expect, it } from "vitest";
 import * as endpoints from "@/api/endpoints";
 import { keys } from "@/api/queries";
 import { MockRealtime } from "@/realtime/mock";
@@ -10,7 +12,17 @@ import { newId } from "@/lib/ids";
 import { MAX_EVENT_BYTES } from "@/mocks/wire";
 import { IDS, useMockApi } from "./harness";
 
-const WAIT = { timeout: 5000, interval: 5 };
+/** Resolves the first time `check` holds: now, or on a later notification of `subscribe`. */
+function until(subscribe: (listener: () => void) => () => void, check: () => boolean): Promise<void> {
+  return new Promise((resolve) => {
+    if (check()) return resolve();
+    const off = subscribe(() => {
+      if (!check()) return;
+      off();
+      resolve();
+    });
+  });
+}
 
 describe("MockRealtime", () => {
   it("shares one connection between concurrent callers", async () => {
@@ -24,13 +36,18 @@ describe("MockRealtime", () => {
   it("delivers group events only to joined groups", async () => {
     const rt = new MockRealtime();
     const seen: string[] = [];
-    rt.on("job.progress", (job) => seen.push(job.id));
+    let arrived: () => void = () => undefined;
+    const delivered = new Promise<void>((resolve) => (arrived = resolve));
+    rt.on("job.progress", (job) => {
+      seen.push(job.id);
+      if (job.id === "A") arrived();
+    });
     await rt.join("job:A");
     // B first: deliveries run in publish order, so by the time A arrives B has been dropped (or, wrongly, delivered).
     rt.publish("job.progress", { id: "B" } as never, "job:B");
     rt.publish("job.progress", { id: "A" } as never, "job:A");
     expect(seen).toEqual([]); // delivered asynchronously, as over the wire
-    await vi.waitFor(() => expect(seen).toContain("A"), WAIT);
+    await delivered;
     expect(seen).toEqual(["A"]);
   });
 });
@@ -39,12 +56,23 @@ describe("realtime cache patching", () => {
   const api = useMockApi();
 
   /** Resolves once this window has joined "editors", is connected and has reported its presence (the connect-time work is done). */
+  // The last step of connecting is this window's presence reaching the backend, which publishes presence.changed into the store.
   async function connected(services: typeof api.services) {
-    await vi.waitFor(() => {
-      expect(api.backend.realtime.joins).toContain("editors");
-      expect(services.store.getState().connection).toBe("connected");
-      expect([...api.backend.presence.keys()].some((id) => id !== "mock-colleague")).toBe(true);
-    }, WAIT);
+    await until(
+      (l) => services.store.subscribe(l),
+      () =>
+        api.backend.realtime.joins.includes("editors") &&
+        services.store.getState().connection === "connected" &&
+        [...api.backend.presence.keys()].some((id) => id !== "mock-colleague"),
+    );
+  }
+
+  /** Resolves when the query under this key is invalidated (the query cache notifies every state change). */
+  function invalidated(queryClient: typeof api.services.queryClient, queryKey: readonly unknown[]) {
+    return until(
+      (l) => queryClient.getQueryCache().subscribe(l),
+      () => queryClient.getQueryState(queryKey)?.isInvalidated === true,
+    );
   }
 
   /** Resolves when the next event of this name has reached every handler registered before this call. */
@@ -77,7 +105,11 @@ describe("realtime cache patching", () => {
     store.getState().select([IDS.invoice]);
     store.getState().setWorkspace("database");
     expect(mine()?.elementId ?? null).toBeNull();
-    await vi.waitFor(() => expect(mine()).toMatchObject({ elementId: IDS.invoice, workspace: "database" }), WAIT);
+    await until(
+      (l) => store.subscribe(l),
+      () => mine()?.elementId === IDS.invoice && mine()?.workspace === "database",
+    );
+    expect(mine()).toMatchObject({ elementId: IDS.invoice, workspace: "database" });
     stop();
   });
 
@@ -90,7 +122,7 @@ describe("realtime cache patching", () => {
       json.name = "Bill";
     });
     await arrived;
-    await vi.waitFor(() => expect(queryClient.getQueryState(keys.element(IDS.invoice))?.isInvalidated).toBe(true), WAIT);
+    await invalidated(queryClient, keys.element(IDS.invoice));
     expect(queryClient.getQueryState(keys.index)?.isInvalidated).toBe(false);
     const rows = queryClient.getQueryData<{ id: string; name: string }[]>(keys.index);
     expect(rows?.find((r) => r.id === IDS.invoice)?.name).toBe("Bill");
@@ -108,7 +140,7 @@ describe("realtime cache patching", () => {
       truncated: false,
       isEmpty: false,
     });
-    await vi.waitFor(() => expect(queryClient.getQueryState(keys.index)?.isInvalidated).toBe(true), WAIT);
+    await invalidated(queryClient, keys.index);
     stop();
   });
 
@@ -129,7 +161,7 @@ describe("realtime cache patching", () => {
     expect(payload.truncated).toBe(true);
     expect(payload.changed.length).toBeGreaterThan(0);
     expect(payload.changed.length).toBeLessThan(1000);
-    await vi.waitFor(() => expect(queryClient.getQueryState(keys.index)?.isInvalidated).toBe(true), WAIT);
+    await invalidated(queryClient, keys.index);
     stop();
   });
 
@@ -151,7 +183,10 @@ describe("realtime cache patching", () => {
 
   it("keeps presence from presence.changed in the store", async () => {
     const { store, stop } = await connect();
-    await vi.waitFor(() => expect(store.getState().presence.length).toBeGreaterThan(0), WAIT);
+    await until(
+      (l) => store.subscribe(l),
+      () => store.getState().presence.length > 0,
+    );
     stop();
   });
 

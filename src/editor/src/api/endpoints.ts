@@ -38,6 +38,7 @@ import type {
   EditorHealth,
   ImportPreview,
   ReferenceTypeUsage,
+  RuleCatalogEntry,
 } from "./types";
 
 function must<T>(data: T | undefined, response: Response): T {
@@ -72,6 +73,11 @@ export async function getSettings(): Promise<SettingsDocument> {
   return must(data, response);
 }
 
+export async function listValidationRules(): Promise<RuleCatalogEntry[]> {
+  const { data, response } = await api().GET("/api/validation/rules");
+  return must(data, response);
+}
+
 export async function saveSettings(json: SettingsJson, hash: string): Promise<SettingsSaveResult> {
   const { data, error, response } = await api().PUT("/api/project/settings", {
     params: { header: { "If-Match": `"${hash}"` } },
@@ -93,18 +99,23 @@ export async function getModelIndex(): Promise<ElementSummary[]> {
   return must(data, response);
 }
 
-/** A conditional index read (E5e): `notModified` on 304, else the body as text with its ETag. */
-export type IndexAnswer = { notModified: true; etag: string | null } | { notModified: false; etag: string | null; text: string };
+/**
+ * A conditional index read (E5e): `notModified` on 304, else the body as text with its ETag, and the bytes the text was
+ * decoded from when the transport gave bytes: the search worker takes them as a transferable (no copy on the main thread)
+ * and parses them itself (explorer-redesign.md 4.5).
+ */
+export type IndexAnswer = { notModified: true; etag: string | null } | { notModified: false; etag: string | null; text: string; bytes?: ArrayBuffer };
 
 /** GET /api/model/index with `If-None-Match` when an ETag is known; the body is parsed by the caller. */
 export async function getModelIndexText(etag: string | null, locale?: string | null): Promise<IndexAnswer> {
   const { data, response } = await api().GET("/api/model/index", {
     params: { ...(etag ? { header: { "If-None-Match": etag } } : {}), ...(locale ? { query: { locale } } : {}) },
-    parseAs: "text",
+    parseAs: "arrayBuffer",
   });
   const tag = response.headers.get("ETag");
   if (response.status === 304) return { notModified: true, etag: tag ?? etag };
-  return { notModified: false, etag: tag, text: must(data as string | undefined, response) };
+  const bytes = must(data as ArrayBuffer | undefined, response);
+  return { notModified: false, etag: tag, text: new TextDecoder().decode(bytes), bytes };
 }
 
 export async function getElement(id: string): Promise<ElementDocument> {
@@ -309,6 +320,31 @@ export async function savePackFile(pack: string, path: string, text: string, has
   return record<PackWriteResult>(data, error, response);
 }
 
+/** Deletes one pack file with the hash read; 409 `referenced` (with the users in `diagnostics`) while a unit names it or a template includes it. */
+export async function deletePackFile(pack: string, path: string, hash: string): Promise<PackWriteResult> {
+  const { data, error, response } = await api().DELETE("/api/packs/{pack}/file", {
+    params: { path: { pack }, query: { path }, header: { "If-Match": `"${hash}"` } },
+  });
+  return record<PackWriteResult>(data as PackWriteResult | undefined, error, response);
+}
+
+/** Moves (renames) one pack file; with `packHash` the units naming it are rewritten in the same change (`updateUnits`). */
+export async function movePackFile(pack: string, from: string, to: string, hash: string, packHash: string | null): Promise<PackWriteResult> {
+  const { data, error, response } = await api().POST("/api/packs/{pack}/file/move", {
+    params: { path: { pack }, header: { "If-Match": `"${hash}"` } },
+    body: packHash ? { from, to, updateUnits: true, expectedPackHash: packHash } : { from, to },
+  });
+  return record<PackWriteResult>(data as PackWriteResult | undefined, error, response);
+}
+
+export type TemplateContextResult = Schemas["TemplateContextResult"];
+
+/** Completion data for a unit's templates: variables, member lists, helpers and the pack's registrations. */
+export async function getTemplateContext(pack: string, unit: string): Promise<TemplateContextResult> {
+  const { data, response } = await api().GET("/api/templates/context", { params: { query: { pack, unit } } });
+  return must(data, response);
+}
+
 export async function getPackOutputs(pack: string): Promise<PackOutputs> {
   const { data, response } = await api().GET("/api/packs/{pack}/outputs", { params: { path: { pack } } });
   return must(data, response);
@@ -369,7 +405,7 @@ export async function importSeedCsv(
   return { ...record<ImportPreview>(data, error, response), status: response.status };
 }
 
-/** Several seed CSV imports as one change: previews every file, or applies them all or none (409 stale, 422 invalid). */
+/** Several seed CSV imports: previews every file, or applies the rows of all or none (409 stale, 422 invalid), then their translations. */
 export async function importSeedsCsv(
   files: readonly { seed: string; content: string; hash?: string }[],
   options: { mode?: "merge" | "replace"; dryRun?: boolean } = {},

@@ -35,7 +35,7 @@ entities:
       isEuMember: bool! default=false | Whether intra-community VAT rules apply.
       isSanctioned: bool! default=false | Whether trade with the country is blocked by export controls.
     refs:
-      currency: Currency | Default currency of the country.
+      currency: Currency name=country_is_denominated_in_currency | Default currency of the country.
 
   StateProvince:
     description: A first-level subdivision of a country (ISO 3166-2), used for sales tax and shipping zones.
@@ -49,7 +49,7 @@ entities:
     alternateKeys:
       countrySubdivision: [code]
     refs:
-      country: Country! cascade back=subdivisions | Country the subdivision belongs to.
+      country: Country! cascade back=subdivisions name=state_province_is_located_in_country | Country the subdivision belongs to.
 
   Currency:
     description: A currency from ISO 4217 that prices, invoices and payments may be expressed in.
@@ -98,7 +98,7 @@ entities:
       name: string(100)! | Name of the holiday.
       isNationwide: bool! default=true | Whether it applies to the whole country rather than some regions.
     refs:
-      country: Country! cascade back=publicHolidays | Country observing the holiday.
+      country: Country! cascade back=publicHolidays name=public_holiday_is_located_in_country | Country observing the holiday.
 
 diagram:
   name: Reference data

@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1SD72T3EJAW2CF4FG7841PR",
+  "name": "party address concerns party",
+  "package": "01M1EN9FE0DH7N8JWD10TVDZ9A",
+  "description": "Party the address belongs to.",
+  "category": "01M2T4A01BB6EGWR7CP8AM5WFQ",
+  "ends": [
+    {
+      "id": "01M1MG0ZSEG6MDAGWERMG3PD8E",
+      "entity": "01M2FA89Y26C424MWK7D3TQPT5",
+      "role": "party",
+      "navigation": "party",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M1TS2BZV29FSDKEFN9S9BQ8W",
+      "entity": "01M2BKNW8ET53B7685KC3KZW3K",
+      "role": "addresses",
+      "navigation": "addresses"
+    }
+  ]
+}

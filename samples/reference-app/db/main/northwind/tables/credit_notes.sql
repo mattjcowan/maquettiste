@@ -15,11 +15,11 @@ CREATE TABLE northwind.credit_notes (
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
     customer_id uuid NOT NULL,
-    invoice_id uuid NULL,
     return_authorization_id uuid NULL,
+    invoice_id uuid NULL,
     CONSTRAINT pk_credit_notes PRIMARY KEY (id),
     CONSTRAINT uq_credit_notes_credit_note_number UNIQUE (credit_note_number),
     CONSTRAINT fk_credit_notes_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_credit_notes_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE SET NULL,
-    CONSTRAINT fk_credit_notes_return_authorization_id FOREIGN KEY (return_authorization_id) REFERENCES northwind.return_authorizations (id) ON DELETE SET NULL
+    CONSTRAINT fk_credit_notes_return_authorization_id FOREIGN KEY (return_authorization_id) REFERENCES northwind.return_authorizations (id) ON DELETE SET NULL,
+    CONSTRAINT fk_credit_notes_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE SET NULL
 );

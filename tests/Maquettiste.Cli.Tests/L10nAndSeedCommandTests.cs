@@ -18,6 +18,37 @@ public sealed class L10nAndSeedCommandTests
     private const string FrShard = ".maquettiste/model/locales/fr/_reference-data.json";
 
     [Fact]
+    public async Task Seed_new_creates_a_reference_types_seed_with_code_label_and_description_once()
+    {
+        using var repo = CliRepo.ReferenceData();
+        repo.Write(".maquettiste/model/reference-types/shipping-speed.json", """
+            {
+              "$schema": "../../.schema/v1/reference-type.json",
+              "kind": "reference-type",
+              "id": "01JC0000000000000000000SPD",
+              "name": "ShippingSpeed",
+              "code": { "id": "01JC0000000000000000000SPC" },
+              "label": { "id": "01JC0000000000000000000SPB" }
+            }
+            """);
+
+        var created = await repo.RunAsync("seed", "new", "shippingspeed");
+        Assert.True(created.ExitCode == 0, created.Error);
+        Assert.StartsWith("created seed ShippingSpeed (", created.Out, StringComparison.Ordinal);
+        var file = Directory.GetFiles(repo.PathOf(".maquettiste/model"), "*.json", SearchOption.AllDirectories)
+            .Select(f => JsonNode.Parse(File.ReadAllText(f))).OfType<JsonObject>()
+            .Single(n => (string?)n["kind"] == "seed" && (string?)n["target"] == "01JC0000000000000000000SPD");
+        Assert.Equal(["code", "label", "description"], file["columns"]!.AsArray().Select(c => (string)c!));
+        Assert.Equal("ShippingSpeed", (string)file["name"]!);
+
+        var again = await repo.RunAsync("seed", "new", "01JC0000000000000000000SPD");
+        Assert.Equal(0, again.ExitCode);
+        Assert.Contains("already has a seed", again.Out, StringComparison.Ordinal);
+        Assert.Equal(4, (await repo.RunAsync("seed", "new", "NoSuchType")).ExitCode);
+        Assert.Equal(0, (await repo.RunAsync("validate")).ExitCode);
+    }
+
+    [Fact]
     public async Task Status_reports_the_locales_and_completeness_per_shard_as_text_and_json()
     {
         using var repo = CliRepo.ReferenceData();

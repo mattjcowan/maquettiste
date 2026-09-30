@@ -12,13 +12,13 @@ CREATE TABLE northwind.quality_inspections (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
-    goods_receipt_line_id uuid NULL,
-    inspector_id uuid NULL,
     lot_id uuid NULL,
     product_id uuid NOT NULL,
+    inspector_id uuid NULL,
+    goods_receipt_line_id uuid NULL,
     CONSTRAINT pk_quality_inspections PRIMARY KEY (id),
-    CONSTRAINT fk_quality_inspections_goods_receipt_line_id FOREIGN KEY (goods_receipt_line_id) REFERENCES northwind.goods_receipt_lines (id) ON DELETE SET NULL,
-    CONSTRAINT fk_quality_inspections_inspector_id FOREIGN KEY (inspector_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_quality_inspections_lot_id FOREIGN KEY (lot_id) REFERENCES northwind.stock_lots (id) ON DELETE SET NULL,
-    CONSTRAINT fk_quality_inspections_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT
+    CONSTRAINT fk_quality_inspections_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_quality_inspections_inspector_id FOREIGN KEY (inspector_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
+    CONSTRAINT fk_quality_inspections_goods_receipt_line_id FOREIGN KEY (goods_receipt_line_id) REFERENCES northwind.goods_receipt_lines (id) ON DELETE SET NULL
 );

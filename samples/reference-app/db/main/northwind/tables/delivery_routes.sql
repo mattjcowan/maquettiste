@@ -12,12 +12,12 @@ CREATE TABLE northwind.delivery_routes (
     created_by varchar(64) NULL,
     updated_at timestamptz(6) NULL,
     updated_by varchar(64) NULL,
+    warehouse_id uuid NOT NULL,
     driver_id uuid NULL,
     vehicle_id uuid NULL,
-    warehouse_id uuid NOT NULL,
     CONSTRAINT pk_delivery_routes PRIMARY KEY (id),
+    CONSTRAINT fk_delivery_routes_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT,
     CONSTRAINT fk_delivery_routes_driver_id FOREIGN KEY (driver_id) REFERENCES northwind.drivers (id) ON DELETE SET NULL,
-    CONSTRAINT fk_delivery_routes_vehicle_id FOREIGN KEY (vehicle_id) REFERENCES northwind.vehicles (id) ON DELETE SET NULL,
-    CONSTRAINT fk_delivery_routes_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT
+    CONSTRAINT fk_delivery_routes_vehicle_id FOREIGN KEY (vehicle_id) REFERENCES northwind.vehicles (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_delivery_routes_route_date ON northwind.delivery_routes (route_date);

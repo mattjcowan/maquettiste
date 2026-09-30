@@ -39,6 +39,7 @@ export type BatchParseResult = S["BatchParseResult"];
 export type BatchRequest = S["batch"];
 export type BatchOperationRequest = S["batch"]["operations"][number];
 export type Diagnostic = S["Diagnostic"];
+export type RuleCatalogEntry = S["RuleCatalogEntry"];
 export type ValidationReport = S["ValidationReport"];
 export type ValidationScope = S["ValidationScope"];
 export type DatabaseViewResult = S["DatabaseViewResult"];

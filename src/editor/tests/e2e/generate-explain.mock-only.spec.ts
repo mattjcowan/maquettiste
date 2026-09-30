@@ -10,6 +10,9 @@ test("the plan explains itself: groups, why this file, why not, explain", async 
   const summary = page.getByTestId("plan-summary");
   await expect(summary).toContainText(/sql-ddl: \d+ units?, \d+ files? to add/);
   await expect(summary).toContainText(/csharp-dapper: \d+ units?, \d+ files? to add/);
+  // The written files by cause ("New: no recorded state ...: N files") and by output root.
+  await expect(page.getByTestId("plan-cause").first()).toContainText(/New: no recorded state from an earlier run: \d+ files?/);
+  await expect(page.getByTestId("plan-root").first()).toContainText(/: \d+ files? \(\d+ to add/);
 
   // Grouped by unit, with the template and the counts in the header.
   const group = page.getByTestId("unit-group-sql-ddl/table");

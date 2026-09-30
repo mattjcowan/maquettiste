@@ -154,8 +154,10 @@ export async function previewSeedImport(
 }
 
 /**
- * Applies the previewed imports that change something, as one change on the server: nothing is written when a seed
- * changed since the preview or any file has an error. The applied seeds are one undo step.
+ * Applies the previewed imports that change something. The server saves every seed's rows as one change (nothing is
+ * written when a seed changed since the preview or any file has an error), then the `@label:<locale>` and
+ * `@description:<locale>` translations, one save per seed and locale: a failed translation save leaves the rows saved.
+ * The applied seeds are one undo step; undo restores the seed rows, not the translations.
  */
 export async function applySeedImport(
   services: AppServices,

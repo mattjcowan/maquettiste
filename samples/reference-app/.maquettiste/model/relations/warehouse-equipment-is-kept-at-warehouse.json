@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M2CQ1B7KMPHDKVX8TD189F6W",
+  "name": "warehouse equipment is kept at warehouse",
+  "package": "01M1KRHM5ECKGZXYXAD5RVR3SY",
+  "description": "Warehouse it belongs to.",
+  "category": "01M23SKM8QFT1AZMAWCDFTJRMS",
+  "ends": [
+    {
+      "id": "01M2RYYKF6DQQHMWPGW7H4M8M2",
+      "entity": "01M1PN7QBBJ001FSBR7DTP2QS6",
+      "role": "warehouse",
+      "navigation": "warehouse",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M2SCQT12QFWCANNJKD2W428F",
+      "entity": "01M33BJAGN8XXFG5SMV24ARN8W",
+      "role": "equipment",
+      "navigation": "equipment"
+    }
+  ]
+}

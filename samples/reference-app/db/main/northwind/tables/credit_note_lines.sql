@@ -10,11 +10,11 @@ CREATE TABLE northwind.credit_note_lines (
     unit_price_currency varchar(3) NOT NULL,
     line_total_amount numeric(19,4) NOT NULL,
     line_total_currency varchar(3) NOT NULL,
+    credit_note_id uuid NOT NULL,
     invoice_line_id char(26) NULL,
     product_id uuid NULL,
-    credit_note_id uuid NOT NULL,
     CONSTRAINT pk_credit_note_lines PRIMARY KEY (id),
+    CONSTRAINT fk_credit_note_lines_credit_note_id FOREIGN KEY (credit_note_id) REFERENCES northwind.credit_notes (id) ON DELETE CASCADE,
     CONSTRAINT fk_credit_note_lines_invoice_line_id FOREIGN KEY (invoice_line_id) REFERENCES northwind.invoice_lines (id) ON DELETE SET NULL,
-    CONSTRAINT fk_credit_note_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE SET NULL,
-    CONSTRAINT fk_credit_note_lines_credit_note_id FOREIGN KEY (credit_note_id) REFERENCES northwind.credit_notes (id) ON DELETE CASCADE
+    CONSTRAINT fk_credit_note_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE SET NULL
 );

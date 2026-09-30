@@ -85,7 +85,7 @@ diagrams), checks `POST /api/validate` reports nothing and, with `--compare`, th
 `tools/gate2.sh` runs SPEC Section 21's gate 2 the way `.github/workflows/gate2.yml` does (phase2-design.md 7.2): it copies
 this folder to `tmp/gate2/` without the model, `db/` and build output, starts the image over it, seeds the model through the
 API (`seed.mjs --compare`), runs the Playwright walk `src/editor/tests/e2e/gate2.spec.ts` (add `receivingHours` to
-`Warehouse` in the grid, rename the relation `delivery route warehouse` to `delivery route depot`, plan, open a diff, apply,
+`Warehouse` in the grid, rename the relation `delivery route departs from warehouse` to `delivery route departs from depot`, plan, open a diff, apply,
 `applyResult.outcome` = `succeeded`). Then `check` asserts that both edits are in the model files, `warehouses.sql` and
 `Warehouse.g.cs`, runs `validate`, runs `generate --check` (the committed root `db/main` equals the CLI's output) and, since
 `--check` covers committed roots only, generates the built root `Generated/` with the CLI into a second copy and compares

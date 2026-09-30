@@ -49,16 +49,27 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                 {
                     "create" => BatchOp.Create,
                     "update" => BatchOp.Update,
+                    "add-schema" => BatchOp.AddSchema,
+                    "rename-schema" => BatchOp.RenameSchema,
+                    "remove-schema" => BatchOp.RemoveSchema,
+                    "set-default-schema" => BatchOp.SetDefaultSchema,
                     _ => BatchOp.Delete,
                 };
                 operations.Add(new BatchOperation(
                     op,
                     item.TryGetProperty("id", out var id) ? id.GetString() : null,
                     item.TryGetProperty("expectedHash", out var hash) ? hash.GetString() : null,
-                    item.TryGetProperty("element", out var element) ? element.Clone() : null));
+                    item.TryGetProperty("element", out var element) ? element.Clone() : null,
+                    Schema: Text(item, "schema"),
+                    Name: Text(item, "name"),
+                    Target: Text(item, "target"),
+                    Default: Text(item, "default")));
             }
 
             return new BatchParseResult(new ModelBatch(operations), []);
         }
     }
+
+    private static string? Text(JsonElement item, string name) =>
+        item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 }

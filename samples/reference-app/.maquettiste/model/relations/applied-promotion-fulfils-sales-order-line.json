@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M1RN4NH7V68KAFEADJC30VBS",
+  "name": "applied promotion fulfils sales order line",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "Line it applies to; null for order-level promotions.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "ends": [
+    {
+      "id": "01M2V9K3SYY9PNFC9TXF0HT872",
+      "entity": "01M2JSECEQ3FD3TKWAQR961TJ0",
+      "role": "salesOrderLine",
+      "navigation": "salesOrderLine",
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M24Y1AW8MJ262ZY3HSKC4Z32",
+      "entity": "01M2RAWA2R3YTRTN2NZYY3W84T",
+      "role": "appliedPromotions"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01M20Q71X6RK8B0XKC38N7H0AY",
+  "name": "supplier certification is supplied by supplier",
+  "package": "01M1HBJ9DHC9YMPY1A6RCV4TTG",
+  "description": "Certified supplier.",
+  "category": "01M1Z1CM7DCRF0KE9WXCPSYXSX",
+  "ends": [
+    {
+      "id": "01M2EH9FKND5PC79EFM62CRVN6",
+      "entity": "01M2A5WW8NFWJS1V5NFRKCBNYV",
+      "role": "supplier",
+      "navigation": "supplier",
+      "min": 1,
+      "max": 1,
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M382ZZCKSA655J2KNYF0CSBR",
+      "entity": "01M37A5NJEPZATPNMASH90TE69",
+      "role": "certifications",
+      "navigation": "certifications"
+    }
+  ]
+}

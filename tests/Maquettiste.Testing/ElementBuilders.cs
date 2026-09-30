@@ -516,7 +516,7 @@ public sealed class DatabaseBuilder : ElementBuilder<DatabaseBuilder>
 {
     private readonly Dialect _dialect;
     private readonly List<DbSchema> _schemas = [];
-    private readonly List<string> _packages = [];
+    private readonly List<ConventionPackage> _packages = [];
     private ConventionMapping? _byConvention;
     private string? _defaultSchema;
     private Maquettiste.Engine.Model.Quoting _quoting = Maquettiste.Engine.Model.Quoting.Reserved;
@@ -557,7 +557,17 @@ public sealed class DatabaseBuilder : ElementBuilder<DatabaseBuilder>
     /// <returns>This builder.</returns>
     public DatabaseBuilder Packages(params PackageBuilder[] packages)
     {
-        _packages.AddRange(packages.Select(p => p.Id));
+        _packages.AddRange(packages.Select(p => new ConventionPackage { Package = p.Id }));
+        return this;
+    }
+
+    /// <summary>Takes a package's entities by convention into a schema.</summary>
+    /// <param name="package">The package.</param>
+    /// <param name="schemaId">The schema id (from <see cref="Schema"/>).</param>
+    /// <returns>This builder.</returns>
+    public DatabaseBuilder Package(PackageBuilder package, string schemaId)
+    {
+        _packages.Add(new ConventionPackage { Package = package.Id, Schema = schemaId });
         return this;
     }
 
@@ -689,6 +699,7 @@ public sealed class MappingBuilder : ElementBuilder<MappingBuilder>
     private readonly EntityBuilder? _entityBuilder;
     private readonly List<AttributeMapping> _attributes = [];
     private string? _table;
+    private string? _schema;
     private bool _ignore;
     private InheritanceStrategy? _inheritance;
     private RelationShape? _shape;
@@ -709,6 +720,15 @@ public sealed class MappingBuilder : ElementBuilder<MappingBuilder>
     public MappingBuilder Table(TableBuilder table)
     {
         _table = table.Id;
+        return this;
+    }
+
+    /// <summary>Places the entity's conventional table in a schema.</summary>
+    /// <param name="schemaId">The schema id.</param>
+    /// <returns>This builder.</returns>
+    public MappingBuilder Schema(string schemaId)
+    {
+        _schema = schemaId;
         return this;
     }
 
@@ -767,6 +787,7 @@ public sealed class MappingBuilder : ElementBuilder<MappingBuilder>
         Entity = _entity,
         Relation = _relation,
         Table = _table,
+        Schema = _schema,
         Ignore = _ignore,
         Inheritance = _inheritance,
         DiscriminatorValue = _discriminator,
