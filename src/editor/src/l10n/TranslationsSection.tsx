@@ -2,6 +2,8 @@
 // 3.10): collapsed by default and remembered per user, one compact row per translated locale with the display name,
 // plural and description, the fallback text as a muted italic placeholder, and a stale marker with Confirm when the
 // default text changed since the translation. Nothing renders while the project declares fewer than two locales.
+// FieldTranslations is the same for an element's fields (a reference type's code, label and user fields): per locale,
+// one compact line per field with its display name and description.
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -64,12 +66,26 @@ function LocaleRow({ locale, entries, loading }: { locale: string; entries: Tran
   );
 }
 
-function TranslationInput({ locale, entry, all }: { locale: string; entry: TranslationEntry; all: TranslationEntry[] }) {
+function TranslationInput({
+  locale,
+  entry,
+  all,
+  subject,
+  compact = false,
+}: {
+  locale: string;
+  entry: TranslationEntry;
+  all: TranslationEntry[];
+  /** The sub-element the text belongs to (a field's name), named in the control's label. */
+  subject?: string;
+  /** Only the control (a table cell): its label is the column heading. */
+  compact?: boolean;
+}) {
   const qc = useQueryClient();
   const { store } = useServices();
   const [value, setValue] = useState(entry.translation ?? "");
   useEffect(() => setValue(entry.translation ?? ""), [entry.translation]);
-  const label = `${FIELD_LABELS[entry.field]} (${locale})`;
+  const label = subject ? `${FIELD_LABELS[entry.field]} of ${subject} (${locale})` : `${FIELD_LABELS[entry.field]} (${locale})`;
   const inputId = `tr-${locale}-${entry.id}-${entry.field}`;
   const write = async (confirm = false) => {
     if (!confirm && value === (entry.translation ?? "")) return;
@@ -78,6 +94,36 @@ function TranslationInput({ locale, entry, all }: { locale: string; entry: Trans
   };
   const placeholder = entry.effective ?? entry.source ?? "";
   const Control = entry.field === "description" ? Textarea : Input;
+  const stale =
+    entry.state === "stale" ? (
+      <Badge tone="warning" className="ml-1" title="The default text changed since this was translated">
+        stale
+      </Badge>
+    ) : null;
+  if (compact)
+    return (
+      <div className="flex items-start gap-1">
+        <Control
+          id={inputId}
+          aria-label={label}
+          value={value}
+          placeholder={placeholder}
+          className={cn("flex-1 text-12 placeholder:italic placeholder:text-secondary", entry.field === "description" ? "min-h-0 py-0.5" : "h-6")}
+          onChange={(e: { target: { value: string } }) => setValue(e.target.value)}
+          onBlur={() => void write()}
+          onKeyDown={(e: React.KeyboardEvent) => {
+            if (e.key === "Enter" && entry.field !== "description") void write();
+          }}
+          {...(entry.field === "description" ? { rows: 1 } : {})}
+        />
+        {stale}
+        {entry.state === "stale" ? (
+          <Button size="sm" variant="secondary" onClick={() => void write(true)} aria-label={`Confirm ${label}`}>
+            Confirm
+          </Button>
+        ) : null}
+      </div>
+    );
   return (
     <div className="grid grid-cols-[7rem_1fr] items-start gap-2">
       <label htmlFor={inputId} className="pt-1 text-12 text-secondary">
@@ -108,6 +154,90 @@ function TranslationInput({ locale, entry, all }: { locale: string; entry: Trans
           </Button>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+const FIELDS_OPEN_KEY = "maquettiste.fieldTranslationsOpen";
+
+/**
+ * The translations of an element's fields (RT 3.1: every attribute and a reference type's code and label have a
+ * localizable display name and description), collapsed by default and remembered per user: per translated locale, one
+ * line per field with its display name and description, the default text as the placeholder. Nothing renders while
+ * the project declares fewer than two locales.
+ */
+export function FieldTranslations({ owner, fields }: { owner: string; fields: readonly { id: string; name: string }[] }) {
+  const l10n = useLocalization();
+  const [open, setOpen] = useState(() => local.get(FIELDS_OPEN_KEY) === "1");
+  if (!l10n.enabled || !fields.length) return null;
+  const toggle = () => {
+    local.set(FIELDS_OPEN_KEY, open ? "0" : "1");
+    setOpen(!open);
+  };
+  return (
+    <section className="flex flex-col gap-2" aria-label="Translations of the fields" data-testid="field-translations">
+      <button type="button" className="flex items-center gap-1 self-start text-12 font-medium text-secondary" aria-expanded={open} onClick={toggle}>
+        {open ? <ChevronDown className="size-3.5" aria-hidden /> : <ChevronRight className="size-3.5" aria-hidden />}
+        Translations of the fields
+        <span className="font-normal">({l10n.locales.join(", ")})</span>
+      </button>
+      {open ? <FieldTranslationTables owner={owner} fields={fields} locales={l10n.locales} /> : null}
+    </section>
+  );
+}
+
+function FieldTranslationTables({ owner, fields, locales }: { owner: string; fields: readonly { id: string; name: string }[]; locales: string[] }) {
+  const results = useOwnerTranslations(owner, locales);
+  return (
+    <div className="flex flex-col gap-2">
+      {locales.map((locale, i) => {
+        const entries = (results[i]?.data?.entries ?? []).filter((e) => fields.some((f) => f.id === e.id));
+        return (
+          <table
+            key={locale}
+            className="w-full border-collapse rounded-control border border-default text-12"
+            aria-label={`Fields in ${localeName(locale)}`}
+            data-testid={`field-translations-${locale}`}
+          >
+            <thead>
+              <tr className="bg-app text-left text-11 font-semibold text-secondary">
+                <th className="h-7 w-40 px-1.5">{localeName(locale)}</th>
+                <th className="px-1.5">Display name</th>
+                <th className="px-1.5">Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              {results[i]?.isPending ? (
+                <tr>
+                  <td colSpan={3} className="px-1.5 text-secondary">
+                    Loading…
+                  </td>
+                </tr>
+              ) : null}
+              {fields.map((f) => {
+                const own = entries.filter((e) => e.id === f.id);
+                const cell = (field: TranslationField) => {
+                  const entry = own.find((e) => e.field === field);
+                  return entry ? (
+                    <TranslationInput locale={locale} entry={entry} all={entries} subject={f.name} compact />
+                  ) : (
+                    <span className="text-11 text-secondary">no {FIELD_LABELS[field].toLowerCase()} to translate</span>
+                  );
+                };
+                return (
+                  <tr key={f.id} className="border-t border-default align-top">
+                    <th scope="row" className="h-[var(--mq-row-h)] px-1.5 py-0.5 text-left font-mono font-normal">
+                      {f.name}
+                    </th>
+                    <td className="px-1.5 py-0.5">{cell("displayName")}</td>
+                    <td className="px-1.5 py-0.5">{cell("description")}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        );
+      })}
     </div>
   );
 }

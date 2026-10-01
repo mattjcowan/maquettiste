@@ -71,6 +71,8 @@ export interface MenuTarget {
   domainGroup?: boolean;
   /** A process's diagram (its statechart's places): one per process, so it is never duplicated. */
   processDiagram?: boolean;
+  /** The explorer the row is listed in (a reference type's seed, listed under its type, is renamed with the type). */
+  home?: ExplorerId;
 }
 
 const item = (id: MenuActionId, label: string, multi = false, danger = false): MenuItem => ({ id, label, multi, danger });
@@ -90,13 +92,24 @@ function processMenu(t: MenuTarget): MenuItem[] {
   return out;
 }
 
-/** Kinds whose rows offer Apply stereotype…, Tag… and Set category… (✱). */
-const MARKABLE: ReadonlySet<string> = new Set(["entity", "relation", "enum", "value-object", "scalar-type"]);
+/** Kinds whose rows offer Apply stereotype…, Tag… and Set category… (✱). A reference type's category is its "Move to
+ * category…", so its rows offer the other two. */
+const MARKABLE: ReadonlySet<string> = new Set(["entity", "relation", "enum", "value-object", "scalar-type", "reference-type"]);
 
-/** Kinds that live in a domain and can move to another one. */
+/**
+ * Kinds that live in a domain and can move to another one. A seed is not one: it belongs to its target, whose domain
+ * it shares (a seed file has no `package`), and a reference type's seeds have no domain at all (RS3).
+ */
 export function isMovable(kind: string | undefined): boolean {
-  if (!kind) return false;
+  if (!kind || kind === "seed") return false;
   return kind === "package" || kind === "diagram" || placementOf(kind) === "domain";
+}
+
+/** Rows renamed in the explorer: the movable kinds, and an entity's or relation's seed (a reference type's seed is
+ * renamed with its type, by Rename on the type). */
+export function isRenamable(kind: string | undefined, home?: string): boolean {
+  if (kind === "seed") return home !== "reference-data";
+  return isMovable(kind);
 }
 
 function single(t: MenuTarget): MenuItem[] {
@@ -145,6 +158,8 @@ function single(t: MenuTarget): MenuItem[] {
     return [
       ...out,
       ...TYPE_MENU.filter((i) => i.id !== "export-csv").map((i) => item(`type:${i.id}`, i.label, i.multi, i.danger)),
+      item("apply-stereotype", "Apply stereotype…", true),
+      item("tag", "Tag…", true),
       item("favorite", t.favorite ? "Remove from favorites" : "Add to favorites"),
     ].sort((a, b) => Number(!!a.danger) - Number(!!b.danger));
   if (t.kind === "entity") {
@@ -160,7 +175,8 @@ function single(t: MenuTarget): MenuItem[] {
   if (t.kind && MARKABLE.has(t.kind))
     out.push(item("apply-stereotype", "Apply stereotype…", true), item("tag", "Tag…", true), item("set-category", "Set category…", true));
   if (t.kind && PROMOTABLE_KINDS.has(t.kind)) out.push(item("promote", "Promote to entity"));
-  if (isMovable(t.kind)) out.push(item("move", "Move to domain…", true), item("rename", "Rename"));
+  if (isMovable(t.kind)) out.push(item("move", "Move to domain…", true));
+  if (isRenamable(t.kind, t.home)) out.push(item("rename", "Rename"));
   out.push(item("favorite", t.favorite ? "Remove from favorites" : "Add to favorites"));
   out.push(item("delete", "Delete", true, true));
   return out;

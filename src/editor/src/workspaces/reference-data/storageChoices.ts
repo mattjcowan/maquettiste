@@ -1,18 +1,17 @@
 // The storage choice where a reference type is created and used (reference-types-seeds-localization.md 1.4 and 4.5):
-// the New reference type dialog's "Stored as" list (Template-defined, then the strategies the project declares, the
-// sql-ddl pack's three by what they build) and the short effective storage the attribute type picker shows beside a
-// type's name. The engine knows no strategy; the strategy keys are the project's. Pure, so it is tested alone.
+// the New reference type dialog's "Stored as" list (Let the packs decide, then the strategies the project declares by
+// their names, the sql-ddl pack's three first, each with its description as help) and the short effective storage the
+// attribute type picker shows beside a type's name. The Storage tab uses the same words. The engine knows no strategy; the strategy keys are the project's. Pure, so it is tested alone.
 import type { StorageChoice } from "@/api/types";
 
-/** The "Stored as" value of Template-defined: a choice with no strategy, so the packs decide. */
+/** The words for "no strategy": the templates choose. */
+export const PACKS_DECIDE = "Let the packs decide";
+
+/** The "Stored as" value of "Let the packs decide": a choice with no strategy. */
 export const TEMPLATE_DEFINED = "__template";
 
-/** The strategy keys the sql-ddl pack maps by default, named by what they build, in this order. */
-const KNOWN: [string, string][] = [
-  ["lookup-table", "Lookup table"],
-  ["check", "Check constraint"],
-  ["native", "Native type (where the dialect has one)"],
-];
+/** The strategy keys the sql-ddl pack maps by default, listed first in this order. */
+const KNOWN = ["lookup-table", "check", "native"];
 
 /** The strategy preselected for a new type when the project declares it. */
 export const PRESELECTED_STRATEGY = "check";
@@ -20,26 +19,29 @@ export const PRESELECTED_STRATEGY = "check";
 export interface StorageOption {
   value: string;
   label: string;
-  title?: string;
+  /** Shown under the select while the option is chosen: what it means. */
+  help?: string;
 }
 
 export type DeclaredStrategies = Record<string, { description?: string | null }>;
 
-/** Template-defined, then the declared strategies: the known ones in their order, then the others A to Z. */
+/** The help under a "Let the packs decide" choice. */
+export const PACKS_DECIDE_HELP = "No strategy: the templates decide how the type is stored.";
+
+/** Let the packs decide, then the declared strategies by name: the known ones in their order, then the others A to Z. */
 export function storageOptions(strategies: DeclaredStrategies): StorageOption[] {
-  const known = new Map(KNOWN);
   const keys = Object.keys(strategies).sort((a, b) => {
-    const ia = KNOWN.findIndex(([k]) => k === a);
-    const ib = KNOWN.findIndex(([k]) => k === b);
+    const ia = KNOWN.indexOf(a);
+    const ib = KNOWN.indexOf(b);
     return (ia < 0 ? KNOWN.length : ia) - (ib < 0 ? KNOWN.length : ib) || a.localeCompare(b);
   });
   return [
-    { value: TEMPLATE_DEFINED, label: "Template-defined", title: "No strategy: the packs decide how the type is stored." },
-    ...keys.map((key) => ({ value: key, label: known.get(key) ?? key, title: strategies[key]?.description ?? undefined })),
+    { value: TEMPLATE_DEFINED, label: PACKS_DECIDE, help: PACKS_DECIDE_HELP },
+    ...keys.map((key) => ({ value: key, label: key, help: strategies[key]?.description ?? undefined })),
   ];
 }
 
-/** The preselected choice: a check constraint when the project declares it, else the project default, else Template-defined. */
+/** The preselected choice: a check constraint when the project declares it, else the project default, else Let the packs decide. */
 export function preselectedStorage(strategies: DeclaredStrategies, project?: StorageChoice | null): string {
   if (PRESELECTED_STRATEGY in strategies) return PRESELECTED_STRATEGY;
   if (project?.strategy && project.strategy in strategies) return project.strategy;
@@ -54,12 +56,12 @@ export function storageFor(value: string, strategies: DeclaredStrategies): Recor
 
 /**
  * The effective storage the type picker shows beside a type's name, for every database: the type's own choice for
- * all databases, else the project default, else "template"; "+N" counts the databases the type sets otherwise.
+ * all databases, else the project default, else "packs decide"; "+N" counts the databases the type sets otherwise.
  */
 export function storageLabel(storage: Record<string, StorageChoice> | undefined, project?: StorageChoice | null): string {
   const own = storage?.["*"];
   const strategy = own ? (own.strategy ?? null) : (project?.strategy ?? null);
-  const label = strategy ?? "template";
+  const label = strategy ?? "packs decide";
   const others = Object.entries(storage ?? {}).filter(([key, choice]) => key !== "*" && (choice.strategy ?? null) !== strategy).length;
   return others ? `${label} +${others}` : label;
 }
@@ -119,4 +121,53 @@ export function snakeNames(name: string, pluralName?: string | null): string[] {
   const one = snake(name);
   const many = pluralName ? snake(pluralName) : `${one}s`;
   return one === many ? [one] : [one, many];
+}
+
+// ------------------------------------------------------------------ the Storage tab's words
+
+/** Where the strategy in use comes from, in plain words. */
+export const SOURCE_WORDS = { type: "from this type", database: "from the database", project: "from the project" } as const;
+
+/** The Storage tab's "Strategy in use" text: the strategy (or that the packs decide) and where that comes from. */
+export function strategyInUse(effective: { strategy: string | null; source: keyof typeof SOURCE_WORDS | null }): string {
+  const what = effective.strategy ?? "The packs decide";
+  return effective.source ? `${what}, ${SOURCE_WORDS[effective.source]}` : `${what}, nothing is set`;
+}
+
+/** The "Use the default (…)" option: what the row gets when this type sets nothing for it. */
+export function defaultOption(fallback: { strategy: string | null; source: keyof typeof SOURCE_WORDS | null }): string {
+  if (!fallback.source) return "Use the default (the packs decide)";
+  const what = fallback.strategy ?? "the packs decide";
+  const from = fallback.source === "type" ? "as set for all databases" : SOURCE_WORDS[fallback.source];
+  return `Use the default (${what}, ${from})`;
+}
+
+/** A unit the Storage tab can preview: one rendered per database (`each database` or `select databases`). */
+export interface DatabaseUnit {
+  pack: string;
+  unit: string;
+  for: string;
+}
+
+/** The database-scoped units of the enabled packs, in pack then unit order (from the pack list; no pack or unit is assumed). */
+export function databaseUnits(packs: readonly { name: string; enabled?: boolean; units: readonly { id: string; for: string }[] }[]): DatabaseUnit[] {
+  const scoped = (scope: string) => /^(each database|select databases?)$/.test(scope.trim().replace(/\s+/g, " "));
+  return packs.filter((p) => p.enabled !== false).flatMap((p) => p.units.filter((u) => scoped(u.for)).map((u) => ({ pack: p.name, unit: u.id, for: u.for })));
+}
+
+/** The unit preselected for the preview: a unit whose name mentions seed (where packs write reference rows), else the first. */
+export function preferredUnit(units: readonly DatabaseUnit[]): DatabaseUnit | null {
+  return units.find((u) => /seed/i.test(u.unit)) ?? units[0] ?? null;
+}
+
+/** Reasons of the explain answer that mean the unit would render (so a failed preview failed for another reason). */
+const RENDERS = new Set(["new", "forced", "check", "inputs", "outputs", "unchanged"]);
+
+/**
+ * Why a preview failed, in the engine's words: the explain answer's detail when it says why the unit does not render
+ * for the database (its scope, its selector, a disabled pack…), else the preview's own message.
+ */
+export function previewFailure(message: string, explained: { reason: string; detail: string } | null): string {
+  if (explained && !RENDERS.has(explained.reason) && explained.detail) return explained.detail;
+  return message;
 }

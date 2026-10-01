@@ -285,6 +285,14 @@ function rowLabel(byId: ReadonlyMap<string, Row>, r: Row): string {
   return r.displayName || r.name || (e ? e.displayName || e.name : undefined) || `${kindFolder(r.kind)?.one ?? r.kind} ${r.id.slice(-6)}`;
 }
 
+/**
+ * True when a reference type has one seed, whatever its name: that seed is the type's rows, which the Reference data
+ * explorer does not list (as a rename takes the only seed along, typeMenu.ts seedsFollowingRename).
+ */
+export function soleSeedOf(seeds: readonly unknown[]): boolean {
+  return seeds.length === 1;
+}
+
 /** An element row's secondary text: a relation's ends, a diagram's member count (a process diagram: whose statechart it is), a seed's row count. */
 function rowSecondary(byId: ReadonlyMap<string, Row>, r: Row): string | undefined {
   const nameOf = (id: string) => {
@@ -1031,7 +1039,11 @@ export function buildForest(input: TreeInput): Forest {
   const refNodes = referenceTypes.map((r) => {
     const node = elementNode(r, "reference-data");
     const seeds = referenceSeeds.get(r.id);
-    if (seeds) attach(node, seeds.map((s) => elementNode(s, "reference-data")).sort(byLabel));
+    // The editor makes one seed per type, named after it: a type's only seed (whatever its name) is the type's rows, so
+    // the type row has no child and the seed is placed on it (selecting the seed reveals its type). Several seeds show,
+    // each with its row count.
+    if (seeds && soleSeedOf(seeds)) place.set(seeds[0].id, node.key);
+    else if (seeds) attach(node, seeds.map((s) => elementNode(s, "reference-data")).sort(byLabel));
     if (r.fieldCount != null) node.secondary = plural(r.fieldCount, "field", "fields");
     return node;
   });

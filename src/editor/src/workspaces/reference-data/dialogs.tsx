@@ -9,7 +9,7 @@ import { useServices } from "@/app/context";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
-import { IDENTIFIER } from "@/model/model";
+import { IDENTIFIER, identifierHint } from "@/model/model";
 import { applyCsvImport, createReferenceType, currentSeed } from "./actions";
 import { previewSummary, type PreviewSummary } from "./csvPreview";
 import type { CategoryInfo } from "./listModel";
@@ -37,6 +37,8 @@ export function NewReferenceTypeDialog({
   const strategies = project?.referenceData?.strategies ?? {};
   const [storedAs, setStoredAs] = useState<string | null>(null);
   const stored = storedAs ?? preselectedStorage(strategies, project?.conventions?.referenceStorage);
+  const options = storageOptions(strategies);
+  const chosenHelp = options.find((o) => o.value === stored)?.help;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const valid = IDENTIFIER.test(name);
@@ -63,7 +65,7 @@ export function NewReferenceTypeDialog({
             onCreated(result.id);
           }}
         >
-          <Field label="Name" htmlFor="new-reference-type-name" hint="A PascalCase identifier, such as UnitOfMeasure.">
+          <Field label="Name" htmlFor="new-reference-type-name" hint={identifierHint("UnitOfMeasure", "car_models")}>
             <Input
               id="new-reference-type-name"
               autoFocus
@@ -90,17 +92,22 @@ export function NewReferenceTypeDialog({
             htmlFor="new-reference-type-storage"
             hint={
               Object.keys(strategies).length
-                ? "For every database; the Storage tab overrides it per database."
-                : "The project declares no storage strategies (Settings, referenceData.strategies), so the templates decide."
+                ? "For every database; the Storage tab sets it per database."
+                : "The project declares no storage strategies yet (Settings › Conventions declares the standard ones), so the packs decide."
             }
           >
             <Select id="new-reference-type-storage" value={stored} onChange={(e) => setStoredAs(e.target.value)} data-testid="new-reference-type-storage">
-              {storageOptions(strategies).map((o) => (
-                <option key={o.value} value={o.value} title={o.title}>
+              {options.map((o) => (
+                <option key={o.value} value={o.value}>
                   {o.label}
                 </option>
               ))}
             </Select>
+            {chosenHelp ? (
+              <p className="text-11 text-secondary" data-testid="new-reference-type-storage-help">
+                {chosenHelp}
+              </p>
+            ) : null}
           </Field>
           {error ? (
             <p role="alert" className="text-12 text-danger">

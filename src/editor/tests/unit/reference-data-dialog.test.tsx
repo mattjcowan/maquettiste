@@ -1,5 +1,5 @@
 // The New reference type dialog's "Stored as" (reference-types-seeds-localization.md 1.4 and 4.5) over the mock API:
-// with the project's strategies declared, Check constraint is preselected and written as the type's storage choice for
+// with the project's strategies declared, check is preselected, its description shown under the select, and written as the type's storage choice for
 // every database, and the new type's seed lists code, label and description.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -33,12 +33,9 @@ describe("New reference type: Stored as", () => {
     );
     const storedAs = (await screen.findByLabelText("Stored as")) as HTMLSelectElement;
     await waitFor(() => expect(storedAs.value).toBe("check"));
-    expect([...storedAs.options].map((o) => o.text)).toEqual([
-      "Template-defined",
-      "Lookup table",
-      "Check constraint",
-      "Native type (where the dialect has one)",
-    ]);
+    expect([...storedAs.options].map((o) => o.text)).toEqual(["Let the packs decide", "lookup-table", "check", "native"]);
+    // The chosen strategy's description shows under the select.
+    expect(screen.getByTestId("new-reference-type-storage-help")).toHaveTextContent("CHECK (column IN (codes))");
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Country" } });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(created).not.toBeNull());

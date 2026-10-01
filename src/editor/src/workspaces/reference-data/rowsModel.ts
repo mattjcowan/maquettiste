@@ -23,6 +23,38 @@ export interface GridColumn {
   multiline?: boolean;
   /** A relation-end column: the entity whose rows its cells name (a row id, picked from that entity's seeds). */
   end?: string;
+  /** The field's display name, which the grid's header and the row editor show instead of its name. */
+  title?: string;
+  /** What the field means (its description): the header's tooltip and the help text under the row editor's control. */
+  help?: string;
+}
+
+/** A field's description as text: Markdown written inline, or a note naming the sidecar file that holds it. */
+export function descriptionText(description: unknown): string | undefined {
+  if (typeof description === "string") return description.trim() ? description : undefined;
+  if (description && typeof description === "object" && typeof (description as { file?: unknown }).file === "string")
+    return `Described in ${(description as { file: string }).file}.`;
+  return undefined;
+}
+
+/** The display name and description of a field as a column's title and help (absent ones left out). */
+function texts(field: { displayName?: string | null; description?: unknown } | null | undefined): Pick<GridColumn, "title" | "help"> {
+  const title = typeof field?.displayName === "string" && field.displayName.trim() ? field.displayName : undefined;
+  const help = descriptionText(field?.description);
+  return { ...(title ? { title } : {}), ...(help ? { help } : {}) };
+}
+
+/** The text a column's header shows: the field's display name, else its name; collections end in []. */
+export function headerText(column: Pick<GridColumn, "label" | "title" | "collection">): string {
+  return `${column.title ?? column.label}${column.collection ? "[]" : ""}`;
+}
+
+/** A column header's tooltip: the field's name when a display name is shown, its description, and "required". */
+export function headerTooltip(column: Pick<GridColumn, "label" | "title" | "help" | "required">): string {
+  const head = column.title && column.title !== column.label ? `${column.title} (${column.label})` : column.label;
+  const parts = [column.required ? `${head}, required` : head];
+  if (column.help) parts.push(column.help);
+  return parts.join("\n");
 }
 
 export interface GridRow {
@@ -50,14 +82,27 @@ export function gridColumns(type: Pick<ReferenceTypeDoc, "code" | "label" | "att
     type: isBuiltin(a.type) ? a.type : "reference",
     collection: a.collection === true,
     required: a.required === true,
+    ...texts(a),
   }));
   return [
-    { key: "code", label: "code", builtin: true, type: type.code?.type ?? "string", collection: false, required: true },
-    { key: "label", label: "label", builtin: true, type: "string", collection: false, required: true },
-    { key: "description", label: "description", builtin: true, type: "text", collection: false, required: false, multiline: true },
+    { key: "code", label: "code", builtin: true, type: type.code?.type ?? "string", collection: false, required: true, ...texts(type.code) },
+    { key: "label", label: "label", builtin: true, type: "string", collection: false, required: true, ...texts(type.label) },
+    {
+      key: "description",
+      label: "description",
+      builtin: true,
+      type: "text",
+      collection: false,
+      required: false,
+      multiline: true,
+      help: ROW_DESCRIPTION_HELP,
+    },
     ...fields,
   ];
 }
+
+/** The built-in description column's help: it is the same for every type (the column has no field of its own to describe). */
+export const ROW_DESCRIPTION_HELP = "What the row means, in Markdown; optional and translated per locale.";
 
 /**
  * The locales whose label column the Rows grid shows (RT 4.4): the content locale in effect only (none for the default
@@ -336,6 +381,58 @@ export function pasteMatrix(
   return result;
 }
 
+// ------------------------------------------------------------------ row editor
+
+/** The row editor's starting text for each column, as the grid shows the cells (end cells as row ids). */
+export function rowFormValues(row: Pick<GridRow, "values">, columns: readonly GridColumn[]): Record<string, string> {
+  return Object.fromEntries(columns.map((c) => [c.key, formatCell(row.values[c.key])]));
+}
+
+export interface RowEditChanges {
+  /** Seed cells whose text changed, parsed as typed text is in the grid (null clears a cell); one setCells call. */
+  cells: Record<string, unknown>;
+  /** Locale columns whose text changed: written to the locale's shard, not the seed. */
+  translations: { locale: string; field: TranslatedField; value: string }[];
+}
+
+/** What saving the row editor writes: only the columns whose text differs from the starting text. */
+export function rowEditChanges(
+  columns: readonly GridColumn[],
+  before: Readonly<Record<string, string>>,
+  after: Readonly<Record<string, string>>,
+): RowEditChanges {
+  const out: RowEditChanges = { cells: {}, translations: [] };
+  for (const c of columns) {
+    const text = after[c.key] ?? "";
+    if (text === (before[c.key] ?? "")) continue;
+    if (c.locale) out.translations.push({ locale: c.locale, field: c.field ?? "label", value: text });
+    else out.cells[c.key] = parseCell(text, c);
+  }
+  return out;
+}
+
+/**
+ * The row editor's translations grouped by locale, locales in first-change order: one write per locale carrying every
+ * changed field of it. A row's fields of one locale live in the same shard, and the engine refuses a second write to a
+ * shard the first changed (409), so separate writes sent at once would lose all but the first.
+ */
+export function translationsByLocale(translations: RowEditChanges["translations"]): { locale: string; edits: { field: TranslatedField; value: string }[] }[] {
+  const out = new Map<string, { field: TranslatedField; value: string }[]>();
+  for (const t of translations) {
+    const list = out.get(t.locale) ?? [];
+    if (!out.has(t.locale)) out.set(t.locale, list);
+    list.push({ field: t.field, value: t.value });
+  }
+  return [...out].map(([locale, edits]) => ({ locale, edits }));
+}
+
+/** Whether the row editor has anything to save. */
+export const hasRowChanges = (changes: RowEditChanges): boolean => Object.keys(changes.cells).length > 0 || changes.translations.length > 0;
+
+/** Text that reads better in a text area than on one line: descriptions, and any string or text field but the code. */
+export const isLongText = (column: Pick<GridColumn, "key" | "multiline" | "type" | "end" | "collection">): boolean =>
+  !column.end && !column.collection && column.key !== "code" && (column.multiline === true || column.type === "string" || column.type === "text");
+
 // ------------------------------------------------------------------ keyboard
 
 export type GridAction =
@@ -352,7 +449,8 @@ export type GridAction =
   | { type: "copy" }
   | { type: "find" }
   | { type: "tab"; index: number }
-  | { type: "focus-search" };
+  | { type: "focus-search" }
+  | { type: "open-row" };
 
 export interface KeyLike {
   key: string;
@@ -366,7 +464,7 @@ export interface KeyLike {
  * The SPEC section 14 spreadsheet keys, as RT 4.4 lists them. Paste is not here: it arrives as a paste event with
  * the clipboard text. Returns null for keys the grid leaves alone. As in the Fields tab's attribute grid, Tab leaves
  * the grid from the last column (Shift+Tab from the first) when `at` gives the active column and the column count,
- * and Space starts an edit.
+ * and Space starts an edit. Shift+Enter opens the row editor on the active row.
  */
 export function gridAction(e: KeyLike, editing: boolean, at?: { col: number; cols: number }): GridAction | null {
   const mod = e.ctrlKey || e.metaKey;
@@ -384,11 +482,12 @@ export function gridAction(e: KeyLike, editing: boolean, at?: { col: number; col
   if (mod && (e.key === "Delete" || e.key === "Backspace")) return { type: "delete-rows" };
   if (mod && (e.key === "c" || e.key === "C")) return { type: "copy" };
   if (mod && (e.key === "f" || e.key === "F")) return { type: "find" };
-  if (mod && /^[1-4]$/.test(e.key)) return { type: "tab", index: Number(e.key) - 1 };
+  if (mod && /^[1-5]$/.test(e.key)) return { type: "tab", index: Number(e.key) - 1 };
   if (e.key === "Tab") {
     if (at && (e.shiftKey ? at.col <= 0 : at.col >= at.cols - 1)) return null;
     return { type: "move", dr: 0, dc: e.shiftKey ? -1 : 1, extend: false };
   }
+  if (e.key === "Enter" && e.shiftKey && !mod) return { type: "open-row" };
   if (e.key === "Enter" || e.key === "F2" || (e.key === " " && !mod)) return { type: "edit" };
   if (e.key === "Delete" || e.key === "Backspace") return { type: "clear" };
   if (e.key === "/") return { type: "focus-search" };
@@ -412,6 +511,7 @@ const endColumn = (end: RelationEndDoc, nameOf: (id: string) => string | undefin
   collection: false,
   required: (end.min ?? 0) >= 1,
   end: end.entity,
+  ...texts(end as { displayName?: string | null; description?: unknown }),
 });
 
 const attributeColumn = (a: AttributeDoc): GridColumn => ({
@@ -421,6 +521,7 @@ const attributeColumn = (a: AttributeDoc): GridColumn => ({
   type: isBuiltin(a.type) ? a.type : "reference",
   collection: a.collection === true,
   required: a.required === true,
+  ...texts(a),
 });
 
 /**

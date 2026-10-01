@@ -2,20 +2,23 @@
 // (their names fixed; code's type, length and pattern and label's length editable; the description is text of any
 // length; label and description are marked as translated per locale), then the user fields in the entity
 // attribute grid, whose type picker offers built-ins, custom types, enums and reference types (not value objects or
-// entities, so a row stays one flat line, RS2).
+// entities, so a row stays one flat line, RS2). Every field, the built-in code and label included, has a display name
+// (what the Rows grid's header and the row editor show) and a description (what the field means: the header's
+// tooltip and the help under the row editor's control).
 import { useIndex } from "@/api/queries";
 import { useBatchEdit } from "@/explorer/marks";
 import { clone } from "@/lib/json";
-import { dropSeedColumns, removedFieldIds } from "./rowsModel";
+import { descriptionText, dropSeedColumns, removedFieldIds, ROW_DESCRIPTION_HELP } from "./rowsModel";
 import { Languages, Lock } from "lucide-react";
 import type { ModelJson, ReferenceTypeDoc } from "@/api/types";
 import { AttributeGrid } from "@/inspector/AttributeGrid";
 import { useDefinition } from "@/inspector/definition";
 import { useVocabularies } from "@/inspector/fields";
 import { useDraftDocument } from "@/inspector/useDraft";
-import { Input, Select } from "@/components/ui/input";
+import { Input, Select, Textarea } from "@/components/ui/input";
 import { SectionTitle, Spinner } from "@/components/ui/misc";
 import { useEditor } from "@/state/store";
+import { FieldTranslations } from "@/l10n/TranslationsSection";
 import { useServices } from "@/app/context";
 
 const CODE_TYPES = ["string", "int16", "int32", "int64", "uuid"] as const;
@@ -35,10 +38,13 @@ export function FieldsTab({ typeId }: { typeId: string }) {
   const type = json as unknown as ReferenceTypeDoc;
   const typeOptions = FIELD_KINDS.flatMap((k) => vocab.lookup.ofKind(k));
 
-  const setBuiltin = (field: Builtin, key: "type" | "length" | "pattern", raw: string) =>
+  const setBuiltin = (field: Builtin, key: "type" | "length" | "pattern" | "displayName" | "description", raw: string) =>
     edit((j) => {
       const f = ((j as unknown as ReferenceTypeDoc)[field] ?? {}) as Record<string, unknown>;
-      if (key === "length") {
+      if (key === "displayName" || key === "description") {
+        if (raw.trim() === "") delete f[key];
+        else f[key] = raw;
+      } else if (key === "length") {
         if (/^\d+$/.test(raw)) f.length = Number(raw);
         else delete f.length;
       } else if (raw === "" || (key === "type" && raw === "string")) delete f[key];
@@ -48,15 +54,17 @@ export function FieldsTab({ typeId }: { typeId: string }) {
 
   const cell = "h-[var(--mq-row-h)] px-1.5 align-middle";
   return (
-    <div className="flex max-w-4xl flex-col gap-2" data-testid="reference-fields">
+    <div className="flex max-w-6xl flex-col gap-2" data-testid="reference-fields">
       <SectionTitle>Built-in fields</SectionTitle>
       <table className="w-full border-collapse rounded-control border border-default text-12" aria-label="Built-in fields">
         <thead>
           <tr className="bg-app text-left text-11 font-semibold text-secondary">
             <th className="h-7 px-1.5">Name</th>
-            <th className="px-1.5">Type</th>
+            <th className="w-24 px-1.5">Type</th>
             <th className="w-20 px-1.5">Len</th>
             <th className="px-1.5">Pattern</th>
+            <th className="px-1.5">Display name</th>
+            <th className="px-1.5">Description</th>
             <th className="w-24 px-1.5">Translated</th>
           </tr>
         </thead>
@@ -78,12 +86,15 @@ export function FieldsTab({ typeId }: { typeId: string }) {
                     any
                   </td>
                   <td className={`${cell} text-11 text-secondary`}>Optional, one per row; may span lines.</td>
+                  <td className={`${cell} text-11 text-secondary`}>description</td>
+                  <td className={`${cell} text-11 text-secondary`}>{ROW_DESCRIPTION_HELP}</td>
                   <td className={cell}>
                     <Translated />
                   </td>
                 </tr>
               );
-            const f = (type[field] ?? {}) as { type?: string; length?: number; pattern?: string };
+            const f = (type[field] ?? {}) as { type?: string; length?: number; pattern?: string; displayName?: string; description?: unknown };
+            const inFile = f.description !== undefined && typeof f.description !== "string";
             return (
               <tr key={field} className="border-t border-default" data-testid={`builtin-${field}`}>
                 <th scope="row" className={`${cell} text-left font-normal`}>
@@ -131,6 +142,32 @@ export function FieldsTab({ typeId }: { typeId: string }) {
                     />
                   ) : null}
                 </td>
+                <td className={cell}>
+                  <Input
+                    aria-label={`Display name of ${field}`}
+                    className="h-6 text-12"
+                    value={f.displayName ?? ""}
+                    placeholder={field}
+                    onChange={(e) => setBuiltin(field, "displayName", e.target.value)}
+                    onBlur={() => void flush()}
+                  />
+                </td>
+                <td className={cell}>
+                  {inFile ? (
+                    <span className="text-11 italic text-secondary">{descriptionText(f.description)}</span>
+                  ) : (
+                    <Textarea
+                      aria-label={`Description of ${field}`}
+                      className="min-h-0 resize-y py-0.5 text-12 leading-5"
+                      rows={1}
+                      title={typeof f.description === "string" && f.description ? f.description : undefined}
+                      value={typeof f.description === "string" ? f.description : ""}
+                      placeholder={field === "code" ? "What the code is, such as ISO 4217 code" : "What the label shows"}
+                      onChange={(e) => setBuiltin(field, "description", e.target.value)}
+                      onBlur={() => void flush()}
+                    />
+                  )}
+                </td>
                 <td className={cell}>{field === "label" ? <Translated /> : <span className="text-11 text-secondary">no</span>}</td>
               </tr>
             );
@@ -161,6 +198,14 @@ export function FieldsTab({ typeId }: { typeId: string }) {
           edit((j) => update(j as ModelJson));
           if (commit) void flush();
         }}
+      />
+      <FieldTranslations
+        owner={typeId}
+        fields={[
+          ...(type.code?.id ? [{ id: type.code.id, name: "code" }] : []),
+          ...(type.label?.id ? [{ id: type.label.id, name: "label" }] : []),
+          ...(type.attributes ?? []).map((a) => ({ id: a.id, name: a.name })),
+        ]}
       />
     </div>
   );

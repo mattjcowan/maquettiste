@@ -37,8 +37,8 @@ export function StrategiesHint() {
       className="mb-2 flex max-w-4xl items-center gap-2 rounded-control border border-default bg-surface p-2 text-12"
     >
       <span className="flex-1">
-        This project declares no reference-data storage strategy, so a new reference type offers only Template-defined. The sql-ddl pack builds lookup tables,
-        check constraints and native types.
+        This project declares no reference-data storage strategy, so a new reference type offers only Let the packs decide. The sql-ddl pack builds lookup
+        tables, check constraints and native types.
       </span>
       <Button size="sm" variant="secondary" disabled={busy} onClick={() => void declare()}>
         Declare the standard storage strategies

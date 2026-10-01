@@ -3,7 +3,7 @@ import type { ElementSummary } from "@/api/types";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { defaultEndRoles, IDENTIFIER } from "@/model/model";
+import { defaultEndRoles, IDENTIFIER, identifierHint } from "@/model/model";
 import { GROUP_LABELS, KIND_LABELS } from "@/model/labels";
 
 export function NewEntityDialog({
@@ -39,7 +39,7 @@ export function NewEntityDialog({
             }
           }}
         >
-          <Field label="Name" htmlFor="new-entity-name" hint="A PascalCase identifier, such as Shipment.">
+          <Field label="Name" htmlFor="new-entity-name" hint={identifierHint("Shipment", "sales_order")}>
             <Input id="new-entity-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} aria-invalid={(name !== "" && !valid) || undefined} />
           </Field>
           <Field label={KIND_LABELS.package} htmlFor="new-entity-package">

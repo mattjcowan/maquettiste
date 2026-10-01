@@ -143,3 +143,19 @@ export function listRows(items: readonly RefTypeItem[], options: ListOptions): L
 export function countLabel(row: { count: number; total: number }, filtering: boolean): string {
   return filtering && row.count !== row.total ? `${row.count} of ${row.total}` : String(row.total);
 }
+
+/**
+ * The Used by tab's group of an attribute's owner: a reference type has no domain (RS3), so its group is
+ * "Reference type · <category path>", or "Reference types" without a category; any other owner is grouped by its
+ * kind and domain ("Entity · Billing", "Entity · Not in a domain").
+ */
+export function usageGroupLabel(
+  owner: { kind: string; kindLabel: string } | undefined,
+  domainName: string | null,
+  categoryPath: readonly string[],
+  notInDomain: string,
+): string {
+  if (!owner) return `? · ${domainName ?? notInDomain}`;
+  if (owner.kind === "reference-type") return categoryPath.length ? `${owner.kindLabel} · ${categoryPath.join(" › ")}` : "Reference types";
+  return `${owner.kindLabel} · ${domainName ?? notInDomain}`;
+}

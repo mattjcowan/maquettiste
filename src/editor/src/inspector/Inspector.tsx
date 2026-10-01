@@ -299,7 +299,7 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
         </TabsContent>
         {attributesView(kind) ? (
           <TabsContent value="attributes" className="overflow-auto p-2">
-            {attributesView(kind) === "grid" ? <AttributesOnlyFields {...props} /> : <EntityAttributeList id={id} json={json} />}
+            {attributesView(kind) === "grid" ? <AttributesOnlyFields {...props} withTexts={false} /> : <EntityAttributeList id={id} json={json} />}
           </TabsContent>
         ) : null}
         <TabsContent value="json" className="flex min-h-0 flex-col p-0">

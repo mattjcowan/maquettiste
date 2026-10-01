@@ -1,10 +1,14 @@
 // The Used by tab (reference-types-seeds-localization.md 4.3): every attribute typed by the reference type, grouped
-// by owner kind then domain, with collection and required badges; a row goes to its owner.
+// by owner kind then domain (a reference type, which has no domain, by its category path), with collection and
+// required badges; a row goes to its owner.
+import { useMemo } from "react";
 import { useIndex, useElements } from "@/api/queries";
 import type { AttributeDoc, ReferenceTypeUsage } from "@/api/types";
 import { useEditorNavigation } from "@/app/navigation";
 import { Badge, EmptyState, Spinner } from "@/components/ui/misc";
+import { useVocabularies } from "@/inspector/fields";
 import { GROUP_LABELS, KIND_LABELS } from "@/model/labels";
+import { typeItems, usageGroupLabel } from "./listModel";
 
 export function UsedByTab({ usage, loading }: { usage: ReferenceTypeUsage | undefined; loading: boolean }) {
   const index = useIndex();
@@ -12,6 +16,8 @@ export function UsedByTab({ usage, loading }: { usage: ReferenceTypeUsage | unde
   const usages = usage?.usages ?? [];
   const owners = [...new Set(usages.map((u) => u.owner))];
   const docs = useElements(owners);
+  const vocab = useVocabularies("reference-type");
+  const paths = useMemo(() => new Map(typeItems(index.data, vocab.categories).map((i) => [i.id, i.categoryPath])), [index.data, vocab.categories]);
   if (loading) return <Spinner />;
   if (!usages.length)
     return (
@@ -23,7 +29,12 @@ export function UsedByTab({ usage, loading }: { usage: ReferenceTypeUsage | unde
   const groups = new Map<string, typeof usages>();
   for (const u of usages) {
     const owner = summary(u.owner);
-    const key = `${owner ? KIND_LABELS[owner.kind] : "?"} · ${summary(u.domain)?.name ?? GROUP_LABELS.notInDomain}`;
+    const key = usageGroupLabel(
+      owner ? { kind: owner.kind, kindLabel: KIND_LABELS[owner.kind] } : undefined,
+      summary(u.domain)?.name ?? null,
+      paths.get(u.owner) ?? [],
+      GROUP_LABELS.notInDomain,
+    );
     groups.set(key, [...(groups.get(key) ?? []), u]);
   }
   return (

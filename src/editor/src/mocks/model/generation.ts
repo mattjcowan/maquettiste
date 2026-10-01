@@ -24,7 +24,7 @@ import { sha256Hex } from "@/lib/sha256";
 import { clone } from "@/lib/json";
 import type { MockModel } from "./store";
 import { resolveDatabase } from "./physical";
-import { renderCSharp, renderSchema, renderTable, type RenderUnit } from "./render";
+import { renderCSharp, renderSchema, renderSeed, renderTable, type RenderUnit, type SeedRows } from "./render";
 import { unifiedDiff } from "./diff";
 
 type Json = Record<string, unknown>;
@@ -169,6 +169,39 @@ export class MockGeneration {
       .filter((v): v is DatabaseView => !!v);
   }
 
+  /**
+   * Each reference type with rows, by name: its strategy in the database (type[db id] → type["*"] → the database's
+   * settings → the project's, as the Storage tab resolves it), and its codes and labels across its seeds, in seed name
+   * then row order.
+   */
+  private referenceRows(view: DatabaseView): SeedRows[] {
+    const docs = [...this.model.docs().values()];
+    type Choice = { strategy?: string | null } | undefined;
+    const settings = this.model.settingsJson as { conventions?: { referenceStorage?: Choice }; databases?: Record<string, { referenceStorage?: Choice }> };
+    const fallback = settings.databases?.[view.name]?.referenceStorage ?? settings.conventions?.referenceStorage;
+    const strategyOf = (t: Json): string | null => {
+      const storage = t.storage as Record<string, Choice> | undefined;
+      return ((storage?.[view.id] ?? storage?.["*"] ?? fallback)?.strategy ?? null) as string | null;
+    };
+    return docs
+      .filter((d) => d.kind === "reference-type")
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+      .map((t) => {
+        const seeds = docs.filter((d) => d.kind === "seed" && d.target === t.id).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        const rows = seeds.flatMap((s) => {
+          const columns = (s.columns as string[] | undefined) ?? [];
+          const code = columns.indexOf("code");
+          const label = columns.indexOf("label");
+          return ((s.rows as { values?: unknown[] }[] | undefined) ?? [])
+            .map((r) => ({ code: r.values?.[code], label: r.values?.[label] }))
+            .filter((r) => r.code !== undefined && r.code !== null)
+            .map((r) => ({ code: String(r.code), label: String(r.label ?? "") }));
+        });
+        return { name: String(t.name), pluralName: typeof t.pluralName === "string" ? t.pluralName : undefined, strategy: strategyOf(t), rows };
+      })
+      .filter((t) => t.rows.length > 0);
+  }
+
   /** Every unit of the selected packs, rendered. */
   renderUnits(packs: string[]): RenderUnit[] {
     const units: RenderUnit[] = [];
@@ -187,6 +220,15 @@ export class MockGeneration {
           });
         }
         units.push({ pack: "sql-ddl", unit: "schema", elementId: view.id, unitKey: `sql-ddl/schema:${view.id}`, files: [renderSchema(view, root)] });
+        // The seed script of every database (the unit is "select databases"), with the rows of the types stored as
+        // lookup tables there.
+        units.push({
+          pack: "sql-ddl",
+          unit: "seed",
+          elementId: view.id,
+          unitKey: `sql-ddl/seed:${view.id}`,
+          files: [renderSeed(view, this.referenceRows(view), root)],
+        });
       }
     }
     if (packs.includes("csharp-dapper")) {

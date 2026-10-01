@@ -2,7 +2,7 @@
 // text fields save 600 ms after the last keystroke or on blur.
 import { HeaderTextFields } from "@/l10n/HeaderTextFields";
 import { useDefinition } from "./definition";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import type {
   DatabaseDoc,
@@ -42,6 +42,9 @@ export interface FormProps {
 }
 
 type Rec = Record<string, unknown>;
+
+/** "an entity", "a reference type". */
+const withArticle = (noun: string) => `${/^[aeiou]/.test(noun) ? "an" : "a"} ${noun}`;
 
 /** Sets or removes an optional member (canonical files omit absent members). */
 export function setOptional(json: Rec, key: string, value: unknown): void {
@@ -92,12 +95,15 @@ export function ChipsEditor({
   options,
   allowFree,
   onChange,
+  empty,
 }: {
   label: string;
   values: string[];
   options: { value: string; label: string }[];
   allowFree: boolean;
   onChange: (values: string[]) => void;
+  /** Said when there is nothing to add and nothing chosen (where the choices come from). */
+  empty?: string;
 }) {
   const [adding, setAdding] = useState("");
   const remaining = options.filter((o) => !values.includes(o.value));
@@ -132,6 +138,8 @@ export function ChipsEditor({
               }
             }}
           />
+        ) : !remaining.length && !values.length && empty ? (
+          <span className="text-12 text-secondary">{empty}</span>
         ) : remaining.length ? (
           <Select
             aria-label={`Add to ${label}`}
@@ -193,10 +201,76 @@ export function useVocabularies(kind: string, domain: string | null = null) {
 }
 
 /**
- * The fields every element has. `inEditorHeader`: the element editor's header already shows Display name, Plural name
- * and Description (EditorFrame's HeaderFields), so a form inside an editor tab leaves them out.
+ * A name edited apart from the draft and committed on blur or Enter through `rename`, for elements whose rename is a
+ * batch (a reference type renames its seed with it). `problem` checks the text first; Escape restores the name.
  */
-export function CommonFields({ id, json, doc, edit, flush, diagnostics, inEditorHeader = false }: FormProps & { inEditorHeader?: boolean }) {
+function RenameField({
+  id,
+  name,
+  rename,
+  problem,
+}: {
+  id: string;
+  name: string;
+  rename(name: string): Promise<boolean> | boolean;
+  problem?(name: string): string | null;
+}) {
+  const [text, setText] = useState(name);
+  const [shown, setShown] = useState(name);
+  // The text a rename saved, until the new name comes back.
+  const [saved, setSaved] = useState<string | null>(null);
+  if (shown !== name) {
+    setShown(name);
+    setText(name);
+    setSaved(null);
+  }
+  const issue = text !== name ? (problem?.(text) ?? null) : null;
+  // Enter then Tab (or a blur) commits twice: a rename in flight, or one that saved this text before the new name came
+  // back, holds the second, which would send a stale hash.
+  const running = useRef(false);
+  const commit = async () => {
+    if (running.current || text === name || text === saved || issue) return;
+    running.current = true;
+    try {
+      if (await rename(text)) setSaved(text);
+      else setText(name);
+    } finally {
+      running.current = false;
+    }
+  };
+  return (
+    <Field label="Name" htmlFor={`${id}-name`} hint={issue ?? undefined}>
+      <Input
+        id={`${id}-name`}
+        value={text}
+        aria-invalid={issue ? true : undefined}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => void commit()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") void commit();
+          if (e.key === "Escape") setText(name);
+        }}
+      />
+    </Field>
+  );
+}
+
+/**
+ * The fields every element has. `inEditorHeader`: the element editor's header already shows Display name, Plural name
+ * and Description (EditorFrame's HeaderFields), so a form inside an editor tab leaves them out. `rename`: the name
+ * commits through it (on blur or Enter) instead of the draft, with `nameProblem` checking it first.
+ */
+export function CommonFields({
+  id,
+  json,
+  doc,
+  edit,
+  flush,
+  diagnostics,
+  inEditorHeader = false,
+  rename,
+  nameProblem,
+}: FormProps & { inEditorHeader?: boolean; rename?(name: string): Promise<boolean> | boolean; nameProblem?(name: string): string | null }) {
   const rec = json as Rec;
   const kind = String(rec.kind);
   const vocab = useVocabularies(kind, markDomainOf(rec));
@@ -211,14 +285,18 @@ export function CommonFields({ id, json, doc, edit, flush, diagnostics, inEditor
           <Input id={`${id}-key`} value={String(rec.key ?? "")} readOnly className="font-mono" />
         </Field>
       ) : null}
-      <TextField
-        id={`${id}-name`}
-        label="Name"
-        value={String(rec.name ?? "")}
-        invalid={invalid("/name")}
-        onChange={(v) => edit((j) => void ((j as Rec).name = v))}
-        onBlur={flush}
-      />
+      {rename ? (
+        <RenameField id={id} name={String(rec.name ?? "")} rename={rename} problem={nameProblem} />
+      ) : (
+        <TextField
+          id={`${id}-name`}
+          label="Name"
+          value={String(rec.name ?? "")}
+          invalid={invalid("/name")}
+          onChange={(v) => edit((j) => void ((j as Rec).name = v))}
+          onBlur={flush}
+        />
+      )}
       {hasPackage || kind === "package" ? (
         <Field label={kind === "package" ? `Parent ${KIND_LABELS.package.toLowerCase()}` : KIND_LABELS.package} htmlFor={`${id}-package`}>
           <Select
@@ -295,6 +373,7 @@ export function CommonFields({ id, json, doc, edit, flush, diagnostics, inEditor
             values={(rec.stereotypes as string[] | undefined) ?? []}
             options={vocab.stereotypes.map((s) => ({ value: s.key, label: `«${s.key}»` }))}
             allowFree={false}
+            empty={`No stereotype applies to ${withArticle(((KIND_LABELS as Record<string, string>)[kind] ?? kind).toLowerCase())} yet; Settings › Stereotypes declares them.`}
             onChange={(values) => {
               edit((j) => setOptional(j as Rec, "stereotypes", values.length ? values : undefined));
               flush();
@@ -379,7 +458,11 @@ export function EntityFields({ id, json, edit, flush }: FormProps) {
   );
 }
 
-export function AttributesOnlyFields({ json, edit, flush, diagnostics }: FormProps) {
+/**
+ * The attribute grid of a value object, stereotype or relation. `withTexts`: the Display name and Description columns,
+ * which the inspector leaves out (about 260 px wider than its panel); the editors and the Fields tab keep them.
+ */
+export function AttributesOnlyFields({ json, edit, flush, diagnostics, withTexts = true }: FormProps & { withTexts?: boolean }) {
   const record = json as { attributes?: EntityDoc["attributes"]; name: string };
   const vocab = useVocabularies(String((json as Rec).kind));
   const typeOptions = TYPE_KINDS.flatMap((k) => vocab.lookup.ofKind(k));
@@ -394,6 +477,7 @@ export function AttributesOnlyFields({ json, edit, flush, diagnostics }: FormPro
         definition={definition}
         diagnostics={diagnostics}
         withKey={false}
+        withTexts={withTexts}
         onChange={(update, commit) => {
           edit((j) => update(j));
           if (commit) flush();
@@ -553,7 +637,7 @@ export function RelationFields(props: FormProps & { withAttributes?: boolean }) 
           }
         />
       ))}
-      {withAttributes ? <AttributesOnlyFields {...props} /> : null}
+      {withAttributes ? <AttributesOnlyFields {...props} withTexts={false} /> : null}
     </div>
   );
 }

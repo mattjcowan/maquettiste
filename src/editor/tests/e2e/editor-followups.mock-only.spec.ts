@@ -61,7 +61,7 @@ test("the reference type menu duplicates, renames and deletes a type", async ({ 
   await list.getByTestId("explorer-row-CurrencyCopy").click({ button: "right" });
   await page.getByRole("menuitem", { name: "Rename" }).click();
   const rename = page.getByRole("dialog", { name: "Rename CurrencyCopy" });
-  await rename.getByLabel("Name").fill("Money");
+  await rename.getByLabel("Name", { exact: true }).fill("Money");
   await rename.getByRole("button", { name: "Rename" }).click();
   await expect(list.getByTestId("explorer-row-Money")).toBeVisible();
 

@@ -134,7 +134,7 @@ Both are localized the same way (§3). Two refactorings convert between them in 
 ### 1.9 Where reference types live
 
 - **Files**: `model/reference-types/` for the types, `model/seeds/<type kebab>/` for their rows (§2.1), `model/locales/<locale>/_reference-data.json` for their translations (§3.3).
-- **Explorer**: reference types appear **only** in the Reference data screen. The tree gets one top-level leaf row, **Reference data** (`812 types · 16,240 rows`) between Domain model and Databases (RS11); Enter opens the screen; it has no children. The rail gains a **Reference data** screen. Canvases never show reference types as nodes; an attribute typed by one shows `→ Unit of measure` with the reference-data icon.
+- **Explorer**: reference types appear **only** in the Reference data screen. The tree gets one top-level leaf row, **Reference data** (`812 types · 16,240 rows`) between Domain model and Databases (RS11); Enter opens the screen; it has no children. *(As built 2026-10-01, §4.7: the Reference data explorer lists the types; a type's only seed, named after it, is not listed under it, several seeds are.)* The rail gains a **Reference data** screen. Canvases never show reference types as nodes; an attribute typed by one shows `→ Unit of measure` with the reference-data icon.
 - **Search** covers every kind (the owner's "search across all types"): reference types are index rows like any element, ranked with the rest (explorer-redesign §3.1), shown with the breadcrumb `Reference data › Measurement › Unit of measure` (category path) and opened in the screen. Row codes and labels are searched inside the screen, not globally, to keep 16,000 rows out of the search worker.
 - Seeds of entities and relations stay in their target's domain, in the **Seed data** kind group already named in explorer-redesign §1.2, and on a Seed data tab of the entity editor. Seeds of reference types appear only in the screen.
 
@@ -377,6 +377,65 @@ The attribute grid's Type cell opens a quick pick (a searchable drop-down list) 
 | Language IDEs | Find usages, go to definition, resource bundle editor | Used by, F12 and Shift+F12; the All locales columns |
 | Code editors | Quick pick with sections, breadcrumbs | The field type picker; `Reference data › Measurement › Unit of measure` |
 | String catalogs, translation platforms, XLIFF | Per-language percentages; review state for changed sources; a queue of untranslated strings | Switcher percentages; `src` staleness; the translation queue |
+
+### 4.7 After the owner's first day of modelling (as built 2026-10-01)
+
+*As built 2026-10-01.* The owner modelled a client's reference data for a day and reported nine problems; the screen
+changed as follows (user guide, Reference data).
+
+- **Row editor.** Long text did not read in single-line cells. `SeedGrid` (every seed grid: the Rows tab and the entity
+  and relation Seed data tabs) has a side panel, `RowEditor.tsx`, resizable from the inspector's width within the
+  inspector's limits, opened by Shift+Enter (`gridAction` → `open-row`), a double click on the row's handle (its number,
+  now a `rowheader` holding an icon button "Open row N in the row editor") and that button. One labelled control per
+  grid column (text areas for string and text fields, the end picker for relation ends), the field's description under
+  its label; Save (Ctrl+S) writes the changed cells with one `setCells` in one draft save (one undo step), translations
+  to their shard; Cancel (Esc) closes; Alt+Up/Down save and step. The inspector stays off on this screen
+  (`inspector/context.ts`): the panel is the screen's own. Cells carry their whole text as the tooltip; the description
+  column is 320 px and text fields 200 px.
+- **Field display names and descriptions.** Every field, `code` and `label` included, edits `displayName` and
+  `description` on the Fields tab (two columns of the built-in table; the attribute grid's last two columns, which the
+  entity, value object, stereotype and process grids now have too; a sidecar description is named, not edited). The
+  Rows grid's header shows the display name, the tooltip the name and the description; the row `description` column has
+  no field object, so its help text is fixed.
+- **Names.** The explorer no longer lists a type's only seed when it is named after the type (`soleSeedOf`; the seed is
+  placed on the type's node, so revealing it reveals the type); several seeds are listed with their row counts, which
+  supersedes "it has no children" in 1.9 for that case. A **General** tab (first; Ctrl+1 to Ctrl+5 now) renders
+  `CommonFields` (name, display name, plural name, description, category, stereotypes, tags; no domain, RS3); its Name
+  commits through the same batch as **Rename**, whose dialog now has Name and Display name and renames the type's only
+  seed (or, of several, those named after the type) in one batch.
+- **Used by** groups a reference-type owner as "Reference type · (category path)", or "Reference types" without a
+  category, never "Not in a domain".
+- **Storage.** Columns "Database", "Strategy in use" (with "from this type / from the database / from the project", or
+  "The packs decide") and "Set for this type" ("Use the default (what it is)", "Let the packs decide", then each
+  declared strategy by its key, its description shown under the select). A paragraph above the table says what a
+  strategy is. Preview output lists the enabled packs' units scoped `each database` or `select databases` (from
+  `GET /api/packs`, preferring a unit whose id mentions seed), names the unit, and on a failure asks
+  `POST /api/generate/explain` and shows its `detail` (the reason the unit does not render for the database), the raw
+  preview message folded under it. The owner's MQ6026 ("not '(id)' (database)") means the unit's selector did not
+  return that database in his project; it did not reproduce on the billing project, so the deliverable is the
+  explanation.
+- **Menus.** Reference types join the explorer's marks (Apply stereotype…, Tag…; their category is Move to category…,
+  which now says to add categories under Settings › Categories when none exist). No seed is movable any more: a seed
+  file has no `package`, so Move to domain… wrote an invalid file; a reference type's seed also loses Rename (it is
+  renamed with its type).
+- **Names are identifiers, not PascalCase.** The schema's identifier is `^[A-Za-z_][A-Za-z0-9_]*$` and nothing enforces
+  case, so every name hint (New reference type, Rename, the General tab, New entity, the explorer's New dialogs) now
+  reads "Letters, digits and underscores, not starting with a digit, such as UnitOfMeasure or car_models"
+  (`identifierHint` in `model/model.ts`). "Stored as" in New reference type uses the Storage tab's words: "Let the
+  packs decide", then each declared strategy by its key, the chosen one's description shown under the select (no
+  longer an option title); the type picker shows `packs decide` where it showed `template`.
+- **Marks.** The General tab's Category, Stereotypes and Tags are `CommonFields`' controls, the inspector's for an
+  entity, each change one draft save (one undo step); Stereotypes says when none applies to the kind.
+- **Translations.** The General tab has the inspector's collapsed Translations section (display name, plural name,
+  description per locale); the Fields tab has "Translations of the fields" (`FieldTranslations`): per locale, a line
+  per field (`code` and `label` as `reference-field` nodes, user fields as `attribute` nodes, owned by the type, as
+  §3.1 and the engine's `LocalizationIndex.SubNode` have them) with its display name and description. The Rows grid's
+  one-locale hint has a button that opens Settings › Locales, and Move to category… one that opens Settings ›
+  Categories. Row labels stay optional: MQ7204 is an info count per shard and MQ7205 is off by default (§3.6).
+
+No engine or API change was needed. The mock renders a simplified sql-ddl `seed` unit per database once the model has
+reference rows, so the preview has something to show, and its localization lists a reference type's fields as
+sub-element nodes (it still lists no other element's sub-elements).
 
 ## 5. Migration and sizing
 

@@ -2,7 +2,7 @@
 // or several, offer; the copy Duplicate makes; whether Convert to enum applies and the enum it makes. TypeMenu.tsx
 // renders the menu and runs the actions; the explorer's Reference data rows offer the same items.
 import type { EnumDoc, ReferenceTypeDoc, SeedDoc } from "@/api/types";
-import { IDENTIFIER } from "@/model/model";
+import { IDENTIFIER, identifierHint } from "@/model/model";
 
 export type TypeActionId = "duplicate" | "rename" | "move-category" | "set-storage" | "export-csv" | "convert-to-enum" | "delete";
 
@@ -31,6 +31,35 @@ export function typeMenuFor(targets: readonly { seeds: readonly string[] }[]): T
   if (!targets.length) return [];
   const items = targets.length === 1 ? [...TYPE_MENU] : TYPE_MENU.filter((i) => i.multi);
   return items.filter((i) => i.id !== "export-csv" || targets[0].seeds.length > 0);
+}
+
+/** The problem with a new type name: not an identifier, or taken by another type (ignoring case: names map to files). */
+export function typeNameProblem(name: string, current: string, taken: readonly string[]): string | null {
+  if (!IDENTIFIER.test(name)) return `Not a name: ${identifierHint().toLowerCase()}`;
+  if (name !== current && taken.some((t) => t.toLowerCase() === name.toLowerCase() && t !== current)) return `${name} is taken.`;
+  return null;
+}
+
+/**
+ * The seeds a rename takes along (§1.2: the editor names a type's seed after it): the type's only seed, whatever its
+ * name, or, of several, those named after the type.
+ */
+export function seedsFollowingRename<T extends { name: string }>(seeds: readonly T[], oldName: string): T[] {
+  if (seeds.length === 1) return [...seeds];
+  return seeds.filter((s) => s.name === oldName);
+}
+
+/**
+ * The document a rename writes: the new name, and the display name set (or removed when empty). Returns null when
+ * nothing changes.
+ */
+export function renamedType<T extends { name: string; displayName?: string | null }>(type: T, name: string, displayName: string): T | null {
+  const display = displayName.trim();
+  if (type.name === name && (type.displayName ?? "") === display) return null;
+  const next = { ...type, name };
+  if (display) next.displayName = display;
+  else delete next.displayName;
+  return next;
 }
 
 /** The lowest free "<name>Copy", "<name>Copy2", … among the taken names (ignoring case: names map to files). */

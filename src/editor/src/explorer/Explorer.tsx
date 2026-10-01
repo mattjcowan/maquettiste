@@ -83,7 +83,7 @@ import {
 import { schemasOf } from "@/model/databaseSchemas";
 import { TreeRow } from "./TreeRow";
 import { RowMenu, type RowMenuState } from "./RowMenu";
-import { menuFor, isMovable, type MenuActionId, type MenuTarget } from "./menus";
+import { menuFor, isMovable, isRenamable, type MenuActionId, type MenuTarget } from "./menus";
 import { useTreeKeyboard, type KeyRow, type TreeAction } from "./useTreeKeyboard";
 import { useExplorerActions } from "./actions";
 import { AddRelatedDialog, DeleteDialog, MapToDatabaseDialog, MoveDialog } from "./dialogs";
@@ -884,6 +884,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         domainGroup,
         explorer: creates || domainGroup ? node.explorer : undefined,
         processDiagram: node.kind === "diagram" && !!element && isProcessDiagram(forest.byId.get(element)),
+        home: node.explorer,
       };
     },
     [forest, idOf, favoriteSet],
@@ -1192,7 +1193,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       const kind = kindOf(key);
       const same = own.every((s) => forest?.byId.get(s)?.kind === kind);
       select(same ? (selected.has(id) ? own.filter((x) => x !== id) : [...own, id]) : [id]);
-    } else if (a.type === "rename" && key && isMovable(kindOf(key)) && idOf(key)) setRenaming(key);
+    } else if (a.type === "rename" && key && isRenamable(kindOf(key), forest?.nodes.get(key)?.explorer) && idOf(key)) setRenaming(key);
     else if (a.type === "delete") {
       const ids = own.filter(
         (s) => forest?.byId.has(s) && (forest.nodes.get(forest.place.get(s) ?? "")?.explorer === id || (!!key && forest.nodes.get(key)?.id === s)),

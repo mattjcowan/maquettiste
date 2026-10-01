@@ -1,6 +1,6 @@
 // The Reference data screen (reference-types-seeds-localization.md section 4): the type list on the left (nested by
 // category with counts, or flat A to Z, with the explorer's search operators) and, for the selected type, a header
-// (name, rows, used by) above the tabs Fields, Rows, Used by and Storage. The selection is the editor's selection,
+// (name, rows, used by) above the tabs General, Fields, Rows, Used by and Storage. The selection is the editor's selection,
 // so the explorer's Reference data rows reveal a type here and a type picked here is selected everywhere. The tab
 // stays when another type is selected, so a user can review Rows or Storage across types with the arrow keys.
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
@@ -19,15 +19,16 @@ import { useEditor } from "@/state/store";
 import { typeItems } from "./listModel";
 import { TypeList } from "./TypeList";
 import { FieldsTab } from "./FieldsTab";
+import { GeneralTab } from "./GeneralTab";
 import { RowsTab } from "./RowsGrid";
 import { UsedByTab } from "./UsedByTab";
 import { StorageTab } from "./StorageTab";
 import { NewReferenceTypeDialog } from "./dialogs";
 import { TypeMenu, type TypeMenuAt } from "./TypeMenu";
 
-export const TABS = ["fields", "rows", "used-by", "storage"] as const;
+export const TABS = ["general", "fields", "rows", "used-by", "storage"] as const;
 export type RefTab = (typeof TABS)[number];
-const TAB_LABELS: Record<RefTab, string> = { fields: "Fields", rows: "Rows", "used-by": "Used by", storage: "Storage" };
+export const TAB_LABELS: Record<RefTab, string> = { general: "General", fields: "Fields", rows: "Rows", "used-by": "Used by", storage: "Storage" };
 
 /** The reference type a selection shows: the type itself, or the target of one of its seeds. */
 export function selectedType(index: readonly ElementSummary[] | undefined, selection: readonly string[]): string | null {
@@ -69,14 +70,14 @@ export function ReferenceDataWorkspace() {
     refetchOnMount: "always",
   });
   const usedBy = usage.data?.usages.length ?? 0;
-  // Ctrl+1 to Ctrl+4 pick a tab and `/` focuses the type search from anywhere in the screen, outside text fields
+  // Ctrl+1 to Ctrl+5 pick a tab and `/` focuses the type search from anywhere in the screen, outside text fields
   // (the Rows grid handles the same keys itself and marks them handled).
   const onScreenKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.defaultPrevented || e.altKey) return;
     const target = e.target as HTMLElement;
     if (target.closest("input, textarea, select, [contenteditable='true']")) return;
     const mod = e.ctrlKey || e.metaKey;
-    if (mod && item && /^[1-4]$/.test(e.key)) {
+    if (mod && item && /^[1-5]$/.test(e.key)) {
       e.preventDefault();
       setTab(TABS[Number(e.key) - 1]!);
     } else if (!mod && !e.shiftKey && e.key === "/") {
@@ -121,6 +122,9 @@ export function ReferenceDataWorkspace() {
                 ))}
               </TabsList>
             </header>
+            <TabsContent value="general" className="min-h-0 flex-1 overflow-auto p-2">
+              <GeneralTab key={item.id} item={item} taken={items.map((i) => i.name)} />
+            </TabsContent>
             <TabsContent value="fields" className="min-h-0 flex-1 overflow-auto p-2">
               <FieldsTab typeId={item.id} />
             </TabsContent>

@@ -93,7 +93,8 @@ interface Node {
   owner: string;
   field: Field;
   source: string | null;
-  /** The node kind `require` names: the element's kind, or `reference-row` for a seed row. */
+  /** The node kind `require` names: the element's kind, `reference-row` for a seed row, `reference-field` or `attribute` for a
+   *  reference type's field. */
   kind: string;
   /** The shard file name without `.json`: the domain's kebab path, `_root` or `_reference-data`. */
   stem: string;
@@ -205,8 +206,8 @@ export class MockLocalization {
     return parts.length ? parts.join("/") : "_root";
   }
 
-  /** The localizable nodes: every element's display name, its plural name and description when it has them, and every
-   * seed row's label and description (a row's description may be translated with no default text, as in the engine);
+  /** The localizable nodes: every element's display name, its plural name and description when it has them, a reference
+   * type's fields' display names and descriptions, and every seed row's label and description (a row's description may be translated with no default text, as in the engine);
    * each placed in its shard by the RT 3.1 rule. */
   private nodes(): Node[] {
     const out: Node[] = [];
@@ -226,6 +227,20 @@ export class MockLocalization {
       // A plural name is expected of every element (RT 3.1); its source is the default plural when there is one.
       if (row.kind !== "seed") node("pluralName", typeof json.pluralName === "string" ? json.pluralName : null);
       if (typeof json.description === "string") node("description", json.description);
+      // A reference type's fields are sub-elements with their own display name and description (RT 3.1): the built-in
+      // code and label (`reference-field`, "Code" and "Label" by default) and the user fields (`attribute`), owned by the
+      // type. The engine lists every element's sub-elements this way; the mock lists only these.
+      if (row.kind === "reference-type") {
+        const field = (sub: Json | undefined, kind: string, fallback: string) => {
+          if (!sub || typeof sub.id !== "string") return;
+          const display = typeof sub.displayName === "string" ? sub.displayName : fallback;
+          out.push({ id: sub.id, owner: row.id, field: "displayName", source: display, kind, stem });
+          if (typeof sub.description === "string") out.push({ id: sub.id, owner: row.id, field: "description", source: sub.description, kind, stem });
+        };
+        field(json.code as Json | undefined, "reference-field", "Code");
+        field(json.label as Json | undefined, "reference-field", "Label");
+        for (const a of (json.attributes as Json[] | undefined) ?? []) field(a, "attribute", String(a.name ?? ""));
+      }
       if (row.kind === "seed" && Array.isArray(json.columns)) {
         const at = (json.columns as string[]).indexOf("label");
         const described = (json.columns as string[]).indexOf("description");

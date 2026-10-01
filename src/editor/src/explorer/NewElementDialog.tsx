@@ -14,7 +14,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import { GROUP_LABELS } from "@/model/labels";
-import { BUILTIN_TYPES } from "@/model/model";
+import { BUILTIN_TYPES, identifierHint } from "@/model/model";
 import { newId } from "@/lib/ids";
 import { clone } from "@/lib/json";
 import { useEditor } from "@/state/store";
@@ -30,12 +30,12 @@ const DIALECTS = ["postgresql", "sqlserver", "mysql", "sqlite", "oracle"] as con
 const HINTS: Partial<Record<CreateKind, string>> = {
   package: "A domain groups elements; it also sets the output folder and namespace. Such as Billing.",
   "sub-package": "A domain inside another one. Such as Invoicing.",
-  entity: "A PascalCase identifier, such as Shipment. The entity starts with a uuid key.",
-  relation: "Such as CustomerOrders.",
-  enum: "Such as OrderStatus.",
-  "value-object": "Such as Address.",
-  "scalar-type": "Such as Email.",
-  "reference-type": "Such as Country. Its rows are managed on the Reference data screen.",
+  entity: `${identifierHint("Shipment", "sales_order")} The entity starts with a uuid key.`,
+  relation: identifierHint("CustomerOrders", "customer_orders"),
+  enum: identifierHint("OrderStatus", "order_status"),
+  "value-object": identifierHint("Address"),
+  "scalar-type": identifierHint("Email"),
+  "reference-type": `${identifierHint("Country", "car_models")} Its rows are managed on the Reference data screen.`,
   diagram: "Such as Billing overview.",
   database: "Such as main.",
 };

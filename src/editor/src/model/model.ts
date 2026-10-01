@@ -180,6 +180,11 @@ export function displayName(summary: Pick<ElementSummary, "name" | "kind" | "id"
 /** Valid identifier (schemas/v1/common.json identifier). */
 export const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+/** What IDENTIFIER allows, in words (no case is enforced), with examples: the hint under every name that must be one. */
+export function identifierHint(...examples: string[]): string {
+  return `Letters, digits and underscores, not starting with a digit${examples.length ? `, such as ${examples.join(" or ")}` : ""}.`;
+}
+
 /** camelCase for a generated attribute or role name. */
 export function camel(name: string): string {
   const cleaned = name.replace(/[^A-Za-z0-9]+(.)?/g, (_, c: string | undefined) => (c ? c.toUpperCase() : ""));

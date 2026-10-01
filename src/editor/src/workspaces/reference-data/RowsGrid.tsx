@@ -5,15 +5,22 @@
 // and undoes; tab-separated paste writes cells and adds rows past the end; CSV import previews, then applies as one
 // save; CSV export downloads the seed. Import CSV and Export CSV sit in the grid's header. A relation-end column's
 // cell is a row of the far entity's seeds, edited with a picker; a description cell is a text area (Shift+Enter adds a
-// line); locale label and description columns belong to reference types.
+// line); locale label and description columns belong to reference types. Each row's handle (its number on the left)
+// opens the row editor (RowEditor.tsx), a side panel with one labelled control per column, as do its button,
+// Shift+Enter and a double click on the handle; it saves the row in one save (one undo step).
 import { rowHeight } from "@/design/density";
 import { useCallback, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
+import { PanelRightOpen } from "lucide-react";
+import { Splitter } from "@/components/ui/splitter";
+import { LIMITS } from "@/state/layout";
+import { RowEditor } from "./RowEditor";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Download, Plus, Upload } from "lucide-react";
 import { useElements, useValidation } from "@/api/queries";
 import type { Diagnostic, ModelJson, ReferenceTypeDoc, SeedDoc } from "@/api/types";
 import type { AppServices } from "@/app/context";
 import { useServices } from "@/app/context";
+import { useEditorNavigation } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/misc";
@@ -37,7 +44,10 @@ import {
   shownLocales,
   gridColumns,
   gridRows,
+  headerText,
+  headerTooltip,
   insertRow,
+  isLongText,
   localeColumns,
   moveRows,
   parseCell,
@@ -53,13 +63,17 @@ import {
   type GridAction,
   type GridColumn,
   type GridRow,
+  type RowEditChanges,
   csvSeedFor,
+  translationsByLocale,
 } from "./rowsModel";
 
 const NO_LOCALES: string[] = [];
 const NO_OPTIONS: ReadonlyMap<string, EndOption[]> = new Map();
 
-const WIDTH: Record<string, number> = { code: 128, label: 200, description: 240 };
+const WIDTH: Record<string, number> = { code: 128, label: 200, description: 320 };
+/** A column's width: the built-ins' own, a little wider for text, else 140 px. */
+const widthOf = (c: GridColumn) => WIDTH[c.key] ?? (c.locale ? (c.field === "description" ? 320 : 200) : isLongText(c) ? 200 : 140);
 const POINTER = /^\/rows\/(\d+)(?:\/values\/(\d+))?$/;
 
 interface Cell {
@@ -70,6 +84,7 @@ interface Cell {
 /** A reference type's Rows tab: code, label and description, the user fields, and label and description columns per shown locale. */
 export function RowsTab({ typeId, seeds, onTab, onFocusSearch }: { typeId: string; seeds: string[]; onTab(index: number): void; onFocusSearch(): void }) {
   const services = useServices();
+  const { openSettings } = useEditorNavigation();
   const type = useDraftDocument(typeId).json as unknown as ReferenceTypeDoc | undefined;
   const columns = useMemo(() => (type ? gridColumns(type) : null), [type]);
   if (!type || !columns) return <Spinner />;
@@ -82,6 +97,7 @@ export function RowsTab({ typeId, seeds, onTab, onFocusSearch }: { typeId: strin
       createSeed={() => createSeed(services, type)}
       onTab={onTab}
       onFocusSearch={onFocusSearch}
+      onOpenLocales={() => openSettings("locales")}
     />
   );
 }
@@ -102,6 +118,8 @@ export interface SeedGridProps {
   createSeed(): Promise<string | null>;
   onTab?(index: number): void;
   onFocusSearch?(): void;
+  /** Opens Settings › Locales, offered beside the one-locale hint. */
+  onOpenLocales?(): void;
 }
 
 export function SeedGrid({
@@ -114,6 +132,7 @@ export function SeedGrid({
   createSeed: makeSeed,
   onTab,
   onFocusSearch,
+  onOpenLocales,
 }: SeedGridProps) {
   const services: AppServices = useServices();
   const { store, drafts } = services;
@@ -197,6 +216,11 @@ export function SeedGrid({
   };
   const [find, setFind] = useState("");
   const [importing, setImporting] = useState(false);
+  // The row editor: the row it shows (by id, so it stays on its row while rows move), and its width, which starts at
+  // the inspector's and resizes like it.
+  const [editorRow, setEditorRow] = useState<string | null>(null);
+  const [editorWidth, setEditorWidth] = useState(() => Math.max(LIMITS.inspector.min, Math.min(LIMITS.inspector.max, store.getState().inspectorSize)));
+  const saveEditor = useRef<(() => void) | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const findRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -251,20 +275,28 @@ export function SeedGrid({
     closing.current = true;
     const row = rows[active.row];
     const column = columns[active.col];
-    if (editing && row && column?.locale) void writeTranslation(column.locale, column.field ?? "label", row.id, editing.value);
+    if (editing && row && column?.locale) void writeTranslation(column.locale, row.id, [{ field: column.field ?? "label", value: editing.value }]);
     else if (editing && row && column) editSeed(row.seed, (s) => setCells(s, row.id, { [column.key]: parseCell(editing.value, column) }));
     setEditing(null);
     goTo({ row: active.row + (move === "down" ? 1 : 0), col: active.col + (move === "right" ? 1 : move === "left" ? -1 : 0) });
     focusGrid();
   };
 
-  const writeTranslation = async (locale: string, field: TranslatedField, rowId: string, value: string) => {
-    // A row with no description yet has no description entry: the label's entry names the same shard and its hash.
-    const own = labels.entries.get(`${locale}|${field}|${rowId}`);
-    const label = labels.entries.get(`${locale}|label|${rowId}`);
-    const entry = own ?? (label ? { ...label, field, translation: null } : undefined);
-    if (!entry || value === (entry.translation ?? "")) return;
-    const result = await writeTranslations(services.queryClient, locale, [{ id: rowId, field, value }], [entry]);
+  /** One translation write for a row's changed fields of one locale (they share a shard: one write, one hash). */
+  const writeTranslation = async (locale: string, rowId: string, changed: readonly { field: TranslatedField; value: string }[]) => {
+    const edits: { id: string; field: TranslatedField; value: string }[] = [];
+    const read: TranslationEntry[] = [];
+    for (const { field, value } of changed) {
+      // A row with no description yet has no description entry: the label's entry names the same shard and its hash.
+      const own = labels.entries.get(`${locale}|${field}|${rowId}`);
+      const label = labels.entries.get(`${locale}|label|${rowId}`);
+      const entry = own ?? (label ? { ...label, field, translation: null } : undefined);
+      if (!entry || value === (entry.translation ?? "")) continue;
+      edits.push({ id: rowId, field, value });
+      read.push(entry);
+    }
+    if (!edits.length) return;
+    const result = await writeTranslations(services.queryClient, locale, edits, read);
     if (!result.ok) store.getState().notify(result.message, "error");
   };
 
@@ -337,7 +369,28 @@ export function SeedGrid({
       case "focus-search":
         onFocusSearch?.();
         return;
+      case "open-row":
+        openEditor(active.row);
+        return;
     }
+  };
+
+  /** Opens the row editor on a row (an open editor saves its row first). */
+  const openEditor = (r: number) => {
+    const row = rows[r];
+    if (!row) return;
+    if (editorRow !== row.id) saveEditor.current?.();
+    setEditorRow(row.id);
+    goTo({ row: r, col: active.row === r ? active.col : 0 });
+  };
+  const saveRow = (row: GridRow, changes: RowEditChanges) => {
+    if (Object.keys(changes.cells).length) editSeed(row.seed, (s) => setCells(s, row.id, changes.cells));
+    for (const { locale, edits } of translationsByLocale(changes.translations)) void writeTranslation(locale, row.id, edits);
+  };
+  const closeEditor = () => {
+    saveEditor.current = null;
+    setEditorRow(null);
+    focusGrid();
   };
 
   const onGridKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -388,9 +441,10 @@ export function SeedGrid({
   };
 
   const several = seedDocs.length > 1;
-  const width = (key: string) => WIDTH[key] ?? 140;
-  const total = columns.reduce((n, c) => n + width(c.key), 40 + (several ? 120 : 0));
+  const total = columns.reduce((n, c) => n + widthOf(c), 56 + (several ? 120 : 0));
   const activeId = rows[active.row] ? `cell-${active.row}-${active.col}` : undefined;
+  const editorIndex = editorRow ? rows.findIndex((r) => r.id === editorRow) : -1;
+  const shownRow = editorIndex >= 0 ? rows[editorIndex] : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -439,191 +493,244 @@ export function SeedGrid({
           }}
         />
       </div>
-      <div
-        ref={(el) => {
-          // The grid is its own scroller, so the scrollable region is the focusable grid (axe scrollable-region-focusable).
-          gridRef.current = el;
-          scrollRef.current = el;
-        }}
-        role="grid"
-        aria-label={`Rows of ${name}`}
-        aria-rowcount={rows.length + 1}
-        aria-colcount={columns.length}
-        aria-activedescendant={editing ? undefined : activeId}
-        aria-multiselectable
-        tabIndex={0}
-        className="flex min-h-0 flex-1 flex-col overflow-auto outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent"
-        onKeyDown={onGridKeyDown}
-        onPaste={(e) => void onPaste(e)}
-        data-testid="rows-grid"
-      >
-        <div className="min-h-0 flex-1">
-          <div style={{ width: total, minWidth: "100%" }}>
-            <div role="row" aria-rowindex={1} className="sticky top-0 z-20 flex h-7 border-b border-default bg-app text-11 font-semibold text-secondary">
-              <div className="sticky left-0 z-10 w-10 shrink-0 bg-app" aria-hidden />
-              {several ? (
-                <div role="columnheader" className="w-[120px] shrink-0 px-1.5 leading-7">
-                  Seed
+      <div className="flex min-h-0 flex-1">
+        <div
+          ref={(el) => {
+            // The grid is its own scroller, so the scrollable region is the focusable grid (axe scrollable-region-focusable).
+            gridRef.current = el;
+            scrollRef.current = el;
+          }}
+          role="grid"
+          aria-label={`Rows of ${name}`}
+          aria-rowcount={rows.length + 1}
+          aria-colcount={columns.length}
+          aria-activedescendant={editing ? undefined : activeId}
+          aria-multiselectable
+          tabIndex={0}
+          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent"
+          onKeyDown={onGridKeyDown}
+          onPaste={(e) => void onPaste(e)}
+          data-testid="rows-grid"
+        >
+          <div className="min-h-0 flex-1">
+            <div style={{ width: total, minWidth: "100%" }}>
+              <div role="row" aria-rowindex={1} className="sticky top-0 z-20 flex h-7 border-b border-default bg-app text-11 font-semibold text-secondary">
+                <div role="columnheader" className="sticky left-0 z-10 w-14 shrink-0 bg-app">
+                  <span className="sr-only">Row</span>
                 </div>
-              ) : null}
-              {columns.map((c, i) => (
-                <div
-                  key={c.key}
-                  role="columnheader"
-                  className={cn("shrink-0 truncate px-1.5 leading-7", c.builtin && "font-mono", i === 0 && "sticky left-10 z-10 bg-app")}
-                  style={{ width: width(c.key) }}
-                  title={c.required ? `${c.label} (required)` : c.label}
-                >
-                  {c.label}
-                  {c.collection ? "[]" : ""}
-                </div>
-              ))}
-            </div>
-            <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-              {virtualizer.getVirtualItems().map((v) => {
-                const row = rows[v.index];
-                const r = v.index;
-                const rowError = errors.get(`${row.id}:*`);
-                return (
-                  <div
-                    key={row.id}
-                    role="row"
-                    aria-rowindex={r + 2}
-                    className="absolute left-0 flex border-b border-default text-12"
-                    style={{ top: 0, height: ROW_H, width: "100%", transform: `translateY(${v.start}px)` }}
-                    data-row={row.id}
-                  >
-                    <div
-                      className={cn(
-                        "sticky left-0 z-10 w-10 shrink-0 bg-surface pr-1 text-right font-mono text-11 leading-7 text-secondary",
-                        rowError && "text-danger",
-                      )}
-                      title={rowError?.message}
-                      aria-hidden
-                    >
-                      {r + 1}
-                    </div>
-                    {several ? (
-                      <div className="w-[120px] shrink-0 truncate px-1.5 leading-7 text-secondary">{seedDocs.find((s) => s.id === row.seed)?.name}</div>
-                    ) : null}
-                    {columns.map((c, ci) => {
-                      const isActive = active.row === r && active.col === ci;
-                      const error = errors.get(`${row.id}:${c.key}`);
-                      return (
-                        <div
-                          key={c.key}
-                          id={`cell-${r}-${ci}`}
-                          role="gridcell"
-                          aria-selected={inRange(r, ci)}
-                          aria-invalid={error ? true : undefined}
-                          data-cell={`${r}:${ci}`}
-                          title={error?.message}
-                          className={cn(
-                            "shrink-0 truncate px-1.5 leading-7",
-                            ci === 0 && "sticky left-10 z-10 bg-surface font-mono",
-                            inRange(r, ci) && "bg-accent-subtle",
-                            isActive && "ring-1 ring-inset ring-accent",
-                            error && "ring-1 ring-inset ring-danger",
-                          )}
-                          style={{ width: width(c.key) }}
-                          onMouseDown={(e) => {
-                            if (editing) return;
-                            e.preventDefault();
-                            goTo({ row: r, col: ci }, e.shiftKey);
-                            gridRef.current?.focus();
-                          }}
-                          onDoubleClick={() => run({ type: "edit" })}
-                        >
-                          {isActive && editing && c.end ? (
-                            <select
-                              autoFocus
-                              aria-label={`${c.label} of row ${r + 1}`}
-                              className="h-6 w-full rounded-[4px] border border-input bg-surface px-1 text-12"
-                              value={editing.value}
-                              onChange={(e) => setEditing({ value: e.target.value })}
-                              onKeyDown={(e) => {
-                                const action = gridAction(e, true);
-                                if (!action) return;
-                                e.preventDefault();
-                                e.stopPropagation();
-                                run(action);
-                              }}
-                              onBlur={() => {
-                                if (closing.current) closing.current = false;
-                                else commit("none");
-                              }}
-                            >
-                              <option value="">(none)</option>
-                              {(endOptions.get(c.end) ?? []).map((o) => (
-                                <option key={o.id} value={o.id}>
-                                  {o.label}
-                                </option>
-                              ))}
-                              {editing.value && !(endOptions.get(c.end) ?? []).some((o) => o.id === editing.value) ? (
-                                <option value={editing.value}>{editing.value}</option>
-                              ) : null}
-                            </select>
-                          ) : isActive && editing && c.multiline ? (
-                            <textarea
-                              autoFocus
-                              aria-label={`${c.label} of row ${r + 1}`}
-                              title="Shift+Enter adds a line"
-                              onFocus={(e) => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)}
-                              rows={1}
-                              className="block h-6 w-full resize-none overflow-y-auto rounded-[4px] border border-input bg-surface px-1 text-12 leading-5"
-                              value={editing.value}
-                              onChange={(e) => setEditing({ value: e.target.value })}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" && e.shiftKey) return; // a new line in the text
-                                const action = gridAction(e, true);
-                                if (!action) return;
-                                e.preventDefault();
-                                e.stopPropagation();
-                                run(action);
-                              }}
-                              onBlur={() => {
-                                if (closing.current) closing.current = false;
-                                else commit("none");
-                              }}
-                            />
-                          ) : isActive && editing ? (
-                            <input
-                              autoFocus
-                              aria-label={`${c.label} of row ${r + 1}`}
-                              className="h-6 w-full rounded-[4px] border border-input bg-surface px-1 text-12"
-                              value={editing.value}
-                              onChange={(e) => setEditing({ value: e.target.value })}
-                              onKeyDown={(e) => {
-                                const action = gridAction(e, true);
-                                if (!action) return;
-                                e.preventDefault();
-                                e.stopPropagation();
-                                run(action);
-                              }}
-                              onBlur={() => {
-                                if (closing.current) closing.current = false;
-                                else commit("none");
-                              }}
-                            />
-                          ) : c.locale && row.values[c.key] === undefined ? (
-                            <span className="italic text-secondary">{labels.entries.get(`${c.locale}|${c.field ?? "label"}|${row.id}`)?.effective ?? ""}</span>
-                          ) : c.end && row.values[c.key] !== undefined ? (
-                            (endOptions.get(c.end)?.find((o) => o.id === row.values[c.key])?.label ?? formatCell(row.values[c.key]))
-                          ) : (
-                            formatCell(row.values[c.key])
-                          )}
-                        </div>
-                      );
-                    })}
+                {several ? (
+                  <div role="columnheader" className="w-[120px] shrink-0 px-1.5 leading-7">
+                    Seed
                   </div>
-                );
-              })}
+                ) : null}
+                {columns.map((c, i) => (
+                  <div
+                    key={c.key}
+                    role="columnheader"
+                    className={cn("shrink-0 truncate px-1.5 leading-7", c.builtin && !c.title && "font-mono", i === 0 && "sticky left-14 z-10 bg-app")}
+                    style={{ width: widthOf(c) }}
+                    title={headerTooltip(c)}
+                  >
+                    {headerText(c)}
+                  </div>
+                ))}
+              </div>
+              <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+                {virtualizer.getVirtualItems().map((v) => {
+                  const row = rows[v.index];
+                  const r = v.index;
+                  const rowError = errors.get(`${row.id}:*`);
+                  return (
+                    <div
+                      key={row.id}
+                      role="row"
+                      aria-rowindex={r + 2}
+                      className="absolute left-0 flex border-b border-default text-12"
+                      style={{ top: 0, height: ROW_H, width: "100%", transform: `translateY(${v.start}px)` }}
+                      data-row={row.id}
+                    >
+                      <div
+                        role="rowheader"
+                        aria-label={`Row ${r + 1}`}
+                        className={cn(
+                          "group/handle sticky left-0 z-10 flex w-14 shrink-0 items-center justify-end gap-0.5 bg-surface pr-1 font-mono text-11 text-secondary",
+                          rowError && "text-danger",
+                          editorRow === row.id && "bg-accent-subtle",
+                        )}
+                        title={rowError ? `${rowError.message}\nDouble-click to open the row editor` : "Double-click to open the row editor"}
+                        onDoubleClick={() => openEditor(r)}
+                        data-testid={`row-handle-${r + 1}`}
+                      >
+                        <Button
+                          size="icon-row"
+                          variant="ghost"
+                          tabIndex={-1}
+                          label={`Open row ${r + 1} in the row editor`}
+                          shortcut="Shift+Enter"
+                          className={cn(
+                            "opacity-0 group-hover/handle:opacity-100 focus-visible:opacity-100",
+                            (active.row === r || editorRow === row.id) && "opacity-100",
+                          )}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => openEditor(r)}
+                        >
+                          <PanelRightOpen />
+                        </Button>
+                        <span aria-hidden>{r + 1}</span>
+                      </div>
+                      {several ? (
+                        <div className="w-[120px] shrink-0 truncate px-1.5 leading-7 text-secondary">{seedDocs.find((s) => s.id === row.seed)?.name}</div>
+                      ) : null}
+                      {columns.map((c, ci) => {
+                        const isActive = active.row === r && active.col === ci;
+                        const error = errors.get(`${row.id}:${c.key}`);
+                        const shownText =
+                          c.locale && row.values[c.key] === undefined
+                            ? (labels.entries.get(`${c.locale}|${c.field ?? "label"}|${row.id}`)?.effective ?? "")
+                            : c.end && row.values[c.key] !== undefined
+                              ? (endOptions.get(c.end)?.find((o) => o.id === row.values[c.key])?.label ?? formatCell(row.values[c.key]))
+                              : formatCell(row.values[c.key]);
+                        return (
+                          <div
+                            key={c.key}
+                            id={`cell-${r}-${ci}`}
+                            role="gridcell"
+                            aria-selected={inRange(r, ci)}
+                            aria-invalid={error ? true : undefined}
+                            data-cell={`${r}:${ci}`}
+                            title={error ? (shownText ? `${error.message}\n\n${shownText}` : error.message) : shownText || undefined}
+                            className={cn(
+                              "shrink-0 truncate px-1.5 leading-7",
+                              ci === 0 && "sticky left-14 z-10 bg-surface font-mono",
+                              inRange(r, ci) && "bg-accent-subtle",
+                              isActive && "ring-1 ring-inset ring-accent",
+                              error && "ring-1 ring-inset ring-danger",
+                            )}
+                            style={{ width: widthOf(c) }}
+                            onMouseDown={(e) => {
+                              if (editing) return;
+                              e.preventDefault();
+                              goTo({ row: r, col: ci }, e.shiftKey);
+                              gridRef.current?.focus();
+                            }}
+                            onDoubleClick={() => run({ type: "edit" })}
+                          >
+                            {isActive && editing && c.end ? (
+                              <select
+                                autoFocus
+                                aria-label={`${c.label} of row ${r + 1}`}
+                                className="h-6 w-full rounded-[4px] border border-input bg-surface px-1 text-12"
+                                value={editing.value}
+                                onChange={(e) => setEditing({ value: e.target.value })}
+                                onKeyDown={(e) => {
+                                  const action = gridAction(e, true);
+                                  if (!action) return;
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  run(action);
+                                }}
+                                onBlur={() => {
+                                  if (closing.current) closing.current = false;
+                                  else commit("none");
+                                }}
+                              >
+                                <option value="">(none)</option>
+                                {(endOptions.get(c.end) ?? []).map((o) => (
+                                  <option key={o.id} value={o.id}>
+                                    {o.label}
+                                  </option>
+                                ))}
+                                {editing.value && !(endOptions.get(c.end) ?? []).some((o) => o.id === editing.value) ? (
+                                  <option value={editing.value}>{editing.value}</option>
+                                ) : null}
+                              </select>
+                            ) : isActive && editing && c.multiline ? (
+                              <textarea
+                                autoFocus
+                                aria-label={`${c.label} of row ${r + 1}`}
+                                title="Shift+Enter adds a line"
+                                onFocus={(e) => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)}
+                                rows={1}
+                                className="block h-6 w-full resize-none overflow-y-auto rounded-[4px] border border-input bg-surface px-1 text-12 leading-5"
+                                value={editing.value}
+                                onChange={(e) => setEditing({ value: e.target.value })}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && e.shiftKey) return; // a new line in the text
+                                  const action = gridAction(e, true);
+                                  if (!action) return;
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  run(action);
+                                }}
+                                onBlur={() => {
+                                  if (closing.current) closing.current = false;
+                                  else commit("none");
+                                }}
+                              />
+                            ) : isActive && editing ? (
+                              <input
+                                autoFocus
+                                aria-label={`${c.label} of row ${r + 1}`}
+                                className="h-6 w-full rounded-[4px] border border-input bg-surface px-1 text-12"
+                                value={editing.value}
+                                onChange={(e) => setEditing({ value: e.target.value })}
+                                onKeyDown={(e) => {
+                                  const action = gridAction(e, true);
+                                  if (!action) return;
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  run(action);
+                                }}
+                                onBlur={() => {
+                                  if (closing.current) closing.current = false;
+                                  else commit("none");
+                                }}
+                              />
+                            ) : c.locale && row.values[c.key] === undefined ? (
+                              <span className="italic text-secondary">{shownText}</span>
+                            ) : (
+                              shownText
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+              {rows.length === 0 ? (
+                <p className="p-2 text-12 text-secondary">No rows yet. Ctrl+Enter or Add row adds one; pasting tab-separated cells adds several.</p>
+              ) : null}
             </div>
-            {rows.length === 0 ? (
-              <p className="p-2 text-12 text-secondary">No rows yet. Ctrl+Enter or Add row adds one; pasting tab-separated cells adds several.</p>
-            ) : null}
           </div>
         </div>
+        {shownRow ? (
+          <>
+            <Splitter orientation="vertical" value={editorWidth} {...LIMITS.inspector} direction={-1} label="Resize the row editor" onChange={setEditorWidth} />
+            <div className="flex min-h-0 shrink-0 border-l border-default" style={{ width: editorWidth }}>
+              <RowEditor
+                key={shownRow.id}
+                columns={columns}
+                row={shownRow}
+                number={editorIndex + 1}
+                total={rows.length}
+                seedName={several ? seedDocs.find((s) => s.id === shownRow.seed)?.name : undefined}
+                endOptions={endOptions}
+                fallback={(c) => (c.locale ? (labels.entries.get(`${c.locale}|${c.field ?? "label"}|${shownRow.id}`)?.effective ?? undefined) : undefined)}
+                errorOf={(key) => errors.get(`${shownRow.id}:${key}`)?.message}
+                saveRef={saveEditor}
+                onSave={(changes) => saveRow(shownRow, changes)}
+                onClose={closeEditor}
+                onStep={(delta) => {
+                  const next = rows[editorIndex + delta];
+                  if (!next) return;
+                  setEditorRow(next.id);
+                  goTo({ row: editorIndex + delta, col: active.col });
+                }}
+              />
+            </div>
+          </>
+        ) : null}
       </div>
       <footer className="flex items-center gap-2 border-t border-default px-2 py-1 text-11 text-secondary" data-testid="rows-status">
         <span>
@@ -636,9 +743,16 @@ export function SeedGrid({
           ))}
         </span>
         {localized && localization.isSuccess && !localization.enabled ? (
-          <span className="whitespace-nowrap" data-testid="rows-locale-hint">
-            {ONE_LOCALE_HINT}
-          </span>
+          <>
+            <span className="whitespace-nowrap" data-testid="rows-locale-hint">
+              {ONE_LOCALE_HINT}
+            </span>
+            {onOpenLocales ? (
+              <Button size="sm" variant="link" className="h-5 px-0 text-11" onClick={onOpenLocales} data-testid="rows-open-locales">
+                Open Settings › Locales
+              </Button>
+            ) : null}
+          </>
         ) : null}
         {l10n.enabled && l10n.locales.length ? (
           <label className="flex items-center gap-1 whitespace-nowrap">
@@ -647,7 +761,7 @@ export function SeedGrid({
           </label>
         ) : null}
         <span className="hidden flex-1 truncate md:inline">
-          Enter edits · Tab moves · Ctrl+Enter inserts · Ctrl+D duplicates · Ctrl+Delete deletes · Alt+Up/Down moves
+          Enter edits · Shift+Enter opens the row editor · Tab moves · Ctrl+Enter inserts · Ctrl+D duplicates · Ctrl+Delete deletes · Alt+Up/Down moves
         </span>
       </footer>
       {csvSeed ? <ImportCsvDialog open={importing} onOpenChange={setImporting} seed={csvSeed} /> : null}

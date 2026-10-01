@@ -13,7 +13,7 @@ async function createUnitOfMeasure(page: Page): Promise<void> {
   const dialog = page.getByRole("dialog", { name: "New reference type" });
   await dialog.getByLabel("Name", { exact: true }).fill("UnitOfMeasure");
   await dialog.getByLabel("Display name").fill("Unit of measure");
-  // Stored as: the project declares no strategy here, so Template-defined is the one choice and the templates decide.
+  // Stored as: the project declares no strategy here, so Let the packs decide is the one choice and the templates decide.
   await expect(dialog.getByLabel("Stored as")).toHaveValue("__template");
   await dialog.getByRole("button", { name: "Create" }).click();
   await expect(dialog).toBeHidden();
@@ -62,7 +62,7 @@ test("reference data: create a type, add a field, enter rows, import and export 
   // description sits third, a text area where Shift+Enter adds a line.
   await page.getByRole("tab", { name: "Rows" }).click();
   const rows = page.getByTestId("rows-grid");
-  await expect(rows.getByRole("columnheader")).toHaveText(["code", "label", "description", "factor"]);
+  await expect(rows.getByRole("columnheader")).toHaveText(["Row", "code", "label", "description", "factor"]);
   await expect(page.getByTestId("rows-locale-hint")).toHaveText("Declare a second locale under Settings › Locales to translate labels and descriptions.");
   await page.getByRole("button", { name: "Add row" }).click();
   await expect(rows.getByRole("textbox", { name: "code of row 1" })).toBeFocused();
@@ -143,7 +143,7 @@ test("reference data: a reference type as an attribute type, with Many and Requi
   await expect(picker.getByRole("group")).toHaveCount(1);
   await expect(picker.getByRole("option", { name: /Unit of measure/ })).toHaveAttribute("aria-selected", "true");
   // The effective storage beside the name: no strategy is chosen here, so the templates decide.
-  await expect(picker.getByRole("option", { name: /Unit of measure/ })).toContainText("· template");
+  await expect(picker.getByRole("option", { name: /Unit of measure/ })).toContainText("· packs decide");
   await page.keyboard.press("Alt+r");
   await expect(picker.getByRole("button", { name: "Required" })).toHaveAttribute("aria-pressed", "true");
   await page.keyboard.press("Enter");
@@ -161,5 +161,5 @@ test("reference data: a reference type as an attribute type, with Many and Requi
   await expect(usedBy.getByRole("button", { name: /Invoice\.unit/ })).toContainText("required");
   await expect(page.getByTestId("reference-type-facts")).toContainText("used by 1");
   await page.getByRole("tab", { name: "Storage" }).click();
-  await expect(page.getByTestId("storage-All databases")).toContainText("Template-defined");
+  await expect(page.getByTestId("storage-All databases")).toContainText("The packs decide");
 });

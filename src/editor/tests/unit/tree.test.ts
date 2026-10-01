@@ -363,9 +363,32 @@ describe("tree places", () => {
     const f = buildForest({ rows: [...rows, ...extra], tables });
     expect(labels(f, f.roots["reference-data"])).toEqual(["Unit of measure"]);
     expect(f.headers["reference-data"]).toBe("1 type · 12 rows");
-    expect(labels(f, find(f, "reference-data", "Unit of measure").key)).toEqual(["units"]);
+    // A type's only seed is its rows, whatever its name: no child, the seed placed on the type.
+    const unit = find(f, "reference-data", "Unit of measure");
+    expect(childKeys(f, unit.key)).toEqual([]);
+    expect(f.place.get("7S")).toBe(unit.key);
     expect(find(f, "domain-model", "Billing", "Seed data", "sample invoices").secondary).toBe("3 rows");
     expect(find(f, "domain-model", "Billing", "Entities", "Invoice", "Seed data").secondary).toBe("1 seed · 3 rows");
+    expectReachable(f, [...rows, ...extra]);
+  });
+
+  it("lists no child under a type with one seed, and places that seed on the type", () => {
+    const extra = [
+      row("7R", "reference-type", "CarModel", null, { displayName: "Car models" } as Partial<ElementSummary>),
+      row("7S", "seed", "CarModel", null, { target: "7R", rowCount: 4 } as Partial<ElementSummary>),
+      row("7U", "reference-type", "Country", null),
+      row("7V", "seed", "Country", null, { target: "7U", rowCount: 2 } as Partial<ElementSummary>),
+      row("7W", "seed", "Demo", null, { target: "7U", rowCount: 1 } as Partial<ElementSummary>),
+    ];
+    const f = buildForest({ rows: [...rows, ...extra], tables });
+    const car = find(f, "reference-data", "Car models");
+    expect(childKeys(f, car.key)).toEqual([]);
+    expect(f.place.get("7S")).toBe(car.key);
+    // Several seeds show, each with its row count.
+    const country = find(f, "reference-data", "Country");
+    expect(labels(f, country.key)).toEqual(["Country", "Demo"]);
+    expect(find(f, "reference-data", "Country", "Demo").secondary).toBe("1 row");
+    expect(f.headers["reference-data"]).toBe("2 types · 7 rows");
     expectReachable(f, [...rows, ...extra]);
   });
 

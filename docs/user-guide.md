@@ -146,7 +146,9 @@ tab in the centre, beside the screen. A single click opens it in the **preview**
 click replaces; editing it, a double click or Enter keeps it open. Each editor has top controls (name, domain, and for an
 entity its key, **Base entity**, **Is abstract**, stereotypes, tags and category as chips) over tabs:
 
-- **Entity**: Attributes, Relationships, Indexes, Mappings, Inheritance, Seed data, References, Code generation. Under
+- **Entity**: Attributes, Relationships, Indexes, Mappings, Inheritance, Seed data, References, Code generation. The
+  attribute grid's last two columns are each attribute's **Display name** and **Description** (what the attribute
+  means; the whole text shows when you hover the cell, and Shift+Enter adds a line while you edit it). Under
   the attribute grid, **Inherited** lists the base entities' fields and **Virtual** the fields the entity's stereotypes
   add, both read-only. Relationships has **New relationship…**, which starts the New relationship dialog from this
   entity. **Inheritance** (available once the entity has a base entity or another entity derives from it) edits the hierarchy:
@@ -222,48 +224,101 @@ database shows on the Database screen at once. The explorers remember which rows
 - **Reference data**: the reference types and their rows. The Reference data explorer is the screen's list: the types
   nested by category with a count on every group, and the explorer's search operators (`*` contains, `^` starts with,
   `~` like with `%`, `=` equals); its **…** menu has **Types A to Z (no categories)** for one flat list. Clicking a
-  type there opens it here. Right-click a type (also Shift+F10) for **Duplicate**, **Rename** (the seed named after the
-  type follows), **Move to category…**, **Set storage…** (opens the Storage tab), **Export CSV**, **Convert to enum…** (when the type has no
-  fields of its own and its codes are identifiers: rows become members and the fields that used the type use the enum)
-  and **Delete…**, which is refused while a field uses the type and otherwise deletes the type with its seeds; each is one
-  change that undo reverses. The Reference data explorer's row menu offers the same actions except Export CSV (the
-  Rows tab has it), plus **Add to favorites**. When the explorer is collapsed or shows another
-  view, the screen shows the same list on its left (with a flat **A to Z** option). Ctrl+1 to Ctrl+4 pick a tab and `/`
-  focuses the type search. For the selected type, four tabs; the tab you pick stays when you select another type:
+  type there opens it here. A type's rows live in a seed named after it, and a type's only seed (whatever its name) is
+  not listed under the type: the type row is its rows, and that rows file is renamed with the type. A type with several seeds (demo rows, test rows) lists them under it, each with its row
+  count; a seed there has **Open**, **Where used**, **Add to favorites** and **Delete**, but no **Move to domain…** (a
+  reference type has no domain) and no **Rename** (it is renamed with its type). Right-click a type (also Shift+F10) for
+  **Duplicate**, **Rename** (a dialog with **Name** and **Display name**; the type's only seed, whatever its name, or of
+  several the one named after the type, takes the new name), **Move to category…** (when the project has no categories yet, the dialog says
+  to add them under Settings › Categories and has **Open Settings › Categories**), **Set storage…** (opens the Storage
+  tab), **Export CSV**, **Convert to enum…** (when the type has no fields of its own and its codes are identifiers: rows
+  become members and the fields that used the type use the enum) and **Delete…**, which is refused while a field uses
+  the type and otherwise deletes the type with its seeds; each is one change that undo reverses. The Reference data
+  explorer's row menu offers the same actions except Export CSV (the Rows tab has it), plus **Apply stereotype…**,
+  **Tag…** (both for every selected type at once) and **Add to favorites**. When the explorer is collapsed or shows
+  another view, the screen shows the same list on its left (with a flat **A to Z** option). Ctrl+1 to Ctrl+5 pick a tab
+  and `/` focuses the type search. The header shows the type's display name, then its name, its row count and how many
+  fields use it. For the selected type, five tabs; the tab you pick stays when you select another type:
+  - **General**: the type's **Name** (the identifier templates and files use: letters, digits and underscores, not
+    starting with a digit, such as `UnitOfMeasure` or `car_models`; it commits on Enter or when you leave the field,
+    renaming the type's seed with it, one undo step), **Display name** (what lists and headers show), **Plural name**,
+    **Description**, **Category** (a list), **Stereotypes** and **Tags** (chips: the **add…** list adds one, the × on a
+    chip removes it). These are the same controls the inspector shows for an entity, and each change is one undo step.
+    When no stereotype applies to reference types, Stereotypes says so and points to Settings › Stereotypes. A
+    reference type has no domain: the category groups it. With two or more declared locales, a collapsed
+    **Translations** section below translates the display name, plural name and description, as in the inspector.
   - **Fields**: the built-in `code`, `label` and `description` (names fixed; code's type, length and pattern editable,
     label's length editable; the description is text of any length), then your own fields in the attribute grid. A code
     is a string by default, or an integer (`int16`, `int32`, `int64`) or a `uuid`; a uuid code is written lowercase with
     hyphens (the grid lowercases what you type; error MQ7013 reports any other form). Label and description are marked
-    as translated: each locale can translate them.
+    as translated: each locale can translate them. Every field has a **Display name** and a **Description**, saying what
+    the field means: `code` and `label` in their own columns of the built-in table, your fields in the attribute grid's
+    last two columns (a description edits in a text area where Shift+Enter adds a line; one kept in a separate file is
+    named, not edited). The built-in `description` column's text is fixed. The Rows grid's header shows each field's
+    display name (else its name), with the name and the description as its tooltip, and the row editor shows the
+    description under each field's label. With two or more declared locales, a collapsed **Translations of the
+    fields** section below the grid has one table per locale: a line per field (`code`, `label`, then yours) with its
+    display name and description in that locale, the default text as the placeholder, a **stale** marker and
+    **Confirm** as in the Translations section.
   - **Rows**: the columns are code, label, description, then your fields. A description may span lines: while you edit
-    it, Shift+Enter adds a line. With one declared locale the status bar says how to translate labels and descriptions
-    (declare a second locale under Settings › Locales); with two or more, each locale's label and description columns
-    sit side by side.
+    it, Shift+Enter adds a line. Hovering a cell shows its whole text. With one declared locale the status bar says how
+    to translate labels and descriptions (declare a second locale under Settings › Locales), with **Open Settings ›
+    Locales** beside it; with two or more, each locale's label and description columns sit side by side.
     The grid is a spreadsheet over the type's rows. Arrows move; Enter or F2 edits, Enter commits and moves down, Tab
     commits and moves right, Esc cancels; Ctrl+Enter inserts a row below, Ctrl+D duplicates one (with an empty code),
     Delete clears cells, Ctrl+Delete deletes rows, Alt+Up and Alt+Down move rows; Shift+arrows select a range, Ctrl+C
     copies it as tab-separated text and Ctrl+V pastes such text, adding rows past the end; Ctrl+F finds; Ctrl+1 to
-    Ctrl+4 switch tabs; `/` goes to the type search. **Import CSV** shows what a file adds, changes and removes before
+    Ctrl+5 switch tabs; `/` goes to the type search. **Import CSV** shows what a file adds, changes and removes before
     you apply it as one change you can undo; **Export CSV** downloads the rows (`@id`, `@code`, `@label`,
     `@description`, then the fields by name).
-  - **Used by**: every attribute whose type is this reference type, with its Many and Required badges; click one to go to it.
-  - **Storage**: per database, the storage strategy in effect and where it comes from, and an override chosen from the
-    strategies the project declares in Settings (`referenceData.strategies`) or **Template-defined** (the packs decide).
+    **The row editor** shows one row in full, in a panel beside the grid: Shift+Enter opens it on the active row, as do
+    a double click on a row's number and the button that shows beside the number of the active row or the row you point
+    at (**Open row N in the row editor**). It has one labelled control per column, with the field's description under
+    its label: a text area for text (it grows with the text), a picker for a relationship end. **Save** (Ctrl+S) writes
+    every change of the row as one change you can undo; **Cancel** (Esc) closes it without writing. The arrow buttons
+    at its top (Alt+Up, Alt+Down) save the row and show the previous or next one. Drag its left edge to make it wider
+    or narrower. Translations typed in a locale column are saved to that locale apart from the row, one save per
+    locale with every changed field of it, and undo does not reverse them.
+  - **Used by**: every attribute whose type is this reference type, with its Many and Required badges; click one to go
+    to it. Entities and other elements are grouped by kind and domain ("Entity · Billing"); a reference type's field is
+    grouped by the type's category ("Reference type · Measurement"), or under **Reference types** when the type has no
+    category.
+  - **Storage**: a line above the table says what a storage strategy is: how the packs store the type's codes in a
+    database (for example as a lookup table or a check constraint). The project declares its strategies in Settings › Conventions
+    (`referenceData.strategies` in the project settings) and may choose a default for every type there; a database's
+    settings can choose another. The table has one row for **All databases** and one per database. **Strategy in use** names the
+    strategy and where it comes from (**from this type**, **from the database** or **from the project**), or says the
+    packs decide. **Set for this type** offers **Use the default (…)**, naming what the default is, **Let the packs
+    decide** (no strategy: the templates choose), then each declared strategy by its name; a chosen strategy's
+    description shows under it, with its options.
 
-  **New reference type** asks for the name, display name, category and **Stored as**: Template-defined or one of the
-  strategies the project declares (the example packs' `lookup-table`, `check` and `native` read Lookup table, Check
-  constraint and Native type, where the dialect has one). Check constraint is preselected when the project declares it;
-  the choice applies to every database, and the Storage tab overrides it per database. `maquettiste init` declares the
-  three strategies the sql-ddl starter builds; a project that declares none sees **Declare the standard storage
-  strategies** under Settings › Conventions, one click away. The Storage tab's **Preview output** renders the sql-ddl
-  seed script of the chosen database without writing it and shows the statements for the type. Hovering a type in the
-  list shows its first codes. When a type has several seeds, a picker beside **Import CSV** and **Export CSV** chooses
-  the seed. Removing a field also removes its column from the type's seeds, in the same save (one undo step).
+  **New reference type** asks for the name (letters, digits and underscores, not starting with a digit, such as
+  `UnitOfMeasure` or `car_models`; no case is required), display name, category and **Stored as**: **Let the packs
+  decide** or one of the strategies the project declares, by its name (the example packs' `lookup-table`, `check` and
+  `native`), with the chosen one's description under the list, in the Storage tab's words. `check` is preselected when
+  the project declares it; the choice applies to every database, and the Storage tab sets it per database.
+  `maquettiste init` declares the three strategies the sql-ddl starter builds; a project that declares none sees
+  **Declare the standard storage strategies** under Settings › Conventions, one click away. The Storage tab's
+  **Preview output** lists the units of the enabled packs that render once per database (a unit whose name mentions
+  seed is picked first), names the unit and the database it renders, and shows that unit's output for the chosen
+  database without writing it, narrowed to the statements for the type. When the unit does not render for that
+  database (its selector does not return it, its pack is disabled…), the preview says why in the engine's words, with
+  the preview's own message under **Message from the preview**. Hovering a type in the list shows its first codes. When
+  a type has several seeds, a picker beside **Import CSV** and **Export CSV** chooses the seed. Removing a field also
+  removes its column from the type's seeds, in the same save (one undo step).
+
+  **Where reference data is translated** (two or more declared locales; nothing of it shows with one): the type's
+  display name, plural name and description in the General tab's **Translations** section; each field's display name
+  and description in the Fields tab's **Translations of the fields**; each row's label and description in the Rows
+  grid's locale columns (the content locale's, or every locale's with **All locales**), or in the row editor's locale
+  fields. The translation queue under Settings › Locales lists all of them too. Every translation is optional: a
+  missing one shows the fallback text, never a warning. Validation only counts missing texts per shard as a note
+  (MQ7204, severity info); MQ7205, one entry per missing text, is off unless Settings › Validation gives it a severity.
 
   To use a reference type as an attribute's type, open the attribute's **Type** cell: the list has sections (Recent,
   Built-in, Custom types, Enums, Reference data, Value objects) and one search across them. Each reference type shows
-  how it is stored beside its name, for example `Country · check` (`template` when the packs decide; `+1` when one
-  database is set otherwise). **Many** (Alt+M) makes the
+  how it is stored beside its name, for example `Country · check` (`packs decide` when no strategy is chosen; `+1`
+  when one database is set otherwise). **Many** (Alt+M) makes the
   attribute a collection of codes and **Required** (Alt+R) makes it required; the cell then shows `→ Unit of measure`.
 - **Domains, tags and categories**: opening a domain row (Enter, a double click, or the row menu's Open) opens the
   **domain editor**: General, then the domain's own **Tags** and **Categories**. Tags and categories exist globally
@@ -345,11 +400,13 @@ database shows on the Database screen at once. The explorers remember which rows
   other entity's seed data: Enter opens a picker over those rows, labelled by their first two filled cells. A
   relationship that has attributes has the same tab, with both ends first. The keys are the Rows tab's: Enter or F2
   edits, Tab moves right, Ctrl+Enter inserts a row, Ctrl+D duplicates, Ctrl+Delete deletes the selected rows,
-  Alt+Up/Down moves them, Ctrl+C copies, pasting tab-separated cells adds rows past the end, Ctrl+Z undoes. Every seed
+  Alt+Up/Down moves them, Ctrl+C copies, pasting tab-separated cells adds rows past the end, Ctrl+Z undoes, and
+  Shift+Enter (or a double click on a row's number) opens the row editor described under Reference data. Every seed
   grid's header has **Import CSV** (paste or pick a file, preview what it adds, changes and removes, then apply it as
   one change you can undo) and **Export CSV** (the seed as `<seed name>.csv`). In the Domain model explorer, an entity's
   Seed data child opens this tab, and the entity's menu has **Edit seed data** and **Import seed CSV…** (which creates
-  the seed first when there is none).
+  the seed first when there is none). A seed sits in its element's domain and moves with it, so its menu has no
+  **Move to domain…**.
 
   **All seed data at once.** The Reference data explorer's header menu (…) has **Export all seed data**, which
   downloads `seed-data.zip` with one CSV per seed of the model, named after the seed (`<name>.<id>.csv` when two seeds
@@ -1010,7 +1067,9 @@ shows anywhere: no switcher, no Translations section, no locale columns.
 - The Reference data screen's **Rows** grid gains a `label (<locale>)` column for the content locale (none while the
   content locale is the default), and **All locales** shows one per locale; the status bar shows how complete the
   content locale's labels are (`fr 75 %`). An empty cell shows the fallback label in italics; typing in it writes the
-  translation, not the seed.
+  translation, not the seed. The screen's **General** tab has the Translations section for the type itself, and its
+  **Fields** tab a **Translations of the fields** section for each field's display name and description (see
+  Reference data).
 
 ## Two ways to run it
 

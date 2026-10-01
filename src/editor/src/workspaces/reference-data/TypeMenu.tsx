@@ -3,23 +3,32 @@
 // click in the screen's type list, or by the Reference data explorer's row menu through the store (`typeAction`).
 // Every write is one batch that undo reverses.
 import { Fragment, useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { applyBatchResult, elementQuery, useIndex } from "@/api/queries";
+import { useIndex } from "@/api/queries";
 import { indexLookup } from "@/model/index";
 import * as endpoints from "@/api/endpoints";
 import type { ElementDocument, ModelJson, ReferenceTypeDoc, ReferenceTypeUsage, SeedDoc } from "@/api/types";
 import { useServices } from "@/app/context";
+import { useEditorNavigation } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/menu";
 import { newId } from "@/lib/ids";
-import { clone } from "@/lib/json";
-import { IDENTIFIER } from "@/model/model";
+import { identifierHint } from "@/model/model";
 import { useEditor } from "@/state/store";
-import { exportCsv } from "./actions";
+import { commitBatch, exportCsv, loadCurrent, renameReferenceType, type BatchOp } from "./actions";
 import type { CategoryInfo, RefTypeItem } from "./listModel";
-import { copyName, duplicateType, enumConversionProblem, enumFromType, isTypeAction, retypeAttributes, typeMenuFor, type TypeActionId } from "./typeMenu";
+import {
+  copyName,
+  duplicateType,
+  typeNameProblem,
+  enumConversionProblem,
+  enumFromType,
+  isTypeAction,
+  retypeAttributes,
+  typeMenuFor,
+  type TypeActionId,
+} from "./typeMenu";
 
 export interface TypeMenuAt {
   ids: string[];
@@ -27,10 +36,7 @@ export interface TypeMenuAt {
   y: number;
 }
 
-type Op =
-  | { op: "create"; element: ModelJson }
-  | { op: "update"; id: string; expectedHash: string; element: ModelJson }
-  | { op: "delete"; id: string; expectedHash: string };
+type Op = BatchOp;
 
 type Pending =
   | { action: "rename"; item: RefTypeItem }
@@ -54,41 +60,17 @@ export function TypeMenu({
   onStorage(id: string): void;
 }) {
   const services = useServices();
-  const { store, drafts } = services;
-  const qc = useQueryClient();
+  const { store } = services;
   const [pending, setPending] = useState<Pending | null>(null);
   const lookup = indexLookup(useIndex().data);
   const targets = (ids: readonly string[]) => ids.map((id) => items.find((i) => i.id === id)).filter((i): i is RefTypeItem => !!i);
   const menuTargets = menu ? targets(menu.ids) : [];
   const notify = (text: string, level?: "error") => store.getState().notify(text, level);
 
-  const load = async (id: string): Promise<ElementDocument> => {
-    await drafts.flush(id);
-    return qc.fetchQuery({ ...elementQuery(id), staleTime: 0 });
-  };
+  const load = (id: string): Promise<ElementDocument> => loadCurrent(services, id);
 
   /** One batch; on success the cache takes the result and undo gets one entry. */
-  const commit = async (label: string, ops: Op[], before: (ModelJson | null)[]): Promise<boolean> => {
-    const result = await endpoints.applyBatch({ operations: ops as never });
-    if (!endpoints.isBatchResult(result)) {
-      notify(`${label} failed: ${result.diagnostics[0]?.message ?? "the batch did not parse"}`, "error");
-      return false;
-    }
-    if (result.outcome !== "saved") {
-      const failed = result.items.find((i) => i.outcome !== "saved");
-      notify(`${label} failed: ${failed?.diagnostics[0]?.message ?? result.outcome}`, "error");
-      return false;
-    }
-    applyBatchResult(qc, result);
-    store.getState().pushUndo({
-      label,
-      ids: ops.map((o) => ("id" in o ? o.id : String((o.element as { id: string }).id))),
-      before: before.map((b) => (b ? clone(b) : null)),
-      after: ops.map((o) => (o.op === "delete" ? null : clone(o.element))),
-      afterHashes: ops.map((o, i) => (o.op === "delete" ? null : (result.items[i]?.hash ?? null))),
-    });
-    return true;
-  };
+  const commit = (label: string, ops: Op[], before: (ModelJson | null)[]): Promise<boolean> => commitBatch(services, label, ops, before);
 
   const run = async (action: TypeActionId, ids: string[]) => {
     const chosen = targets(ids);
@@ -167,26 +149,9 @@ export function TypeMenu({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per request
   }, [request, items.length]);
 
-  const rename = async (item: RefTypeItem, name: string) => {
-    const type = await load(item.id);
-    const seeds = await Promise.all(item.seeds.map(load));
-    const ops: Op[] = [];
-    const before: ModelJson[] = [];
-    const renamed = { ...(type.json as Record<string, unknown>), name } as unknown as ModelJson;
-    ops.push({ op: "update", id: item.id, expectedHash: type.hash, element: renamed });
-    before.push(type.json as ModelJson);
-    // The seed named after the type (Import and Export use it) follows the new name.
-    for (const s of seeds)
-      if ((s.json as SeedDoc).name === item.name) {
-        ops.push({
-          op: "update",
-          id: (s.json as SeedDoc).id,
-          expectedHash: s.hash,
-          element: { ...(s.json as Record<string, unknown>), name } as unknown as ModelJson,
-        });
-        before.push(s.json as ModelJson);
-      }
-    if (await commit(`Rename ${item.name}`, ops, before)) setPending(null);
+  // The name and the display name together; the type's seed follows the new name (Import and Export use it).
+  const rename = async (item: RefTypeItem, name: string, displayName: string) => {
+    if (await renameReferenceType(services, item, name, displayName)) setPending(null);
   };
 
   const moveToCategory = async (chosen: RefTypeItem[], category: string | null) => {
@@ -290,7 +255,7 @@ export function TypeMenu({
           item={pending.item}
           taken={items.map((i) => i.name)}
           onClose={() => setPending(null)}
-          onRename={(n) => void rename(pending.item, n)}
+          onRename={(n, d) => void rename(pending.item, n, d)}
         />
       ) : null}
       {pending?.action === "move-category" ? (
@@ -362,28 +327,46 @@ export function TypeMenu({
   );
 }
 
-function RenameDialog({ item, taken, onClose, onRename }: { item: RefTypeItem; taken: readonly string[]; onClose(): void; onRename(name: string): void }) {
+function RenameDialog({
+  item,
+  taken,
+  onClose,
+  onRename,
+}: {
+  item: RefTypeItem;
+  taken: readonly string[];
+  onClose(): void;
+  onRename(name: string, displayName: string): void;
+}) {
   const [name, setName] = useState(item.name);
-  const clash = name !== item.name && taken.some((t) => t.toLowerCase() === name.toLowerCase());
-  const problem = !IDENTIFIER.test(name) ? "A name is a letter or _ then letters, digits or _." : clash ? `${name} is taken.` : null;
+  const shownDisplay = item.label === item.name ? "" : item.label;
+  const [displayName, setDisplayName] = useState(shownDisplay);
+  const problem = typeNameProblem(name, item.name, taken);
+  const unchanged = name === item.name && displayName.trim() === shownDisplay;
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent title={`Rename ${item.name}`} description="The seed named after the type follows the new name.">
+      <DialogContent
+        title={`Rename ${item.name}`}
+        description="The name is the identifier templates and files use; the display name is what the editor shows. The type's rows (its seed) follow the new name."
+      >
         <form
           className="flex flex-col gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!problem && name !== item.name) onRename(name);
+            if (!problem && !unchanged) onRename(name, displayName);
           }}
         >
-          <Field label="Name" htmlFor="rename-type" hint={problem ?? undefined}>
+          <Field label="Name" htmlFor="rename-type" hint={problem ?? identifierHint("UnitOfMeasure", "car_models")}>
             <Input id="rename-type" autoFocus value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!problem || undefined} />
+          </Field>
+          <Field label="Display name" htmlFor="rename-type-display" hint="Shown in lists and headers; empty shows the name.">
+            <Input id="rename-type-display" value={displayName} placeholder={name} onChange={(e) => setDisplayName(e.target.value)} />
           </Field>
           <div className="flex justify-end gap-2">
             <Button type="button" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary" disabled={!!problem || name === item.name}>
+            <Button type="submit" variant="primary" disabled={!!problem || unchanged}>
               Rename
             </Button>
           </div>
@@ -405,6 +388,7 @@ function CategoryDialog({
   onMove(category: string | null): void;
 }) {
   const [category, setCategory] = useState(items.length === 1 ? (items[0].category ?? "") : "");
+  const { openSettings } = useEditorNavigation();
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent title={items.length === 1 ? `Move ${items[0].name} to a category` : `Move ${items.length} types to a category`}>
@@ -415,7 +399,11 @@ function CategoryDialog({
             onMove(category || null);
           }}
         >
-          <Field label="Category" htmlFor="type-category">
+          <Field
+            label="Category"
+            htmlFor="type-category"
+            hint={categories.length ? undefined : "No categories exist yet. Add them under Settings › Categories, then move the type here."}
+          >
             <Select id="type-category" value={category} onChange={(e) => setCategory(e.target.value)}>
               <option value="">(none)</option>
               {categories.map((c) => (
@@ -427,6 +415,19 @@ function CategoryDialog({
             </Select>
           </Field>
           <div className="flex justify-end gap-2">
+            {categories.length ? null : (
+              <Button
+                type="button"
+                variant="link"
+                className="mr-auto px-0"
+                onClick={() => {
+                  onClose();
+                  openSettings("categories");
+                }}
+              >
+                Open Settings › Categories
+              </Button>
+            )}
             <Button type="button" onClick={onClose}>
               Cancel
             </Button>

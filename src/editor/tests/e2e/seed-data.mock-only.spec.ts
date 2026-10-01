@@ -14,7 +14,7 @@ test("an entity's seed: create it, type two rows, import a CSV, export it", asyn
   await page.getByTestId("new-seed").click();
   const grid = page.getByTestId("rows-grid");
   await expect(grid).toBeVisible();
-  await expect(grid.getByRole("columnheader")).toHaveText(["id", "name", "email", "customerSince"]);
+  await expect(grid.getByRole("columnheader")).toHaveText(["Row", "id", "name", "email", "customerSince"]);
   await expect(page.getByRole("button", { name: "Import CSV" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Export CSV" })).toBeEnabled();
 

@@ -9,19 +9,20 @@ import { preselectedStorage, storageFor, storageLabel, storageOptions, TEMPLATE_
 const declared = { native: {}, check: { description: "CHECK (column IN (codes))" }, "lookup-table": {}, archive: {} };
 
 describe("Stored as", () => {
-  it("lists Template-defined, then the pack's three strategies by what they build, then the others", () => {
+  it("lists Let the packs decide, then the pack's three strategies by name, then the others, each with its help", () => {
     expect(storageOptions(declared).map((o) => [o.value, o.label])).toEqual([
-      [TEMPLATE_DEFINED, "Template-defined"],
-      ["lookup-table", "Lookup table"],
-      ["check", "Check constraint"],
-      ["native", "Native type (where the dialect has one)"],
+      [TEMPLATE_DEFINED, "Let the packs decide"],
+      ["lookup-table", "lookup-table"],
+      ["check", "check"],
+      ["native", "native"],
       ["archive", "archive"],
     ]);
-    expect(storageOptions(declared)[2].title).toBe("CHECK (column IN (codes))");
-    expect(storageOptions({}).map((o) => o.label)).toEqual(["Template-defined"]);
+    expect(storageOptions(declared)[2].help).toBe("CHECK (column IN (codes))");
+    expect(storageOptions(declared)[0].help).toBe("No strategy: the templates decide how the type is stored.");
+    expect(storageOptions({}).map((o) => o.label)).toEqual(["Let the packs decide"]);
   });
 
-  it("preselects a check constraint, else the project default, else Template-defined", () => {
+  it("preselects a check constraint, else the project default, else Let the packs decide", () => {
     expect(preselectedStorage(declared, { strategy: "lookup-table" })).toBe("check");
     expect(preselectedStorage({ "lookup-table": {} }, { strategy: "lookup-table" })).toBe("lookup-table");
     expect(preselectedStorage({ "lookup-table": {} }, null)).toBe(TEMPLATE_DEFINED);
@@ -35,11 +36,11 @@ describe("Stored as", () => {
 });
 
 describe("the type picker's storage beside a reference type", () => {
-  it("shows the type's own choice, else the project default, else template, and counts databases set otherwise", () => {
+  it("shows the type's own choice, else the project default, else packs decide, and counts databases set otherwise", () => {
     expect(storageLabel({ "*": { strategy: "check" } }, { strategy: "lookup-table" })).toBe("check");
     expect(storageLabel(undefined, { strategy: "lookup-table" })).toBe("lookup-table");
-    expect(storageLabel(undefined, null)).toBe("template");
-    expect(storageLabel({ "*": {} }, { strategy: "check" })).toBe("template");
+    expect(storageLabel(undefined, null)).toBe("packs decide");
+    expect(storageLabel({ "*": {} }, { strategy: "check" })).toBe("packs decide");
     expect(storageLabel({ "*": { strategy: "check" }, DB1: { strategy: "native" }, DB2: { strategy: "check" } })).toBe("check +1");
   });
 

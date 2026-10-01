@@ -1,7 +1,9 @@
 // The attribute grid (S14 "spreadsheet-style attribute grid with keyboard entry"): TanStack Table
 // for the columns; arrow keys move, Enter or F2 edits (Enter again commits and saves), Escape
 // cancels, Tab moves right, Ctrl+Enter adds a row, Ctrl+Delete removes one. Edits go through the
-// element's draft, so the canvas card changes as you type.
+// element's draft, so the canvas card changes as you type. The last two columns are each attribute's display name and
+// description (what the field means), shown in full as the cell's tooltip; a description edits in a text area where
+// Shift+Enter adds a line, and one kept in a sidecar file is shown, not edited, here.
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { KeyRound, Plus, Trash2 } from "lucide-react";
@@ -13,9 +15,12 @@ import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import type { Diagnostic } from "@/api/types";
 
-type ColumnKey = "key" | "name" | "type" | "length" | "precision" | "scale" | "required" | "unique" | "indexed" | "default";
+type ColumnKey = "key" | "name" | "type" | "length" | "precision" | "scale" | "required" | "unique" | "indexed" | "default" | "displayName" | "description";
 
-const COLUMNS: { key: ColumnKey; label: string; kind: "toggle" | "text" | "number" | "type" | "key"; width: string }[] = [
+/** The columns that hold an attribute's display name and description. */
+const TEXT_COLUMNS: ReadonlySet<ColumnKey> = new Set(["displayName", "description"]);
+
+const COLUMNS: { key: ColumnKey; label: string; kind: "toggle" | "text" | "long" | "number" | "type" | "key"; width: string }[] = [
   { key: "key", label: "Key", kind: "key", width: "w-9" },
   { key: "name", label: "Name", kind: "text", width: "min-w-28" },
   { key: "type", label: "Type", kind: "type", width: "min-w-28" },
@@ -26,6 +31,8 @@ const COLUMNS: { key: ColumnKey; label: string; kind: "toggle" | "text" | "numbe
   { key: "unique", label: "Uniq", kind: "toggle", width: "w-10" },
   { key: "indexed", label: "Idx", kind: "toggle", width: "w-10" },
   { key: "default", label: "Default", kind: "text", width: "min-w-20" },
+  { key: "displayName", label: "Display name", kind: "text", width: "min-w-24" },
+  { key: "description", label: "Description", kind: "long", width: "min-w-40 max-w-80" },
 ];
 
 export interface AttributeGridProps {
@@ -46,7 +53,15 @@ export interface AttributeGridProps {
   /** The JSON array the rows live in ("attributes"). */
   field?: "attributes";
   withKey?: boolean;
+  /** The Display name and Description columns (on by default). */
+  withTexts?: boolean;
 }
+
+/** An attribute's description kept in a sidecar file (`{ "file": … }`): shown, not edited, in the grid. */
+const sidecar = (a: AttributeDoc): string | null => {
+  const d = (a as { description?: unknown }).description;
+  return d && typeof d === "object" && typeof (d as { file?: unknown }).file === "string" ? (d as { file: string }).file : null;
+};
 
 function typeRefId(a: AttributeDoc): string | undefined {
   return isBuiltin(a.type) ? undefined : (a.type as { ref?: string } | undefined)?.ref;
@@ -79,6 +94,13 @@ function display(a: AttributeDoc, key: ColumnKey, typeOptions: ElementSummary[])
       return a[key] === undefined ? "" : String(a[key]);
     case "name":
       return a.name;
+    case "displayName":
+      return a.displayName ?? "";
+    case "description": {
+      const file = sidecar(a);
+      if (file) return `(in ${file})`;
+      return typeof a.description === "string" ? a.description : "";
+    }
     default:
       return "";
   }
@@ -104,10 +126,11 @@ export function AttributeGrid({
   pointerBase = "/attributes",
   onChange,
   withKey = true,
+  withTexts = true,
   definition,
   owner,
 }: AttributeGridProps) {
-  const columns = useMemo(() => COLUMNS.filter((c) => withKey || c.key !== "key"), [withKey]);
+  const columns = useMemo(() => COLUMNS.filter((c) => (withKey || c.key !== "key") && (withTexts || !TEXT_COLUMNS.has(c.key))), [withKey, withTexts]);
   const table = useReactTable({
     data: attributes,
     columns: columns.map((c) => helper.display({ id: c.key, header: c.label })),
@@ -133,7 +156,7 @@ export function AttributeGrid({
   useEffect(() => {
     if (!pendingFocus.current) return;
     const cell = gridRef.current?.querySelector<HTMLElement>(`[data-cell="${active.row}:${active.col}"]`);
-    const target = editing ? cell?.querySelector<HTMLInputElement | HTMLSelectElement>("input, select") : cell;
+    const target = editing ? cell?.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("input, select, textarea") : cell;
     if (!target) return;
     pendingFocus.current = false;
     target.focus();
@@ -172,6 +195,11 @@ export function AttributeGrid({
         const v = String(raw);
         if (v === "") delete a.default;
         else a.default = parseDefault(a, v);
+      } else if (key === "displayName" || key === "description") {
+        const v = String(raw);
+        if (key === "description" && sidecar(a)) return;
+        if (v.trim() === "") delete record[key];
+        else record[key] = v;
       } else if (key === "required" || key === "unique" || key === "indexed") {
         if (raw) record[key] = true;
         else delete record[key];
@@ -244,6 +272,7 @@ export function AttributeGrid({
       apply(row, "key", true, true);
       return;
     }
+    if (column.key === "description" && sidecar(a)) return;
     setEditing({ value: initial ?? (column.kind === "type" ? typeValue(a) : display(a, column.key, typeOptions)) });
     pendingFocus.current = true;
   };
@@ -295,13 +324,14 @@ export function AttributeGrid({
       startEdit(row, col);
       return;
     }
-    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && ["text", "number"].includes(columns[col].kind)) {
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && ["text", "long", "number"].includes(columns[col].kind)) {
       e.preventDefault();
       startEdit(row, col, e.key);
     }
   };
 
   const onEditorKeyDown = (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key === "Enter" && e.shiftKey && e.currentTarget instanceof HTMLTextAreaElement) return; // a new line in the text
     if (e.key === "Enter") {
       e.preventDefault();
       commit("down");
@@ -356,7 +386,13 @@ export function AttributeGrid({
                           if (column.kind === "type" && !isEditing && definition?.onClick(typeRefId(a), e)) return;
                           setActive({ row: r, col: c });
                         }}
-                        title={column.kind === "type" && typeRefId(a) ? "F12 or Ctrl+click: go to the type" : undefined}
+                        title={
+                          column.kind === "type" && typeRefId(a)
+                            ? "F12 or Ctrl+click: go to the type"
+                            : TEXT_COLUMNS.has(column.key)
+                              ? display(a, column.key, typeOptions) || undefined
+                              : undefined
+                        }
                         onDoubleClick={() => startEdit(r, c)}
                         onKeyDown={(e) => onCellKeyDown(e, r, c)}
                         className={cn(
@@ -388,6 +424,17 @@ export function AttributeGrid({
                                 if (refocus) focusCell(r, c);
                               }}
                             />
+                          ) : column.kind === "long" ? (
+                            <textarea
+                              aria-label={`${column.label} of ${a.name}`}
+                              title="Shift+Enter adds a line"
+                              rows={Math.min(6, Math.max(2, editing.value.split("\n").length))}
+                              className="block w-full min-w-48 resize-y rounded-[4px] border border-input bg-surface px-1 text-12 leading-5"
+                              value={editing.value}
+                              onChange={(e) => setEditing({ value: e.target.value })}
+                              onKeyDown={onEditorKeyDown}
+                              onBlur={() => commit("blur")}
+                            />
                           ) : (
                             <input
                               aria-label={`${column.label} of ${a.name}`}
@@ -410,7 +457,9 @@ export function AttributeGrid({
                             className={cn("inline-block size-3 rounded-[3px] border border-input", record[column.key] === true && "border-accent bg-accent")}
                           />
                         ) : (
-                          <span className="block truncate">{display(a, column.key, typeOptions)}</span>
+                          <span className={cn("block truncate", column.key === "description" && sidecar(a) && "italic text-secondary")}>
+                            {display(a, column.key, typeOptions)}
+                          </span>
                         )}
                       </td>
                     );
