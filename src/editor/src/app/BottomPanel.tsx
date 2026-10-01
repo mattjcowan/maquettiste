@@ -4,8 +4,7 @@ import * as endpoints from "@/api/endpoints";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge, EmptyState, Spinner } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
-import { ProblemsPanel, useProblemGroups } from "@/problems/ProblemsPanel";
-import { countBySeverity } from "@/problems/group";
+import { ProblemsPanel, useVisibleProblemGroups } from "@/problems/ProblemsPanel";
 import { DiffViewer } from "@/diff/DiffViewer";
 import { ReferencesPanel } from "@/references/ReferencesPanel";
 import { useEditor, type BottomTab } from "@/state/store";
@@ -50,8 +49,12 @@ export function BottomPanel() {
   const { store } = useServices();
   const tab = useEditor(store, (s) => s.bottomTab);
   const collapsed = useEditor(store, (s) => s.bottomCollapsed);
-  const { groups } = useProblemGroups();
-  const counts = countBySeverity(groups);
+  // The tab's count follows the panel's severity filter, so hiding the notes also quiets the badge.
+  const { groups } = useVisibleProblemGroups();
+  const counts = {
+    errors: groups.flatMap((g) => g.diagnostics).filter((d) => d.severity === "error").length,
+    shown: groups.reduce((n, g) => n + g.diagnostics.length, 0),
+  };
   return (
     <section aria-label="Problems, output, diff and references" className="flex h-full min-h-0 flex-col bg-surface" data-testid="bottom-panel">
       <Tabs value={tab} onValueChange={(v) => store.getState().setBottomTab(v as BottomTab)} className="flex min-h-0 flex-1 flex-col">
@@ -60,7 +63,7 @@ export function BottomPanel() {
             <TabsTrigger value="problems" data-testid="tab-problems">
               Problems
               <Badge tone={counts.errors ? "danger" : "neutral"} data-testid="problem-count">
-                {counts.errors + counts.warnings + counts.infos}
+                {counts.shown}
               </Badge>
             </TabsTrigger>
             <TabsTrigger value="output" data-testid="tab-output">

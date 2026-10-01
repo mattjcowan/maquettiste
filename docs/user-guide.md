@@ -233,7 +233,8 @@ database shows on the Database screen at once. The explorers remember which rows
   and **Keys only** shows no box (a relationship has no key of its own; its ends identify it). It sits below the label,
   beside the line where the label is on an upright stretch, and follows the edge when you move cards; clicking it
   selects the relationship. Turning it on moves nothing: run Auto-layout to make room for the boxes. Export to SVG or
-  PNG includes them. It is off until you tick it.
+  PNG includes them. It is off until you tick it. **Minimap** shows or hides the small map at the canvas's lower right
+  corner; it is on until you untick it, and the choice is kept the same way.
 - **Reference data**: the reference types and their rows. The Reference data explorer is the screen's list: the types
   nested by category with a count on every group, and the explorer's search operators (`*` contains, `^` starts with,
   `~` like with `%`, `=` equals); its **…** menu has **Types A to Z (no categories)** for one flat list. Clicking a
@@ -696,7 +697,14 @@ When a lifecycle's bound enum and its root-level states differ (MQ9203), **Sync 
 fix in Problems) first shows the plan (members added, removed, reordered, and the removals it keeps because something
 still uses them), then **Apply** makes the enum follow the states.
 
-The **Problems** panel shows a fix button beside a diagnostic whose rule has one. Each fix is one change with one undo
+The **Problems** panel is live: every save re-validates the model and the panel shows the result, so a finding leaves
+as soon as its cause does, and nothing in it is stale. Its header has one chip per severity (**Errors**, **Warnings**,
+**Information**) with the count of each: untick a chip to hide that severity, and the tab's badge counts only what is
+shown; the choice is kept in this browser. Information findings are notes, not faults (a lifecycle that never completes,
+a locale's missing counts); a rule can also be set to `off` under Settings › Validation. **Validate again** runs every
+rule over the whole model now, for the times you want to see it happen.
+
+The panel shows a fix button beside a diagnostic whose rule has one. Each fix is one change with one undo
 step, and the panel re-validates after it:
 
 | Rule | Fix button |

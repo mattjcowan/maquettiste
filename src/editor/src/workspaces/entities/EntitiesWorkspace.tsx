@@ -81,13 +81,15 @@ const nodeTypes = { entity: EntityNode };
 const edgeTypes = { relation: RelationEdge };
 
 /** The Display menu's options, kept per browser for each view (PD18): attribute detail, cardinality notation, and
- * whether relations show their attributes in a box off the label. */
+ * whether relations show their attributes in a box off the label, and whether the minimap shows (it covers the
+ * canvas's lower right corner, which is most of a short canvas while the bottom panel is open). */
 interface DisplayOptions {
   mode: DisplayMode;
   notation: Notation;
   relationAttributes: boolean;
+  minimap: boolean;
 }
-const DEFAULT_DISPLAY: DisplayOptions = { mode: "all", notation: "uml", relationAttributes: false };
+const DEFAULT_DISPLAY: DisplayOptions = { mode: "all", notation: "uml", relationAttributes: false, minimap: true };
 
 function cssColor(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -867,6 +869,13 @@ function EntitiesCanvas() {
               >
                 Relation attributes
               </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={display.minimap}
+                onCheckedChange={(checked) => changeDisplay({ ...display, minimap: checked === true })}
+                data-testid="display-minimap"
+              >
+                Minimap
+              </DropdownMenuCheckboxItem>
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Cardinality</DropdownMenuLabel>
               <DropdownMenuRadioGroup value={display.notation} onValueChange={(v) => changeDisplay({ ...display, notation: v as Notation })}>
@@ -923,12 +932,15 @@ function EntitiesCanvas() {
         >
           <Background color={cssColor("--mq-border-default")} gap={16} />
           <Controls showInteractive={false} />
-          <MiniMap
-            pannable
-            zoomable
-            ariaLabel="Minimap"
-            nodeColor={(n) => cssColor(`--mq-cat-${(n.data as { categoryIndex: number | null }).categoryIndex ?? 1}`)}
-          />
+          {display.minimap ? (
+            <MiniMap
+              pannable
+              zoomable
+              ariaLabel="Minimap"
+              style={{ width: 160, height: 100 }}
+              nodeColor={(n) => cssColor(`--mq-cat-${(n.data as { categoryIndex: number | null }).categoryIndex ?? 1}`)}
+            />
+          ) : null}
         </ReactFlow>
       </div>
       <NewEntityDialog
