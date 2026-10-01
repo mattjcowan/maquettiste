@@ -417,12 +417,16 @@ public sealed class InterpreterConformanceTests : IDisposable
         var process = P([S("A"), S("B")], [On("t1", "A", "e", "B") with { Guard = "g" }], [E("e")], [G("g", expression)]);
         var run = Run(process);
         run.Start();
-        var watch = Stopwatch.StartNew();
 
         var trace = run.Step(Send("e"));
 
         Assert.Equal((false, "guard"), Refusal(trace));
         Assert.Equal(rule, Assert.Single(trace.Diagnostics).Rule);
+
+        // The deadline is timed on a second step: the first one also compiles the expressions and warms the sandbox, which
+        // a cold hosted runner has taken over a second for. A refused step leaves the instance where it was.
+        var watch = Stopwatch.StartNew();
+        Assert.Equal((false, "guard"), Refusal(run.Step(Send("e"))));
         Assert.True(watch.ElapsedMilliseconds < 1000, "a stuck expression stops within the deadline");
     }
 

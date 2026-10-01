@@ -70,9 +70,9 @@ jobs:
       - name: Playwright (mock project on the mock build, dev smoke on the Vite dev server)
         run: npm run e2e
         env:
-          # The chart's section 4.5 budgets (statechart-budget.mock-only.spec.ts) assume an 8-core machine; on a hosted
-          # runner a miss is recorded on the report, not failed, as gate3.yml does for the bench.
-          MQ_BUDGETS_ADVISORY: ${{ runner.environment == 'github-hosted' && '1' || '0' }}
+          # The chart's section 4.5 targets (statechart-budget.mock-only.spec.ts) assume an 8-core machine; a hosted
+          # runner gets its own budget, twice the target, and still fails on a real regression.
+          MQ_HOSTED_RUNNER: ${{ runner.environment == 'github-hosted' && '1' || '0' }}
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v4

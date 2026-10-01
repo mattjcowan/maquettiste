@@ -1014,8 +1014,9 @@ owner's third look (a chain laid out in one row hid its skip transitions, drawn 
 in lanes from the inside out by the length of the stretch (clearance 20, lane gap 24), derived from the boxes on every
 render since routes are not saved; the layout itself is unchanged (a chain is one row, the lifted edges show the
 branches). Unit tests `statechart-routes`. After 0.5.0 two CI failures: the chart's first-paint budget missed on the
-hosted runner (391 ms against 313; 224 ms locally, no regression), so `editor.yml` sets `MQ_BUDGETS_ADVISORY` on a
-hosted runner and the budget spec then records a miss on the report instead of failing, as gate3.yml does for the bench;
+hosted runner (391 ms against 313; 224 ms locally, no regression), so `editor.yml` sets `MQ_HOSTED_RUNNER` there and the
+budget spec gives a hosted runner its own budget, twice the target (500 ms first paint, 800 ms layout), which runner
+speed meets and a real regression still fails; the owner preferred that to an advisory miss, which was the first cut;
 and on the macOS runner the three pack tests that restore and build the generated solution failed (`nuget.g.props
 already exists`, then the test host could not load `Processes.Data`), the temp folder there lying under `/var`, a link
 to `/private/var`, so `TempRepo` now resolves its root's real path before any tool runs in it. Budgets

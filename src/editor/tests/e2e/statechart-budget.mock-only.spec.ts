@@ -11,9 +11,12 @@ import type { Page, TestInfo } from "@playwright/test";
 import { expect, openEditor, test, workspace } from "./fixtures";
 
 const NOISE = 1.25;
-// The section 4.5 budgets assume the design's 8-core machine; on a GitHub-hosted runner (editor.yml sets this from
-// runner.environment, as gate3.yml does for the bench) a miss is recorded on the report and does not fail the run.
-const ADVISORY = process.env.MQ_BUDGETS_ADVISORY === "1";
+// The section 4.5 targets assume the design's 8-core machine. A GitHub-hosted runner (editor.yml sets this from
+// runner.environment) is slower by a measured margin: its first paint of the 400-state chart ran 391 ms on a commit that
+// changed no editor code, against 224 ms on the reference machine. Its budget is twice the target, so a real regression
+// still fails there while runner speed does not.
+const HOSTED = process.env.MQ_HOSTED_RUNNER === "1";
+const FACTOR = HOSTED ? 2 : NOISE;
 
 interface Measure {
   name: string;
@@ -23,12 +26,11 @@ interface Measure {
 }
 
 function within(info: TestInfo, name: string, ms: number, targetMs: number): Measure {
-  const measure = { name, ms, targetMs, budgetMs: Math.round(targetMs * NOISE) };
-  info.annotations.push({ type: "timing", description: `${name}: ${ms} ms (target ${targetMs} ms, budget ${measure.budgetMs} ms)` });
-  if (ADVISORY && ms > measure.budgetMs) {
-    info.annotations.push({ type: "over budget (advisory on this runner)", description: `${name}: ${ms} ms, budget ${measure.budgetMs} ms` });
-    return measure;
-  }
+  const measure = { name, ms, targetMs, budgetMs: Math.round(targetMs * FACTOR) };
+  info.annotations.push({
+    type: "timing",
+    description: `${name}: ${ms} ms (target ${targetMs} ms, budget ${measure.budgetMs} ms${HOSTED ? " on a hosted runner" : ""})`,
+  });
   expect(ms, `${name} took ${ms} ms; budget ${measure.budgetMs} ms`).toBeLessThanOrEqual(measure.budgetMs);
   return measure;
 }
