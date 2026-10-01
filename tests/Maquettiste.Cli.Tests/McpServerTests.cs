@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Maquettiste.Bench;
+using Maquettiste.Testing;
 using ModelContextProtocol.Protocol;
 
 namespace Maquettiste.Cli.Tests;
@@ -461,6 +462,23 @@ public sealed class McpGenerationTests
         var scoped = await session.OkAsync("validate", new { elementIds = new[] { McpSession.Customer } });
         Assert.True((int)scoped["errors"]! > 0);
         Assert.Equal("bad-request", (await session.ErrorAsync("validate", new { elementIds = new[] { "customer" } })).Code);
+    }
+
+    [Fact]
+    public async Task Validate_carries_the_resolvers_MQ4005_for_a_foreign_key_an_overlay_pins()
+    {
+        await using var session = await McpSession.StartAsync(ct: TestContext.Current.CancellationToken);
+        session.Repo.Write(BillingEdits.InvoiceOverlayPath, BillingEdits.PinCustomerForeignKey(session.Repo.Read(BillingEdits.InvoiceOverlayPath)));
+        var report = await session.OkAsync("validate");
+        Assert.Equal(1, (int)report["errors"]!);
+        var diagnostic = report["diagnostics"]!.AsArray().Single(d => (string)d!["rule"]! == "MQ4005")!;
+        Assert.Equal(BillingEdits.InvoiceOverlayId, (string)diagnostic["elementId"]!);
+        Assert.Equal(BillingEdits.InvoiceOverlayPath, (string)diagnostic["filePath"]!);
+        Assert.Equal(BillingEdits.PinnedPointer, (string)diagnostic["jsonPointer"]!);
+        Assert.Equal(BillingEdits.ForeignKeyMismatch, (string)diagnostic["message"]!);
+        Assert.True((int)diagnostic["line"]! > 0);
+        var scoped = await session.OkAsync("validate", new { elementIds = new[] { BillingEdits.InvoiceOverlayId } });
+        Assert.Contains("MQ4005", scoped.ToJsonString(), StringComparison.Ordinal);
     }
 
     [Fact]

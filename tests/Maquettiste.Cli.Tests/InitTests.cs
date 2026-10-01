@@ -8,6 +8,31 @@ namespace Maquettiste.Cli.Tests;
 public sealed class InitTests
 {
     [Fact]
+    public async Task A_rerun_of_plain_init_puts_back_no_pack_the_team_removed()
+    {
+        using var repo = CliRepo.Empty();
+        Assert.Equal(0, (await repo.RunAsync("init")).ExitCode);
+        Assert.True(Directory.Exists(repo.PathOf(".maquettiste/templates/sql-ddl")));
+
+        // The team removes the starter pack: its folder and its settings entry.
+        Directory.Delete(repo.PathOf(".maquettiste/templates/sql-ddl"), recursive: true);
+        repo.Replace(".maquettiste/maquettiste.json", "\"sql-ddl\": {", "\"sql-ddl-gone\": {");
+        var settings = repo.Read(".maquettiste/maquettiste.json");
+
+        var again = await repo.RunAsync("init");
+        Assert.Equal(0, again.ExitCode);
+        Assert.False(Directory.Exists(repo.PathOf(".maquettiste/templates/sql-ddl")));
+        Assert.Equal(settings, repo.Read(".maquettiste/maquettiste.json"));
+        Assert.DoesNotContain("templates/sql-ddl", again.Error, StringComparison.Ordinal);
+
+        // Asked for by name, the pack comes back with its entry.
+        var asked = await repo.RunAsync("init", "--pack", "sql-ddl");
+        Assert.Equal(0, asked.ExitCode);
+        Assert.True(File.Exists(repo.PathOf(".maquettiste/templates/sql-ddl/pack.json")));
+        Assert.Contains("\"sql-ddl\": {", repo.Read(".maquettiste/maquettiste.json"), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Init_creates_the_layout_settings_schemas_and_starter_pack_and_leaves_gitignore_alone()
     {
         using var repo = CliRepo.Empty();

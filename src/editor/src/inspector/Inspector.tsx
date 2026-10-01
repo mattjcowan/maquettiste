@@ -32,6 +32,7 @@ import {
 } from "./fields";
 import { applicableExtensions, SchemaForm } from "./SchemaForm";
 import { emptyTitle, inspectorContext, type InspectorContext } from "./context";
+import { OpenTableButton, TableInspector } from "./TableInspector";
 import { EntityAttributeList } from "./AttributeList";
 import { ActorInspectorSection, ProcessInspectorSection, ScenarioInspectorSection, useProcessNodeShown } from "./ProcessSections";
 import { attributesView, INSPECTOR_TAB_LABELS, inspectorTabs, resolveInspectorTab } from "./tabs";
@@ -46,6 +47,7 @@ export function useInspectorContext(): InspectorContext {
   const selectionBy = useEditor(store, (s) => s.selectionBy);
   const pinned = useEditor(store, (s) => s.explorer.pinned);
   const selectionFrom = useEditor(store, (s) => s.selectionFrom);
+  const inspectedTable = useEditor(store, (s) => s.inspectedTable);
   const index = useIndex();
   const exists = useMemo(() => {
     if (!index.data) return undefined;
@@ -57,8 +59,8 @@ export function useInspectorContext(): InspectorContext {
     if (exists) store.getState().pruneSelection(exists);
   }, [exists, store]);
   return useMemo(
-    () => inspectorContext({ workspace, explorer: { active, pinned }, selectionFrom, editors, generation, selectionBy, exists }),
-    [workspace, active, pinned, selectionFrom, editors, generation, selectionBy, exists],
+    () => inspectorContext({ workspace, explorer: { active, pinned }, selectionFrom, editors, generation, selectionBy, exists, inspectedTable }),
+    [workspace, active, pinned, selectionFrom, editors, generation, selectionBy, exists, inspectedTable],
   );
 }
 
@@ -68,6 +70,7 @@ export function Inspector({ context }: { context: InspectorContext }) {
   const onTab = useCallback((kind: ElementKind, tab: string) => setTabs((t) => (t[kind] === tab ? t : { ...t, [kind]: tab })), []);
   if (context.mode === "none") return null;
   if (context.mode === "pack") return <PackInspector key={context.pack} pack={context.pack} unit={context.unit} />;
+  if (context.mode === "table") return <TableInspector database={context.database} tableKey={context.key} column={context.column} />;
   if (context.mode === "empty")
     return (
       <section
@@ -212,6 +215,7 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
             {String((json as { name?: string }).name ?? "") || displayName(summary)}
           </h2>
           <span data-testid="save-status">{statusBadge(draft?.status, false)}</span>
+          {kind === "table" ? <OpenTableButton json={json} /> : null}
           <DeleteButton id={id} name={String((json as { name?: string }).name ?? id)} />
         </div>
         <p className="truncate font-mono text-11 text-secondary">{element.data?.path ?? KIND_LABELS[kind]}</p>
@@ -311,7 +315,7 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
   );
 }
 
-function JsonTab({ json, onChange }: { json: ModelJson; onChange: (json: ModelJson) => void }) {
+export function JsonTab({ json, onChange }: { json: ModelJson; onChange: (json: ModelJson) => void }) {
   const [error, setError] = useState<string | null>(null);
   const text = useMemo(() => JSON.stringify(json, null, 2), [json]);
   return (
@@ -375,7 +379,7 @@ export function References({ id }: { id: string }) {
  * otherwise the dialog lists what each way through does and offers "Delete and clear references" and "Delete with
  * N dependents". A refused delete closes the dialog and says why in the engine's readable words.
  */
-function DeleteButton({ id, name }: { id: string; name: string }) {
+export function DeleteButton({ id, name }: { id: string; name: string }) {
   const { store, drafts } = useServices();
   const qc = useQueryClient();
   const { select } = useEditorNavigation();

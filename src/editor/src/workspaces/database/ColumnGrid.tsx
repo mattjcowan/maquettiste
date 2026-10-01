@@ -1,35 +1,54 @@
-// The Database screen's column editor: the selected table's resolved columns in a dense grid (name, type, native type,
-// nullable, default, comment, description), each edit written to the table's file through the same save path as the
-// inspector (useElementEdits: the draft manager for an existing file, one create for a new overlay), so every committed cell
-// is one save and one undo step. Arrow keys move, Enter or F2 edits (Enter again commits), Escape cancels, Tab moves right,
-// Space toggles Null. A synthesized table without an overlay gets one on its first edit, holding just that column's change.
-import { useMemo, useRef, useState, useEffect, type KeyboardEvent } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+// The Database screen's column editor: the selected table's resolved columns in a dense grid (name, the attribute it derives
+// from, type, length, precision, scale, native type, nullable, default, comment, description), each edit written to the
+// table's file through the same path as the table inspector (useTableFile: the draft manager for an existing file, one create
+// for a new overlay), so every committed cell is one save and one undo step. Arrow keys move, Enter or F2 edits (Enter again
+// commits), Escape cancels, Tab moves right, Space toggles Null, Enter on an Attribute cell goes to the entity. A synthesized
+// table without an overlay gets one on its first edit, holding just that column's change. The physical fields are free for
+// every table: the attribute keeps its own type and length for validation, the column's are storage.
+import { useRef, useState, useEffect, type KeyboardEvent } from "react";
 import { ChevronDown, ChevronUp, KeyRound, Link2 } from "lucide-react";
 import type { ColumnView, TableView } from "@/api/types";
-import { invalidateResolved, useElements, useIndex } from "@/api/queries";
 import { useServices } from "@/app/context";
-import { useElementEdits } from "@/editors/mappingEdit";
+import { useEditor } from "@/state/store";
+import { useEditorNavigation } from "@/app/navigation";
 import { BUILTIN_TYPES } from "@/model/model";
-import { newId } from "@/lib/ids";
-import { clone } from "@/lib/json";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
-import { columnText, isOverlayFor, newOverlay, overlayCandidates, setColumnField, tableFileTarget, type ColumnField } from "./columnEdits";
+import { columnText, physicalHint, type ColumnField, type Derivation } from "./columnEdits";
+import { useColumnDerivations, useTableFile } from "./useTableFile";
 
 type GridColumn = {
-  key: ColumnField | "flags" | "native";
+  key: ColumnField | "flags" | "attribute";
   label: string;
   title: string;
   width: string;
-  kind: "flags" | "text" | "long" | "type" | "toggle" | "readonly";
+  kind: "flags" | "text" | "long" | "type" | "toggle" | "link";
+  /** A physical cell: its hint names the attribute's own type (the column's is storage). */
+  physical?: boolean;
 };
 
-const GRID_COLUMNS: GridColumn[] = [
+export const GRID_COLUMNS: GridColumn[] = [
   { key: "flags", label: "", title: "Primary key or foreign key", width: "w-8", kind: "flags" },
   { key: "name", label: "Name", title: "The column name; cleared, a synthesized column takes its conventional name again", width: "min-w-28", kind: "text" },
-  { key: "type", label: "Type", title: "The built-in type", width: "w-28", kind: "type" },
-  { key: "native", label: "Native", title: "The database's type, from the type map", width: "min-w-24", kind: "readonly" },
+  {
+    key: "attribute",
+    label: "Attribute",
+    title: "The attribute the column derives from, with its logical type on hover; Enter or a click goes to the entity",
+    width: "min-w-28",
+    kind: "link",
+  },
+  { key: "type", label: "Type", title: "The column's physical built-in type; the attribute keeps its own", width: "w-24", kind: "type", physical: true },
+  { key: "length", label: "Length", title: "The column's length (storage); the attribute's length is validation", width: "w-14", kind: "text", physical: true },
+  { key: "precision", label: "Prec.", title: "The column's precision", width: "w-12", kind: "text", physical: true },
+  { key: "scale", label: "Scale", title: "The column's scale", width: "w-12", kind: "text", physical: true },
+  {
+    key: "nativeType",
+    label: "Native",
+    title: "The database's type: from the type map, or the one typed here (cleared, the type map's again)",
+    width: "min-w-24",
+    kind: "text",
+    physical: true,
+  },
   { key: "nullable", label: "Null", title: "Whether the column accepts nulls (Space toggles)", width: "w-10", kind: "toggle" },
   { key: "default", label: "Default", title: "The literal default", width: "min-w-20", kind: "text" },
   {
@@ -43,6 +62,7 @@ const GRID_COLUMNS: GridColumn[] = [
 ];
 
 const EDITABLE = (c: GridColumn) => c.kind === "text" || c.kind === "long" || c.kind === "type" || c.kind === "toggle";
+const MONO = new Set<GridColumn["key"]>(["name", "type", "nativeType", "length", "precision", "scale"]);
 
 export function ColumnPanel({ table, databaseId }: { table: TableView | null; databaseId: string | null }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -73,33 +93,29 @@ export function ColumnPanel({ table, databaseId }: { table: TableView | null; da
 }
 
 function ColumnGrid({ table, databaseId }: { table: TableView; databaseId: string }) {
-  const qc = useQueryClient();
   const { store } = useServices();
-  const edits = useElementEdits();
-  const index = useIndex();
-  const target = useMemo(() => tableFileTarget(table, databaseId), [table, databaseId]);
-  const candidates = useMemo(() => overlayCandidates(index.data ?? [], table, target, databaseId), [index.data, table, target, databaseId]);
-  const docs = useElements(target.kind === "file" ? [target.id] : candidates);
-  const fileId = useMemo(() => {
-    if (target.kind === "file") return target.id;
-    for (const id of candidates) if (isOverlayFor(docs.byId.get(id)?.json as Record<string, unknown> | undefined, target, databaseId)) return id;
-    return null;
-  }, [target, candidates, docs.byId, databaseId]);
-  const fileJson = fileId ? (docs.byId.get(fileId)?.json as Record<string, unknown> | undefined) : undefined;
+  const { openEntity } = useEditorNavigation();
+  const { write, busy } = useTableFile(table, databaseId);
+  const derivations = useColumnDerivations(table);
   const columns = table.columns;
-  const [active, setActive] = useState({ row: 0, col: 1 });
+  // The row the inspector shows: the one picked here (a click, the arrow keys), none until then.
+  const picked = useEditor(store, (s) => (s.inspectedTable?.key === table.key ? s.inspectedTable.column : null));
+  const [active, setActiveCell] = useState(() => ({
+    row: Math.max(
+      0,
+      columns.findIndex((c) => c.key === picked),
+    ),
+    col: 1,
+  }));
+  const setActive = (next: { row: number; col: number }) => {
+    setActiveCell(next);
+    const key = columns[next.row]?.key ?? null;
+    if (key !== picked) store.getState().inspectColumn(key);
+  };
   const [editing, setEditing] = useState<{ value: string } | null>(null);
   // The open editor as of now: a blur that follows a commit (the editor unmounting) must not commit twice.
   const editingRef = useRef(editing);
   editingRef.current = editing;
-  // Edits run one after another (a second edit before the first overlay exists must not create a second overlay), each
-  // reading the latest file: the one found in the index, else the overlay this grid has just created.
-  const [busy, setBusy] = useState(0);
-  const queue = useRef<Promise<void>>(Promise.resolve());
-  const created = useRef<string | null>(null);
-  if (fileId) created.current = null;
-  const latest = useRef({ fileId, fileJson, pending: docs.pending });
-  latest.current = { fileId, fileJson, pending: docs.pending };
   const gridRef = useRef<HTMLTableElement>(null);
   const pendingFocus = useRef(false);
 
@@ -120,42 +136,17 @@ function ColumnGrid({ table, databaseId }: { table: TableView; databaseId: strin
     pendingFocus.current = true;
   };
 
-  /** Writes one field of one column: one save of the table's file (or one create of its overlay), so one undo step. */
-  const run = async (column: ColumnView, field: ColumnField, value: string | boolean) => {
-    const { fileId: known, fileJson: json, pending } = latest.current;
-    const id = known ?? created.current;
-    if (!id && pending && target.kind === "overlay") {
-      store.getState().notify("The table's files are still loading; try again in a moment.", "error");
-      return;
-    }
-    if (id) {
-      // Tried on a copy first: an edit the file has no place for (a designed column missing from it, a description kept in a
-      // sidecar file) is said, not saved.
-      if (json && id === known && !setColumnField(clone(json), column, field, value, newId)) {
-        store.getState().notify(`Column ${column.name}: this ${field} cannot be edited here; use the table's JSON view.`, "error");
-        return;
-      }
-      await edits.update(id, (doc) => void setColumnField(doc, column, field, value, newId));
-    } else if (target.kind === "overlay") {
-      const doc = newOverlay(target, databaseId, column, field, value, newId);
-      if (doc && (await edits.create(doc, `Edit column ${column.name}`))) created.current = String(doc.id);
-    }
-    invalidateResolved(qc);
-  };
-  const write = (column: ColumnView, field: ColumnField, value: string | boolean) => {
-    setBusy((n) => n + 1);
-    queue.current = queue.current
-      .then(() => run(column, field, value))
-      .catch((e: unknown) => store.getState().notify(`Column ${column.name}: ${(e as Error).message}`, "error"))
-      .finally(() => setBusy((n) => n - 1));
-  };
-
   const valueOf = (column: ColumnView, key: GridColumn["key"]): string =>
-    key === "flags" || key === "nullable" ? "" : key === "native" ? column.nativeType : columnText(column, key);
+    key === "flags" || key === "nullable" ? "" : key === "attribute" ? (derivations.get(column.key)?.label ?? "") : columnText(column, key);
 
   const startEdit = (row: number, col: number, initial?: string) => {
     const gc = GRID_COLUMNS[col];
     const column = columns[row];
+    if (gc?.kind === "link" && column) {
+      const d = derivations.get(column.key);
+      if (d) openEntity(d.entityId);
+      return;
+    }
     if (!gc || !column || !EDITABLE(gc)) return;
     if (gc.kind === "toggle") {
       write(column, "nullable", !column.nullable);
@@ -171,7 +162,8 @@ function ColumnGrid({ table, databaseId }: { table: TableView; databaseId: strin
     const gc = GRID_COLUMNS[active.col];
     const column = columns[active.row];
     setEditing(null);
-    if (column && gc && gc.key !== "flags" && gc.key !== "native" && gc.key !== "nullable" && value !== valueOf(column, gc.key)) write(column, gc.key, value);
+    if (column && gc && EDITABLE(gc) && gc.key !== "flags" && gc.key !== "attribute" && gc.key !== "nullable" && value !== valueOf(column, gc.key))
+      write(column, gc.key, value);
     if (move === "down") focusCell(active.row + 1, active.col);
     else if (move === "right") focusCell(active.row, active.col + 1);
     else if (move === "left") focusCell(active.row, active.col - 1);
@@ -212,7 +204,7 @@ function ColumnGrid({ table, databaseId }: { table: TableView; databaseId: strin
   };
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto" aria-busy={busy > 0 || undefined}>
+    <div className="min-h-0 flex-1 overflow-auto" aria-busy={busy || undefined}>
       <table ref={gridRef} role="grid" aria-label={`Columns of ${table.name}`} className="w-full border-collapse text-12" data-testid="column-grid">
         <thead className="sticky top-0 z-[1] bg-app">
           <tr>
@@ -230,6 +222,7 @@ function ColumnGrid({ table, databaseId }: { table: TableView; databaseId: strin
                 const isActive = active.row === r && active.col === c;
                 const isEditing = isActive && editing !== null;
                 const text = valueOf(column, gc.key);
+                const derivation = derivations.get(column.key) ?? null;
                 return (
                   <td
                     key={gc.key}
@@ -239,15 +232,15 @@ function ColumnGrid({ table, databaseId }: { table: TableView; databaseId: strin
                     tabIndex={isActive && !isEditing ? 0 : -1}
                     aria-selected={isActive}
                     aria-readonly={!EDITABLE(gc) || undefined}
-                    title={gc.kind === "long" || gc.key === "comment" ? text || undefined : undefined}
+                    title={cellTitle(gc, text, column, derivation)}
                     onClick={() => setActive({ row: r, col: c })}
                     onDoubleClick={() => startEdit(r, c)}
                     onKeyDown={(e) => onCellKeyDown(e, r, c)}
                     className={cn(
                       "h-[var(--mq-row-h)] px-1.5 align-middle outline-none",
                       isActive && "bg-accent-subtle ring-1 ring-inset ring-accent",
-                      (gc.key === "type" || gc.key === "native" || gc.key === "name") && "font-mono",
-                      gc.kind === "readonly" && "text-secondary",
+                      MONO.has(gc.key) && "font-mono",
+                      gc.kind === "link" && "text-secondary",
                     )}
                   >
                     {isEditing ? (
@@ -297,6 +290,18 @@ function ColumnGrid({ table, databaseId }: { table: TableView; databaseId: strin
                         {column.isPrimaryKey ? <KeyRound className="size-3.5 text-accent" aria-label="primary key" /> : null}
                         {column.isForeignKey ? <Link2 className="size-3.5 text-secondary" aria-label="foreign key" /> : null}
                       </span>
+                    ) : gc.kind === "link" ? (
+                      derivation ? (
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          className="block max-w-full truncate text-left text-accent hover:underline"
+                          onClick={() => openEntity(derivation.entityId)}
+                          data-testid={`column-attribute-${column.name}`}
+                        >
+                          {derivation.label}
+                        </button>
+                      ) : null
                     ) : gc.kind === "toggle" ? (
                       <span
                         aria-label={column.nullable ? "nullable" : "not null"}
@@ -314,4 +319,15 @@ function ColumnGrid({ table, databaseId }: { table: TableView; databaseId: strin
       </table>
     </div>
   );
+}
+
+/** A cell's hover text: a long text in full; on a physical cell, the column's storage against the attribute's own type. */
+function cellTitle(gc: GridColumn, text: string, column: ColumnView, derivation: Derivation | null): string | undefined {
+  if (gc.kind === "long" || gc.key === "comment") return text || undefined;
+  if (gc.kind === "link")
+    return derivation
+      ? `Derived from ${derivation.label}${derivation.logical ? ` (${derivation.logical})` : ""}; go to the entity`
+      : "Derives from no attribute";
+  if (gc.physical) return physicalHint(column, derivation);
+  return undefined;
 }

@@ -224,7 +224,7 @@ internal sealed partial class DatabaseRun
             var columnName = Render(_conv.ForeignKeyColumn, ("role", ownerName), ("key", ownerColumn.Attribute?.Name ?? ownerColumn.Name),
                 ("entity", ownerName), ("table", r.Name));
             AddColumn(t, ownerColumn.Key, columnName, ownerColumn.Type, ownerColumn.Length, ownerColumn.Precision, ownerColumn.Scale, false, null, null, null,
-                scalar: ScalarOf(ownerColumn));
+                scalar: ScalarOf(ownerColumn), follows: ownerColumn.NativeType);
             ownerKeys.Add(ownerColumn.Key);
         }
 
@@ -274,10 +274,13 @@ internal sealed partial class DatabaseRun
     /// Adds a synthesized column (or returns the existing one with that key), with its overlay applied. A column that stores a custom
     /// type (<paramref name="scalar"/>: an attribute's value, a child table's value, or a key column copied from one) takes the
     /// custom type's native type for the dialect, unless an overlay sets the native type or changes the type away from the custom
-    /// type's base; this is the one place the custom type's native types apply, so entity, child and junction tables agree.
+    /// type's base; this is the one place the custom type's native types apply, so entity, child and junction tables agree. A
+    /// foreign key column passes the referenced column's native type as <paramref name="follows"/>: it takes that native type too,
+    /// unless its own overlay entry pins its type, length, precision, scale or native type (the physical side is free; MQ4005 then
+    /// compares it with the referenced column).
     /// </summary>
     private RColumn AddColumn(TableBuild t, string key, string name, string type, int? length, int? precision, int? scale, bool nullable,
-        object? defaultValue, RAttribute? attribute, string? path, RReferenceType? reference = null, RScalarType? scalar = null)
+        object? defaultValue, RAttribute? attribute, string? path, RReferenceType? reference = null, RScalarType? scalar = null, string? follows = null)
     {
         if (t.ByKey.TryGetValue(key, out var existing))
             return existing;
@@ -322,12 +325,17 @@ internal sealed partial class DatabaseRun
                 scalar = null;
         }
 
-        c.NativeType = overlay?.NativeType ?? NativeType(PhysicalType(c), c.Length, c.Precision, c.Scale, scalar);
+        c.NativeType = overlay?.NativeType
+            ?? (follows is not null && !PinsType(overlay) ? follows : NativeType(PhysicalType(c), c.Length, c.Precision, c.Scale, scalar));
         t.Columns.Add(c);
         t.ByKey[key] = c;
         _run.Register(c);
         return c;
     }
+
+    /// <summary>Whether an overlay column entry pins the column's physical type: its type, length, precision, scale or native type.</summary>
+    private static bool PinsType(Column? entry) =>
+        entry is not null && (entry.Type is not null || entry.Length is not null || entry.Precision is not null || entry.Scale is not null || entry.NativeType is not null);
 
     /// <summary>Overlay columns that override no synthesized column (<c>attribute</c> null): extra columns, appended in file order.</summary>
     private void AddOverlayExtraColumns(TableBuild t)

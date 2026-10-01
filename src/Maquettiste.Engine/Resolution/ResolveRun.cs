@@ -215,7 +215,10 @@ internal sealed partial class ResolveRun
     }
 
     /// <summary>Adds a diagnostic whose severity follows <c>validation.rules</c>; nothing when the rule is off.</summary>
-    public void AddDiagnostic(string rule, string message, string? elementId)
+    public void AddDiagnostic(string rule, string message, string? elementId) => AddDiagnostic(rule, message, elementId, null);
+
+    /// <summary>Adds a diagnostic at a JSON pointer in the element's file; its severity follows <c>validation.rules</c>; nothing when the rule is off.</summary>
+    public void AddDiagnostic(string rule, string message, string? elementId, string? pointer)
     {
         var severity = RuleCatalog.TryGet(rule, out var info) ? info.DefaultSeverity : DiagnosticSeverity.Error;
         if (Settings.Validation.Rules.TryGetValue(rule, out var configured))
@@ -230,7 +233,7 @@ internal sealed partial class ResolveRun
         }
 
         var path = elementId is null ? null : Model.GetDocument(elementId)?.Path;
-        Diagnostics.Add(new Diagnostic(rule, severity, message, elementId, path, null, null, null));
+        Diagnostics.Add(new Diagnostic(rule, severity, message, elementId, path, path is null ? null : pointer, null, null));
     }
 
     private void FreezeDependencies()

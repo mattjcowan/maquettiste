@@ -4,7 +4,10 @@ import { useCallback } from "react";
 import { useLocation, useNavigate } from "react-router";
 import type { ElementSummary } from "@/api/types";
 import { WORKSPACES, type EditorStore, type SidebarView, type Workspace } from "@/state/store";
-import { keys } from "@/api/queries";
+import { keys, type TablesState } from "@/api/queries";
+import { tableKeyOf } from "@/search/engine";
+import { tableKeyOfFile } from "@/workspaces/database/tableList";
+import { tableKeyOfDoc } from "@/workspaces/database/columnEdits";
 import { placeOf } from "@/search/engine";
 import { useServices } from "./context";
 import { activate, hasEditor, openTab, setView } from "@/editors/tabs";
@@ -41,6 +44,16 @@ export function buildUrl(workspace: Workspace, segment: string | null, selection
   if (selection.length) params.set("sel", selection.join(","));
   const query = params.toString();
   return `/${workspace}${segment ? `/${segment}` : ""}${query ? `?${query}` : ""}`;
+}
+
+/** The column a pointer into a table file names (`/columns/<n>/…`): an overlay entry's synthesized key, else the entry's id. */
+export function columnAt(doc: unknown, pointer: string | null): string | null {
+  const n = pointer ? /^\/columns\/(\d+)/.exec(pointer)?.[1] : undefined;
+  if (n === undefined) return null;
+  const columns = (doc as { json?: { columns?: { id?: unknown; attribute?: unknown }[] } } | undefined)?.json?.columns;
+  const entry = Array.isArray(columns) ? columns[Number(n)] : undefined;
+  if (!entry) return null;
+  return typeof entry.attribute === "string" ? entry.attribute : typeof entry.id === "string" ? entry.id : null;
 }
 
 /** Navigation that keeps the store and the URL in step. */
@@ -118,6 +131,20 @@ export function useEditorNavigation() {
     [navigate, store, keep],
   );
 
+  /**
+   * Opens a table in the Database screen, focused on the canvas, with the inspector showing the TABLE (by its resolved key,
+   * a file or not) and, when given, one of its columns. Tables have no element editor: this is their "Open".
+   */
+  const openTable = useCallback(
+    (database: string, key: string, column: string | null = null) => {
+      const s = store.getState();
+      s.setDatabaseTable(key);
+      s.inspectTable({ database, key, column }, tableKeyOf(database, key));
+      openDatabase(database);
+    },
+    [store, openDatabase],
+  );
+
   const select = useCallback(
     (ids: string[], pointer: string | null = null, explorer?: SidebarView) => {
       const s = store.getState();
@@ -139,6 +166,18 @@ export function useEditorNavigation() {
         s.select([summary.id], { pointer });
         openDatabase(summary.id);
         return;
+      }
+      // A table file (a search result, a problem, a where-used row) is its table on the Databases side: the Database screen
+      // focused on it, the inspector on the table. A file whose table the summaries do not name yet shows as the file.
+      if (summary.kind === "table" && summary.database) {
+        const doc = queryClient.getQueryData<{ json?: unknown }>(keys.element(summary.id));
+        const key =
+          tableKeyOfDoc(doc?.json as Record<string, unknown> | undefined)?.key ??
+          tableKeyOfFile(summary, queryClient.getQueryData<TablesState>(keys.databaseTables(summary.database))?.tables);
+        if (key) {
+          openTable(summary.database, key, columnAt(doc, pointer));
+          return;
+        }
       }
       // Reference types, and the seeds of reference types, live only in the Reference data screen (RT 1.9).
       const target =
@@ -185,7 +224,7 @@ export function useEditorNavigation() {
       }
       select([summary.id], pointer);
     },
-    [store, queryClient, openDiagram, openDatabase, openSettings, openWorkspace, select],
+    [store, queryClient, openDiagram, openDatabase, openSettings, openWorkspace, select, openTable],
   );
 
   const summaryOf = useCallback((id: string) => queryClient.getQueryData<ElementSummary[]>(keys.index)?.find((r) => r.id === id), [queryClient]);
@@ -255,5 +294,26 @@ export function useEditorNavigation() {
     [reveal, store],
   );
 
-  return { openWorkspace, openDiagram, openDatabase, openSettings, select, reveal, goTo, travel, openEditor, openSeedData };
+  /**
+   * From a table or a column on the Databases side to the entity it derives from (or is bound to): the Domain model, the
+   * entity's editor pinned on its Attributes tab. The entity editor is reached from the Domain model or this way, never by
+   * opening a table.
+   */
+  const openEntity = useCallback(
+    (id: string): boolean => {
+      const summary = summaryOf(id);
+      if (!summary) {
+        store.getState().notify("That entity is not in the model.", "error");
+        return false;
+      }
+      store.getState().setSidebar("domain-model");
+      if (store.getState().workspace !== "entities") openWorkspace("entities");
+      if (summary.kind === "entity") store.getState().updateEditors((e) => setView(e, "entity", "attributes"));
+      openEditor(summary, true);
+      return true;
+    },
+    [summaryOf, store, openWorkspace, openEditor],
+  );
+
+  return { openWorkspace, openDiagram, openDatabase, openTable, openEntity, openSettings, select, reveal, goTo, travel, openEditor, openSeedData };
 }

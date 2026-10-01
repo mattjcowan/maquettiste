@@ -56,6 +56,7 @@ import {
   EXPLORERS,
   collapseAt,
   databaseOf,
+  tableOf,
   documentChildren,
   needsDocument,
   rowsNeedingDocuments,
@@ -380,7 +381,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   const referenceFlat = useEditor(store, (s) => s.explorer.referenceFlat);
   const followSelection = useEditor(store, (s) => s.explorer.followSelection);
   const pinnedId = useEditor(store, (s) => s.explorer.pinned);
-  const { reveal, select: selectIn, openDatabase, openWorkspace, openDiagram, openEditor, openSeedData } = useEditorNavigation();
+  const { reveal, select: selectIn, openDatabase, openTable, openWorkspace, openDiagram, openEditor, openSeedData } = useEditorNavigation();
   // The pinned second explorer keeps its own selection (1.0); the inspector follows it while it is pinned.
   const select = useCallback((ids: string[]) => selectIn(ids, null, pinned ? id : undefined), [selectIn, pinned, id]);
   const [importingSeeds, setImportingSeeds] = useState(false);
@@ -785,11 +786,29 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         openEditor(forest.byId.get(node.id) as ElementSummary, how === "open");
         return;
       }
-      // Opening a table shows it focused in the Database screen (1.3).
+      // A table is the same thing by every path: a click shows the TABLE in the inspector (by its key, a file or not, never
+      // its entity), and the Database screen follows when it shows that database; opening it (Enter, a double click, the
+      // menu's Open) shows it focused in the Database screen (1.3). Tables have no element editor.
       const database = node.type === "table" && node.table ? databaseOf(forest, key) : undefined;
-      if (how === "open" && database && node.table) {
-        store.getState().setDatabaseTable(node.table.key);
-        openDatabase(database);
+      if (database && node.table) {
+        if (how === "open") {
+          openTable(database, node.table.key);
+          return;
+        }
+        const s = store.getState();
+        s.inspectTable({ database, key: node.table.key, column: null }, key);
+        if (s.workspace === "database" && s.activeDatabase === database) s.setDatabaseTable(node.table.key);
+        return;
+      }
+      // A column of a table's detail: the inspector shows the table with that column (and its "mapped by" rows highlight).
+      const columnTable = node.type === "item" && node.attribute !== undefined && node.id ? tableOf(forest, key) : undefined;
+      const columnOwner = columnTable ? forest.nodes.get(columnTable) : undefined;
+      const columnDatabase = columnTable ? databaseOf(forest, columnTable) : undefined;
+      if (columnOwner?.table && columnDatabase && node.id) {
+        const s = store.getState();
+        s.inspectTable({ database: columnDatabase, key: columnOwner.table.key, column: node.id }, key);
+        if (how === "open") openTable(columnDatabase, columnOwner.table.key, node.id);
+        else if (s.workspace === "database" && s.activeDatabase === columnDatabase) s.setDatabaseTable(columnOwner.table.key);
         return;
       }
       if (node.id && forest.byId.has(node.id) && node.home) {
@@ -806,7 +825,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       }
       toggle(key);
     },
-    [forest, reveal, toggle, openEditor, openDatabase, store, select],
+    [forest, reveal, toggle, openEditor, openTable, store, select],
   );
   /** A double click: opens the row pinned (as Enter does). A folder, a schema or a database only toggles, which the
    * first click did already; a domain opens its editor without toggling again. */
@@ -1050,8 +1069,11 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         const table = node?.id ? forest.related.tablesOf.get(node.id)?.[0] : undefined;
         if (table) {
           store.getState().setSidebar("databases");
+          // The table itself, by its key (a file or not), as a click on its row shows it.
           const t = forest.nodes.get(table);
-          if (t?.id) select([t.id]);
+          const database = databaseOf(forest, table);
+          if (t?.table && database) store.getState().inspectTable({ database, key: t.table.key, column: null }, table);
+          else if (t?.id) select([t.id]);
         }
         break;
       }

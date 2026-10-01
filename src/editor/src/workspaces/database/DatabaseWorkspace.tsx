@@ -13,6 +13,7 @@ import type { DatabaseDoc } from "@/api/types";
 import { useEditor } from "@/state/store";
 import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
+import { tableKeyOf } from "@/search/engine";
 import { Toolbar, EmptyState, Spinner } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
@@ -49,7 +50,7 @@ function DatabaseCanvas() {
   // edge to bring them back), kept in the saved layout.
   const tablesCollapsed = useEditor(store, (s) => s.tablesCollapsed);
   const ddlCollapsed = useEditor(store, (s) => s.ddlCollapsed);
-  const { openDatabase, select } = useEditorNavigation();
+  const { openDatabase } = useEditorNavigation();
   const flow = useReactFlow<TableFlowNode, ForeignKeyFlowEdge>();
   const initialized = useNodesInitialized();
   const index = useIndex();
@@ -81,10 +82,16 @@ function DatabaseCanvas() {
 
   useEffect(() => {
     if (activeDatabase) setPositions(loadPositions(`db.${activeDatabase}`));
-    // Another database: its own tables, none focused.
-    if (shownDatabase.current && shownDatabase.current !== activeDatabase) setSelectedTable(null);
+    // Another database: its own tables, none focused, unless the table to focus is one of them (opened from the explorer).
+    if (shownDatabase.current && shownDatabase.current !== activeDatabase) {
+      const inspected = store.getState().inspectedTable;
+      if (!inspected || inspected.database !== activeDatabase) {
+        setSelectedTable(null);
+        if (inspected) store.getState().inspectTable(null, null);
+      }
+    }
     shownDatabase.current = activeDatabase;
-  }, [activeDatabase, setSelectedTable]);
+  }, [activeDatabase, setSelectedTable, store]);
 
   const allTables = useMemo(() => view.data?.view?.tables ?? [], [view.data]);
   // Above 300 tables the canvas shows the selected table and its foreign-key neighbours, else the list-and-DDL form.
@@ -128,14 +135,18 @@ function DatabaseCanvas() {
   );
 
   // Mouse or keyboard (Tab to a table, Enter): the canvas is controlled, so a pick arrives as a
-  // `select` change. The DDL preview follows the table, the inspector the table's entity.
+  // `select` change. The DDL preview follows the table, and so does the inspector: the TABLE, by its key (a file or not),
+  // never its entity (the entity shows in the Domain model).
   const pickTable = useCallback(
     (key: string) => {
       setSelectedTable(key);
-      const entityId = tables.find((t) => t.key === key)?.entityId;
-      if (entityId) select([entityId]);
+      if (!activeDatabase) return;
+      // The explorer row follows the pick; a table already inspected keeps its row (a column of it picked in the explorer).
+      const shown = store.getState().inspectedTable;
+      const same = shown?.database === activeDatabase && shown.key === key;
+      store.getState().inspectTable({ database: activeDatabase, key }, same ? undefined : tableKeyOf(activeDatabase, key));
     },
-    [select, tables, setSelectedTable],
+    [activeDatabase, store, setSelectedTable],
   );
 
   const layout = useCallback(async () => {
@@ -360,6 +371,16 @@ function DatabaseCanvas() {
           </section>
         )}
         <div className="flex min-w-0 flex-1 flex-col">
+          {view.data?.stale ? (
+            <div role="alert" className="border-b border-default bg-surface px-2 py-1 text-12 text-danger" data-testid="database-stale">
+              The model has errors; the tables show as last resolved until they are fixed:{" "}
+              {view.data.diagnostics
+                .filter((d) => d.severity === "error")
+                .slice(0, 3)
+                .map((d) => `${d.rule} ${d.message}`)
+                .join(" · ")}
+            </div>
+          ) : null}
           <div className="relative min-h-0 flex-1" role="region" aria-label="Table diagram">
             <MarkerDefs />
             {view.isPending ? <Spinner label="Resolving tables" /> : null}
@@ -384,7 +405,11 @@ function DatabaseCanvas() {
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
                 onNodesChange={onNodesChange}
-                onPaneClick={() => scope.mode === "all" && setSelectedTable(null)}
+                onPaneClick={() => {
+                  if (scope.mode !== "all") return;
+                  setSelectedTable(null);
+                  store.getState().inspectTable(null, null);
+                }}
                 onMoveEnd={onMoveEnd}
                 minZoom={0.1}
                 nodesConnectable={false}

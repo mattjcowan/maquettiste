@@ -107,6 +107,36 @@ public sealed class ValidateTests
     }
 
     [Fact]
+    public async Task A_foreign_key_pinned_by_an_overlay_is_MQ4005_in_text_json_and_sarif_as_generation_would_report_it()
+    {
+        using var repo = CliRepo.Billing();
+        repo.Write(BillingEdits.InvoiceOverlayPath, BillingEdits.PinCustomerForeignKey(repo.Read(BillingEdits.InvoiceOverlayPath)));
+
+        var text = await repo.RunAsync("validate");
+        Assert.Equal(1, text.ExitCode);
+        var line = Assert.Single(Text.Lines(text.Out), l => l.Contains(" error MQ4005: ", StringComparison.Ordinal));
+        Assert.StartsWith(BillingEdits.InvoiceOverlayPath + "(", line, StringComparison.Ordinal);
+        Assert.EndsWith(BillingEdits.ForeignKeyMismatch, line, StringComparison.Ordinal);
+        Assert.Contains("Validation failed: 1 error", text.Error, StringComparison.Ordinal);
+
+        var json = await repo.RunAsync("validate", "--format", "json");
+        using (var doc = JsonDocument.Parse(json.Out))
+        {
+            var d = doc.RootElement.GetProperty("diagnostics").EnumerateArray().Single(x => x.GetProperty("rule").GetString() == "MQ4005");
+            Assert.Equal(BillingEdits.InvoiceOverlayId, d.GetProperty("elementId").GetString());
+            Assert.Equal(BillingEdits.PinnedPointer, d.GetProperty("jsonPointer").GetString());
+        }
+
+        var sarif = await repo.RunAsync("validate", "--format", "sarif");
+        using var sarifDoc = JsonDocument.Parse(sarif.Out);
+        var run = Assert.Single(sarifDoc.RootElement.GetProperty("runs").EnumerateArray());
+        var result = Assert.Single(run.GetProperty("results").EnumerateArray(), r => r.GetProperty("ruleId").GetString() == "MQ4005");
+        var location = result.GetProperty("locations")[0].GetProperty("physicalLocation");
+        Assert.Equal(BillingEdits.InvoiceOverlayPath, location.GetProperty("artifactLocation").GetProperty("uri").GetString());
+        Assert.True(location.GetProperty("region").GetProperty("startLine").GetInt32() > 0);
+    }
+
+    [Fact]
     public async Task Pack_errors_are_reported_by_validate()
     {
         using var repo = CliRepo.Billing();

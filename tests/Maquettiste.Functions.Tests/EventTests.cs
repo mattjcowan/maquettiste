@@ -5,6 +5,7 @@ using Maquettiste.Engine;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Functions.Tests.Support;
+using Maquettiste.Testing;
 using Microsoft.Extensions.Logging;
 
 namespace Maquettiste.Functions.Tests;
@@ -67,6 +68,25 @@ public sealed class EventTests
         var line = Assert.Single(host.Logs.Entries, e => e.Message.Contains("schema copies", StringComparison.Ordinal));
         Assert.Equal(LogLevel.Warning, line.Level);
         Assert.Contains("MQ1008", line.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_validation_loop_publishes_the_resolvers_MQ4005_for_a_file_edited_behind_the_editor()
+    {
+        await using var host = EditorHost.Create();
+        host.StartBackground();
+        await WaitLoadedAsync(host);
+
+        var path = host.PathOf(BillingEdits.InvoiceOverlayPath);
+        await File.WriteAllTextAsync(path, BillingEdits.PinCustomerForeignKey(await File.ReadAllTextAsync(path, EditorHost.Ct)), EditorHost.Ct);
+        await EditorHost.WaitForAsync(
+            () => host.Published("validation.completed").Any(e => e.Payload["errors"]!.GetValue<int>() > 0), "validation.completed with an error");
+
+        var validated = host.Published("validation.completed").Last(e => e.Payload["errors"]!.GetValue<int>() > 0);
+        Contract.AssertEvent("validation.completed", validated.Payload);
+        var d = validated.Payload["diagnostics"]!.AsArray().Single(x => x!["rule"]!.GetValue<string>() == "MQ4005")!;
+        Assert.Equal(BillingEdits.InvoiceOverlayId, d["elementId"]!.GetValue<string>());
+        Assert.Equal(BillingEdits.PinnedPointer, d["jsonPointer"]!.GetValue<string>());
     }
 
     [Fact]

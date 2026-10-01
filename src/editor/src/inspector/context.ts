@@ -1,15 +1,17 @@
 // What the inspector (the right sidebar) shows: the ACTIVE context, never the last element selected anywhere. An
 // element editor tab showing in the centre wins; Settings and Reference data have no inspector (the screen is its own
-// panel); the Generate screen shows the open pack and its focused unit; elsewhere the active explorer's own
-// selection, or an empty state naming that explorer when it has none (after a rail switch).
+// panel); the Generate screen shows the open pack and its focused unit; on the Databases side (the Database screen, or
+// the Databases explorer active) a picked table shows as the TABLE, by its resolved key, never its entity; elsewhere the
+// active explorer's own selection, or an empty state naming that explorer when it has none (after a rail switch).
 import { activeTab, type EditorTabsState } from "@/editors/tabs";
 import { RAIL_LABELS } from "@/model/labels";
-import type { EditorState, SidebarView } from "@/state/store";
+import type { EditorState, InspectedTable, SidebarView } from "@/state/store";
 
 export type InspectorContext =
   | { mode: "element"; ids: string[]; source: "editor" | "explorer" }
   | { mode: "empty"; place: string; noun: "an element" | "a pack" }
   | { mode: "pack"; pack: string; unit: string | null }
+  | { mode: "table"; database: string; key: string; column: string | null }
   | { mode: "none" };
 
 export type ContextInput = Pick<EditorState, "workspace" | "editors" | "generation" | "selectionBy"> & {
@@ -18,6 +20,8 @@ export type ContextInput = Pick<EditorState, "workspace" | "editors" | "generati
   selectionFrom?: SidebarView | null;
   /** Whether an element still exists (the loaded index); a deleted element never shows, even before the store is pruned. */
   exists?: (id: string) => boolean;
+  /** The table picked on the Databases side (the store's `inspectedTable`). */
+  inspectedTable?: InspectedTable | null;
 };
 
 export function inspectorContext(s: ContextInput): InspectorContext {
@@ -33,6 +37,12 @@ export function inspectorContext(s: ContextInput): InspectorContext {
   const shown = s.explorer.active;
   // A selection made in the pinned second explorer shows while that explorer is still pinned beside the active one.
   const active = s.selectionFrom && s.selectionFrom !== shown && s.selectionFrom === s.explorer.pinned ? s.selectionFrom : shown;
+  // The Databases side inspects the table itself: physical fields, its columns, what it derives from (the entity shows in
+  // the Domain model). Selecting an element clears the pick.
+  if (s.inspectedTable && (s.workspace === "database" || active === "databases")) {
+    const t = s.inspectedTable;
+    return { mode: "table", database: t.database, key: t.key, column: t.column };
+  }
   const ids = (s.selectionBy[active] ?? []).filter((id) => !s.exists || s.exists(id));
   if (!ids.length) return { mode: "empty", place: RAIL_LABELS[active].label, noun: active === "generate" ? "a pack" : "an element" };
   return { mode: "element", ids, source: "explorer" };

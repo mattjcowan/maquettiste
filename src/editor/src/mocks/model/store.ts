@@ -35,7 +35,7 @@ import { planDelete } from "./cascade";
 import { typedElement } from "./typed";
 import { applyRules, diagnosticKey, validateModel, type ModelEntry } from "./validate";
 import { ModelIndex } from "./modelIndex";
-import { applyCase } from "./physical";
+import { applyCase, foreignKeyMismatches, resolveDatabase } from "./physical";
 
 type Json = Record<string, unknown>;
 
@@ -265,8 +265,34 @@ export class MockModel {
     return applyRules([...this.derived().diagnostics(), ...this.modelDiagnostics(rules)], rules);
   }
 
-  validate(scope: ValidationScope = {}): ValidationReport {
-    let diagnostics = this.currentDiagnostics();
+  private findingsCache: { version: number; diagnostics: Diagnostic[] } | null = null;
+
+  /**
+   * What the resolver finds once the model validates without error, as the server's ModelStore.ValidateAsync adds it: the resolved
+   * MQ4005 of a foreign key column whose type an overlay pins apart from the referenced column's. Once per model version.
+   */
+  private resolverFindings(validated: Diagnostic[]): Diagnostic[] {
+    if (validated.some((d) => d.severity === "error")) return [];
+    if (this.findingsCache?.version === this.version) return this.findingsCache.diagnostics;
+    const docs = this.docs();
+    const settings = this.projectSettings();
+    const out: Diagnostic[] = [];
+    for (const db of [...docs.values()].filter((d) => d.kind === "database")) {
+      const view = resolveDatabase(
+        { docs, conventions: settings.conventions as Json, databaseConventions: settings.databases as Record<string, Json> },
+        String(db.id),
+      );
+      if (view)
+        out.push(...foreignKeyMismatches(view, docs).map((d) => ({ ...d, filePath: d.elementId ? (this.entries.get(d.elementId)?.path ?? null) : null })));
+    }
+    this.findingsCache = { version: this.version, diagnostics: out };
+    return out;
+  }
+
+  /** The report every validate path answers; `resolved: false` leaves out the resolver's findings (the table summaries, as the server's). */
+  validate(scope: ValidationScope = {}, options: { resolved?: boolean } = {}): ValidationReport {
+    const validated = this.currentDiagnostics();
+    let diagnostics = options.resolved === false ? validated : [...validated, ...this.resolverFindings(validated)];
     if (scope.elementIds) {
       const wanted = new Set<string>();
       for (const id of scope.elementIds) {

@@ -81,7 +81,7 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
   (format 1, `outputs.allow` `db` committed and `src/Generated` built, `packs.<starter>.output` `db` for sql-ddl or
   `src/Generated` for csharp-dapper), every embedded schema in `.schema/v1/` (refreshed on every run through the engine's
   `SchemaFolder.RefreshAsync`, which `mcp` and the editor also run at their start; files no longer shipped are removed) and the starter pack in `templates/<pack>/`. Existing files are kept,
-  except that a kept settings file without a `packs.<starter>` entry gets one (re-running `init --pack <other>`). After its report
+  except that `init --pack <other>` on a kept settings file adds that pack and its `packs.<other>` entry; a plain re-run adds no pack, so a pack the team removed stays removed. After its report
   a plain `init` prints one line naming the built roots of the settings file (`InitCommand.BuiltRootsNote`): `generate`
   regenerates them, and the team ignores or commits them as it prefers. It never reads or writes the repository's `.gitignore`,
   which is the customer's file: its `OutputPathPolicy` is built without `allowGitignore`, so the guard refuses that path, and a

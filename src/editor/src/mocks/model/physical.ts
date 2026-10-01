@@ -6,7 +6,7 @@
 // with real ones.
 import { conventionOf, placesEntity } from "@/model/databaseMapping";
 import { schemaForEntity, schemasOf } from "@/model/databaseSchemas";
-import type { ColumnView, DatabaseView, ForeignKeyView, SchemaView, SequenceView, TableView, ViewView } from "@/api/types";
+import type { ColumnView, DatabaseView, Diagnostic, ForeignKeyView, SchemaView, SequenceView, TableView, ViewView } from "@/api/types";
 
 type Json = Record<string, unknown>;
 const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
@@ -376,6 +376,25 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
     return [];
   };
 
+  // An overlay entry's physical fields override the synthesized column's (DatabaseRun.Columns.cs): name, type, length,
+  // precision, scale and nullability; its native type replaces the type map's. The attribute keeps its own type and length.
+  const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
+  function overlaid<T extends { name: string; type: string; length: number | null; precision: number | null; scale: number | null; nullable: boolean }>(
+    c: T,
+    entry: Json | undefined,
+  ): T {
+    if (!entry) return c;
+    return {
+      ...c,
+      name: typeof entry.name === "string" && entry.name ? entry.name : c.name,
+      type: typeof entry.type === "string" ? entry.type : c.type,
+      length: num(entry.length) ?? c.length,
+      precision: num(entry.precision) ?? c.precision,
+      scale: num(entry.scale) ?? c.scale,
+      nullable: typeof entry.nullable === "boolean" ? entry.nullable : c.nullable,
+    };
+  }
+
   const toView = (c: ResolvedColumn, position: number): ColumnView => ({
     key: c.key,
     name: c.name,
@@ -431,11 +450,7 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
       for (const c of produced) {
         const entry = entryByAttr.get(String(c.key));
         columns.push({
-          ...c,
-          // An overlay entry's name, type and nullability override the synthesized column's.
-          name: typeof entry?.name === "string" && entry.name ? entry.name : c.name,
-          type: typeof entry?.type === "string" ? entry.type : c.type,
-          nullable: typeof entry?.nullable === "boolean" ? entry.nullable : c.nullable,
+          ...overlaid(c, entry),
           isPrimaryKey: keyIds.has(String(attr.id)),
           isForeignKey: false,
           nativeOverride: nativeByAttr.get(String(c.key)) ?? c.nativeOverride,
@@ -469,8 +484,6 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
       .filter((c) => c.indexed)
       .map((c) => ({ name: `ix_${name}_${c.name}`, columns: [{ column: c.key, descending: false }], unique: false, where: null }));
     if (overlay) {
-      table.origin = "designed";
-      table.key = `${id}@${databaseId}`;
       for (const ix of arr(overlay.indexes)) {
         const cols = arr(ix.columns).map((c) => ({ column: String(c.column), descending: c.descending === true }));
         const names = cols.map((c) => table.columns.find((col) => col.key === c.column)?.name ?? c.column);
@@ -500,19 +513,31 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
       const to = pkColumnsByEntity.get(String(referenced.entity));
       if (!from || !to) return;
       const role = String(referenced.role ?? referenced.navigation ?? "ref");
-      const fkColumns: ColumnView[] = to.columns.map((pk) => ({
-        ...pk,
-        key: `${String(referenced.id)}.${pk.key}`,
-        name: colName(`${role}_${pk.name}`),
-        nullable,
-        identity: false,
-        isPrimaryKey: false,
-        isForeignKey: true,
-        attributeId: null,
-        attributePath: null,
-        position: from.table.columns.length + 1,
-        ...plainColumn(undefined, stereotypes),
-      }));
+      const holderOverlay = overlays.find((t) => t.entity === holder.entity && !t.attribute && !t.relation);
+      // A foreign key column copies the referenced key column's type, facets and native type, then its own overlay entry
+      // applies (DatabaseRun.Relations.cs): a different type pinned here is the mismatch MQ4005 reports.
+      const fkColumns: ColumnView[] = to.columns.map((pk) => {
+        const key = `${String(referenced.id)}.${pk.key}`;
+        const entry = arr(holderOverlay?.columns).find((c) => c.attribute === key);
+        const c = overlaid({ ...pk, key, name: colName(`${role}_${pk.name}`), nullable }, entry);
+        return {
+          ...c,
+          nativeType:
+            typeof entry?.nativeType === "string"
+              ? entry.nativeType
+              : ["type", "length", "precision", "scale"].some((f) => entry?.[f] !== undefined)
+                ? nativeType(dialect, c.type, { length: c.length ?? undefined, precision: c.precision ?? undefined, scale: c.scale ?? undefined })
+                : pk.nativeType,
+          identity: false,
+          isPrimaryKey: false,
+          isForeignKey: true,
+          attributeId: null,
+          attributePath: null,
+          position: from.table.columns.length + 1,
+          ...plainColumn(entry, stereotypes),
+          comment: commentOf(entry),
+        };
+      });
       from.table.columns.push(...fkColumns);
       if (ordered)
         from.table.columns.push({
@@ -711,4 +736,60 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
 
 function stripNull(o: Json): Json {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null && v !== undefined));
+}
+
+/** A column's physical type for a message, as the engine says it: `string(26) (varchar(26))`. */
+function describeColumn(c: ColumnView): string {
+  const facets =
+    ["string", "text", "binary"].includes(c.type) && c.length !== null
+      ? `(${c.length})`
+      : c.type === "decimal" && c.precision !== null
+        ? `(${c.precision}${c.scale !== null ? `,${c.scale}` : ""})`
+        : ["time", "datetime", "datetimeoffset"].includes(c.type) && c.precision !== null
+          ? `(${c.precision})`
+          : "";
+  return `${c.type}${facets} (${c.nativeType})`;
+}
+
+function samePhysicalType(a: ColumnView, b: ColumnView): boolean {
+  if (a.type !== b.type || a.nativeType.toLowerCase() !== b.nativeType.toLowerCase()) return false;
+  return (
+    (!["string", "text", "binary"].includes(a.type) || a.length === b.length) &&
+    (!["decimal", "time", "datetime", "datetimeoffset"].includes(a.type) || a.precision === b.precision) &&
+    (a.type !== "decimal" || a.scale === b.scale)
+  );
+}
+
+/**
+ * The resolved MQ4005 (DatabaseRun.Finish.cs): a foreign key column whose resolved type, facets or native type differ from
+ * the referenced column's, reported on the overlay entry that pins it (else the table's overlay, else no file). The
+ * attribute's own type and length are never compared with the column's.
+ */
+export function foreignKeyMismatches(view: DatabaseView, docs: ReadonlyMap<string, Json>): Diagnostic[] {
+  const overlays = [...docs.values()].filter((d) => d.kind === "table" && d.database === view.id && d.origin === "synthesized");
+  const out: Diagnostic[] = [];
+  for (const t of view.tables) {
+    for (const fk of t.foreignKeys) {
+      const target = view.tables.find((x) => x.key === fk.referencedTable);
+      if (!target) continue;
+      fk.columns.forEach((key, i) => {
+        const column = t.columns.find((c) => c.key === key);
+        const referenced = target.columns.find((c) => c.key === fk.referencedColumns[i]);
+        if (!column || !referenced || samePhysicalType(column, referenced)) return;
+        const overlay = overlays.find((o) => t.entityId && o.entity === t.entityId && !o.attribute && !o.relation);
+        const at = arr(overlay?.columns).findIndex((c) => c.attribute === key);
+        out.push({
+          rule: "MQ4005",
+          severity: "error",
+          message: `Foreign key column '${t.name}.${column.name}' is ${describeColumn(column)} but references '${target.name}.${referenced.name}', which is ${describeColumn(referenced)} (database '${view.name}').`,
+          elementId: overlay ? String(overlay.id) : null,
+          filePath: null,
+          jsonPointer: overlay && at >= 0 ? `/columns/${at}` : null,
+          line: null,
+          column: null,
+        });
+      });
+    }
+  }
+  return out;
 }

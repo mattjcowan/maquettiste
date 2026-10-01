@@ -85,8 +85,9 @@ export function referencesOf(doc: Json): Ref[] {
       push("/relation", "relation", doc.relation, true);
       push("/schema", "schema", doc.schema, false);
       arr(doc.columns).forEach((c, i) => {
-        const to = str(c.attribute);
-        if (to && !own.has(to)) out.push({ fromId: str(c.id) ?? id, pointer: `/columns/${i}/attribute`, field: "attribute", toId: to, required: false });
+        // A column key is an attribute path, or a foreign key column's `<endId>.<keyAttributeId>`: each segment is a reference.
+        for (const to of (str(c.attribute) ?? "").split(".").filter(Boolean))
+          if (!own.has(to)) out.push({ fromId: str(c.id) ?? id, pointer: `/columns/${i}/attribute`, field: "attribute", toId: to, required: false });
       });
       arr(doc.indexes).forEach((ix, i) =>
         arr(ix.columns).forEach((c, j) => {

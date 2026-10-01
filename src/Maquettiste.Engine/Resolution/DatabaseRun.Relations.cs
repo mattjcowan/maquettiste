@@ -165,7 +165,7 @@ internal sealed partial class DatabaseRun
                 ("table", host.Table.Name));
             AddColumn(host, columnKey, name, referenced?.Type ?? ka.Type.Builtin ?? "string", referenced?.Length ?? ka.Length,
                 referenced?.Precision ?? ka.Precision, referenced?.Scale ?? ka.Scale, nullable, null, null, null,
-                scalar: referenced is not null ? ScalarOf(referenced) : ka.Type.Scalar);
+                scalar: referenced is not null ? ScalarOf(referenced) : ka.Type.Scalar, follows: referenced?.NativeType);
             keys.Add(columnKey);
         }
 

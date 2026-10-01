@@ -83,4 +83,41 @@ describe("inspectorContext", () => {
     store.getState().setWorkspace("reference-data");
     expect(ctx(store)).toEqual({ mode: "none" });
   });
+
+  it("inspects the TABLE on the Databases side, by its key, never its entity; the Domain model keeps the entity", () => {
+    const store = createEditorStore();
+    store.getState().setSidebar("domain-model");
+    store.getState().select(["invoice"]);
+    store.getState().setSidebar("databases");
+    store.getState().setWorkspace("database");
+    store.getState().select(["billing-db"]);
+    // A canvas pick, a Tables list row or an explorer row: the table by its resolved key (a projected table has no file).
+    store.getState().inspectTable({ database: "billing-db", key: "invoice@billing-db" }, "billing-db/t:invoice@billing-db");
+    expect(ctx(store)).toEqual({ mode: "table", database: "billing-db", key: "invoice@billing-db", column: null });
+    expect(store.getState().selectionBy.databases).toEqual([]);
+    expect(store.getState().explorerItem).toBe("billing-db/t:invoice@billing-db");
+    // A column picked in the grid shows with it; another table starts with none.
+    store.getState().inspectColumn("number");
+    expect(ctx(store)).toMatchObject({ mode: "table", column: "number" });
+    store.getState().inspectTable({ database: "billing-db", key: "invoice@billing-db" });
+    expect(ctx(store)).toMatchObject({ column: "number" });
+    store.getState().inspectTable({ database: "billing-db", key: "customer@billing-db" });
+    expect(ctx(store)).toMatchObject({ key: "customer@billing-db", column: null });
+
+    // The Domain model shows its own selection, the entity.
+    store.getState().setSidebar("domain-model");
+    store.getState().setWorkspace("entities");
+    expect(ctx(store)).toEqual({ mode: "element", ids: ["invoice"], source: "explorer" });
+    // Back on the Databases side the table shows again; selecting an element there replaces it.
+    store.getState().setSidebar("databases");
+    store.getState().setWorkspace("database");
+    expect(ctx(store)).toMatchObject({ mode: "table", key: "customer@billing-db" });
+    store.getState().select(["billing-db"]);
+    expect(ctx(store)).toMatchObject({ mode: "element", ids: ["billing-db"] });
+    expect(store.getState().inspectedTable).toBeNull();
+    // An element editor tab still wins.
+    store.getState().inspectTable({ database: "billing-db", key: "customer@billing-db" });
+    store.getState().updateEditors((e) => openTab(e, { id: "payment", kind: "entity" }, { pin: true }));
+    expect(ctx(store)).toMatchObject({ mode: "element", ids: ["payment"], source: "editor" });
+  });
 });

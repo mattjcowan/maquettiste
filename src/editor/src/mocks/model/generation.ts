@@ -122,7 +122,8 @@ export class MockGeneration {
     if (this.tablesCache?.version !== this.model.version) this.tablesCache = { version: this.model.version, results: new Map(), views: new Map() };
     const cached = this.tablesCache.results.get(id);
     if (cached) return cached;
-    const diagnostics = this.model.validate().diagnostics;
+    // The server's summaries see validation only: a resolver finding (MQ4005) does not leave a table out.
+    const diagnostics = this.model.validate({}, { resolved: false }).diagnostics;
     const errors = diagnostics.filter((d) => d.severity === "error");
     const failed = new Set<string>();
     for (const error of errors) {

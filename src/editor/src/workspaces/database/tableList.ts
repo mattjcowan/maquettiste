@@ -55,3 +55,19 @@ export function scopeTables(
   const shown = sorted.slice(0, Math.max(0, cap - 1));
   return { mode: "scoped", focus, keys: new Set([focus, ...shown]), more: sorted.length - shown.length };
 }
+
+/**
+ * The resolved key of the table a table file shapes, from the database's table summaries: a designed or imported table's key
+ * is its file id; an overlay on an entity is that entity's projected table (`<entityId>@<databaseId>`). Null when the
+ * summaries do not say (not loaded, an overlay of a child table or a junction): the caller falls back to the file.
+ */
+export function tableKeyOfFile(
+  file: { id: string; entity?: string; database?: string },
+  tables: readonly Pick<TableSummary, "key" | "entityId" | "isJunction" | "origin">[] | undefined,
+): string | null {
+  if (!tables || !file.database) return null;
+  if (tables.some((t) => t.key === file.id)) return file.id;
+  const projected = `${file.entity ?? ""}@${file.database}`;
+  if (file.entity && tables.some((t) => t.key === projected && t.origin === "synthesized" && !t.isJunction)) return projected;
+  return null;
+}

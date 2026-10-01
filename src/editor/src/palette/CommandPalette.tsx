@@ -157,7 +157,7 @@ function SearchDialog({ mode }: { mode: Mode }) {
   const index = useIndex();
   useSearchRows(index.data);
   const version = useSearchVersion();
-  const { reveal, openWorkspace, openDatabase } = useEditorNavigation();
+  const { reveal, openWorkspace, openDatabase, openTable } = useEditorNavigation();
   const [text, setText] = useState("");
   const [answer, setAnswer] = useState<{ text: string; hits: SearchHit[]; total: number } | null>(null);
   const [selected, setSelected] = useState("");
@@ -240,8 +240,11 @@ function SearchDialog({ mode }: { mode: Mode }) {
     const hit = row.hit!;
     close();
     if (hit.db) {
+      // A table: the Database screen focused on it, the inspector on the table (its id is its tree key, `<db>/t:<key>`).
       store.getState().setSidebar("databases");
-      openDatabase(hit.db);
+      const prefix = `${hit.db}/t:`;
+      if (hit.id.startsWith(prefix)) openTable(hit.db, hit.id.slice(prefix.length));
+      else openDatabase(hit.db);
       return;
     }
     const summary: ElementSummary | undefined = byId.get(hit.id);

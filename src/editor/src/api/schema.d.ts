@@ -462,7 +462,7 @@ export interface paths {
         put?: never;
         /**
          * Validate the whole model or a scope
-         * @description An empty body or `{}` validates everything. Load diagnostics (files that failed to parse) are included.
+         * @description An empty body or `{}` validates everything. Load diagnostics (files that failed to parse) are included, and so are the resolver's findings once the whole model validates without error (the resolved MQ4005 of a foreign key column whose type an overlay pins, MQ4001, MQ4008, MQ4009, MQ4011; computed once per model version), scoped like the load diagnostics, so a validation reports what generation would.
          */
         post: operations["validate"];
         delete?: never;

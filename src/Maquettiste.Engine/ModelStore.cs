@@ -293,23 +293,30 @@ public sealed partial class ModelStore : IAsyncDisposable
     /// <returns>The report.</returns>
     /// <remarks>
     /// The validator's report, plus the snapshot's load diagnostics (MQ1xxx) for the scope that it did not already carry, so a
-    /// file that failed to load is never silently missing from a report.
+    /// file that failed to load is never silently missing from a report, plus what the resolver finds once the whole model
+    /// validates without error (MQ4005 over the resolved columns and the other resolution findings; once per snapshot, see
+    /// <see cref="ResolverFindingsAsync"/>), so validate reports what generation would.
     /// </remarks>
     public async Task<ValidationReport> ValidateAsync(ValidationScope scope, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(scope);
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
         var report = await _services.Validator.ValidateAsync(snapshot, scope, null, ct).ConfigureAwait(false);
+        var whole = scope.ElementIds is null && scope.IncludeReferrers && scope.IncludeScriptRules;
+        var found = await ResolverFindingsAsync(snapshot, whole ? report : null, ct).ConfigureAwait(false);
         var seen = report.Diagnostics.Select(LoadKey).ToHashSet(StringComparer.Ordinal);
         IEnumerable<Diagnostic> load = snapshot.LoadDiagnostics;
+        IEnumerable<Diagnostic> resolved = found;
         if (scope.ElementIds is { } ids)
         {
             var owners = ids.Select(id => snapshot.TryGetEntry(id, out var e) ? e.OwnerId : id).ToHashSet(StringComparer.Ordinal);
             var files = owners.Select(id => snapshot.GetDocument(id)?.Path).OfType<string>().ToHashSet(StringComparer.Ordinal);
-            load = load.Where(d => (d.ElementId is { } e && (owners.Contains(e) || ids.Contains(e))) || (d.FilePath is { } f && files.Contains(f)));
+            bool InScope(Diagnostic d) => (d.ElementId is { } e && (owners.Contains(e) || ids.Contains(e))) || (d.FilePath is { } f && files.Contains(f));
+            load = load.Where(InScope);
+            resolved = resolved.Where(InScope);
         }
 
-        var extra = load.Where(d => !seen.Contains(LoadKey(d))).ToList();
+        var extra = load.Where(d => !seen.Contains(LoadKey(d))).Concat(NewFindings(report.Diagnostics, [.. resolved])).ToList();
         return extra.Count == 0 ? report : ValidationReport.From(report.Diagnostics.Concat(extra));
     }
 

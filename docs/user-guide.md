@@ -98,12 +98,20 @@ opened ("Select a pack in Generate" on Plan). **Settings** and **Reference data*
 their own panel. Going to an element from one of them (a translation queue's "Open element", a row of the References tab) opens
 the Domain model screen with the element selected.
 
+The inspector is about the side you are on. On the **Databases** side (the Database screen, or the Databases explorer) a
+table you pick shows as the **table**, never its entity: a click on it on the canvas, in the Tables list or in the
+explorer, a search result for a table file, and a problem in one all show the same table inspector (see "The table
+inspector" below). On the **Domain model** side an entity's inspector is about the entity. The two meet through one
+button each way: the table inspector's **Go to entity** opens the entity's editor in the Domain model, and an entity's
+**Go to table** (its row menu) shows its table on the Databases side.
+
 An element's inspector has four tabs, switched with the mouse or the arrow keys: **Properties** (its own fields, such
 as name, domain, stereotypes, tags and custom properties, plus the kind's settings), **Attributes** (only for kinds that
 have attributes: a value object's, stereotype's or relationship's attribute grid, edited there, while a relationship's
 Properties keep its kind, inverse name and ends; an entity's attributes as a read-only
 list of name, type and a `*` for required, with **Open editor** opening the entity editor on its Attributes tab, where
-the entity's grid is edited), **JSON** (the element's document, editable) and **Used** (the elements that
+the entity's grid is edited; an attribute's type and length here are the entity's rules, used for validation, whatever
+the column that stores it says), **JSON** (the element's document, editable) and **Used** (the elements that
 reference it; a row goes to the referring element). The inspector remembers the tab you chose for each kind of
 element; a kind without the chosen tab shows Properties.
 
@@ -353,9 +361,11 @@ database shows on the Database screen at once. The explorers remember which rows
   (MQ3021), shows in Problems with a **Go to** button that opens the element, or the domain's Tags or Categories tab.
 - **Databases**: each database, its schemas and tables, and the tables not linked to an entity. Expanding a table
   loads its detail: Columns (type, PK and FK markers), Primary key, Foreign keys, Unique constraints and Indexes.
-  Clicking a table or a column selects it in place and tints, in the Domain model, the entity mapped onto the table
-  and the attribute mapped onto the column (once the entity is expanded; a collapsed folder shows "n related").
-  Enter or a double click on a table opens its screen with that table focused. The screen shows table diagrams per
+  Clicking a table or a column shows the table (with that column) in the inspector, whether or not the table has a file
+  of its own, and tints, in the Domain model, the entity mapped onto the table and the attribute mapped onto the column
+  (once the entity is expanded; a collapsed folder shows "n related"). Enter, a double click or the row menu's **Open**
+  on a table opens the Database screen with that table focused and the same table in the inspector; a table has no
+  editor of its own, so **Open** never opens the entity's. The screen shows table diagrams per
   database, a Tables list with a filter (the first 300 matches), a dialect selector, and a live DDL preview for the
   selected table. The preview renders the enabled pack that has a unit rendered per database (a unit named schema or
   table first; with a table selected, that pack's unit for each table), names the pack and unit in its header, and says
@@ -370,16 +380,49 @@ database shows on the Database screen at once. The explorers remember which rows
   keys connect it to, or under the drawing, without moving the others. The database row's menu opens **Mappings**: an entity and its table side by side, where names mapped automatically are
   muted and customised ones are highlighted.
 
-  **Columns.** Under the diagram, the **Columns** panel lists the selected table's columns in a grid: Name, Type, the
-  dialect's Native type (read only), Null, Default, Comment and Description, with key and foreign key markers. Arrow
-  keys move, Enter or F2 edits (Enter again saves), Escape cancels, Tab moves right, Space toggles Null, and a
-  description edits in a text area where Shift+Enter adds a line. Each saved cell is one change you can undo. The edit
-  goes to the table's file: a designed or imported table's own file, or, for a table made from an entity, the file
-  that customises it, which holds only what differs from the conventions. A table made from an entity that has no such
-  file yet gets one on its first edit, holding just that column's change; Undo removes it again. Clearing a cell of such
-  a column returns it to what the conventions give. The Comment column shows the comment the database gets: an explicit
-  comment, else (with the **comments** convention, on by default) the column's description, else its attribute's. The
-  panel hides from the button in its header ("Hide columns").
+  **Columns.** Under the diagram, the **Columns** panel lists the selected table's columns in a grid: Name,
+  **Attribute**, Type, Length, Prec. (precision), Scale, Native, Null, Default, Comment and Description, with key and
+  foreign key markers. Arrow keys move, Enter or F2 edits (Enter again saves), Escape cancels, Tab moves right, Space
+  toggles Null, and a description edits in a text area where Shift+Enter adds a line. Each saved cell is one change you
+  can undo. The edit goes to the table's file: a designed or imported table's own file, or, for a table made from an
+  entity, the file that customises it, which holds only what differs from the conventions. A table made from an entity
+  that has no such file yet gets one on its first edit, holding just that column's change; Undo removes it again.
+  Clearing a cell of such a column returns it to what the conventions give (cleared, Native goes back to the dialect's
+  type map). The Comment column shows the comment the database gets: an explicit comment, else (with the **comments**
+  convention, on by default) the column's description, else its attribute's. The panel hides from the button in its
+  header ("Hide columns").
+
+  The **Attribute** column (read only) names what a column is made from, as `Entity.attribute` (an attribute of a base
+  entity says "from" the base, one a stereotype adds shows the stereotype's «key»); hovering it shows the attribute's own
+  type, such as `string(255)`, and a click, or Enter on the cell, opens that entity in the Domain model. A foreign key
+  column, or a column you added, has none.
+
+  **The column's type is storage, the attribute's is validation.** Type, Length, Prec., Scale and Native are the
+  column's physical type, and they are yours to set for every table, whatever the attribute says: an attribute declared
+  `string(255)` can be stored in a `text` column, and an attribute of length 128 in a column of length 2056. The
+  attribute keeps its own type and length, which is what generated code validates against; the column's is what the
+  database stores, and nothing compares the two. Hovering one of these cells says so ("Physical type of the column; the
+  attribute keeps its own (string(255)) for validation."). For a table made from an entity, the file that customises it
+  may hold, per column, the name, type, length, precision, scale, native type, nullability, default, comment and
+  description. A foreign key column follows the column it references on its own (its cells say "Follows the
+  referenced column"); you can still set its type, and when it then differs from the referenced column it is MQ4005,
+  listed in the Problems panel at once (its row opens the Database screen on that table with the column picked). While
+  the model has such an error the Database screen keeps the tables as they last resolved, with the errors above the
+  diagram, so you can fix the cell or undo.
+
+  **The table inspector.** On the Databases side the inspector shows the picked table. Its header names the table, its
+  file (or "no file"), the save status, **Open in the Database screen** (the arrow icon; it focuses the table on the
+  canvas) and Delete when the table has a file. **Properties** starts with what the table comes from: "Projected from
+  entity Invoice", "Bound to entity Invoice" for a designed or imported table bound to an entity, or "Junction of
+  relationship ...", each with **Go to entity** (or **Go to relationship**), which opens it in the Domain model. With a
+  column picked in the grid (a click or the arrow keys) the **Column** section follows: "Derived from attribute
+  Invoice.number (string(32))" with **Go to entity**, or "Follows the referenced column customers.id (uuid)" for a
+  foreign key, then the column's Name, Type, Length, Precision, Scale, Native type, Nullable, Default, Comment and
+  Description, each saved through the same file as the grid, one undo step per field (on Enter or when you leave it).
+  The **Table** section edits the table's own fields in its file: origin, name, display and plural names, description,
+  category, stereotypes, tags, schema and comment; a table made from an entity with no file of its own shows them read
+  only, with a note that a column edit creates its file. **JSON** shows the table's file when it has one, and **Used**
+  lists what references it.
 
   **What a database holds.** Entities are not turned into tables on their own: a database holds only what is mapped to
   it, and how an entity becomes a table is yours to say. There is no default database either; every database, the first
@@ -413,6 +456,14 @@ database shows on the Database screen at once. The explorers remember which rows
     for the dialect (on its Definition tab): every column of that type takes it, and the name counts as known. For a
     single column, set its native type in the table's overlay. A type the database itself defines (a domain, an enum
     made by hand) can be written quoted or with its schema, `"public"."ledger_position"`, which MQ4016 covers.
+  - A foreign key column whose type, length, precision, scale or native type differs from the column it references is
+    MQ4005 (error), reported on the file that sets the differing value (a table's column, or a column entry of a mapped
+    table's overrides) and naming both columns and both types. A foreign key column follows the referenced column on its
+    own; only a value you set on it, or on the referenced column, can make them differ. It is found while the tables are
+    resolved, and every validation reports it, not only generation: the Problems panel (with its pointer; the row goes
+    to the table), `maquettiste validate` in text, JSON and SARIF, and the agent server's `validate`. The same holds for
+    the other findings of resolution (an over-long conventional name, MQ4001; a constraint or overlay that resolution
+    leaves out, MQ4008 and MQ4009; MQ4011), which validation reports once the model has no other error.
 
   **Schemas.** A PostgreSQL or SQL Server database can hold several schemas (namespaces such as `sales` or `ops`).
 

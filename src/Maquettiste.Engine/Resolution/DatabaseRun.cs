@@ -97,6 +97,7 @@ internal sealed partial class DatabaseRun
         }
 
         FinishTables();
+        CheckForeignKeyColumns();
         FinishRelationMappings();
         ReportUnusedOverlays();
         BuildEntityMappings();
@@ -703,7 +704,18 @@ internal sealed partial class DatabaseRun
 
         // TPT: the derived table's key is also a foreign key to the base table.
         if (p.Strategy == InheritanceStrategy.Tpt && p.Base?.Table is { } baseTable && !ReferenceEquals(baseTable, t))
+        {
             t.ForeignKeys.Add(new ForeignKeySpec(t, [.. t.PrimaryKey], baseTable, null, [], "cascade", "no-action", null));
+            // Its key columns follow the base table's (an overlay there may pin their native type), unless its own overlay pins them.
+            t.Deps.AddRange(KeyDeps(p.Base));
+            foreach (var key in t.PrimaryKey)
+            {
+                if (t.Resolve(key) is not { } column || baseTable.Resolve(key) is not { } referenced || PinsType(t.OverlayColumns.GetValueOrDefault(key)))
+                    continue;
+                (column.Type, column.Length, column.Precision, column.Scale, column.NativeType) =
+                    (referenced.Type, referenced.Length, referenced.Precision, referenced.Scale, referenced.NativeType);
+            }
+        }
 
         ApplyKeyGeneration(p, t);
         AddAttributeConstraints(t, entity, p.Strategy == InheritanceStrategy.Tph ? Descendants(p).Select(d => d.Entity) : []);

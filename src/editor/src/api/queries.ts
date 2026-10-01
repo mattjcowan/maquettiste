@@ -3,7 +3,17 @@
 import { currentContentLocale } from "@/l10n/contentLocale";
 import { QueryClient, useQueries, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import * as endpoints from "./endpoints";
-import type { DatabaseTablesResult, TableView, ElementDocument, ElementKind, ElementSummary, SaveResult, BatchResult, ChangeSet } from "./types";
+import type {
+  DatabaseTablesResult,
+  DatabaseViewResult,
+  TableView,
+  ElementDocument,
+  ElementKind,
+  ElementSummary,
+  SaveResult,
+  BatchResult,
+  ChangeSet,
+} from "./types";
 import { summaryFromDocument } from "@/model/model";
 import { createElementLoader, type ElementLoader } from "./elementLoader";
 import { browserIndexStore, createIndexLoader, type IndexLoader } from "./indexLoader";
@@ -128,8 +138,28 @@ export function useElements(ids: string[]) {
 export const useReferences = (id: string | null) =>
   useQuery({ queryKey: keys.references(id ?? ""), queryFn: () => endpoints.getReferences(id!), enabled: !!id });
 
-export const useDatabaseView = (id: string | null) =>
-  useQuery({ queryKey: keys.databaseView(id ?? ""), queryFn: () => endpoints.getDatabaseView(id!), enabled: !!id });
+/** A database view as the Database screen shows it: `stale` when the model has errors and `view` is the last one resolved. */
+export type DatabaseViewState = DatabaseViewResult & { stale: boolean };
+
+/**
+ * The next view from the previous one and a new answer: an answer without a view (the model has errors, such as a foreign
+ * key column pinned to another type than the column it references, MQ4005) keeps the last resolved tables, marked stale,
+ * with the new diagnostics, so the screen, its grid and the table inspector stay up to fix it in place.
+ */
+export function mergeDatabaseView(previous: DatabaseViewState | undefined, next: DatabaseViewResult): DatabaseViewState {
+  if (!next.view && previous?.view) return { view: previous.view, diagnostics: next.diagnostics, stale: true };
+  return { ...next, stale: false };
+}
+
+export function useDatabaseView(id: string | null) {
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: keys.databaseView(id ?? ""),
+    queryFn: async (): Promise<DatabaseViewState> =>
+      mergeDatabaseView(qc.getQueryData<DatabaseViewState>(keys.databaseView(id ?? "")), await endpoints.getDatabaseView(id!)),
+    enabled: !!id,
+  });
+}
 
 // ---------------------------------------------------------------- table summaries (E5c)
 

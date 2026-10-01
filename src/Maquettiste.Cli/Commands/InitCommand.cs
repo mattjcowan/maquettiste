@@ -20,7 +20,9 @@ namespace Maquettiste.Cli.Commands;
 /// <c>.maquettiste/.cache/</c> ignores itself (Engine <c>Writing/CacheFolder</c>).
 /// </para>
 /// <para>
-/// Idempotent: existing files are kept, except <c>.schema/v1</c>, which is refreshed. <c>--gitignore</c> (an opt-in, SPEC section 12, errata E39)
+/// Idempotent: existing files are kept, except <c>.schema/v1</c>, which is refreshed; on a project that already has its settings, a starter
+/// pack is scaffolded only when <c>--pack</c> names it, so a re-run of plain <c>init</c> never puts back a pack the team removed.
+/// <c>--gitignore</c> (an opt-in, SPEC section 12, errata E39)
 /// appends or refreshes a <c># maquettiste:begin</c> … <c># maquettiste:end</c> block of the built roots and <c>.maquettiste/.cache/</c>
 /// in <c>.gitignore</c>, rewritten in place on a re-run. <c>--hooks</c> installs the post-checkout and post-merge hooks; <c>--mcp</c> registers <c>maquettiste mcp</c> in
 /// <c>.mcp.json</c>; <c>--skill</c> installs the modeling skill under <c>.claude/skills/</c>; <c>--agent-setup</c> does both; and
@@ -61,6 +63,9 @@ internal static class InitCommand
         if (dockerImage is null && context.Line.Value("--runtime") is not null)
             throw new UsageException("--runtime picks the container command for --docker <image>; give the image too.");
         var runtime = context.Line.Choice("--runtime", AgentSetup.Runtimes[0], [.. AgentSetup.Runtimes]);
+        // The starter pack is scaffolded for a new project only. On a project that already has its settings, a pack is
+        // added only when --pack names it: a re-run of plain init must not put back a pack the team removed.
+        var packAsked = context.Line.Has("--pack");
         var pack = context.Line.Choice("--pack", "sql-ddl", "sql-ddl", "csharp-dapper", "none");
         var repo = context.RepoRoot(search: false);
         if (!Directory.Exists(repo))
@@ -91,6 +96,8 @@ internal static class InitCommand
         var json = new CanonicalJson(schemas);
         var settingsPath = Path.Combine(modelRoot, "maquettiste.json");
         var settingsOutcome = await files.WriteAsync(WriteTarget.Model, settingsPath, Settings(json, ProjectName(repo, context.Line.Value("--name")), pack), overwrite: false, ct).ConfigureAwait(false);
+        if (settingsOutcome == WriteOutcome.Kept && !packAsked)
+            pack = "none";
         if (settingsOutcome == WriteOutcome.Kept && pack != "none")
             settingsOutcome = await AddPackOutputAsync(files, json, settingsPath, pack, report, ct).ConfigureAwait(false);
         report.Add(Describe(settingsOutcome, ".maquettiste/maquettiste.json"));

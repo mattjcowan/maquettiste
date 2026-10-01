@@ -148,6 +148,119 @@ internal sealed partial class DatabaseRun
         static string? Text(string? description) => string.IsNullOrWhiteSpace(description) ? null : description.Trim();
     }
 
+    /// <summary>
+    /// MQ4005 over the resolved columns: each foreign key column has the referenced column's type, length, precision, scale and native type,
+    /// so the generated key is valid DDL. An attribute's logical type is never compared with its column's (the attribute's length is
+    /// validation, the column's is storage). A mismatch is reported on the file that pins it: the foreign key column's overlay entry, its
+    /// designed or imported table, the referenced column's overlay entry or table, else the relation end (or the attribute's entity) that
+    /// produced the column. Validation's file-level MQ4005 already covers a column whose table and referenced table are both files that
+    /// declare both types; such a column is not reported again.
+    /// </summary>
+    private void CheckForeignKeyColumns()
+    {
+        foreach (var t in _tableOrder)
+        {
+            foreach (var spec in t.ForeignKeys)
+            {
+                if (!spec.Resolved || spec.Target is not { } target)
+                    continue;
+                var fk = spec.Result;
+                for (var i = 0; i < fk.Columns.Count && i < fk.ReferencedColumns.Count; i++)
+                {
+                    var column = fk.Columns[i];
+                    var referenced = fk.ReferencedColumns[i];
+                    if (SamePhysicalType(column, referenced) || ReportedByValidation(t, target, column, referenced))
+                        continue;
+                    var (elementId, pointer) = PinOf(t, column) ?? PinOf(target, referenced) ?? Origin(t, fk, column);
+                    _run.AddDiagnostic("MQ4005",
+                        $"Foreign key column '{t.Table.Name}.{column.Name}' is {Describe(column)} but references '{target.Table.Name}.{referenced.Name}', which is {Describe(referenced)} (database '{_db.Name}').",
+                        elementId, pointer);
+                }
+            }
+        }
+    }
+
+    private static bool SamePhysicalType(RColumn a, RColumn b)
+    {
+        if (!string.Equals(a.Type, b.Type, StringComparison.Ordinal) || !string.Equals(a.NativeType, b.NativeType, StringComparison.OrdinalIgnoreCase))
+            return false;
+        // Only the facets the type has (as MQ3013 allows them) count: a key's length means nothing to an int64.
+        var type = PhysicalType(a);
+        return (type is not ("string" or "text" or "binary") || a.Length == b.Length)
+            && (type is not ("decimal" or "time" or "datetime" or "datetimeoffset") || a.Precision == b.Precision)
+            && (type is not "decimal" || a.Scale == b.Scale);
+    }
+
+    /// <summary>Whether validation's file-level MQ4005 reports the pair: both tables are files and both columns declare differing types.</summary>
+    private static bool ReportedByValidation(TableBuild t, TableBuild target, RColumn column, RColumn referenced) =>
+        t.Source?.Columns.FirstOrDefault(c => c.Id == column.Key)?.Type is { } a
+        && target.Source?.Columns.FirstOrDefault(c => c.Id == referenced.Key)?.Type is { } b
+        && !string.Equals(a, b, StringComparison.Ordinal);
+
+    /// <summary>The file and pointer that pin a column's physical type: its overlay entry, or its entry in a designed or imported table.</summary>
+    private static (string ElementId, string Pointer)? PinOf(TableBuild t, RColumn column)
+    {
+        if (t.Source is { } source)
+        {
+            var at = IndexOf(source.Columns, c => c.Id == column.Key);
+            return at < 0 ? (source.Id, "/columns") : (source.Id, ColumnPointer(at));
+        }
+
+        if (t.Overlay is { } overlay)
+        {
+            var at = IndexOf(overlay.Columns, c => c.Attribute == column.Key || (c.Attribute is null && c.Id == column.Key));
+            if (at >= 0 && (overlay.Columns[at].Attribute is null || PinsType(overlay.Columns[at])))
+                return (overlay.Id, ColumnPointer(at));
+        }
+
+        return null;
+    }
+
+    /// <summary>Where a synthesized foreign key column comes from: the relation end of its key, else the entity that declares its attribute, else the table's element.</summary>
+    private (string? ElementId, string? Pointer) Origin(TableBuild t, RForeignKey fk, RColumn column)
+    {
+        if (fk.Relation is { } relation && _run.RelationSource(relation.Id) is { } source)
+        {
+            var at = fk.End is { } end ? IndexOf(source.Ends, e => e.Id == end.Id) : -1;
+            return (source.Id, at < 0 ? "/ends" : "/ends/" + at.ToString(CultureInfo.InvariantCulture));
+        }
+
+        if (column.Attribute is { DeclaringEntity: { } declaring } attribute)
+        {
+            var at = _run.Model.Get<Entity>(declaring.Id) is { } entity ? IndexOf(entity.Attributes, a => a.Id == attribute.Id) : -1;
+            return (declaring.Id, at < 0 ? null : "/attributes/" + at.ToString(CultureInfo.InvariantCulture));
+        }
+
+        return (t.SourceElementId, null);
+    }
+
+    private static string ColumnPointer(int index) => "/columns/" + index.ToString(CultureInfo.InvariantCulture);
+
+    private static int IndexOf<T>(IReadOnlyList<T> items, Func<T, bool> match)
+    {
+        for (var i = 0; i < items.Count; i++)
+        {
+            if (match(items[i]))
+                return i;
+        }
+
+        return -1;
+    }
+
+    /// <summary>A column's physical type for a message: the type with its facets, then the native type, such as <c>string(26) (varchar(26))</c>.</summary>
+    private static string Describe(RColumn c)
+    {
+        var type = PhysicalType(c);
+        var facets = type switch
+        {
+            "string" or "text" or "binary" when c.Length is { } length => "(" + length.ToString(CultureInfo.InvariantCulture) + ")",
+            "decimal" when c.Precision is { } p => "(" + p.ToString(CultureInfo.InvariantCulture) + (c.Scale is { } s ? "," + s.ToString(CultureInfo.InvariantCulture) : "") + ")",
+            "time" or "datetime" or "datetimeoffset" when c.Precision is { } p => "(" + p.ToString(CultureInfo.InvariantCulture) + ")",
+            _ => "",
+        };
+        return c.Type + facets + " (" + c.NativeType + ")";
+    }
+
     /// <summary>MQ4008: a foreign key that cannot be resolved is left out of its table, and said so.</summary>
     private void ReportUnresolved(TableBuild t, ForeignKeySpec spec, string reason)
     {

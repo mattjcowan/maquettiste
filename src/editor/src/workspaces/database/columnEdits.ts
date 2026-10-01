@@ -3,11 +3,43 @@
 // file is an overlay (engine-design.md 7.3), found by what it overrides (the entity, a child table's entity and attribute, or
 // a junction's relation), whose column entries name the synthesized column key in `attribute` and hold only what they change.
 // A synthesized table without an overlay gets one on its first edit, holding just that column's entry.
+//
+// The physical side is free (the owner: "a database table column could say text, and a mapped entity field could say string
+// 255 ... nothing should prevent that"): an overlay entry may carry the column's type, length, precision, scale, native type,
+// nullability, default, comment, description and name, whatever the attribute it derives from says. The attribute's length is
+// validation, the column's is storage; nothing compares them.
 import type { ColumnView, ElementSummary, TableView } from "@/api/types";
 
 type Json = Record<string, unknown>;
 
-export type ColumnField = "name" | "type" | "nullable" | "default" | "comment" | "description";
+export type ColumnField = "name" | "type" | "length" | "precision" | "scale" | "nativeType" | "nullable" | "default" | "comment" | "description";
+
+/** The column fields every table may set, in the order the grid and the inspector show them. */
+export const COLUMN_FIELDS: readonly ColumnField[] = [
+  "name",
+  "type",
+  "length",
+  "precision",
+  "scale",
+  "nativeType",
+  "nullable",
+  "default",
+  "comment",
+  "description",
+];
+
+/** The whole-number facets, with their least value (common.json: length and precision from 1, scale from 0). */
+const FACETS: Partial<Record<ColumnField, number>> = { length: 1, precision: 1, scale: 0 };
+
+/** Why a typed value cannot be saved in a field, or null: a facet is a whole number (empty clears it). */
+export function columnFieldProblem(field: ColumnField, raw: string): string | null {
+  const least = FACETS[field];
+  if (least === undefined) return null;
+  const text = raw.trim();
+  if (text === "") return null;
+  if (!/^\d+$/.test(text) || Number(text) < least) return `${field[0].toUpperCase()}${field.slice(1)} is a whole number from ${least}, or empty.`;
+  return null;
+}
 
 /** Where a resolved table's columns are written. */
 export type TableFileTarget = { kind: "file"; id: string } | { kind: "overlay"; entity: string; attribute?: string } | { kind: "overlay"; relation: string };
@@ -21,6 +53,16 @@ export function tableFileTarget(table: Pick<TableView, "key" | "entityId" | "rel
   if (dot > 0) return { kind: "overlay", entity: owner.slice(0, dot), attribute: owner.slice(dot + 1) };
   if (table.relationId && owner === table.relationId) return { kind: "overlay", relation: owner };
   return { kind: "overlay", entity: owner };
+}
+
+/** The resolved key of the table a table document shapes (the inverse of `tableFileTarget`): an overlay's synthesized key, else the file id. */
+export function tableKeyOfDoc(doc: Json | undefined): { database: string; key: string } | null {
+  if (!doc || doc.kind !== "table" || typeof doc.database !== "string" || typeof doc.id !== "string") return null;
+  const database = doc.database;
+  if (doc.origin !== "synthesized") return { database, key: doc.id };
+  if (typeof doc.relation === "string") return { database, key: `${doc.relation}@${database}` };
+  if (typeof doc.entity !== "string") return null;
+  return { database, key: `${doc.entity}${typeof doc.attribute === "string" ? `.${doc.attribute}` : ""}@${database}` };
 }
 
 /** Whether a table document is the overlay a target names. */
@@ -55,6 +97,12 @@ export function parseColumnDefault(type: string, raw: string): unknown {
 /** A column's field as the grid shows it. */
 export function columnText(column: ColumnView, field: Exclude<ColumnField, "nullable">): string {
   switch (field) {
+    case "length":
+    case "precision":
+    case "scale":
+      return column[field] === null || column[field] === undefined ? "" : String(column[field]);
+    case "nativeType":
+      return column.nativeType ?? "";
     case "default":
       return column.default === null || column.default === undefined
         ? ""
@@ -80,6 +128,8 @@ const changesSomething = (entry: Json) => Object.keys(entry).some((k) => k !== "
 function fileValue(column: ColumnView, field: ColumnField, value: string | boolean): unknown {
   if (field === "nullable") return value === true;
   const text = String(value);
+  if (field in FACETS) return text.trim() === "" ? undefined : Number(text.trim());
+  if (field === "nativeType") return text.trim() === "" ? undefined : text.trim();
   if (field === "default") return text === "" ? undefined : parseColumnDefault(column.type, text);
   if (field === "comment") return text === "" ? undefined : text;
   if (field === "description" || field === "name" || field === "type") return text.trim() === "" ? undefined : field === "description" ? text : text.trim();
@@ -93,6 +143,7 @@ function fileValue(column: ColumnView, field: ColumnField, value: string | boole
  * document has no place for the edit (a designed column that is not in the file, a description kept in a sidecar file).
  */
 export function setColumnField(doc: Json, column: ColumnView, field: ColumnField, value: string | boolean, newId: () => string): boolean {
+  if (typeof value === "string" && columnFieldProblem(field, value)) return false;
   const overlay = doc.origin === "synthesized";
   const list = entries(doc);
   let entry = list.find((c) => (overlay ? c.attribute === column.key || (c.attribute === undefined && c.id === column.key) : c.id === column.key));
@@ -132,4 +183,81 @@ export function newOverlay(
   };
   setColumnField(doc, column, field, value, newId);
   return doc.columns ? doc : null;
+}
+
+/** A logical type with its facets, as the hints say it: `string(255)`, `decimal(18,2)`, `int64`. */
+export function logicalTypeText(type: string, facets: { length?: number; precision?: number; scale?: number }): string {
+  if (facets.length !== undefined) return `${type}(${facets.length})`;
+  if (facets.precision !== undefined) return `${type}(${facets.precision}${facets.scale !== undefined ? `,${facets.scale}` : ""})`;
+  return type;
+}
+
+/** What a column derives from, for its hints and the Attribute column: `Entity.attribute` and the attribute's logical type. */
+export interface Derivation {
+  entityId: string;
+  /** `Invoice.number`. */
+  label: string;
+  /** `string(255)`, or null when the attribute's document is not at hand. */
+  logical: string | null;
+}
+
+/** The hint of a physical cell (type, length, precision, scale, native type): the column's storage, the attribute's own rule. */
+export function physicalHint(column: Pick<ColumnView, "isForeignKey">, derivation: Derivation | null): string {
+  if (column.isForeignKey) return "Follows the referenced column; set it here and a different type is reported (MQ4005).";
+  if (derivation?.logical) return `Physical type of the column; the attribute keeps its own (${derivation.logical}) for validation.`;
+  return "Physical type of the column.";
+}
+
+type AttributeLike = { id?: unknown; name?: unknown; type?: unknown; length?: unknown; precision?: unknown; scale?: unknown; collection?: unknown };
+type DocLike = { id?: unknown; key?: unknown; name?: unknown; base?: unknown; stereotypes?: unknown; attributes?: unknown };
+
+const attributesOf = (doc: DocLike | undefined): AttributeLike[] => (Array.isArray(doc?.attributes) ? (doc.attributes as AttributeLike[]) : []);
+
+/**
+ * What each column of a table derives from, by column key: the attribute it stores (`attributeId`), as `Entity.attribute`
+ * with the attribute's logical type. The attribute is the entity's own, else a base entity's (named, and the way goes to the
+ * base), else a stereotype's applied to the entity or a base (named «key»); one found nowhere names the entity only. A
+ * foreign key or an extra column derives from no attribute.
+ */
+export function columnDerivations(
+  table: Pick<TableView, "columns" | "entityId">,
+  entity: DocLike | undefined,
+  typeName: (ref: string) => string | undefined,
+  more: { bases?: readonly DocLike[]; stereotypes?: readonly DocLike[] } = {},
+): Map<string, Derivation> {
+  const out = new Map<string, Derivation>();
+  if (!table.entityId || !entity) return out;
+  const entityName = String(entity.name ?? "");
+  const lineage = [entity, ...(more.bases ?? [])];
+  const applied = new Set(lineage.flatMap((d) => (Array.isArray(d.stereotypes) ? (d.stereotypes as unknown[]).map(String) : [])));
+  const num = (v: unknown) => (typeof v === "number" ? v : undefined);
+  const logicalOf = (attr: AttributeLike) => {
+    const type = attr.type;
+    const base = typeof type === "string" ? type : (typeName(String((type as { ref?: unknown } | undefined)?.ref ?? "")) ?? "?");
+    return logicalTypeText(base, { length: num(attr.length), precision: num(attr.precision), scale: num(attr.scale) }) + (attr.collection ? "[]" : "");
+  };
+  for (const column of table.columns) {
+    if (!column.attributeId) continue;
+    let found: Derivation | null = null;
+    for (const [i, doc] of lineage.entries()) {
+      const attr = attributesOf(doc).find((a) => a.id === column.attributeId);
+      if (!attr) continue;
+      const from = i === 0 ? "" : ` (from ${String(doc.name ?? "")})`;
+      found = {
+        entityId: i === 0 ? table.entityId : String(doc.id ?? table.entityId),
+        label: `${entityName}.${String(attr.name ?? "")}${from}`,
+        logical: logicalOf(attr),
+      };
+      break;
+    }
+    if (!found)
+      for (const st of more.stereotypes ?? []) {
+        const attr = attributesOf(st).find((a) => a.id === column.attributeId);
+        if (!attr || !applied.has(String(st.key ?? ""))) continue;
+        found = { entityId: table.entityId, label: `${entityName}.${String(attr.name ?? "")} «${String(st.key ?? "")}»`, logical: logicalOf(attr) };
+        break;
+      }
+    out.set(column.key, found ?? { entityId: table.entityId, label: `${entityName} (attribute from a parent or a stereotype)`, logical: null });
+  }
+  return out;
 }

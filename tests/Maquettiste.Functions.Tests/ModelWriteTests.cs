@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json.Nodes;
 using Maquettiste.Functions.Tests.Support;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Functions.Tests;
 
@@ -311,6 +312,25 @@ public sealed class ModelWriteTests
         Assert.Equal(400, bad.Status);
         Contract.AssertResponse(bad, "/api/validate");
         Assert.Equal(400, badId.Status);
+    }
+
+    [Fact]
+    public async Task Validate_carries_the_resolvers_MQ4005_with_its_pointer_as_the_problems_panel_shows_it()
+    {
+        await using var host = EditorHost.Create();
+        var path = host.PathOf(BillingEdits.InvoiceOverlayPath);
+        await File.WriteAllTextAsync(path, BillingEdits.PinCustomerForeignKey(await File.ReadAllTextAsync(path, EditorHost.Ct)), EditorHost.Ct);
+        await host.Store.RescanAsync(false, EditorHost.Ct);
+
+        var report = await host.SendJsonAsync("POST", "/api/validate", "{}");
+        Assert.Equal(200, report.Status);
+        Contract.AssertResponse(report, "/api/validate");
+        Assert.True(report.Json["hasErrors"]!.GetValue<bool>());
+        var d = report.Json["diagnostics"]!.AsArray().Single(x => x!["rule"]!.GetValue<string>() == "MQ4005")!;
+        Assert.Equal(BillingEdits.InvoiceOverlayId, d["elementId"]!.GetValue<string>());
+        Assert.Equal(BillingEdits.InvoiceOverlayPath, d["filePath"]!.GetValue<string>());
+        Assert.Equal(BillingEdits.PinnedPointer, d["jsonPointer"]!.GetValue<string>());
+        Assert.Equal(BillingEdits.ForeignKeyMismatch, d["message"]!.GetValue<string>());
     }
 
     [Fact]

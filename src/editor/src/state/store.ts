@@ -122,6 +122,14 @@ export interface ExplorerSlice {
   favorites: string[];
 }
 
+/** The table the inspector shows on the Databases side, and the column picked in the grid. */
+export interface InspectedTable {
+  database: string;
+  /** The resolved table key (a table file's id, or a synthesized key such as `<entityId>@<databaseId>`). */
+  key: string;
+  column: string | null;
+}
+
 export interface EditorState {
   workspace: Workspace;
   explorer: ExplorerSlice;
@@ -140,6 +148,10 @@ export interface EditorState {
   explorerItem: string | null;
   /** The table the Database screen shows focused (opened from the explorer or its table list), by table key. */
   databaseTable: string | null;
+  /** The table the inspector shows on the Databases side (the Database screen, the Databases explorer): by its database
+   * and resolved key, so a table without a file shows too, and the column picked in the column grid. Selecting
+   * elements clears it. */
+  inspectedTable: InspectedTable | null;
   explorerSize: number;
   inspectorSize: number;
   bottomSize: number;
@@ -219,6 +231,10 @@ export interface EditorActions {
   pruneSelection(exists: (id: string) => boolean): void;
   setExplorerItem(key: string | null): void;
   setDatabaseTable(key: string | null): void;
+  /** Shows a table in the inspector (null: none); `item` is its explorer row key, highlighted like a selected row. */
+  inspectTable(table: { database: string; key: string; column?: string | null } | null, item?: string | null): void;
+  /** The column the inspector shows for the inspected table (the column grid's pick). */
+  inspectColumn(column: string | null): void;
   setActiveDiagram(id: string | null): void;
   setActiveDatabase(id: string | null): void;
   setBottomTab(tab: BottomTab): void;
@@ -336,6 +352,7 @@ export function createEditorStore(): EditorStore {
     activeDatabase: null,
     explorerItem: null,
     databaseTable: null,
+    inspectedTable: null,
     explorerSize: layout.explorerSize,
     inspectorSize: layout.inspectorSize,
     bottomSize: layout.bottomSize,
@@ -438,6 +455,7 @@ export function createEditorStore(): EditorStore {
         selectionBy: { ...get().selectionBy, [explorer ?? get().explorer.active]: ids },
         selectionFrom: explorer ?? get().explorer.active,
         explorerItem: null,
+        inspectedTable: null,
         focus: ids.length === 1 && focus ? { id: ids[0], pointer: focus.pointer } : null,
         history: visit(get().history, ids),
       });
@@ -463,6 +481,25 @@ export function createEditorStore(): EditorStore {
     setActiveDiagram: (id) => set({ activeDiagram: id }),
     setExplorerItem: (key) => set({ explorerItem: key }),
     setDatabaseTable: (key) => set({ databaseTable: key }),
+    inspectTable: (table, item) => {
+      if (!table) {
+        set({ inspectedTable: null, ...(item === undefined ? {} : { explorerItem: item }) });
+        return;
+      }
+      const was = get().inspectedTable;
+      const column = table.column !== undefined ? table.column : was && was.database === table.database && was.key === table.key ? was.column : null;
+      // The table is the Databases side's selection now: the explorer's element selection gives way to it.
+      set({
+        inspectedTable: { database: table.database, key: table.key, column },
+        selectionBy: { ...get().selectionBy, databases: [] },
+        selectionFrom: "databases",
+        ...(item === undefined ? {} : { explorerItem: item }),
+      });
+    },
+    inspectColumn: (column) => {
+      const t = get().inspectedTable;
+      if (t && t.column !== column) set({ inspectedTable: { ...t, column } });
+    },
     setActiveDatabase: (id) => set({ activeDatabase: id }),
     setBottomTab: (tab) => set({ bottomTab: tab, bottomCollapsed: false }),
     toggle: (panel, collapsed) => {
