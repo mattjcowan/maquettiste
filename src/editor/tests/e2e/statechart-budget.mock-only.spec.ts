@@ -11,6 +11,9 @@ import type { Page, TestInfo } from "@playwright/test";
 import { expect, openEditor, test, workspace } from "./fixtures";
 
 const NOISE = 1.25;
+// The section 4.5 budgets assume the design's 8-core machine; on a GitHub-hosted runner (editor.yml sets this from
+// runner.environment, as gate3.yml does for the bench) a miss is recorded on the report and does not fail the run.
+const ADVISORY = process.env.MQ_BUDGETS_ADVISORY === "1";
 
 interface Measure {
   name: string;
@@ -22,6 +25,10 @@ interface Measure {
 function within(info: TestInfo, name: string, ms: number, targetMs: number): Measure {
   const measure = { name, ms, targetMs, budgetMs: Math.round(targetMs * NOISE) };
   info.annotations.push({ type: "timing", description: `${name}: ${ms} ms (target ${targetMs} ms, budget ${measure.budgetMs} ms)` });
+  if (ADVISORY && ms > measure.budgetMs) {
+    info.annotations.push({ type: "over budget (advisory on this runner)", description: `${name}: ${ms} ms, budget ${measure.budgetMs} ms` });
+    return measure;
+  }
   expect(ms, `${name} took ${ms} ms; budget ${measure.budgetMs} ms`).toBeLessThanOrEqual(measure.budgetMs);
   return measure;
 }

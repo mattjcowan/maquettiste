@@ -13,7 +13,7 @@ public sealed class TempRepo : IDisposable
     /// <param name="idGenerator">The id generator for <see cref="Options"/>; <see langword="null"/> uses a <see cref="SequentialIdGenerator"/>.</param>
     public TempRepo(IIdGenerator? idGenerator = null)
     {
-        Root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "maquettiste-tests", Guid.NewGuid().ToString("N"));
+        Root = System.IO.Path.Combine(RealPath(System.IO.Path.GetTempPath()), "maquettiste-tests", Guid.NewGuid().ToString("N"));
         RepoRoot = System.IO.Path.Combine(Root, "repo");
         ModelRoot = System.IO.Path.Combine(RepoRoot, ".maquettiste");
         CacheDirectory = System.IO.Path.Combine(Root, "cache");
@@ -26,6 +26,28 @@ public sealed class TempRepo : IDisposable
             IdGenerator = idGenerator ?? new SequentialIdGenerator(),
             MaxDegreeOfParallelism = 2,
         };
+    }
+
+    /// <summary>
+    /// A path with every directory link resolved. macOS's temp folder lies under <c>/var</c>, a link to <c>/private/var</c>;
+    /// the tools a test runs there (a solution restore and build) see the folder through the link and through its target,
+    /// and a project reached by two paths is restored twice (<c>nuget.g.props already exists</c>) and built astray.
+    /// </summary>
+    /// <param name="path">An absolute path.</param>
+    /// <returns>The path with links resolved.</returns>
+    public static string RealPath(string path)
+    {
+        var root = System.IO.Path.GetPathRoot(path) ?? path;
+        var current = root;
+        foreach (var part in path[root.Length..].Split([System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = System.IO.Path.Combine(current, part);
+            var info = new DirectoryInfo(current);
+            if (info.LinkTarget is not null && info.ResolveLinkTarget(returnFinalTarget: true) is { } target)
+                current = target.FullName;
+        }
+
+        return current;
     }
 
     /// <summary>The folder that holds the repo and the cache.</summary>
