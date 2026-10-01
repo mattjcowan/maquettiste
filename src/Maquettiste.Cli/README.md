@@ -90,7 +90,17 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
   `--mcp` registers `maquettiste mcp` in `.mcp.json` (merged, an existing `maquettiste` entry kept; `dotnet tool run maquettiste mcp`
   when the local tool manifest lists the command), `--skill` writes the embedded modeling skill to
   `.claude/skills/maquettiste-modeling/SKILL.md` (refreshed on each run), `--agent-setup` does both (`Commands/AgentSetup.cs`,
-  docs/mcp.md). Both are `WriteTarget.Setup` writes; the engine's setup allow-list names the two paths.
+  docs/mcp.md). `--docker <image>` (implies `--mcp`) registers the container command instead, as `/bin/sh` with `-c` and one line
+  (`AgentSetup.ContainerCommandLine`): `export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin"; mkdir -p
+  .maquettiste/.cache; exec docker run -i --rm --user 0:0 -v "$(pwd -P):/repo" -w /repo -e
+  MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli <image> maquettiste mcp 2>>.maquettiste/.cache/mcp.log` (`podman` with
+  `--runtime podman`), so a client started from the desktop on the Mac finds the command, a repository behind a link mounts by
+  its real path and the server's stderr lands in the ignored cache folder. When `init` runs on Windows (no `/bin/sh`) the entry
+  is `docker` itself with `run -i --rm --user 0:0 -v ${PWD}:/repo -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli
+  <image> maquettiste mcp`, the client expanding `${PWD}`. Either form replaces an existing `maquettiste` entry, of either form
+  (other servers kept), and removes an `mcp.sh` wrapper that an earlier version wrote, recognized by its marker line after
+  `#!/bin/sh` (any other `mcp.sh` is kept). No script is written. All of these are `WriteTarget.Setup` writes; the engine's setup
+  allow-list names `.mcp.json`, the skill and `mcp.sh` (for the removal only).
 - **init name:** `--name <name>`, else `package.json` `name` (an `@scope/` prefix dropped), else the repository name of the git
   remote `origin` (else the first remote; `.git` may be a worktree file), else the folder name (`InitCommand.ProjectName`). It is
   written only when `maquettiste.json` is created.

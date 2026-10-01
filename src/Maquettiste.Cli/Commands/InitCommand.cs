@@ -11,7 +11,7 @@ namespace Maquettiste.Cli.Commands;
 
 /// <summary>
 /// <c>maquettiste init [--pack sql-ddl|csharp-dapper|none] [--name &lt;name&gt;] [--hooks] [--mcp] [--skill] [--agent-setup]
-/// [--docker &lt;image&gt;]</c> (engine-design.md section 16; SPEC sections 4, 11, 12 and 17).
+/// [--docker &lt;image&gt; [--runtime docker|podman]]</c> (engine-design.md section 16; SPEC sections 4, 11, 12 and 17).
 /// <para>
 /// Creates <c>.maquettiste/</c> with the phase 1 folders, <c>maquettiste.json</c> (format 1, output roots <c>db</c> committed and
 /// <c>src/Generated</c> built), the JSON schemas in <c>.schema/v1/</c>, the starter pack, and a <c>.gitignore</c> block for the built
@@ -21,7 +21,8 @@ namespace Maquettiste.Cli.Commands;
 /// Idempotent: existing files are kept, except <c>.schema/v1</c>, which is refreshed, and the <c>.gitignore</c> block, which is
 /// rewritten in place. <c>--hooks</c> installs the post-checkout and post-merge hooks; <c>--mcp</c> registers <c>maquettiste mcp</c> in
 /// <c>.mcp.json</c>; <c>--skill</c> installs the modeling skill under <c>.claude/skills/</c>; <c>--agent-setup</c> does both; and
-/// <c>--docker &lt;image&gt;</c> registers a <c>./mcp.sh</c> wrapper that runs the server in that image (<see cref="AgentSetup"/>).
+/// <c>--docker &lt;image&gt;</c> registers the server as a <c>docker run</c> of that image (<c>podman run</c> with <c>--runtime podman</c>)
+/// and removes the <c>mcp.sh</c> wrapper earlier versions wrote (<see cref="AgentSetup"/>).
 /// </para>
 /// </summary>
 internal static class InitCommand
@@ -48,12 +49,15 @@ internal static class InitCommand
     /// <returns>The exit code.</returns>
     public static async Task<int> RunAsync(GlobalContext context, CancellationToken ct)
     {
-        context.Line.Expect("init", 1, "--pack", "--hooks", "--mcp", "--skill", "--agent-setup", "--name", "--docker");
+        context.Line.Expect("init", 1, "--pack", "--hooks", "--mcp", "--skill", "--agent-setup", "--name", "--docker", "--runtime");
         if (context.Line.Value("--name") is { } given && string.IsNullOrWhiteSpace(given))
             throw new UsageException("--name needs a project name.");
         var dockerImage = context.Line.Value("--docker");
         if (dockerImage is not null && !AgentSetup.IsImageReference(dockerImage))
             throw new UsageException("--docker needs an image reference such as mattjcowan/maquettiste:0.2.0 (letters, digits and . _ - / : @).");
+        if (dockerImage is null && context.Line.Value("--runtime") is not null)
+            throw new UsageException("--runtime picks the container command for --docker <image>; give the image too.");
+        var runtime = context.Line.Choice("--runtime", AgentSetup.Runtimes[0], [.. AgentSetup.Runtimes]);
         var pack = context.Line.Choice("--pack", "sql-ddl", "sql-ddl", "csharp-dapper", "none");
         var repo = context.RepoRoot(search: false);
         if (!Directory.Exists(repo))
@@ -120,7 +124,7 @@ internal static class InitCommand
         if (context.Line.Has("--hooks"))
             await InstallHooksAsync(files, repo, report, ct).ConfigureAwait(false);
         if (context.Line.Has("--mcp") || context.Line.Has("--agent-setup") || dockerImage is not null)
-            await AgentSetup.WriteMcpConfigAsync(files, repo, dockerImage, report, ct).ConfigureAwait(false);
+            await AgentSetup.WriteMcpConfigAsync(files, repo, dockerImage, runtime, report, ct).ConfigureAwait(false);
         if (context.Line.Has("--skill") || context.Line.Has("--agent-setup"))
             await AgentSetup.WriteSkillAsync(files, repo, report, ct).ConfigureAwait(false);
 

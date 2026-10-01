@@ -106,7 +106,7 @@ domain, New entity, New enum, New reference type, New diagram and New database. 
 - In a second terminal, `maquettiste generate --watch`, then save something in the editor: it regenerates within a
   second. If it does not react, Docker Desktop is not forwarding file events; run `maquettiste generate` by hand in
   part 2 instead.
-- Claude Code in `$REPO` with the `.mcp.json` and `mcp.sh` from step 3.1 lists 46 tools under `/mcp` (docs/mcp.md lists them; re-check the count on the Mac).
+- Claude Code in `$REPO` with the `.mcp.json` from step 3.1 lists 46 tools under `/mcp` (docs/mcp.md lists them; re-check the count on the Mac).
 
 Also before the talk: a second terminal tab in `$REPO`, the repository open in a code editor, Claude Code logged in,
 the browser zoomed to 125% for Zoom, and port 8080 free (`lsof -nP -iTCP:8080 -sTCP:LISTEN` prints nothing).
@@ -351,7 +351,7 @@ partner's model.
 
 | Step | Do | Expected |
 | --- | --- | --- |
-| 3.1 (45 s) | `maquettiste init --mcp --docker mattjcowan/maquettiste:0.5.1 --skill`, then `cat .mcp.json` | `created mcp.sh (runs maquettiste mcp in mattjcowan/maquettiste:0.5.1; log in .maquettiste/.cache/mcp.log)`, `created .mcp.json (server maquettiste: ./mcp.sh)`, `created .claude/skills/maquettiste-modeling/SKILL.md`. The file registers `{"type": "stdio", "command": "./mcp.sh", "args": []}`; `mcp.sh` runs `docker run -i --rm --user 0:0 ... maquettiste mcp` (the image then runs the server as you) from the editor's own image over the repository, with the same model and write path as the editor, and logs the server's messages to `.maquettiste/.cache/mcp.log`. (With the .NET tool fallback, drop `--docker ...`: `init --mcp` then writes `{"type": "stdio", "command": "maquettiste", "args": ["mcp"]}`.) |
+| 3.1 (45 s) | `maquettiste init --mcp --docker mattjcowan/maquettiste:0.5.1 --skill`, then `cat .mcp.json` | `created .mcp.json (server maquettiste: /bin/sh -c export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin"; mkdir -p .maquettiste/.cache; exec docker run -i --rm --user 0:0 -v "$(pwd -P):/repo" -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli mattjcowan/maquettiste:0.5.1 maquettiste mcp 2>>.maquettiste/.cache/mcp.log)`, `created .claude/skills/maquettiste-modeling/SKILL.md`, and no other file. The file registers `{"type": "stdio", "command": "/bin/sh", "args": ["-c", "<that line>"]}` (the quotes in the line written as `\"`): Claude Code runs the server in the editor's own image over the repository (the image then runs it as you), with the same model and write path as the editor; the line finds `docker` even when Claude Code was started from the desktop, and the server's messages go to `.maquettiste/.cache/mcp.log`. (With the .NET tool fallback, drop `--docker ...`: `init --mcp` then writes `{"type": "stdio", "command": "maquettiste", "args": ["mcp"]}`.) |
 | 3.2 (30 s) | `claude`, approve the project server `maquettiste` when asked, type `/mcp` | maquettiste connected, 46 tools (get_model_index, get_element, create_element, apply_batch, validate, plan, get_plan_diff, apply_plan, reference_type_usage, get_translations, ...). |
 | 3.3 (2 min) | Prompt: `Add a Shipment entity related to Order (an order has many shipments) with carrier, an optional trackingNumber, shippedAt and a status enum ShipmentStatus (Preparing, InTransit, Delivered). Then validate and generate.` | About 50 s. Claude sends one `apply_batch` (the enum ShipmentStatus, the entity Shipment, a composition `ships` from Order to many Shipments), then `validate`, `plan`, `apply_plan`. Files: `A src/generated/shipment.ts`, `shipment-status.ts`, `shipment.schema.ts`, `M src/generated/order.ts` (`shipments?: Shipment[]`), `M index.ts`, `A db/main/shop/tables/shipments.sql`, `A db/main/migrations/000N.sql` with `CREATE TABLE shop.shipments ... REFERENCES shop.orders (id) ON DELETE RESTRICT` (the default; add "cascade on delete" to the prompt for CASCADE). The editor shows Shipment in the explorer without a reload; **Add related** on Order puts it on the diagram. |
 | 3.4 (1.5 min) | Prompt: `What would change in the generated code and the database scripts if Product.sku became required? Do not change the model; answer in at most 8 lines.` | About 20 s. In rehearsal: `product.ts` drops the `?` on `sku`, `product.schema.ts` drops `.optional()`, `schema.sql` and `products.sql` get `sku varchar(40) NOT NULL`, the existing migrations stay and the next one (`0005.sql`, named correctly) adds `ALTER TABLE ... ALTER COLUMN sku SET NOT NULL`, with a warning about existing NULL rows; the model is unchanged. |
@@ -363,23 +363,31 @@ as headless Claude Code runs through this `.mcp.json` (`claude -p '<prompt>' --m
 mcp__maquettiste`): 50 s and 20 s, and `tsc` passed afterwards. The interactive session (approving the server, `/mcp`)
 was not run **(not verified)**; it uses the same file.
 
-Commands for 3.1. `--docker` writes the wrapper `mcp.sh` (executable, no absolute path, safe to commit) and registers it;
-Claude Code starts it in `$REPO`. An older `.mcp.json` that already names a `maquettiste` server is kept as it is, so remove
-that entry (or the file) first when the repository has one from an earlier rehearsal. With Podman the wrapper works
-unchanged; `MAQUETTISTE_DOCKER=podman` names the engine (docs/mcp.md):
+Commands for 3.1. `--docker` registers the container command in `.mcp.json`, started through `/bin/sh`: no script and no
+absolute path, since the shell Claude Code starts in `$REPO` mounts `$(pwd -P)`, the real path of that folder, so the file is
+safe to commit. The line adds `/opt/homebrew/bin`, `/usr/local/bin` and `$HOME/.docker/bin` to the `PATH`, so Claude Code
+finds `docker` even when it was started from the Dock or an IDE rather than from a shell. A `.mcp.json` from an earlier
+rehearsal is merged: its `maquettiste` entry is replaced (whichever form it has), other servers are kept, and an `mcp.sh` that
+an earlier version wrote is removed (`removed mcp.sh ...`). With Podman add `--runtime podman`, which writes `podman` in place
+of `docker` (docs/mcp.md):
 
 ```zsh
 maquettiste init --mcp --docker mattjcowan/maquettiste:0.5.1 --skill
-cat .mcp.json mcp.sh
-echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"check","version":"1"}}}' | ./mcp.sh
+cat .mcp.json
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"check","version":"1"}}}' \
+  | env -i HOME="$HOME" PATH=/usr/bin:/bin /bin/sh -c 'export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin"; mkdir -p .maquettiste/.cache; exec docker run -i --rm --user 0:0 -v "$(pwd -P):/repo" -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli mattjcowan/maquettiste:0.5.1 maquettiste mcp 2>>.maquettiste/.cache/mcp.log'
+tail -n 3 .maquettiste/.cache/mcp.log
 ```
 
-The last line prints the server's `initialize` answer (one line of JSON with `"serverInfo":{"name":"maquettiste"...`) and
-exits: the server answers what it has read before it stops. If Claude Code reports the server as failed, read
-`.maquettiste/.cache/mcp.log`; "docker not found" there means Claude Code was started without Docker on its `PATH`:
-`export MAQUETTISTE_DOCKER=$(which docker)` in the shell that starts `claude`. The wrapper, the `"type": "stdio"` entry and
-the answer on a closed stdin are covered by the CLI tests and were checked on Linux with the image built from this tree; the
-Mac run of `./mcp.sh` is **(not verified on a Mac)**.
+The third command runs the registered line by hand with the bare `PATH` a client started from the desktop has (`env -i ...
+PATH=/usr/bin:/bin`): it prints the server's `initialize` answer (one line of JSON with `"serverInfo":{"name":"maquettiste"...`)
+on stdout, then exits: the server answers what it has read before it stops. Its start line lands in
+`.maquettiste/.cache/mcp.log`, which the last command shows. If Claude Code reports the server as failed, look at that log
+first: `exec: docker: not found` means Docker is installed somewhere the line does not look (`command -v docker` in a shell
+shows where), and a message from Docker itself (no daemon, an image it cannot pull) means Docker Desktop is not running or the
+network is down. The registration, both forms, the merge and the removal of an earlier `mcp.sh` are covered by the CLI tests;
+the line was run on Linux with a stand-in `docker` reachable only through `$HOME/.docker/bin`. A Claude Code session started
+from the Dock over this entry has not been run **(not verified)**.
 
 Fallback if Claude Code or the network fails: show the same change through the editor, or read out the verified
 answers above.

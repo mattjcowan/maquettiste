@@ -133,7 +133,8 @@ public sealed class CliApp(CliEnvironment environment)
           init                  Create .maquettiste/, the schema files, a starter pack and .gitignore entries
                                   --pack sql-ddl|csharp-dapper|none (default sql-ddl), --hooks,
                                   --mcp (.mcp.json), --skill (.claude/skills), --agent-setup (both),
-                                  --docker <image> (with --mcp: ./mcp.sh runs the server in the image),
+                                  --docker <image> (implies --mcp: .mcp.json runs the server in the image),
+                                  --runtime docker|podman (the container command for --docker, default docker),
                                   --name <project name> (default: package.json name, git remote, folder)
           validate              Validate the model and packs
                                   --format text|json|sarif, --output <file>

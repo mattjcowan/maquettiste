@@ -30,9 +30,14 @@ image's .NET runtime). Given a command, the entrypoint runs it instead of the ed
 `--user 0:0` starts the container as root so the entrypoint can repair what another user left in the project and then run the
 command as the owner of the mounted folder, which is you (File ownership); the same form works under Docker and under rootless
 Podman. docs/user-guide.md "The command line" has the commands and a shell function. For agents,
-`maquettiste init --mcp --docker mattjcowan/maquettiste:<tag>` writes `mcp.sh`, a wrapper that runs `maquettiste mcp` in the
-image the same way, and registers it in `.mcp.json` (`"type": "stdio"`, `"command": "./mcp.sh"`); the server's messages go to
-`.maquettiste/.cache/mcp.log` (docs/mcp.md).
+`maquettiste init --mcp --docker mattjcowan/maquettiste:<tag>` registers `maquettiste mcp` in `.mcp.json` as a
+`"type": "stdio"` server that runs `/bin/sh -c` with one line: it adds `/opt/homebrew/bin`, `/usr/local/bin` and
+`$HOME/.docker/bin` to the `PATH` (a client started from the desktop on the Mac does not inherit the shell's), then
+`exec docker run -i --rm --user 0:0 -v "$(pwd -P):/repo" ...` of the image, the same form (`--runtime podman` writes `podman`),
+with the server's stderr appended to `.maquettiste/.cache/mcp.log`, which git ignores. `$(pwd -P)` is the real path of the
+folder the client starts the server in, so a repository behind a symbolic link mounts too. On Windows, which has no `/bin/sh`,
+the entry is `docker run -i --rm --user 0:0 -v ${PWD}:/repo ...` itself and the client expands `${PWD}`. Nothing else is
+written to the repository (docs/mcp.md).
 
 ## Never delete the site
 
@@ -48,7 +53,7 @@ The user is the owner of the mounted model folder (`.maquettiste/`) for the edit
 (`-w /repo`) for a command, which under Docker on Linux and on the Mac is you; the entrypoint hands its own volume (`/data`) and
 `/home/app` to that user, and with nothing mounted it runs as the image's user, UID 1654 (`app`). Repair means that every file
 or folder that another user owns (root, or 1654 from an older image) inside the model folder, inside the output roots that
-`outputs.allow` lists, and for a command in the files `init` writes at the project root (`.gitignore`, `.mcp.json`, `mcp.sh`,
+`outputs.allow` lists, and for a command in the files `init` writes at the project root (`.gitignore`, `.mcp.json`,
 the modeling skill) is given to that user, without following symbolic links and without changing the mount point itself; the
 entrypoint logs `repaired N files owned by another user under <path>` when it changed any, so a run as root never leaves you
 needing `sudo chown`. When Docker shows the model folder itself as root's (Docker created it because `init` had not run, or an

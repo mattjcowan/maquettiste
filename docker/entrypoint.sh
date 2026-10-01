@@ -123,7 +123,7 @@ if [ "$(id -u)" = 0 ]; then
     elif [ -n "$probe" ]; then
       repair_tree "$project/.maquettiste"
       repair_outputs "$project" "$project/.maquettiste/maquettiste.json"
-      for file in .gitignore .mcp.json mcp.sh .claude/skills/maquettiste-modeling; do repair_tree "$project/$file"; done
+      for file in .gitignore .mcp.json .claude/skills/maquettiste-modeling; do repair_tree "$project/$file"; done
     fi
   }
 

@@ -10,7 +10,8 @@ namespace Maquettiste.Cli.Commands;
 /// <summary>
 /// The agent setup of <c>maquettiste init --mcp / --skill / --agent-setup</c> (docs/mcp.md): registers the <c>maquettiste mcp</c>
 /// server in the repository's <c>.mcp.json</c> (the project-scoped MCP configuration that MCP clients read) and installs
-/// the modeling skill as <c>.claude/skills/maquettiste-modeling/SKILL.md</c>. Both writes go through the path policy as setup writes.
+/// the modeling skill as <c>.claude/skills/maquettiste-modeling/SKILL.md</c>. Both writes, and the removal of an earlier version's
+/// <c>mcp.sh</c>, go through the path policy as setup writes.
 /// </summary>
 internal static class AgentSetup
 {
@@ -46,76 +47,87 @@ internal static class AgentSetup
         };
     }
 
-    /// <summary>The repo-relative path of the Docker wrapper that <c>init --mcp --docker</c> writes.</summary>
-    public const string DockerWrapperPath = "mcp.sh";
+    /// <summary>The container runtimes <c>--runtime</c> accepts; the first is the default.</summary>
+    public static readonly IReadOnlyList<string> Runtimes = ["docker", "podman"];
 
-    /// <summary>The line that marks a wrapper maquettiste wrote, so a re-run refreshes it and never replaces someone else's script.</summary>
-    public const string DockerWrapperMarker = "# maquettiste-mcp-wrapper";
+    /// <summary>The repo-relative path of the wrapper script that earlier versions wrote for <c>init --mcp --docker</c>.</summary>
+    public const string LegacyWrapperPath = "mcp.sh";
 
-    /// <summary>Returns the server entry of the Docker form: the repository's <c>./mcp.sh</c>, which runs the server in the image.</summary>
+    /// <summary>The comment line, right after <c>#!/bin/sh</c>, that marks a wrapper maquettiste wrote; nothing else is ever removed.</summary>
+    public const string LegacyWrapperMarker = "# maquettiste-mcp-wrapper";
+
+    /// <summary>
+    /// Returns the server entry of the container form: the MCP client runs <c>maquettiste mcp</c> in the image over the folder it
+    /// starts the server in. Outside Windows the client starts <c>/bin/sh</c> with one command line (<see cref="ContainerCommandLine"/>):
+    /// a client launched from the desktop does not inherit the shell's <c>PATH</c>, so the line adds the usual places of the container
+    /// command first; <c>$(pwd -P)</c> mounts the real path of the folder (it works when the repository sits behind a link); and the
+    /// server's stderr is appended to <c>.maquettiste/.cache/mcp.log</c>, under the cache folder git ignores. On Windows, which has no
+    /// <c>/bin/sh</c>, the entry runs the container command itself with <c>${PWD}</c>, which the client expands. Either way the file has
+    /// no absolute path and can be committed. The container starts as root (<c>--user 0:0</c>) so the image's entrypoint repairs files
+    /// an earlier run left owned by another user and runs the server as the owner of the folder (under rootless Podman root is the
+    /// user outside, which the entrypoint recognizes). The engine cache lives in <c>.maquettiste/.cache/cli</c> so it survives the container.
+    /// </summary>
+    /// <param name="runtime">The container command, <c>docker</c> or <c>podman</c>.</param>
+    /// <param name="image">The image reference (checked by <see cref="IsImageReference"/>).</param>
+    /// <param name="windows">Whether to write the Windows form; <see langword="null"/> for the platform <c>init</c> runs on.</param>
     /// <returns>The entry.</returns>
-    public static JsonObject DockerServerEntry() => new()
-    {
-        ["type"] = "stdio",
-        ["command"] = "./" + DockerWrapperPath,
-        ["args"] = new JsonArray(),
-    };
+    public static JsonObject ContainerServerEntry(string runtime, string image, bool? windows = null) => (windows ?? OperatingSystem.IsWindows())
+        ? new JsonObject
+        {
+            ["type"] = "stdio",
+            ["command"] = runtime,
+            ["args"] = new JsonArray(
+                "run", "-i", "--rm", "--user", "0:0", "-v", "${PWD}:/repo", "-w", "/repo",
+                "-e", "MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli", image, "maquettiste", "mcp"),
+        }
+        : new JsonObject
+        {
+            ["type"] = "stdio",
+            ["command"] = "/bin/sh",
+            ["args"] = new JsonArray("-c", ContainerCommandLine(runtime, image)),
+        };
 
-    /// <summary>Whether an image reference is safe to write into the wrapper unquoted: a name, an optional tag and an optional digest.</summary>
+    /// <summary>
+    /// Returns the <c>/bin/sh -c</c> line of the container form outside Windows. It has no <c>${...}</c>, which an MCP client would
+    /// expand itself: the shell expands <c>$PATH</c>, <c>$HOME</c> and <c>$(pwd -P)</c>. The image reference needs no quoting
+    /// (<see cref="IsImageReference"/>).
+    /// </summary>
+    /// <param name="runtime">The container command, <c>docker</c> or <c>podman</c>.</param>
+    /// <param name="image">The image reference.</param>
+    /// <returns>The line.</returns>
+    public static string ContainerCommandLine(string runtime, string image) =>
+        "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin\"; mkdir -p .maquettiste/.cache; "
+        + $"exec {runtime} run -i --rm --user 0:0 -v \"$(pwd -P):/repo\" -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli "
+        + $"{image} maquettiste mcp 2>>.maquettiste/.cache/mcp.log";
+
+    /// <summary>Whether an image reference is usable as one argument: a name, an optional tag and an optional digest, never an option.</summary>
     /// <param name="image">The reference, such as <c>mattjcowan/maquettiste:0.2.0</c>.</param>
     /// <returns><see langword="true"/> when it is usable.</returns>
     public static bool IsImageReference(string image) =>
         image.Length is > 0 and <= 255 && char.IsAsciiLetterOrDigit(image[0])
         && image.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-' or '/' or ':' or '@');
 
-    /// <summary>
-    /// Returns the wrapper script: it finds docker (an MCP client may start it with a short PATH), runs <c>maquettiste mcp</c> in the image
-    /// over this folder, keeps stdout for the protocol and appends the server's messages to <c>.maquettiste/.cache/mcp.log</c>. The
-    /// container starts as root (<c>--user 0:0</c>) so the image's entrypoint repairs files an earlier run left owned by another user
-    /// and runs the server as the owner of this folder (under rootless Podman it stays root, which is the user outside). The engine
-    /// cache lives in <c>.maquettiste/.cache/cli</c> so it survives the container.
-    /// </summary>
-    /// <param name="image">The image reference (checked by <see cref="IsImageReference"/>).</param>
-    /// <returns>The script (LF line endings).</returns>
-    public static string DockerWrapper(string image) => $$"""
-        #!/bin/sh
-        {{DockerWrapperMarker}} (written by maquettiste init --mcp --docker; docs/mcp.md)
-        # Runs the maquettiste MCP server in Docker for an MCP client started in this folder. Stdout carries the protocol only; the
-        # server's messages go to .maquettiste/.cache/mcp.log. MAQUETTISTE_IMAGE overrides the image, MAQUETTISTE_DOCKER the docker path.
-        # It starts as root: the image runs the server as the owner of this folder (docker/README.md "File ownership").
-        set -eu
-        cd "$(dirname "$0")"
-        image="${MAQUETTISTE_IMAGE:-{{image}}}"
-        docker="${MAQUETTISTE_DOCKER:-}"
-        if [ -z "$docker" ]; then
-          docker=$(command -v docker 2>/dev/null || true)
-        fi
-        if [ -z "$docker" ]; then
-          for candidate in /usr/local/bin/docker /opt/homebrew/bin/docker "$HOME/.docker/bin/docker"             /Applications/Docker.app/Contents/Resources/bin/docker /usr/bin/docker; do
-            if [ -x "$candidate" ]; then docker="$candidate"; break; fi
-          done
-        fi
-        mkdir -p .maquettiste/.cache 2>/dev/null || true
-        log=.maquettiste/.cache/mcp.log
-        # A log an earlier run as root left behind cannot be appended to until the container repairs it: log to /tmp this time.
-        if ! { true >> "$log"; } 2>/dev/null; then log="${TMPDIR:-/tmp}/maquettiste-mcp-$(id -u).log"; fi
-        if [ -z "$docker" ]; then
-          echo "mcp.sh: docker not found; set MAQUETTISTE_DOCKER to its path" >> "$log"
-          echo "mcp.sh: docker not found; set MAQUETTISTE_DOCKER to its path" >&2
-          exit 127
-        fi
-        exec "$docker" run -i --rm --user 0:0 -v "$PWD:/repo" -w /repo           -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli "$image" maquettiste mcp 2>> "$log"
-
-        """.Replace("\r\n", "\n", StringComparison.Ordinal);
+    /// <summary>Whether a script is the wrapper an earlier <c>init --mcp --docker</c> wrote: <c>#!/bin/sh</c>, then the marker line.</summary>
+    /// <param name="text">The script.</param>
+    /// <returns><see langword="true"/> when maquettiste wrote it.</returns>
+    public static bool IsLegacyWrapper(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        var lines = text.Split('\n', 3);
+        return lines.Length >= 2 && lines[0].TrimEnd('\r') == "#!/bin/sh"
+            && lines[1].StartsWith(LegacyWrapperMarker + " ", StringComparison.Ordinal);
+    }
 
     /// <summary>
-    /// Adds the <c>maquettiste</c> server to an existing <c>.mcp.json</c> text, keeping every other entry and member in order.
+    /// Adds the <c>maquettiste</c> server to an existing <c>.mcp.json</c> text, keeping every other entry and member in order. An
+    /// existing <c>maquettiste</c> entry is kept as is, unless <paramref name="replace"/> asks for it to be replaced in place.
     /// </summary>
     /// <param name="existing">The current file, or <see langword="null"/> when there is none.</param>
     /// <param name="entry">The server entry.</param>
+    /// <param name="replace">Whether an existing <c>maquettiste</c> entry that differs from <paramref name="entry"/> is replaced.</param>
     /// <param name="updated">The new text (LF, two-space indent, trailing newline); <see langword="null"/> when nothing changes.</param>
     /// <returns><see langword="null"/> on success, else why the file was left alone.</returns>
-    public static string? WithServer(string? existing, JsonObject entry, out string? updated)
+    public static string? WithServer(string? existing, JsonObject entry, bool replace, out string? updated)
     {
         ArgumentNullException.ThrowIfNull(entry);
         updated = null;
@@ -152,7 +164,7 @@ internal static class AgentSetup
                 return "its mcpServers member is not an object";
             }
 
-            if (servers.ContainsKey(ServerName))
+            if (servers.ContainsKey(ServerName) && (!replace || JsonNode.DeepEquals(servers[ServerName], entry)))
                 return null;
         }
         catch (JsonException e)
@@ -181,25 +193,26 @@ internal static class AgentSetup
     }
 
     /// <summary>
-    /// Registers the server in <c>.mcp.json</c>; an entry named <c>maquettiste</c> that is already there is kept as is. With an image, the
-    /// entry runs <c>./mcp.sh</c>, which this writes (executable) unless a script maquettiste did not write is already there.
+    /// Registers the server in <c>.mcp.json</c>. The installed-tool form keeps an entry named <c>maquettiste</c> that is already there as
+    /// is; the container form replaces it, so a re-run with another tag or runtime takes effect, and then removes the <c>mcp.sh</c>
+    /// wrapper an earlier version wrote (only when it carries the marker; any other <c>mcp.sh</c> is left alone).
     /// </summary>
     /// <param name="files">The guarded writer.</param>
     /// <param name="repo">The repository root.</param>
-    /// <param name="dockerImage">The image of the Docker form (<c>--docker</c>), or <see langword="null"/> for the installed tool.</param>
+    /// <param name="dockerImage">The image of the container form (<c>--docker</c>), or <see langword="null"/> for the installed tool.</param>
+    /// <param name="runtime">The container command of the container form (<c>--runtime</c>, default <c>docker</c>).</param>
     /// <param name="report">The report lines.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>A task.</returns>
-    public static async Task WriteMcpConfigAsync(GuardedFiles files, string repo, string? dockerImage, List<string> report, CancellationToken ct)
+    public static async Task WriteMcpConfigAsync(GuardedFiles files, string repo, string? dockerImage, string runtime, List<string> report, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(files);
         ArgumentNullException.ThrowIfNull(report);
-        if (dockerImage is not null)
-            await WriteDockerWrapperAsync(files, repo, dockerImage, report, ct).ConfigureAwait(false);
         var path = Path.Combine(repo, ".mcp.json");
         var existing = File.Exists(path) ? await File.ReadAllTextAsync(path, ct).ConfigureAwait(false) : null;
-        var entry = dockerImage is null ? ServerEntry(await UsesLocalToolAsync(repo, ct).ConfigureAwait(false)) : DockerServerEntry();
-        var problem = WithServer(existing, entry, out var updated);
+        var container = dockerImage is not null;
+        var entry = container ? ContainerServerEntry(runtime, dockerImage!) : ServerEntry(await UsesLocalToolAsync(repo, ct).ConfigureAwait(false));
+        var problem = WithServer(existing, entry, replace: container, out var updated);
         if (problem is not null)
         {
             report.Add($"kept .mcp.json: {problem}; add \"{ServerName}\": {entry.ToJsonString()} under mcpServers by hand");
@@ -209,36 +222,24 @@ internal static class AgentSetup
         if (updated is null)
         {
             report.Add($"kept .mcp.json (it already registers the {ServerName} server)");
-            return;
+        }
+        else
+        {
+            var outcome = await files.WriteAsync(WriteTarget.Setup, path, new UTF8Encoding(false).GetBytes(updated), overwrite: true, ct).ConfigureAwait(false);
+            report.Add((outcome == WriteOutcome.Created ? "created" : "updated") + $" .mcp.json (server {ServerName}: " + string.Join(' ', entry["args"]!.AsArray().Select(a => a!.GetValue<string>()).Prepend((string)entry["command"]!)) + ")");
         }
 
-        var outcome = await files.WriteAsync(WriteTarget.Setup, path, new UTF8Encoding(false).GetBytes(updated), overwrite: true, ct).ConfigureAwait(false);
-        report.Add((outcome == WriteOutcome.Created ? "created" : "updated") + $" .mcp.json (server {ServerName}: " + string.Join(' ', entry["args"]!.AsArray().Select(a => a!.GetValue<string>()).Prepend((string)entry["command"]!)) + ")");
+        if (container)
+            await RemoveLegacyWrapperAsync(files, repo, report, ct).ConfigureAwait(false);
     }
 
-    private static async Task WriteDockerWrapperAsync(GuardedFiles files, string repo, string image, List<string> report, CancellationToken ct)
+    private static async Task RemoveLegacyWrapperAsync(GuardedFiles files, string repo, List<string> report, CancellationToken ct)
     {
-        var path = Path.Combine(repo, DockerWrapperPath);
-        var mine = !File.Exists(path) || (await File.ReadAllTextAsync(path, ct).ConfigureAwait(false)).Contains(DockerWrapperMarker, StringComparison.Ordinal);
-        var outcome = await files.WriteAsync(WriteTarget.Setup, path, new UTF8Encoding(false).GetBytes(DockerWrapper(image)), overwrite: mine, ct).ConfigureAwait(false);
-        if (outcome == WriteOutcome.Kept && !mine)
-        {
-            report.Add($"kept {DockerWrapperPath}: a script maquettiste did not write; move it away and run init --mcp --docker again");
+        var path = Path.Combine(repo, LegacyWrapperPath);
+        if (!File.Exists(path) || !IsLegacyWrapper(await File.ReadAllTextAsync(path, ct).ConfigureAwait(false)))
             return;
-        }
-
-        if (!OperatingSystem.IsWindows())
-        {
-            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead
-                | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
-        }
-
-        report.Add(outcome switch
-        {
-            WriteOutcome.Created => $"created {DockerWrapperPath} (runs maquettiste mcp in {image}; log in .maquettiste/.cache/mcp.log)",
-            WriteOutcome.Updated => $"updated {DockerWrapperPath} (runs maquettiste mcp in {image})",
-            _ => $"kept {DockerWrapperPath} (current)",
-        });
+        files.Delete(WriteTarget.Setup, path);
+        report.Add($"removed {LegacyWrapperPath} (the wrapper an earlier init wrote; .mcp.json now starts the container itself)");
     }
 
     /// <summary>Installs (or refreshes) the modeling skill; the file tracks the installed tool's version, like the schemas.</summary>

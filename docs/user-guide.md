@@ -1182,7 +1182,7 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 
 | Command | What it does |
 | --- | --- |
-| `maquettiste init` | Creates `.maquettiste/` (`maquettiste.json`, the JSON schemas for editor completion, the `sql-ddl` starter pack) and a `.gitignore` block. `--pack csharp-dapper` or `--pack none` picks another starter; `--mcp`, `--skill` and `--agent-setup` register the agent server, and `--mcp --docker <image>` registers a `./mcp.sh` wrapper that runs it from the image (docs/mcp.md). The project is named by `--name <name>`, else the `name` of `package.json`, else the git remote's repository name, else the folder name (so a repository mounted at `/repo` in the image keeps its real name). Running `init` again, starting the editor or starting `maquettiste mcp` refreshes the JSON schemas when a new version ships different ones; until then `validate` and `generate` warn MQ1008 and name the files that differ. Running it again keeps what is there. |
+| `maquettiste init` | Creates `.maquettiste/` (`maquettiste.json`, the JSON schemas for editor completion, the `sql-ddl` starter pack) and a `.gitignore` block. `--pack csharp-dapper` or `--pack none` picks another starter; `--mcp`, `--skill` and `--agent-setup` register the agent server, and `--mcp --docker <image>` registers it as a `docker run` of the image (`--runtime podman` for `podman run`; docs/mcp.md). The project is named by `--name <name>`, else the `name` of `package.json`, else the git remote's repository name, else the folder name (so a repository mounted at `/repo` in the image keeps its real name). Running `init` again, starting the editor or starting `maquettiste mcp` refreshes the JSON schemas when a new version ships different ones; until then `validate` and `generate` warn MQ1008 and name the files that differ. Running it again keeps what is there. |
 | `maquettiste validate` | Validates the model and the packs, and replays every scenario of every process (MQ9301 to MQ9306 and MQ9502 to MQ9507); `--format sarif` for code-scanning tools. |
 | `maquettiste generate` | Renders the packs into the output roots of `maquettiste.json`, incrementally: only units whose inputs changed re-render. Prints one line per file (`A` added, `M` modified, `D` deleted, `K` kept). A generated file edited by hand stops the run (exit 3); `--hand-edits overwrite` replaces it. |
 | `maquettiste generate --check` | Renders without writing and exits 2 when the committed output differs from the model: the CI gate. |
@@ -1250,6 +1250,33 @@ A shell function saves typing (`-it` only when you are at a terminal, so it also
 maquettiste() { docker run --rm $([ -t 0 ] && echo -it) --user 0:0 -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste "$@"; }
 ```
 
+Two variants of that function are worth knowing. A team should run the version the repository is on, so read the tag
+from the one place that pins it, the compose file's `image:` line, and the editor, the command line and the agent server
+then agree:
+
+```sh
+maquettiste() {
+  local image
+  image=$(sed -n 's/^ *image: *//p' docker-compose.yaml | head -n 1)
+  docker run --rm $([ -t 0 ] && echo -it) --user 0:0 -v "$(pwd -P):/repo" -w /repo "$image" maquettiste "$@"
+}
+```
+
+For a machine that only ever runs what it has pulled, the newest version tag on hand works too; it follows the local
+images rather than the repository, so two people can end up on different versions:
+
+```sh
+maquettiste() {
+  local tag
+  tag=$(docker image ls mattjcowan/maquettiste --format '{{.Tag}}' | grep -E '^[0-9]+(\.[0-9]+)*$' | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)
+  [ -n "$tag" ] || { echo "No maquettiste image pulled; run: docker pull mattjcowan/maquettiste:<tag>" >&2; return 1; }
+  docker run --rm $([ -t 0 ] && echo -it) --user 0:0 -v "$(pwd -P):/repo" -w /repo "mattjcowan/maquettiste:$tag" maquettiste "$@"
+}
+```
+
+Both mount `$(pwd -P)`, the real path of the folder: a repository reached through a link mounts by its real path, which
+the container runtime on the Mac needs for file sharing.
+
 **File ownership.** `--user 0:0` (as the function passes) starts the container as root only long enough for the image to
 pick the user: the command then runs as the owner of the mounted folder, which is you, and writes the model and the generated
 files as you. First it repairs what an earlier run left owned by another user (root, or UID 1654) in `.maquettiste/`, in the
@@ -1266,9 +1293,21 @@ the folder does not exist yet, Docker creates it empty (owned by root on Linux) 
 `maquettiste.json`.
 
 **Agents from the image.** `maquettiste init --mcp --docker mattjcowan/maquettiste:<tag>` (through the function above)
-writes `mcp.sh`, a wrapper that runs `maquettiste mcp` in the image as you over the repository, and registers it in
-`.mcp.json` as `{"type": "stdio", "command": "./mcp.sh", "args": []}`. The server's messages go to
-`.maquettiste/.cache/mcp.log`. docs/mcp.md has the details.
+registers `maquettiste mcp` in `.mcp.json` as a `"type": "stdio"` server that the MCP client starts with `/bin/sh` and one
+command line:
+
+```json
+"maquettiste": { "type": "stdio", "command": "/bin/sh", "args": ["-c", "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin\"; mkdir -p .maquettiste/.cache; exec docker run -i --rm --user 0:0 -v \"$(pwd -P):/repo\" -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli mattjcowan/maquettiste:<tag> maquettiste mcp 2>>.maquettiste/.cache/mcp.log"] }
+```
+
+so the client runs the server in the image as you over the repository. The added `PATH` finds `docker` when the client was
+started from the desktop on the Mac (it does not inherit the shell's `PATH` then); `$(pwd -P)` mounts the real path of the
+project folder, so a repository behind a symbolic link works; the server's messages go to `.maquettiste/.cache/mcp.log`, which
+git ignores. Nothing else is written to the repository. On Windows, which has no `/bin/sh`, `init` writes `docker` as the
+command with the arguments `run -i --rm --user 0:0 -v ${PWD}:/repo -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli
+<image> maquettiste mcp`; the client expands `${PWD}` to the project folder and keeps the server's messages in its own log.
+Under Podman add `--runtime podman`, which writes `podman` in place of `docker`. A re-run with another tag replaces the entry
+(either form) and removes the `mcp.sh` wrapper that earlier versions wrote. docs/mcp.md has the details.
 
 ## Translations, seed CSV and reference data over the API
 

@@ -50,6 +50,7 @@ internal sealed class OutputPathPolicy : IOutputPathPolicy
             Path.Combine(_repoRoot, ".git", "hooks", "post-checkout"),
             Path.Combine(_repoRoot, ".git", "hooks", "post-merge"),
             Path.Combine(_repoRoot, ".mcp.json"),
+            // Only removed: init deletes the wrapper script that earlier versions wrote here.
             Path.Combine(_repoRoot, "mcp.sh"),
             Path.Combine(_repoRoot, ".claude", "skills", "maquettiste-modeling", "SKILL.md"),
         ];

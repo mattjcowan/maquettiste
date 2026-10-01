@@ -52,7 +52,7 @@ maquettiste init --skill           # .claude/skills/maquettiste-modeling/SKILL.m
 When the repository's local tool manifest lists the `maquettiste` command, the entry is `"command": "dotnet"`,
 `"args": ["tool", "run", "maquettiste", "mcp"]` instead, so the pinned version runs. Every entry `init` writes names its transport, `"type": "stdio"`; an entry an older version wrote without it is kept as it is, so delete that entry and run `init --mcp` again to get the current form. There is no `--repo`: the client starts
 the server in the project folder, the server finds the repository from there, and the file can be committed. Other servers
-and members of an existing `.mcp.json` are kept in order; an existing `maquettiste` entry is never replaced; a file that is not
+and members of an existing `.mcp.json` are kept in order; an existing `maquettiste` entry is never replaced (the Docker form below replaces it); a file that is not
 a JSON object (not valid JSON, duplicate keys, or an `mcpServers` that is not an object) is left alone with a hint and exit 0. `init --skill` writes the skill that ships with
 the installed version and refreshes it when the tool is upgraded. Both files are setup writes of the engine's path policy
 (a symbolic link that leads out of the repository is refused, exit 4). Without init, `claude mcp add maquettiste -- maquettiste mcp`
@@ -64,65 +64,115 @@ the skill tells the agent to use the `mcp__maquettiste__*` tools and to fall bac
 ### From the Docker image (no .NET on the machine)
 
 The image `mattjcowan/maquettiste` carries the CLI (`/usr/local/bin/maquettiste`), so a machine with only Docker can run the
-server. `init` writes the setup for it:
+server. `init` registers it:
 
 ```sh
 maquettiste init --mcp --docker mattjcowan/maquettiste:<tag>     # add --skill for the modeling skill
-# created mcp.sh (runs maquettiste mcp in mattjcowan/maquettiste:<tag>; log in .maquettiste/.cache/mcp.log)
-# created .mcp.json (server maquettiste: ./mcp.sh)
+# created .mcp.json (server maquettiste: /bin/sh -c export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin"; mkdir -p .maquettiste/.cache; exec docker run ... maquettiste mcp 2>>.maquettiste/.cache/mcp.log)
 ```
 
-`.mcp.json` then registers the wrapper as a project server:
+`.mcp.json` then holds the container command as a project server, started through `/bin/sh` with one command line:
 
 ```json
 {
   "mcpServers": {
     "maquettiste": {
       "type": "stdio",
-      "command": "./mcp.sh",
-      "args": []
+      "command": "/bin/sh",
+      "args": [
+        "-c",
+        "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin\"; mkdir -p .maquettiste/.cache; exec docker run -i --rm --user 0:0 -v \"$(pwd -P):/repo\" -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli mattjcowan/maquettiste:<tag> maquettiste mcp 2>>.maquettiste/.cache/mcp.log"
+      ]
     }
   }
 }
 ```
 
-and `mcp.sh` (executable, safe to commit) runs, from its own folder:
+Nothing else is written to the repository: no script. The line, read by the shell the client starts in the project folder:
 
-```sh
-docker run -i --rm --user 0:0 -v "$PWD:/repo" -w /repo \
-  -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli mattjcowan/maquettiste:<tag> maquettiste mcp 2>> .maquettiste/.cache/mcp.log
-```
-
+- `export PATH=...` adds the places the container command usually lives (`/opt/homebrew/bin`, `/usr/local/bin`,
+  `$HOME/.docker/bin`) after the client's own `PATH`. On the Mac a client started from the desktop (the Dock, Finder, an IDE
+  opened from there) does not inherit the shell's `PATH`, so a bare `docker` is not found; with these it is.
+- `mkdir -p .maquettiste/.cache` makes the cache folder that holds the log, so the redirect works in a fresh clone.
+- `exec` replaces the shell with the container command, so the client talks to it directly and stops it by closing stdin.
+- `$(pwd -P)` is the real path of the folder the client starts the server in, the project folder, so the mount works when the
+  repository sits behind a symbolic link, and the file holds no absolute path and works for everyone who clones the
+  repository. There is no `--repo`: the server finds the repository under `/repo`. The line has no `${...}`, which the client
+  would expand itself; the shell expands `$PATH`, `$HOME` and `$(pwd -P)`.
 - `-i` keeps stdin open (the JSON-RPC stream); there is no `-t`, a terminal would mix control characters into stdout.
 - `--user 0:0` starts the container as root so the image's entrypoint can pick the user: it repairs what an earlier run left
-  owned by another user in `.maquettiste/` and the output roots (an editor run as root, for example; the log gets one line,
+  owned by another user in `.maquettiste/` and the output roots (an editor run as root, for example; one line on stderr,
   `repaired N files owned by another user under <path>`), then runs the server as the owner of the folder, which is you, so
-  the model files it writes are yours: under Docker on Linux and on the Mac. Under rootless Podman (`MAQUETTISTE_DOCKER=podman`)
-  root in the container is already you, the entrypoint sees that and stays root, so the script works unchanged and needs no
-  `--userns=keep-id`. When `.maquettiste/.cache/mcp.log` itself belongs to another user, that first run logs to
-  `$TMPDIR/maquettiste-mcp-<uid>.log` (or `/tmp`) and the next one is back in the cache folder. docker/README.md "File
-  ownership" has the whole rule.
-- No `--repo` and no absolute path: the script mounts its own folder, and the server finds the repository there. The file works
-  for everyone who clones the repository.
-- Stdout carries the protocol only; the server's messages (its start line, errors) are appended to `.maquettiste/.cache/mcp.log`,
-  which `init` keeps out of git. Look there first when the client reports the server as failed.
-- An MCP client may start the script with a short `PATH` (an app started from the Dock); the script looks for `docker` on the
-  `PATH`, then in the usual install folders (`/usr/local/bin`, `/opt/homebrew/bin`, `~/.docker/bin`, the Docker app bundle).
-  `MAQUETTISTE_DOCKER` names it explicitly; `MAQUETTISTE_IMAGE` overrides the image without editing the file.
-- The index and plan cache lives in `.maquettiste/.cache/cli`, so it survives the container of each session.
-- A re-run with another tag (`init --docker mattjcowan/maquettiste:<new tag>`; `--docker` implies `--mcp`) refreshes the script
-  and keeps the entry. A `mcp.sh` that `init` did not write is never replaced, and an existing `maquettiste` entry in `.mcp.json` is
-  kept (remove it to switch forms).
+  the model files it writes are yours: under Docker on Linux and on the Mac. docker/README.md "File ownership" has the whole
+  rule.
+- The index and plan cache lives in `.maquettiste/.cache/cli`, which `init` keeps out of git, so it survives the container of
+  each session.
+- Stdout carries the protocol only. The server's messages (its start line, errors) and the container command's own (a pull, a
+  daemon that is not running) go to stderr, which the line appends to `.maquettiste/.cache/mcp.log`, ignored by git with the
+  rest of the cache folder; look there first when the client reports the server as failed.
 
-Without the script, the same command works for `claude mcp add` (for the current user only):
+**On Windows**, which has no `/bin/sh`, `init` writes the container command itself, with `${PWD}`, which the MCP client
+expands when it starts the server to the project folder:
+
+```json
+{
+  "mcpServers": {
+    "maquettiste": {
+      "type": "stdio",
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "--user",
+        "0:0",
+        "-v",
+        "${PWD}:/repo",
+        "-w",
+        "/repo",
+        "-e",
+        "MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli",
+        "mattjcowan/maquettiste:<tag>",
+        "maquettiste",
+        "mcp"
+      ]
+    }
+  }
+}
+```
+
+There the client finds `docker` on its own `PATH` and keeps the server's stderr in its own log for the server. Which form is
+written depends on the system `init` runs on; a file committed from one system and re-run on the other gets that system's form.
+
+With Podman, `--runtime podman` writes `exec podman run` in the line (`"command": "podman"` on Windows) with the same arguments:
 
 ```sh
-claude mcp add maquettiste -- docker run -i --rm --user 0:0 -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste mcp
+maquettiste init --mcp --docker mattjcowan/maquettiste:<tag> --runtime podman
+```
+
+Under rootless Podman root in the container is already you outside it; the entrypoint sees that and stays root, so the files
+are yours without `--userns=keep-id`.
+
+A re-run with another tag or runtime (`init --docker mattjcowan/maquettiste:<new tag>`; `--docker` implies `--mcp`) replaces the
+`maquettiste` entry in place, whichever form it has and keeps every other server and member of `.mcp.json`; the same command again keeps the file as
+it is. Earlier versions wrote a wrapper script, `mcp.sh`, at the repository root and registered `./mcp.sh`; a re-run of
+`init --docker` replaces that entry, removes the script and says so (`removed mcp.sh ...`). Only a script that carries the
+marker those versions wrote on its second line is removed; any other `mcp.sh` is left alone.
+
+Without `init`, the same command works for `claude mcp add`, registered for this folder and the current user only (the shell
+expands `$PWD` once, when the command runs):
+
+```sh
+claude mcp add maquettiste -- docker run -i --rm --user 0:0 -v "$PWD:/repo" -w /repo \
+  -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli mattjcowan/maquettiste:<tag> maquettiste mcp
 ```
 
 Checked on Linux (Docker Engine, amd64) with a stdio client over `docker run -i --rm --user ... maquettiste mcp`: `initialize`
-in 0.7 s, `tools/list` with 18 tools (image 0.1.0; the published 0.2.0 image lists 24, the current source 51), `validate` in 55 ms, the container removed on exit. The wrapper's shape (arguments, stderr
-to the log, stdout untouched) is covered by the CLI tests.
+in 0.7 s, `tools/list` with 18 tools (image 0.1.0; the published 0.2.0 image lists 24, the current source 51), `validate` in 55 ms,
+the container removed on exit. The registration (the arguments exactly, both forms and both runtimes, the merge, the replacement and the
+removal of an earlier `mcp.sh`) is covered by the CLI tests; the `/bin/sh` line was run with a stand-in `docker` reachable only
+through `$HOME/.docker/bin` from a folder behind a symbolic link (the real path mounted, stderr in the log). A Mac client started
+from the Dock over this entry has not been run **(not verified)**.
 
 ### In this repository
 

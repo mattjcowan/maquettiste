@@ -46,58 +46,227 @@ public sealed class AgentSetupTests
         Assert.Equal(GlobalRegistration.Replace("\r\n", "\n", StringComparison.Ordinal), repo.Read(".mcp.json"));
     }
 
-    private const string DockerRegistration = """
+    // The one /bin/sh line the container form registers outside Windows, exactly.
+    private static string ContainerLine(string runtime, string image) =>
+        "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin\"; mkdir -p .maquettiste/.cache; exec " + runtime
+        + " run -i --rm --user 0:0 -v \"$(pwd -P):/repo\" -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli " + image
+        + " maquettiste mcp 2>>.maquettiste/.cache/mcp.log";
+
+    private static string ShellRegistration(string runtime, string image) => $$"""
         {
           "mcpServers": {
             "maquettiste": {
               "type": "stdio",
-              "command": "./mcp.sh",
-              "args": []
+              "command": "/bin/sh",
+              "args": [
+                "-c",
+                "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin\"; mkdir -p .maquettiste/.cache; exec {{runtime}} run -i --rm --user 0:0 -v \"$(pwd -P):/repo\" -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli {{image}} maquettiste mcp 2>>.maquettiste/.cache/mcp.log"
+              ]
             }
           }
         }
 
-        """;
+        """.Replace("\r\n", "\n", StringComparison.Ordinal);
+
+    private static string WindowsRegistration(string runtime, string image) => $$"""
+        {
+          "mcpServers": {
+            "maquettiste": {
+              "type": "stdio",
+              "command": "{{runtime}}",
+              "args": [
+                "run",
+                "-i",
+                "--rm",
+                "--user",
+                "0:0",
+                "-v",
+                "${PWD}:/repo",
+                "-w",
+                "/repo",
+                "-e",
+                "MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli",
+                "{{image}}",
+                "maquettiste",
+                "mcp"
+              ]
+            }
+          }
+        }
+
+        """.Replace("\r\n", "\n", StringComparison.Ordinal);
+
+    // What init writes on the platform the tests run on.
+    private static string ContainerRegistration(string runtime, string image) =>
+        OperatingSystem.IsWindows() ? WindowsRegistration(runtime, image) : ShellRegistration(runtime, image);
+
+    private static string ContainerReport(string runtime, string image) => OperatingSystem.IsWindows()
+        ? $"{runtime} run -i --rm --user 0:0 -v ${{PWD}}:/repo -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli {image} maquettiste mcp"
+        : "/bin/sh -c " + ContainerLine(runtime, image);
+
+    private const string LegacyWrapper = "#!/bin/sh\n# maquettiste-mcp-wrapper (written by maquettiste init --mcp --docker; docs/mcp.md)\nexec docker run -i --rm img maquettiste mcp\n";
 
     [Fact]
-    public async Task Init_mcp_docker_writes_an_executable_wrapper_and_registers_it_as_a_stdio_server()
+    public async Task Init_mcp_docker_registers_the_container_command_and_writes_no_script()
     {
         using var repo = CliRepo.Empty();
         var result = await repo.RunAsync("init", "--mcp", "--docker", "mattjcowan/maquettiste:0.2.0");
         Assert.Equal(0, result.ExitCode);
-        Assert.Equal(DockerRegistration.Replace("\r\n", "\n", StringComparison.Ordinal), repo.Read(".mcp.json"));
-        Assert.Contains("created .mcp.json (server maquettiste: ./mcp.sh)", result.Error, StringComparison.Ordinal);
-        Assert.Contains("created mcp.sh (runs maquettiste mcp in mattjcowan/maquettiste:0.2.0", result.Error, StringComparison.Ordinal);
-        var script = repo.Read("mcp.sh");
-        Assert.StartsWith("#!/bin/sh\n" + AgentSetup.DockerWrapperMarker, script, StringComparison.Ordinal);
-        Assert.DoesNotContain("\r", script, StringComparison.Ordinal);
-        Assert.Contains("image=\"${MAQUETTISTE_IMAGE:-mattjcowan/maquettiste:0.2.0}\"", script, StringComparison.Ordinal);
-        // Root at the start: the image's entrypoint repairs strays and runs the server as the folder's owner (docker/README.md).
-        Assert.Contains("run -i --rm --user 0:0 -v \"$PWD:/repo\" -w /repo", script, StringComparison.Ordinal);
-        Assert.DoesNotContain("id -u):$(id -g)", script, StringComparison.Ordinal);
-        Assert.Contains("log=.maquettiste/.cache/mcp.log", script, StringComparison.Ordinal);
-        Assert.Contains("maquettiste mcp 2>> \"$log\"", script, StringComparison.Ordinal);
-        if (!OperatingSystem.IsWindows())
-            Assert.True(File.GetUnixFileMode(repo.PathOf("mcp.sh")).HasFlag(UnixFileMode.UserExecute));
+        Assert.Equal(ContainerRegistration("docker", "mattjcowan/maquettiste:0.2.0"), repo.Read(".mcp.json"));
+        Assert.Contains("created .mcp.json (server maquettiste: " + ContainerReport("docker", "mattjcowan/maquettiste:0.2.0") + ")", result.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(repo.PathOf("mcp.sh")));
+        Assert.DoesNotContain("mcp.sh", result.Error, StringComparison.Ordinal);
 
-        // A re-run with another tag refreshes the wrapper and keeps the registration; --docker alone implies --mcp.
+        // The args exactly: outside Windows one /bin/sh line that finds the container command when the client was started from the
+        // desktop, mounts the real path of the folder the client starts the server in at /repo, starts as root (the image's entrypoint
+        // repairs strays and runs the server as the folder's owner), keeps the cache inside the repository and appends stderr to a log
+        // under the ignored cache folder.
+        var entry = JsonNode.Parse(repo.Read(".mcp.json"))!["mcpServers"]!["maquettiste"]!;
+        Assert.Equal("stdio", (string)entry["type"]!);
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal("docker", (string)entry["command"]!);
+        }
+        else
+        {
+            Assert.Equal("/bin/sh", (string)entry["command"]!);
+            Assert.Equal(
+                ["-c", "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin\"; mkdir -p .maquettiste/.cache; exec docker run -i --rm --user 0:0 -v \"$(pwd -P):/repo\" -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli mattjcowan/maquettiste:0.2.0 maquettiste mcp 2>>.maquettiste/.cache/mcp.log"],
+                entry["args"]!.AsArray().Select(a => (string)a!));
+        }
+
+        // The same command again keeps the file byte for byte.
+        var same = await repo.RunAsync("init", "--mcp", "--docker", "mattjcowan/maquettiste:0.2.0");
+        Assert.Equal(0, same.ExitCode);
+        Assert.Contains("kept .mcp.json (it already registers the maquettiste server)", same.Error, StringComparison.Ordinal);
+        Assert.Equal(ContainerRegistration("docker", "mattjcowan/maquettiste:0.2.0"), repo.Read(".mcp.json"));
+
+        // A re-run with another tag replaces the entry; --docker alone implies --mcp.
         var again = await repo.RunAsync("init", "--docker", "mattjcowan/maquettiste:0.3.0");
         Assert.Equal(0, again.ExitCode);
-        Assert.Contains("updated mcp.sh (runs maquettiste mcp in mattjcowan/maquettiste:0.3.0)", again.Error, StringComparison.Ordinal);
-        Assert.Contains("kept .mcp.json (it already registers the maquettiste server)", again.Error, StringComparison.Ordinal);
-        Assert.Contains("mattjcowan/maquettiste:0.3.0", repo.Read("mcp.sh"), StringComparison.Ordinal);
+        Assert.Contains("updated .mcp.json (server maquettiste: " + ContainerReport("docker", "mattjcowan/maquettiste:0.3.0") + ")", again.Error, StringComparison.Ordinal);
+        Assert.Equal(ContainerRegistration("docker", "mattjcowan/maquettiste:0.3.0"), repo.Read(".mcp.json"));
+        Assert.False(File.Exists(repo.PathOf("mcp.sh")));
     }
 
     [Fact]
-    public async Task Init_mcp_docker_keeps_a_foreign_script_and_refuses_an_unsafe_image_reference()
+    public async Task Init_mcp_docker_with_runtime_podman_registers_podman_with_the_same_arguments()
     {
         using var repo = CliRepo.Empty();
-        File.WriteAllText(repo.PathOf("mcp.sh"), "#!/bin/sh\necho mine\n");
+        var result = await repo.RunAsync("init", "--docker", "mattjcowan/maquettiste:0.2.0", "--runtime", "podman");
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(ContainerRegistration("podman", "mattjcowan/maquettiste:0.2.0"), repo.Read(".mcp.json"));
+        Assert.Contains("created .mcp.json (server maquettiste: " + ContainerReport("podman", "mattjcowan/maquettiste:0.2.0") + ")", result.Error, StringComparison.Ordinal);
+        if (!OperatingSystem.IsWindows())
+            Assert.Contains("; exec podman run -i --rm --user 0:0 -v \"$(pwd -P):/repo\" ", repo.Read(".mcp.json").Replace("\\\"", "\"", StringComparison.Ordinal), StringComparison.Ordinal);
+
+        // Back to Docker: the entry is replaced again.
+        Assert.Equal(0, (await repo.RunAsync("init", "--docker", "mattjcowan/maquettiste:0.2.0", "--runtime", "docker")).ExitCode);
+        Assert.Equal(ContainerRegistration("docker", "mattjcowan/maquettiste:0.2.0"), repo.Read(".mcp.json"));
+
+        // Another runtime, or --runtime without an image, is a usage error and writes nothing.
+        using var other = CliRepo.Empty();
+        Assert.Equal(4, (await other.RunAsync("init", "--docker", "img:1", "--runtime", "nerdctl")).ExitCode);
+        var alone = await other.RunAsync("init", "--mcp", "--runtime", "podman");
+        Assert.Equal(4, alone.ExitCode);
+        Assert.Contains("--runtime picks the container command for --docker <image>", alone.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(other.PathOf(".mcp.json")));
+    }
+
+    [Fact]
+    public async Task Init_mcp_docker_merges_into_an_existing_config_and_replaces_the_maquettiste_entry()
+    {
+        using var repo = CliRepo.Empty();
+        Directory.CreateDirectory(repo.RepoRoot);
+        // The registration an earlier version wrote, next to another server and another member.
+        repo.Write(".mcp.json", "{\n  \"mcpServers\": {\n    \"other\": { \"command\": \"x\", \"args\": [\"é\"] },\n    \"maquettiste\": { \"type\": \"stdio\", \"command\": \"./mcp.sh\", \"args\": [] },\n    \"last\": { \"command\": \"y\" }\n  },\n  \"extra\": 1\n}\n");
+        var result = await repo.RunAsync("init", "--docker", "mattjcowan/maquettiste:0.2.0");
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("updated .mcp.json", result.Error, StringComparison.Ordinal);
+        var root = JsonNode.Parse(repo.Read(".mcp.json"))!.AsObject();
+        Assert.Equal(["mcpServers", "extra"], root.Select(p => p.Key));
+        var servers = root["mcpServers"]!.AsObject();
+        Assert.Equal(["other", "maquettiste", "last"], servers.Select(p => p.Key));
+        Assert.Equal("é", (string)servers["other"]!["args"]![0]!);
+        Assert.Contains("\"é\"", repo.Read(".mcp.json"), StringComparison.Ordinal);
+        Assert.True(JsonNode.DeepEquals(AgentSetup.ContainerServerEntry("docker", "mattjcowan/maquettiste:0.2.0"), servers["maquettiste"]));
+    }
+
+    [Fact]
+    public void Container_entry_on_windows_runs_the_container_command_itself_and_both_forms_replace_each_other()
+    {
+        // Windows has no /bin/sh: the entry runs the container command with ${PWD}, which the client expands.
+        foreach (var runtime in AgentSetup.Runtimes)
+        {
+            var windows = AgentSetup.ContainerServerEntry(runtime, "mattjcowan/maquettiste:0.2.0", windows: true);
+            Assert.Null(AgentSetup.WithServer(null, windows, replace: true, out var written));
+            Assert.Equal(WindowsRegistration(runtime, "mattjcowan/maquettiste:0.2.0"), written);
+
+            var shell = AgentSetup.ContainerServerEntry(runtime, "mattjcowan/maquettiste:0.2.0", windows: false);
+            Assert.Equal(["-c", ContainerLine(runtime, "mattjcowan/maquettiste:0.2.0")], shell["args"]!.AsArray().Select(a => (string)a!));
+            Assert.Null(AgentSetup.WithServer(null, shell, replace: true, out written));
+            Assert.Equal(ShellRegistration(runtime, "mattjcowan/maquettiste:0.2.0"), written);
+        }
+
+        // Either form, written on another machine, is ours on a re-run: the maquettiste entry is replaced.
+        var windowsFile = WindowsRegistration("docker", "mattjcowan/maquettiste:0.2.0");
+        var shellFile = ShellRegistration("docker", "mattjcowan/maquettiste:0.2.0");
+        Assert.Null(AgentSetup.WithServer(windowsFile, AgentSetup.ContainerServerEntry("docker", "mattjcowan/maquettiste:0.2.0", windows: false), replace: true, out var replaced));
+        Assert.Equal(shellFile, replaced);
+        Assert.Null(AgentSetup.WithServer(shellFile, AgentSetup.ContainerServerEntry("docker", "mattjcowan/maquettiste:0.2.0", windows: true), replace: true, out replaced));
+        Assert.Equal(windowsFile, replaced);
+    }
+
+    [Fact]
+    public async Task Init_mcp_docker_replaces_an_entry_of_the_other_platform()
+    {
+        using var repo = CliRepo.Empty();
+        Directory.CreateDirectory(repo.RepoRoot);
+        var other = OperatingSystem.IsWindows() ? ShellRegistration("podman", "img:1") : WindowsRegistration("podman", "img:1");
+        repo.Write(".mcp.json", other);
+        var result = await repo.RunAsync("init", "--docker", "mattjcowan/maquettiste:0.2.0");
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("updated .mcp.json", result.Error, StringComparison.Ordinal);
+        Assert.Equal(ContainerRegistration("docker", "mattjcowan/maquettiste:0.2.0"), repo.Read(".mcp.json"));
+    }
+
+    [Fact]
+    public async Task Init_mcp_docker_removes_the_wrapper_an_earlier_init_wrote_and_keeps_any_other_script()
+    {
+        using var repo = CliRepo.Empty();
+        Directory.CreateDirectory(repo.RepoRoot);
+        repo.Write("mcp.sh", LegacyWrapper);
         var result = await repo.RunAsync("init", "--mcp", "--docker", "mattjcowan/maquettiste:0.2.0");
         Assert.Equal(0, result.ExitCode);
-        Assert.Contains("kept mcp.sh: a script maquettiste did not write", result.Error, StringComparison.Ordinal);
-        Assert.Equal("#!/bin/sh\necho mine\n", repo.Read("mcp.sh"));
+        Assert.False(File.Exists(repo.PathOf("mcp.sh")));
+        Assert.Contains("removed mcp.sh (the wrapper an earlier init wrote; .mcp.json now starts the container itself)", result.Error, StringComparison.Ordinal);
 
+        // A wrapper with CRLF line endings (a checkout that converts them) is still ours.
+        repo.Write("mcp.sh", LegacyWrapper.Replace("\n", "\r\n", StringComparison.Ordinal));
+        Assert.Contains("removed mcp.sh", (await repo.RunAsync("init", "--docker", "mattjcowan/maquettiste:0.2.0")).Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(repo.PathOf("mcp.sh")));
+
+        // A script maquettiste did not write, even one that mentions the marker later on, is never removed.
+        foreach (var foreign in new[] { "#!/bin/sh\necho mine\n", "#!/bin/bash\n# maquettiste-mcp-wrapper (copied)\n", "#!/bin/sh\n# mine\n# maquettiste-mcp-wrapper (copied)\n" })
+        {
+            repo.Write("mcp.sh", foreign);
+            var kept = await repo.RunAsync("init", "--docker", "mattjcowan/maquettiste:0.2.0");
+            Assert.Equal(0, kept.ExitCode);
+            Assert.Equal(foreign, repo.Read("mcp.sh"));
+            Assert.DoesNotContain("mcp.sh", kept.Error, StringComparison.Ordinal);
+        }
+
+        // The installed-tool form leaves a wrapper alone: an entry that still runs it is kept as well.
+        using var tool = CliRepo.Empty();
+        Directory.CreateDirectory(tool.RepoRoot);
+        tool.Write("mcp.sh", LegacyWrapper);
+        Assert.Equal(0, (await tool.RunAsync("init", "--mcp")).ExitCode);
+        Assert.Equal(LegacyWrapper, tool.Read("mcp.sh"));
+    }
+
+    [Fact]
+    public async Task Init_mcp_docker_refuses_an_unsafe_image_reference()
+    {
         using var other = CliRepo.Empty();
         foreach (var bad in new[] { "img; rm -rf /", "img:tag $(id)", "-v", "" })
         {
@@ -105,93 +274,7 @@ public sealed class AgentSetupTests
             Assert.Equal(4, refused.ExitCode);
         }
 
-        Assert.False(File.Exists(other.PathOf("mcp.sh")));
         Assert.False(File.Exists(other.PathOf(".mcp.json")));
-    }
-
-    [Fact]
-    public async Task The_docker_wrapper_starts_the_image_as_root_and_logs_stderr_under_the_cache()
-    {
-        Assert.SkipWhen(OperatingSystem.IsWindows(), "the wrapper is a POSIX shell script");
-        using var repo = CliRepo.Empty();
-        Assert.Equal(0, (await repo.RunAsync("init", "--mcp", "--docker", "example/image:1")).ExitCode);
-        var fake = repo.PathOf("fake-docker");
-        File.WriteAllText(fake, "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$(dirname \"$0\")/docker-args\"\necho server-log >&2\necho protocol\n");
-        if (!OperatingSystem.IsWindows())
-            File.SetUnixFileMode(fake, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        var start = new System.Diagnostics.ProcessStartInfo("sh", [repo.PathOf("mcp.sh")])
-        {
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            WorkingDirectory = Path.GetTempPath(),
-        };
-        start.Environment["MAQUETTISTE_DOCKER"] = fake;
-        using var process = System.Diagnostics.Process.Start(start)!;
-        var stdout = await process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
-        await process.WaitForExitAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(0, process.ExitCode);
-        Assert.Equal("protocol\n", stdout);
-        Assert.Equal("server-log\n", repo.Read(".maquettiste/.cache/mcp.log"));
-        var args = repo.Read("docker-args").Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        Assert.Equal(["run", "-i", "--rm", "--user", "0:0"], args[..5]);
-        Assert.Equal("-v", args[5]);
-        Assert.EndsWith(":/repo", args[6], StringComparison.Ordinal);
-        Assert.Equal(["-w", "/repo", "-e", "MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli", "example/image:1", "maquettiste", "mcp"], args[7..]);
-    }
-
-    [Fact]
-    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
-    public async Task The_docker_wrapper_logs_to_the_temporary_folder_while_the_log_belongs_to_another_user()
-    {
-        Assert.SkipWhen(OperatingSystem.IsWindows(), "the wrapper is a POSIX shell script");
-        using var repo = CliRepo.Empty();
-        Assert.Equal(0, (await repo.RunAsync("init", "--mcp", "--docker", "example/image:1")).ExitCode);
-        var fake = repo.PathOf("fake-docker");
-        File.WriteAllText(fake, "#!/bin/sh\necho server-log >&2\necho protocol\n");
-        File.SetUnixFileMode(fake, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        // An earlier run as root left the log behind: here it is read-only, which a run as another user sees the same way.
-        Directory.CreateDirectory(repo.PathOf(".maquettiste/.cache"));
-        File.WriteAllText(repo.PathOf(".maquettiste/.cache/mcp.log"), "");
-        File.SetUnixFileMode(repo.PathOf(".maquettiste/.cache/mcp.log"), UnixFileMode.UserRead);
-        var temp = repo.PathOf("tmp-logs");
-        Directory.CreateDirectory(temp);
-        try
-        {
-            Assert.SkipWhen(CanAppend(repo.PathOf(".maquettiste/.cache/mcp.log")), "the process can write a read-only file (running as root)");
-            var start = new System.Diagnostics.ProcessStartInfo("sh", [repo.PathOf("mcp.sh")])
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                WorkingDirectory = Path.GetTempPath(),
-            };
-            start.Environment["MAQUETTISTE_DOCKER"] = fake;
-            start.Environment["TMPDIR"] = temp;
-            using var process = System.Diagnostics.Process.Start(start)!;
-            var stdout = await process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
-            await process.WaitForExitAsync(TestContext.Current.CancellationToken);
-            Assert.Equal(0, process.ExitCode);
-            Assert.Equal("protocol\n", stdout);
-            var log = Assert.Single(Directory.GetFiles(temp, "maquettiste-mcp-*.log"));
-            Assert.Equal("server-log\n", File.ReadAllText(log));
-            Assert.Equal("", repo.Read(".maquettiste/.cache/mcp.log"));
-        }
-        finally
-        {
-            File.SetUnixFileMode(repo.PathOf(".maquettiste/.cache/mcp.log"), UnixFileMode.UserRead | UnixFileMode.UserWrite);
-        }
-    }
-
-    private static bool CanAppend(string path)
-    {
-        try
-        {
-            using var stream = new FileStream(path, FileMode.Append, FileAccess.Write);
-            return true;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return false;
-        }
     }
 
     [Fact]
@@ -253,9 +336,9 @@ public sealed class AgentSetupTests
     public void With_server_adds_the_members_object_when_it_is_missing_or_null()
     {
         var entry = AgentSetup.ServerEntry(local: false);
-        Assert.Null(AgentSetup.WithServer("{\"mcpServers\":null}", entry, out var updated));
+        Assert.Null(AgentSetup.WithServer("{\"mcpServers\":null}", entry, replace: false, out var updated));
         Assert.Equal(GlobalRegistration.Replace("\r\n", "\n", StringComparison.Ordinal), updated);
-        Assert.Null(AgentSetup.WithServer(null, entry, out updated));
+        Assert.Null(AgentSetup.WithServer(null, entry, replace: false, out updated));
         Assert.Equal(GlobalRegistration.Replace("\r\n", "\n", StringComparison.Ordinal), updated);
     }
 

@@ -35,8 +35,8 @@ roots and conventions are in `.maquettiste/maquettiste.json`.
 ## Preferred: the MCP tools
 
 When the `maquettiste` MCP server is connected (in Claude Code its tools show up as `mcp__maquettiste__<tool>`; it is
-`maquettiste mcp`, registered by `maquettiste init --mcp`, or by `maquettiste init --mcp --docker <image>` as a `./mcp.sh`
-wrapper that runs it in the image; see docs/mcp.md), use its tools instead of editing the JSON
+`maquettiste mcp`, registered by `maquettiste init --mcp`, or by `maquettiste init --mcp --docker <image>` as a
+`docker run` of the image; see docs/mcp.md), use its tools instead of editing the JSON
 files: every write goes through the same validated, hash-checked path as the editor, so a save can never half-apply,
 clobber a concurrent edit or leave a dangling id.
 
