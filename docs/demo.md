@@ -40,9 +40,9 @@ docker pull mattjcowan/maquettiste:0.5.0   # needs an image whose entrypoint pic
 (then `source ~/.zshrc`); it runs every command in a throwaway container over the folder you are in:
 
 ```zsh
-maquettiste() { docker run --rm $([ -t 0 ] && echo -it) --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:0.5.0 maquettiste "$@"; }
-# With Podman, leave --user out (root in the container is you):
-# maquettiste() { podman run --rm $([ -t 0 ] && echo -it) -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:0.5.0 maquettiste "$@"; }
+maquettiste() { docker run --rm $([ -t 0 ] && echo -it) --user 0:0 -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:0.5.0 maquettiste "$@"; }
+# --user 0:0 lets the image run the command as the owner of the folder (you) after repairing files another user left there.
+# With Podman, the same function with podman in place of docker.
 maquettiste --version                    # maquettiste 0.5.0 (engine contract 1.0.0, model format 1)
 ```
 
@@ -351,7 +351,7 @@ partner's model.
 
 | Step | Do | Expected |
 | --- | --- | --- |
-| 3.1 (45 s) | `maquettiste init --mcp --docker mattjcowan/maquettiste:0.5.0 --skill`, then `cat .mcp.json` | `created mcp.sh (runs maquettiste mcp in mattjcowan/maquettiste:0.5.0; log in .maquettiste/.cache/mcp.log)`, `created .mcp.json (server maquettiste: ./mcp.sh)`, `created .claude/skills/maquettiste-modeling/SKILL.md`. The file registers `{"type": "stdio", "command": "./mcp.sh", "args": []}`; `mcp.sh` runs `docker run -i --rm --user <you> ... maquettiste mcp` from the editor's own image over the repository, with the same model and write path as the editor, and logs the server's messages to `.maquettiste/.cache/mcp.log`. (With the .NET tool fallback, drop `--docker ...`: `init --mcp` then writes `{"type": "stdio", "command": "maquettiste", "args": ["mcp"]}`.) |
+| 3.1 (45 s) | `maquettiste init --mcp --docker mattjcowan/maquettiste:0.5.0 --skill`, then `cat .mcp.json` | `created mcp.sh (runs maquettiste mcp in mattjcowan/maquettiste:0.5.0; log in .maquettiste/.cache/mcp.log)`, `created .mcp.json (server maquettiste: ./mcp.sh)`, `created .claude/skills/maquettiste-modeling/SKILL.md`. The file registers `{"type": "stdio", "command": "./mcp.sh", "args": []}`; `mcp.sh` runs `docker run -i --rm --user 0:0 ... maquettiste mcp` (the image then runs the server as you) from the editor's own image over the repository, with the same model and write path as the editor, and logs the server's messages to `.maquettiste/.cache/mcp.log`. (With the .NET tool fallback, drop `--docker ...`: `init --mcp` then writes `{"type": "stdio", "command": "maquettiste", "args": ["mcp"]}`.) |
 | 3.2 (30 s) | `claude`, approve the project server `maquettiste` when asked, type `/mcp` | maquettiste connected, 46 tools (get_model_index, get_element, create_element, apply_batch, validate, plan, get_plan_diff, apply_plan, reference_type_usage, get_translations, ...). |
 | 3.3 (2 min) | Prompt: `Add a Shipment entity related to Order (an order has many shipments) with carrier, an optional trackingNumber, shippedAt and a status enum ShipmentStatus (Preparing, InTransit, Delivered). Then validate and generate.` | About 50 s. Claude sends one `apply_batch` (the enum ShipmentStatus, the entity Shipment, a composition `ships` from Order to many Shipments), then `validate`, `plan`, `apply_plan`. Files: `A src/generated/shipment.ts`, `shipment-status.ts`, `shipment.schema.ts`, `M src/generated/order.ts` (`shipments?: Shipment[]`), `M index.ts`, `A db/main/shop/tables/shipments.sql`, `A db/main/migrations/000N.sql` with `CREATE TABLE shop.shipments ... REFERENCES shop.orders (id) ON DELETE RESTRICT` (the default; add "cascade on delete" to the prompt for CASCADE). The editor shows Shipment in the explorer without a reload; **Add related** on Order puts it on the diagram. |
 | 3.4 (1.5 min) | Prompt: `What would change in the generated code and the database scripts if Product.sku became required? Do not change the model; answer in at most 8 lines.` | About 20 s. In rehearsal: `product.ts` drops the `?` on `sku`, `product.schema.ts` drops `.optional()`, `schema.sql` and `products.sql` get `sku varchar(40) NOT NULL`, the existing migrations stay and the next one (`0005.sql`, named correctly) adds `ALTER TABLE ... ALTER COLUMN sku SET NOT NULL`, with a warning about existing NULL rows; the model is unchanged. |
@@ -365,9 +365,8 @@ was not run **(not verified)**; it uses the same file.
 
 Commands for 3.1. `--docker` writes the wrapper `mcp.sh` (executable, no absolute path, safe to commit) and registers it;
 Claude Code starts it in `$REPO`. An older `.mcp.json` that already names a `maquettiste` server is kept as it is, so remove
-that entry (or the file) first when the repository has one from an earlier rehearsal. With Podman, the wrapper's
-`--user "$(id -u):$(id -g)"` must go (or become `--userns=keep-id`), and `MAQUETTISTE_DOCKER=podman` names the engine
-(docs/mcp.md):
+that entry (or the file) first when the repository has one from an earlier rehearsal. With Podman the wrapper works
+unchanged; `MAQUETTISTE_DOCKER=podman` names the engine (docs/mcp.md):
 
 ```zsh
 maquettiste init --mcp --docker mattjcowan/maquettiste:0.5.0 --skill
@@ -412,15 +411,18 @@ right-click it › **Move to domain…**. Right-click **Shop** for New actions a
 **The top bar says `repo`.** `init` found no `package.json` name and no git remote and fell back to the container's
 folder `/repo`: set `"name"` in `.maquettiste/maquettiste.json` (then `maquettiste format`) and reload the page.
 
-**Generated files owned by someone else.** Files should belong to you (step 5). If `ls -ln` shows UID 1654, an older
-image wrote them: pull the image again, `up -d`, and remove the old files through a container:
-`docker run --rm --user 0 -v "$PWD:/w" --entrypoint rm mattjcowan/maquettiste:0.5.0 -rf /w/<path>`.
+**Generated files owned by someone else.** Files should belong to you (step 5). If `ls -ln` shows UID 1654 or root, an
+older image or a run as root wrote them: with an image whose entrypoint repairs ownership (docker/README.md "File
+ownership"), `up -d` again or run any `maquettiste` command through the function, and the files in `.maquettiste/` and the
+output roots become yours (the log says `repaired N files owned by another user`). With an older image, remove them through a
+container: `docker run --rm --user 0 -v "$PWD:/w" --entrypoint rm mattjcowan/maquettiste:0.5.0 -rf /w/<path>`.
 
 **`maquettiste: command not found`.** The function of step 2 is not defined in this shell: `source ~/.zshrc`. With the .NET
 tool fallback, `export PATH="$PATH:$HOME/.dotnet/tools"`; Claude Code inherits the PATH of the shell that starts it.
 
-**`Access to the path '/repo/...' is denied`.** A `docker run` without `--user` on Linux: the container's UID 1654 cannot
-write the repository. Use the function of step 2, which passes `--user "$(id -u):$(id -g)"`.
+**`Access to the path '/repo/...' is denied`.** A `docker run` without `--user` on Linux (the container's UID 1654 cannot
+write the repository), or with `--user "$(id -u):$(id -g)"` over a file root owns. Use the function of step 2, which passes
+`--user 0:0`: the image repairs the file and runs the command as you.
 
 **`generate` exits 3 (hand edit).** Somebody edited a generated file: `maquettiste generate --hand-edits overwrite`.
 

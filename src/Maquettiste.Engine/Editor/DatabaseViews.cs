@@ -1,4 +1,5 @@
 using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Resolution;
 
 namespace Maquettiste.Engine;
@@ -8,14 +9,18 @@ namespace Maquettiste.Engine;
 /// <param name="Diagnostics">Validation and resolution diagnostics; the errors that prevented the view when it is <see langword="null"/>.</param>
 public sealed record DatabaseViewResult(DatabaseView? View, IReadOnlyList<Diagnostic> Diagnostics);
 
-/// <summary>The resolved physical model of one database: every table after conventions, mappings and overlays.</summary>
+/// <summary>The resolved physical model of one database: every table after conventions, mappings and overlays, and every view and sequence.</summary>
 /// <param name="Id">The database element's id.</param>
 /// <param name="Name">The database name.</param>
 /// <param name="Dialect"><c>postgresql</c>, <c>sqlserver</c>, <c>mysql</c>, <c>sqlite</c> or <c>oracle</c>.</param>
 /// <param name="Version">The target version.</param>
 /// <param name="DefaultSchema">The effective default schema, or <see langword="null"/> when the dialect has none.</param>
 /// <param name="Tables">Every table, in the resolver's (schema, name) order.</param>
-public sealed record DatabaseView(string Id, string Name, string Dialect, string? Version, string? DefaultSchema, IReadOnlyList<TableView> Tables);
+/// <param name="Views">Every view, in the resolver's (schema, name) order.</param>
+/// <param name="Sequences">Every sequence (the sequence files and the sequences the resolver creates for entity keys), in the resolver's
+/// (schema, name) order.</param>
+public sealed record DatabaseView(string Id, string Name, string Dialect, string? Version, string? DefaultSchema, IReadOnlyList<TableView> Tables,
+    IReadOnlyList<ViewView> Views, IReadOnlyList<SequenceView> Sequences);
 
 /// <summary>One resolved table, projected from the resolver's <see cref="RTable"/> (resolved objects reference each other, so they are
 /// flattened: other objects appear by key or id).</summary>
@@ -33,6 +38,15 @@ public sealed record DatabaseView(string Id, string Name, string Dialect, string
 /// <param name="Uniques">Unique constraints.</param>
 /// <param name="ForeignKeys">Foreign keys.</param>
 /// <param name="Indexes">Indexes.</param>
+/// <param name="DisplayName">The display name the table's file sets, or <see langword="null"/> (no fallback; a synthesized table
+/// without an overlay has no file).</param>
+/// <param name="PluralName">The plural name the table's file sets, or <see langword="null"/>.</param>
+/// <param name="Description">The description text (a sidecar file loaded), or <see langword="null"/>.</param>
+/// <param name="Stereotypes">The stereotype keys, in application order.</param>
+/// <param name="Tags">The tag keys.</param>
+/// <param name="Category">The category's id, or <see langword="null"/>.</param>
+/// <param name="Properties">The custom properties: stereotype defaults merged under the file's own.</param>
+/// <param name="Generation">The generation hints, by pack name or <c>"*"</c>.</param>
 public sealed record TableView(
     string Key,
     string Name,
@@ -47,7 +61,94 @@ public sealed record TableView(
     KeyView? PrimaryKey,
     IReadOnlyList<KeyView> Uniques,
     IReadOnlyList<ForeignKeyView> ForeignKeys,
-    IReadOnlyList<IndexView> Indexes);
+    IReadOnlyList<IndexView> Indexes,
+    string? DisplayName,
+    string? PluralName,
+    string? Description,
+    IReadOnlyList<string> Stereotypes,
+    IReadOnlyList<string> Tags,
+    string? Category,
+    IReadOnlyDictionary<string, object?> Properties,
+    IReadOnlyDictionary<string, GenerationHints> Generation);
+
+/// <summary>One resolved view, projected from <see cref="RView"/>.</summary>
+/// <param name="Id">The view file's id.</param>
+/// <param name="Name">The physical name.</param>
+/// <param name="Schema">The schema name, or <see langword="null"/>.</param>
+/// <param name="Body">The body for the database's dialect.</param>
+/// <param name="Columns">The declared columns.</param>
+/// <param name="Comment">The comment.</param>
+/// <param name="DisplayName">As <see cref="TableView.DisplayName"/>.</param>
+/// <param name="PluralName">As <see cref="TableView.PluralName"/>.</param>
+/// <param name="Description">As <see cref="TableView.Description"/>.</param>
+/// <param name="Stereotypes">As <see cref="TableView.Stereotypes"/>.</param>
+/// <param name="Tags">As <see cref="TableView.Tags"/>.</param>
+/// <param name="Category">As <see cref="TableView.Category"/>.</param>
+/// <param name="Properties">As <see cref="TableView.Properties"/>.</param>
+/// <param name="Generation">As <see cref="TableView.Generation"/>.</param>
+public sealed record ViewView(
+    string Id,
+    string Name,
+    string? Schema,
+    string Body,
+    IReadOnlyList<ViewColumnView> Columns,
+    string? Comment,
+    string? DisplayName,
+    string? PluralName,
+    string? Description,
+    IReadOnlyList<string> Stereotypes,
+    IReadOnlyList<string> Tags,
+    string? Category,
+    IReadOnlyDictionary<string, object?> Properties,
+    IReadOnlyDictionary<string, GenerationHints> Generation);
+
+/// <summary>A declared column of a view.</summary>
+/// <param name="Name">The name.</param>
+/// <param name="Type">The built-in type keyword, or <see langword="null"/>.</param>
+/// <param name="NativeType">The dialect's type, or <see langword="null"/>.</param>
+/// <param name="Nullable">Whether the column is nullable.</param>
+public sealed record ViewColumnView(string Name, string? Type, string? NativeType, bool Nullable);
+
+/// <summary>One resolved sequence, projected from <see cref="RSequence"/>.</summary>
+/// <param name="Id">The sequence file's id, or a synthesized key such as <c>&lt;entityId&gt;.sequence@&lt;databaseId&gt;</c>.</param>
+/// <param name="Name">The physical name.</param>
+/// <param name="Schema">The schema name, or <see langword="null"/>.</param>
+/// <param name="Type">The built-in integer type keyword.</param>
+/// <param name="NativeType">The dialect's type.</param>
+/// <param name="Start">The first value.</param>
+/// <param name="Increment">The increment.</param>
+/// <param name="Min">The minimum value.</param>
+/// <param name="Max">The maximum value.</param>
+/// <param name="Cycle">Whether the sequence wraps around.</param>
+/// <param name="Cache">How many values the server caches.</param>
+/// <param name="DisplayName">As <see cref="TableView.DisplayName"/>.</param>
+/// <param name="PluralName">As <see cref="TableView.PluralName"/>.</param>
+/// <param name="Description">As <see cref="TableView.Description"/>.</param>
+/// <param name="Stereotypes">As <see cref="TableView.Stereotypes"/>.</param>
+/// <param name="Tags">As <see cref="TableView.Tags"/>.</param>
+/// <param name="Category">As <see cref="TableView.Category"/>.</param>
+/// <param name="Properties">As <see cref="TableView.Properties"/>.</param>
+/// <param name="Generation">As <see cref="TableView.Generation"/>.</param>
+public sealed record SequenceView(
+    string Id,
+    string Name,
+    string? Schema,
+    string Type,
+    string NativeType,
+    long Start,
+    long Increment,
+    long? Min,
+    long? Max,
+    bool Cycle,
+    int? Cache,
+    string? DisplayName,
+    string? PluralName,
+    string? Description,
+    IReadOnlyList<string> Stereotypes,
+    IReadOnlyList<string> Tags,
+    string? Category,
+    IReadOnlyDictionary<string, object?> Properties,
+    IReadOnlyDictionary<string, GenerationHints> Generation);
 
 /// <summary>One resolved column, projected from <see cref="RColumn"/>.</summary>
 /// <param name="Key">The column key: an attribute path, <c>discriminator</c>, <c>position</c>, <c>id</c>, or a column id.</param>
@@ -132,7 +233,7 @@ internal static class DatabaseViews
     {
         ArgumentNullException.ThrowIfNull(database);
         return new DatabaseView(database.Id, database.Name, database.Dialect, database.Version, database.DefaultSchema,
-            [.. database.Tables.Select(Table)]);
+            [.. database.Tables.Select(Table)], [.. database.Views.Select(View)], [.. database.Sequences.Select(Sequence)]);
     }
 
     public static TableView Table(RTable table) => new(
@@ -149,7 +250,54 @@ internal static class DatabaseViews
         table.PrimaryKey is { } key ? new KeyView(key.Name, [.. key.Columns.Select(c => c.Key)]) : null,
         [.. table.Uniques.Select(u => new KeyView(u.Name, [.. u.Columns.Select(c => c.Key)]))],
         [.. table.ForeignKeys.Select(ForeignKey)],
-        [.. table.Indexes.Select(i => new IndexView(i.Name, [.. i.Columns.Select(c => new IndexColumnView(c.Column.Key, c.Descending))], i.Unique, i.Where))]);
+        [.. table.Indexes.Select(i => new IndexView(i.Name, [.. i.Columns.Select(c => new IndexColumnView(c.Column.Key, c.Descending))], i.Unique, i.Where))],
+        OrNull(table.DisplayName),
+        OrNull(table.PluralName),
+        table.Description,
+        [.. table.Stereotypes.Select(s => s.Key)],
+        table.Tags,
+        table.Category?.Id,
+        table.Properties,
+        table.Generation);
+
+    private static ViewView View(RView view) => new(
+        view.Id,
+        view.Name,
+        view.Schema,
+        view.Body,
+        [.. view.Columns.Select(c => new ViewColumnView(c.Name, c.Type, c.NativeType, c.Nullable))],
+        view.Comment,
+        OrNull(view.DisplayName),
+        OrNull(view.PluralName),
+        view.Description,
+        [.. view.Stereotypes.Select(s => s.Key)],
+        view.Tags,
+        view.Category?.Id,
+        view.Properties,
+        view.Generation);
+
+    private static SequenceView Sequence(RSequence sequence) => new(
+        sequence.Id,
+        sequence.Name,
+        sequence.Schema,
+        sequence.Type,
+        sequence.NativeType,
+        sequence.Start,
+        sequence.Increment,
+        sequence.Min,
+        sequence.Max,
+        sequence.Cycle,
+        sequence.Cache,
+        OrNull(sequence.DisplayName),
+        OrNull(sequence.PluralName),
+        sequence.Description,
+        [.. sequence.Stereotypes.Select(s => s.Key)],
+        sequence.Tags,
+        sequence.Category?.Id,
+        sequence.Properties,
+        sequence.Generation);
+
+    private static string? OrNull(string value) => value.Length == 0 ? null : value;
 
     private static ColumnView Column(RColumn column) => new(
         column.Key,

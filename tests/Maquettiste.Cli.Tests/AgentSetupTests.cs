@@ -72,8 +72,11 @@ public sealed class AgentSetupTests
         Assert.StartsWith("#!/bin/sh\n" + AgentSetup.DockerWrapperMarker, script, StringComparison.Ordinal);
         Assert.DoesNotContain("\r", script, StringComparison.Ordinal);
         Assert.Contains("image=\"${MAQUETTISTE_IMAGE:-mattjcowan/maquettiste:0.2.0}\"", script, StringComparison.Ordinal);
-        Assert.Contains("run -i --rm --user \"$(id -u):$(id -g)\" -v \"$PWD:/repo\" -w /repo", script, StringComparison.Ordinal);
-        Assert.Contains("maquettiste mcp 2>> .maquettiste/.cache/mcp.log", script, StringComparison.Ordinal);
+        // Root at the start: the image's entrypoint repairs strays and runs the server as the folder's owner (docker/README.md).
+        Assert.Contains("run -i --rm --user 0:0 -v \"$PWD:/repo\" -w /repo", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("id -u):$(id -g)", script, StringComparison.Ordinal);
+        Assert.Contains("log=.maquettiste/.cache/mcp.log", script, StringComparison.Ordinal);
+        Assert.Contains("maquettiste mcp 2>> \"$log\"", script, StringComparison.Ordinal);
         if (!OperatingSystem.IsWindows())
             Assert.True(File.GetUnixFileMode(repo.PathOf("mcp.sh")).HasFlag(UnixFileMode.UserExecute));
 
@@ -107,7 +110,7 @@ public sealed class AgentSetupTests
     }
 
     [Fact]
-    public async Task The_docker_wrapper_runs_the_image_as_the_calling_user_and_logs_stderr_under_the_cache()
+    public async Task The_docker_wrapper_starts_the_image_as_root_and_logs_stderr_under_the_cache()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "the wrapper is a POSIX shell script");
         using var repo = CliRepo.Empty();
@@ -130,11 +133,65 @@ public sealed class AgentSetupTests
         Assert.Equal("protocol\n", stdout);
         Assert.Equal("server-log\n", repo.Read(".maquettiste/.cache/mcp.log"));
         var args = repo.Read("docker-args").Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        Assert.Equal(["run", "-i", "--rm", "--user"], args[..4]);
-        Assert.Matches("^[0-9]+:[0-9]+$", args[4]);
+        Assert.Equal(["run", "-i", "--rm", "--user", "0:0"], args[..5]);
         Assert.Equal("-v", args[5]);
         Assert.EndsWith(":/repo", args[6], StringComparison.Ordinal);
         Assert.Equal(["-w", "/repo", "-e", "MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli", "example/image:1", "maquettiste", "mcp"], args[7..]);
+    }
+
+    [Fact]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    public async Task The_docker_wrapper_logs_to_the_temporary_folder_while_the_log_belongs_to_another_user()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "the wrapper is a POSIX shell script");
+        using var repo = CliRepo.Empty();
+        Assert.Equal(0, (await repo.RunAsync("init", "--mcp", "--docker", "example/image:1")).ExitCode);
+        var fake = repo.PathOf("fake-docker");
+        File.WriteAllText(fake, "#!/bin/sh\necho server-log >&2\necho protocol\n");
+        File.SetUnixFileMode(fake, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        // An earlier run as root left the log behind: here it is read-only, which a run as another user sees the same way.
+        Directory.CreateDirectory(repo.PathOf(".maquettiste/.cache"));
+        File.WriteAllText(repo.PathOf(".maquettiste/.cache/mcp.log"), "");
+        File.SetUnixFileMode(repo.PathOf(".maquettiste/.cache/mcp.log"), UnixFileMode.UserRead);
+        var temp = repo.PathOf("tmp-logs");
+        Directory.CreateDirectory(temp);
+        try
+        {
+            Assert.SkipWhen(CanAppend(repo.PathOf(".maquettiste/.cache/mcp.log")), "the process can write a read-only file (running as root)");
+            var start = new System.Diagnostics.ProcessStartInfo("sh", [repo.PathOf("mcp.sh")])
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                WorkingDirectory = Path.GetTempPath(),
+            };
+            start.Environment["MAQUETTISTE_DOCKER"] = fake;
+            start.Environment["TMPDIR"] = temp;
+            using var process = System.Diagnostics.Process.Start(start)!;
+            var stdout = await process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
+            await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(0, process.ExitCode);
+            Assert.Equal("protocol\n", stdout);
+            var log = Assert.Single(Directory.GetFiles(temp, "maquettiste-mcp-*.log"));
+            Assert.Equal("server-log\n", File.ReadAllText(log));
+            Assert.Equal("", repo.Read(".maquettiste/.cache/mcp.log"));
+        }
+        finally
+        {
+            File.SetUnixFileMode(repo.PathOf(".maquettiste/.cache/mcp.log"), UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+    }
+
+    private static bool CanAppend(string path)
+    {
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Append, FileAccess.Write);
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     [Fact]

@@ -44,7 +44,7 @@ public sealed class PermissionAndFormatTests
         Assert.Contains(path, line, StringComparison.Ordinal);
         Assert.DoesNotContain(".tmp", line, StringComparison.Ordinal);
         if (OperatingSystem.IsLinux())
-            Assert.Contains("--user $(id -u):$(id -g)", line, StringComparison.Ordinal);
+            Assert.Contains("--user 0:0", line, StringComparison.Ordinal);
         Assert.DoesNotContain("   at ", result.Error, StringComparison.Ordinal);
     }
 
@@ -87,7 +87,7 @@ public sealed class PermissionAndFormatTests
     {
         var e = new UnauthorizedAccessException("Access to the path '/repo/db/.a.sql.mq-01ABC-3.tmp' is denied.");
         Assert.Equal(
-            "maquettiste: permission denied: cannot write /repo/db/a.sql. Check that the user running maquettiste can write there; in a container, run it as the owner of the repo with --user $(id -u):$(id -g).",
+            "maquettiste: permission denied: cannot write /repo/db/a.sql. Check that the user running maquettiste can write there; in the maquettiste image, start the container with --user 0:0 so it repairs the files another user owns and runs as the owner of the repo.",
             PermissionError.Message(e, linux: true));
         Assert.DoesNotContain("--user", PermissionError.Message(e, linux: false), StringComparison.Ordinal);
         Assert.Same(e, PermissionError.Find(new AggregateException(new InvalidOperationException("x", e))));

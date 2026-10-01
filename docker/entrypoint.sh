@@ -11,32 +11,53 @@
 # Started as root (compose's user: "0:0", or docker run --user 0:0), with or without a command, it picks the user to run as:
 #   - MAQUETTISTE_UID (and MAQUETTISTE_GID) when set and not empty; MAQUETTISTE_UID=0 means stay root;
 #   - otherwise the owner of the bind-mounted folder: the model folder for the editor, else the working directory (docker run
-#     -w /repo) for a command. Owned by root (rootless Podman maps the host user to root; or a folder Docker created itself), it
-#     stays root; owned by anyone else (Docker Desktop's file sharing, Linux), it runs as that owner, so the files it writes are
-#     the owner's;
+#     -w /repo) for a command. Owned by anyone but root (Docker on Linux, Docker Desktop's file sharing), it runs as that owner,
+#     so the files it writes are the owner's. Owned by root, it stays root under a rootless runtime (rootless Podman, whose root
+#     in the container is the host user outside it); under Docker the editor takes the owner of the repository mount (/repo)
+#     instead when that is not root (the model folder was created by Docker itself or by an earlier run as root), and otherwise
+#     stays root and says how to set MAQUETTISTE_UID;
 #   - with nothing mounted, the image's app user (1654).
 # Before it drops to a user other than root it hands /data (bind mounts under it excepted) and /home/app to that user, then
+# repairs the files Maquettiste reads and writes in the bind mounts (the model folder, the output roots its settings allow and,
+# for a command, the files init writes at the project root): whatever an earlier run as root or as 1654 left owned by another
+# user becomes that user's (chown, symbolic links not followed, never the mount point itself), and it logs how many. Then it
 # re-runs itself as that user with setpriv.
 set -eu
+# Files the editor and the CLI write are 0644 and folders 0755 whatever umask the runtime passes; only the deploy key is 0600.
+umask 022
 
 log() { printf 'maquettiste: %s\n' "$*"; }
+# Lines a command's caller must not read as its output (maquettiste mcp speaks its protocol on stdout) go to stderr.
+note() { printf 'maquettiste: %s\n' "$*" >&2; }
 
 model_dir=/data/sites/maquettiste.localhost/data
+repo_dir="${MAQUETTISTE_REPO_ROOT:-/repo}"
 
 if [ "$(id -u)" = 0 ]; then
   is_mount() { awk -v p="$1" '$5 == p { found = 1 } END { exit !found }' /proc/self/mountinfo; }
+  # A rootless runtime maps the container's root to the host user, so the first line of /proc/self/uid_map maps 0 to a
+  # non-zero host uid ("0 1000 1"). Docker and rootful Podman map 0 to 0 ("0 0 4294967295"). The container=podman variable
+  # is set by rootful and rootless Podman alike, so it does not tell them apart.
+  host_root=$(awk '$1 == 0 { print $2; exit }' /proc/self/uid_map 2>/dev/null || true)
+  if [ -n "$host_root" ] && [ "$host_root" != 0 ]; then rootless=1; else rootless=0; fi
   probe=
+  project=
   if is_mount "$model_dir"; then probe="$model_dir"
   elif [ "$#" -gt 0 ]; then
     # The nearest mount point at or above the working directory (docker run -v "$PWD:/repo" -w /repo).
     dir="$PWD"
     while [ "$dir" != / ]; do
+      if [ -z "$project" ] && [ -f "$dir/.maquettiste/maquettiste.json" ]; then project="$dir"; fi
       if is_mount "$dir"; then probe="$dir"; break; fi
       dir=$(dirname "$dir")
     done
+    # The project a command works on: the nearest folder holding .maquettiste/maquettiste.json, as the CLI finds it.
+    [ -n "$project" ] || project="$PWD"
   fi
   uid="${MAQUETTISTE_UID:-}"
   gid="${MAQUETTISTE_GID:-}"
+  claim=
+  hint=
   if [ -n "$uid" ]; then
     from="MAQUETTISTE_UID"
     if [ -z "$gid" ]; then
@@ -46,6 +67,18 @@ if [ "$(id -u)" = 0 ]; then
     from="the owner of $probe"
     uid=$(stat -c '%u' "$probe")
     [ -n "$gid" ] || gid=$(stat -c '%g' "$probe")
+    if [ "$uid" = 0 ] && [ "$rootless" = 0 ]; then
+      # Docker, not a rootless runtime: a root-owned model folder was made by Docker (init did not run) or left by an earlier
+      # run as root, and running as root would write root-owned files the host user cannot change.
+      if [ "$#" = 0 ] && is_mount "$repo_dir" && [ "$(stat -c '%u' "$repo_dir")" != 0 ]; then
+        from="the owner of $repo_dir ($probe is owned by root)"
+        uid=$(stat -c '%u' "$repo_dir")
+        [ -n "${MAQUETTISTE_GID:-}" ] || gid=$(stat -c '%g' "$repo_dir")
+        claim="$probe"
+      else
+        hint=1
+      fi
+    fi
   else
     from="the image's app user (nothing mounted to take the owner from)"
     uid=1654
@@ -55,10 +88,60 @@ if [ "$(id -u)" = 0 ]; then
     *[!0-9]*) log "MAQUETTISTE_UID and MAQUETTISTE_GID must be numbers (got '$uid' and '$gid')"; exit 1 ;;
   esac
   export HOME=/home/app
+
+  # Repair: every file or folder under a path that is not owned by uid:gid becomes theirs. A mount point keeps its owner (only
+  # what is inside it changes) unless it is the one to claim; find -P and chown -h never follow a symbolic link, and -xdev
+  # never leaves the mounted file system.
+  repair_tree() {
+    [ -e "$1" ] || [ -L "$1" ] || return 0
+    depth=0
+    if is_mount "$1" && [ "$1" != "$claim" ]; then depth=1; fi
+    found=$(find -P "$1" -xdev -mindepth "$depth" \( ! -user "$uid" -o ! -group "$gid" \) -printf . \
+      -exec chown -h "$uid:$gid" {} + 2>/dev/null | wc -c)
+    if [ "$found" -gt 0 ]; then
+      left=$(find -P "$1" -xdev -mindepth "$depth" \( ! -user "$uid" -o ! -group "$gid" \) -printf . 2>/dev/null | wc -c)
+      if [ "$found" -gt "$left" ]; then note "repaired $((found - left)) files owned by another user under $1"; fi
+      if [ "$left" -gt 0 ]; then note "could not repair $left files owned by another user under $1; change their owner on the host"; fi
+    fi
+  }
+  # The output roots of a project's settings (outputs.allow), each under the project root; paths that do not exist, or that
+  # resolve outside the root, are skipped.
+  repair_outputs() {
+    [ -f "$2" ] || return 0
+    root=$(realpath -e "$1" 2>/dev/null) || return 0
+    jq -r '.outputs.allow[]? | if type == "object" then .path elif type == "string" then . else empty end | strings' "$2" \
+      2>/dev/null | while IFS= read -r rel; do
+        case "$rel" in ""|/*) continue ;; esac
+        path=$(realpath -e "$root/$rel" 2>/dev/null) || continue
+        case "$path" in "$root"|"$root"/*) repair_tree "$path" ;; esac
+      done || true
+  }
+  repair() {
+    if [ "$#" = 0 ]; then
+      [ -z "$probe" ] || repair_tree "$probe"
+      if is_mount "$repo_dir"; then repair_outputs "$repo_dir" "$model_dir/maquettiste.json"; fi
+    elif [ -n "$probe" ]; then
+      repair_tree "$project/.maquettiste"
+      repair_outputs "$project" "$project/.maquettiste/maquettiste.json"
+      for file in .gitignore .mcp.json mcp.sh .claude/skills/maquettiste-modeling; do repair_tree "$project/$file"; done
+    fi
+  }
+
   if [ "$uid" = 0 ]; then
-    # Rootless Podman: root in the container is the host user outside it, and any other uid could not write the mount.
-    if [ "$from" = MAQUETTISTE_UID ]; then why="MAQUETTISTE_UID=0"; else why="$from is root, as under rootless Podman"; fi
-    [ "$#" -gt 0 ] || log "staying root: $why"
+    if [ "$from" = MAQUETTISTE_UID ]; then why="MAQUETTISTE_UID=0"
+    elif [ "$rootless" = 1 ]; then why="$from is root, and root in this container is the host user (a rootless runtime such as rootless Podman)"
+    else why="$from is root"; fi
+    if [ -n "$hint" ] && [ "$#" = 0 ]; then
+      note "staying root: $why, so what the editor writes there is root's; set MAQUETTISTE_UID=\$(id -u) and" \
+        "MAQUETTISTE_GID=\$(id -g) to run as yourself"
+    elif [ -n "$hint" ]; then
+      note "staying root: $why, so what this command writes there is root's; pass -e MAQUETTISTE_UID=\$(id -u)" \
+        "-e MAQUETTISTE_GID=\$(id -g) to run as yourself"
+    elif [ "$#" = 0 ]; then
+      log "staying root: $why"
+    fi
+    # Under a rootless runtime root is the host user, so files another container uid left (1654) are repaired to root.
+    if [ "$rootless" = 1 ] && [ "$from" != MAQUETTISTE_UID ]; then repair "$@"; fi
   else
     if [ "$gid" = 0 ] && [ -n "${MAQUETTISTE_GID:-}" ]; then
       log "MAQUETTISTE_GID=0: the editor does not run with the root group; use the host user's group id (id -g)"
@@ -75,6 +158,7 @@ if [ "$(id -u)" = 0 ]; then
     # A command (docker run --user 0:0 <image> maquettiste ...) runs as that user too, so nothing it writes is owned by root;
     # the volume is handed over only for the editor or when MAQUETTISTE_UID asks for it.
     if [ "$#" = 0 ] || [ -n "${MAQUETTISTE_UID:-}" ]; then set_owner; fi
+    repair "$@"
     [ "$#" -gt 0 ] || log "running as $uid:$gid: $from"
     export USER=app LOGNAME=app
     exec setpriv --reuid="$uid" --regid="$gid" --clear-groups -- "$0" "$@"

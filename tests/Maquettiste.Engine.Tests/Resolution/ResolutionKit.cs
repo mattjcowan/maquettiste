@@ -101,7 +101,7 @@ internal static partial class ResolutionKit
             {
                 sb.Append("  table ").Append(t.Schema is null ? "" : t.Schema + ".").Append(t.Name).Append(" key=").Append(L(t.Key)).Append(' ').Append(t.Origin)
                     .Append(t.Entity is { } te ? " entity=" + te.Name : "").Append(t.Relation is { } tr ? " relation=" + tr.Name : "")
-                    .Append(t.IsJunction ? " junction" : "").Append('\n');
+                    .Append(t.IsJunction ? " junction" : "").Append(Annotations(t, V)).Append('\n');
                 foreach (var c in t.Columns)
                 {
                     sb.Append("    ").Append(c.Position).Append(' ').Append(c.Name).Append(' ').Append(c.Type)
@@ -128,14 +128,41 @@ internal static partial class ResolutionKit
             }
 
             foreach (var s in db.Sequences)
-                sb.Append("  sequence ").Append(s.Name).Append(' ').Append(s.Type).Append(" native=").Append(s.NativeType).Append(" key=").Append(L(s.Id)).Append('\n');
+                sb.Append("  sequence ").Append(s.Name).Append(' ').Append(s.Type).Append(" native=").Append(s.NativeType).Append(" key=").Append(L(s.Id))
+                    .Append(Annotations(s, V)).Append('\n');
             foreach (var v in db.Views)
-                sb.Append("  view ").Append(v.Name).Append(": ").Append(v.Body).Append('\n');
+                sb.Append("  view ").Append(v.Name).Append(Annotations(v, V)).Append(": ").Append(v.Body).Append('\n');
         }
 
         DumpProcesses(model, sb, L, V);
         foreach (var d in model.Diagnostics)
             sb.Append("diagnostic ").Append(d.Rule).Append(' ').Append(d.Severity).Append(' ').Append(L(d.Message)).Append('\n');
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// The annotations of a physical object, each only when set (a table, view or sequence without a file has none, so the lines of
+    /// unannotated objects read as before).
+    /// </summary>
+    private static string Annotations(RAnnotated o, Func<object?, string> v)
+    {
+        var sb = new StringBuilder();
+        if (o.DisplayName.Length > 0)
+            sb.Append(" display=").Append(v(o.DisplayName));
+        if (o.PluralName.Length > 0)
+            sb.Append(" plural=").Append(v(o.PluralName));
+        if (o.Description is { } description)
+            sb.Append(" description=").Append(v(description));
+        if (o.Stereotypes.Count > 0)
+            sb.Append(" stereotypes=").Append(string.Join(',', o.Stereotypes.Select(s => s.Key)));
+        if (o.Tags.Count > 0)
+            sb.Append(" tags=").Append(string.Join(',', o.Tags));
+        if (o.Category is { } category)
+            sb.Append(" category=").Append(category.Path);
+        if (o.Properties.Count > 0)
+            sb.Append(" properties={").Append(string.Join(',', o.Properties.Select(p => p.Key + "=" + v(p.Value)))).Append('}');
+        if (o.Generation.Count > 0)
+            sb.Append(" generation=").Append(string.Join(',', o.Generation.Keys));
         return sb.ToString();
     }
 

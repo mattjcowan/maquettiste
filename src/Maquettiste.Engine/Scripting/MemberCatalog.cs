@@ -15,10 +15,10 @@ internal enum ProxyFunction
     /// <summary>A plain property.</summary>
     None,
 
-    /// <summary><c>hasStereotype(key)</c> on conceptual objects.</summary>
+    /// <summary><c>hasStereotype(key)</c> on annotated objects (conceptual objects, tables, views, sequences) and process nodes.</summary>
     HasStereotype,
 
-    /// <summary><c>hasTag(key)</c> on conceptual objects.</summary>
+    /// <summary><c>hasTag(key)</c> on annotated objects (conceptual objects, tables, views, sequences).</summary>
     HasTag,
 
     /// <summary><c>find(id)</c> on the model.</summary>
@@ -170,7 +170,7 @@ internal sealed class MemberCatalog
             members.Add(new ProxyMember(Camel(property.Name), property, ProxyFunction.None));
         }
 
-        if (typeof(RElement).IsAssignableFrom(type))
+        if (typeof(RAnnotated).IsAssignableFrom(type))
         {
             members.Add(new ProxyMember("hasStereotype", null, ProxyFunction.HasStereotype));
             members.Add(new ProxyMember("hasTag", null, ProxyFunction.HasTag));

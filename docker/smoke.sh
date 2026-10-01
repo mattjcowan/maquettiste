@@ -2,12 +2,16 @@
 # Smoke test of an editor image (phase2-design.md section 3.9): starts it with no network over a copy of the billing fixture, waits
 # for /api/health "ok" (which proves the first functions build restored offline from the image's feed), checks the host volume's
 # ownership, then runs curl checks inside the container: the project, the index, a save with If-Match, a 409 on the stale hash,
-# a plan job and an apply job through to completion; then the CLI in the image (--version, and generate --check as the host user
-# over a copy of what the editor wrote); last, the editor again as the host user (started as root with MAQUETTISTE_UID and
-# MAQUETTISTE_GID, over a model folder only the host user can write): the model files it writes come out owned by the host user;
-# a command started as root with no variables runs as the owner of its mounted working directory; last, rootless Podman simulated:
-# started as root with no variables over a model folder owned by root, the editor stays root and its saves succeed.
-# Cleans up after itself.
+# a plan job and an apply job through to completion; then the CLI in the image (--version, and generate --check started as root
+# over a host-owned copy of what the editor wrote with a root-owned .maquettiste/.cache: the run as the host user cannot write
+# it, the run started as root repairs it and runs as the host user); the editor again as the host user (started as root with
+# MAQUETTISTE_UID and MAQUETTISTE_GID, over a model folder only the host user can write): the model files it writes come out
+# owned by the host user; the editor started as root with no variables over that folder with root-owned and 1654-owned strays
+# in the model and an output root: it runs as the host user, repairs them, and saves 0644 files; the editor over a root-owned
+# model folder in a host-owned repository: it runs as the repository's owner and claims the folder; a command started as root
+# with no variables runs as the owner of its mounted working directory; last, rootless Podman simulated: started as root with no
+# variables over a model folder and repository owned by root, the editor stays root and its saves succeed. Cleans up after
+# itself.
 #
 # usage: docker/smoke.sh [image]      (run from the repository root; default image mattjcowan/maquettiste:dev)
 set -eu
@@ -21,12 +25,14 @@ volume="$name-data"
 cleanup() {
   docker rm -f "$name" >/dev/null 2>&1 || true
   docker volume rm "$volume" >/dev/null 2>&1 || true
-  # Files the container wrote belong to UID 1654: remove them as that user first.
-  docker run --rm -v "$work:/w" --entrypoint sh "$image" -c 'rm -rf /w/* /w/.[!.]*' >/dev/null 2>&1 || true
-  # The root-owned copy of the last case: remove its contents as root inside a container.
-  docker run --rm --user 0:0 -v "$work3:/w" --entrypoint sh "$image" -c 'rm -rf /w/* /w/.[!.]*' >/dev/null 2>&1 || true
+  # Files the container wrote belong to UID 1654 or root: remove the contents as root inside a container first.
+  for dir in "$work" "$work2" "$work3"; do
+    docker run --rm --user 0:0 -v "$dir:/w" --entrypoint sh "$image" -c 'rm -rf /w/* /w/.[!.]*' >/dev/null 2>&1 || true
+  done
   rm -rf "$work" "$work2" "$work3" 2>/dev/null || true
 }
+# Runs a shell command as root in a throwaway container over a folder (mounted at /w), bypassing the entrypoint.
+as_root() { docker run --rm --network none --user 0:0 -v "$1:/w" --entrypoint sh "$image" -c "$2"; }
 trap cleanup EXIT
 fail() { echo "smoke: FAIL: $*" >&2; docker logs "$name" 2>&1 | tail -40 >&2 || true; exit 1; }
 pass() { echo "smoke: ok: $*"; }
@@ -161,14 +167,28 @@ pass "a command started as root runs as 1654:1654, MAQUETTISTE_GID=0 is refused,
 cli="$work/cli-copy"
 mkdir "$cli" && (cd "$work" && tar cf - --exclude ./cli-copy --exclude ./.maquettiste/.cache .) | (cd "$cli" && tar xf - --no-same-owner --no-same-permissions)
 chmod -R u+rwX "$cli"
+# An earlier run as root left .maquettiste/.cache root's, closed to everyone else: a run as the host user cannot write its lock.
+as_root "$cli" 'mkdir -p /w/.maquettiste/.cache/strays && echo stale > /w/.maquettiste/.cache/strays/stale &&
+  chown -R 0:0 /w/.maquettiste/.cache && chmod 700 /w/.maquettiste/.cache'
+if [ "$(id -u)" != 0 ]; then
+  set +e
+  out=$(docker run --rm --network none --user "$(id -u):$(id -g)" -v "$cli:/repo" -w /repo "$image" maquettiste generate --check --progress none 2>&1)
+  code=$?
+  set -e
+  [ "$code" != 0 ] || fail "generate --check as --user $(id -u) wrote into a root-owned .maquettiste/.cache"
+  echo "$out" | grep -q 'permission denied.*--user 0:0' || { echo "$out" | tail -5 >&2; fail "the refused run did not suggest --user 0:0"; }
+  pass "generate --check as --user $(id -u):$(id -g) over a root-owned .cache exits $code with the --user 0:0 hint"
+fi
 set +e
-out=$(docker run --rm --network none --user "$(id -u):$(id -g)" -v "$cli:/repo" -w /repo "$image" maquettiste generate --check --progress none 2>&1)
+out=$(docker run --rm --network none --user 0:0 -v "$cli:/repo" -w /repo "$image" maquettiste generate --check --progress none 2>&1)
 code=$?
 set -e
-[ "$code" = 0 ] || { echo "$out" | tail -20 >&2; fail "maquettiste generate --check over the editor's output exited $code"; }
-foreign=$(find "$cli" ! -user "$(id -u)" | head -3)
-[ -z "$foreign" ] || fail "the CLI run as --user $(id -u) left files owned by another user: $foreign"
-pass "maquettiste generate --check as --user $(id -u):$(id -g): $(echo "$out" | grep -o 'Outcome: [A-Za-z]*' | tail -1), exit 0"
+[ "$code" = 0 ] || { echo "$out" | tail -20 >&2; fail "maquettiste generate --check started as root over the editor's output exited $code"; }
+echo "$out" | grep -q '^maquettiste: repaired [0-9]* files owned by another user under /repo/.maquettiste$' ||
+  { echo "$out" | tail -5 >&2; fail "the command started as root did not report the repair"; }
+foreign=$(find "$cli" ! -user "$(id -u)" -o ! -group "$(id -g)" | head -3)
+[ -z "$foreign" ] || fail "the CLI started as root left files owned by another user: $foreign"
+pass "maquettiste generate --check started as --user 0:0: $(echo "$out" | grep -o 'repaired [0-9]* files'), runs as $(id -u):$(id -g), $(echo "$out" | grep -o 'Outcome: [A-Za-z]*' | tail -1), exit 0"
 # The editor as the host user (docs/user-guide.md, the Mac): the same volume, now owned by 1654, and a fresh model
 # folder with no ACL that only the host user can write. The entrypoint starts as root, hands /data to MAQUETTISTE_UID and runs as it.
 host_ids="$(id -u):$(id -g)"
@@ -200,6 +220,51 @@ else
   foreign=$(find "$work2" ! -user "$(id -u)" | head -3)
   [ -z "$foreign" ] || fail "the editor run as MAQUETTISTE_UID left files owned by another user: $foreign"
   pass "a save as MAQUETTISTE_UID wrote the model file owned by $host_ids"
+  # Strays an earlier run left (root's and 1654's, files and a closed folder) in the model and in an output root (db): started
+  # as root with no variables, the editor runs as the owner of the model folder and makes them that owner's again.
+  docker rm -f "$name" >/dev/null
+  mkdir -p "$work2/.maquettiste/.cache"
+  as_root "$work2" 'chown 0:0 /w/.maquettiste/model/entities/invoice.json && chown 1654:1654 /w/.maquettiste/model/entities/customer.json &&
+    mkdir -p /w/.maquettiste/.cache/strays /w/db && echo stale > /w/.maquettiste/.cache/strays/stale && chmod 700 /w/.maquettiste/.cache/strays &&
+    chown -R 0:0 /w/.maquettiste/.cache/strays && echo stale > /w/db/stray.sql && chown 0:0 /w/db /w/db/stray.sql'
+  docker run -d --name "$name" --network none --user 0:0 \
+    -v "$volume:/data" -v "$work2/.maquettiste:/data/sites/maquettiste.localhost/data" -v "$work2:/repo" "$image" >/dev/null
+  wait_health
+  runs_as=$(docker exec "$name" stat -c '%u:%g' /proc/1)
+  [ "$runs_as" = "$host_ids" ] || fail "started as root over the host user's model folder with strays, the entrypoint runs as $runs_as"
+  repaired=$(docker logs "$name" 2>&1 | grep '^maquettiste: repaired') || fail "the entrypoint did not log a repair"
+  echo "$repaired" | grep -q '^maquettiste: repaired 4 files owned by another user under /data/sites/maquettiste.localhost/data$' ||
+    fail "the model repair line is not the expected one: $repaired"
+  echo "$repaired" | grep -q '^maquettiste: repaired 2 files owned by another user under /repo/db$' ||
+    fail "the output root repair line is not the expected one: $repaired"
+  foreign=$(find "$work2" ! -user "$(id -u)" -o ! -group "$(id -g)" | head -3)
+  [ -z "$foreign" ] || fail "the editor left strays owned by another user: $foreign"
+  pass "started as --user 0:0 the editor runs as $host_ids and repaired the strays: $(echo "$repaired" | tr '\n' ';')"
+  etag=$(api -f -D - -o /dev/null "http://127.0.0.1:8080/api/model/elements/$invoice" | tr -d '\r' | awk -F': ' 'tolower($1) == "etag" { print $2 }')
+  body=$(api -f "http://127.0.0.1:8080/api/model/elements/$invoice" | jqc -c '.json | .attributes[5].name = "repairedRemarks"')
+  status=$(echo "$body" | docker exec -i "$name" curl -sS -o /dev/null -w '%{http_code}' -H 'Host: maquettiste.localhost:8080' -X PUT \
+    -H 'Content-Type: application/json' -H "If-Match: $etag" --data-binary @- "http://127.0.0.1:8080/api/model/elements/$invoice")
+  [ "$status" = 200 ] || fail "the save after the repair answered $status"
+  grep -q '"repairedRemarks"' "$model" || fail "the save after the repair did not reach the bind-mounted model"
+  mode=$(stat -c '%a %u:%g' "$model")
+  [ "$mode" = "644 $host_ids" ] || fail "the saved model file is $mode, not 644 $host_ids"
+  pass "a save after the repair wrote the model file 0644, owned by $host_ids"
+  # A model folder root owns (Docker made it, or a run as root did) in a repository the host user owns: the editor takes the
+  # repository's owner and claims the folder itself as well.
+  docker rm -f "$name" >/dev/null
+  as_root "$work2" 'chown 0:0 /w/.maquettiste /w/.maquettiste/maquettiste.json'
+  docker run -d --name "$name" --network none --user 0:0 \
+    -v "$volume:/data" -v "$work2/.maquettiste:/data/sites/maquettiste.localhost/data" -v "$work2:/repo" "$image" >/dev/null
+  wait_health
+  runs_as=$(docker exec "$name" stat -c '%u:%g' /proc/1)
+  [ "$runs_as" = "$host_ids" ] || fail "over a root-owned model folder in a host-owned repository the entrypoint runs as $runs_as"
+  docker logs "$name" 2>&1 | grep -q "running as $host_ids: the owner of /repo (/data/sites/maquettiste.localhost/data is owned by root)" ||
+    fail "the entrypoint did not log that it took the repository's owner"
+  docker logs "$name" 2>&1 | grep -q '^maquettiste: repaired 2 files owned by another user under /data/sites/maquettiste.localhost/data$' ||
+    fail "the entrypoint did not repair the root-owned model folder: $(docker logs "$name" 2>&1 | grep repaired)"
+  owner=$(stat -c '%u:%g' "$work2/.maquettiste")
+  [ "$owner" = "$host_ids" ] || fail "the root-owned model folder is still owned by $owner"
+  pass "over a root-owned model folder in a host-owned repository the editor runs as $host_ids and claims the folder"
   # A command started as root with no variables runs as the owner of the mounted working directory (the CLI form).
   cmd_ids=$(docker run --rm --network none --user 0:0 -v "$work2:/repo" -w /repo "$image" sh -c 'echo "$(id -u):$(id -g)"') ||
     fail "a command started as root over the host user's folder failed"
@@ -208,7 +273,8 @@ else
 fi
 
 # Rootless Podman, simulated: its root is the host user and every other uid is a stranger to the bind mounts, which show as
-# owned by root. Started as root with no variables over a root-owned model folder, the editor stays root and can write it.
+# owned by root. Started as root with no variables over a root-owned model folder and repository, the editor stays root and
+# can write them. Docker maps root to root, so here the entrypoint also says how to run as the host user instead.
 docker rm -f "$name" >/dev/null
 cp -r tests/fixtures/models/billing/. "$work3/"
 mkdir -p "$work3/.maquettiste/templates"
@@ -220,6 +286,7 @@ wait_health
 host_as=$(docker exec "$name" sh -c 'for p in /proc/[0-9]*; do if tr "\0" " " < "$p/cmdline" 2>/dev/null | grep -q StaticSiteHost.dll; then stat -c "%u:%g" "$p"; fi; done' | sort -u)
 [ "$host_as" = "0:0" ] || fail "over a root-owned model folder the host process runs as '$host_as', not 0:0"
 docker logs "$name" 2>&1 | grep -q 'staying root' || fail "the entrypoint did not log that it stays root"
+docker logs "$name" 2>&1 | grep -q 'staying root.*MAQUETTISTE_UID=\$(id -u)' || fail "the entrypoint did not say how to set MAQUETTISTE_UID"
 pass "over a root-owned model folder with no variables the host process runs as root"
 etag=$(api -f -D - -o /dev/null "http://127.0.0.1:8080/api/model/elements/$invoice" | tr -d '\r' | awk -F': ' 'tolower($1) == "etag" { print $2 }')
 body=$(api -f "http://127.0.0.1:8080/api/model/elements/$invoice" | jqc -c '.json | .attributes[5].name = "rootRemarks"')

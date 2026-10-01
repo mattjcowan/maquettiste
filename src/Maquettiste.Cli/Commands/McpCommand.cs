@@ -1,5 +1,6 @@
 using Maquettiste.Cli.Mcp;
 using Maquettiste.Engine;
+using Maquettiste.Engine.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Server;
 
@@ -27,6 +28,7 @@ internal static class McpCommand
             return Program.ExitCodes.Invalid;
 
         var options = context.EngineOptions(repo);
+        await RefreshSchemasAsync(context, options, ct).ConfigureAwait(false);
         var store = new ModelStore(options);
         await using (store.ConfigureAwait(false))
         {
@@ -63,5 +65,27 @@ internal static class McpCommand
         }
 
         return Program.ExitCodes.Success;
+    }
+
+    /// <summary>
+    /// Refreshes <c>.maquettiste/.schema/v1/</c> when it differs from the embedded schemas, as the editor does at its start, and says so on
+    /// stderr in one line; a folder that cannot be written is reported and the server starts anyway.
+    /// </summary>
+    /// <param name="context">The global context.</param>
+    /// <param name="options">The engine options.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>A task.</returns>
+    private static async Task RefreshSchemasAsync(GlobalContext context, EngineOptions options, CancellationToken ct)
+    {
+        try
+        {
+            var before = await SchemaFolder.RefreshAsync(options, ct).ConfigureAwait(false);
+            if (!before.IsCurrent)
+                context.Info($"maquettiste: refreshed the schema copies in .maquettiste/.schema/v1/: {before.Describe()}.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            await context.Error.WriteLineAsync($"maquettiste: cannot refresh the schema copies in .maquettiste/.schema/v1/ ({ex.Message}); validate and generate warn MQ1008 until they are refreshed.").ConfigureAwait(false);
+        }
     }
 }

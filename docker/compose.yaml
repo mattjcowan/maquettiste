@@ -11,9 +11,11 @@
 # `git checkout -- .maquettiste` (uncommitted model edits are lost).
 #
 # The container starts as root only to pick the user the editor runs as (docker/entrypoint.sh): the owner of .maquettiste/.
-# Owned by root, as under rootless Podman (whose root is you outside the container), it stays root; owned by you, as under Docker
-# on Linux or on the Mac, it hands its /data volume to you and runs as you. Either way the model and the output roots are written
-# as you, with this file unchanged. Override with MAQUETTISTE_UID and MAQUETTISTE_GID (MAQUETTISTE_UID=0 stays root).
+# Owned by you, as under Docker on Linux or on the Mac, it hands its /data volume to you, repairs the files an earlier run left
+# owned by another user in .maquettiste/ and the output roots, and runs as you; owned by root under rootless Podman (whose root
+# is you outside the container) it stays root; owned by root under Docker it runs as the owner of the repository (./). Either
+# way the model and the output roots are written as you, with this file unchanged. Override with MAQUETTISTE_UID and
+# MAQUETTISTE_GID (MAQUETTISTE_UID=0 stays root).
 services:
   maquettiste:
     image: ${MAQUETTISTE_IMAGE:-mattjcowan/maquettiste:latest}

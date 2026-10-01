@@ -70,8 +70,10 @@ internal static class AgentSetup
 
     /// <summary>
     /// Returns the wrapper script: it finds docker (an MCP client may start it with a short PATH), runs <c>maquettiste mcp</c> in the image
-    /// as the calling user over this folder, keeps stdout for the protocol and appends the server's messages to
-    /// <c>.maquettiste/.cache/mcp.log</c>. The engine cache lives in <c>.maquettiste/.cache/cli</c> so it survives the container.
+    /// over this folder, keeps stdout for the protocol and appends the server's messages to <c>.maquettiste/.cache/mcp.log</c>. The
+    /// container starts as root (<c>--user 0:0</c>) so the image's entrypoint repairs files an earlier run left owned by another user
+    /// and runs the server as the owner of this folder (under rootless Podman it stays root, which is the user outside). The engine
+    /// cache lives in <c>.maquettiste/.cache/cli</c> so it survives the container.
     /// </summary>
     /// <param name="image">The image reference (checked by <see cref="IsImageReference"/>).</param>
     /// <returns>The script (LF line endings).</returns>
@@ -80,6 +82,7 @@ internal static class AgentSetup
         {{DockerWrapperMarker}} (written by maquettiste init --mcp --docker; docs/mcp.md)
         # Runs the maquettiste MCP server in Docker for an MCP client started in this folder. Stdout carries the protocol only; the
         # server's messages go to .maquettiste/.cache/mcp.log. MAQUETTISTE_IMAGE overrides the image, MAQUETTISTE_DOCKER the docker path.
+        # It starts as root: the image runs the server as the owner of this folder (docker/README.md "File ownership").
         set -eu
         cd "$(dirname "$0")"
         image="${MAQUETTISTE_IMAGE:-{{image}}}"
@@ -92,13 +95,16 @@ internal static class AgentSetup
             if [ -x "$candidate" ]; then docker="$candidate"; break; fi
           done
         fi
-        mkdir -p .maquettiste/.cache
+        mkdir -p .maquettiste/.cache 2>/dev/null || true
+        log=.maquettiste/.cache/mcp.log
+        # A log an earlier run as root left behind cannot be appended to until the container repairs it: log to /tmp this time.
+        if ! { true >> "$log"; } 2>/dev/null; then log="${TMPDIR:-/tmp}/maquettiste-mcp-$(id -u).log"; fi
         if [ -z "$docker" ]; then
-          echo "mcp.sh: docker not found; set MAQUETTISTE_DOCKER to its path" >> .maquettiste/.cache/mcp.log
+          echo "mcp.sh: docker not found; set MAQUETTISTE_DOCKER to its path" >> "$log"
           echo "mcp.sh: docker not found; set MAQUETTISTE_DOCKER to its path" >&2
           exit 127
         fi
-        exec "$docker" run -i --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo           -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli "$image" maquettiste mcp 2>> .maquettiste/.cache/mcp.log
+        exec "$docker" run -i --rm --user 0:0 -v "$PWD:/repo" -w /repo           -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli "$image" maquettiste mcp 2>> "$log"
 
         """.Replace("\r\n", "\n", StringComparison.Ordinal);
 

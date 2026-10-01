@@ -157,13 +157,13 @@ internal sealed class JsModelProxy : ObjectInstance
         {
             RecordSelf();
             var key = StringArgument(args);
-            var has = Target is RProcessNode node ? node.HasStereotype(key) : ((RElement)Target).HasStereotype(key);
+            var has = Target is RProcessNode node ? node.HasStereotype(key) : ((RAnnotated)Target).HasStereotype(key);
             return has ? JsBoolean.True : JsBoolean.False;
         }, 1, PropertyFlag.Configurable),
         ProxyFunction.HasTag => new ClrFunction(Engine, member.Name, (_, args) =>
         {
             RecordSelf();
-            return ((RElement)Target).HasTag(StringArgument(args)) ? JsBoolean.True : JsBoolean.False;
+            return ((RAnnotated)Target).HasTag(StringArgument(args)) ? JsBoolean.True : JsBoolean.False;
         }, 1, PropertyFlag.Configurable),
         ProxyFunction.Find => new ClrFunction(Engine, member.Name, (_, args) =>
         {

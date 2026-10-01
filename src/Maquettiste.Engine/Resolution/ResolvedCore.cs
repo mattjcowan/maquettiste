@@ -72,16 +72,25 @@ public abstract class RObject : IResolvedObject
     internal DependencySet? PendingDependencies;
 }
 
-/// <summary>The members common to every conceptual resolved object (package, entity, attribute, value object, enum, scalar type, relation).</summary>
-public abstract class RElement : RObject
+/// <summary>
+/// The annotations a model file carries besides its structure: display names, description, tags, category, stereotypes, custom
+/// properties and generation hints. Every conceptual object (<see cref="RElement"/>) has them, and so do the physical objects whose
+/// files carry them (<see cref="RTable"/>, <see cref="RView"/>, <see cref="RSequence"/>): a physical object reads them from its own
+/// file (a designed or imported table, a synthesized table's overlay, a view or sequence file) and never from the entity or relation
+/// it comes from, which templates reach through <c>table.entity</c> and <c>table.relation</c>.
+/// </summary>
+public abstract class RAnnotated : RObject
 {
-    /// <summary>The name.</summary>
-    public string Name { get; internal set; } = "";
-
-    /// <summary>The display name, falling back to <see cref="Name"/>.</summary>
+    /// <summary>
+    /// The display name. A conceptual object falls back to its name; a physical object holds its file's value, or the empty string
+    /// when the file sets none or the object has no file.
+    /// </summary>
     public string DisplayName { get; internal set; } = "";
 
-    /// <summary>The plural name, falling back to the inflector.</summary>
+    /// <summary>
+    /// The plural name. A conceptual object falls back to the inflector; a physical object holds its file's value, or the empty
+    /// string when the file sets none or the object has no file.
+    /// </summary>
     public string PluralName { get; internal set; } = "";
 
     /// <summary>The description text, with a sidecar file loaded; <see langword="null"/> when there is none.</summary>
@@ -96,14 +105,11 @@ public abstract class RElement : RObject
     /// <summary>Stereotypes, in application order.</summary>
     public IReadOnlyList<RStereotype> Stereotypes { get; internal set; } = [];
 
-    /// <summary>Custom properties: stereotype defaults merged under the element's own, as plain CLR values.</summary>
+    /// <summary>Custom properties: stereotype defaults merged under the object's own, as plain CLR values.</summary>
     public IReadOnlyDictionary<string, object?> Properties { get; internal set; } = FrozenDictionary<string, object?>.Empty;
 
     /// <summary>Generation hints by pack name or <c>"*"</c>.</summary>
     public IReadOnlyDictionary<string, GenerationHints> Generation { get; internal set; } = FrozenDictionary<string, GenerationHints>.Empty;
-
-    /// <summary>The owning package, or <see langword="null"/> for the root (for a package: its parent).</summary>
-    public RPackage? Package { get; internal set; }
 
     /// <summary>Whether the object carries a stereotype.</summary>
     /// <param name="key">The stereotype key.</param>
@@ -114,6 +120,16 @@ public abstract class RElement : RObject
     /// <param name="key">The tag key.</param>
     /// <returns><see langword="true"/> when present.</returns>
     public bool HasTag(string key) => Tags.Contains(key, StringComparer.Ordinal);
+}
+
+/// <summary>The members common to every conceptual resolved object (package, entity, attribute, value object, enum, scalar type, relation).</summary>
+public abstract class RElement : RAnnotated
+{
+    /// <summary>The name.</summary>
+    public string Name { get; internal set; } = "";
+
+    /// <summary>The owning package, or <see langword="null"/> for the root (for a package: its parent).</summary>
+    public RPackage? Package { get; internal set; }
 }
 
 /// <summary>A resolved category.</summary>

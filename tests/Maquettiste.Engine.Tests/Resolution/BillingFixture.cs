@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+using System.Text.Json;
 using Maquettiste.Engine.Model;
 using Maquettiste.Testing;
 
@@ -6,7 +8,8 @@ namespace Maquettiste.Engine.Tests.Resolution;
 /// <summary>
 /// The billing model used by the resolver's golden test: nested packages, a scalar type, two value objects, an enum, two
 /// stereotypes with virtual attributes, five entities, one-to-many, composition, many-to-one, many-to-many and self relations,
-/// and two databases (PostgreSQL with everything, SQL Server scoped to the Billing package with storage overrides).
+/// two databases (PostgreSQL with everything, SQL Server scoped to the Billing package with storage overrides), and an overlay that
+/// annotates the invoice table in PostgreSQL (display name, description, stereotype, tag, category, property).
 /// </summary>
 internal static class BillingFixture
 {
@@ -25,7 +28,7 @@ internal static class BillingFixture
             .Attr("city", "string", a => a.Length(100))
             .Attr("postalCode", "string", a => a.Length(20));
         var status = b.Enum("InvoiceStatus", billing).Member("Draft", 1, "D").Member("Sent", 2, "S").Member("Paid", 3, "P");
-        b.Stereotype("audited").AppliesTo("entity")
+        b.Stereotype("audited").AppliesTo("entity", "table").DefaultProperty("retentionDays", 2555)
             .Attr("createdAt", "datetimeoffset", a => a.Required().Order(900))
             .Attr("updatedAt", "datetimeoffset", a => a.Order(901));
         b.Stereotype("soft-delete").AppliesTo("entity").Attr("deletedAt", "datetimeoffset", a => a.Order(902));
@@ -64,9 +67,18 @@ internal static class BillingFixture
         b.Relation("has parent", category, category, toMax: MaxCardinality.One, fromRole: "child", toRole: "parent",
             fromNavigation: "children", toNavigation: "parent", package: catalog);
 
-        b.Database("main", Dialect.PostgreSql);
+        var main = b.Database("main", Dialect.PostgreSql);
         var reporting = b.Database("reporting", Dialect.SqlServer).Packages(billing);
         b.Mapping(reporting, invoice).Storage("status", StorageKind.String).Storage("total", StorageKind.Json);
+
+        // The invoice table's overlay carries annotations only: they reach the resolved table, not the entity.
+        var receivables = b.Category("Receivables");
+        b.Add(new Table
+        {
+            Id = b.NewId(), Database = main.Id, Origin = TableOrigin.Synthesized, Entity = invoice.Id, DisplayName = "Invoice register",
+            Description = new Description { Text = "One row per issued invoice." }, Stereotypes = ["audited"], Tags = ["billing"],
+            Category = receivables, Properties = ImmutableDictionary<string, JsonElement>.Empty.Add("tablespace", JsonDocument.Parse("\"billing_data\"").RootElement),
+        });
         return b;
     }
 }

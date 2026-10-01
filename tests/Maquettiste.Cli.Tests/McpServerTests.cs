@@ -49,6 +49,21 @@ public sealed class McpSurfaceTests
     }
 
     [Fact]
+    public async Task The_server_refreshes_stale_schema_copies_before_it_serves()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        repo.Write(".maquettiste/.schema/v1/entity.json", "{}\n");
+        repo.Write(".maquettiste/.schema/v1/retired.json", "{}\n");
+        await using var session = await McpSession.StartAsync(repo, ct);
+        foreach (var name in Maquettiste.Testing.TestServices.Schemas.FileNames)
+            Assert.Equal(Maquettiste.Testing.TestServices.Schemas.GetFileBytes(name).ToArray(), File.ReadAllBytes(repo.PathOf(".maquettiste/.schema/v1/" + name)));
+        Assert.False(File.Exists(repo.PathOf(".maquettiste/.schema/v1/retired.json")));
+        var validate = await session.OkAsync("validate");
+        Assert.DoesNotContain("MQ1008", validate.ToJsonString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Bad_arguments_and_missing_ids_are_tool_errors_with_problem_codes_not_crashes()
     {
         await using var session = await McpSession.StartAsync(ct: TestContext.Current.CancellationToken);

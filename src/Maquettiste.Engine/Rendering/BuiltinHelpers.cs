@@ -811,7 +811,7 @@ internal static class BuiltinHelpers
     {
         switch (value)
         {
-            case RElement element:
+            case RAnnotated element:
                 context.Recorder.RecordObject(element);
                 return element.HasStereotype(key);
             case RProcessNode node:
@@ -831,7 +831,7 @@ internal static class BuiltinHelpers
     {
         switch (value)
         {
-            case RElement element:
+            case RAnnotated element:
                 context.Recorder.RecordObject(element);
                 return element.HasTag(key);
             case IResolvedObject other:
@@ -852,7 +852,7 @@ internal static class BuiltinHelpers
     {
         if (value is null)
             return false;
-        if (value is not RElement element)
+        if (value is not RAnnotated element)
         {
             if (value is IResolvedObject other)
             {

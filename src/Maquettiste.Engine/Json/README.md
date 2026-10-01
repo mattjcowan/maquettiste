@@ -7,6 +7,8 @@ JSON Schema registry and key layouts (`ISchemaRegistry`, `SchemaRegistry`, `Obje
 - Implements: `ISchemaRegistry`, `ICanonicalJson` (complete: key order from `x-order`, `x-sort` arrays stable-sorted, defaults and nulls omitted with `x-default-unless` gates, `$schema` computed, LF, trailing newline, no BOM); `JsonPositionLocator` (complete).
 - Consumes: the embedded `schemas/v1/*.json` (see `schemas/README.md`), `Model.EngineJson`.
 
+`SchemaFolder` compares `<ModelRoot>/.schema/v1/*.json` with the embedded schemas byte for byte (`Status`: missing, stale and extra names) and refreshes it (`RefreshAsync`: deletes the extra files first, then stages and renames each missing or stale file, every path through `WriteTarget.Model`). `init`, the editor's start and `mcp` refresh; `SchemaFolder.Findings` builds MQ1008 for `validate` and `generate`.
+
 `JsonPositionLocator.Locate(bytes, pointer)` re-reads the bytes with `Utf8JsonReader` only when a diagnostic needs a position and returns the 1-based line and column of the pointer's value (lines by LF, columns in characters, a BOM skipped); `FromException` converts a `JsonException` position the same way. The loader, the store and the batch parser use it for MQ1001, MQ1002, MQ1004, MQ1006 and MQ1007. `CanonicalJson.IsCanonical` returns `false` (never throws) for bytes that are not UTF-8 or that repeat a property name.
 
 Tests: `tests/Maquettiste.Engine.Tests/Json/`.

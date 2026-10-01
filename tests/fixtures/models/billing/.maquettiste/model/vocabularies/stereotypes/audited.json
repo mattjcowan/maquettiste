@@ -5,7 +5,8 @@
   "key": "audited",
   "name": "Audited",
   "appliesTo": [
-    "entity"
+    "entity",
+    "table"
   ],
   "attributes": [
     {

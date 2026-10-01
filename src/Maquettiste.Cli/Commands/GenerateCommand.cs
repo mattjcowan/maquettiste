@@ -3,6 +3,7 @@ using System.Text;
 using Maquettiste.Engine;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Generation;
+using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 
@@ -87,6 +88,7 @@ internal static class GenerateCommand
             var progress = new ConsoleProgress(context.Progress, context.Error, hideWrite: check);
             var result = await service.RunAsync(request, progress, ct).ConfigureAwait(false);
             progress.Complete();
+            result = WithSchemaFindings(result, store, options);
             await ReportAsync(context, result, format, progress.FilesCompared, prefix: "").ConfigureAwait(false);
             return ExitCode(result.Outcome);
         }
@@ -143,6 +145,7 @@ internal static class GenerateCommand
         {
             progress.Complete();
             runs++;
+            result = WithSchemaFindings(result, service.Store, options);
             await ReportAsync(context, result, "text", progress.TakeFilesCompared(), prefix: string.Create(CultureInfo.InvariantCulture, $"[watch] run {runs}: ")).ConfigureAwait(false);
         }, progress);
 
@@ -167,6 +170,7 @@ internal static class GenerateCommand
         {
             var first = await service.RunAsync(request, progress, ct).ConfigureAwait(false);
             progress.Complete();
+            first = WithSchemaFindings(first, service.Store, options);
             await ReportAsync(context, first, "text", progress.TakeFilesCompared(), prefix: "[watch] initial run: ").ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -179,6 +183,27 @@ internal static class GenerateCommand
         progress.Complete();
         context.Info("[watch] stopped.");
         return Program.ExitCodes.Success;
+    }
+
+    /// <summary>
+    /// Adds MQ1008 when <c>.maquettiste/.schema/v1/</c> differs from the embedded schemas (engine-design.md section 3), as
+    /// <c>validate</c> does; the folder is never refreshed here, and the run's outcome stays the engine's. A run answered from the
+    /// last-run record loaded no snapshot, so the severity override then comes from the settings file.
+    /// </summary>
+    /// <param name="result">The run's result.</param>
+    /// <param name="store">The run's store.</param>
+    /// <param name="options">The engine options.</param>
+    /// <returns>The result with the finding among its diagnostics, in diagnostic order.</returns>
+    internal static GenerationResult WithSchemaFindings(GenerationResult result, ModelStore store, EngineOptions options)
+    {
+        if (result.Outcome == RunOutcome.Cancelled)
+            return result;
+        var findings = SchemaFolder.Findings(options, store.Current?.Settings);
+        if (findings.Count == 0)
+            return result;
+        var diagnostics = result.Diagnostics.Concat(findings).Distinct().ToList();
+        diagnostics.Sort(Diagnostic.Order);
+        return result with { Diagnostics = diagnostics };
     }
 
     private static async Task ReportAsync(GlobalContext context, GenerationResult result, string format, int filesCompared, string prefix)

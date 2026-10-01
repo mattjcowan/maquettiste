@@ -2,9 +2,18 @@
   "$schema": "../../../../.schema/v1/table.json",
   "kind": "table",
   "id": "01J92P0V1T0J6RH4MY9H81NYB4",
+  "displayName": "Invoice register",
   "database": "01J92P0V1QRN2181XM2ZWE02W4",
   "origin": "synthesized",
   "entity": "01J92P0V0FJ23CGSNKM7P1W5V7",
+  "description": "One row per issued invoice; finance reconciles it monthly.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "billing"
+  ],
+  "category": "01J92P0V06TYE8P8990AV35A8K",
   "columns": [
     {
       "id": "01J92P0V1VQAA9FW71PKYWWHKN",
@@ -32,5 +41,8 @@
         }
       ]
     }
-  ]
+  ],
+  "properties": {
+    "tablespace": "billing_data"
+  }
 }

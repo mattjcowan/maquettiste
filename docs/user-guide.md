@@ -768,6 +768,15 @@ prints a value from the model, `{{ for a in entity.attributes }} … {{ end }}` 
 keeps a part only when a condition holds. A template that prints `CREATE TABLE {{ table.name }} (` gives
 `CREATE TABLE customers (` for the customers table.
 
+A table offers what its own file says about it, the way an entity does: `table.display_name`, `table.plural_name`,
+`table.description`, `table.tags`, `table.category` (with `name` and `path`), `table.stereotypes` (each with `key`
+and `name`), `table.properties` (a custom property reads as `{{ table.properties.tablespace }}`, with the stereotypes'
+default properties under the file's own values) and `table.generation`. The file is the designed or imported table,
+or the overlay you add to a synthesized table; a synthesized table without one has none of these, and its entity's
+are at `table.entity`. Views and sequences (`table.database.views`, `table.database.sequences`) offer the same from
+their own files, and `has_stereotype`, `has_tag` and `in_category` take a table, a view or a sequence as well as an
+element.
+
 **A pack** is a folder, `.maquettiste/templates/<pack>/`, holding the templates and one `pack.json` that says what to
 run. The example packs are `sql-ddl` (database scripts), `csharp-dapper` (classes and repositories, and the process
 code) and `process-docs` (Markdown pages for processes, actors and scenarios); your own packs sit beside them and work
@@ -1032,9 +1041,13 @@ MAQUETTISTE_IMAGE=mattjcowan/maquettiste:<tag> docker compose -f <maquettiste>/d
 ```
 
 The container starts as root and looks at who owns the mounted `.maquettiste/` folder. When it is you (Docker on Linux or
-on the Mac), the editor hands its own volume to you and runs as you, so the model and the generated files stay yours. When it
-is root (rootless Podman, whose root inside the container is you outside it), the editor stays root, which writes your
-folders as you. Two variables override the choice when you need to:
+on the Mac), the editor hands its own volume to you and runs as you, so the model and the generated files stay yours. Before
+it starts it repairs what an earlier run left owned by another user (root, or UID 1654 from an older image) in `.maquettiste/`
+and in the output roots: those files become yours again, and the log says `repaired N files owned by another user under
+<path>`. When Docker shows `.maquettiste/` itself as root's (Docker created it before `init` ran, or an earlier run as root
+did), the editor runs as the owner of the repository instead and makes the folder yours. Under rootless Podman, whose root
+inside the container is you outside it, the editor stays root, which writes your folders as you. Two variables override the
+choice when you need to:
 
 - `MAQUETTISTE_UID`: the user id to run as (`id -u`); `0` keeps root.
 - `MAQUETTISTE_GID`: the group id to run as (`id -g`); defaults to the folder's group.
@@ -1049,7 +1062,7 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 
 | Command | What it does |
 | --- | --- |
-| `maquettiste init` | Creates `.maquettiste/` (`maquettiste.json`, the JSON schemas for editor completion, the `sql-ddl` starter pack) and a `.gitignore` block. `--pack csharp-dapper` or `--pack none` picks another starter; `--mcp`, `--skill` and `--agent-setup` register the agent server, and `--mcp --docker <image>` registers a `./mcp.sh` wrapper that runs it from the image (docs/mcp.md). The project is named by `--name <name>`, else the `name` of `package.json`, else the git remote's repository name, else the folder name (so a repository mounted at `/repo` in the image keeps its real name). Running it again keeps what is there. |
+| `maquettiste init` | Creates `.maquettiste/` (`maquettiste.json`, the JSON schemas for editor completion, the `sql-ddl` starter pack) and a `.gitignore` block. `--pack csharp-dapper` or `--pack none` picks another starter; `--mcp`, `--skill` and `--agent-setup` register the agent server, and `--mcp --docker <image>` registers a `./mcp.sh` wrapper that runs it from the image (docs/mcp.md). The project is named by `--name <name>`, else the `name` of `package.json`, else the git remote's repository name, else the folder name (so a repository mounted at `/repo` in the image keeps its real name). Running `init` again, starting the editor or starting `maquettiste mcp` refreshes the JSON schemas when a new version ships different ones; until then `validate` and `generate` warn MQ1008 and name the files that differ. Running it again keeps what is there. |
 | `maquettiste validate` | Validates the model and the packs, and replays every scenario of every process (MQ9301 to MQ9306 and MQ9502 to MQ9507); `--format sarif` for code-scanning tools. |
 | `maquettiste generate` | Renders the packs into the output roots of `maquettiste.json`, incrementally: only units whose inputs changed re-render. Prints one line per file (`A` added, `M` modified, `D` deleted, `K` kept). A generated file edited by hand stops the run (exit 3); `--hand-edits overwrite` replaces it. |
 | `maquettiste generate --check` | Renders without writing and exits 2 when the committed output differs from the model: the CI gate. |
@@ -1075,7 +1088,7 @@ Progress (`--progress plain`, the default when stderr is not a terminal) prints 
 and a done line; `generate --check` prints no write stage, since it writes nothing. When the operating system refuses a
 write (the run lock under `.maquettiste/.cache`, the cache folder or an output file), the CLI prints one line naming the
 path and exits 1; in a container on a Linux host this usually means the container runs as another user than the one that
-owns the mounted folder, so run it with `--user $(id -u):$(id -g)`.
+owns the mounted folder, or that a file there belongs to another user, so start it with `--user 0:0` (below).
 
 With the .NET SDK installed, the CLI is a .NET tool (`dotnet tool install -g Maquettiste.Cli --prerelease`).
 
@@ -1085,24 +1098,28 @@ The editor image carries the CLI, so a machine with only Docker needs nothing el
 make it the working directory:
 
 ```sh
-docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste init
-docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste generate
-docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste generate --check
-docker run --rm -it --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste generate --watch
+docker run --rm --user 0:0 -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste init
+docker run --rm --user 0:0 -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste generate
+docker run --rm --user 0:0 -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste generate --check
+docker run --rm -it --user 0:0 -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste generate --watch
 ```
 
 A shell function saves typing (`-it` only when you are at a terminal, so it also works in scripts and CI):
 
 ```sh
-maquettiste() { docker run --rm $([ -t 0 ] && echo -it) --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste "$@"; }
+maquettiste() { docker run --rm $([ -t 0 ] && echo -it) --user 0:0 -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste "$@"; }
 ```
 
-**File ownership.** The image runs as UID 1654. Add `--user "$(id -u):$(id -g)"` (as the function does): the CLI then
-writes the model and the generated files as you, and they stay yours. Without it the run fails on a repository UID 1654
-cannot write, with "Access to the path ... is denied" (Linux) or "Permission denied" (the Mac, whose
-Docker file sharing does not map the container's user). The CLI works under any
-UID: when the image's own folders are not writable it keeps its cache in the container's `/tmp` for that run. Under rootless
-Podman, leave `--user` out (root in the container is you outside it) or replace it with `--userns=keep-id`.
+**File ownership.** `--user 0:0` (as the function passes) starts the container as root only long enough for the image to
+pick the user: the command then runs as the owner of the mounted folder, which is you, and writes the model and the generated
+files as you. First it repairs what an earlier run left owned by another user (root, or UID 1654) in `.maquettiste/`, in the
+output roots and in the files `init` writes at the project root: they become yours again, with one line on stderr,
+`repaired N files owned by another user under <path>`. Without `--user` the image runs as UID 1654 and fails on a repository
+that user cannot write, with "Access to the path ... is denied" (Linux) or "Permission denied" (the Mac); with
+`--user "$(id -u):$(id -g)"` it runs as you but cannot repair a file root owns. The same function works under rootless Podman,
+where root in the container is you outside it and the image stays root, so `--userns=keep-id` is not needed.
+`MAQUETTISTE_UID` and `MAQUETTISTE_GID` (`-e MAQUETTISTE_UID=...`) pick another user, as for the editor. The CLI works under
+any UID: when the image's own folders are not writable it keeps its cache in the container's `/tmp` for that run.
 
 **Order with the editor.** Run `init` before `docker compose ... up`. The compose file bind-mounts `./.maquettiste`; when
 the folder does not exist yet, Docker creates it empty (owned by root on Linux) and the editor starts on a project with no

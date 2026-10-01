@@ -82,24 +82,9 @@ internal static class InitCommand
             settingsOutcome = await AddPackOutputAsync(files, json, settingsPath, pack, report, ct).ConfigureAwait(false);
         report.Add(Describe(settingsOutcome, ".maquettiste/maquettiste.json"));
 
-        // Schemas: refreshed on every run; files the engine no longer ships are removed.
-        var schemaFolder = Path.Combine(modelRoot, ".schema", "v1");
-        files.CreateDirectory(WriteTarget.Model, schemaFolder);
-        int refreshed = 0;
-        foreach (var name in schemas.FileNames)
-        {
-            var outcome = await files.WriteAsync(WriteTarget.Model, Path.Combine(schemaFolder, name), schemas.GetFileBytes(name), overwrite: true, ct).ConfigureAwait(false);
-            if (outcome is WriteOutcome.Created or WriteOutcome.Updated)
-                refreshed++;
-        }
-
-        var known = schemas.FileNames.ToHashSet(StringComparer.Ordinal);
-        foreach (var stale in Directory.EnumerateFiles(schemaFolder, "*.json").Where(f => !known.Contains(Path.GetFileName(f))).Order(StringComparer.Ordinal).ToList())
-        {
-            files.Delete(WriteTarget.Model, stale);
-        }
-
-        report.Add($"{(refreshed == 0 ? "kept" : "wrote")} .maquettiste/.schema/v1/ ({schemas.FileNames.Count} schemas{(refreshed == 0 ? ", current" : "")})");
+        // Schemas: refreshed on every run; files the engine no longer ships are removed (SchemaFolder, shared with the editor's start).
+        var schemaStatus = await SchemaFolder.RefreshAsync(options, ct).ConfigureAwait(false);
+        report.Add($"{(schemaStatus.IsCurrent ? "kept" : "wrote")} .maquettiste/.schema/v1/ ({schemas.FileNames.Count} schemas{(schemaStatus.IsCurrent ? ", current" : "")})");
 
         // Starter pack.
         if (pack != "none")

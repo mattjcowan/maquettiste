@@ -458,7 +458,7 @@ internal sealed class UnitRun
     private static HintsView Hints(TrackingTemplateContext context, IResolvedObject? element)
     {
         GenerationHints? star = null, own = null;
-        if (element is RElement e)
+        if (element is RAnnotated e)
         {
             e.Generation.TryGetValue("*", out star);
             e.Generation.TryGetValue(context.Unit.Planned.Pack.Name, out own);

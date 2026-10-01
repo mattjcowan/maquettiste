@@ -25,13 +25,14 @@ Linux) and the editor starts on an empty project.
 The image also carries the `maquettiste` command line (`/usr/local/bin/maquettiste`, the CLI in `/opt/maquettiste/cli` on the
 image's .NET runtime). Given a command, the entrypoint runs it instead of the editor:
 
-    docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:latest maquettiste generate --check
+    docker run --rm --user 0:0 -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:latest maquettiste generate --check
 
-`--user` keeps the files it writes yours under Docker (the CLI works under any UID); under rootless Podman leave it out or
-use `--userns=keep-id` instead. docs/user-guide.md "The command line" has the
-commands and a shell function. For agents, `maquettiste init --mcp --docker mattjcowan/maquettiste:<tag>` writes `mcp.sh`, a
-wrapper that runs `maquettiste mcp` in the image as you, and registers it in `.mcp.json` (`"type": "stdio"`,
-`"command": "./mcp.sh"`); the server's messages go to `.maquettiste/.cache/mcp.log` (docs/mcp.md).
+`--user 0:0` starts the container as root so the entrypoint can repair what another user left in the project and then run the
+command as the owner of the mounted folder, which is you (File ownership); the same form works under Docker and under rootless
+Podman. docs/user-guide.md "The command line" has the commands and a shell function. For agents,
+`maquettiste init --mcp --docker mattjcowan/maquettiste:<tag>` writes `mcp.sh`, a wrapper that runs `maquettiste mcp` in the
+image the same way, and registers it in `.mcp.json` (`"type": "stdio"`, `"command": "./mcp.sh"`); the server's messages go to
+`.maquettiste/.cache/mcp.log` (docs/mcp.md).
 
 ## Never delete the site
 
@@ -41,27 +42,32 @@ Never delete or rename the site `maquettiste.localhost` in the host's management
 
 ## File ownership
 
-The compose file starts the container as root, and the entrypoint picks the user the editor runs as from the owner of the
-mounted `.maquettiste/` folder. When that owner is you (Docker on Linux, Docker on the Mac, whose file sharing shows your
-files as your uid), it hands its own volume (`/data`, never the bind mounts) and `/home/app` to you and runs the editor as you
-(`setpriv`, from the base image). When the owner is root (rootless Podman, whose root inside the container is you outside it
-and whose other uids cannot write the mounts; or a folder Docker created itself because `init` did not run), it stays root and
-logs `staying root`. No `chmod`, ACL or variable is needed in either case. Two variables override the choice:
-
-- `MAQUETTISTE_UID`: the user id to run as; `0` keeps root. Empty or unset means the folder's owner.
-- `MAQUETTISTE_GID`: the group id; empty means the folder's group (`MAQUETTISTE_GID=0` with another user is refused).
-
-With plain `docker run`, pass `--user 0:0` for the same behavior. Given a command (the CLI form) the same rule applies to the
-mounted working directory (`-w /repo`), so what the command writes belongs to the mount's owner; with nothing mounted it runs
-as the image's user, UID 1654 (`app`), as it does when the image starts as `app` (without `--user 0:0`).
-
-Remove files an earlier image left owned by 1654 as root inside a container:
-
-    docker run --rm --user 0 -v "$PWD:/w" --entrypoint rm mattjcowan/maquettiste:latest -rf /w/<path>
+Start the container as root (the compose file's `user: "0:0"`, or `docker run --user 0:0`) and the entrypoint picks the user
+that runs the editor or the command, makes the files Maquettiste touches belong to that user, and drops to it with `setpriv`.
+The user is the owner of the mounted model folder (`.maquettiste/`) for the editor, or of the mounted working directory
+(`-w /repo`) for a command, which under Docker on Linux and on the Mac is you; the entrypoint hands its own volume (`/data`) and
+`/home/app` to that user, and with nothing mounted it runs as the image's user, UID 1654 (`app`). Repair means that every file
+or folder that another user owns (root, or 1654 from an older image) inside the model folder, inside the output roots that
+`outputs.allow` lists, and for a command in the files `init` writes at the project root (`.gitignore`, `.mcp.json`, `mcp.sh`,
+the modeling skill) is given to that user, without following symbolic links and without changing the mount point itself; the
+entrypoint logs `repaired N files owned by another user under <path>` when it changed any, so a run as root never leaves you
+needing `sudo chown`. When Docker shows the model folder itself as root's (Docker created it because `init` had not run, or an
+earlier run as root did), the editor takes the owner of the repository mount `/repo` instead and claims the folder as well;
+with no such owner it stays root and logs how to set the variables. `MAQUETTISTE_UID` sets the user id to run as (`0` stays
+root; empty means the folder's owner) and `MAQUETTISTE_GID` the group id (empty means the folder's group; `0` with another user
+is refused); repair then works for the user they name. Under rootless Podman, root in the container is you outside it: the
+entrypoint recognizes a rootless runtime from the container's user mapping (`/proc/self/uid_map` maps root to your uid, where
+Docker maps it to root), stays root and repairs to root, which is you, so the same `--user 0:0` and the same compose file work
+unchanged and `--userns=keep-id` is no longer needed. Files are written 0644 and folders 0755 (umask 022); only the host's
+deploy key is 0600.
 
 `docker/smoke.sh` checks the default run as 1654, a run with `MAQUETTISTE_UID` set to the host user (saves come out owned by
-that user), a command started as root over a host-owned folder (it runs as the host user), and a run started as root with no
-variables over a root-owned model folder, as rootless Podman shows it (the editor stays root and its saves succeed).
+that user), the editor started as root over a host-owned model folder with root-owned and 1654-owned files in it and in an
+output root (it runs as the host user, repairs them and saves 0644 files), the editor over a root-owned model folder in a
+host-owned repository (it runs as the repository's owner), a command started as root over a host-owned folder with a
+root-owned `.maquettiste/.cache` (it repairs it, runs as the host user and `generate --check` succeeds), and a run started as
+root with no variables over a root-owned model folder and repository, as rootless Podman shows them (the editor stays root and
+its saves succeed).
 
 ## Who is "local" (no sign-in)
 

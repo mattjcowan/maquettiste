@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text.Json;
 using Maquettiste.Engine.Model;
 using Maquettiste.Testing;
 
@@ -165,5 +166,61 @@ public sealed class PhysicalFileTests
         Assert.Equal("things_pkey", table.PrimaryKey!.Name);
         Assert.Equal("uuidv7()", table.Column("id").DefaultSql);
         Assert.Equal(0L, table.Column("count").Default);
+    }
+
+    [Fact]
+    public void Tables_views_and_sequences_carry_the_annotations_of_their_own_files_only()
+    {
+        var b = new ModelBuilder(seed: 66);
+        var stereotype = b.Stereotype("ledger").AppliesTo("entity", "table", "view", "sequence").DefaultProperty("retentionDays", 30).DefaultProperty("owner", "finance");
+        var receivables = b.Category("Receivables");
+        var invoice = b.Entity("Invoice").Key("id", "uuid").Attr("number", "string").Stereotype("ledger").Tag("billing").Category(receivables);
+        var payment = b.Entity("Payment").Key("id", "uuid");
+        var db = b.Database("main", Dialect.PostgreSql);
+        var properties = ImmutableDictionary<string, JsonElement>.Empty.Add("owner", JsonDocument.Parse("\"treasury\"").RootElement);
+        var hints = new Dictionary<string, GenerationHints> { ["sql-ddl"] = new() { Rename = "ledger_entries" } };
+        var tableId = b.NewId();
+        b.Add(new Table
+        {
+            Id = tableId, Name = "ledger", Database = db.Id, Origin = TableOrigin.Designed, DisplayName = "Ledger", PluralName = "Ledgers",
+            Description = new Description { Text = "Every posting." }, Stereotypes = ["ledger"], Tags = ["finance"], Category = receivables,
+            Properties = properties, Generation = hints,
+            Columns = [new Column { Id = b.NewId(), Name = "id", Type = "int64", Nullable = false }],
+        });
+        b.Add(new Table { Id = b.NewId(), Database = db.Id, Origin = TableOrigin.Synthesized, Entity = payment.Id, Description = new Description { Text = "Overlay." } });
+        b.Add(new View
+        {
+            Id = b.NewId(), Name = "open_ledger", Database = db.Id, Body = ImmutableDictionary<string, string>.Empty.Add("*", "select 1"),
+            DisplayName = "Open ledger", Stereotypes = ["ledger"], Tags = ["finance"], Comment = "Open postings.",
+        });
+        b.Add(new Sequence { Id = b.NewId(), Name = "ledger_seq", Database = db.Id, Description = new Description { Text = "Posting numbers." }, Properties = properties });
+
+        var rdb = ResolutionKit.Resolve(b).Db("main");
+
+        var ledger = rdb.Table("ledger");
+        Assert.Equal(("Ledger", "Ledgers", "Every posting."), (ledger.DisplayName, ledger.PluralName, ledger.Description));
+        Assert.Equal(["ledger"], ledger.Stereotypes.Select(s => s.Key));
+        Assert.True(ledger.HasStereotype("ledger") && ledger.HasTag("finance"));
+        Assert.Equal("Receivables", ledger.Category!.Path);
+        Assert.Equal(["owner", "retentionDays"], ledger.Properties.Keys);
+        Assert.Equal("treasury", ledger.Properties["owner"]); // the file's own value wins over the stereotype default
+        Assert.Equal(30L, Convert.ToInt64(ledger.Properties["retentionDays"], System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal("ledger_entries", ledger.Generation["sql-ddl"].Rename);
+        Assert.Contains("e:" + stereotype.Id, ledger.Dependencies);
+
+        // A synthesized table reads its overlay only; without one it has nothing, whatever its entity carries.
+        Assert.Equal("Overlay.", rdb.Table("payments").Description);
+        var invoices = rdb.Table("invoices");
+        Assert.True(invoices.Entity!.HasStereotype("ledger"));
+        Assert.Equal(("", "", null, 0, 0, null, 0, 0), (invoices.DisplayName, invoices.PluralName, invoices.Description, invoices.Stereotypes.Count,
+            invoices.Tags.Count, invoices.Category, invoices.Properties.Count, invoices.Generation.Count));
+
+        var view = Assert.Single(rdb.Views);
+        Assert.Equal(("Open ledger", "Open postings."), (view.DisplayName, view.Comment));
+        Assert.Equal(["ledger"], view.Stereotypes.Select(s => s.Key));
+        Assert.Equal(["finance"], view.Tags);
+        var sequence = Assert.Single(rdb.Sequences);
+        Assert.Equal("Posting numbers.", sequence.Description);
+        Assert.Equal("treasury", sequence.Properties["owner"]);
     }
 }

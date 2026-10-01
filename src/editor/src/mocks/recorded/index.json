@@ -27,11 +27,16 @@
     "kind": "table",
     "name": "",
     "package": null,
-    "tags": [],
-    "hash": "ae8e25b09c4545bea2c0a6e43207c1dcc0994210ff290f46790c4abc9774ea13",
+    "tags": [
+      "billing"
+    ],
+    "hash": "0cc191974c83c57fafcb71504df77e082e775ab1afa77afce37c4e1ee2636075",
     "path": ".maquettiste/model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json",
-    "category": null,
-    "stereotypes": [],
+    "category": "01J92P0V06TYE8P8990AV35A8K",
+    "stereotypes": [
+      "audited"
+    ],
+    "displayName": "Invoice register",
     "database": "01J92P0V1QRN2181XM2ZWE02W4",
     "entity": "01J92P0V0FJ23CGSNKM7P1W5V7"
   },
@@ -322,7 +327,7 @@
     "name": "Audited",
     "package": null,
     "tags": [],
-    "hash": "d53cebc064f008ca381bf49e9072b067b8de2b69f3c3d051faf88be06403366d",
+    "hash": "b0d22dbeb46355d8ac72ac2b96955620e3e74b2c6f1ffbceacddd204b8b9ea52",
     "path": ".maquettiste/model/vocabularies/stereotypes/audited.json",
     "category": null,
     "stereotypes": []

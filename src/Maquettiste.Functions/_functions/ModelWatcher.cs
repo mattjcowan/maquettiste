@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using Maquettiste.Engine;
+using Maquettiste.Engine.Json;
 using Microsoft.Extensions.Logging;
 using StaticSiteHost.Functions;
 
@@ -18,7 +19,10 @@ public static class ModelWatcher
     /// <summary>How long the watcher waits before it tries to start a file watcher again after one failed.</summary>
     public static readonly TimeSpan RestartDelay = TimeSpan.FromSeconds(5);
 
-    /// <summary>Loads the model, subscribes <c>model.changed</c>, runs the validation loop and the file watcher until stopped.</summary>
+    /// <summary>
+    /// Refreshes the schema copies in <c>.schema/v1/</c> when they differ from the engine's, loads the model, subscribes
+    /// <c>model.changed</c>, runs the validation loop and the file watcher until stopped.
+    /// </summary>
     /// <param name="stoppingToken">Stops the service (a redeploy or shutdown).</param>
     /// <param name="store">The model store.</param>
     /// <param name="events">The publisher.</param>
@@ -31,6 +35,7 @@ public static class ModelWatcher
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(events);
         ArgumentNullException.ThrowIfNull(settings);
+        await RefreshSchemasAsync(settings.Engine, logger, stoppingToken).ConfigureAwait(false);
         try
         {
             await store.LoadAsync(stoppingToken).ConfigureAwait(false);
@@ -88,6 +93,31 @@ public static class ModelWatcher
             catch (OperationCanceledException)
             {
             }
+        }
+    }
+
+    /// <summary>
+    /// Brings <c>.schema/v1/</c> in line with the engine's embedded schemas (the copies model files name through <c>$schema</c>), so an
+    /// upgraded editor never leaves an IDE checking files against an older release. One log line names what it wrote; the folder is
+    /// engine-owned and the watcher ignores it, so the refresh raises no change. A data folder the host mounts read-only only logs.
+    /// </summary>
+    /// <param name="options">The engine options (the model root).</param>
+    /// <param name="logger">The functions' logger.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>A task.</returns>
+    public static async Task RefreshSchemasAsync(EngineOptions options, ILogger logger, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
+        try
+        {
+            var before = await SchemaFolder.RefreshAsync(options, ct).ConfigureAwait(false);
+            if (!before.IsCurrent)
+                logger.LogInformation("maquettiste: refreshed the schema copies in .schema/v1/: {Changes}.", before.Describe());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning("maquettiste: cannot refresh the schema copies in .schema/v1/ ({Reason}); validate and generate warn MQ1008 until they are refreshed.", ex.Message);
         }
     }
 

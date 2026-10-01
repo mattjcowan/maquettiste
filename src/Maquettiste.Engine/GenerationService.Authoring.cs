@@ -348,7 +348,8 @@ public sealed partial class GenerationService
             return "boolean";
         if (type.IsPrimitive || type == typeof(decimal))
             return "number";
-        if (type.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IReadOnlyDictionary<,>)))
+        // A property typed as the interface itself (IReadOnlyDictionary<,>) does not list it among its own interfaces.
+        if (type.GetInterfaces().Prepend(type).Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IReadOnlyDictionary<,>)))
             return "map";
         return type != typeof(string) && typeof(System.Collections.IEnumerable).IsAssignableFrom(type) ? "list" : "object";
     }

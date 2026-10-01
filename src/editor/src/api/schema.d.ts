@@ -395,9 +395,11 @@ export interface paths {
         /**
          * The resolved tables of one database
          * @description The physical model after conventions, mappings and table overlays are applied: every table (synthesized,
-         *     designed or imported), its columns with the attribute each one stores, keys, foreign keys and indexes. The
-         *     Database workspace draws table diagrams from it and the Mappings workspace sets it beside the entity. A model
-         *     with errors returns `view: null` and the diagnostics.
+         *     designed or imported), its columns with the attribute each one stores, keys, foreign keys and indexes, and
+         *     every view and sequence. Each table, view and sequence carries the annotations of its own file (display and
+         *     plural names, description, stereotypes, tags, category, properties, generation hints); a synthesized table
+         *     without an overlay has none. The Database workspace draws table diagrams from it and the Mappings workspace
+         *     sets it beside the entity. A model with errors returns `view: null` and the diagnostics.
          */
         get: operations["getDatabaseView"];
         put?: never;
@@ -2194,7 +2196,16 @@ export interface components {
             version: string | null;
             defaultSchema: string | null;
             tables: components["schemas"]["TableView"][];
+            /** @description Every view, by schema then name. */
+            views: components["schemas"]["ViewView"][];
+            /** @description Every sequence, by schema then name, the ones the resolver creates for entity keys included. */
+            sequences: components["schemas"]["SequenceView"][];
         };
+        /**
+         * @description One resolved table. The annotation members (`displayName` to `generation`) come from the table's own file: the
+         *     designed or imported table, or a synthesized table's overlay. A synthesized table without an overlay has none;
+         *     it never takes its entity's, which `entityId` leads to.
+         */
         TableView: {
             /** @description A table file's id, or a synthesized key such as `<entityId>@<databaseId>` (engine-design.md 7.3); the `elementId` for `sql-ddl`/`table` previews. */
             key: string;
@@ -2216,6 +2227,88 @@ export interface components {
             uniques: components["schemas"]["KeyView"][];
             foreignKeys: components["schemas"]["ForeignKeyView"][];
             indexes: components["schemas"]["IndexView"][];
+            /** @description The display name the file sets, or null; there is no fallback. */
+            displayName: string | null;
+            /** @description The plural name the file sets, or null; there is no fallback. */
+            pluralName: string | null;
+            /** @description The description text, a sidecar file's content loaded. */
+            description: string | null;
+            /** @description The stereotype keys, in application order. */
+            stereotypes: string[];
+            tags: string[];
+            /** @description The id of the category-tree node. */
+            category: components["schemas"]["Ulid"] | null;
+            /** @description The custom properties, the stereotypes' default properties merged under the file's own. */
+            properties: {
+                [key: string]: unknown;
+            };
+            /** @description The generation hints by pack name or `*`. */
+            generation: {
+                [key: string]: components["schemas"]["GenerationHintsView"];
+            };
+        };
+        /** @description One resolved view, with the annotations of its file (as `TableView`). */
+        ViewView: {
+            id: components["schemas"]["Ulid"];
+            name: string;
+            schema: string | null;
+            /** @description The body for the database's dialect. */
+            body: string;
+            columns: components["schemas"]["ViewColumnView"][];
+            comment: string | null;
+            displayName: string | null;
+            pluralName: string | null;
+            description: string | null;
+            stereotypes: string[];
+            tags: string[];
+            category: components["schemas"]["Ulid"] | null;
+            properties: {
+                [key: string]: unknown;
+            };
+            generation: {
+                [key: string]: components["schemas"]["GenerationHintsView"];
+            };
+        };
+        ViewColumnView: {
+            name: string;
+            type: string | null;
+            nativeType: string | null;
+            nullable: boolean;
+        };
+        /** @description One resolved sequence, with the annotations of its file (as `TableView`); a sequence the resolver creates for an entity key has none. */
+        SequenceView: {
+            /** @description The sequence file's id, or a synthesized key such as `<entityId>.sequence@<databaseId>`. */
+            id: string;
+            name: string;
+            schema: string | null;
+            type: string;
+            nativeType: string;
+            start: number;
+            increment: number;
+            min: number | null;
+            max: number | null;
+            cycle: boolean;
+            cache: number | null;
+            displayName: string | null;
+            pluralName: string | null;
+            description: string | null;
+            stereotypes: string[];
+            tags: string[];
+            category: components["schemas"]["Ulid"] | null;
+            properties: {
+                [key: string]: unknown;
+            };
+            generation: {
+                [key: string]: components["schemas"]["GenerationHintsView"];
+            };
+        };
+        /** @description One pack's generation hints on a resolved object (every member written). */
+        GenerationHintsView: {
+            skip: boolean;
+            rename: string | null;
+            variables: {
+                [key: string]: unknown;
+            };
         };
         ColumnView: {
             /** @description An attribute path, `discriminator`, `position`, `id`, or a column id. */

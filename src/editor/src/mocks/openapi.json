@@ -3078,7 +3078,7 @@
         ],
         "operationId": "getDatabaseView",
         "summary": "The resolved tables of one database",
-        "description": "The physical model after conventions, mappings and table overlays are applied: every table (synthesized,\ndesigned or imported), its columns with the attribute each one stores, keys, foreign keys and indexes. The\nDatabase workspace draws table diagrams from it and the Mappings workspace sets it beside the entity. A model\nwith errors returns `view: null` and the diagnostics.\n",
+        "description": "The physical model after conventions, mappings and table overlays are applied: every table (synthesized,\ndesigned or imported), its columns with the attribute each one stores, keys, foreign keys and indexes, and\nevery view and sequence. Each table, view and sequence carries the annotations of its own file (display and\nplural names, description, stereotypes, tags, category, properties, generation hints); a synthesized table\nwithout an overlay has none. The Database workspace draws table diagrams from it and the Mappings workspace\nsets it beside the entity. A model with errors returns `view: null` and the diagnostics.\n",
         "x-maquettiste-role": "viewer",
         "x-engine-addition": "E1 GenerationService.GetDatabaseViewAsync(databaseId)",
         "responses": {
@@ -9492,7 +9492,9 @@
           "dialect",
           "version",
           "defaultSchema",
-          "tables"
+          "tables",
+          "views",
+          "sequences"
         ],
         "properties": {
           "id": {
@@ -9521,12 +9523,27 @@
             "items": {
               "$ref": "#/components/schemas/TableView"
             }
+          },
+          "views": {
+            "type": "array",
+            "description": "Every view, by schema then name.",
+            "items": {
+              "$ref": "#/components/schemas/ViewView"
+            }
+          },
+          "sequences": {
+            "type": "array",
+            "description": "Every sequence, by schema then name, the ones the resolver creates for entity keys included.",
+            "items": {
+              "$ref": "#/components/schemas/SequenceView"
+            }
           }
         }
       },
       "TableView": {
         "x-engine-addition": "E1",
         "x-engine-record": "Maquettiste.Engine.TableView",
+        "description": "One resolved table. The annotation members (`displayName` to `generation`) come from the table's own file: the\ndesigned or imported table, or a synthesized table's overlay. A synthesized table without an overlay has none;\nit never takes its entity's, which `entityId` leads to.\n",
         "type": "object",
         "required": [
           "key",
@@ -9542,7 +9559,15 @@
           "primaryKey",
           "uniques",
           "foreignKeys",
-          "indexes"
+          "indexes",
+          "displayName",
+          "pluralName",
+          "description",
+          "stereotypes",
+          "tags",
+          "category",
+          "properties",
+          "generation"
         ],
         "properties": {
           "key": {
@@ -9625,6 +9650,343 @@
             "items": {
               "$ref": "#/components/schemas/IndexView"
             }
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The display name the file sets, or null; there is no fallback."
+          },
+          "pluralName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The plural name the file sets, or null; there is no fallback."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The description text, a sidecar file's content loaded."
+          },
+          "stereotypes": {
+            "type": "array",
+            "description": "The stereotype keys, in application order.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "category": {
+            "description": "The id of the category-tree node.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "properties": {
+            "type": "object",
+            "description": "The custom properties, the stereotypes' default properties merged under the file's own.",
+            "additionalProperties": true
+          },
+          "generation": {
+            "type": "object",
+            "description": "The generation hints by pack name or `*`.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/GenerationHintsView"
+            }
+          }
+        }
+      },
+      "ViewView": {
+        "x-engine-record": "Maquettiste.Engine.ViewView",
+        "description": "One resolved view, with the annotations of its file (as `TableView`).",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "schema",
+          "body",
+          "columns",
+          "comment",
+          "displayName",
+          "pluralName",
+          "description",
+          "stereotypes",
+          "tags",
+          "category",
+          "properties",
+          "generation"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "schema": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "type": "string",
+            "description": "The body for the database's dialect."
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ViewColumnView"
+            }
+          },
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pluralName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stereotypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "category": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "properties": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "generation": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/GenerationHintsView"
+            }
+          }
+        }
+      },
+      "ViewColumnView": {
+        "x-engine-record": "Maquettiste.Engine.ViewColumnView",
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "nativeType",
+          "nullable"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nativeType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nullable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SequenceView": {
+        "x-engine-record": "Maquettiste.Engine.SequenceView",
+        "description": "One resolved sequence, with the annotations of its file (as `TableView`); a sequence the resolver creates for an entity key has none.",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "schema",
+          "type",
+          "nativeType",
+          "start",
+          "increment",
+          "min",
+          "max",
+          "cycle",
+          "cache",
+          "displayName",
+          "pluralName",
+          "description",
+          "stereotypes",
+          "tags",
+          "category",
+          "properties",
+          "generation"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The sequence file's id, or a synthesized key such as `<entityId>.sequence@<databaseId>`."
+          },
+          "name": {
+            "type": "string"
+          },
+          "schema": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "type": "string"
+          },
+          "nativeType": {
+            "type": "string"
+          },
+          "start": {
+            "type": "integer"
+          },
+          "increment": {
+            "type": "integer"
+          },
+          "min": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "max": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "cycle": {
+            "type": "boolean"
+          },
+          "cache": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pluralName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stereotypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "category": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "properties": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "generation": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/GenerationHintsView"
+            }
+          }
+        }
+      },
+      "GenerationHintsView": {
+        "x-engine-record": "Maquettiste.Engine.Model.GenerationHints",
+        "description": "One pack's generation hints on a resolved object (every member written).",
+        "type": "object",
+        "required": [
+          "skip",
+          "rename",
+          "variables"
+        ],
+        "properties": {
+          "skip": {
+            "type": "boolean"
+          },
+          "rename": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "variables": {
+            "type": "object",
+            "additionalProperties": true
           }
         }
       },

@@ -16,7 +16,9 @@ maquettiste --repo path/to/repo --cache-dir /tmp/mq-cache mcp
 The repository is `--repo`, else the nearest ancestor of the current directory holding `.maquettiste/maquettiste.json`. The index and
 plan cache is `--cache-dir`, else `$MAQUETTISTE_CACHE_DIR`, else the user cache folder, so the server shares plans and unit state with
 `maquettiste generate` on the same repo. Without a model the command exits 1 with a message on stderr. Stdout carries JSON-RPC
-messages only; the start line and any error go to stderr. The server stops (exit 0) when the client closes stdin, after answering
+messages only; the start line and any error go to stderr. Before it serves, the server refreshes the JSON schemas in
+`.maquettiste/.schema/v1/` when they differ from the ones this version ships (as `init` and the editor's start do) and says so in one
+line on stderr; a folder it cannot write is reported there and the server starts anyway. The server stops (exit 0) when the client closes stdin, after answering
 every request it read before the end (so `echo '<request>' | maquettiste mcp` prints the answer), or on Ctrl+C.
 
 ## Claude Code setup
@@ -87,15 +89,19 @@ maquettiste init --mcp --docker mattjcowan/maquettiste:<tag>     # add --skill f
 and `mcp.sh` (executable, safe to commit) runs, from its own folder:
 
 ```sh
-docker run -i --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo \
+docker run -i --rm --user 0:0 -v "$PWD:/repo" -w /repo \
   -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli mattjcowan/maquettiste:<tag> maquettiste mcp 2>> .maquettiste/.cache/mcp.log
 ```
 
 - `-i` keeps stdin open (the JSON-RPC stream); there is no `-t`, a terminal would mix control characters into stdout.
-- `--user` runs the server as you, so the model files it writes are yours: right under Docker, on Linux and on the Mac.
-  Under rootless Podman (`MAQUETTISTE_DOCKER=podman`), root in the container is already you and any other uid cannot write
-  the mounted folder: remove `--user "$(id -u):$(id -g)"` from `mcp.sh`, or replace it with `--userns=keep-id`. A later
-  `init --docker` rewrites the script, so repeat the edit after one.
+- `--user 0:0` starts the container as root so the image's entrypoint can pick the user: it repairs what an earlier run left
+  owned by another user in `.maquettiste/` and the output roots (an editor run as root, for example; the log gets one line,
+  `repaired N files owned by another user under <path>`), then runs the server as the owner of the folder, which is you, so
+  the model files it writes are yours: under Docker on Linux and on the Mac. Under rootless Podman (`MAQUETTISTE_DOCKER=podman`)
+  root in the container is already you, the entrypoint sees that and stays root, so the script works unchanged and needs no
+  `--userns=keep-id`. When `.maquettiste/.cache/mcp.log` itself belongs to another user, that first run logs to
+  `$TMPDIR/maquettiste-mcp-<uid>.log` (or `/tmp`) and the next one is back in the cache folder. docker/README.md "File
+  ownership" has the whole rule.
 - No `--repo` and no absolute path: the script mounts its own folder, and the server finds the repository there. The file works
   for everyone who clones the repository.
 - Stdout carries the protocol only; the server's messages (its start line, errors) are appended to `.maquettiste/.cache/mcp.log`,
@@ -111,7 +117,7 @@ docker run -i --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo \
 Without the script, the same command works for `claude mcp add` (for the current user only):
 
 ```sh
-claude mcp add maquettiste -- docker run -i --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste mcp
+claude mcp add maquettiste -- docker run -i --rm --user 0:0 -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste mcp
 ```
 
 Checked on Linux (Docker Engine, amd64) with a stdio client over `docker run -i --rm --user ... maquettiste mcp`: `initialize`
@@ -186,7 +192,7 @@ the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.We
 | `reference_type_usage` | getReferenceTypeUsage | `id` of a reference type | `usages`: attribute, owner, domain, collection, required and the effective storage per database |
 | `validate` | validate | `elementIds` (optional scope), `includeReferrers`, `includeScriptRules` | the report: diagnostics with rule ids, file, JSON pointer, line and column; counts |
 | `list_validation_rules` | listValidationRules | | the built-in rules, ordered by id: `id`, `defaultSeverity`, `description`, `family` (the hundreds group, such as `MQ72xx`) and `familyLabel`, `canBeOff` (false for MQ1xxx), `quickFix` (the batch operation that fixes a finding, when the rule has one); override a severity with `validation.rules` through `save_settings` |
-| `get_database_view` | getDatabaseView | `id` of a database | the resolved physical view: the tables of the entities mapped to it (by its `byConvention` setting and its `packages`, or one by one by mapping elements, less the ignored ones), with columns, keys, indexes and foreign keys, views and sequences; a new database with nothing mapped has no tables |
+| `get_database_view` | getDatabaseView | `id` of a database | the resolved physical view: the tables of the entities mapped to it (by its `byConvention` setting and its `packages`, or one by one by mapping elements, less the ignored ones), with columns, keys, indexes and foreign keys, views and sequences. Each table, view and sequence carries the annotations of its own file: `displayName`, `pluralName`, `description`, `stereotypes` (keys), `tags`, `category` (id), `properties` (merged with the stereotypes' defaults) and `generation`; a synthesized table without an overlay has none, whatever its entity carries. A new database with nothing mapped has no tables |
 | `list_packs` | (part of getProject) | | pack manifests and their diagnostics |
 | `get_settings` | getSettings | | `maquettiste.json`: typed settings, canonical `json`, `hash` |
 | `save_settings` | saveSettings | `settings` (whole document), `expectedHash` | the save result |

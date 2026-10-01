@@ -78,8 +78,8 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
 - **init:** creates the phase 1 folders under `.maquettiste/` (`model/{packages,entities,relations,enums,types,databases,mappings,
   diagrams,vocabularies}`, `templates`, `extensions`; a `.gitkeep` in each folder still empty), a canonical `maquettiste.json`
   (format 1, `outputs.allow` `db` committed and `src/Generated` built, `packs.<starter>.output` `db` for sql-ddl or
-  `src/Generated` for csharp-dapper), every embedded schema in `.schema/v1/` (refreshed on every run; files no longer shipped are
-  removed), the starter pack in `templates/<pack>/`, and a `# maquettiste:begin` … `# maquettiste:end` block in `.gitignore` with
+  `src/Generated` for csharp-dapper), every embedded schema in `.schema/v1/` (refreshed on every run through the engine's
+  `SchemaFolder.RefreshAsync`, which `mcp` and the editor also run at their start; files no longer shipped are removed), the starter pack in `templates/<pack>/`, and a `# maquettiste:begin` … `# maquettiste:end` block in `.gitignore` with
   the built roots of the settings file and `/.maquettiste/.cache/` (rewritten in place, other lines kept). Existing files are kept,
   except that a kept settings file without a `packs.<starter>` entry gets one (re-running `init --pack <other>`). A `.gitignore`
   whose markers are not exactly one begin line followed by one end line is refused with the line number (exit 4) before anything
@@ -109,7 +109,8 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
 - **Preview verbs** (`l10n import|prune|set-default`, `seed import`): `--check` exits 2 when the preview would change something;
   `--apply` with `--dry-run` or `--check` is a usage error (4); an unknown locale, a missing or unreadable file, a conflict or an
   invalid change exit 1. Results go to stdout, the summary line to stderr.
-- **validate:** model diagnostics (`ModelStore.ValidateAsync`, load diagnostics included) plus pack-load diagnostics, sorted;
+- **validate:** model diagnostics (`ModelStore.ValidateAsync`, load diagnostics included) plus pack-load diagnostics and MQ1008
+  when `.schema/v1/` differs from the embedded schemas (reported, never refreshed; `generate` adds it to every run's result too), sorted;
   `--format text` (one `path(line,col): severity rule: message` line per diagnostic), `json` (`schemas/v1/diagnostics.json`) or
   `sarif` (`SarifWriter`). `--output <file>` writes through the project's output path policy, so the file must lie under an
   `outputs.allow` root (redirect stdout otherwise).
@@ -138,7 +139,8 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
   named on stderr. `--check` writes nothing, prints `would format <path>` and exits 2 (drift) when any file would change, else 0.
 - **Permission errors:** an `UnauthorizedAccessException` anywhere in a failure (the run lock, the cache, an output or model
   file, the engine's `.name.mq-<id>-<n>.tmp` named as its target) prints one line, `maquettiste: permission denied: cannot write
-  <path>. …`, with the `--user $(id -u):$(id -g)` hint on Linux, and exits 1 instead of the internal-error stack trace.
+  <path>. …`, with the `--user 0:0` hint on Linux (the image's entrypoint then repairs ownership and runs as the repo's owner),
+  and exits 1 instead of the internal-error stack trace.
 - **Progress (plain):** one start and one done line per stage, in stage order. The pack loader reports as plan before resolve
   starts; a stage 2 to 5 whose predecessor has not reported is held (counts folded, nothing printed) until it reports again
   after its predecessor or the run ends. `generate --check` hides the write stage in every style (its file count still feeds

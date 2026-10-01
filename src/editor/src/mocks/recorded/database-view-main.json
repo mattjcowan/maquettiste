@@ -147,7 +147,15 @@
           }
         ],
         "foreignKeys": [],
-        "indexes": []
+        "indexes": [],
+        "displayName": null,
+        "pluralName": null,
+        "description": null,
+        "stereotypes": [],
+        "tags": [],
+        "category": null,
+        "properties": {},
+        "generation": {}
       },
       {
         "key": "01J92P0V0GWFR78HZH0P8Z3GY7@01J92P0V1QRN2181XM2ZWE02W4",
@@ -331,7 +339,15 @@
             "endId": "01J92P0V1JK03BVHPB2KENZ68W"
           }
         ],
-        "indexes": []
+        "indexes": [],
+        "displayName": null,
+        "pluralName": null,
+        "description": null,
+        "stereotypes": [],
+        "tags": [],
+        "category": null,
+        "properties": {},
+        "generation": {}
       },
       {
         "key": "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4",
@@ -596,7 +612,22 @@
             "unique": false,
             "where": null
           }
-        ]
+        ],
+        "displayName": "Invoice register",
+        "pluralName": null,
+        "description": "One row per issued invoice; finance reconciles it monthly.",
+        "stereotypes": [
+          "audited"
+        ],
+        "tags": [
+          "billing"
+        ],
+        "category": "01J92P0V06TYE8P8990AV35A8K",
+        "properties": {
+          "retentionDays": 2555,
+          "tablespace": "billing_data"
+        },
+        "generation": {}
       },
       {
         "key": "01J92P0V1DKHD5Q02DV6S5M53D@01J92P0V1QRN2181XM2ZWE02W4",
@@ -724,7 +755,15 @@
             "endId": "01J92P0V1N727B9EM9FXPMKH7P"
           }
         ],
-        "indexes": []
+        "indexes": [],
+        "displayName": null,
+        "pluralName": null,
+        "description": null,
+        "stereotypes": [],
+        "tags": [],
+        "category": null,
+        "properties": {},
+        "generation": {}
       },
       {
         "key": "01J92P0V0HEGSC6MW92CST5KA6@01J92P0V1QRN2181XM2ZWE02W4",
@@ -879,7 +918,15 @@
         },
         "uniques": [],
         "foreignKeys": [],
-        "indexes": []
+        "indexes": [],
+        "displayName": null,
+        "pluralName": null,
+        "description": null,
+        "stereotypes": [],
+        "tags": [],
+        "category": null,
+        "properties": {},
+        "generation": {}
       },
       {
         "key": "01J92P0V0JR8BE8253SKT29ZG7@01J92P0V1QRN2181XM2ZWE02W4",
@@ -1022,7 +1069,75 @@
           }
         ],
         "foreignKeys": [],
-        "indexes": []
+        "indexes": [],
+        "displayName": null,
+        "pluralName": null,
+        "description": null,
+        "stereotypes": [],
+        "tags": [],
+        "category": null,
+        "properties": {},
+        "generation": {}
+      }
+    ],
+    "views": [
+      {
+        "id": "01J92P0V1YZ4YP352KD1A50FXS",
+        "name": "outstanding_invoices",
+        "schema": "billing",
+        "body": "select id, number, issued_on from billing.invoices where status = 1",
+        "columns": [
+          {
+            "name": "id",
+            "type": "uuid",
+            "nativeType": "uuid",
+            "nullable": false
+          },
+          {
+            "name": "number",
+            "type": "string",
+            "nativeType": "varchar(255)",
+            "nullable": false
+          },
+          {
+            "name": "issued_on",
+            "type": "date",
+            "nativeType": "date",
+            "nullable": false
+          }
+        ],
+        "comment": null,
+        "displayName": null,
+        "pluralName": null,
+        "description": null,
+        "stereotypes": [],
+        "tags": [],
+        "category": null,
+        "properties": {},
+        "generation": {}
+      }
+    ],
+    "sequences": [
+      {
+        "id": "01J92P0V1S972MSFDJ8G6V6MWT",
+        "name": "invoice_number_seq",
+        "schema": "billing",
+        "type": "int64",
+        "nativeType": "bigint",
+        "start": 1000,
+        "increment": 1,
+        "min": null,
+        "max": null,
+        "cycle": false,
+        "cache": null,
+        "displayName": null,
+        "pluralName": null,
+        "description": null,
+        "stereotypes": [],
+        "tags": [],
+        "category": null,
+        "properties": {},
+        "generation": {}
       }
     ]
   },

@@ -6,10 +6,39 @@
 // with real ones.
 import { conventionOf, placesEntity } from "@/model/databaseMapping";
 import { schemaForEntity, schemasOf } from "@/model/databaseSchemas";
-import type { ColumnView, DatabaseView, ForeignKeyView, TableView } from "@/api/types";
+import type { ColumnView, DatabaseView, ForeignKeyView, SequenceView, TableView, ViewView } from "@/api/types";
 
 type Json = Record<string, unknown>;
 const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
+
+type Annotations = Pick<TableView, "displayName" | "pluralName" | "description" | "stereotypes" | "tags" | "category" | "properties" | "generation">;
+
+/**
+ * The annotations a table, view or sequence takes from its own file (none without a file, never its entity's): the
+ * stereotypes' default properties under the file's own, as the engine merges them. A sidecar description reads as null.
+ */
+export function annotationsOf(doc: Json | undefined, stereotypes: ReadonlyMap<string, Json>): Annotations {
+  const keys = (doc?.stereotypes as string[] | undefined) ?? [];
+  const properties: Record<string, unknown> = {};
+  for (const key of keys) Object.assign(properties, (stereotypes.get(key)?.defaultProperties as Json | undefined) ?? {});
+  Object.assign(properties, (doc?.properties as Json | undefined) ?? {});
+  const generation = Object.fromEntries(
+    Object.entries((doc?.generation as Record<string, Json> | undefined) ?? {}).map(([pack, h]) => [
+      pack,
+      { skip: h.skip === true, rename: typeof h.rename === "string" ? h.rename : null, variables: (h.variables as Json | undefined) ?? {} },
+    ]),
+  );
+  return {
+    displayName: typeof doc?.displayName === "string" ? doc.displayName : null,
+    pluralName: typeof doc?.pluralName === "string" ? doc.pluralName : null,
+    description: typeof doc?.description === "string" ? doc.description : null,
+    stereotypes: [...keys],
+    tags: [...((doc?.tags as string[] | undefined) ?? [])],
+    category: typeof doc?.category === "string" ? doc.category : null,
+    properties: Object.fromEntries(Object.entries(properties).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))),
+    generation,
+  };
+}
 
 export interface PhysicalInput {
   docs: Map<string, Json>;
@@ -360,12 +389,13 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
       relationId: null,
       isJunction: false,
       isLookup: false,
-      comment: null,
+      comment: typeof overlay?.comment === "string" ? overlay.comment : null,
       columns: [],
       primaryKey: null,
       uniques: [],
       foreignKeys: [],
       indexes: [],
+      ...annotationsOf(overlay, stereotypes),
     };
     table.columns = columns.map((c, i) => ({ ...toView(c, i + 1), identity: identity && c.isPrimaryKey }));
     const pk = table.columns.filter((c) => c.isPrimaryKey);
@@ -476,6 +506,10 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
         uniques: [],
         foreignKeys: [],
         indexes: [],
+        ...annotationsOf(
+          overlays.find((t) => t.relation === relation.id),
+          stereotypes,
+        ),
       };
       const sides = [
         { end: a, target: left, label: leftName },
@@ -523,6 +557,48 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
   }
 
   tables.sort((x, y) => x.name.localeCompare(y.name));
+  const schemaOf = (doc: Json) => (typeof doc.schema === "string" ? (declared.get(doc.schema) ?? defaultSchema) : defaultSchema);
+  const byName = <T extends { name: string }>(x: T, y: T) => x.name.localeCompare(y.name);
+  const views: ViewView[] = all
+    .filter((d) => d.kind === "view" && d.database === databaseId)
+    .map((d) => {
+      const body = (d.body as Record<string, string> | undefined) ?? {};
+      return {
+        id: String(d.id),
+        name: String(d.name ?? ""),
+        schema: schemaOf(d),
+        body: body[dialect] ?? body["*"] ?? "",
+        columns: arr(d.columns).map((c) => ({
+          name: String(c.name),
+          type: typeof c.type === "string" ? c.type : null,
+          nativeType: typeof c.type === "string" ? nativeType(dialect, c.type, {}) : null,
+          nullable: c.nullable !== false,
+        })),
+        comment: typeof d.comment === "string" ? d.comment : null,
+        ...annotationsOf(d, stereotypes),
+      };
+    })
+    .sort(byName);
+  const sequences: SequenceView[] = all
+    .filter((d) => d.kind === "sequence" && d.database === databaseId)
+    .map((d) => {
+      const type = typeof d.type === "string" ? d.type : "int64";
+      return {
+        id: String(d.id),
+        name: String(d.name ?? ""),
+        schema: schemaOf(d),
+        type,
+        nativeType: nativeType(dialect, type, {}),
+        start: typeof d.start === "number" ? d.start : 1,
+        increment: typeof d.increment === "number" ? d.increment : 1,
+        min: typeof d.min === "number" ? d.min : null,
+        max: typeof d.max === "number" ? d.max : null,
+        cycle: d.cycle === true,
+        cache: typeof d.cache === "number" ? d.cache : null,
+        ...annotationsOf(d, stereotypes),
+      };
+    })
+    .sort(byName);
   return {
     id: databaseId,
     name: dbName,
@@ -530,6 +606,8 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
     version: typeof db.version === "string" ? db.version : null,
     defaultSchema,
     tables,
+    views,
+    sequences,
   };
 }
 

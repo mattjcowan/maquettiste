@@ -739,6 +739,30 @@ internal sealed partial class ResolveRun
             deps.Add(InflectionKey);
         }
 
+        FillAnnotations(r, element, sidecar, deps);
+    }
+
+    /// <summary>
+    /// Fills the annotations of a physical object (table, view, sequence) from its own file: display and plural names as written
+    /// (empty when unset, with no fallback), then what <see cref="FillAnnotations(RAnnotated, ElementBase, string?, DependencySet)"/>
+    /// fills. Without a file (a synthesized table with no overlay, a key sequence) the annotations stay empty. The caller adds the
+    /// file's own <c>e:</c> key.
+    /// </summary>
+    /// <param name="r">The resolved object.</param>
+    /// <param name="file">The object's file, or <see langword="null"/>.</param>
+    /// <param name="deps">The object's dependency keys: the category tree and the applied stereotypes are added.</param>
+    internal void FillPhysicalAnnotations(RAnnotated r, Element? file, DependencySet deps)
+    {
+        if (file is null)
+            return;
+        r.DisplayName = file.DisplayName ?? "";
+        r.PluralName = file.PluralName ?? "";
+        FillAnnotations(r, file, Model.GetDocument(file.Id)?.SidecarText, deps);
+    }
+
+    /// <summary>Fills description, tags, category, stereotypes, merged properties and generation hints from a file.</summary>
+    private void FillAnnotations(RAnnotated r, ElementBase element, string? sidecar, DependencySet deps)
+    {
         r.Description = element.Description is { } description ? description.Text ?? (description.File is null ? null : sidecar) : null;
         r.Tags = [.. element.Tags];
         if (element.Category is { } category && _categories.TryGetValue(category, out var rc))

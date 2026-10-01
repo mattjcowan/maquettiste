@@ -56,8 +56,9 @@ public sealed class RSchema : RObject
     public RList<RSequence> Sequences { get; internal set; } = RList<RSequence>.Empty;
 }
 
-/// <summary>A resolved table.</summary>
-public sealed class RTable : RObject
+/// <summary>A resolved table. Its annotations (<see cref="RAnnotated"/>) come from its own file: the designed or imported table, or a
+/// synthesized table's overlay; a synthesized table without an overlay has none.</summary>
+public sealed class RTable : RAnnotated
 {
     /// <inheritdoc/>
     public override string Kind => "table";
@@ -106,8 +107,6 @@ public sealed class RTable : RObject
 
     /// <summary>Whether the table is a relation's junction table.</summary>
     public bool IsJunction { get; internal set; }
-
-
 }
 
 /// <summary>A resolved primary key.</summary>
@@ -288,8 +287,8 @@ public sealed class RColumn : RObject
     public string? Strategy { get; internal set; }
 }
 
-/// <summary>A resolved view.</summary>
-public sealed class RView : RObject
+/// <summary>A resolved view, with the annotations (<see cref="RAnnotated"/>) of its file.</summary>
+public sealed class RView : RAnnotated
 {
     /// <inheritdoc/>
     public override string Kind => "view";
@@ -308,6 +307,9 @@ public sealed class RView : RObject
 
     /// <summary>The columns.</summary>
     public IReadOnlyList<RViewColumn> Columns { get; internal set; } = [];
+
+    /// <summary>The comment.</summary>
+    public string? Comment { get; internal set; }
 }
 
 /// <summary>A column of a resolved view.</summary>
@@ -326,8 +328,9 @@ public sealed class RViewColumn
     public bool Nullable { get; internal set; } = true;
 }
 
-/// <summary>A resolved sequence.</summary>
-public sealed class RSequence : RObject
+/// <summary>A resolved sequence. Its annotations (<see cref="RAnnotated"/>) come from its file; a sequence the resolver creates for an
+/// entity key has none.</summary>
+public sealed class RSequence : RAnnotated
 {
     /// <inheritdoc/>
     public override string Kind => "sequence";

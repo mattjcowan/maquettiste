@@ -6,6 +6,7 @@ import { openapi, validatorAt } from "@/mocks/contract";
 import { baselineOperations } from "@/mocks/baseline";
 import { APPROVER, BUDGET_HOLDER, BUDGET_REJECTED, INVOICE, INVOICE_LIFECYCLE, PURCHASE_APPROVAL } from "@/mocks/model/processSeed";
 import { IDS, useMockApi } from "./harness";
+import type { DatabaseView } from "@/api/types";
 
 type Json = Record<string, unknown>;
 const esc = (s: string) => s.replace(/~/g, "~0").replace(/\//g, "~1");
@@ -67,6 +68,28 @@ describe("mock contract", () => {
     await call("get", `/api/databases/${database.id}/view`, "/api/databases/{id}/view");
     await call("post", "/api/validate", "/api/validate", {});
     await call("get", "/api/jobs", "/api/jobs");
+  });
+
+  it("serves each table's, view's and sequence's own annotations in the database view, never its entity's", async () => {
+    const { payload: index } = await call("get", "/api/model/index", "/api/model/index");
+    const database = (index as { id: string; kind: string; name: string }[]).find((e) => e.kind === "database" && e.name === "main")!;
+    const { payload } = await call("get", `/api/databases/${database.id}/view`, "/api/databases/{id}/view");
+    const view = (payload as { view: DatabaseView }).view;
+    // The invoice table's overlay: its annotations, the audited stereotype's default properties merged under its own.
+    const invoices = view.tables.find((t) => t.entityId === IDS.invoice)!;
+    expect(invoices).toMatchObject({
+      displayName: "Invoice register",
+      pluralName: null,
+      stereotypes: ["audited"],
+      tags: ["billing"],
+      properties: { retentionDays: 2555, tablespace: "billing_data" },
+      generation: {},
+    });
+    // The customers table has no overlay: nothing, although the Customer entity is audited.
+    const customers = view.tables.find((t) => t.name === "customers")!;
+    expect(customers).toMatchObject({ displayName: null, description: null, stereotypes: [], tags: [], category: null, properties: {} });
+    expect(view.views.map((v) => v.name)).toEqual(["outstanding_invoices"]);
+    expect(view.sequences.find((s) => s.name === "invoice_number_seq")).toMatchObject({ start: 1000, stereotypes: [], properties: {} });
   });
 
   it("answers the explorer-at-scale additions (E5 to E5e) in contract shape", async () => {

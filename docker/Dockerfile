@@ -83,13 +83,15 @@ COPY --from=editor /out/site.zip /opt/maquettiste/site.zip
 COPY docker/entrypoint.sh /opt/maquettiste/entrypoint.sh
 RUN sha256sum /opt/maquettiste/site.zip | cut -c1-64 > /opt/maquettiste/site.sha256 && chmod 755 /opt/maquettiste/entrypoint.sh
 # The CLI, last so a CLI change leaves the layers above cached. `docker run <image> maquettiste ...` runs it instead of the editor
-# (the entrypoint execs a given command); docker/maquettiste.sh makes it work under any --user.
+# (the entrypoint execs a given command, as the owner of the mounted folder when started with --user 0:0); docker/maquettiste.sh
+# makes it work under any --user.
 COPY --from=cli /cli /opt/maquettiste/cli
 COPY --chmod=755 docker/maquettiste.sh /usr/local/bin/maquettiste
 # Server GC with dynamic adaptation and tiered PGO off: the settings the incremental generation budget was measured under (PD23).
 ENV MAQUETTISTE_MODE=local MAQUETTISTE_REPO_ROOT=/repo MAQUETTISTE_CACHE_DIR=/data/maquettiste/cache \
     DOTNET_gcServer=1 DOTNET_GCDynamicAdaptationMode=0 DOTNET_TieredPGO=0
-# Runs as app by default. Started as root with MAQUETTISTE_UID/MAQUETTISTE_GID (compose does), the entrypoint hands /data and
-# /home/app to that user and drops to it with the base image's setpriv (util-linux), so a bind-mounted model is written as the host user.
+# Runs as app by default. Started as root (compose does), the entrypoint picks the user (MAQUETTISTE_UID/MAQUETTISTE_GID, else the
+# owner of the bind mount), hands /data and /home/app to it, repairs the files another user owns in the model and the output
+# roots, and drops to it with the base image's setpriv (util-linux), so a bind-mounted model is written as the host user.
 USER app
 ENTRYPOINT ["/opt/maquettiste/entrypoint.sh"]

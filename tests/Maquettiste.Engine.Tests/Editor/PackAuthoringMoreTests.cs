@@ -146,6 +146,13 @@ public sealed class PackAuthoringMoreTests
         Assert.Equal("each table", context.Scope);
         Assert.Contains(context.Variables, v => v.Name == "table");
         Assert.Contains(context.Members["element"], m => m.Name == "columns" && m.Type == "list");
+        // A table carries its file's annotations like an entity does (stereotypes as objects, properties and generation as maps).
+        foreach (var (name, type) in new[]
+        {
+            ("display_name", "string"), ("plural_name", "string"), ("description", "string"), ("tags", "list"), ("category", "object"),
+            ("stereotypes", "list"), ("properties", "map"), ("generation", "map"), ("comment", "string"),
+        })
+            Assert.Contains(new Maquettiste.Engine.TemplateMember(name, type), context.Members["element"]);
         Assert.Equal(context.Helpers.Order(StringComparer.Ordinal), context.Helpers);
         Assert.Null(await repo.Service.GetTemplateContextAsync("sql-ddl", "ghost", Ct));
     }

@@ -318,6 +318,25 @@ public sealed class ModelWriteTests
         Contract.AssertResponse(view, "/api/databases/{id}/view");
         Assert.Equal("main", view.Json["view"]!["name"]!.GetValue<string>());
         Assert.Contains(view.Json["view"]!["tables"]!.AsArray(), t => t!["name"]!.GetValue<string>() == "customers");
+        // The invoice table's overlay carries annotations: the view shows them as written, merged with the stereotype's defaults.
+        var invoices = view.Json["view"]!["tables"]!.AsArray().Single(t => t!["name"]!.GetValue<string>() == "invoices")!;
+        Assert.Equal("Invoice register", invoices["displayName"]!.GetValue<string>());
+        Assert.Null(invoices["pluralName"]);
+        Assert.Equal("One row per issued invoice; finance reconciles it monthly.", invoices["description"]!.GetValue<string>());
+        Assert.Equal(["audited"], invoices["stereotypes"]!.AsArray().Select(s => s!.GetValue<string>()));
+        Assert.Equal(["billing"], invoices["tags"]!.AsArray().Select(s => s!.GetValue<string>()));
+        Assert.Equal("01J92P0V06TYE8P8990AV35A8K", invoices["category"]!.GetValue<string>());
+        Assert.Equal("billing_data", invoices["properties"]!["tablespace"]!.GetValue<string>());
+        Assert.Equal(2555, invoices["properties"]!["retentionDays"]!.GetValue<int>());
+        Assert.Empty(invoices["generation"]!.AsObject());
+        // A synthesized table without an overlay has none, whatever its entity carries.
+        var customers = view.Json["view"]!["tables"]!.AsArray().Single(t => t!["name"]!.GetValue<string>() == "customers")!;
+        Assert.Null(customers["displayName"]);
+        Assert.Empty(customers["stereotypes"]!.AsArray());
+        Assert.Empty(customers["properties"]!.AsObject());
+        // Views and sequences are listed with their own annotations.
+        Assert.Equal("outstanding_invoices", Assert.Single(view.Json["view"]!["views"]!.AsArray())!["name"]!.GetValue<string>());
+        Assert.Contains(view.Json["view"]!["sequences"]!.AsArray(), s => s!["name"]!.GetValue<string>() == "invoice_number_seq" && s["start"]!.GetValue<long>() == 1000);
         Assert.Equal(404, notADatabase.Status);
         Assert.Equal("not-a-database", notADatabase.ProblemCode);
         Contract.AssertResponse(notADatabase, "/api/databases/{id}/view");

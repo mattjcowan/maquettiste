@@ -116,6 +116,7 @@ internal sealed partial class DatabaseRun
                 Cache = sequence.Cache,
             };
             var deps = new DependencySet(_run.Keys).Element(sequence.Id).Referrers(sequence.Id).Element(_db.Id).Add(TypeMaps);
+            _run.FillPhysicalAnnotations(r, sequence, deps);
             AddSequence(r, sequence.Id, deps);
         }
 
@@ -135,8 +136,11 @@ internal sealed partial class DatabaseRun
                     NativeType = c.Type is null ? null : DialectTypeMaps.Render(_typeMap, c.Type, null, null, null, _conv),
                     Nullable = c.Nullable,
                 })],
-                Dependencies = [$"e:{view.Id}", $"e:{_db.Id}", $"r:{view.Id}", TypeMaps],
+                Comment = view.Comment,
             };
+            var deps = new DependencySet(_run.Keys).Element(view.Id).Element(_db.Id).Referrers(view.Id).Add(TypeMaps);
+            _run.FillPhysicalAnnotations(r, view, deps);
+            r.Dependencies = deps.ToList();
             _views.Add((r, view.Id));
             _run.Register(r);
         }
@@ -304,6 +308,7 @@ internal sealed partial class DatabaseRun
 
     private void AddTable(TableBuild t)
     {
+        _run.FillPhysicalAnnotations(t.Table, t.Source ?? t.Overlay, t.Deps);
         _tables.TryAdd(t.Table.Key, t);
         _tableOrder.Add(t);
         _run.Register(t.Table);

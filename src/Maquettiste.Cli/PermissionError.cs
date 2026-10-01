@@ -5,7 +5,8 @@ namespace Maquettiste.Cli;
 /// <summary>
 /// A write the operating system refused (the run lock, the cache, an output or model file): one line naming the path instead of
 /// a stack trace (exit 1). The usual cause is a container that runs as another user than the one owning the mounted repo, so on
-/// Linux the line suggests <c>--user $(id -u):$(id -g)</c>.
+/// Linux the line suggests <c>--user 0:0</c>, with which the image's entrypoint repairs the files another user owns and runs the
+/// command as the owner of the repo.
 /// </summary>
 internal static partial class PermissionError
 {
@@ -47,7 +48,7 @@ internal static partial class PermissionError
         var path = match.Success ? Target(match.Groups[1].Value) : null;
         var what = path is null ? "a file or folder" : path;
         var hint = linux
-            ? " Check that the user running maquettiste can write there; in a container, run it as the owner of the repo with --user $(id -u):$(id -g)."
+            ? " Check that the user running maquettiste can write there; in the maquettiste image, start the container with --user 0:0 so it repairs the files another user owns and runs as the owner of the repo."
             : " Check that the user running maquettiste can write there.";
         return $"maquettiste: permission denied: cannot write {what}.{hint}";
     }

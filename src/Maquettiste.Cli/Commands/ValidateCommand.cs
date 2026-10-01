@@ -2,6 +2,7 @@ using System.Text;
 using Maquettiste.Engine;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Generation;
+using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Validation;
 
@@ -9,7 +10,8 @@ namespace Maquettiste.Cli.Commands;
 
 /// <summary>
 /// <c>maquettiste validate [--format text|json|sarif] [--output &lt;file&gt;]</c>: validates the model (load, schema and semantic rules,
-/// JavaScript rules) and loads the packs, so pack errors surface too. Exits 1 when any diagnostic is an error.
+/// JavaScript rules) and loads the packs, so pack errors surface too, and warns MQ1008 when <c>.maquettiste/.schema/v1/</c> differs
+/// from the embedded schemas (it never refreshes them). Exits 1 when any diagnostic is an error.
 /// </summary>
 internal static class ValidateCommand
 {
@@ -33,7 +35,9 @@ internal static class ValidateCommand
             var snapshot = await store.GetSnapshotAsync(ct).ConfigureAwait(false);
             var services = EngineServices.Create(options);
             var packs = await services.Packs.LoadAsync(snapshot, null, null, ct).ConfigureAwait(false);
-            var report = ValidationReport.From(model.Diagnostics.Concat(packs.Diagnostics).Distinct());
+            // MQ1008: the .schema copies differ from the embedded schemas. Reported only; validate never writes them.
+            var schemaFindings = SchemaFolder.Findings(options, snapshot.Settings);
+            var report = ValidationReport.From(model.Diagnostics.Concat(packs.Diagnostics).Concat(schemaFindings).Distinct());
 
             var bytes = format switch
             {

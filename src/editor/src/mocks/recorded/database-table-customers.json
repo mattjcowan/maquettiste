@@ -140,7 +140,15 @@
       }
     ],
     "foreignKeys": [],
-    "indexes": []
+    "indexes": [],
+    "displayName": null,
+    "pluralName": null,
+    "description": null,
+    "stereotypes": [],
+    "tags": [],
+    "category": null,
+    "properties": {},
+    "generation": {}
   },
   "diagnostics": [],
   "partial": false

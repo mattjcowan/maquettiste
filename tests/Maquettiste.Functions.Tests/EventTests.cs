@@ -5,6 +5,7 @@ using Maquettiste.Engine;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Functions.Tests.Support;
+using Microsoft.Extensions.Logging;
 
 namespace Maquettiste.Functions.Tests;
 
@@ -23,6 +24,50 @@ public sealed class EventTests
 
     private static async Task WaitLoadedAsync(EditorHost host) =>
         await EditorHost.WaitForAsync(() => host.Store.Current is not null && host.Events.Watcher == "watching" && host.Events.Worker == "running", "the background services");
+
+    [Fact]
+    public async Task The_start_refreshes_stale_schema_copies_with_one_log_line_and_no_change_event()
+    {
+        await using var host = EditorHost.Create();
+        const string folder = ".maquettiste/.schema/v1";
+        var schemas = Maquettiste.Testing.TestServices.Schemas;
+        foreach (var name in schemas.FileNames)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(host.PathOf(folder + "/" + name))!);
+            File.WriteAllBytes(host.PathOf(folder + "/" + name), schemas.GetFileBytes(name).ToArray());
+        }
+
+        File.WriteAllText(host.PathOf(folder + "/entity.json"), "{}\n");
+        File.WriteAllText(host.PathOf(folder + "/retired.json"), "{}\n");
+
+        host.StartBackground();
+        await WaitLoadedAsync(host);
+        await Task.Delay(ModelWatcher.Quiet * 4, EditorHost.Ct);
+
+        foreach (var name in schemas.FileNames)
+            Assert.Equal(schemas.GetFileBytes(name).ToArray(), File.ReadAllBytes(host.PathOf(folder + "/" + name)));
+        Assert.False(File.Exists(host.PathOf(folder + "/retired.json")));
+        var line = Assert.Single(host.Logs.Entries, e => e.Message.Contains("schema copies", StringComparison.Ordinal));
+        Assert.Equal(LogLevel.Information, line.Level);
+        Assert.Contains("wrote entity.json; removed retired.json", line.Message, StringComparison.Ordinal);
+        Assert.Empty(host.Published("model.changed"));
+        Assert.Empty(host.Published("project.changed"));
+    }
+
+    [Fact]
+    public async Task A_schema_folder_that_cannot_be_written_is_logged_and_the_start_goes_on()
+    {
+        await using var host = EditorHost.Create();
+        // .schema is a file, so .schema/v1 cannot be created (as on a data folder mounted read-only).
+        File.WriteAllText(host.PathOf(".maquettiste/.schema"), "not a folder\n");
+
+        host.StartBackground();
+        await WaitLoadedAsync(host);
+
+        var line = Assert.Single(host.Logs.Entries, e => e.Message.Contains("schema copies", StringComparison.Ordinal));
+        Assert.Equal(LogLevel.Warning, line.Level);
+        Assert.Contains("MQ1008", line.Message, StringComparison.Ordinal);
+    }
 
     [Fact]
     public async Task A_save_publishes_one_model_changed_and_then_one_validation_completed()

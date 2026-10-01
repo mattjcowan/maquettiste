@@ -81,7 +81,12 @@ Templates are [Scriban](https://github.com/scriban/scriban). The context has `mo
   `entity.mappings[<database>]` with `table`, `columns` (attribute path to column) and `discriminator_column`.
 - `database.tables` (by schema and name), each with `columns` (by position), `primary_key`, `uniques`, `foreign_keys`
   (`referenced_table`, `on_delete`), `checks`, `indexes`, and per column `native_type`, `nullable`, `identity`, `default`,
-  `default_sql`, `attribute_path`.
+  `default_sql`, `attribute_path`. A table also carries the annotations of its own file (a designed or imported table, or a
+  synthesized table's overlay) as an entity does: `display_name`, `plural_name`, `description`, `tags`, `category` (`id`, `name`,
+  `path`), `stereotypes` (`key`, `name`, `icon`, `color`), `properties` (a map: the stereotypes' default properties merged under
+  the file's own) and `generation`, plus `comment`. These are empty for a synthesized table without an overlay: the entity's own
+  are on `table.entity`. `database.views` (`body`, `columns`, `comment`) and `database.sequences` carry the same annotations from
+  their files.
 - `process` (`each process`, or `model.processes`): `use`, `subject`, `bound_attribute`, `bound_enum`, `context`, `events`,
   `guards`, `actions`, `states` (the tree), `all_states` (document order), `atomic_states`, `bound_states`, `transitions` (priority
   order), `gates`, `invokes`, `actors`, `scenarios`, `initial`. A state has `name`, `path` (`Fulfilment.Shipping.Packed`), `type`,
@@ -101,7 +106,7 @@ Templates are [Scriban](https://github.com/scriban/scriban). The context has `mo
 
 Helpers: `pascal camel snake kebab upper_snake`, `pluralize singularize`, `type_of <attribute|column> "<target>"` (a
 `types/<target>.json` map or a SQL dialect), `sql_quote`, `sql_literal`, `indent`, `escape_xml`/`escape_json`/`escape_md`, `json`,
-`has_stereotype`, `has_tag`, `lookup`, `banner "<comment prefix>"`, `file`, `state_path <state>` (a state's dotted path) and
+`has_stereotype`, `has_tag`, `in_category` (each takes an element, a table, a view or a sequence), `lookup`, `banner "<comment prefix>"`, `file`, `state_path <state>` (a state's dotted path) and
 `iso_duration_ms <text>` (an ISO 8601 duration in milliseconds, a month 30 days and a year 365 as the interpreter counts them; a
 text that is not a duration fails the unit with MQ6006). Partials are templates included with
 `{{ include "_name.scriban" arg }}` (paths relative to the pack folder); a partial that only defines functions is a good home for

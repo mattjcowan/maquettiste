@@ -115,4 +115,76 @@ public sealed class ValidateTests
         Assert.Equal(1, result.ExitCode);
         Assert.Contains("templates/ddl/pack.json", result.Out, StringComparison.Ordinal);
     }
+
+    private const string SchemaFolder = ".maquettiste/.schema/v1";
+
+    private static void WriteCurrentSchemas(CliRepo repo)
+    {
+        foreach (var name in TestServices.Schemas.FileNames)
+            repo.Temp.WriteBytes(SchemaFolder + "/" + name, TestServices.Schemas.GetFileBytes(name).ToArray());
+    }
+
+    private static List<JsonElement> Mq1008(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return [.. doc.RootElement.GetProperty("diagnostics").EnumerateArray().Where(d => d.GetProperty("rule").GetString() == "MQ1008").Select(d => d.Clone())];
+    }
+
+    [Fact]
+    public async Task A_stale_schema_copy_is_a_MQ1008_warning_and_validate_leaves_it_as_it_is()
+    {
+        using var repo = CliRepo.Billing();
+        WriteCurrentSchemas(repo);
+        repo.Write(SchemaFolder + "/entity.json", "{}\n");
+        repo.Write(SchemaFolder + "/retired.json", "{}\n");
+
+        var result = await repo.RunAsync("validate", "--format", "json");
+        Assert.True(result.ExitCode == 0, result.ToString());
+        var warning = Assert.Single(Mq1008(result.Out));
+        Assert.Equal("warning", warning.GetProperty("severity").GetString());
+        Assert.Equal(".maquettiste/maquettiste.json", warning.GetProperty("filePath").GetString());
+        var message = warning.GetProperty("message").GetString()!;
+        Assert.Contains("entity.json (out of date), retired.json (no longer shipped)", message, StringComparison.Ordinal);
+        Assert.Contains("maquettiste init", message, StringComparison.Ordinal);
+
+        // Read-only: the stale and the extra copy are still there.
+        Assert.Equal("{}\n", repo.Read(SchemaFolder + "/entity.json"));
+        Assert.Equal("{}\n", repo.Read(SchemaFolder + "/retired.json"));
+
+        // The text output carries it too, and generate reports it as well (a dry run writes nothing either).
+        var text = await repo.RunAsync("validate");
+        Assert.Contains(".maquettiste/maquettiste.json: warning MQ1008: ", text.Out, StringComparison.Ordinal);
+        var plan = await repo.RunAsync("generate", "--dry-run");
+        Assert.Contains("warning MQ1008: ", plan.Error, StringComparison.Ordinal);
+        Assert.Equal("{}\n", repo.Read(SchemaFolder + "/entity.json"));
+    }
+
+    [Fact]
+    public async Task A_current_schema_folder_raises_no_MQ1008_and_init_refreshes_a_stale_one()
+    {
+        using var repo = CliRepo.Billing();
+        WriteCurrentSchemas(repo);
+        var current = await repo.RunAsync("validate", "--format", "json");
+        Assert.True(current.ExitCode == 0, current.ToString());
+        Assert.Empty(Mq1008(current.Out));
+
+        repo.Write(SchemaFolder + "/entity.json", "{}\n");
+        var init = await repo.RunAsync("init", "--pack", "none");
+        Assert.True(init.ExitCode == 0, init.ToString());
+        Assert.DoesNotContain("MQ1008", init.Out + init.Error, StringComparison.Ordinal);
+        Assert.Contains("wrote .maquettiste/.schema/v1/", init.Error, StringComparison.Ordinal);
+        var after = await repo.RunAsync("validate", "--format", "json");
+        Assert.Empty(Mq1008(after.Out));
+    }
+
+    [Fact]
+    public async Task A_model_without_a_schema_folder_is_told_to_run_init()
+    {
+        using var repo = CliRepo.Billing();
+        var result = await repo.RunAsync("validate", "--format", "json");
+        var warning = Assert.Single(Mq1008(result.Out));
+        Assert.Contains("actor.json (missing), batch.json (missing)", warning.GetProperty("message").GetString(), StringComparison.Ordinal);
+        Assert.Contains($", and {TestServices.Schemas.FileNames.Count - 5} more.", warning.GetProperty("message").GetString(), StringComparison.Ordinal);
+        Assert.False(Directory.Exists(repo.PathOf(SchemaFolder)));
+    }
 }
