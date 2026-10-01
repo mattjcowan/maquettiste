@@ -44,6 +44,40 @@ const TABLE_MEMBERS: S["TemplateMember"][] = [
   { name: "primary_key", type: "object" },
   { name: "schema", type: "string" },
 ];
+// The members a view and a sequence share with every annotated object, then their own, ordinal as the engine lists them.
+const VIEW_MEMBERS: S["TemplateMember"][] = [
+  { name: "body", type: "string" },
+  { name: "columns", type: "list" },
+  { name: "comment", type: "string" },
+  { name: "database", type: "object" },
+  { name: "description", type: "string" },
+  { name: "display_name", type: "string" },
+  { name: "id", type: "string" },
+  { name: "kind", type: "string" },
+  { name: "name", type: "string" },
+  { name: "properties", type: "map" },
+  { name: "schema", type: "string" },
+  { name: "stereotypes", type: "list" },
+  { name: "tags", type: "list" },
+];
+const SEQUENCE_MEMBERS: S["TemplateMember"][] = [
+  { name: "cache", type: "number" },
+  { name: "cycle", type: "boolean" },
+  { name: "database", type: "object" },
+  { name: "description", type: "string" },
+  { name: "display_name", type: "string" },
+  { name: "id", type: "string" },
+  { name: "increment", type: "number" },
+  { name: "kind", type: "string" },
+  { name: "name", type: "string" },
+  { name: "native_type", type: "string" },
+  { name: "properties", type: "map" },
+  { name: "schema", type: "string" },
+  { name: "start", type: "number" },
+  { name: "stereotypes", type: "list" },
+  { name: "tags", type: "list" },
+  { name: "type", type: "string" },
+];
 // The members of the process, actor and scenario records (phase-3-design.md 4.3), ordinal as the engine lists them.
 const PROCESS_MEMBERS: S["TemplateMember"][] = [
   { name: "actions", type: "list" },
@@ -98,6 +132,8 @@ const SCENARIO_MEMBERS: S["TemplateMember"][] = [
 ];
 const SCOPE_MEMBERS: Record<string, S["TemplateMember"][]> = {
   "each table": TABLE_MEMBERS,
+  "each view": VIEW_MEMBERS,
+  "each sequence": SEQUENCE_MEMBERS,
   "each process": PROCESS_MEMBERS,
   "each actor": ACTOR_MEMBERS,
   "each scenario": SCENARIO_MEMBERS,

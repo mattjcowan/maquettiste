@@ -19,8 +19,56 @@ public sealed record DatabaseViewResult(DatabaseView? View, IReadOnlyList<Diagno
 /// <param name="Views">Every view, in the resolver's (schema, name) order.</param>
 /// <param name="Sequences">Every sequence (the sequence files and the sequences the resolver creates for entity keys), in the resolver's
 /// (schema, name) order.</param>
+/// <param name="Schemas">Every schema, by name: the ones the database file declares and the ones its tables, views and sequences use.</param>
+/// <param name="Quoting"><c>always</c>, <c>reserved</c> or <c>never</c>.</param>
+/// <param name="MaxIdentifierLength">The effective identifier length limit, or <see langword="null"/> for none.</param>
+/// <param name="ByConvention">Which entities map here by convention: <c>all</c>, <c>packages</c> or <c>none</c> (the effective value).</param>
+/// <param name="Packages">The packages whose entities map here by convention, with the schema their tables go to.</param>
+/// <param name="DisplayName">The display name the database file sets, or <see langword="null"/> (no fallback).</param>
+/// <param name="PluralName">The plural name the database file sets, or <see langword="null"/>.</param>
+/// <param name="Description">As <see cref="TableView.Description"/>.</param>
+/// <param name="Stereotypes">As <see cref="TableView.Stereotypes"/>.</param>
+/// <param name="Tags">As <see cref="TableView.Tags"/>.</param>
+/// <param name="Category">As <see cref="TableView.Category"/>.</param>
+/// <param name="Properties">As <see cref="TableView.Properties"/>.</param>
+/// <param name="Generation">As <see cref="TableView.Generation"/>.</param>
 public sealed record DatabaseView(string Id, string Name, string Dialect, string? Version, string? DefaultSchema, IReadOnlyList<TableView> Tables,
-    IReadOnlyList<ViewView> Views, IReadOnlyList<SequenceView> Sequences);
+    IReadOnlyList<ViewView> Views, IReadOnlyList<SequenceView> Sequences, IReadOnlyList<SchemaView> Schemas, string Quoting, int? MaxIdentifierLength,
+    string ByConvention, IReadOnlyList<ConventionPackageView> Packages, string? DisplayName, string? PluralName, string? Description,
+    IReadOnlyList<string> Stereotypes, IReadOnlyList<string> Tags, string? Category, IReadOnlyDictionary<string, object?> Properties,
+    IReadOnlyDictionary<string, GenerationHints> Generation);
+
+/// <summary>One schema of a resolved database, projected from <see cref="RSchema"/>.</summary>
+/// <param name="Id">The schema's id in the database file, or <c>&lt;databaseId&gt;/&lt;name&gt;</c> for a schema the file does not declare.</param>
+/// <param name="Name">The schema name.</param>
+/// <param name="IsDefault">Whether it is the database's effective default schema.</param>
+/// <param name="IsDeclared">Whether the database file declares it (only a declared schema carries annotations).</param>
+/// <param name="DisplayName">The display name the schema entry sets, or <see langword="null"/>.</param>
+/// <param name="PluralName">The plural name the schema entry sets, or <see langword="null"/>.</param>
+/// <param name="Description">As <see cref="TableView.Description"/>.</param>
+/// <param name="Stereotypes">As <see cref="TableView.Stereotypes"/>.</param>
+/// <param name="Tags">As <see cref="TableView.Tags"/>.</param>
+/// <param name="Category">As <see cref="TableView.Category"/>.</param>
+/// <param name="Properties">As <see cref="TableView.Properties"/>.</param>
+/// <param name="Generation">As <see cref="TableView.Generation"/>.</param>
+public sealed record SchemaView(
+    string Id,
+    string Name,
+    bool IsDefault,
+    bool IsDeclared,
+    string? DisplayName,
+    string? PluralName,
+    string? Description,
+    IReadOnlyList<string> Stereotypes,
+    IReadOnlyList<string> Tags,
+    string? Category,
+    IReadOnlyDictionary<string, object?> Properties,
+    IReadOnlyDictionary<string, GenerationHints> Generation);
+
+/// <summary>One package a database takes by convention.</summary>
+/// <param name="PackageId">The package id.</param>
+/// <param name="Schema">The schema name its conventional tables go to, or <see langword="null"/> for the default schema.</param>
+public sealed record ConventionPackageView(string PackageId, string? Schema);
 
 /// <summary>One resolved table, projected from the resolver's <see cref="RTable"/> (resolved objects reference each other, so they are
 /// flattened: other objects appear by key or id).</summary>
@@ -168,6 +216,20 @@ public sealed record SequenceView(
 /// <param name="IsForeignKey">Whether the column is part of a foreign key.</param>
 /// <param name="IsDiscriminator">Whether the column is a TPH discriminator.</param>
 /// <param name="Position">The 0-based position in the table.</param>
+/// <param name="Default">The literal default, as a plain value, or <see langword="null"/>.</param>
+/// <param name="ComputedStored">Whether a computed value is stored.</param>
+/// <param name="SequenceId">The id (or synthesized key) of the sequence that supplies values, or <see langword="null"/>.</param>
+/// <param name="Collation">The collation, or <see langword="null"/>.</param>
+/// <param name="Comment">The comment, or <see langword="null"/>.</param>
+/// <param name="DisplayName">The display name the column's own entry sets (a designed or extra column, or a synthesized column's overlay
+/// entry), or <see langword="null"/>; a synthesized column never takes its attribute's, which <paramref name="AttributeId"/> leads to.</param>
+/// <param name="PluralName">The plural name the column's own entry sets, or <see langword="null"/>.</param>
+/// <param name="Description">The description the column's own entry sets, or <see langword="null"/>.</param>
+/// <param name="Stereotypes">As <see cref="TableView.Stereotypes"/>, from the column's own entry.</param>
+/// <param name="Tags">As <see cref="TableView.Tags"/>, from the column's own entry.</param>
+/// <param name="Category">As <see cref="TableView.Category"/>, from the column's own entry.</param>
+/// <param name="Properties">As <see cref="TableView.Properties"/>, from the column's own entry.</param>
+/// <param name="Generation">As <see cref="TableView.Generation"/>, from the column's own entry.</param>
 public sealed record ColumnView(
     string Key,
     string Name,
@@ -185,7 +247,20 @@ public sealed record ColumnView(
     bool IsPrimaryKey,
     bool IsForeignKey,
     bool IsDiscriminator,
-    int Position);
+    int Position,
+    object? Default,
+    bool ComputedStored,
+    string? SequenceId,
+    string? Collation,
+    string? Comment,
+    string? DisplayName,
+    string? PluralName,
+    string? Description,
+    IReadOnlyList<string> Stereotypes,
+    IReadOnlyList<string> Tags,
+    string? Category,
+    IReadOnlyDictionary<string, object?> Properties,
+    IReadOnlyDictionary<string, GenerationHints> Generation);
 
 /// <summary>A primary key or unique constraint.</summary>
 /// <param name="Name">The constraint name.</param>
@@ -233,8 +308,26 @@ internal static class DatabaseViews
     {
         ArgumentNullException.ThrowIfNull(database);
         return new DatabaseView(database.Id, database.Name, database.Dialect, database.Version, database.DefaultSchema,
-            [.. database.Tables.Select(Table)], [.. database.Views.Select(View)], [.. database.Sequences.Select(Sequence)]);
+            [.. database.Tables.Select(Table)], [.. database.Views.Select(View)], [.. database.Sequences.Select(Sequence)],
+            [.. database.Schemas.Select(Schema)], database.Quoting, database.MaxIdentifierLength, database.ByConvention,
+            [.. database.Packages.Select(p => new ConventionPackageView(p.PackageId, p.Schema))],
+            OrNull(database.DisplayName), OrNull(database.PluralName), database.Description, [.. database.Stereotypes.Select(s => s.Key)],
+            database.Tags, database.Category?.Id, database.Properties, database.Generation);
     }
+
+    private static SchemaView Schema(RSchema schema) => new(
+        schema.Id,
+        schema.Name,
+        schema.IsDefault,
+        schema.IsDeclared,
+        OrNull(schema.DisplayName),
+        OrNull(schema.PluralName),
+        schema.Description,
+        [.. schema.Stereotypes.Select(s => s.Key)],
+        schema.Tags,
+        schema.Category?.Id,
+        schema.Properties,
+        schema.Generation);
 
     public static TableView Table(RTable table) => new(
         table.Key,
@@ -316,7 +409,20 @@ internal static class DatabaseViews
         column.IsPrimaryKey,
         column.IsForeignKey,
         column.IsDiscriminator,
-        column.Position);
+        column.Position,
+        column.Default,
+        column.ComputedStored,
+        column.Sequence?.Id,
+        column.Collation,
+        column.Comment,
+        OrNull(column.DisplayName),
+        OrNull(column.PluralName),
+        column.Description,
+        [.. column.Stereotypes.Select(s => s.Key)],
+        column.Tags,
+        column.Category?.Id,
+        column.Properties,
+        column.Generation);
 
     private static ForeignKeyView ForeignKey(RForeignKey key) => new(
         key.Name,

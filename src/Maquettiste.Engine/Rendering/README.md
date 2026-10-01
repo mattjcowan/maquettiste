@@ -61,7 +61,7 @@ golden tree).
 - **Helpers** (all section 9 names): `pascal camel snake kebab upper_snake` (`Text/Casing`), `pluralize singularize` (`Text/Inflector`
   with `inflection` overrides, records `s:inflection`; an element argument returns its `PluralName`/`Name`), `type_of`,
   `sql_quote`, `sql_literal`, `indent`, `dedent`, `escape_md`, `escape_xml`, `escape_json`, `json`, `has_stereotype`, `has_tag`,
-  `in_category` (these three take any `RAnnotated`: a conceptual element, a table, a view or a sequence), `lookup`, `banner`, `file`.
+  `in_category` (these three take any `RAnnotated`: a conceptual element, a database, schema, table, column, view or sequence), `lookup`, `banner`, `file`.
   The `hints` variable reads any `RAnnotated`'s `Generation` too, so a table unit sees its table file's hints (2026-10-01). Pack JavaScript helpers register under their own names (callable and pipeable);
   a name that collides with a builtin or a variable is MQ6013 and fails every unit of the pack. Transforms run before the
   template, in `transforms` order, merged into `data` (later wins).

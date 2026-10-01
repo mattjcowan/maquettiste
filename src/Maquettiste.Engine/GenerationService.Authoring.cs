@@ -321,6 +321,8 @@ public sealed partial class GenerationService
         "each enum" => typeof(REnum),
         "each value object" => typeof(RValueObject),
         "each table" => typeof(RTable),
+        "each view" => typeof(RView),
+        "each sequence" => typeof(RSequence),
         "each reference type" => typeof(RReferenceType),
         "each seed" => typeof(RSeed),
         "each locale" => typeof(RLocale),

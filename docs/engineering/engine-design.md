@@ -321,7 +321,7 @@ public sealed record PackManifest {
 public sealed record PackUnit {
     req string Id;                                          // ^[a-z][a-z0-9-]*$, unique in the pack
     req string Template;                                    // pack-relative path
-    req string For;                                         // "model" | "each package|entity|relation|enum|value object|table|reference type|seed|locale" | "select <name>"
+    req string For;                                         // "model" | "each package|entity|relation|enum|value object|table|view|sequence|reference type|seed|locale|process|actor|scenario" | "select <name>"
     UnitWhere? Where;
     string? Output;                                         // Scriban expression → path under PackSettings.Output; null = file blocks only
     OutputMode Mode = Overwrite; string? Formatter;         // formatter name, "none", or null = by extension
@@ -595,7 +595,8 @@ public sealed class ResolvedModel { ModelSnapshot Source; ProjectSettings Settin
 // Common to all conceptual R-types: Id, Name, DisplayName (fallback Name), PluralName (fallback inflector), Description (text, sidecar loaded),
 // Tags, Category (RCategory: Id, Name, Path), Stereotypes (RStereotype: Key, Name, Icon, Color), Properties (merged, plain CLR values),
 // Generation (IReadOnlyDictionary<string, GenerationHints>), Package (RPackage?), bool HasStereotype(string key), bool HasTag(string key).
-// All of these but Name and Package sit on RAnnotated, which RTable, RView and RSequence share (filled from their own files, no fallbacks).
+// All of these but Name and Package sit on RAnnotated, which RDatabase, RSchema, RTable, RColumn, RView and RSequence share (filled from their own
+// files or entries, no fallbacks; §7.0a).
 RPackage     : QualifiedName ("Billing.Invoicing"), Parent, Children, Entities, ValueObjects, Enums, Relations
 REntity      : IsAbstract, Base, Derived, Attributes (flattened, §7.2), OwnAttributes, Key (RKey: Attributes, Strategy, Sequences (db name → RSequence)), AlternateKeys,
                Navigations, Relations, Mappings (IReadOnlyDictionary<string /*db name*/, REntityMapping>), IsPromoted, PromotedFrom (RRelation?),
@@ -610,25 +611,29 @@ RRelationMapping : Shape ("foreign-key"|"junction"|"promoted"), ForeignKey (RFor
 RNavigation  : Name, Relation, From (REnd), To (REnd), Target (REntity), IsCollection, Joins (db name → RJoinPath)
 REntityMapping : Database, Table, Inheritance ("tph"|"tpt"|"tpc"|null), DiscriminatorColumn, DiscriminatorValue, Columns (RColumnMapping: AttributePath, Column), Joins
 RJoinPath    : Steps (RJoinStep: FromTable, FromColumns, ToTable, ToColumns, ViaJunction)
-RDatabase    : Name, Dialect, Version, DefaultSchema, Schemas (RSchema: Name, Tables, Views, Sequences), Tables, Views, Sequences, Quoting, MaxIdentifierLength
-RTable       : Key, Name, Schema (string?), Database, Origin, Entity, Relation, Columns, PrimaryKey (Name, Columns), Uniques, ForeignKeys
-               (RForeignKey: Name, Columns, ReferencedTable, ReferencedColumns, OnDelete, OnUpdate, Relation, End), Checks, Indexes
-               (RIndex: Name, Columns (Column, Descending), Include, Where, Unique, Method), Comment, IsJunction, and the RAnnotated members
+RDatabase    : Name, Dialect, Version, DefaultSchema, Schemas (RSchema: Name, IsDefault, IsDeclared, Tables, Views, Sequences, and the RAnnotated
+               members), Tables, Views, Sequences, Quoting, MaxIdentifierLength, ByConvention ("all"|"packages"|"none", effective),
+               Packages (RConventionPackage: Package (RPackage?), PackageId, Schema (name?)), and the RAnnotated members
+RTable       : Key, Name, Schema (string?), Database, Origin, Entity, Relation, Attribute (a child table's), Columns, PrimaryKey (Name, Columns,
+               Clustered), Uniques (RUnique: Id, Name, Columns), ForeignKeys (RForeignKey: Id, Name, Columns, ReferencedTable, ReferencedColumns,
+               OnDelete, OnUpdate, Relation, End), Checks (RCheck: Id, Name, Expression), Indexes (RIndex: Id, Name, Columns (Column, Descending),
+               Include, Where, Unique, Method), Comment, IsJunction, and the RAnnotated members; a constraint's Id is its file's, null when synthesized
 RColumn      : Key, Name, Table, Type, Length, Precision, Scale, NativeType, Nullable, Default, DefaultSql (for the dialect), Identity, Sequence,
-               Computed, ComputedStored, Collation, Comment, Attribute, AttributePath, IsPrimaryKey, IsForeignKey, IsDiscriminator, Position
-RView        : Name, Schema, Database, Body (for the dialect), Columns, Comment;  RSequence: Name, Schema, Type, NativeType, Start, Increment, Min, Max, Cycle, Cache
-               (both with the RAnnotated members)
+               Computed, ComputedStored, Collation, Comment, Attribute, AttributePath, IsPrimaryKey, IsForeignKey, IsDiscriminator, Position,
+               and the RAnnotated members (from the column's own entry: designed, extra or overlay; never the attribute's)
+RView        : Name, Schema, Database, Body (for the dialect), Columns, Comment;  RSequence: Name, Schema, Database, Type, NativeType, Start, Increment,
+               Min, Max, Cycle, Cache (both with the RAnnotated members)
 // Scaffold shapes: every R-type is a public sealed class with public getters and internal setters, so only the resolver fills it.
 // RObject (abstract: Id, Kind, Dependencies) is the base of every IResolvedObject; RAnnotated : RObject carries the annotations above
-// (DisplayName to Generation, HasStereotype, HasTag) and RElement : RAnnotated adds Name and Package. RTable, RView and RSequence derive
-// from RAnnotated; REnumMember, REnd, RNavigation, RDatabase, RSchema and RColumn derive from RObject.
+// (DisplayName to Generation, HasStereotype, HasTag) and RElement : RAnnotated adds Name and Package. RDatabase, RSchema, RTable, RColumn,
+// RView and RSequence derive from RAnnotated; REnumMember, REnd and RNavigation derive from RObject.
 // Enumerations reach templates as kebab strings ("uuid-v7", "set-null", "no-action"). Helper shapes: RKey, RAlternateKey (Id, Name,
-// Attributes), RDerived (Expression, Stored), RValidation (Min, Max, Pattern, AllowedValues, Rules as plain values), RPrimaryKey and
-// RUnique (Name, Columns), RCheck (Name, Expression), RIndexColumn, RViewColumn (Name, Type, NativeType,
-// Nullable). ResolvedModel.Find uses an internal ById index the resolver fills.
+// Attributes), RDerived (Expression, Stored), RValidation (Min, Max, Pattern, AllowedValues, Rules as plain values), RPrimaryKey
+// (Name, Columns, Clustered), RUnique (Id, Name, Columns), RCheck (Id, Name, Expression), RIndexColumn, RViewColumn (Name, Type,
+// NativeType, Nullable). ResolvedModel.Find uses an internal ById index the resolver fills.
 ```
 
-**7.0a Annotations of tables, views and sequences (status: built 2026-10-01).** As built on 2026-10-01, a table, view or sequence
+**7.0a Annotations of the physical model (status: built 2026-10-01).** As built on 2026-10-01, a table, view or sequence
 carries the annotations its own file holds (display and plural names, description with a sidecar loaded, tags, category, stereotypes,
 properties merged over the stereotypes' default properties, generation hints) through `RAnnotated`; before, resolution dropped them
 and kept only `Comment`. The file is the designed or imported table, a synthesized table's overlay, or the view or sequence file;
@@ -638,6 +643,22 @@ file (a synthesized table without an overlay, a key sequence) has none of them: 
 templates read through `table.entity` and `table.relation`. `has_stereotype`, `has_tag`, `in_category`, the scripts' `hasStereotype`
 and `hasTag`, and the `hints` variable accept any `RAnnotated`. `RView` gains `Comment`. The E1 projection (`TableView`, and the
 new `ViewView` and `SequenceView` lists on `DatabaseView`) carries them too, with display and plural names as null when unset.
+As built later on 2026-10-01, the rest of the physical model follows the same rule: `RDatabase`, `RSchema` (a schema entry of the
+database file; a schema known only because an object uses it has none) and `RColumn` (the column's own entry: a designed or extra
+column, or a synthesized column's overlay entry, never its attribute's, which templates read through `column.attribute`) derive from
+`RAnnotated` and are filled by `FillPhysicalAnnotations` (a column's stereotype and category keys join its table's set, a schema's
+join the schema's own `e:`/`r:` pair of the database). `ResolvedCoverageTests` walks every document kind's schema (and the parts
+that resolve to objects of their own) and asserts that each property is a member of the resolved type, so what it found came in
+with this round: `RDatabase.ByConvention` and `Packages`, `RSchema.IsDefault` and `IsDeclared`, `RTable.Attribute` (a child
+table's attribute), `RSequence.Database`, `RPrimaryKey.Clustered` and the file ids of uniques, foreign keys, checks and indexes;
+the gaps it lists for other kinds (enum members, relation ends, stereotypes, categories, and the mapping, diagram, tag vocabulary
+and category tree, which resolve to no object of their own) wait for a later round. The E1 projection gains `ColumnView`'s
+annotations with its default, sequence, collation and comment, and `DatabaseView`'s annotations, quoting, identifier limit,
+convention and `schemas` (`SchemaView`). The scopes `each view` and `each sequence` (erratum E38) plan one unit per view or
+sequence of every database (key sequences included); their alias is `view` or `sequence`, `generation.skip` and `where`
+(tags, stereotypes, categories, `database`, `script`) read the object's own annotations, and `packages`, `notPackages` and
+`abstract` are refused at pack load (MQ6001). The `sql-ddl` pack's `view` and `sequence` units use them, off unless its
+`objectScripts` parameter is set.
 
 **7.1 Ordering.** Packages by qualified name; entities, value objects, enums, scalars and relations by (package qualified name, name, id); databases by name; tables by (schema, name); columns by `Position`.
 
@@ -689,8 +710,8 @@ key, so editing a scenario (a referrer of its process) re-renders only the units
 ## 8. Template packs (W6 loads and plans; W5 renders)
 
 - **Discovery.** Every `templates/<name>/pack.json` whose `name` equals its folder is a pack; `packs.<name>.enabled: false` turns it off. Packs run in ordinal name order. `types/<target>.json` files are type maps for `type_of` (keyword → language type, plus `"nullable": "{type}?"` and `"collection": "IReadOnlyList<{type}>"` patterns). Built-in dialect targets need no file.
-- **`for`**: `model` (one unit, no element), `each package|entity|relation|enum|value object|table|reference type|seed|locale|process|actor|scenario` (one unit per resolved element; `table` covers every database; the unit key of `each reference type`, `each seed`, `each process`, `each actor` and `each scenario` is the element id, and the scope alias is `reference_type`, `seed`, `process`, `actor` or `scenario`; `where` on the three phase 3 scopes takes tags, stereotypes, categories and packages (a scenario's package is its process's, an actor has none, so a package filter matches no actor) and refuses `database` and `abstract` at pack load (MQ6001); `each locale` plans one unit per declared locale, the default first then ordinal, with the `RLocale` as `element` and `locale`, unit key `locale:<tag>`, and rejects `where` at pack load), or `select <name>` (a JavaScript selector that returns elements or ids; unknown ids fail with MQ6017). `generation["*"|pack].skip` on an element drops its units. `where` filters as in §2.5; `where.database` also picks `mapping` for entity and relation units.
-- **Template context.** Variables: `model`, `element`, a scope alias (`package`, `entity`, `relation`, `enum`, `value_object`, `table`, `reference_type`, `seed`, `locale`, `process`, `actor`, `scenario`), `pack` (`name`, `version`, `params`), `mapping` (`REntityMapping`/`RRelationMapping` for `where.database`, else the only one, else null), `mappings` (by database name), `schema_diff` (database name → `SchemaDiffResult`), `hints` (merged `generation["*"]` and `generation[pack]`), `data` (transform results), `unit` (`id`, `key`).
+- **`for`**: `model` (one unit, no element), `each package|entity|relation|enum|value object|table|view|sequence|reference type|seed|locale|process|actor|scenario` (one unit per resolved element; `table`, `view` and `sequence` cover every database (§7.0a); the unit key of `each reference type`, `each seed`, `each process`, `each actor` and `each scenario` is the element id, and the scope alias is `reference_type`, `seed`, `process`, `actor` or `scenario`; `where` on the three phase 3 scopes takes tags, stereotypes, categories and packages (a scenario's package is its process's, an actor has none, so a package filter matches no actor) and refuses `database` and `abstract` at pack load (MQ6001); `each locale` plans one unit per declared locale, the default first then ordinal, with the `RLocale` as `element` and `locale`, unit key `locale:<tag>`, and rejects `where` at pack load), or `select <name>` (a JavaScript selector that returns elements or ids; unknown ids fail with MQ6017). `generation["*"|pack].skip` on an element drops its units. `where` filters as in §2.5; `where.database` also picks `mapping` for entity and relation units.
+- **Template context.** Variables: `model`, `element`, a scope alias (`package`, `entity`, `relation`, `enum`, `value_object`, `table`, `view`, `sequence`, `reference_type`, `seed`, `locale`, `process`, `actor`, `scenario`), `pack` (`name`, `version`, `params`), `mapping` (`REntityMapping`/`RRelationMapping` for `where.database`, else the only one, else null), `mappings` (by database name), `schema_diff` (database name → `SchemaDiffResult`), `hints` (merged `generation["*"]` and `generation[pack]`), `data` (transform results), `unit` (`id`, `key`).
 - **Output.** `Output` is rendered with the same context (tracked like the body) and prefixed with `PackSettings.Output`. A template emits more files with `{{ file "path" content }}`, usually after `{{ capture content }}…{{ end }}` (D10). With `Output` null, only file blocks are written. Block paths take the same prefix and the unit's mode, except `pair`, whose blocks are `overwrite`.
 - **Modes.** `overwrite`, `once` (written only when missing; recorded as owned), `regions` (committed roots only; MQ6015), `pair` (`Output` rendered every time with `Template`; `Companion.Template` rendered to `Companion.Output` only when that file is missing, as owned).
 - **Built versus committed.** A file's root is the longest `outputs.allow` path that contains it. `Commit` decides the manifest location (§12.2), `--check` coverage and the `.gitignore` entries `init` writes.
@@ -906,13 +927,21 @@ public sealed record JobInfo(string Id, JobKind Kind, JobState State, int? Queue
 
 // Phase 2 editor additions E1–E4 (phase2-design.md §3.8); records in Editor/, public, Web-default JSON without converters
 public sealed record DatabaseViewResult(DatabaseView? View, IReadOnlyList<Diagnostic> Diagnostics);   // View null on model errors or an unknown id (MQ6017)
-public sealed record DatabaseView(string Id, string Name, string Dialect, string? Version, string? DefaultSchema, IReadOnlyList<TableView> Tables);
+public sealed record DatabaseView(string Id, string Name, string Dialect, string? Version, string? DefaultSchema, IReadOnlyList<TableView> Tables,
+    IReadOnlyList<ViewView> Views, IReadOnlyList<SequenceView> Sequences, IReadOnlyList<SchemaView> Schemas, string Quoting, int? MaxIdentifierLength,
+    string ByConvention, IReadOnlyList<ConventionPackageView> Packages, /* annotations (§7.0a): */ string? DisplayName, string? PluralName,
+    string? Description, IReadOnlyList<string> Stereotypes, IReadOnlyList<string> Tags, string? Category, IReadOnlyDictionary<string, object?> Properties,
+    IReadOnlyDictionary<string, GenerationHints> Generation);
+public sealed record SchemaView(string Id, string Name, bool IsDefault, bool IsDeclared, /* annotations */ ...);
+public sealed record ConventionPackageView(string PackageId, string? Schema);
+// TableView, ViewView and SequenceView end with the same eight annotation members (§7.0a).
 public sealed record TableView(string Key, string Name, string? Schema, string Origin, string? EntityId, string? RelationId, bool IsJunction,
     bool IsLookup /* always false: the enum lookup-table option is retired (MQ7012) */, string? Comment, IReadOnlyList<ColumnView> Columns, KeyView? PrimaryKey, IReadOnlyList<KeyView> Uniques,
     IReadOnlyList<ForeignKeyView> ForeignKeys, IReadOnlyList<IndexView> Indexes);
 public sealed record ColumnView(string Key, string Name, string Type, string NativeType, int? Length, int? Precision, int? Scale, bool Nullable,
     string? DefaultSql, bool Identity, string? Computed, string? AttributeId, string? AttributePath, bool IsPrimaryKey, bool IsForeignKey,
-    bool IsDiscriminator, int Position);
+    bool IsDiscriminator, int Position, object? Default, bool ComputedStored, string? SequenceId, string? Collation, string? Comment,
+    /* annotations of the column's own entry (§7.0a) */ ...);
 public sealed record KeyView(string Name, IReadOnlyList<string> Columns);              // column keys
 public sealed record ForeignKeyView(string Name, IReadOnlyList<string> Columns, string ReferencedTable, IReadOnlyList<string> ReferencedColumns,
     string OnDelete, string OnUpdate, string? RelationId, string? EndId);
@@ -921,6 +950,16 @@ public sealed record IndexColumnView(string Column, bool Descending);
 public sealed record PackListResult(IReadOnlyList<PackManifest> Packs, IReadOnlyList<Diagnostic> Diagnostics);
 public sealed record SettingsDocument(ProjectSettings Settings, string Path, string Hash, JsonElement Json);
 public sealed record SettingsSaveResult(SaveOutcome Outcome, string? Hash, SettingsDocument? Current, IReadOnlyList<Diagnostic> Diagnostics);
+
+// Bulk reads for external systems (2026-10-01): every page by (kind, name, id) ordinal, an opaque cursor encoding the last position
+public static class ModelPages
+{   public const int DefaultLimit = 100, MaxLimit = 1000;
+    public static IReadOnlyList<ElementSummary> Filter(IReadOnlyList<ElementSummary> index, ElementFilter filter);
+    public static IndexPage PageIndex(IReadOnlyList<ElementSummary> rows, string? cursor, int limit);
+    public static ElementPage ReadElements(ModelSnapshot snapshot, IReadOnlyList<string>? ids, ElementFilter filter, IReadOnlyList<string>? fields, string? cursor, int limit);
+    public static ModelKindsResult Kinds(IReadOnlyList<ElementSummary> index, bool byPackage); }   // a bad cursor is FormatException
+public sealed record ResolvedQuery(string Scope = "all", string? Database = null, string? Cursor = null, int Limit = 100);
+// GenerationService: Task<ResolvedPage> GetResolvedAsync(ResolvedQuery query, CancellationToken ct);   records in Editor/ResolvedRecords.cs
 
 // The schema copies in <ModelRoot>/.schema/v1/ (§3), namespace Maquettiste.Engine.Json; init, the editor's start and the MCP server's start
 public static class SchemaFolder
@@ -932,6 +971,8 @@ public sealed record SchemaFolderStatus(IReadOnlyList<string> Missing, IReadOnly
 ```
 
 **Editor additions (E1–E4).** E1 projects the resolved database into flat records (resolved objects reference each other, so R-types are never serialized); a model with validation or resolution errors returns those errors and no view, and an unknown database id is MQ6017. E2 loads enabled packs exactly as a run does and only parses and schema-checks disabled ones. E3 follows the element save rules: schema (`maquettiste.json`), canonical bytes, expected hash against disk (a disk edit behind the index is refreshed first), validation of a candidate snapshot where only errors the change introduces make it `Invalid`, atomic write under the store's write gate, then reload, with any resulting `ChangeSet` sent to `OnChanged` subscribers; an unchanged body is `Saved` without a write. E4 fills `Category` and `Stereotypes` from `ElementBase` at both indexer call sites; summaries are never persisted.
+
+**As built (bulk reads, 2026-10-01).** For external systems that read a model of thousands of elements, `ModelPages` filters the index (the filters `get_model_index` had), pages it, reads canonical documents in pages trimmed to chosen top-level members, and counts kinds per model or per package; `GenerationService.GetResolvedAsync` projects the resolved model into flat records per template scope the way E1 projects a database (entities with resolved attributes marked `isKey` and `isInherited`, relations, processes with every state and transition, databases as their `DatabaseView`, single tables, and the other kinds), validating and resolving once per snapshot and keeping only the last snapshot's resolved model; a model with errors returns its errors and no records. The functions answer them as `GET /api/model/elements`, `/api/model/resolved` and `/api/model/kinds` (and `/api/model/index` with filters, `limit` or `cursor`, the next page in a `Link` header), the MCP server as `get_elements`, `get_resolved_model`, `get_model_kinds` and the paged `get_model_index`, and the CLI as `model export` and `model stats`.
 
 A plan persists to `CacheDirectory/plans/<id>/plan.json` (through `EnginePaths`), with post-processed bytes of each added or modified file in `blobs/<ContentHash>`; the 20 newest plans are kept. The plan stores the request it was made with (`GenerationPlan.Request`: packs, roots, hand-edit policy, force, lock mode) and, per unit, every output file (`PlanUnit.Outputs`, unchanged files included, with mode, role, root and the disk hash seen at plan time), so apply needs no second render. `ApplyAsync` locks (with `Request.Lock`), reloads, validates, resolves, re-plans, recomputes each `PlanUnit.InputHash` from its read keys, and re-hashes every planned path on disk. Any input difference, any unit added or removed, or any planned path whose disk hash differs from `DiskHashAtPlan` (a hand edit, or an edit inside a protected region, since the plan's region bodies were merged at plan time) returns `Stale` with `StaleUnits` and `StalePaths` and writes nothing (30). Otherwise it feeds the writer one `ProcessedUnit` per planned unit: added and modified files from the blobs, unchanged ones as `ContentOmitted` files, skipped units as `SkippedUnit`s, with `WriteContext.PlannedPaths` = every path in `Outputs` and `Changes` so nothing outside the plan is touched (S19); then it saves unit state from the plan's read keys. Batches stage every file as `.<name>.mq-<batchId>.tmp` in the target folder and rename only after all staging succeeded; a rename failure rolls back the renamed files from copies staged beside them.
 

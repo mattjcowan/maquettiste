@@ -23,7 +23,7 @@ value objects, custom types, domains, databases and mappings, diagrams, referenc
 canonical form; a loader, validator (every rule an MQ id in the rule catalog, with a test) and resolver; template packs in
 a sandbox; an incremental planner that explains why each unit renders; a writer that never writes outside `outputs.allow`;
 a manifest, hand-edit detection and `generate --check` for CI; the CLI (`init`, `validate`, `generate`, `format`, `l10n`,
-`seed`, `pack new`, `mcp`) and an agent server with 39 tools at the time, 46 today (`docs/mcp.md`). Example packs: `sql-ddl` and `csharp-dapper`.
+`seed`, `pack new`, `mcp`, and later `model export` and `model stats`) and an agent server with 39 tools at the time, 49 today (`docs/mcp.md`), including the bulk reads an external system needs to pull a model of thousands of elements: documents in pages, the resolved model as flat records, and kind counts. Example packs: `sql-ddl` and `csharp-dapper`.
 
 **Gate 1 (pass).** The synthetic benchmark (5,000 entities, 20,000 relations, seed 42, `--jobs 8`) writes 100,050 files;
 against the Section 13 budgets: load, validate and resolve 1.7 s (3 s), plan 0.1 s (2 s), render 2.2 s (40 s), post-process
@@ -51,7 +51,7 @@ external systems) and scenarios (recorded runs that the engine replays as tests)
 quick fixes in the Problems panel; one interpreter in the engine for validation, simulation and verification; XState import
 and export as a projection that round-trips byte for byte; the Processes explorer, the process, actor and scenario
 editors, the statechart canvas with nested layered layout and the simulation panel that records scenarios; the CLI's
-`process simulate|record|verify|export|import|sync-enum` and six process tools in the agent server (46 tools in all).
+`process simulate|record|verify|export|import|sync-enum` and six process tools in the agent server (46 tools in all at the time).
 Example packs: `csharp-dapper` gains the process units (states, definition, contracts, handler, service, machine and store
 pairs, endpoints with user-code regions, a typed dispatcher with pipeline behaviours, a generated interpreter and one test
 per scenario), `sql-ddl` gains optional process tables, and the new `process-docs` pack writes Markdown pages; the

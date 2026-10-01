@@ -15,10 +15,10 @@ internal enum ProxyFunction
     /// <summary>A plain property.</summary>
     None,
 
-    /// <summary><c>hasStereotype(key)</c> on annotated objects (conceptual objects, tables, views, sequences) and process nodes.</summary>
+    /// <summary><c>hasStereotype(key)</c> on annotated objects (conceptual and physical objects) and process nodes.</summary>
     HasStereotype,
 
-    /// <summary><c>hasTag(key)</c> on annotated objects (conceptual objects, tables, views, sequences).</summary>
+    /// <summary><c>hasTag(key)</c> on annotated objects (conceptual and physical objects).</summary>
     HasTag,
 
     /// <summary><c>find(id)</c> on the model.</summary>

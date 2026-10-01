@@ -773,9 +773,14 @@ A table offers what its own file says about it, the way an entity does: `table.d
 and `name`), `table.properties` (a custom property reads as `{{ table.properties.tablespace }}`, with the stereotypes'
 default properties under the file's own values) and `table.generation`. The file is the designed or imported table,
 or the overlay you add to a synthesized table; a synthesized table without one has none of these, and its entity's
-are at `table.entity`. Views and sequences (`table.database.views`, `table.database.sequences`) offer the same from
-their own files, and `has_stereotype`, `has_tag` and `in_category` take a table, a view or a sequence as well as an
-element.
+are at `table.entity`. The rest of the database side works the same way, each from its own file or entry:
+`database` (and `table.database`) from the database file, which also gives `by_convention`, `packages`, `quoting` and
+`max_identifier_length`; each of `database.schemas` from its entry in that file, with `is_default` (a schema the file
+does not declare has no annotations); each column of `table.columns` from its own entry in the table file, a designed
+or extra column or the overlay entry of a synthesized one, never from its attribute, which stays at `column.attribute`;
+and views and sequences (`database.views`, `database.sequences`) from their files. `has_stereotype`, `has_tag` and
+`in_category` take any of these as well as an element. A child table (a value object or collection stored as a table)
+names its attribute at `table.attribute`, and the constraints of a table file keep their ids (`table.indexes[0].id`).
 
 **A pack** is a folder, `.maquettiste/templates/<pack>/`, holding the templates and one `pack.json` that says what to
 run. The example packs are `sql-ddl` (database scripts), `csharp-dapper` (classes and repositories, and the process
@@ -784,13 +789,14 @@ the same way. A pack also has an **output base** (`packs.<pack>.output` in `maqu
 the folder its paths start from, and can be switched off there (`enabled: false`).
 
 **A unit** is one line of a pack's work list. It names a template, which elements the template runs for (the scope),
-and where the result goes (the output pattern). `sql-ddl` has five units: `table`, `schema`, `migration`, `seed` and `process-tables` (off unless its `processTables` parameter is set).
+and where the result goes (the output pattern). `sql-ddl` has seven units: `table`, `schema`, `migration`, `seed`, `process-tables` (off unless its `processTables` parameter is set), and `view` and `sequence` (one script per view and per sequence, off unless its `objectScripts` parameter is set).
 
 **The scope** (`for` in `pack.json`) decides how many times a unit runs:
 
 | Scope | Runs | Result |
 | --- | --- | --- |
 | `each table`, `each entity`, `each enum`, … | once per element of that kind | one file per element: 40 tables give 40 scripts |
+| `each view`, `each sequence` | once per view or sequence of every database (the key sequences the engine creates included) | one file each; a filter takes tags, stereotypes, categories and the database, read from the view's or sequence's own file |
 | `model` | once, with the whole model | one file for many: a template that loops over every entity writes them all into one file |
 | `each locale` | once per declared language | one file per language (a resource file, a dictionary) |
 | `each process`, `each actor`, `each scenario` | once per process, actor or scenario | one file each: a page per process, a test per scenario (see "Generating code from processes") |
@@ -947,8 +953,9 @@ Alt+4:
   `{{ }}`, `{{- -}}` and `{{~ ~}}` blocks, keywords, strings, comments, pipes and the functions after them; text outside
   the blocks stays plain); the line above it says which units use the file, directly or through includes. On the
   right, the **preview**: pick a **Unit** (the ones that use the file come first) and one of its elements. The picker
-  lists only elements of the unit's scope kind (each entity: entities; each reference type: reference types; each
-  locale: locales; each table, and a `select` scope: the elements the unit plans; `model`: none, it renders once),
+  lists only elements of the unit's scope kind (each entity: entities; each reference type: reference types; each view
+  and each sequence: the view and sequence files; each locale: locales; each table, and a `select` scope: the elements
+  the unit plans; `model`: none, it renders once),
   starts on the first and remembers your choice per unit. A partial previews through the first unit that includes it,
   and the line above the preview says so; a file no unit uses previews through the first unit, also said there. When
   the model has no element of the unit's kind the preview says so ("The model has no reference type to preview this
@@ -1082,6 +1089,8 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | `maquettiste process export <process>` | The process as an XState machine config (`--format xstate`, the only format), on stdout or into `--out <file>`. What has no XState home travels under `meta.maquettiste`, so importing the file back over the process gives the same file. |
 | `maquettiste process import <file>` | Previews importing an XState config: `--domain <package>` (with `--name`, `--use lifecycle\|orchestration`, `--subject <entity>`) for a new process, or `--into <process>` to re-import over one, keeping the ids of what matches. Prints the diagnostics and how many ids are created and removed; `--apply` writes it as one change, refused (exit 3) when the process changed while the command ran and exit 1 when the import has errors. `--format json` prints the document. |
 | `maquettiste process sync-enum <process>` | Previews making a lifecycle's bound enum follow its root-level states (members added, removed, reordered, and removals refused because a default, allowed values, a seed cell or a scenario still uses the member); `--apply` writes it; `--check` exits 2 when the enum is out of sync. A refused removal exits 1: change the uses first. |
+| `maquettiste model export` | Writes the model as data for another system: the canonical document of every element, or of the ones `--kind`, `--package` (id or name), `--tag`, `--category`, `--stereotype`, `--query` (name contains) and `--ids a,b,...` select, as one JSON array (`--format json`, the default) or one document per line (`--format ndjson`, for a pipeline); `--fields name,attributes` keeps only those members of each document (`id` and `kind` always), `--out <file>` writes a file. With `--resolved` it writes the resolved model instead, what templates read, as flat records: `--scope entities` (attributes resolved, inherited ones marked, keys, relations and mappings by id), `databases` (each database's tables, views and sequences), `tables`, `processes` and the other kinds, `all` by default; `--database <id or name>` keeps what is mapped to that database. A model with errors cannot be resolved: the errors go to stderr and the command exits 1. |
+| `maquettiste model stats` | The kinds of element the model holds and how many of each; `--by package` adds the counts per package, `--format json` for scripts. |
 | `maquettiste pack new <name>` | Scaffolds a pack under `.maquettiste/templates/<name>/` (`--from empty`, `sql-ddl` or `csharp-dapper`). Give it an `output` under an allowed root in `maquettiste.json` before the next `generate` (packs/README.md). |
 
 Progress (`--progress plain`, the default when stderr is not a terminal) prints each stage once, in order, with a start
@@ -1091,6 +1100,23 @@ path and exits 1; in a container on a Linux host this usually means the containe
 owns the mounted folder, or that a file there belongs to another user, so start it with `--user 0:0` (below).
 
 With the .NET SDK installed, the CLI is a .NET tool (`dotnet tool install -g Maquettiste.Cli --prerelease`).
+
+### Reading the model as data
+
+`model export` and `model stats` read the same pages the editor's API (`GET /api/model/elements`, `/api/model/resolved`,
+`/api/model/kinds`) and the agent server's `get_elements`, `get_resolved_model` and `get_model_kinds` serve (docs/mcp.md,
+"Reading a large model"), so a script can use whichever is at hand. For example, every entity's name and attributes, one per
+line, then the tables of the database `main` as the generator sees them, one per line:
+
+```sh
+maquettiste model stats
+# entity                         5
+# ...
+maquettiste model export --kind entity --fields name,attributes --format ndjson > entities.ndjson
+maquettiste model export --resolved --scope tables --database main --format ndjson > tables.ndjson
+# one line per table, each with the table's columns, keys, foreign keys and indexes:
+# {"id":"01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4","kind":"table","name":"customers","database":"01J92P0V1QRN2181XM2ZWE02W4","table":{...}}
+```
 
 ### From the Docker image
 

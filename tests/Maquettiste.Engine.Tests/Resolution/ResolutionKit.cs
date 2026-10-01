@@ -96,7 +96,9 @@ internal static partial class ResolutionKit
         foreach (var db in model.Databases)
         {
             sb.Append("database ").Append(db.Name).Append(' ').Append(db.Dialect).Append(" default-schema=").Append(db.DefaultSchema ?? "-")
-                .Append(" limit=").Append(V(db.MaxIdentifierLength)).Append(" schemas=").Append(string.Join(',', db.Schemas.Select(s => s.Name))).Append('\n');
+                .Append(" limit=").Append(V(db.MaxIdentifierLength)).Append(" schemas=")
+                .Append(string.Join(',', db.Schemas.Select(s => Annotations(s, V) is { Length: > 0 } a ? s.Name + "[" + a.TrimStart() + "]" : s.Name)))
+                .Append(Annotations(db, V)).Append('\n');
             foreach (var t in db.Tables)
             {
                 sb.Append("  table ").Append(t.Schema is null ? "" : t.Schema + ".").Append(t.Name).Append(" key=").Append(L(t.Key)).Append(' ').Append(t.Origin)
@@ -109,7 +111,7 @@ internal static partial class ResolutionKit
                         .Append(" native=").Append(c.NativeType).Append(c.Nullable ? " null" : " not-null")
                         .Append(c.IsPrimaryKey ? " pk" : "").Append(c.IsForeignKey ? " fk" : "").Append(c.IsDiscriminator ? " discriminator" : "")
                         .Append(c.Identity ? " identity" : "").Append(c.Sequence is { } s ? " seq=" + s.Name : "")
-                        .Append(c.Default is { } d ? " default=" + V(d) : "").Append(" key=").Append(L(c.Key)).Append('\n');
+                        .Append(c.Default is { } d ? " default=" + V(d) : "").Append(" key=").Append(L(c.Key)).Append(Annotations(c, V)).Append('\n');
                 }
 
                 if (t.PrimaryKey is { } pk)
@@ -141,8 +143,8 @@ internal static partial class ResolutionKit
     }
 
     /// <summary>
-    /// The annotations of a physical object, each only when set (a table, view or sequence without a file has none, so the lines of
-    /// unannotated objects read as before).
+    /// The annotations of a physical object, each only when set (a database, schema, table, column, view or sequence without a file or
+    /// an entry of its own has none, so the lines of unannotated objects read as before).
     /// </summary>
     private static string Annotations(RAnnotated o, Func<object?, string> v)
     {

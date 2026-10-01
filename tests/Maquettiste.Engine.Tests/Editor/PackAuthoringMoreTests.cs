@@ -155,6 +155,19 @@ public sealed class PackAuthoringMoreTests
             Assert.Contains(new Maquettiste.Engine.TemplateMember(name, type), context.Members["element"]);
         Assert.Equal(context.Helpers.Order(StringComparer.Ordinal), context.Helpers);
         Assert.Null(await repo.Service.GetTemplateContextAsync("sql-ddl", "ghost", Ct));
+
+        // The view and sequence units: their scope variable and the annotated members of the object.
+        foreach (var unit in new[] { "view", "sequence" })
+        {
+            var objects = (await repo.Service.GetTemplateContextAsync("sql-ddl", unit, Ct))!;
+            Assert.Equal("each " + unit, objects.Scope);
+            Assert.Contains(objects.Variables, v => v.Name == unit);
+            foreach (var name in new[] { "database", "schema", "display_name", "description", "stereotypes", "tags", "category", "properties", "generation" })
+                Assert.Contains(objects.Members["element"], m => m.Name == name);
+        }
+
+        Assert.Contains(new Maquettiste.Engine.TemplateMember("body", "string"), (await repo.Service.GetTemplateContextAsync("sql-ddl", "view", Ct))!.Members["element"]);
+        Assert.Contains(new Maquettiste.Engine.TemplateMember("start", "number"), (await repo.Service.GetTemplateContextAsync("sql-ddl", "sequence", Ct))!.Members["element"]);
     }
 
     [Theory]

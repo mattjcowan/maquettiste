@@ -55,17 +55,19 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
             [.. snapshot.Summaries().Where(s => s.Kind == "database")], packs.Packs, packs.Diagnostics, [.. snapshot.Extensions.Select(e => e.Schema)], null));
     }, ct);
 
-    /// <summary>The element summaries, filtered (getModelIndex).</summary>
+    /// <summary>The element summaries, filtered, and paged when asked (getModelIndex).</summary>
     /// <param name="kind">A kind name.</param>
     /// <param name="package">A package id or name.</param>
     /// <param name="tag">A tag.</param>
     /// <param name="category">A category.</param>
     /// <param name="stereotype">A stereotype.</param>
     /// <param name="query">A name fragment.</param>
+    /// <param name="cursor">The previous page's next.</param>
+    /// <param name="limit">The page size.</param>
     /// <param name="ct">Cancellation.</param>
-    /// <returns>The matching summaries, in index order.</returns>
+    /// <returns>The matching summaries, in index order; with a cursor or limit, one page of them by (kind, name, id) and the next cursor.</returns>
     [McpServerTool(Name = "get_model_index", Title = "Model index", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Summaries of the top-level elements (id, kind, name, package, tags, category, stereotypes, hash, path). Every filter is optional and they combine with AND.")]
+    [Description("Summaries of the top-level elements (id, kind, name, package, tags, category, stereotypes, hash, path). Every filter is optional and they combine with AND. Without cursor or limit the answer is the whole list; with either it is one page, {items, next}, ordered by kind, name and id: pass next as cursor until it is null. Use the index to find elements, get_elements to read their documents in bulk, get_resolved_model for what generation sees (resolved types, inherited attributes, tables), get_model_kinds for the counts.")]
     public Task<CallToolResult> GetModelIndex(
         [Description("Only this kind, for example entity, relation, enum, value-object, scalar-type, package, database, table, view, sequence, mapping, diagram.")] string? kind = null,
         [Description("Only elements directly in this package, by package id or package name.")] string? package = null,
@@ -73,35 +75,25 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
         [Description("Only elements in this category.")] string? category = null,
         [Description("Only elements with this stereotype.")] string? stereotype = null,
         [Description("Only elements whose name contains this text, ignoring case.")] string? query = null,
+        [Description("The next value of the previous page; pages the answer.")] string? cursor = null,
+        [Description("The page size, 1 to 1000 (100 when only a cursor is given); pages the answer.")] int? limit = null,
         CancellationToken ct = default) => GuardAsync(async () =>
     {
+        if (limit is < 1 or > ModelPages.MaxLimit)
+            return BadRequest($"limit must be from 1 to {ModelPages.MaxLimit}.");
         await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
         var index = await _store.GetIndexAsync(ct).ConfigureAwait(false);
-        HashSet<string>? packages = null;
-        if (!string.IsNullOrEmpty(package))
+        var rows = ModelPages.Filter(index, new ElementFilter(kind, package, tag, category, stereotype, query));
+        if (limit is null && string.IsNullOrEmpty(cursor))
+            return Ok(rows);
+        try
         {
-            packages = new HashSet<string>(StringComparer.Ordinal) { package };
-            foreach (var summary in index)
-            {
-                if (summary.Kind == "package" && string.Equals(summary.Name, package, StringComparison.OrdinalIgnoreCase))
-                    packages.Add(summary.Id);
-            }
+            return Ok(ModelPages.PageIndex(rows, cursor, limit ?? ModelPages.DefaultLimit));
         }
-
-        IEnumerable<ElementSummary> result = index;
-        if (!string.IsNullOrEmpty(kind))
-            result = result.Where(s => string.Equals(s.Kind, kind, StringComparison.Ordinal));
-        if (packages is not null)
-            result = result.Where(s => s.Package is not null && packages.Contains(s.Package));
-        if (!string.IsNullOrEmpty(tag))
-            result = result.Where(s => s.Tags.Contains(tag, StringComparer.Ordinal));
-        if (!string.IsNullOrEmpty(category))
-            result = result.Where(s => string.Equals(s.Category, category, StringComparison.Ordinal));
-        if (!string.IsNullOrEmpty(stereotype))
-            result = result.Where(s => s.Stereotypes.Contains(stereotype, StringComparer.Ordinal));
-        if (!string.IsNullOrEmpty(query))
-            result = result.Where(s => s.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
-        return Ok(result.ToList());
+        catch (FormatException ex)
+        {
+            return BadRequest(ex.Message);
+        }
     }, ct);
 
     /// <summary>One element's document and hash (getElement).</summary>

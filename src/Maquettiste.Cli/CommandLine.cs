@@ -19,13 +19,14 @@ internal sealed class CommandLine
         "--repo", "--cache-dir", "--jobs", "--progress", "--verbosity", "--format", "--output", "--pack", "--roots", "--hand-edits",
         "--from", "--out", "--docker", "--locale", "--mode", "--name", "--seed", "--entities", "--relations", "--enums", "--fanout", "--baseline", "--max-regression",
         "--inputs", "--scenario", "--domain", "--use", "--subject", "--into", "--processes",
+        "--kind", "--package", "--tag", "--category", "--stereotype", "--query", "--ids", "--fields", "--scope", "--database", "--by",
     };
 
     /// <summary>Options that are flags.</summary>
     private static readonly HashSet<string> FlagOptions = new(StringComparer.Ordinal)
     {
         "--version", "--help", "--quiet", "--no-color", "--hooks", "--force", "--watch", "--dry-run", "--diff", "--check", "--keep", "--no-wait",
-        "--no-example-packs", "--mcp", "--skill", "--agent-setup", "--apply",
+        "--no-example-packs", "--mcp", "--skill", "--agent-setup", "--apply", "--resolved",
     };
 
     /// <summary>Short aliases.</summary>

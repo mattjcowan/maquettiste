@@ -58,6 +58,7 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
 | `Commands/*.cs` | one class per command |
 | `Mcp/McpServerSetup.cs` | `maquettiste mcp`: the server options (tools, the `maquettiste://conventions` resource and `modeling-conventions` prompt from the embedded `skills/maquettiste-modeling/SKILL.md`, instructions) |
 | `Mcp/ModelTools.cs` | the MCP tools: thin wrappers over `ModelStore` and `GenerationService` with the editor API's bodies and problem codes (docs/mcp.md) |
+| `Mcp/ModelTools.Bulk.cs` | the bulk read tools `get_model_kinds`, `get_elements` and `get_resolved_model` (docs/mcp.md, "Reading a large model") |
 
 ## Behavior
 
@@ -106,6 +107,11 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
   merge|replace]`; the seed is found by id, name (exact, then ignoring case), then the id or name of its target, and an ambiguous
   name lists the ids (exit 1). An import previews with `ImportSeedCsvAsync(dryRun: true)`; `--apply` repeats it with the hash the
   index held, so a seed changed in between is a conflict (exit 1, nothing written).
+- **model** (`Commands/ModelCommand.cs`): `export` pages through `ModelPages.ReadElements` (1000 at a time, one snapshot) with the
+  index filters, `--ids` and `--fields`, or with `--resolved` through `GenerationService.GetResolvedAsync` (`--scope`, `--database`
+  by id or name), and writes one JSON array (`--format json`) or one value per line (`ndjson`) to stdout or `--out` (as the
+  exchange verbs, never inside `.maquettiste/`); an id that names nothing, or a model with errors under `--resolved`, exits 1.
+  `stats` prints `ModelPages.Kinds` (`--by package`, `--format text|json`).
 - **Preview verbs** (`l10n import|prune|set-default`, `seed import`): `--check` exits 2 when the preview would change something;
   `--apply` with `--dry-run` or `--check` is a usage error (4); an unknown locale, a missing or unreadable file, a conflict or an
   invalid change exit 1. Results go to stdout, the summary line to stderr.

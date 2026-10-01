@@ -90,6 +90,18 @@ describe("mock contract", () => {
     expect(customers).toMatchObject({ displayName: null, description: null, stereotypes: [], tags: [], category: null, properties: {} });
     expect(view.views.map((v) => v.name)).toEqual(["outstanding_invoices"]);
     expect(view.sequences.find((s) => s.name === "invoice_number_seq")).toMatchObject({ start: 1000, stereotypes: [], properties: {} });
+    // A column takes the annotations of its own overlay entry; the others have none, whatever their attribute carries.
+    const number = invoices.columns.find((c) => c.name === "number")!;
+    expect(number).toMatchObject({
+      comment: "Assigned on issue.",
+      description: "The number printed on the invoice; customers quote it when they pay.",
+      stereotypes: ["audited"],
+      properties: { classification: "internal", retentionDays: 2555 },
+    });
+    expect(invoices.columns.filter((c) => c.name !== "number").every((c) => c.stereotypes.length === 0 && c.description === null)).toBe(true);
+    // The database carries its own annotations (none in the fixture) and lists its schemas.
+    expect(view).toMatchObject({ quoting: "reserved", byConvention: "all", packages: [], stereotypes: [], displayName: null });
+    expect(view.schemas).toEqual([expect.objectContaining({ name: "billing", isDefault: true, isDeclared: true, stereotypes: [] })]);
   });
 
   it("answers the explorer-at-scale additions (E5 to E5e) in contract shape", async () => {
@@ -378,6 +390,41 @@ describe("mock contract", () => {
     expect((await batch([{ op: "set-initial", id: PURCHASE_APPROVAL, target: states[1] }])).status).toBe(200);
     expect((await batch([{ op: "set-lifecycle", id: INVOICE, target: INVOICE_LIFECYCLE }])).status).toBe(200);
     expect((await batch([{ op: "refresh-scenario", id: BUDGET_REJECTED }])).status).toBe(200);
+  });
+
+  it("answers the bulk reads (documents in pages, kinds, the resolved model) in contract shape", async () => {
+    const ids: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const path: string = `/api/model/elements?kind=entity&fields=name&limit=2${cursor ? `&cursor=${cursor}` : ""}`;
+      const { payload } = await call("get", path, "/api/model/elements");
+      const pageBody = payload as { items: { id: string; json: Json }[]; next: string | null };
+      for (const item of pageBody.items) {
+        expect(Object.keys(item.json).sort()).toEqual(["id", "kind", "name"]);
+        ids.push(item.id);
+      }
+      cursor = pageBody.next;
+    } while (cursor);
+    const index = mock.backend.model.index().filter((r) => r.kind === "entity");
+    expect(ids.sort()).toEqual(index.map((r) => r.id).sort());
+    const read = await call("get", `/api/model/elements?ids=${IDS.invoice},01J92P0V0FJ23CGSNKM7P1W5V9`, "/api/model/elements");
+    expect((read.payload as { missing: string[] }).missing).toEqual(["01J92P0V0FJ23CGSNKM7P1W5V9"]);
+    expect((await call("get", "/api/model/elements?limit=1001", "/api/model/elements")).status).toBe(400);
+    expect((await call("get", "/api/model/elements?cursor=nope", "/api/model/elements")).status).toBe(400);
+
+    const { payload: kinds } = await call("get", "/api/model/kinds?by=package", "/api/model/kinds");
+    expect((kinds as { total: number }).total).toBe(mock.backend.model.index().length);
+
+    const page = await call("get", "/api/model/index?kind=entity&limit=2", "/api/model/index");
+    expect((page.payload as unknown[]).length).toBe(2);
+    expect(page.response.headers.get("Link")).toMatch(/^<\/api\/model\/index\?.*cursor=.*>; rel="next"$/);
+
+    const { payload: resolved } = await call("get", "/api/model/resolved?scope=entities", "/api/model/resolved");
+    expect((resolved as { items: { kind: string }[] }).items.length).toBe(index.length);
+    const database = mock.backend.model.index().find((r) => r.kind === "database")!;
+    await call("get", `/api/model/resolved?scope=tables&database=${database.id}&limit=1000`, "/api/model/resolved");
+    expect((await call("get", "/api/model/resolved?scope=widgets", "/api/model/resolved")).status).toBe(400);
+    expect((await call("get", `/api/model/resolved?database=${IDS.invoice}`, "/api/model/resolved")).status).toBe(404);
   });
 
   it("answers every contract operation from the baseline (first example), in contract shape", () => {

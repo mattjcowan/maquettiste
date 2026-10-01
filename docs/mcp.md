@@ -121,7 +121,7 @@ claude mcp add maquettiste -- docker run -i --rm --user 0:0 -v "$PWD:/repo" -w /
 ```
 
 Checked on Linux (Docker Engine, amd64) with a stdio client over `docker run -i --rm --user ... maquettiste mcp`: `initialize`
-in 0.7 s, `tools/list` with 18 tools (image 0.1.0; the published 0.2.0 image lists 24, the current source 46), `validate` in 55 ms, the container removed on exit. The wrapper's shape (arguments, stderr
+in 0.7 s, `tools/list` with 18 tools (image 0.1.0; the published 0.2.0 image lists 24, the current source 49), `validate` in 55 ms, the container removed on exit. The wrapper's shape (arguments, stderr
 to the log, stdout untouched) is covered by the CLI tests.
 
 ### In this repository
@@ -140,7 +140,7 @@ Create the copy first with `docker/dev-billing.sh`, or without Docker, then buil
 ```sh
 mkdir -p tmp/billing && cp -r tests/fixtures/models/billing/.maquettiste tmp/billing/
 dotnet build src/Maquettiste.Cli -c Release
-claude                               # then /mcp shows maquettiste connected with 46 tools
+claude                               # then /mcp shows maquettiste connected with 49 tools
 ```
 
 A headless check that needs no approval prompt (an explicit `--mcp-config` is trusted):
@@ -170,8 +170,11 @@ the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.We
 | Tool | API operation | Arguments | Returns |
 | --- | --- | --- | --- |
 | `get_project` | getProject | | name, versions, settings and `settingsHash`, databases, packs, pack diagnostics, extensions (`mode` is `local`, `git` is null) |
-| `get_model_index` | getModelIndex | `kind`, `package` (id or name), `tag`, `category`, `stereotype`, `query` (name contains, ignoring case), all optional, AND | element summaries |
+| `get_model_index` | getModelIndex | `kind`, `package` (id or name), `tag`, `category`, `stereotype`, `query` (name contains, ignoring case), all optional, AND; `cursor`, `limit` (1 to 1000) | element summaries; with `cursor` or `limit`, one page `{ items, next }` ordered by kind, name and id |
+| `get_model_kinds` | getModelKinds | `by` (`kind` default, or `package`) | `{ total, kinds: [{ kind, count }], packages }`; with `package`, per package `{ package, name, count, kinds }`, the elements in no package first |
 | `get_element` | getElement | `id` | the document: `json` (canonical), `hash`, `path`, the typed element, the sidecar text |
+| `get_elements` | getElements | `ids` (element or sub-element ids, at most 1000), the index filters, `fields` (top-level members to keep), `cursor`, `limit` (default 100, at most 1000) | `{ items: [{ id, kind, path, hash, json }], next, missing }`: the canonical documents in pages, ordered by kind, name and id |
+| `get_resolved_model` | getResolvedModel | `scope` (`all` default, `packages`, `entities`, `relations`, `enums`, `value-objects`, `scalar-types`, `reference-types`, `seeds`, `processes`, `actors`, `scenarios`, `databases`, `tables`), `database` (an id), `cursor`, `limit` | `{ items, next, diagnostics }`: what templates read, as flat records with `id`, `kind` and `name` (other objects by id); a model with errors returns no items and the errors |
 | `save_element` | saveElement | `id`, `element` (whole document), `expectedHash` | the save result (new `hash`, changes) |
 | `create_element` | createElement | `element` (an id is assigned when absent) | the save result with the new `id`; write a database with `byConvention` (`none`, `packages` or `all`): without it a database with no `packages` takes every entity (the rule from before 0.3.0) |
 | `delete_element` | deleteElement | `id`, `expectedHash`, `resolution` (`refuse` default, or `remove-references`) | the save result |
@@ -192,7 +195,7 @@ the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.We
 | `reference_type_usage` | getReferenceTypeUsage | `id` of a reference type | `usages`: attribute, owner, domain, collection, required and the effective storage per database |
 | `validate` | validate | `elementIds` (optional scope), `includeReferrers`, `includeScriptRules` | the report: diagnostics with rule ids, file, JSON pointer, line and column; counts |
 | `list_validation_rules` | listValidationRules | | the built-in rules, ordered by id: `id`, `defaultSeverity`, `description`, `family` (the hundreds group, such as `MQ72xx`) and `familyLabel`, `canBeOff` (false for MQ1xxx), `quickFix` (the batch operation that fixes a finding, when the rule has one); override a severity with `validation.rules` through `save_settings` |
-| `get_database_view` | getDatabaseView | `id` of a database | the resolved physical view: the tables of the entities mapped to it (by its `byConvention` setting and its `packages`, or one by one by mapping elements, less the ignored ones), with columns, keys, indexes and foreign keys, views and sequences. Each table, view and sequence carries the annotations of its own file: `displayName`, `pluralName`, `description`, `stereotypes` (keys), `tags`, `category` (id), `properties` (merged with the stereotypes' defaults) and `generation`; a synthesized table without an overlay has none, whatever its entity carries. A new database with nothing mapped has no tables |
+| `get_database_view` | getDatabaseView | `id` of a database | the resolved physical view: the tables of the entities mapped to it (by its `byConvention` setting and its `packages`, or one by one by mapping elements, less the ignored ones), with columns, keys, indexes and foreign keys, views, sequences and `schemas` (`name`, `isDefault`, `isDeclared`). The database, each schema, table, column, view and sequence carries the annotations of its own file or entry: `displayName`, `pluralName`, `description`, `stereotypes` (keys), `tags`, `category` (id), `properties` (merged with the stereotypes' defaults) and `generation`; a synthesized table without an overlay, or a synthesized column without an overlay entry, has none, whatever its entity or attribute carries. The database also gives `quoting`, `maxIdentifierLength`, `byConvention` and `packages`; a column its `default`, `sequenceId`, `collation`, `comment` and `computedStored`. A new database with nothing mapped has no tables |
 | `list_packs` | (part of getProject) | | pack manifests and their diagnostics |
 | `get_settings` | getSettings | | `maquettiste.json`: typed settings, canonical `json`, `hash` |
 | `save_settings` | saveSettings | `settings` (whole document), `expectedHash` | the save result |
@@ -288,6 +291,116 @@ and `title`, an optional `detail`, and the fields of the body the API returns wi
 | `conflicts`, `drift`, `busy`, `failed` | 409, 409, 503, 500 | a run outcome other than success | the run result |
 | `model-unavailable` | 503 | the model folder cannot be read | `detail` |
 | `internal` | 500 | anything else, including an exception from the engine; one line `maquettiste mcp: <tool> failed: <type>: <message>` goes to stderr | `detail` (the message) |
+
+## Reading a large model
+
+The index, the bulk read and the resolved read answer different questions:
+
+- `get_model_index` finds elements: one short row per element (id, kind, name, package, tags, category, stereotypes, hash,
+  path). Without paging arguments it returns the whole list, which stays small (a few hundred bytes a row); with `limit` or
+  `cursor` it returns pages.
+- `get_elements` reads documents in bulk: the canonical JSON of each element, as `get_element` returns it, in pages of up to
+  1000, trimmed to the members you name in `fields`. Use it to copy, transform or analyze the model as written.
+- `get_resolved_model` reads what generation sees: types resolved through scalar types and value objects, the base entity's
+  attributes on each derived entity, keys, the tables and columns each entity maps to, the database views and the processes'
+  statecharts, as flat records. Use it to feed another system the model as templates read it.
+- `get_model_kinds` says what there is to iterate: each kind with its count, per package with `by: "package"`.
+
+Every paged read orders its rows by kind, then name, then id (ordinal), so the order is stable. Pass the `next` of a page as
+`cursor` to get the following one, until `next` is null; a cursor is opaque and encodes the last position read. A change to the
+model between two pages does not fail the read: the next page starts after that position in the changed model, so an element
+renamed in between may be read twice or not at all, and every other element is read once. The editor API serves the same
+pages (`GET /api/model/elements`, `/api/model/resolved`, `/api/model/kinds`, and `/api/model/index` with `limit` or `cursor`,
+whose next page comes in a `Link` header), and so does the command line (`maquettiste model export` and `model stats`, in
+docs/user-guide.md, "The command line"). The examples below run on the billing fixture.
+
+### Every entity's documents, trimmed
+
+Count first, then page through the entities, keeping only the members you need:
+
+```json
+get_model_kinds {}
+{ "total": 26, "kinds": [ { "kind": "category-tree", "count": 1 }, { "kind": "database", "count": 1 }, { "kind": "entity", "count": 5 }, ... ], "packages": null }
+
+get_elements { "kind": "entity", "fields": ["name", "attributes"], "limit": 2 }
+{
+  "items": [
+    { "id": "01J92P0V0ETQKXXP951CMMNHH3", "kind": "entity", "path": ".maquettiste/model/entities/customer.json",
+      "hash": "9e5da84d083cffdcec1a6b4969a4281f1cbf2b64957bde9621616f813ea27dcf",
+      "json": { "kind": "entity", "id": "01J92P0V0ETQKXXP951CMMNHH3", "name": "Customer",
+                "attributes": [ { "id": "01J92P0V0KGPC29TQQG8R57EBM", "name": "id", "type": "uuid", "required": true }, ... ] } },
+    { "id": "01J92P0V0FJ23CGSNKM7P1W5V7", "kind": "entity", "path": ".maquettiste/model/entities/invoice.json", ... }
+  ],
+  "next": "cDEAZW50aXR5AEludm9pY2UAMDFKOTJQMFYwRkoyM0NHU05LTTdQMVc1Vjc",
+  "missing": []
+}
+
+get_elements { "kind": "entity", "fields": ["name", "attributes"], "limit": 2, "cursor": "cDEAZW50aXR5AEludm9pY2UAMDFKOTJQMFYwRkoyM0NHU05LTTdQMVc1Vjc" }
+{ "items": [ { ... "InvoiceLine" ... }, { ... "Payment" ... } ], "next": "cDEAZW50aXR5AFBheW1lbnQAMDFKOTJQMFYwSEVHU0M2TVc5MkNTVDVLQTY", "missing": [] }
+```
+
+and once more for `Product`, whose page has `"next": null`. `id` and `kind` are always kept; leave `fields` out for whole
+documents. The `hash` of each item is the one `save_element` takes as `expectedHash`, so a client can read in bulk and write back
+one element at a time. The same over HTTP and from the command line:
+
+```sh
+curl -H "Authorization: Bearer $MAQUETTISTE_EDITOR_TOKEN" \
+  'http://maquettiste.localhost:8080/api/model/elements?kind=entity&fields=name,attributes&limit=1000'
+maquettiste model export --kind entity --fields name,attributes --format ndjson > entities.ndjson
+```
+
+### The resolved databases
+
+```json
+get_resolved_model { "scope": "databases" }
+{
+  "items": [
+    { "id": "01J92P0V1QRN2181XM2ZWE02W4", "kind": "database", "name": "main", "dialect": "postgresql", "version": "16", "defaultSchema": "billing",
+      "tables": [
+        { "key": "01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4", "name": "customers", "schema": "billing", "origin": "synthesized",
+          "entityId": "01J92P0V0ETQKXXP951CMMNHH3",
+          "columns": [ { "key": "01J92P0V0KGPC29TQQG8R57EBM", "name": "id", "type": "uuid", "nativeType": "uuid", "nullable": false,
+                         "attributeId": "01J92P0V0KGPC29TQQG8R57EBM", "isPrimaryKey": true, "position": 0, ... }, ... ],
+          "primaryKey": { "name": "pk_customers", "columns": ["01J92P0V0KGPC29TQQG8R57EBM"] }, "foreignKeys": [], "indexes": [], ... },
+        ... "invoice_lines", "invoices", "payment_invoice", "payments", "products" ...
+      ],
+      "views": [ { "name": "outstanding_invoices", ... } ],
+      "sequences": [ { "name": "invoice_number_seq", ... } ] }
+  ],
+  "next": null,
+  "diagnostics": []
+}
+```
+
+Each database record is the database view of `get_database_view` with `id`, `kind` and `name`. A database of thousands of tables
+is one large record; read it a table at a time instead with `{ "scope": "tables", "database": "01J92P0V1QRN2181XM2ZWE02W4",
+"limit": 500 }`, whose records are `{ id, kind: "table", name, database, table }`. To join tables to entities, read
+`{ "scope": "entities", "database": "01J92P0V1QRN2181XM2ZWE02W4" }`: each entity record's `mappings` names its table (`table`, the
+table's `key`) and the column of each attribute path. When the model has errors, `items` is empty and `diagnostics` holds the
+errors; fix them (`validate` lists them with positions) and read again. From the command line:
+`maquettiste model export --resolved --scope databases --database main > databases.json`.
+
+### Everything of one package
+
+```json
+get_model_kinds { "by": "package" }
+{ "total": 26, "kinds": [ ... ],
+  "packages": [
+    { "package": null, "name": null, "count": 12, "kinds": [ ... ] },
+    { "package": "01J92P0V01KDRN8GX5PGYCNKSX", "name": "Billing", "count": 13,
+      "kinds": [ { "kind": "diagram", "count": 1 }, { "kind": "entity", "count": 4 }, { "kind": "enum", "count": 1 }, { "kind": "package", "count": 1 },
+                 { "kind": "relation", "count": 4 }, { "kind": "scalar-type", "count": 1 }, { "kind": "value-object", "count": 1 } ] },
+    { "package": "01J92P0V025DRFTXKMS240G2NG", "name": "Catalog", "count": 1, "kinds": [ { "kind": "entity", "count": 1 } ] } ] }
+
+get_elements { "package": "Billing", "limit": 1000 }
+{ "items": [ ... 13 documents: the diagram, Customer, Invoice, InvoiceLine, Payment, InvoiceStatus, the package Catalog,
+             the relations contains, places, refers to and settles, EmailAddress, Money ... ], "next": null, "missing": [] }
+```
+
+`package` takes the package's id or its name and matches the elements directly in it; a child package (here `Catalog`, inside
+`Billing`) is one of them, so read its members with `{ "package": "Catalog" }` in turn, or walk the tree from the `children` of
+the package records of `get_resolved_model { "scope": "packages" }`. Add `kind` to narrow it (`{ "package": "Billing", "kind":
+"relation" }`), or call `get_resolved_model` and keep the records whose `package` is the package's id.
 
 ## Conventions resource and prompt
 

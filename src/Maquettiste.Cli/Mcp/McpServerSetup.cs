@@ -25,6 +25,8 @@ internal static class McpServerSetup
         Maquettiste model server. The model is one canonical JSON document per element under .maquettiste/; every reference between
         elements is an id. Read the conventions (resource maquettiste://conventions, or the modeling-conventions prompt) before editing.
         Start with get_project and get_model_index; get_schema returns the JSON schema of a kind so documents you build are valid.
+        To read a large model, get_model_kinds counts what there is, get_elements returns documents in pages (fields trims them) and
+        get_resolved_model returns what generation sees as flat records in pages; pass next as cursor until it is null.
         get_element returns a document and its hash: save_element and delete_element take that hash as expectedHash and never
         overwrite a newer file (a conflict returns the disk version). delete_element refuses while other elements reference the
         element unless resolution is remove-references. apply_batch applies several changes all or nothing. validate reports

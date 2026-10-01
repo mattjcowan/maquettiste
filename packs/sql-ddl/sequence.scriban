@@ -1,0 +1,17 @@
+{{-
+# One script per sequence, <db>/[<schema>/]sequences/<sequence>.sql: its CREATE SEQUENCE, as the schema script writes it (the
+# sequence files and the sequences the resolver creates for keys). Off unless the parameter objectScripts is true; schema.sql and the
+# migrations create every sequence either way.
+include "_sql.scriban"
+include "_objects.scriban"
+if pack.params.objectScripts
+  db = sequence.database
+-}}
+{{- capture content -}}
+{{ banner "--" }}
+-- Sequence {{ sequence.schema ? sequence.schema + "." : "" }}{{ sequence.name }} of database {{ db.name }} ({{ dialect_title(db) }}).
+
+{{ sequence_sql(sequence, db) }}
+{{ end -}}
+{{- file ((kebab db.name) + "/" + (sequence.schema ? sequence.schema + "/" : "") + "sequences/" + sequence.name + ".sql") content -}}
+{{- end -}}

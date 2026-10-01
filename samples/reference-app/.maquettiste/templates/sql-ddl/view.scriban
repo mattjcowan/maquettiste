@@ -1,0 +1,19 @@
+{{-
+# One script per view, <db>/[<schema>/]views/<view>.sql: its CREATE VIEW, as the schema script writes it. Off unless the parameter
+# objectScripts is true; schema.sql and the migrations create every view either way.
+include "_sql.scriban"
+include "_objects.scriban"
+if pack.params.objectScripts
+  db = view.database
+-}}
+{{- capture content -}}
+{{ banner "--" }}
+-- View {{ view.schema ? view.schema + "." : "" }}{{ view.name }} of database {{ db.name }} ({{ dialect_title(db) }}).
+{{- if pack.params.comments && view.comment }}
+-- {{ view.comment }}
+{{- end }}
+
+{{ view_sql(view, db) }}
+{{ end -}}
+{{- file ((kebab db.name) + "/" + (view.schema ? view.schema + "/" : "") + "views/" + view.name + ".sql") content -}}
+{{- end -}}

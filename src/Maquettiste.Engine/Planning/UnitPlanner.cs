@@ -11,7 +11,7 @@ namespace Maquettiste.Engine.Planning;
 
 /// <summary>
 /// Stage 4: expands packs into render units (W6; engine-design.md section 8): template × element for each unit's <c>for</c> scope
-/// (<c>model</c>, <c>each package|entity|relation|enum|value object|table|reference type|seed|locale|process|actor|scenario</c>, or
+/// (<c>model</c>, <c>each package|entity|relation|enum|value object|table|view|sequence|reference type|seed|locale|process|actor|scenario</c>, or
 /// <c>select &lt;name&gt;</c> through the sandbox),
 /// minus elements whose <c>generation["*"|pack].skip</c> is set, filtered by <c>where</c> (<see cref="UnitFilter"/>). Units are
 /// ordered by pack order, then key ordinal; a key produced twice (a selector returning an id twice) is planned once.
@@ -119,7 +119,7 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
                     foreach (var element in Candidates(model, pack, unit, parameters, Pool, packFile, pointer, diagnostics, ct))
                     {
                         ct.ThrowIfCancellationRequested();
-                        if (element is RElement conceptual && SkippedByHints(conceptual.Generation, pack.Name))
+                        if (element is RElement or RView or RSequence && SkippedByHints(((RAnnotated)element).Generation, pack.Name))
                             continue;
                         if (element is RTable table && filter.FileOf(table) is { } tableFile && SkippedByHints(tableFile.Generation, pack.Name))
                             continue;
@@ -218,7 +218,7 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
             }
 
             var filter = new UnitFilter(model);
-            if (element is RElement conceptual && SkippedByHints(conceptual.Generation, pack.Name))
+            if (element is RElement or RView or RSequence && SkippedByHints(((RAnnotated)element).Generation, pack.Name))
                 return ("skip-hint", $"{Describe(element)} has generation.skip for this pack (or for every pack).");
             if (element is RTable table && filter.FileOf(table) is { } tableFile && SkippedByHints(tableFile.Generation, pack.Name))
                 return ("skip-hint", $"The table file of {Describe(element)} has generation.skip for this pack (or for every pack).");
@@ -349,6 +349,8 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
             case "each enum": return model.Enums;
             case "each value object": return model.ValueObjects;
             case "each table": return model.Databases.SelectMany(d => d.Tables);
+            case "each view": return model.Databases.SelectMany(d => d.Views);
+            case "each sequence": return model.Databases.SelectMany(d => d.Sequences);
             case "each reference type": return model.ReferenceTypes;
             case "each seed": return model.Seeds;
             case "each locale": return model.Locales;
@@ -515,10 +517,10 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
 /// <summary>
 /// The <c>where</c> filters of a unit (engine-design.md section 2.5): every set filter must match; lists match any value. Tags,
 /// stereotypes, categories and packages are those of the element; a table uses its own file (designed, imported, or the overlay of a
-/// synthesized table) together with the entity or relation it comes from. Categories and packages match by id or name (qualified
-/// name for packages) and include descendants. <c>database</c>: a table in that database; an entity or relation mapped (not ignored)
-/// there; any other element when the database exists. <c>abstract</c> matches entities by <see cref="REntity.IsAbstract"/> and other
-/// elements as not abstract. <c>script</c> calls a JavaScript filter.
+/// synthesized table) together with the entity or relation it comes from; a view or sequence uses its own file. Categories and
+/// packages match by id or name (qualified name for packages) and include descendants. <c>database</c>: a table, view or sequence in
+/// that database; an entity or relation mapped (not ignored) there; any other element when the database exists. <c>abstract</c>
+/// matches entities by <see cref="REntity.IsAbstract"/> and other elements as not abstract. <c>script</c> calls a JavaScript filter.
 /// </summary>
 internal sealed class UnitFilter
 {
@@ -619,6 +621,8 @@ internal sealed class UnitFilter
     private bool InDatabase(IResolvedObject? element, string database) => element switch
     {
         RTable table => string.Equals(table.Database.Name, database, StringComparison.Ordinal),
+        RView view => string.Equals(view.Database.Name, database, StringComparison.Ordinal),
+        RSequence sequence => string.Equals(sequence.Database.Name, database, StringComparison.Ordinal),
         REntity entity => entity.Mappings.ContainsKey(database),
         RRelation relation => relation.Mappings.ContainsKey(database),
         _ => _model.Databases.Any(d => string.Equals(d.Name, database, StringComparison.Ordinal)),
@@ -638,6 +642,8 @@ internal sealed class UnitFilter
             set.UnionWith(source.Tags);
         if (element is RTable table && _tableFiles.TryGetValue(table.Key, out var file))
             set.UnionWith(file.Tags);
+        if (element is RView or RSequence)
+            set.UnionWith(((RAnnotated)element).Tags);
         return set;
     }
 
@@ -648,6 +654,8 @@ internal sealed class UnitFilter
             set.UnionWith(source.Stereotypes.Select(s => s.Key));
         if (element is RTable table && _tableFiles.TryGetValue(table.Key, out var file))
             set.UnionWith(file.Stereotypes);
+        if (element is RView or RSequence)
+            set.UnionWith(((RAnnotated)element).Stereotypes.Select(s => s.Key));
         return set;
     }
 
@@ -658,6 +666,8 @@ internal sealed class UnitFilter
             ids.Add(own);
         if (element is RTable table && _tableFiles.TryGetValue(table.Key, out var file) && file.Category is { } fileCategory)
             ids.Add(fileCategory);
+        if (element is RView or RSequence && ((RAnnotated)element).Category?.Id is { } physicalCategory)
+            ids.Add(physicalCategory);
         foreach (var start in ids)
         {
             var seen = new HashSet<string>(StringComparer.Ordinal);

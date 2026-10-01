@@ -1,7 +1,7 @@
 namespace Maquettiste.Engine.Resolution;
 
-/// <summary>A resolved database.</summary>
-public sealed class RDatabase : RObject
+/// <summary>A resolved database, with the annotations (<see cref="RAnnotated"/>) of its file (no fallbacks for display and plural names).</summary>
+public sealed class RDatabase : RAnnotated
 {
     /// <inheritdoc/>
     public override string Kind => "database";
@@ -35,16 +35,45 @@ public sealed class RDatabase : RObject
 
     /// <summary>The effective identifier length limit, or <see langword="null"/> for none.</summary>
     public int? MaxIdentifierLength { get; internal set; }
+
+    /// <summary>
+    /// Which entities map here by convention: <c>all</c>, <c>packages</c> (the entities of <see cref="Packages"/>) or <c>none</c>. A file
+    /// that leaves it out reads as <c>all</c> without packages and <c>packages</c> with them, as the resolver places tables.
+    /// </summary>
+    public string ByConvention { get; internal set; } = "all";
+
+    /// <summary>The packages whose entities map here by convention, each with the schema its conventional tables go to, in file order.</summary>
+    public IReadOnlyList<RConventionPackage> Packages { get; internal set; } = [];
 }
 
-/// <summary>A resolved schema.</summary>
-public sealed class RSchema : RObject
+/// <summary>One package a database takes by convention.</summary>
+public sealed class RConventionPackage
+{
+    /// <summary>The package, or <see langword="null"/> when the id names no package.</summary>
+    public RPackage? Package { get; internal set; }
+
+    /// <summary>The package id as the database file writes it.</summary>
+    public string PackageId { get; internal set; } = "";
+
+    /// <summary>The name of the schema the package's conventional tables go to, or <see langword="null"/> for the default schema.</summary>
+    public string? Schema { get; internal set; }
+}
+
+/// <summary>A resolved schema. A schema the database file declares carries its annotations (<see cref="RAnnotated"/>); a schema known only
+/// because a table, view or sequence uses it (the dialect's default schema, say) has none.</summary>
+public sealed class RSchema : RAnnotated
 {
     /// <inheritdoc/>
     public override string Kind => "schema";
 
     /// <summary>The schema name.</summary>
     public string Name { get; internal set; } = "";
+
+    /// <summary>Whether the schema is the database's effective default schema.</summary>
+    public bool IsDefault { get; internal set; }
+
+    /// <summary>Whether the database file declares the schema.</summary>
+    public bool IsDeclared { get; internal set; }
 
     /// <summary>Tables in the schema, by name.</summary>
     public RList<RTable> Tables { get; internal set; } = RList<RTable>.Empty;
@@ -84,6 +113,9 @@ public sealed class RTable : RAnnotated
     /// <summary>The relation, for a junction table.</summary>
     public RRelation? Relation { get; internal set; }
 
+    /// <summary>The attribute a child table stores (a value object stored as a table, or a collection), or <see langword="null"/>.</summary>
+    public RAttribute? Attribute { get; internal set; }
+
     /// <summary>Columns, by position.</summary>
     public RList<RColumn> Columns { get; internal set; } = RList<RColumn>.Empty;
 
@@ -117,11 +149,18 @@ public sealed class RPrimaryKey
 
     /// <summary>The key columns, in key order.</summary>
     public IReadOnlyList<RColumn> Columns { get; internal set; } = [];
+
+    /// <summary>Whether the table file asks for a clustered (<see langword="true"/>) or nonclustered (<see langword="false"/>) key, or
+    /// <see langword="null"/> when it says nothing.</summary>
+    public bool? Clustered { get; internal set; }
 }
 
 /// <summary>A resolved unique constraint.</summary>
 public sealed class RUnique
 {
+    /// <summary>The id the table file gives the constraint, or <see langword="null"/> for one the resolver creates.</summary>
+    public string? Id { get; internal set; }
+
     /// <summary>The constraint name.</summary>
     public string Name { get; internal set; } = "";
 
@@ -132,6 +171,9 @@ public sealed class RUnique
 /// <summary>A resolved foreign key.</summary>
 public sealed class RForeignKey
 {
+    /// <summary>The id the table file gives the constraint, or <see langword="null"/> for one the resolver creates.</summary>
+    public string? Id { get; internal set; }
+
     /// <summary>The constraint name.</summary>
     public string Name { get; internal set; } = "";
 
@@ -160,6 +202,9 @@ public sealed class RForeignKey
 /// <summary>A resolved check constraint.</summary>
 public sealed class RCheck
 {
+    /// <summary>The id the table file gives the constraint, or <see langword="null"/> for one the resolver creates.</summary>
+    public string? Id { get; internal set; }
+
     /// <summary>The constraint name.</summary>
     public string Name { get; internal set; } = "";
 
@@ -170,6 +215,9 @@ public sealed class RCheck
 /// <summary>A resolved index.</summary>
 public sealed class RIndex
 {
+    /// <summary>The id the table file gives the index, or <see langword="null"/> for an index the resolver creates.</summary>
+    public string? Id { get; internal set; }
+
     /// <summary>The index name.</summary>
     public string Name { get; internal set; } = "";
 
@@ -199,8 +247,12 @@ public sealed class RIndexColumn
     public bool Descending { get; internal set; }
 }
 
-/// <summary>A resolved column.</summary>
-public sealed class RColumn : RObject
+/// <summary>
+/// A resolved column. Its annotations (<see cref="RAnnotated"/>) come from its own entry in a table file: a designed or imported
+/// column, an overlay's extra column, or the overlay entry of a synthesized column. A synthesized column without an overlay entry has
+/// none, and never takes its attribute's, which templates reach through <see cref="Attribute"/>.
+/// </summary>
+public sealed class RColumn : RAnnotated
 {
     /// <inheritdoc/>
     public override string Kind => "column";
@@ -340,6 +392,9 @@ public sealed class RSequence : RAnnotated
 
     /// <summary>The schema name, or <see langword="null"/>.</summary>
     public string? Schema { get; internal set; }
+
+    /// <summary>The database.</summary>
+    public RDatabase Database { get; internal set; } = null!;
 
     /// <summary>The built-in integer type keyword.</summary>
     public string Type { get; internal set; } = "int64";

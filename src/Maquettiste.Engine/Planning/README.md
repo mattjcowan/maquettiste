@@ -42,18 +42,20 @@ Tests: `tests/Maquettiste.Engine.Tests/Planning/`; fixture packs in `tests/fixtu
 
 ## Unit planner
 
-- `for`: `model` (one unit, no element), `each package|entity|relation|enum|value object|table` (`table` covers every database,
-  databases by name, tables in resolver order), `select <name>` (JavaScript selector through a pool of size 1 created only when a
+- `for`: `model` (one unit, no element), `each package|entity|relation|enum|value object|table|view|sequence` (`table`, `view` and
+  `sequence` cover every database, databases by name, objects in resolver order; the other scopes are in engine-design.md section 8), `select <name>` (JavaScript selector through a pool of size 1 created only when a
   pack needs scripts; each id goes through `ResolvedModel.Find`, unknown ids are MQ6017 at `/units/<i>/for`). Script failures
   (`ScriptErrorException`, `ScriptLimitException`) become their MQ6016/MQ6007 diagnostics and the affected units are not planned.
 - `generation["*"].skip` or `generation[<pack>].skip` on a conceptual element drops its units (either one set is enough). For a
   table (`each table`, or a selector that returns tables) the hints of the table's own file count: the designed or imported table,
   or the overlay of a synthesized table (found by its section 7.3 key). A synthesized table does not inherit the skip of the entity
   or relation it comes from: dropping a table's DDL because its entity's classes are skipped would silently break the schema
-  (foreign keys of other tables still point at it); skip the table through an overlay instead.
+  (foreign keys of other tables still point at it); skip the table through an overlay instead. A view or sequence (`each view`,
+  `each sequence`) counts the hints of its own file, and `where` reads its own tags, stereotypes and category; `packages`,
+  `notPackages` and `abstract` on those scopes are refused at pack load (MQ6001).
 - `where` (every set filter must match; lists match any value): tags and stereotypes of the element; categories by id or name
   with descendants (through the category tree); packages by id or qualified name with sub-packages (a package unit matches on the
-  package itself and its ancestors); `database` (a table in it; an entity or relation with a mapping there, i.e. in
+  package itself and its ancestors); `database` (a table, view or sequence in it; an entity or relation with a mapping there, i.e. in
   `Mappings`; any other element or a model unit when the database exists); `abstract` (entities by `IsAbstract`, anything else
   counts as not abstract); `script` (a JavaScript filter, seeded with the unit key).
 - Keys: `<pack>/<unitId>` or `<pack>/<unitId>:<elementId>`; units ordered by pack order then key ordinal, a duplicate key kept once.

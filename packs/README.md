@@ -85,8 +85,16 @@ Templates are [Scriban](https://github.com/scriban/scriban). The context has `mo
   synthesized table's overlay) as an entity does: `display_name`, `plural_name`, `description`, `tags`, `category` (`id`, `name`,
   `path`), `stereotypes` (`key`, `name`, `icon`, `color`), `properties` (a map: the stereotypes' default properties merged under
   the file's own) and `generation`, plus `comment`. These are empty for a synthesized table without an overlay: the entity's own
-  are on `table.entity`. `database.views` (`body`, `columns`, `comment`) and `database.sequences` carry the same annotations from
-  their files.
+  are on `table.entity`. A column carries the same annotations from its own entry in the table file (a designed or extra column,
+  or a synthesized column's overlay entry; never its attribute's, which is `column.attribute`), with `comment`, `collation` and
+  `sequence`. A child table names its attribute (`table.attribute`), the primary key has `clustered`, and uniques, foreign keys,
+  checks and indexes keep their file `id` (null when synthesized).
+- `database` itself carries the annotations of the database file, with `by_convention`, `packages` (`package`, `package_id`,
+  `schema`), `quoting` and `max_identifier_length`; `database.schemas` (`name`, `is_default`, `is_declared`, `tables`, `views`,
+  `sequences`) carry those of their entries in that file. `database.views` (`body`, `columns`, `comment`) and
+  `database.sequences` (with `database`) carry the same annotations from their files; `each view` and `each sequence` run a unit
+  once per view or sequence of every database (alias `view` or `sequence`), filtered by tags, stereotypes, categories and the
+  database.
 - `process` (`each process`, or `model.processes`): `use`, `subject`, `bound_attribute`, `bound_enum`, `context`, `events`,
   `guards`, `actions`, `states` (the tree), `all_states` (document order), `atomic_states`, `bound_states`, `transitions` (priority
   order), `gates`, `invokes`, `actors`, `scenarios`, `initial`. A state has `name`, `path` (`Fulfilment.Shipping.Packed`), `type`,
@@ -106,7 +114,7 @@ Templates are [Scriban](https://github.com/scriban/scriban). The context has `mo
 
 Helpers: `pascal camel snake kebab upper_snake`, `pluralize singularize`, `type_of <attribute|column> "<target>"` (a
 `types/<target>.json` map or a SQL dialect), `sql_quote`, `sql_literal`, `indent`, `escape_xml`/`escape_json`/`escape_md`, `json`,
-`has_stereotype`, `has_tag`, `in_category` (each takes an element, a table, a view or a sequence), `lookup`, `banner "<comment prefix>"`, `file`, `state_path <state>` (a state's dotted path) and
+`has_stereotype`, `has_tag`, `in_category` (each takes an element, a database, schema, table, column, view or sequence), `lookup`, `banner "<comment prefix>"`, `file`, `state_path <state>` (a state's dotted path) and
 `iso_duration_ms <text>` (an ISO 8601 duration in milliseconds, a month 30 days and a year 365 as the interpreter counts them; a
 text that is not a duration fails the unit with MQ6006). Partials are templates included with
 `{{ include "_name.scriban" arg }}` (paths relative to the pack folder); a partial that only defines functions is a good home for

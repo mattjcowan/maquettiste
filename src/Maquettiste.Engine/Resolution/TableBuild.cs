@@ -50,6 +50,9 @@ internal sealed class TableBuild
 
     public string? PrimaryKeyName { get; set; }
 
+    /// <summary>The <c>clustered</c> flag of the table file's primary key, when it sets one.</summary>
+    public bool? PrimaryKeyClustered { get; set; }
+
     public List<UniqueSpec> Uniques { get; } = [];
 
     public List<ForeignKeySpec> ForeignKeys { get; } = [];
@@ -71,14 +74,14 @@ internal sealed class TableBuild
 }
 
 /// <summary>A unique constraint to resolve.</summary>
-internal sealed record UniqueSpec(IReadOnlyList<string> Columns, string? Name, string? NameToken);
+internal sealed record UniqueSpec(IReadOnlyList<string> Columns, string? Name, string? NameToken, string? Id = null);
 
 /// <summary>An index to resolve.</summary>
 internal sealed record IndexSpec(IReadOnlyList<(string Column, bool Descending)> Columns, IReadOnlyList<string> Include, string? Where, bool Unique,
-    string Method, string? Name, bool FromFile = false);
+    string Method, string? Name, bool FromFile = false, string? Id = null);
 
 /// <summary>A check constraint to resolve.</summary>
-internal sealed record CheckSpec(string Expression, string? Name, int Ordinal);
+internal sealed record CheckSpec(string Expression, string? Name, int Ordinal, string? Id = null);
 
 /// <summary>A foreign key to resolve; <see cref="Result"/> exists from the start so mappings can hold it.</summary>
 internal sealed class ForeignKeySpec(TableBuild host, IReadOnlyList<string> columns, TableBuild? target, string? targetKey,
@@ -99,6 +102,9 @@ internal sealed class ForeignKeySpec(TableBuild host, IReadOnlyList<string> colu
 
     /// <summary>The designed table or overlay file that declares the key; <see langword="null"/> for a synthesized key.</summary>
     public string? FileId { get; init; }
+
+    /// <summary>The key's id in its file; <see langword="null"/> for a synthesized key.</summary>
+    public string? Id { get; init; }
 }
 
 /// <summary>Where an entity's rows live in one database.</summary>

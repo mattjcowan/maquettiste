@@ -1,8 +1,8 @@
 # sql-ddl
 
-SQL DDL for **PostgreSQL**, **SQL Server** and **SQLite** from the resolved physical model: one script per table, one schema
-script per database, migrations written once from the schema diff, and a seed script with a protected region. MySQL and Oracle
-databases get portable SQL without dialect-specific clauses.
+SQL DDL for **PostgreSQL**, **SQL Server** and **SQLite** from the resolved physical model: one script per table (and, when
+you ask for them, one per view and per sequence), one schema script per database, migrations written once from the schema diff,
+and a seed script with a protected region. MySQL and Oracle databases get portable SQL without dialect-specific clauses.
 
 The pack writes to a **committed** output root. `maquettiste init --pack sql-ddl` sets `packs.sql-ddl.output` to `db` and
 declares `db` with `commit: true`, so every path below is under `db/`.
@@ -18,6 +18,8 @@ For a database `main` (PostgreSQL, schema `billing`) with a table `invoices`:
 | `migration` | `once` | `select databases` | `main/migrations/0001.sql`, `0002.sql`, …: one script per schema revision, from `schema_diff` |
 | `seed` | `regions` | `select databases` | `main/seed.sql`: the reference data of reference types reconciled on every run, the rows of entity and relation seeds, plus a `seed-data` region the team fills in |
 | `process-tables` | file blocks | `each process` | `main/processes/purchase-approval.sql`: instance, history and gate audit tables of a process, one script per database; only when `processTables` is `true` (see Process tables) |
+| `view` | file blocks | `each view` | `main/billing/views/outstanding_invoices.sql`: the view's `CREATE VIEW`; only when `objectScripts` is `true` (see Object scripts) |
+| `sequence` | file blocks | `each sequence` | `main/billing/sequences/invoice_number_seq.sql`: the sequence's `CREATE SEQUENCE`; only when `objectScripts` is `true` |
 
 Database folders are the kebab-case database name; the schema folder is left out when the table has no schema (SQLite).
 
@@ -117,6 +119,16 @@ of seeds, written so the script can run again on a database that has them), but 
 is carried over from the file on disk. Edits outside the region are reported as hand edits. `regions` mode only works on a
 committed root.
 
+## Object scripts
+
+`schema.sql` and the migrations create every view and sequence. With `"objectScripts": true` the pack also writes one script
+per view (`<db>/[<schema>/]views/<view>.sql`) and one per sequence (`<db>/[<schema>/]sequences/<sequence>.sql`, the sequences the
+resolver creates for keys included), each holding the statement the schema script writes for it, so a review or a deployment tool
+can take them one at a time. The units run once per view (`each view`) and once per sequence (`each sequence`); a copy of the unit
+in your own pack can filter them with `where` on tags, stereotypes, categories and the database, read from the view's or
+sequence's own file. They are off by default so that turning the pack on adds no files a project did not ask for. A view's
+`comment` follows its header when `comments` is on; a sequence on SQLite, which has none, gets a script that says so.
+
 ## Process tables
 
 The engine creates no table for process instances: a project models where they live (the gate 3 fixture maps `SalesOrder`,
@@ -140,6 +152,7 @@ Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
 | Parameter | Default | Meaning |
 | --- | --- | --- |
 | `comments` | `true` | Emit table and column comments. |
+| `objectScripts` | `false` | Write `<db>/[<schema>/]views/<view>.sql` for every view and `<db>/[<schema>/]sequences/<sequence>.sql` for every sequence (see Object scripts). |
 | `referenceStrategy` | `"lookup-table"` | The strategy key for reference types whose storage the project leaves to the template (see Reference data). |
 | `quoting` | `""` | `always`, `reserved` or `never` to override every database's `quoting` setting; empty keeps the database's. |
 | `strategyMap` | each key to itself | From the project's reference storage strategy keys to `lookup-table`, `check` or `native` (see Reference data). |
@@ -157,7 +170,7 @@ Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
 | `_objects.scriban` | Sequences, views, schemas, include directives and the dependency spec for `ddl_order`. |
 | `_migration.scriban` | Statement builders over the schema diff. |
 | `_reference.scriban` | Reference data: the realizations, their reconciliation and the seed-row inserts, used by `schema`, `migration` and `seed`. |
-| `table.scriban`, `schema.scriban`, `migration.scriban`, `seed.scriban`, `process-tables.scriban` | The unit templates. |
+| `table.scriban`, `view.scriban`, `sequence.scriban`, `schema.scriban`, `migration.scriban`, `seed.scriban`, `process-tables.scriban` | The unit templates. |
 
 ## Notes
 

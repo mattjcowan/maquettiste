@@ -10,8 +10,8 @@ public sealed class McpSurfaceTests
     private static readonly string[] Tools =
     [
         "apply_batch", "apply_plan", "create_element", "create_seed", "delete_element", "delete_pack_file", "explain_unit",
-        "export_process", "export_seed_csv", "get_database_view", "get_element", "get_model_index", "get_pack", "get_pack_outputs",
-        "get_plan", "get_plan_diff", "get_project", "get_references", "get_schema", "get_settings", "get_template_context",
+        "export_process", "export_seed_csv", "get_database_view", "get_element", "get_elements", "get_model_index", "get_model_kinds", "get_pack",
+        "get_pack_outputs", "get_plan", "get_plan_diff", "get_project", "get_references", "get_resolved_model", "get_schema", "get_settings", "get_template_context",
         "get_translations", "import_process", "import_seed_csv", "list_pack_files", "list_packs", "list_validation_rules",
         "localization_status", "move_pack_file", "new_pack", "plan", "preview_unit", "read_pack_file", "record_scenario",
         "reference_type_usage", "save_element", "save_pack", "save_pack_settings", "save_settings", "set_translations", "simulate_process",
@@ -46,6 +46,21 @@ public sealed class McpSurfaceTests
         Assert.Equal("modeling-conventions", Assert.Single(prompts).Name);
         var prompt = await session.Client.GetPromptAsync("modeling-conventions", cancellationToken: ct);
         Assert.Equal(text, Assert.IsType<TextContentBlock>(Assert.Single(prompt.Messages).Content).Text);
+    }
+
+    [Fact]
+    public void Docs_list_every_tool_and_the_current_count()
+    {
+        var root = Maquettiste.Testing.Fixtures.RepoRoot;
+        var docs = File.ReadAllText(Path.Combine(root, "docs", "mcp.md")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        var start = docs.IndexOf("\n## Tools\n", StringComparison.Ordinal);
+        var table = docs[start..docs.IndexOf("\n### Semantics\n", start, StringComparison.Ordinal)];
+        var rows = System.Text.RegularExpressions.Regex.Matches(table, @"^\| `([a-z_]+)` \|", System.Text.RegularExpressions.RegexOptions.Multiline).Select(m => m.Groups[1].Value);
+        Assert.Equal(Tools, rows.Order(StringComparer.Ordinal));
+        var count = Tools.Length.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Contains("the current source " + count + ")", docs, StringComparison.Ordinal);
+        Assert.Contains("connected with " + count + " tools", docs, StringComparison.Ordinal);
+        Assert.Contains(count + " today", File.ReadAllText(Path.Combine(root, "README.md")), StringComparison.Ordinal);
     }
 
     [Fact]

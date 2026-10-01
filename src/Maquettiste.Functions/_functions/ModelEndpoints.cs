@@ -9,40 +9,184 @@ public static class ModelEndpoints
 {
     /// <summary>
     /// Summaries of every element, with the index's hash as ETag and <c>Cache-Control: no-cache</c> (E5e): a request whose
-    /// <c>If-None-Match</c> names the current tag gets 304 with no body.
+    /// <c>If-None-Match</c> names the current tag gets 304 with no body. The index filters narrow it, and <paramref name="limit"/> or
+    /// <paramref name="cursor"/> page it by (kind, name, id): the body is then one page and a <c>Link</c> header with <c>rel="next"</c>
+    /// names the next one. A filtered or paged answer carries no ETag (<c>Cache-Control: no-store</c>).
     /// </summary>
     /// <param name="locale">A declared locale: <c>displayName</c> comes from its fallback chain (reference-types-seeds-localization.md
     /// section 3.8), and the ETag covers the locale and its shards.</param>
+    /// <param name="kind">Only this kind.</param>
+    /// <param name="package">Only elements directly in this package (id or name).</param>
+    /// <param name="tag">Only elements with this tag.</param>
+    /// <param name="category">Only elements in this category.</param>
+    /// <param name="stereotype">Only elements with this stereotype.</param>
+    /// <param name="query">Only elements whose name contains this text, ignoring case.</param>
+    /// <param name="cursor">The cursor of the page (from the previous page's <c>Link</c>).</param>
+    /// <param name="limit">The page size, 1 to 1000 (100 when only a cursor is given).</param>
     /// <param name="context">The request.</param>
     /// <param name="store">The model store.</param>
     /// <param name="ct">Cancellation.</param>
-    /// <returns>200 with the summaries, 304, or 400 for an undeclared locale.</returns>
+    /// <returns>200 with the summaries, 304, or 400 for an undeclared locale, a bad cursor or limit.</returns>
     [HttpGet("/api/model/index")]
-    public static Task<IResult> Index(string? locale, HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    public static Task<IResult> Index(string? locale, string? kind, string? package, string? tag, string? category, string? stereotype, string? query,
+        string? cursor, string? limit, HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(store);
+        if (!ModelPages.TryParseLimit(limit, out var size, out var limitError))
+            return Api.BadRequest(limitError!);
         var snapshot = await store.GetSnapshotAsync(ct).ConfigureAwait(false);
         var index = snapshot.Summaries();
-        string tag;
+        string etag;
         if (!string.IsNullOrEmpty(locale) && locale != snapshot.Localization.Settings?.DefaultLocale)
         {
             if (!snapshot.Localization.IsTranslated(locale))
                 return Api.BadRequest($"'{locale}' is not a declared locale.");
-            tag = ModelReads.LocalizedIndexTag(snapshot, index, locale);
+            etag = ModelReads.LocalizedIndexTag(snapshot, index, locale);
             index = ModelReads.Localize(snapshot, index, locale);
         }
         else
         {
-            tag = ModelReads.IndexTag(index);
+            etag = ModelReads.IndexTag(index);
         }
 
-        Api.SetETag(context, tag);
-        context.Response.Headers.CacheControl = "no-cache";
-        if (Api.TryReadTag(context.Request.Headers.IfNoneMatch.ToString(), out var seen) && seen == tag)
-            return Results.StatusCode(StatusCodes.Status304NotModified);
-        return Api.Json(index);
+        var filter = new ElementFilter(kind, package, tag, category, stereotype, query);
+        var paged = !string.IsNullOrEmpty(limit) || !string.IsNullOrEmpty(cursor);
+        if (filter.IsEmpty && !paged)
+        {
+            Api.SetETag(context, etag);
+            context.Response.Headers.CacheControl = "no-cache";
+            if (Api.TryReadTag(context.Request.Headers.IfNoneMatch.ToString(), out var seen) && seen == etag)
+                return Results.StatusCode(StatusCodes.Status304NotModified);
+            return Api.Json(index);
+        }
+
+        context.Response.Headers.CacheControl = "no-store";
+        var rows = ModelPages.Filter(index, filter);
+        if (!paged)
+            return Api.Json(rows);
+        IndexPage page;
+        try
+        {
+            page = ModelPages.PageIndex(rows, cursor, size);
+        }
+        catch (FormatException ex)
+        {
+            return Api.BadRequest(ex.Message);
+        }
+
+        if (page.Next is { } next)
+            context.Response.Headers.Link = "<" + NextUrl(context.Request, next) + ">; rel=\"next\"";
+        return Api.Json(page.Items);
     });
+
+    /// <summary>
+    /// Element documents in pages, for external systems that read the whole model: the elements <paramref name="ids"/> names, or every
+    /// element, narrowed by the index filters, by (kind, name, id), each document trimmed to <paramref name="fields"/> when given.
+    /// </summary>
+    /// <param name="ids">Comma-separated element or sub-element ids (at most 1000).</param>
+    /// <param name="kind">Only this kind.</param>
+    /// <param name="package">Only elements directly in this package (id or name).</param>
+    /// <param name="tag">Only elements with this tag.</param>
+    /// <param name="category">Only elements in this category.</param>
+    /// <param name="stereotype">Only elements with this stereotype.</param>
+    /// <param name="query">Only elements whose name contains this text, ignoring case.</param>
+    /// <param name="fields">Comma-separated top-level members to keep in each document (<c>id</c> and <c>kind</c> always kept).</param>
+    /// <param name="cursor">The previous page's <c>next</c>.</param>
+    /// <param name="limit">The page size, 1 to 1000 (default 100).</param>
+    /// <param name="context">The request.</param>
+    /// <param name="store">The model store.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>200 with the page, or 400.</returns>
+    [HttpGet("/api/model/elements")]
+    public static Task<IResult> List(string? ids, string? kind, string? package, string? tag, string? category, string? stereotype, string? query,
+        string? fields, string? cursor, string? limit, HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (!ModelPages.TryParseLimit(limit, out var size, out var limitError))
+            return Api.BadRequest(limitError!);
+        var idList = ModelPages.SplitList(ids);
+        if (idList is not null && idList.Count > ModelPages.MaxLimit)
+            return Api.BadRequest($"At most {ModelPages.MaxLimit} ids can be read at once; {idList.Count} were given.");
+        if (idList is not null && idList.Any(id => !Api.IsUlid(id)))
+            return Api.BadRequest("ids must be element or sub-element ids (uppercase ULIDs), separated by commas.");
+        var snapshot = await store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return Api.Json(ModelPages.ReadElements(snapshot, idList, new ElementFilter(kind, package, tag, category, stereotype, query), ModelPages.SplitList(fields), cursor, size));
+        }
+        catch (FormatException ex)
+        {
+            return Api.BadRequest(ex.Message);
+        }
+    });
+
+    /// <summary>The kinds present in the model with their counts, and per package with <c>by=package</c>.</summary>
+    /// <param name="by"><c>kind</c> (the default) or <c>package</c>.</param>
+    /// <param name="context">The request.</param>
+    /// <param name="store">The model store.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>200 with the counts, or 400.</returns>
+    [HttpGet("/api/model/kinds")]
+    public static Task<IResult> Kinds(string? by, HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (by is not (null or "" or "kind" or "package"))
+            return Api.BadRequest($"by must be kind or package, not '{by}'.");
+        var snapshot = await store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        return Api.Json(ModelPages.Kinds(snapshot.Summaries(), by == "package"));
+    });
+
+    /// <summary>
+    /// The resolved model as flat records, in pages: entities with their attributes resolved, relations, processes, databases (their
+    /// views) and the other kinds, what templates read. A model with errors returns no records and the errors.
+    /// </summary>
+    /// <param name="scope"><c>all</c> (the default), or one kind's plural (<c>entities</c>, <c>databases</c>, <c>tables</c>, ...).</param>
+    /// <param name="database">A database id: only what is mapped to it, that database and its tables.</param>
+    /// <param name="cursor">The previous page's <c>next</c>.</param>
+    /// <param name="limit">The page size, 1 to 1000 (default 100).</param>
+    /// <param name="context">The request.</param>
+    /// <param name="store">The model store.</param>
+    /// <param name="generation">The generation service.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>200 with the page, 400, or 404 for a database id that names no database.</returns>
+    [HttpGet("/api/model/resolved")]
+    public static Task<IResult> Resolved(string? scope, string? database, string? cursor, string? limit, HttpContext context, ModelStore store,
+        GenerationService generation, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(generation);
+        if (!ModelPages.TryParseLimit(limit, out var size, out var limitError))
+            return Api.BadRequest(limitError!);
+        var name = string.IsNullOrEmpty(scope) ? "all" : scope;
+        if (!ResolvedRecords.ScopeNames.Contains(name, StringComparer.Ordinal))
+            return Api.BadRequest($"scope must be one of {string.Join(", ", ResolvedRecords.ScopeNames)}, not '{scope}'.");
+        if (!string.IsNullOrEmpty(database))
+        {
+            var document = await store.GetElementAsync(database, ct).ConfigureAwait(false);
+            if (document is null)
+                return Api.NotFound("database", database);
+            if (document.Element.Id != database || document.Element.KindName != "database")
+                return Api.NotFound("database", database, "not-a-database");
+        }
+
+        try
+        {
+            return Api.Json(await generation.GetResolvedAsync(new ResolvedQuery(name, database, cursor, size), ct).ConfigureAwait(false));
+        }
+        catch (FormatException ex)
+        {
+            return Api.BadRequest(ex.Message);
+        }
+    });
+
+    /// <summary>The request's URL with <c>cursor</c> set to the next page's.</summary>
+    private static string NextUrl(HttpRequest request, string next)
+    {
+        var query = request.Query.Where(q => q.Key != "cursor").SelectMany(q => q.Value.Select(v => KeyValuePair.Create(q.Key, v)))
+            .Append(KeyValuePair.Create("cursor", (string?)next));
+        return request.Path + QueryString.Create(query).ToUriComponent();
+    }
 
     /// <summary>The documents of up to 200 element or sub-element ids, from one snapshot (E5b).</summary>
     /// <param name="context">The request.</param>

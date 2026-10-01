@@ -298,7 +298,9 @@ export class MockPacks {
     const scope = units.findIndex(
       (u) =>
         typeof u.for !== "string" ||
-        !/^(model|each (package|entity|relation|enum|value object|table|reference type|seed|locale|process|actor|scenario)|select [A-Za-z_]\w*)$/.test(u.for),
+        !/^(model|each (package|entity|relation|enum|value object|table|view|sequence|reference type|seed|locale|process|actor|scenario)|select [A-Za-z_]\w*)$/.test(
+          u.for,
+        ),
     );
     if (scope >= 0)
       return {

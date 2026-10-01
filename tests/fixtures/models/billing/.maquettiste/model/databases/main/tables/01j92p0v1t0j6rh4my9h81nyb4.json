@@ -19,7 +19,14 @@
       "id": "01J92P0V1VQAA9FW71PKYWWHKN",
       "attribute": "01J92P0V0R3VSP7D5238DTNZX1",
       "nativeType": "varchar(32)",
-      "comment": "Assigned on issue."
+      "comment": "Assigned on issue.",
+      "description": "The number printed on the invoice; customers quote it when they pay.",
+      "stereotypes": [
+        "audited"
+      ],
+      "properties": {
+        "classification": "internal"
+      }
     }
   ],
   "checks": [

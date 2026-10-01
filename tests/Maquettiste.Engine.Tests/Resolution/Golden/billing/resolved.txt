@@ -157,7 +157,7 @@ database main postgresql default-schema=public limit=63 schemas=public
     fk fk_invoice_lines_product_id (product_id) -> products (id) on-delete=no-action relation=refers to end=line
   table public.invoices key=<Invoice>@<main> synthesized entity=Invoice display='Invoice register' description='One row per issued invoice.' stereotypes=audited tags=billing category=Receivables properties={retentionDays=2555,tablespace='billing_data'}
     0 id uuid native=uuid not-null pk key=<Invoice:id>
-    1 number string(32) native=varchar(32) not-null key=<Invoice:number>
+    1 number string(32) native=varchar(32) not-null key=<Invoice:number> description='The number printed on the invoice.' stereotypes=audited properties={classification='internal',retentionDays=2555}
     2 total_amount decimal[18,4] native=numeric(18,4) null key=<Invoice:total>.<Money:amount>
     3 total_currency string(3) native=varchar(3) null key=<Invoice:total>.<Money:currency>
     4 status int32 native=integer not-null default=1 key=<Invoice:status>

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json.Nodes;
 using Maquettiste.Testing;
 
 namespace Maquettiste.Packs.Tests;
@@ -15,6 +16,25 @@ public sealed class GoldenTests
         using var repo = PackRepo.Billing();
         await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
         Golden.AssertMatches(Fixtures.Path("golden", "sql-ddl", "billing"), repo.PathOf("db"));
+    }
+
+    [Fact]
+    public async Task Sql_ddl_object_scripts_are_off_by_default_and_match_the_golden_tree_when_on()
+    {
+        using (var off = PackRepo.Billing())
+        {
+            await off.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+            Assert.False(Directory.Exists(off.PathOf("db/main/billing/views")), "the view unit wrote files without objectScripts");
+            Assert.False(Directory.Exists(off.PathOf("db/main/billing/sequences")), "the sequence unit wrote files without objectScripts");
+        }
+
+        // One script per view and per sequence of the billing fixture (its view and its sequence file); everything else is unchanged.
+        using var repo = PackRepo.Billing();
+        repo.EditJson(".maquettiste/maquettiste.json", settings => settings["packs"]!["sql-ddl"]!["parameters"] = new JsonObject { ["objectScripts"] = true });
+        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+        Golden.AssertMatches(Fixtures.Path("golden", "sql-ddl", "objects", "main", "billing", "views"), repo.PathOf("db/main/billing/views"));
+        Golden.AssertMatches(Fixtures.Path("golden", "sql-ddl", "objects", "main", "billing", "sequences"), repo.PathOf("db/main/billing/sequences"));
+        Assert.Empty(Golden.Compare(Fixtures.Path("golden", "sql-ddl", "billing", "main", "billing", "tables"), repo.PathOf("db/main/billing/tables")));
     }
 
     [Fact]

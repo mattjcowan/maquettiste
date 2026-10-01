@@ -9,7 +9,7 @@ amended, `engine-design.md` decides, and the decision named in each entry record
 behind them.
 
 **Applied (2026-09-29, phase 2 close-out; extended 2026-09-30, phase 3 close-out).** E6 to E16 are amended in `SPEC.md`,
-each change marked "Errata E<n>" beside the text it amends. E1 to E5 and E17 to E37 are not applied. E1 to E5 correct SPEC text that the engine
+each change marked "Errata E<n>" beside the text it amends. E1 to E5 and E17 to E38 are not applied. E1 to E5 correct SPEC text that the engine
 already enforces; E17, E18, E20 to E26 are built and are what the engine, the schemas and the editor do (E18, E20 to E23
 with generation-ui.md §8, less E22's CLI `pack show`, `explain` and `generate --explain`, E24 with the explicit mapping of round 7, E25 with the preview's scope check, E26 with the database schemas of round 9); E19 (`each
 database`) waits for the owner's answer to generation-ui.md §10 Q3 and is not built, so databases stay on selectors
@@ -20,7 +20,8 @@ E27 to E37 come from
 `phase-3-design.md` section 10. They are built (rounds P1 to P6 of that document's section 9, closed by gate 3) and are
 what the engine, the schemas, the editor and the example packs do; none is applied in `SPEC.md` yet, and all eleven await
 the owner, as E17 to E26 do. E34 retires E3: the schema accepts an entity's `lifecycle` now, and the example's
-`/lifecycle` still fails only because of its illustrative id (E1).
+`/lifecycle` still fails only because of its illustrative id (E1). E38 (2026-10-01) is built with engine-design.md 7.0a and awaits
+the owner like the others.
 
 | Id | SPEC | Proposed change | Decision |
 | --- | --- | --- | --- |
@@ -61,3 +62,4 @@ the owner, as E17 to E26 do. E34 retires E3: the schema accepts an entity's `lif
 | E35 | Section 14 | Add the Processes explorer on the rail and the process, actor and scenario editors | phase-3-design.md §6.1 and §6.2 |
 | E36 | Section 8, typical outputs | Add dispatch contracts, a handler registry, pipeline behaviours, the pair and regions shapes for hand-written code; "diagrams for documentation" without a named format | phase-3-design.md §7.2 to §7.4 (decisions C and D) |
 | E37 | Section 21, gate 3 | Name the fixtures and the criteria of §8.2; C# gates, TypeScript follows | phase-3-design.md §8 (decisions 2 and 3) |
+| E38 | Section 12, scopes | Add `each view` and `each sequence` beside `each table` (every database's views and sequences, the key sequences the resolver creates included); `where` takes tags, stereotypes, categories, the database and a script, read from the view's or sequence's own file, and refuses packages and `abstract` at pack load | engine-design.md §7.0a and §8 (2026-10-01) |

@@ -698,7 +698,7 @@ internal sealed partial class ResolveRun
         return list;
     }
 
-    private RPackage? PackageOf(string? id) => id is null ? null : _packages.GetValueOrDefault(id);
+    internal RPackage? PackageOf(string? id) => id is null ? null : _packages.GetValueOrDefault(id);
 
     private IEnumerable<Stereotype> StereotypesOf(ElementBase element)
     {
@@ -743,8 +743,8 @@ internal sealed partial class ResolveRun
     }
 
     /// <summary>
-    /// Fills the annotations of a physical object (table, view, sequence) from its own file: display and plural names as written
-    /// (empty when unset, with no fallback), then what <see cref="FillAnnotations(RAnnotated, ElementBase, string?, DependencySet)"/>
+    /// Fills the annotations of a physical object (database, table, view, sequence) from its own file: display and plural names as
+    /// written (empty when unset, with no fallback), then what <see cref="FillAnnotations(RAnnotated, ElementBase, string?, DependencySet)"/>
     /// fills. Without a file (a synthesized table with no overlay, a key sequence) the annotations stay empty. The caller adds the
     /// file's own <c>e:</c> key.
     /// </summary>
@@ -755,9 +755,24 @@ internal sealed partial class ResolveRun
     {
         if (file is null)
             return;
-        r.DisplayName = file.DisplayName ?? "";
-        r.PluralName = file.PluralName ?? "";
-        FillAnnotations(r, file, Model.GetDocument(file.Id)?.SidecarText, deps);
+        FillPhysicalAnnotations(r, file, Model.GetDocument(file.Id)?.SidecarText, deps);
+    }
+
+    /// <summary>
+    /// Fills the annotations of a physical part (a column, a database schema) from its own entry in a file, as
+    /// <see cref="FillPhysicalAnnotations(RAnnotated, Element?, DependencySet)"/> does for a file. A part has no sidecar description.
+    /// </summary>
+    /// <param name="r">The resolved object.</param>
+    /// <param name="part">The part's entry, or <see langword="null"/> (a synthesized column without an overlay entry).</param>
+    /// <param name="sidecar">The sidecar text of the entry's description, when it is a file's own.</param>
+    /// <param name="deps">The dependency keys of the object (for a column, its table's).</param>
+    internal void FillPhysicalAnnotations(RAnnotated r, ElementBase? part, string? sidecar, DependencySet deps)
+    {
+        if (part is null)
+            return;
+        r.DisplayName = part.DisplayName ?? "";
+        r.PluralName = part.PluralName ?? "";
+        FillAnnotations(r, part, sidecar, deps);
     }
 
     /// <summary>Fills description, tags, category, stereotypes, merged properties and generation hints from a file.</summary>

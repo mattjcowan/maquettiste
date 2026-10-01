@@ -26,7 +26,8 @@ internal sealed partial class DatabaseRun
                 column.Nullable = false;
             }
 
-            t.Table.PrimaryKey = new RPrimaryKey { Name = t.PrimaryKeyName ?? Render(_conv.PrimaryKeyName, ("table", t.Table.Name)), Columns = pk };
+            t.Table.PrimaryKey = new RPrimaryKey { Name = t.PrimaryKeyName ?? Render(_conv.PrimaryKeyName, ("table", t.Table.Name)), Columns = pk,
+                Clustered = t.PrimaryKeyClustered };
         }
 
         foreach (var t in _tableOrder)
@@ -67,6 +68,7 @@ internal sealed partial class DatabaseRun
                     continue;
                 }
                 var fk = spec.Result;
+                fk.Id = spec.Id;
                 fk.Columns = [.. columns!];
                 fk.ReferencedTable = target.Table;
                 fk.ReferencedColumns = [.. referenced!];
@@ -82,6 +84,7 @@ internal sealed partial class DatabaseRun
                 .Where(x => x.Columns.Count > 0 && x.Columns.All(c => c is not null))
                 .Select(x => new RUnique
                 {
+                    Id = x.Spec.Id,
                     Name = x.Spec.Name ?? RenderWithName(_conv.UniqueName, t, x.Columns!, x.Spec.NameToken),
                     Columns = [.. x.Columns!],
                 })];
@@ -96,6 +99,7 @@ internal sealed partial class DatabaseRun
             t.Table.Indexes = [.. indexes
                 .Select(x => new RIndex
                 {
+                    Id = x.Spec.Id,
                     Name = x.Spec.Name ?? Render(_conv.IndexName, ("table", t.Table.Name), ("columns", Joined(x.Columns.Select(c => c.Column!)))),
                     Columns = [.. x.Columns.Select(c => new RIndexColumn { Column = c.Column!, Descending = c.Descending })],
                     Include = [.. x.Include!],
@@ -105,6 +109,7 @@ internal sealed partial class DatabaseRun
                 })];
             t.Table.Checks = [.. t.Checks.Select(c => new RCheck
             {
+                Id = c.Id,
                 Name = c.Name ?? Render(_conv.CheckName, ("table", t.Table.Name), ("name", c.Ordinal.ToString(CultureInfo.InvariantCulture))),
                 Expression = c.Expression,
             })];
@@ -443,15 +448,19 @@ internal sealed partial class DatabaseRun
         foreach (var name in schemaNames)
         {
             var declared = _db.Schemas.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.Ordinal));
+            var schemaDeps = new DependencySet(_run.Keys).Element(_db.Id).Referrers(_db.Id);
             var schema = new RSchema
             {
                 Id = declared?.Id ?? _db.Id + "/" + name,
                 Name = name,
+                IsDefault = string.Equals(name, _rdb.DefaultSchema, StringComparison.Ordinal),
+                IsDeclared = declared is not null,
                 Tables = new RList<RTable>(tables.Where(t => string.Equals(t.Schema, name, StringComparison.Ordinal)), keys),
                 Views = new RList<RView>(views.Where(v => string.Equals(v.Schema, name, StringComparison.Ordinal)), keys),
                 Sequences = new RList<RSequence>(sequences.Where(s => string.Equals(s.Schema, name, StringComparison.Ordinal)), keys),
-                Dependencies = [$"e:{_db.Id}", $"r:{_db.Id}"],
             };
+            _run.FillPhysicalAnnotations(schema, declared, null, schemaDeps);
+            schema.Dependencies = schemaDeps.ToList();
             schemas.Add(schema);
             _run.Register(schema);
         }

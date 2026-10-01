@@ -103,6 +103,8 @@ Scope help, in plain language (the grid's side panel and the Scope picker show i
 | `each package` | Runs once per package (domain folder); one file per package gathering its elements. |
 | `each database` (E19) | Runs once per database; one file per database gathering its tables. |
 | `each table` | Runs once per table of every database: the tables the databases design and the tables their mappings resolve. |
+| `each view` | Runs once per view of every database; one file each. |
+| `each sequence` | Runs once per sequence of every database, the ones the resolver creates for keys included; one file each. |
 | `each locale` | Runs once per declared language; no element, no filter. |
 | `each process`, `each actor`, `each scenario` (phase-3-design.md 7.1) | Runs once per process, actor or scenario; one file each. |
 | `select <name>` | Runs once per element that the selector `<name>`, registered by the pack's scripts, returns. |

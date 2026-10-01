@@ -30,7 +30,7 @@
     "tags": [
       "billing"
     ],
-    "hash": "0cc191974c83c57fafcb71504df77e082e775ab1afa77afce37c4e1ee2636075",
+    "hash": "68aae99890ec3db72c322bc927754bb41cbfd8da546353a54abc774fe4313422",
     "path": ".maquettiste/model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json",
     "category": "01J92P0V06TYE8P8990AV35A8K",
     "stereotypes": [
@@ -327,7 +327,7 @@
     "name": "Audited",
     "package": null,
     "tags": [],
-    "hash": "b0d22dbeb46355d8ac72ac2b96955620e3e74b2c6f1ffbceacddd204b8b9ea52",
+    "hash": "fce0b7efb91fad1268d74afae5e0a79cb3556db9428c880ca39d87b1c70149f1",
     "path": ".maquettiste/model/vocabularies/stereotypes/audited.json",
     "category": null,
     "stereotypes": []

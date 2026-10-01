@@ -74,10 +74,12 @@ public abstract class RObject : IResolvedObject
 
 /// <summary>
 /// The annotations a model file carries besides its structure: display names, description, tags, category, stereotypes, custom
-/// properties and generation hints. Every conceptual object (<see cref="RElement"/>) has them, and so do the physical objects whose
-/// files carry them (<see cref="RTable"/>, <see cref="RView"/>, <see cref="RSequence"/>): a physical object reads them from its own
-/// file (a designed or imported table, a synthesized table's overlay, a view or sequence file) and never from the entity or relation
-/// it comes from, which templates reach through <c>table.entity</c> and <c>table.relation</c>.
+/// properties and generation hints. Every conceptual object (<see cref="RElement"/>) has them, and so does every physical object
+/// (<see cref="RDatabase"/>, <see cref="RSchema"/>, <see cref="RTable"/>, <see cref="RColumn"/>, <see cref="RView"/>,
+/// <see cref="RSequence"/>): a physical object reads them from its own file or entry (the database file and its schema entries, a
+/// designed or imported table, a synthesized table's overlay and its column entries, a view or sequence file) and never from the
+/// entity, relation or attribute it comes from, which templates reach through <c>table.entity</c>, <c>table.relation</c> and
+/// <c>column.attribute</c>.
 /// </summary>
 public abstract class RAnnotated : RObject
 {

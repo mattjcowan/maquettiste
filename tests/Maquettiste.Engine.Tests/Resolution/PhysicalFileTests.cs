@@ -223,4 +223,81 @@ public sealed class PhysicalFileTests
         Assert.Equal("Posting numbers.", sequence.Description);
         Assert.Equal("treasury", sequence.Properties["owner"]);
     }
+
+    [Fact]
+    public void Columns_databases_and_schemas_carry_the_annotations_of_their_own_entries_only()
+    {
+        var b = new ModelBuilder(seed: 72);
+        b.Stereotype("ledger").AppliesTo("entity", "column", "database").DefaultProperty("retentionDays", 30);
+        var receivables = b.Category("Receivables");
+        var invoice = b.Entity("Invoice").Key("id", "uuid")
+            .Attr("number", "string", a => a.Length(20))
+            .Attr("lines", "string", a => a.Collection())
+            .Stereotype("ledger");
+        var properties = ImmutableDictionary<string, JsonElement>.Empty.Add("masking", JsonDocument.Parse("\"partial\"").RootElement);
+        var dbId = b.NewId();
+        var salesId = b.NewId();
+        b.Add(new Database
+        {
+            Id = dbId, Name = "main", Dialect = Dialect.PostgreSql, DefaultSchema = "sales", DisplayName = "Main store",
+            Description = new Description { Text = "The system of record." }, Stereotypes = ["ledger"], Tags = ["primary"], Category = receivables,
+            Schemas = [new DbSchema { Id = salesId, Name = "sales", DisplayName = "Sales", Tags = ["finance"], Description = new Description { Text = "Orders." } }],
+        });
+        var uniqueId = b.NewId();
+        var checkId = b.NewId();
+        var idColumn = b.NewId();
+        var noteColumn = b.NewId();
+        b.Add(new Table
+        {
+            Id = b.NewId(), Name = "ledger", Database = dbId, Origin = TableOrigin.Designed, PrimaryKey = new PrimaryKey { Columns = [idColumn], Clustered = false },
+            Columns =
+            [
+                new Column { Id = idColumn, Name = "id", Type = "int64", Nullable = false, DisplayName = "Posting", Stereotypes = ["ledger"], Properties = properties },
+                new Column { Id = noteColumn, Name = "note", Type = "string", Collation = "C" },
+            ],
+            Uniques = [new UniqueConstraint { Id = uniqueId, Columns = [noteColumn] }],
+            Checks = [new CheckConstraint { Id = checkId, Expression = ImmutableDictionary<string, string>.Empty.Add("*", "id > 0") }],
+        });
+        b.Add(new Table
+        {
+            Id = b.NewId(), Database = dbId, Origin = TableOrigin.Synthesized, Entity = invoice.Id,
+            Columns = [new Column { Id = b.NewId(), Attribute = invoice.AttrId("number"), Description = new Description { Text = "Printed." }, Tags = ["pii"] }],
+        });
+
+        var rdb = ResolutionKit.Resolve(b).Db("main");
+
+        // The database and its declared schema: their own annotations; the stereotype's default properties merged.
+        Assert.Equal(("Main store", "The system of record.", "Receivables"), (rdb.DisplayName, rdb.Description, rdb.Category!.Path));
+        Assert.True(rdb.HasStereotype("ledger") && rdb.HasTag("primary"));
+        Assert.Equal(30L, Convert.ToInt64(rdb.Properties["retentionDays"], System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal(("all", 63, "reserved"), (rdb.ByConvention, rdb.MaxIdentifierLength, rdb.Quoting));
+        var sales = Assert.Single(rdb.Schemas);
+        Assert.Equal((salesId, "Sales", "Orders.", true, true), (sales.Id, sales.DisplayName, sales.Description, sales.IsDefault, sales.IsDeclared));
+        Assert.Equal(["finance"], sales.Tags);
+
+        // A designed column's own entry; a sibling without annotations has none.
+        var ledger = rdb.Table("ledger");
+        var id = ledger.Column("id");
+        Assert.Equal("Posting", id.DisplayName);
+        Assert.Equal(["ledger"], id.Stereotypes.Select(s => s.Key));
+        Assert.Equal(["masking", "retentionDays"], id.Properties.Keys);
+        var note = ledger.Column("note");
+        Assert.Equal(("", 0, 0, "C"), (note.DisplayName, note.Stereotypes.Count, note.Properties.Count, note.Collation));
+        Assert.False(ledger.PrimaryKey!.Clustered);
+        Assert.Equal(uniqueId, Assert.Single(ledger.Uniques).Id);
+        Assert.Equal(checkId, Assert.Single(ledger.Checks).Id);
+
+        // A synthesized column takes its overlay entry's annotations, never its attribute's; the others have none.
+        var invoices = rdb.Table("invoices");
+        var number = invoices.Column("number");
+        Assert.Equal(("Printed.", "pii"), (number.Description, Assert.Single(number.Tags)));
+        Assert.Empty(number.Stereotypes);
+        Assert.Equal(0, invoices.Column("id").Stereotypes.Count + invoices.Column("id").Tags.Count);
+        Assert.True(number.Attribute!.Owner is Maquettiste.Engine.Resolution.REntity { Name: "Invoice" } owner && owner.HasStereotype("ledger"));
+
+        // A child table names its attribute; a sequence its database.
+        var child = rdb.Tables.Single(t => t.Attribute is not null);
+        Assert.Equal("lines", child.Attribute!.Name);
+        Assert.All(rdb.Sequences, s => Assert.Same(rdb, s.Database));
+    }
 }

@@ -58,6 +58,28 @@ public sealed class PhysicalAnnotationRenderTests
         Assert.Equal("LedgerRow|finance|LedgerRow", unit.Text());
     }
 
+    [Fact]
+    public async Task A_column_reads_its_overlay_entry_and_the_database_and_schemas_their_own()
+    {
+        var unit = await Adhoc.RenderAsync(
+            "{{ for c in table.columns }}{{ if c.description }}{{ c.name }}:{{ c.description }}|{{ c.stereotypes[0].key }}|{{ c.properties.classification }}/"
+            + "{{ c.properties.retentionDays }}|{{ has_stereotype c 'audited' }}|{{ c.attribute.name }}{{ end }}{{ end }}|"
+            + "{{ (table.columns | array.filter @(do; ret $0.stereotypes.size > 0; end)).size }}|{{ table.database.by_convention }}|"
+            + "{{ table.database.schemas[0].name }}:{{ table.database.schemas[0].is_default }}:{{ table.database.schemas[0].stereotypes.size }}",
+            await TableAsync("invoices"), u => u with { For = "each table" });
+
+        Assert.Equal("number:The number printed on the invoice; customers quote it when they pay.|audited|internal/2555|true|number|1|all|billing:true:0", unit.Text());
+    }
+
+    [Fact]
+    public async Task View_and_sequence_units_see_their_object_under_its_own_name()
+    {
+        var model = await BillingModel.GetAsync();
+        var sequence = model.Databases.SelectMany(d => d.Sequences).First();
+        var unit = await Adhoc.RenderAsync("{{ sequence.name }}@{{ sequence.database.name }}|{{ element == sequence }}", sequence, u => u with { For = "each sequence" });
+        Assert.Equal(sequence.Name + "@" + sequence.Database.Name + "|true", unit.Text());
+    }
+
     private static async Task<RTable> TableAsync(string name) =>
         (await BillingModel.GetAsync()).Databases.Single(d => d.Name == "main").Tables.Single(t => t.Name == name);
 }

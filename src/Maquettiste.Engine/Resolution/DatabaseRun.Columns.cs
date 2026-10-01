@@ -206,6 +206,7 @@ internal sealed partial class DatabaseRun
             Origin = "synthesized",
             Entity = owner.Table.Entity,
             Relation = owner.Table.Relation,
+            Attribute = a,
             Comment = overlay?.Comment,
         };
         var t = new TableBuild(_run.Keys, r, null, overlay, owner.SourceElementId);

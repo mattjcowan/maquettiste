@@ -10,9 +10,15 @@ The engine additions the editor's functions call (phase2-design.md section 3.8, 
 - E5c `DatabaseTables.GetAsync(databaseId)`: the table list without columns, partial on a model with errors.
 - E5f `DatabaseTables.GetTableAsync(databaseId, key)`: one `TableView` (`DatabaseViews.Table`), null when absent or left out.
 - E5e `ModelReads.IndexTag(summaries)`: the index ETag. E5d (summaries on `model.changed`) lives in the functions host.
+- Bulk reads (2026-10-01): `ModelPages` (index filters, pages by (kind, name, id) with an opaque cursor, documents trimmed to
+  fields, kind counts) and `ResolvedRecords` with `GenerationService.GetResolvedAsync` (the resolved model as flat records per
+  template scope; the last snapshot's validation and resolution are kept, so paging resolves once).
 
 ## Deviations
 
+- The bulk reads start from `GetSnapshotAsync` (a stat rescan per page, so a page never misses a file edited behind the host),
+  unlike E5c. `GetResolvedAsync` keeps the last snapshot's resolved graph (not projected records), so a page projects only its
+  own records; the graph is released when the next snapshot is read. Sorting a page sorts the whole scope (n log n per page).
 - E5c reads `ModelStore.Current` (loading when null) instead of `GetSnapshotAsync`: the stat rescan of 26,000 files costs about
   200 ms per call, the index is served the same way, and the host's watcher keeps the store current. Callers that write files behind
   the store's back call `RescanAsync` first (the tests do).

@@ -176,6 +176,11 @@ public sealed class CliApp(CliEnvironment environment)
                                   --subject, or --into <process> (keeps its ids); --apply writes it, --format text|json
           process sync-enum <process>
                                 Preview syncing a lifecycle's bound enum with its states; --apply, --check, --format text|json
+          model export          The model as data: canonical documents, or with --resolved the resolved model's records
+                                  --format json|ndjson (default json: one array), --out <file>, --fields <a,b,...>,
+                                  --kind, --package <id|name>, --tag, --category, --stereotype, --query, --ids <a,b,...>;
+                                  --resolved --scope all|entities|relations|processes|databases|tables|... --database <id|name>
+          model stats           The kinds present with their counts: --by kind|package, --format text|json
           mcp                   Serve the model to agents over the Model Context Protocol (stdio; see docs/mcp.md)
 
         Global options:
@@ -229,6 +234,7 @@ public sealed class CliApp(CliEnvironment environment)
                 "l10n" => await L10nCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "seed" => await SeedCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "process" => await ProcessCommand.RunAsync(context, ct).ConfigureAwait(false),
+                "model" => await ModelCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "mcp" => await McpCommand.RunAsync(context, ct).ConfigureAwait(false),
                 _ => throw new UsageException($"Unknown command '{command}'. Run 'maquettiste --help'."),
             };

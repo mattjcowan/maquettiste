@@ -43,6 +43,9 @@ clobber a concurrent edit or leave a dangling id.
 1. Find: `get_project`, then `get_model_index` (filter by `kind`, `package`, `tag`, `category`, `stereotype`, `query`)
    for ids; `get_references` for where an element is used; `get_database_view` for a database's tables and columns.
 2. Read: `get_schema` for the kind before building a document (its `extensions` constrain `properties`); `get_element` returns the document (`json`) and its `hash`.
+   Reading many elements: `get_model_kinds` (`by: "package"`) says what there is, `get_elements` returns documents in pages
+   (`fields` keeps only the members you need), `get_resolved_model` returns what generation sees (resolved attributes, tables,
+   processes) as flat records; pass each page's `next` as `cursor` until it is null, and never loop `get_element` over thousands of ids.
 3. Change: `save_element` (the whole edited document plus `expectedHash` = the hash you read), `create_element`,
    `delete_element`, or `apply_batch` for several changes that must land together (all or nothing).
    - `conflict`: the file changed since you read it; nothing was written. Merge your change into `current` and retry with

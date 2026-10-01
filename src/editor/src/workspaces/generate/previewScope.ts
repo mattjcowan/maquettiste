@@ -24,6 +24,8 @@ const EACH: Record<string, { label: string; indexKind: ElementKind | null; varia
   enum: { label: "enum", indexKind: "enum", variable: "enum" },
   "value object": { label: "value object", indexKind: "value-object", variable: "value_object" },
   table: { label: "table", indexKind: null, variable: "table" },
+  view: { label: "view", indexKind: "view", variable: "view" },
+  sequence: { label: "sequence", indexKind: "sequence", variable: "sequence" },
   "reference type": { label: "reference type", indexKind: "reference-type", variable: "reference_type" },
   seed: { label: "seed", indexKind: "seed", variable: "seed" },
   locale: { label: "locale", indexKind: null, variable: "locale" },
@@ -36,6 +38,8 @@ const EACH: Record<string, { label: string; indexKind: ElementKind | null; varia
 const SELECT_WORDS: [RegExp, string][] = [
   [/\bdatabases?\b/, "database"],
   [/\btables?\b/, "table"],
+  [/\bviews?\b/, "view"],
+  [/\bsequences?\b/, "sequence"],
   [/\bentit(?:y|ies)\b/, "entity"],
   [/\brelations?\b/, "relation"],
   [/\benums?\b/, "enum"],

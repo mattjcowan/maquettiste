@@ -173,6 +173,13 @@ export interface paths {
          *     chain (reference-types-seeds-localization.md section 3.8) from a per-locale display-name table the host builds once per
          *     snapshot; the ETag then also covers the locale, its chain and the hashes of the chain's shards. 400 for an undeclared locale. A request whose `If-None-Match` names it gets 304 with no
          *     body. `Cache-Control: no-cache` lets the browser keep the index and revalidate it on every use.
+         *
+         *     The index filters (`kind`, `package`, `tag`, `category`, `stereotype`, `query`; all optional, combined with AND) narrow the
+         *     list, as `getElements` and the MCP tool `get_model_index` take them. `limit` or `cursor` pages it: the body is then one page
+         *     of rows ordered by kind, name and id (ordinal), and while more rows follow, a `Link` header with `rel="next"` gives the URL of
+         *     the next page (the same query with `cursor` set). A filtered or paged answer carries no ETag and `Cache-Control: no-store`.
+         *     Use the index to find elements, `getElements` to read their documents in bulk, `getResolvedModel` for what generation sees,
+         *     and `getModelKinds` for the counts.
          */
         get: operations["getModelIndex"];
         put?: never;
@@ -205,6 +212,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/model/kinds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The kinds present and their counts
+         * @description Every kind of top-level element the model holds, with its count, so a caller knows what to iterate before reading in bulk.
+         *     `by=package` adds the same counts per package (the elements directly in it), the elements in no package first, then by
+         *     package name and id. The MCP tool `get_model_kinds` and `maquettiste model stats` answer the same.
+         */
+        get: operations["getModelKinds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/model/resolved": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The resolved model as flat records, in pages
+         * @description What templates read (the resolved model of SPEC Section 10), as data for external systems. Resolved objects reference each
+         *     other, so they are projected into flat records (`x-engine-record`) where other objects appear by id; each record has `id`,
+         *     `kind` and `name`. Choose what to read with `scope`, which follows the template scopes (`get_template_context`):
+         *
+         *     - `entities`: `EntityRecord`, each attribute resolved (`type` with the enum, value object, scalar or reference type it
+         *       names, `default`, `length`, `precision`, `scale`, `isKey`; the base entity's attributes come first, marked `isInherited`),
+         *       the key, alternate keys, `base` and `derived`, navigations, `relations`, one mapping per database (table key and the
+         *       column of each attribute path) and the annotations.
+         *     - `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,
+         *       `scenarios`: the matching record.
+         *     - `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards,
+         *       actions, gates and invokes, actors by id.
+         *     - `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and
+         *       indexes, views, sequences); `tables`: one `TableRecord` per table, for databases too large for one record.
+         *     - `all` (the default): every scope but `tables`.
+         *
+         *     `database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases and tables to
+         *     it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it
+         *     is null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change
+         *     between pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors
+         *     returns no records and the errors in `diagnostics`. The MCP tool `get_resolved_model` and `maquettiste model export
+         *     --resolved` answer the same.
+         */
+        get: operations["getResolvedModel"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/model/elements": {
         parameters: {
             query?: never;
@@ -212,7 +282,20 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Element documents in pages
+         * @description The bulk document read for external systems: the canonical documents (as `getElement` returns them in `json`) of the
+         *     elements `ids` names, or of every element, narrowed by the index filters, in pages of `limit` (default 100, at most 1000),
+         *     ordered by kind, name and id (ordinal). Pass `next` as `cursor` until it is null. A cursor encodes the last position read,
+         *     so a change between pages is tolerated: the next page starts after that position in the current model (an element renamed
+         *     meanwhile may move before or after it).
+         *
+         *     `fields=name,attributes` keeps only those top-level members of each document (`id` and `kind` are always kept), so a
+         *     caller that needs names and attributes of thousands of entities reads only those. `ids` takes element or sub-element ids
+         *     (a sub-element id reads the element that holds it), at most 1000; ids that match nothing are listed in `missing`. The MCP
+         *     tool `get_elements` and `maquettiste model export` answer the same.
+         */
+        get: operations["getElements"];
         put?: never;
         /**
          * Create an element
@@ -396,9 +479,10 @@ export interface paths {
          * The resolved tables of one database
          * @description The physical model after conventions, mappings and table overlays are applied: every table (synthesized,
          *     designed or imported), its columns with the attribute each one stores, keys, foreign keys and indexes, and
-         *     every view and sequence. Each table, view and sequence carries the annotations of its own file (display and
-         *     plural names, description, stereotypes, tags, category, properties, generation hints); a synthesized table
-         *     without an overlay has none. The Database workspace draws table diagrams from it and the Mappings workspace
+         *     every view, sequence and schema. The database, each schema, table, column, view and sequence carries the
+         *     annotations of its own file or entry (display and plural names, description, stereotypes, tags, category,
+         *     properties, generation hints); a synthesized table without an overlay, or a synthesized column without an
+         *     overlay entry, has none. The Database workspace draws table diagrams from it and the Mappings workspace
          *     sets it beside the entity. A model with errors returns `view: null` and the diagnostics.
          */
         get: operations["getDatabaseView"];
@@ -2148,6 +2232,610 @@ export interface components {
             truncated: boolean;
             hasErrors: boolean;
         };
+        /** @description One page of a bulk document read (`getElements`). */
+        ElementPage: {
+            /** @description The documents, by kind, name and id (ordinal). */
+            items: components["schemas"]["ElementPageItem"][];
+            /** @description The cursor of the next page; null on the last one. */
+            next: string | null;
+            /** @description The requested ids that match no element or sub-element, in request order. */
+            missing: string[];
+        };
+        /** @description One document of a bulk read. */
+        ElementPageItem: {
+            id: components["schemas"]["Ulid"];
+            kind: components["schemas"]["ElementKind"];
+            /** @description The repo-relative file path. */
+            path: string;
+            /** @description The file hash, the expected hash of a save. */
+            hash: string;
+            /** @description The canonical document as `getElement` returns it, trimmed to `fields` when given (`id` and `kind` always kept). */
+            json: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description The kinds present with their counts (`getModelKinds`). */
+        ModelKindsResult: {
+            /** @description The number of top-level elements. */
+            total: number;
+            /** @description The count of each kind present, by kind name. */
+            kinds: components["schemas"]["KindCount"][];
+            /** @description With `by=package`: the counts per package, the elements in no package first; otherwise null. */
+            packages: components["schemas"]["PackageKindCounts"][] | null;
+        };
+        /** @description How many elements of one kind. */
+        KindCount: {
+            kind: components["schemas"]["ElementKind"];
+            count: number;
+        };
+        /** @description The kinds directly in one package. */
+        PackageKindCounts: {
+            /** @description The package id; null for the elements in no package. */
+            package: components["schemas"]["Ulid"] | null;
+            name: string | null;
+            count: number;
+            kinds: components["schemas"]["KindCount"][];
+        };
+        /** @description One page of the resolved model (`getResolvedModel`). */
+        ResolvedPage: {
+            /** @description The records, by kind, name and id (ordinal). */
+            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"])[];
+            /** @description The cursor of the next page; null on the last one. */
+            next: string | null;
+            /** @description When the model has errors, the errors that prevented resolution (and `items` is empty); otherwise empty. */
+            diagnostics: components["schemas"]["Diagnostic"][];
+        };
+        /** @description The annotations every conceptual record carries (`RAnnotated`): the display and plural names fall back to the name and the inflector. */
+        ResolvedAnnotations: {
+            displayName: string;
+            pluralName: string;
+            /** @description The description text, a sidecar file loaded. */
+            description: string | null;
+            tags: string[];
+            /** @description The category id. */
+            category: string | null;
+            /** @description The stereotype keys, in application order. */
+            stereotypes: string[];
+            /** @description Custom properties, the stereotypes' defaults merged under the element's own. */
+            properties: {
+                [key: string]: unknown;
+            };
+            /** @description Generation hints by pack name or `*`. */
+            generation: {
+                [key: string]: components["schemas"]["GenerationHintsView"];
+            };
+        };
+        /** @description The annotations of a state, transition, event, guard, action, gate or invoke. */
+        ProcessNodeAnnotations: {
+            displayName: string;
+            description: string | null;
+            stereotypes: string[];
+            properties: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description A resolved package. */
+        PackageRecord: components["schemas"]["ResolvedAnnotations"] & {
+            id: string;
+            /** @constant */
+            kind: "package";
+            name: string;
+            /** @description The parent package id. */
+            package: string | null;
+            qualifiedName: string;
+            children: string[];
+            entities: string[];
+            valueObjects: string[];
+            enums: string[];
+            relations: string[];
+        };
+        /** @description A resolved entity: attributes resolved (the base's first, marked `isInherited`), keys, inheritance, navigations, relations and one mapping per database. */
+        EntityRecord: components["schemas"]["ResolvedAnnotations"] & {
+            id: string;
+            /** @constant */
+            kind: "entity";
+            name: string;
+            package: string | null;
+            isAbstract: boolean;
+            /** @description The base entity id. */
+            base: string | null;
+            /** @description The ids of the entities deriving from it directly. */
+            derived: string[];
+            attributes: components["schemas"]["AttributeRecord"][];
+            key: components["schemas"]["KeyRecord"] | null;
+            alternateKeys: components["schemas"]["AlternateKeyRecord"][];
+            navigations: components["schemas"]["NavigationRecord"][];
+            /** @description The ids of the relations with an end at this entity. */
+            relations: string[];
+            mappings: components["schemas"]["EntityMappingRecord"][];
+            isPromoted: boolean;
+            promotedFrom: string | null;
+            seeds: string[];
+            /** @description The id of the process that is its lifecycle. */
+            lifecycle: string | null;
+        };
+        /** @description A resolved attribute. */
+        AttributeRecord: components["schemas"]["ResolvedAnnotations"] & {
+            id: string;
+            name: string;
+            /** @description The id of the element that holds it. */
+            owner: string;
+            /** @description The entity that declares it. */
+            declaringEntity: string | null;
+            type: components["schemas"]["TypeRecord"];
+            required: boolean;
+            /** @description The default, a plain value (an enum member by name). */
+            default: unknown;
+            defaultExpression: string | null;
+            length: number | null;
+            precision: number | null;
+            scale: number | null;
+            collection: boolean;
+            unique: boolean;
+            indexed: boolean;
+            readOnly: boolean;
+            immutable: boolean;
+            derived: components["schemas"]["DerivedRecord"] | null;
+            sensitive: string | null;
+            validation: components["schemas"]["ValidationRecord"] | null;
+            order: number;
+            /** @description Part of its entity's primary key. */
+            isKey: boolean;
+            /** @description Comes from a base entity. */
+            isInherited: boolean;
+            isVirtual: boolean;
+            /** @description The key of the stereotype that adds it. */
+            fromStereotype: string | null;
+            reference: components["schemas"]["ReferenceUsageRecord"] | null;
+        };
+        /** @description An attribute's resolved type; the named type by id. */
+        TypeRecord: {
+            /** @enum {string} */
+            kind: "builtin" | "enum" | "value-object" | "scalar" | "reference";
+            name: string;
+            /** @description The built-in keyword at the bottom. */
+            builtin: string | null;
+            enum: string | null;
+            valueObject: string | null;
+            scalar: string | null;
+            referenceType: string | null;
+        };
+        /** @description A derived attribute's expression. */
+        DerivedRecord: {
+            expression: string;
+            stored: boolean;
+        };
+        /** @description Validation of an attribute or scalar type. */
+        ValidationRecord: {
+            min: unknown;
+            max: unknown;
+            pattern: string | null;
+            allowedValues: unknown[];
+            rules: string[];
+        };
+        /** @description How an attribute uses its reference type. */
+        ReferenceUsageRecord: {
+            type: string;
+            isCollection: boolean;
+            required: boolean;
+            /** @description The ids of the rows allowed (all when empty). */
+            allowed: string[];
+            defaultRow: string | null;
+            storage: components["schemas"]["StorageChoiceRecord"][];
+        };
+        /** @description The effective storage of a reference type in one database. */
+        StorageChoiceRecord: {
+            database: string;
+            strategy: string | null;
+            options: {
+                [key: string]: unknown;
+            };
+            source: string | null;
+            description: string | null;
+            collections: boolean;
+        };
+        /** @description An entity's primary key. */
+        KeyRecord: {
+            attributes: string[];
+            strategy: string;
+            sequences: components["schemas"]["KeySequenceRecord"][];
+        };
+        /** @description The key sequence of an entity in one database. */
+        KeySequenceRecord: {
+            database: string;
+            /** @description As `SequenceView.id`. */
+            sequence: string;
+        };
+        /** @description An alternate key. */
+        AlternateKeyRecord: {
+            id: string;
+            name: string;
+            attributes: string[];
+        };
+        /** @description A navigation across a relation. */
+        NavigationRecord: {
+            id: string;
+            name: string;
+            relation: string;
+            /** @description The end at this entity. */
+            from: string;
+            /** @description The end it leads to. */
+            to: string;
+            /** @description The entity it leads to. */
+            target: string;
+            isCollection: boolean;
+        };
+        /** @description An entity's mapping to one database. */
+        EntityMappingRecord: {
+            database: string;
+            /** @description The table key, as `TableView.key`. */
+            table: string;
+            inheritance: string | null;
+            discriminatorColumn: string | null;
+            discriminatorValue: unknown;
+            columns: components["schemas"]["ColumnMappingRecord"][];
+        };
+        /** @description The column that stores an attribute path. */
+        ColumnMappingRecord: {
+            attributePath: string;
+            /** @description The column key, as `ColumnView.key`. */
+            column: string;
+        };
+        /** @description A resolved relation. */
+        RelationRecord: components["schemas"]["ResolvedAnnotations"] & {
+            id: string;
+            /** @constant */
+            kind: "relation";
+            name: string;
+            package: string | null;
+            inverseName: string | null;
+            relationKind: string;
+            cardinality: string;
+            allowDuplicates: boolean;
+            ends: components["schemas"]["EndRecord"][];
+            attributes: components["schemas"]["AttributeRecord"][];
+            mappings: components["schemas"]["RelationMappingRecord"][];
+            seeds: string[];
+        };
+        /** @description A relation end. */
+        EndRecord: {
+            id: string;
+            entity: string;
+            role: string;
+            navigation: string | null;
+            min: number;
+            /** @description A number or `*`. */
+            max: string;
+            isMany: boolean;
+            onDelete: string;
+            ordered: boolean;
+            opposite: string | null;
+        };
+        /** @description A relation's mapping to one database. */
+        RelationMappingRecord: {
+            database: string;
+            /** @description `foreign-key`, `junction` or `promoted`. */
+            shape: string;
+            /** @description The foreign key name. */
+            foreignKey: string | null;
+            /** @description The junction table key. */
+            junctionTable: string | null;
+            promotedEntity: string | null;
+        };
+        /** @description A resolved enum. */
+        EnumRecord: components["schemas"]["ResolvedAnnotations"] & {
+            id: string;
+            /** @constant */
+            kind: "enum";
+            name: string;
+            package: string | null;
+            flags: boolean;
+            members: components["schemas"]["EnumMemberRecord"][];
+        };
+        /** @description An enum member. */
+        EnumMemberRecord: {
+            id: string;
+            name: string;
+            displayName: string;
+            description: string | null;
+            value: number | null;
+            code: string | null;
+            properties: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description A resolved value object. */
+        ValueObjectRecord: components["schemas"]["ResolvedAnnotations"] & {
+            id: string;
+            /** @constant */
+            kind: "value-object";
+            name: string;
+            package: string | null;
+            attributes: components["schemas"]["AttributeRecord"][];
+        };
+        /** @description A resolved custom scalar type. */
+        ScalarTypeRecord: components["schemas"]["ResolvedAnnotations"] & {
+            id: string;
+            /** @constant */
+            kind: "scalar-type";
+            name: string;
+            package: string | null;
+            base: string;
+            length: number | null;
+            precision: number | null;
+            scale: number | null;
+            validation: components["schemas"]["ValidationRecord"] | null;
+        };
+        /** @description A resolved reference type with every row. */
+        ReferenceTypeRecord: components["schemas"]["ResolvedAnnotations"] & {
+            id: string;
+            /** @constant */
+            kind: "reference-type";
+            name: string;
+            package: string | null;
+            code: components["schemas"]["ReferenceFieldRecord"];
+            label: components["schemas"]["ReferenceFieldRecord"];
+            attributes: components["schemas"]["AttributeRecord"][];
+            rows: components["schemas"]["RowRecord"][];
+            seeds: string[];
+            /** @description The ids of the attributes typed by it. */
+            usedBy: string[];
+            storage: components["schemas"]["StorageChoiceRecord"][];
+        };
+        /** @description The code or label field of a reference type. */
+        ReferenceFieldRecord: {
+            id: string;
+            type: string;
+            length: number | null;
+            pattern: string | null;
+            displayName: string;
+            description: string | null;
+        };
+        /** @description A row of a reference type. */
+        RowRecord: {
+            id: string;
+            code: unknown;
+            label: string | null;
+            description: string | null;
+            /** @description User fields by name; a reference-typed field holds its code or codes. */
+            values: {
+                [key: string]: unknown;
+            };
+            seed: string;
+            order: number;
+        };
+        /** @description A resolved seed. */
+        SeedRecord: components["schemas"]["ResolvedAnnotations"] & {
+            id: string;
+            /** @constant */
+            kind: "seed";
+            name: string;
+            package: string | null;
+            target: string | null;
+            columns: components["schemas"]["SeedColumnRecord"][];
+            rows: components["schemas"]["SeedRowRecord"][];
+        };
+        /** @description A seed column. */
+        SeedColumnRecord: {
+            name: string;
+            kind: string;
+            attribute: string | null;
+            end: string | null;
+        };
+        /** @description A seed row. */
+        SeedRowRecord: {
+            id: string;
+            order: number;
+            /** @description Cells by column name (an enum cell by member name, a reference cell as its code, an end cell as a row id). */
+            values: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description A resolved process: every state at every depth (`parent` and `children` give the tree), the transitions, events, guards, actions, gates and invokes; actors by id. */
+        ProcessRecord: components["schemas"]["ResolvedAnnotations"] & {
+            id: string;
+            /** @constant */
+            kind: "process";
+            name: string;
+            package: string | null;
+            use: string;
+            subject: string | null;
+            boundAttribute: string | null;
+            boundEnum: string | null;
+            initial: string | null;
+            context: components["schemas"]["AttributeRecord"][];
+            states: components["schemas"]["StateRecord"][];
+            transitions: components["schemas"]["TransitionRecord"][];
+            events: components["schemas"]["EventRecord"][];
+            guards: components["schemas"]["GuardRecord"][];
+            actions: components["schemas"]["ActionRecord"][];
+            gates: components["schemas"]["GateRecord"][];
+            invokes: components["schemas"]["InvokeRecord"][];
+            actors: string[];
+            scenarios: string[];
+        };
+        /** @description A state. */
+        StateRecord: components["schemas"]["ProcessNodeAnnotations"] & {
+            id: string;
+            name: string;
+            path: string;
+            type: string;
+            parent: string | null;
+            children: string[];
+            initial: string | null;
+            history: string | null;
+            defaultTarget: string | null;
+            entry: string[];
+            exit: string[];
+            invoke: string[];
+            isFinal: boolean;
+            isAtomic: boolean;
+            depth: number;
+            boundMember: string | null;
+            transitionsOut: string[];
+            regionIndex: number | null;
+        };
+        /** @description A transition. */
+        TransitionRecord: components["schemas"]["ProcessNodeAnnotations"] & {
+            id: string;
+            source: string;
+            targets: string[];
+            trigger: string;
+            event: string | null;
+            after: string | null;
+            afterMs: number | null;
+            afterTicks: number | null;
+            invoke: string | null;
+            guard: string | null;
+            guardMissing: boolean;
+            actions: string[];
+            external: boolean;
+            gate: string | null;
+            label: string;
+            isTargetless: boolean;
+        };
+        /** @description An event. */
+        EventRecord: components["schemas"]["ProcessNodeAnnotations"] & {
+            id: string;
+            name: string;
+            payload: components["schemas"]["AttributeRecord"][];
+            actors: string[];
+            transitions: string[];
+        };
+        /** @description A guard. */
+        GuardRecord: components["schemas"]["ProcessNodeAnnotations"] & {
+            id: string;
+            name: string;
+            expression: string | null;
+            isStub: boolean;
+            usedBy: string[];
+        };
+        /** @description An action. */
+        ActionRecord: components["schemas"]["ProcessNodeAnnotations"] & {
+            id: string;
+            name: string;
+            expression: string | null;
+            isStub: boolean;
+            raises: string[];
+            usedBy: string[];
+        };
+        /** @description An invocation of a service or another process. */
+        InvokeRecord: components["schemas"]["ProcessNodeAnnotations"] & {
+            id: string;
+            name: string;
+            type: string;
+            process: string | null;
+            actors: string[];
+            state: string;
+        };
+        /** @description An approval gate on a transition. */
+        GateRecord: components["schemas"]["ProcessNodeAnnotations"] & {
+            id: string;
+            name: string;
+            transition: string;
+            required: number;
+            signers: string[];
+            requiredActors: string[];
+            allowRepeatSigner: boolean;
+            reasonRequired: boolean;
+            meanings: components["schemas"]["MeaningRecord"][];
+            audit: components["schemas"]["AuditFieldRecord"][];
+        };
+        /** @description A meaning of a gate's signature. */
+        MeaningRecord: {
+            id: string;
+            name: string;
+            displayName: string;
+            description: string | null;
+        };
+        /** @description An audit field of a gate. */
+        AuditFieldRecord: {
+            id: string;
+            name: string;
+            type: string;
+            required: boolean;
+            description: string | null;
+            values: string[];
+            attribute: string | null;
+        };
+        /** @description A resolved actor. */
+        ActorRecord: components["schemas"]["ResolvedAnnotations"] & {
+            id: string;
+            /** @constant */
+            kind: "actor";
+            name: string;
+            package: string | null;
+            type: string;
+            processes: string[];
+            events: string[];
+            gates: string[];
+        };
+        /** @description A resolved scenario. */
+        ScenarioRecord: components["schemas"]["ResolvedAnnotations"] & {
+            id: string;
+            /** @constant */
+            kind: "scenario";
+            name: string;
+            package: string | null;
+            process: string;
+            start: components["schemas"]["ScenarioStartRecord"];
+            steps: components["schemas"]["StepRecord"][];
+            outcome: string;
+        };
+        /** @description Where a scenario's run starts. */
+        ScenarioStartRecord: {
+            context: {
+                [key: string]: unknown;
+            };
+            at: string;
+        };
+        /** @description A scenario step. */
+        StepRecord: {
+            id: string;
+            index: number;
+            input: string;
+            event: string | null;
+            invoke: string | null;
+            after: string | null;
+            afterMs: number | null;
+            afterTicks: number | null;
+            actor: string | null;
+            signer: string | null;
+            meaning: string | null;
+            reason: string | null;
+            payload: {
+                [key: string]: unknown;
+            };
+            assume: {
+                [key: string]: unknown;
+            };
+            expect: components["schemas"]["ExpectationRecord"] | null;
+            description: string | null;
+        };
+        /** @description What a step expects. */
+        ExpectationRecord: {
+            accepted: boolean;
+            states: string[];
+            statePaths: string[];
+            context: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description A resolved database: every field of the database view (`DatabaseView`) with its kind. */
+        DatabaseRecord: components["schemas"]["DatabaseView"] & {
+            /** @constant */
+            kind: "database";
+        };
+        /** @description One table of a database on its own (scope `tables`). */
+        TableRecord: {
+            /** @description The table key, as `TableView.key`. */
+            id: string;
+            /** @constant */
+            kind: "table";
+            name: string;
+            database: string;
+            table: components["schemas"]["TableView"];
+        };
         DatabaseViewResult: {
             view: components["schemas"]["DatabaseView"] | null;
             diagnostics: components["schemas"]["Diagnostic"][];
@@ -2189,6 +2877,10 @@ export interface components {
             isLookup: boolean;
             columnCount: number;
         };
+        /**
+         * @description One resolved database. The annotation members (`displayName` to `generation`) come from the database file, with no
+         *     fallback for the names; `schemas` lists every schema, each with the annotations of its own entry in that file.
+         */
         DatabaseView: {
             id: components["schemas"]["Ulid"];
             name: string;
@@ -2200,6 +2892,72 @@ export interface components {
             views: components["schemas"]["ViewView"][];
             /** @description Every sequence, by schema then name, the ones the resolver creates for entity keys included. */
             sequences: components["schemas"]["SequenceView"][];
+            /** @description Every schema, by name; the ones the file declares and the ones a table, view or sequence uses. */
+            schemas: components["schemas"]["SchemaView"][];
+            /** @enum {string} */
+            quoting: "always" | "reserved" | "never";
+            /** @description The effective identifier length limit (the dialect's when the file sets none), or null for none. */
+            maxIdentifierLength: number | null;
+            /**
+             * @description Which entities map here by convention, as the resolver applies it (a file without the member reads as `all`, or `packages` when it lists packages).
+             * @enum {string}
+             */
+            byConvention: "all" | "packages" | "none";
+            /** @description The packages whose entities map here by convention, in file order. */
+            packages: components["schemas"]["ConventionPackageView"][];
+            /** @description The display name the database file sets, or null; there is no fallback. */
+            displayName: string | null;
+            /** @description The plural name the database file sets, or null; there is no fallback. */
+            pluralName: string | null;
+            /** @description The description text, a sidecar file's content loaded. */
+            description: string | null;
+            /** @description The stereotype keys, in application order. */
+            stereotypes: string[];
+            tags: string[];
+            /** @description The id of the category-tree node. */
+            category: components["schemas"]["Ulid"] | null;
+            /** @description The custom properties, the stereotypes' default properties merged under the file's own. */
+            properties: {
+                [key: string]: unknown;
+            };
+            /** @description The generation hints by pack name or `*`. */
+            generation: {
+                [key: string]: components["schemas"]["GenerationHintsView"];
+            };
+        };
+        /** @description One schema of a resolved database, with the annotations of its entry in the database file; a schema the file does not declare has none. */
+        SchemaView: {
+            /** @description The schema entry's id, or `<databaseId>/<name>` for a schema the file does not declare. */
+            id: string;
+            name: string;
+            /** @description Whether it is the database's effective default schema. */
+            isDefault: boolean;
+            /** @description Whether the database file declares it. */
+            isDeclared: boolean;
+            /** @description The display name the schema entry sets, or null; there is no fallback. */
+            displayName: string | null;
+            /** @description The plural name the schema entry sets, or null; there is no fallback. */
+            pluralName: string | null;
+            /** @description The description text. */
+            description: string | null;
+            /** @description The stereotype keys, in application order. */
+            stereotypes: string[];
+            tags: string[];
+            /** @description The id of the category-tree node. */
+            category: components["schemas"]["Ulid"] | null;
+            /** @description The custom properties, the stereotypes' default properties merged under the entry's own. */
+            properties: {
+                [key: string]: unknown;
+            };
+            /** @description The generation hints by pack name or `*`. */
+            generation: {
+                [key: string]: components["schemas"]["GenerationHintsView"];
+            };
+        };
+        ConventionPackageView: {
+            packageId: components["schemas"]["Ulid"];
+            /** @description The schema name the package's conventional tables go to, or null for the default schema. */
+            schema: string | null;
         };
         /**
          * @description One resolved table. The annotation members (`displayName` to `generation`) come from the table's own file: the
@@ -2310,6 +3068,11 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * @description One resolved column. The annotation members (`displayName` to `generation`) come from the column's own entry in a table
+         *     file: a designed or extra column, or the overlay entry of a synthesized column. A synthesized column without an overlay
+         *     entry has none; it never takes its attribute's, which `attributeId` leads to.
+         */
         ColumnView: {
             /** @description An attribute path, `discriminator`, `position`, `id`, or a column id. */
             key: string;
@@ -2331,6 +3094,32 @@ export interface components {
             isForeignKey: boolean;
             isDiscriminator: boolean;
             position: number;
+            /** @description The literal default as a plain JSON value, or null. */
+            default: unknown;
+            computedStored: boolean;
+            /** @description The id of the sequence that supplies values (a sequence file's id, or a synthesized key such as `<entityId>.sequence@<databaseId>`). */
+            sequenceId: string | null;
+            collation: string | null;
+            comment: string | null;
+            /** @description The display name the column's own entry sets, or null; there is no fallback. */
+            displayName: string | null;
+            /** @description The plural name the column's own entry sets, or null; there is no fallback. */
+            pluralName: string | null;
+            /** @description The description text. */
+            description: string | null;
+            /** @description The stereotype keys, in application order. */
+            stereotypes: string[];
+            tags: string[];
+            /** @description The id of the category-tree node. */
+            category: components["schemas"]["Ulid"] | null;
+            /** @description The custom properties, the stereotypes' default properties merged under the entry's own. */
+            properties: {
+                [key: string]: unknown;
+            };
+            /** @description The generation hints by pack name or `*`. */
+            generation: {
+                [key: string]: components["schemas"]["GenerationHintsView"];
+            };
         };
         KeyView: {
             name: string;
@@ -5322,6 +6111,22 @@ export interface components {
          */
         IfMatch: string;
         IfNoneMatch: string;
+        /** @description Only this kind. */
+        FilterKind: components["schemas"]["ElementKind"];
+        /** @description Only elements directly in this package, by package id or package name (ignoring case). */
+        FilterPackage: string;
+        /** @description Only elements with this tag key. */
+        FilterTag: string;
+        /** @description Only elements in this category (its id). */
+        FilterCategory: string;
+        /** @description Only elements with this stereotype key. */
+        FilterStereotype: string;
+        /** @description Only elements whose name contains this text, ignoring case. */
+        FilterQuery: string;
+        /** @description The `next` of the previous page, as it was returned (opaque; it encodes the last position read). */
+        PageCursor: string;
+        /** @description The page size, 1 to 1000; 100 when absent. Out of range is `bad-request`. */
+        PageLimit: number;
     };
     requestBodies: never;
     headers: {
@@ -5334,6 +6139,11 @@ export interface components {
         IndexETag: string;
         /** @description `no-cache`: the client may keep the response but revalidates it with `If-None-Match` before each use (E5e). */
         NoCache: "no-cache";
+        /**
+         * @description While more rows follow a paged answer: `<url>; rel="next"`, the same request with `cursor` set to the next page's.
+         * @example </api/model/index?kind=entity&limit=100&cursor=cDEAZW50aXR5AEludm9pY2UAMDFKOTJQMFYwRkoyM0NHU05LTTdQMVc1Vjc>; rel="next"
+         */
+        NextLink: string;
     };
     pathItems: never;
 }
@@ -5716,6 +6526,22 @@ export interface operations {
             query?: {
                 /** @description A declared locale whose display names fill `displayName`. */
                 locale?: string;
+                /** @description Only this kind. */
+                kind?: components["parameters"]["FilterKind"];
+                /** @description Only elements directly in this package, by package id or package name (ignoring case). */
+                package?: components["parameters"]["FilterPackage"];
+                /** @description Only elements with this tag key. */
+                tag?: components["parameters"]["FilterTag"];
+                /** @description Only elements in this category (its id). */
+                category?: components["parameters"]["FilterCategory"];
+                /** @description Only elements with this stereotype key. */
+                stereotype?: components["parameters"]["FilterStereotype"];
+                /** @description Only elements whose name contains this text, ignoring case. */
+                query?: components["parameters"]["FilterQuery"];
+                /** @description The `next` of the previous page, as it was returned (opaque; it encodes the last position read). */
+                cursor?: components["parameters"]["PageCursor"];
+                /** @description The page size, 1 to 1000; 100 when absent. Out of range is `bad-request`. */
+                limit?: components["parameters"]["PageLimit"];
             };
             header?: {
                 "If-None-Match"?: components["parameters"]["IfNoneMatch"];
@@ -5725,11 +6551,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The index. */
+            /** @description The index, or one page of it. */
             200: {
                 headers: {
                     ETag: components["headers"]["IndexETag"];
-                    "Cache-Control": components["headers"]["NoCache"];
+                    /** @description `no-cache` for the whole index (revalidate with `If-None-Match`), `no-store` for a filtered or paged answer. */
+                    "Cache-Control"?: "no-cache" | "no-store";
+                    Link: components["headers"]["NextLink"];
                     [name: string]: unknown;
                 };
                 content: {
@@ -5778,6 +6606,115 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ElementReadResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["ModelUnavailable"];
+        };
+    };
+    getModelKinds: {
+        parameters: {
+            query?: {
+                /** @description `kind` (the default) or `package`. */
+                by?: "kind" | "package";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The counts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelKindsResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["ModelUnavailable"];
+        };
+    };
+    getResolvedModel: {
+        parameters: {
+            query?: {
+                /** @description What to read. */
+                scope?: "all" | "packages" | "entities" | "relations" | "enums" | "value-objects" | "scalar-types" | "reference-types" | "seeds" | "processes" | "actors" | "scenarios" | "databases" | "tables";
+                /** @description A database id; only what is mapped to it. */
+                database?: components["schemas"]["Ulid"];
+                /** @description The `next` of the previous page, as it was returned (opaque; it encodes the last position read). */
+                cursor?: components["parameters"]["PageCursor"];
+                /** @description The page size, 1 to 1000; 100 when absent. Out of range is `bad-request`. */
+                limit?: components["parameters"]["PageLimit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of records, or the errors that prevented resolution. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolvedPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["ModelUnavailable"];
+        };
+    };
+    getElements: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Comma-separated element or sub-element ids.
+                 * @example 01J92P0V0FJ23CGSNKM7P1W5V7,01J92P0V0ETQKXXP951CMMNHH3
+                 */
+                ids?: string;
+                /** @description Only this kind. */
+                kind?: components["parameters"]["FilterKind"];
+                /** @description Only elements directly in this package, by package id or package name (ignoring case). */
+                package?: components["parameters"]["FilterPackage"];
+                /** @description Only elements with this tag key. */
+                tag?: components["parameters"]["FilterTag"];
+                /** @description Only elements in this category (its id). */
+                category?: components["parameters"]["FilterCategory"];
+                /** @description Only elements with this stereotype key. */
+                stereotype?: components["parameters"]["FilterStereotype"];
+                /** @description Only elements whose name contains this text, ignoring case. */
+                query?: components["parameters"]["FilterQuery"];
+                /**
+                 * @description Comma-separated top-level members to keep in each document; `id` and `kind` are always kept.
+                 * @example name,package,attributes
+                 */
+                fields?: string;
+                /** @description The `next` of the previous page, as it was returned (opaque; it encodes the last position read). */
+                cursor?: components["parameters"]["PageCursor"];
+                /** @description The page size, 1 to 1000; 100 when absent. Out of range is `bad-request`. */
+                limit?: components["parameters"]["PageLimit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of documents. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElementPage"];
                 };
             };
             400: components["responses"]["BadRequest"];

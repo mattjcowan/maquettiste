@@ -6,7 +6,7 @@
 // with real ones.
 import { conventionOf, placesEntity } from "@/model/databaseMapping";
 import { schemaForEntity, schemasOf } from "@/model/databaseSchemas";
-import type { ColumnView, DatabaseView, ForeignKeyView, SequenceView, TableView, ViewView } from "@/api/types";
+import type { ColumnView, DatabaseView, ForeignKeyView, SchemaView, SequenceView, TableView, ViewView } from "@/api/types";
 
 type Json = Record<string, unknown>;
 const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
@@ -14,8 +14,9 @@ const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
 type Annotations = Pick<TableView, "displayName" | "pluralName" | "description" | "stereotypes" | "tags" | "category" | "properties" | "generation">;
 
 /**
- * The annotations a table, view or sequence takes from its own file (none without a file, never its entity's): the
- * stereotypes' default properties under the file's own, as the engine merges them. A sidecar description reads as null.
+ * The annotations a database, schema, table, column, view or sequence takes from its own file or entry (none without one,
+ * never its entity's or attribute's): the stereotypes' default properties under the file's own, as the engine merges them. A
+ * sidecar description reads as null.
  */
 export function annotationsOf(doc: Json | undefined, stereotypes: ReadonlyMap<string, Json>): Annotations {
   const keys = (doc?.stereotypes as string[] | undefined) ?? [];
@@ -202,7 +203,19 @@ interface ResolvedColumn {
   unique: boolean;
   indexed: boolean;
   nativeOverride?: string;
+  /** The overlay's entry for this column (by attribute key), whose annotations and comment the column takes. */
+  entry?: Json;
 }
+
+/** A column's own members the mock does not resolve from conventions: no default, collation or sequence, no annotations. */
+const plainColumn = (entry: Json | undefined, stereotypes: ReadonlyMap<string, Json>) => ({
+  default: entry?.default ?? null,
+  computedStored: false,
+  sequenceId: null,
+  collation: typeof entry?.collation === "string" ? entry.collation : null,
+  comment: typeof entry?.comment === "string" ? entry.comment : null,
+  ...annotationsOf(entry, stereotypes),
+});
 
 /** Resolves one database of the mock model; null when the id is not a database. */
 export function resolveDatabase(input: PhysicalInput, databaseId: string): DatabaseView | null {
@@ -350,6 +363,7 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
     isForeignKey: c.isForeignKey,
     isDiscriminator: false,
     position,
+    ...plainColumn(c.entry, stereotypes),
   });
 
   for (const entity of entities) {
@@ -362,6 +376,11 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
       arr(overlay?.columns)
         .filter((c) => c.attribute && c.nativeType)
         .map((c) => [String(c.attribute), String(c.nativeType)]),
+    );
+    const entryByAttr = new Map(
+      arr(overlay?.columns)
+        .filter((c) => c.attribute)
+        .map((c) => [String(c.attribute), c]),
     );
     const keyIds = new Set(((entity.key as Json | undefined)?.attributes as string[] | undefined) ?? []);
     const identity = (entity.key as Json | undefined)?.strategy === "database-identity";
@@ -377,7 +396,13 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
         prefix: override?.prefix as string | undefined,
       });
       for (const c of produced)
-        columns.push({ ...c, isPrimaryKey: keyIds.has(String(attr.id)), isForeignKey: false, nativeOverride: nativeByAttr.get(String(attr.id)) });
+        columns.push({
+          ...c,
+          isPrimaryKey: keyIds.has(String(attr.id)),
+          isForeignKey: false,
+          nativeOverride: nativeByAttr.get(String(c.key)),
+          entry: entryByAttr.get(String(c.key)),
+        });
     }
     const name = tableName(String(entity.name));
     const table: TableView = {
@@ -447,6 +472,7 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
         attributeId: null,
         attributePath: null,
         position: from.table.columns.length + 1,
+        ...plainColumn(undefined, stereotypes),
       }));
       from.table.columns.push(...fkColumns);
       if (ordered)
@@ -468,6 +494,7 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
           isForeignKey: false,
           isDiscriminator: false,
           position: from.table.columns.length + 1,
+          ...plainColumn(undefined, stereotypes),
         });
       const fk: ForeignKeyView = {
         name: `fk_${from.table.name}_${fkColumns.map((c) => c.name).join("_")}`,
@@ -527,6 +554,7 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
           attributeId: null,
           attributePath: null,
           position: 0,
+          ...plainColumn(undefined, stereotypes),
         }));
         junction.columns.push(...cols);
         junction.foreignKeys.push({
@@ -599,6 +627,24 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
       };
     })
     .sort(byName);
+  // Every schema the file declares or a table, view or sequence uses, by name; a declared one carries its entry's annotations.
+  const entries = arr(db.schemas).filter((x) => typeof x.id === "string");
+  const schemaNames = new Set<string>(entries.map((x) => String(x.name ?? "")));
+  for (const o of [...tables, ...views, ...sequences]) if (o.schema) schemaNames.add(o.schema);
+  const schemas: SchemaView[] = [...schemaNames]
+    .sort((x, y) => (x < y ? -1 : x > y ? 1 : 0))
+    .map((name) => {
+      const entry = entries.find((x) => x.name === name);
+      return {
+        id: entry ? String(entry.id) : `${databaseId}/${name}`,
+        name,
+        isDefault: name === defaultSchema,
+        isDeclared: entry !== undefined,
+        ...annotationsOf(entry, stereotypes),
+      };
+    });
+  const limits: Record<string, number> = { postgresql: 63, sqlserver: 128, mysql: 64, oracle: 128 };
+  const packageEntries = Array.isArray(db.packages) ? (db.packages as unknown[]) : [];
   return {
     id: databaseId,
     name: dbName,
@@ -608,6 +654,16 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
     tables,
     views,
     sequences,
+    schemas,
+    quoting: (typeof db.quoting === "string" ? db.quoting : "reserved") as DatabaseView["quoting"],
+    maxIdentifierLength: typeof db.maxIdentifierLength === "number" ? db.maxIdentifierLength : (limits[dialect] ?? null),
+    byConvention: (typeof db.byConvention === "string" ? db.byConvention : packageEntries.length > 0 ? "packages" : "all") as DatabaseView["byConvention"],
+    packages: packageEntries.map((p) =>
+      typeof p === "string"
+        ? { packageId: p, schema: null }
+        : { packageId: String((p as Json).package), schema: declared.get(String((p as Json).schema)) ?? null },
+    ),
+    ...annotationsOf(db, stereotypes),
   };
 }
 

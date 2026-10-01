@@ -12,6 +12,8 @@ import type { MockBackend } from "./backend";
 import { baselineHandlers } from "./baseline";
 import { mentions, recordings, replayable, type Recording } from "./recorded";
 import { validPackPath } from "./model/packs";
+import { BAD_CURSOR, filterOf, filterRows, isEmptyFilter, kinds, MAX_LIMIT, page, parseLimit, trim } from "./model/bulk";
+import type { ResolvedRecord } from "@/api/types";
 import { isUlid, readTag } from "./wire";
 import { processHandlers } from "./processHandlers";
 // Recorded by the functions test of GET /api/validation/rules, which fails when the catalog changes without a new recording.
@@ -201,18 +203,138 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
     http.get("/api/model/index", ({ request }) => {
       // E5e: the ETag of the index, 304 on a matching If-None-Match, kept by the browser with no-cache.
       // ?locale= (reference-types-seeds-localization.md 3.8) fills displayName from the locale's chain.
-      const locale = new URL(request.url).searchParams.get("locale");
+      // The index filters narrow it and limit or cursor page it (no ETag then; the next page in a Link header).
+      const q = new URL(request.url).searchParams;
+      const locale = q.get("locale");
       const translated = !!locale && locale !== l10n.defaultLocale;
       if (translated && !l10n.isTranslated(locale)) return problem(400, "bad-request", `'${locale}' is not a declared locale.`) as never;
+      const limit = parseLimit(q.get("limit"));
+      if (typeof limit === "string") return problem(400, "bad-request", "The request is not valid.", limit) as never;
+      const names = translated ? l10n.displayNames(locale) : null;
+      const rows = names
+        ? model.index().map((row) => (names[row.id] && names[row.id] !== (row.displayName ?? row.name) ? { ...row, displayName: names[row.id] } : row))
+        : model.index();
+      const filter = filterOf(q);
+      const paged = !!q.get("limit") || !!q.get("cursor");
+      if (!isEmptyFilter(filter) || paged) {
+        const filtered = filterRows(rows, filter);
+        if (!paged) return HttpResponse.json(filtered, { headers: { "Cache-Control": "no-store" } });
+        const result = page(filtered, (r) => [r.kind, r.name, r.id], q.get("cursor"), limit);
+        if (!result) return problem(400, "bad-request", "The request is not valid.", BAD_CURSOR) as never;
+        const headers: Record<string, string> = { "Cache-Control": "no-store" };
+        if (result.next) {
+          q.set("cursor", result.next);
+          headers.Link = `</api/model/index?${q.toString()}>; rel="next"`;
+        }
+        return HttpResponse.json(result.items, { headers });
+      }
       const tag = translated ? `${model.indexTag()}-${locale}-${l10n.version}` : model.indexTag();
       const headers = { ...etag(tag), "Cache-Control": "no-cache" };
       if (readTag(request.headers.get("If-None-Match")) === tag) return new HttpResponse(null, { status: 304, headers }) as never;
-      if (!translated) return HttpResponse.json(model.index(), { headers });
-      const names = l10n.displayNames(locale);
-      return HttpResponse.json(
-        model.index().map((row) => (names[row.id] && names[row.id] !== (row.displayName ?? row.name) ? { ...row, displayName: names[row.id] } : row)),
-        { headers },
-      );
+      return HttpResponse.json(rows, { headers });
+    }),
+    http.get("/api/model/elements", ({ request }) => {
+      // Documents in pages, by (kind, name, id), trimmed to fields (ModelPages.ReadElements).
+      const q = new URL(request.url).searchParams;
+      const limit = parseLimit(q.get("limit"));
+      if (typeof limit === "string") return problem(400, "bad-request", "The request is not valid.", limit);
+      const ids =
+        q
+          .get("ids")
+          ?.split(",")
+          .map((s) => s.trim())
+          .filter(Boolean) ?? null;
+      if (ids && ids.length > MAX_LIMIT)
+        return problem(400, "bad-request", "The request is not valid.", `At most ${MAX_LIMIT} ids can be read at once; ${ids.length} were given.`);
+      if (ids && !ids.every(isUlid))
+        return problem(400, "bad-request", "The request is not valid.", "ids must be element or sub-element ids (uppercase ULIDs), separated by commas.");
+      const fields =
+        q
+          .get("fields")
+          ?.split(",")
+          .map((s) => s.trim())
+          .filter(Boolean) ?? null;
+      let rows = model.index();
+      const missing: string[] = [];
+      if (ids && ids.length) {
+        const wanted = new Set<string>();
+        for (const id of ids) {
+          const owner = model.owner(id);
+          if (owner) wanted.add(owner.id);
+          else missing.push(id);
+        }
+        rows = rows.filter((r) => wanted.has(r.id));
+      }
+      const result = page(filterRows(rows, filterOf(q)), (r) => [r.kind, r.name, r.id], q.get("cursor"), limit);
+      if (!result) return problem(400, "bad-request", "The request is not valid.", BAD_CURSOR);
+      const items = result.items.map((r) => {
+        const doc = model.get(r.id)!;
+        return { id: r.id, kind: r.kind, path: doc.path, hash: doc.hash, json: trim(doc.json as Record<string, unknown>, fields) };
+      });
+      return HttpResponse.json({ items, next: result.next, missing });
+    }),
+    http.get("/api/model/kinds", ({ request }) => {
+      const by = new URL(request.url).searchParams.get("by");
+      if (by && by !== "kind" && by !== "package") return problem(400, "bad-request", "The request is not valid.", `by must be kind or package, not '${by}'.`);
+      return HttpResponse.json(kinds(model.index(), by === "package"));
+    }),
+    http.get("/api/model/resolved", ({ request }) => {
+      // The engine's records, recorded from the billing fixture (getResolvedModel.json), while the model is that fixture;
+      // afterwards the databases and tables from the in-house resolver (the mock has no conceptual resolver).
+      const q = new URL(request.url).searchParams;
+      const scope = q.get("scope") || "all";
+      const scopes: Record<string, string> = {
+        packages: "package",
+        entities: "entity",
+        relations: "relation",
+        enums: "enum",
+        "value-objects": "value-object",
+        "scalar-types": "scalar-type",
+        "reference-types": "reference-type",
+        seeds: "seed",
+        processes: "process",
+        actors: "actor",
+        scenarios: "scenario",
+        databases: "database",
+        tables: "table",
+      };
+      if (scope !== "all" && !scopes[scope])
+        return problem(400, "bad-request", "The request is not valid.", `scope must be one of all, ${Object.keys(scopes).join(", ")}, not '${scope}'.`);
+      const limit = parseLimit(q.get("limit"));
+      if (typeof limit === "string") return problem(400, "bad-request", "The request is not valid.", limit);
+      const database = q.get("database");
+      if (database) {
+        const entry = model.entries.get(database);
+        if (!entry) return problem(404, "not-found", `No database has the id ${database}.`);
+        if (entry.json.kind !== "database") return problem(404, "not-a-database", `${database} is not a database.`);
+      }
+      const rec = replayable(recorded, "getResolvedModel", pristine());
+      let records: ResolvedRecord[];
+      if (rec) {
+        records = (rec.body as { items: ResolvedRecord[] }).items;
+      } else {
+        const views = model
+          .index()
+          .filter((r) => r.kind === "database")
+          .map((r) => generation.databaseView(r.id)?.view)
+          .filter((v) => !!v);
+        records = views.map((v) => ({ ...v, kind: "database" as const }));
+      }
+      const databases = records.filter((r) => r.kind === "database") as Extract<ResolvedRecord, { kind: "database" }>[];
+      const mappedTo = (r: ResolvedRecord) => !database || !("mappings" in r) || (r.mappings as { database: string }[]).some((m) => m.database === database);
+      const selected: ResolvedRecord[] =
+        scope === "tables"
+          ? databases
+              .filter((d) => !database || d.id === database)
+              .flatMap((d) => d.tables.map((t) => ({ id: t.key, kind: "table" as const, name: t.name, database: d.id, table: t })))
+          : records.filter(
+              (r) =>
+                (scope === "all" || r.kind === scopes[scope]) &&
+                (r.kind === "database" ? !database || r.id === database : r.kind === "entity" || r.kind === "relation" ? mappedTo(r) : true),
+            );
+      const result = page(selected, (r) => [r.kind, r.name, r.id], q.get("cursor"), limit);
+      if (!result) return problem(400, "bad-request", "The request is not valid.", BAD_CURSOR);
+      return HttpResponse.json({ items: result.items, next: result.next, diagnostics: [] });
     }),
     http.get("/api/localization", () => HttpResponse.json(l10n.status() as never)),
     http.get("/api/localization/{locale}/entries", ({ params, request }) => {

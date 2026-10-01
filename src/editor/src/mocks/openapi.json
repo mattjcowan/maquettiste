@@ -773,9 +773,9 @@
         ],
         "operationId": "getModelIndex",
         "summary": "Summaries of every element",
-        "description": "One summary per top-level element (sub-elements such as attributes and relation ends are not listed). The explorer,\nthe command palette and every canvas start from this list.\n\nE5e: the response carries an `ETag`, a hash of every row's id, file hash and path and of the index format, so it\nchanges exactly when a row does, across server restarts too. The index format constant is `maquettiste-index/e6`.\n\n`?locale=<tag>` (a declared locale; the default locale is the same as none) fills `displayName` from that locale's fallback\nchain (reference-types-seeds-localization.md section 3.8) from a per-locale display-name table the host builds once per\nsnapshot; the ETag then also covers the locale, its chain and the hashes of the chain's shards. 400 for an undeclared locale. A request whose `If-None-Match` names it gets 304 with no\nbody. `Cache-Control: no-cache` lets the browser keep the index and revalidate it on every use.\n",
+        "description": "One summary per top-level element (sub-elements such as attributes and relation ends are not listed). The explorer,\nthe command palette and every canvas start from this list.\n\nE5e: the response carries an `ETag`, a hash of every row's id, file hash and path and of the index format, so it\nchanges exactly when a row does, across server restarts too. The index format constant is `maquettiste-index/e6`.\n\n`?locale=<tag>` (a declared locale; the default locale is the same as none) fills `displayName` from that locale's fallback\nchain (reference-types-seeds-localization.md section 3.8) from a per-locale display-name table the host builds once per\nsnapshot; the ETag then also covers the locale, its chain and the hashes of the chain's shards. 400 for an undeclared locale. A request whose `If-None-Match` names it gets 304 with no\nbody. `Cache-Control: no-cache` lets the browser keep the index and revalidate it on every use.\n\nThe index filters (`kind`, `package`, `tag`, `category`, `stereotype`, `query`; all optional, combined with AND) narrow the\nlist, as `getElements` and the MCP tool `get_model_index` take them. `limit` or `cursor` pages it: the body is then one page\nof rows ordered by kind, name and id (ordinal), and while more rows follow, a `Link` header with `rel=\"next\"` gives the URL of\nthe next page (the same query with `cursor` set). A filtered or paged answer carries no ETag and `Cache-Control: no-store`.\nUse the index to find elements, `getElements` to read their documents in bulk, `getResolvedModel` for what generation sees,\nand `getModelKinds` for the counts.\n",
         "x-maquettiste-role": "viewer",
-        "x-maquettiste-engine": "ModelStore.GetIndexAsync",
+        "x-maquettiste-engine": "ModelStore.GetIndexAsync, ModelPages.Filter, ModelPages.PageIndex",
         "x-engine-addition": "E5e ModelReads.IndexTag(summaries)",
         "parameters": [
           {
@@ -789,17 +789,51 @@
               "type": "string",
               "pattern": "^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$"
             }
+          },
+          {
+            "$ref": "#/components/parameters/FilterKind"
+          },
+          {
+            "$ref": "#/components/parameters/FilterPackage"
+          },
+          {
+            "$ref": "#/components/parameters/FilterTag"
+          },
+          {
+            "$ref": "#/components/parameters/FilterCategory"
+          },
+          {
+            "$ref": "#/components/parameters/FilterStereotype"
+          },
+          {
+            "$ref": "#/components/parameters/FilterQuery"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
           }
         ],
         "responses": {
           "200": {
-            "description": "The index.",
+            "description": "The index, or one page of it.",
             "headers": {
               "ETag": {
                 "$ref": "#/components/headers/IndexETag"
               },
               "Cache-Control": {
-                "$ref": "#/components/headers/NoCache"
+                "description": "`no-cache` for the whole index (revalidate with `If-None-Match`), `no-store` for a filtered or paged answer.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-cache",
+                    "no-store"
+                  ]
+                }
+              },
+              "Link": {
+                "$ref": "#/components/headers/NextLink"
               }
             },
             "content": {
@@ -964,7 +998,580 @@
         }
       }
     },
+    "/api/model/kinds": {
+      "get": {
+        "tags": [
+          "model"
+        ],
+        "operationId": "getModelKinds",
+        "summary": "The kinds present and their counts",
+        "description": "Every kind of top-level element the model holds, with its count, so a caller knows what to iterate before reading in bulk.\n`by=package` adds the same counts per package (the elements directly in it), the elements in no package first, then by\npackage name and id. The MCP tool `get_model_kinds` and `maquettiste model stats` answer the same.\n",
+        "x-maquettiste-role": "viewer",
+        "x-maquettiste-engine": "ModelPages.Kinds(summaries, byPackage)",
+        "parameters": [
+          {
+            "name": "by",
+            "in": "query",
+            "description": "`kind` (the default) or `package`.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "kind",
+                "package"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The counts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelKindsResult"
+                },
+                "examples": {
+                  "byKind": {
+                    "summary": "Part of the billing fixture's counts",
+                    "value": {
+                      "total": 26,
+                      "kinds": [
+                        {
+                          "kind": "database",
+                          "count": 1
+                        },
+                        {
+                          "kind": "entity",
+                          "count": 5
+                        },
+                        {
+                          "kind": "enum",
+                          "count": 1
+                        },
+                        {
+                          "kind": "package",
+                          "count": 2
+                        },
+                        {
+                          "kind": "relation",
+                          "count": 4
+                        }
+                      ],
+                      "packages": null
+                    }
+                  },
+                  "byPackage": {
+                    "summary": "With by=package, on a smaller model",
+                    "value": {
+                      "total": 14,
+                      "kinds": [
+                        {
+                          "kind": "database",
+                          "count": 1
+                        },
+                        {
+                          "kind": "entity",
+                          "count": 5
+                        },
+                        {
+                          "kind": "enum",
+                          "count": 1
+                        },
+                        {
+                          "kind": "package",
+                          "count": 2
+                        },
+                        {
+                          "kind": "relation",
+                          "count": 4
+                        },
+                        {
+                          "kind": "value-object",
+                          "count": 1
+                        }
+                      ],
+                      "packages": [
+                        {
+                          "package": null,
+                          "name": null,
+                          "count": 2,
+                          "kinds": [
+                            {
+                              "kind": "database",
+                              "count": 1
+                            },
+                            {
+                              "kind": "package",
+                              "count": 1
+                            }
+                          ]
+                        },
+                        {
+                          "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+                          "name": "Billing",
+                          "count": 11,
+                          "kinds": [
+                            {
+                              "kind": "entity",
+                              "count": 4
+                            },
+                            {
+                              "kind": "enum",
+                              "count": 1
+                            },
+                            {
+                              "kind": "package",
+                              "count": 1
+                            },
+                            {
+                              "kind": "relation",
+                              "count": 4
+                            },
+                            {
+                              "kind": "value-object",
+                              "count": 1
+                            }
+                          ]
+                        },
+                        {
+                          "package": "01J92P0V025DRFTXKMS240G2NG",
+                          "name": "Catalog",
+                          "count": 1,
+                          "kinds": [
+                            {
+                              "kind": "entity",
+                              "count": 1
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "503": {
+            "$ref": "#/components/responses/ModelUnavailable"
+          }
+        }
+      }
+    },
+    "/api/model/resolved": {
+      "get": {
+        "tags": [
+          "model"
+        ],
+        "operationId": "getResolvedModel",
+        "summary": "The resolved model as flat records, in pages",
+        "description": "What templates read (the resolved model of SPEC Section 10), as data for external systems. Resolved objects reference each\nother, so they are projected into flat records (`x-engine-record`) where other objects appear by id; each record has `id`,\n`kind` and `name`. Choose what to read with `scope`, which follows the template scopes (`get_template_context`):\n\n- `entities`: `EntityRecord`, each attribute resolved (`type` with the enum, value object, scalar or reference type it\n  names, `default`, `length`, `precision`, `scale`, `isKey`; the base entity's attributes come first, marked `isInherited`),\n  the key, alternate keys, `base` and `derived`, navigations, `relations`, one mapping per database (table key and the\n  column of each attribute path) and the annotations.\n- `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,\n  `scenarios`: the matching record.\n- `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards,\n  actions, gates and invokes, actors by id.\n- `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and\n  indexes, views, sequences); `tables`: one `TableRecord` per table, for databases too large for one record.\n- `all` (the default): every scope but `tables`.\n\n`database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases and tables to\nit; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it\nis null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change\nbetween pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors\nreturns no records and the errors in `diagnostics`. The MCP tool `get_resolved_model` and `maquettiste model export\n--resolved` answer the same.\n",
+        "x-maquettiste-role": "viewer",
+        "x-maquettiste-engine": "GenerationService.GetResolvedAsync(query)",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "description": "What to read.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "packages",
+                "entities",
+                "relations",
+                "enums",
+                "value-objects",
+                "scalar-types",
+                "reference-types",
+                "seeds",
+                "processes",
+                "actors",
+                "scenarios",
+                "databases",
+                "tables"
+              ],
+              "default": "all"
+            }
+          },
+          {
+            "name": "database",
+            "in": "query",
+            "description": "A database id; only what is mapped to it.",
+            "schema": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of records, or the errors that prevented resolution.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvedPage"
+                },
+                "examples": {
+                  "enums": {
+                    "summary": "GET /api/model/resolved?scope=enums on the billing fixture",
+                    "value": {
+                      "items": [
+                        {
+                          "id": "01J92P0V05WQDH2GZG539D9VG1",
+                          "kind": "enum",
+                          "name": "InvoiceStatus",
+                          "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+                          "flags": false,
+                          "members": [
+                            {
+                              "id": "01J92P0V0A895FZKKJSFWJC6GV",
+                              "name": "Draft",
+                              "displayName": "Draft",
+                              "description": null,
+                              "value": 0,
+                              "code": "D",
+                              "properties": {}
+                            },
+                            {
+                              "id": "01J92P0V0BSV8C24C0KZQPGM06",
+                              "name": "Issued",
+                              "displayName": "Issued",
+                              "description": null,
+                              "value": 1,
+                              "code": "I",
+                              "properties": {}
+                            },
+                            {
+                              "id": "01J92P0V0C731P7ME05AVZSCT8",
+                              "name": "Paid",
+                              "displayName": "Paid",
+                              "description": null,
+                              "value": 2,
+                              "code": "P",
+                              "properties": {}
+                            },
+                            {
+                              "id": "01J92P0V0DRVD6JADG95KRMK4W",
+                              "name": "Void",
+                              "displayName": "Void",
+                              "description": null,
+                              "value": 3,
+                              "code": "V",
+                              "properties": {}
+                            }
+                          ],
+                          "displayName": "InvoiceStatus",
+                          "pluralName": "InvoiceStatuses",
+                          "description": null,
+                          "tags": [],
+                          "category": null,
+                          "stereotypes": [],
+                          "properties": {},
+                          "generation": {}
+                        }
+                      ],
+                      "next": null,
+                      "diagnostics": []
+                    }
+                  },
+                  "entity": {
+                    "summary": "GET /api/model/resolved?scope=entities&limit=1&cursor=... (Product, two of its five attributes shown)",
+                    "value": {
+                      "items": [
+                        {
+                          "id": "01J92P0V0JR8BE8253SKT29ZG7",
+                          "kind": "entity",
+                          "name": "Product",
+                          "package": "01J92P0V025DRFTXKMS240G2NG",
+                          "isAbstract": false,
+                          "base": null,
+                          "derived": [],
+                          "attributes": [
+                            {
+                              "id": "01J92P0V15PMP0E4P5DSNZVETR",
+                              "name": "id",
+                              "owner": "01J92P0V0JR8BE8253SKT29ZG7",
+                              "declaringEntity": "01J92P0V0JR8BE8253SKT29ZG7",
+                              "type": {
+                                "kind": "builtin",
+                                "name": "uuid",
+                                "builtin": "uuid",
+                                "enum": null,
+                                "valueObject": null,
+                                "scalar": null,
+                                "referenceType": null
+                              },
+                              "required": true,
+                              "default": null,
+                              "defaultExpression": null,
+                              "length": null,
+                              "precision": null,
+                              "scale": null,
+                              "collection": false,
+                              "unique": false,
+                              "indexed": false,
+                              "readOnly": false,
+                              "immutable": false,
+                              "derived": null,
+                              "sensitive": null,
+                              "validation": null,
+                              "order": 0,
+                              "isKey": true,
+                              "isInherited": false,
+                              "isVirtual": false,
+                              "fromStereotype": null,
+                              "reference": null,
+                              "displayName": "id",
+                              "pluralName": "ids",
+                              "description": null,
+                              "tags": [],
+                              "category": null,
+                              "stereotypes": [],
+                              "properties": {},
+                              "generation": {}
+                            },
+                            {
+                              "id": "01J92P0V1935QZTM8ZQ240DJ6Q",
+                              "name": "listPrice",
+                              "owner": "01J92P0V0JR8BE8253SKT29ZG7",
+                              "declaringEntity": "01J92P0V0JR8BE8253SKT29ZG7",
+                              "type": {
+                                "kind": "value-object",
+                                "name": "Money",
+                                "builtin": null,
+                                "enum": null,
+                                "valueObject": "01J92P0V0304M76KA84NE4D1TE",
+                                "scalar": null,
+                                "referenceType": null
+                              },
+                              "required": false,
+                              "default": null,
+                              "defaultExpression": null,
+                              "length": null,
+                              "precision": null,
+                              "scale": null,
+                              "collection": false,
+                              "unique": false,
+                              "indexed": false,
+                              "readOnly": false,
+                              "immutable": false,
+                              "derived": null,
+                              "sensitive": null,
+                              "validation": null,
+                              "order": 3,
+                              "isKey": false,
+                              "isInherited": false,
+                              "isVirtual": false,
+                              "fromStereotype": null,
+                              "reference": null,
+                              "displayName": "listPrice",
+                              "pluralName": "listPrices",
+                              "description": null,
+                              "tags": [],
+                              "category": null,
+                              "stereotypes": [],
+                              "properties": {},
+                              "generation": {}
+                            }
+                          ],
+                          "key": {
+                            "attributes": [
+                              "01J92P0V15PMP0E4P5DSNZVETR"
+                            ],
+                            "strategy": "uuid-v7",
+                            "sequences": []
+                          },
+                          "alternateKeys": [
+                            {
+                              "id": "01J92P0V160MQ5VBCRQV4WDHYW",
+                              "name": "sku",
+                              "attributes": [
+                                "01J92P0V17VC286G57N0QWE44Y"
+                              ]
+                            }
+                          ],
+                          "navigations": [],
+                          "relations": [
+                            "01J92P0V1CC98R0RRCAV73SGF4"
+                          ],
+                          "mappings": [
+                            {
+                              "database": "01J92P0V1QRN2181XM2ZWE02W4",
+                              "table": "01J92P0V0JR8BE8253SKT29ZG7@01J92P0V1QRN2181XM2ZWE02W4",
+                              "inheritance": null,
+                              "discriminatorColumn": null,
+                              "discriminatorValue": null,
+                              "columns": [
+                                {
+                                  "attributePath": "01J92P0V15PMP0E4P5DSNZVETR",
+                                  "column": "01J92P0V15PMP0E4P5DSNZVETR"
+                                },
+                                {
+                                  "attributePath": "01J92P0V1935QZTM8ZQ240DJ6Q.01J92P0V08P9BVJAPQ793XYNTQ",
+                                  "column": "01J92P0V1935QZTM8ZQ240DJ6Q.01J92P0V08P9BVJAPQ793XYNTQ"
+                                }
+                              ]
+                            }
+                          ],
+                          "isPromoted": false,
+                          "promotedFrom": null,
+                          "seeds": [],
+                          "lifecycle": null,
+                          "displayName": "Product",
+                          "pluralName": "Products",
+                          "description": null,
+                          "tags": [],
+                          "category": "01J92P0V07KWPZMZ6FKXDYJ3JA",
+                          "stereotypes": [
+                            "soft-delete"
+                          ],
+                          "properties": {},
+                          "generation": {}
+                        }
+                      ],
+                      "next": "cDEAZW50aXR5AFByb2R1Y3QAMDFKOTJQMFYwSlI4QkU4MjUzU0tUMjlaRzc",
+                      "diagnostics": []
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/ModelUnavailable"
+          }
+        }
+      }
+    },
     "/api/model/elements": {
+      "get": {
+        "tags": [
+          "model"
+        ],
+        "operationId": "getElements",
+        "summary": "Element documents in pages",
+        "description": "The bulk document read for external systems: the canonical documents (as `getElement` returns them in `json`) of the\nelements `ids` names, or of every element, narrowed by the index filters, in pages of `limit` (default 100, at most 1000),\nordered by kind, name and id (ordinal). Pass `next` as `cursor` until it is null. A cursor encodes the last position read,\nso a change between pages is tolerated: the next page starts after that position in the current model (an element renamed\nmeanwhile may move before or after it).\n\n`fields=name,attributes` keeps only those top-level members of each document (`id` and `kind` are always kept), so a\ncaller that needs names and attributes of thousands of entities reads only those. `ids` takes element or sub-element ids\n(a sub-element id reads the element that holds it), at most 1000; ids that match nothing are listed in `missing`. The MCP\ntool `get_elements` and `maquettiste model export` answer the same.\n",
+        "x-maquettiste-role": "viewer",
+        "x-maquettiste-engine": "ModelPages.ReadElements(snapshot, ids, filter, fields, cursor, limit)",
+        "parameters": [
+          {
+            "name": "ids",
+            "in": "query",
+            "description": "Comma-separated element or sub-element ids.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "01J92P0V0FJ23CGSNKM7P1W5V7,01J92P0V0ETQKXXP951CMMNHH3"
+          },
+          {
+            "$ref": "#/components/parameters/FilterKind"
+          },
+          {
+            "$ref": "#/components/parameters/FilterPackage"
+          },
+          {
+            "$ref": "#/components/parameters/FilterTag"
+          },
+          {
+            "$ref": "#/components/parameters/FilterCategory"
+          },
+          {
+            "$ref": "#/components/parameters/FilterStereotype"
+          },
+          {
+            "$ref": "#/components/parameters/FilterQuery"
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "description": "Comma-separated top-level members to keep in each document; `id` and `kind` are always kept.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "name,package,attributes"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of documents.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ElementPage"
+                },
+                "examples": {
+                  "entities": {
+                    "summary": "GET /api/model/elements?kind=entity&fields=name&limit=2 on the billing fixture",
+                    "value": {
+                      "items": [
+                        {
+                          "id": "01J92P0V0ETQKXXP951CMMNHH3",
+                          "kind": "entity",
+                          "path": ".maquettiste/model/entities/customer.json",
+                          "hash": "9e5da84d083cffdcec1a6b4969a4281f1cbf2b64957bde9621616f813ea27dcf",
+                          "json": {
+                            "kind": "entity",
+                            "id": "01J92P0V0ETQKXXP951CMMNHH3",
+                            "name": "Customer"
+                          }
+                        },
+                        {
+                          "id": "01J92P0V0FJ23CGSNKM7P1W5V7",
+                          "kind": "entity",
+                          "path": ".maquettiste/model/entities/invoice.json",
+                          "hash": "4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73",
+                          "json": {
+                            "kind": "entity",
+                            "id": "01J92P0V0FJ23CGSNKM7P1W5V7",
+                            "name": "Invoice"
+                          }
+                        }
+                      ],
+                      "next": "cDEAZW50aXR5AEludm9pY2UAMDFKOTJQMFYwRkoyM0NHU05LTTdQMVc1Vjc",
+                      "missing": []
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "503": {
+            "$ref": "#/components/responses/ModelUnavailable"
+          }
+        }
+      },
       "post": {
         "tags": [
           "model"
@@ -3078,7 +3685,7 @@
         ],
         "operationId": "getDatabaseView",
         "summary": "The resolved tables of one database",
-        "description": "The physical model after conventions, mappings and table overlays are applied: every table (synthesized,\ndesigned or imported), its columns with the attribute each one stores, keys, foreign keys and indexes, and\nevery view and sequence. Each table, view and sequence carries the annotations of its own file (display and\nplural names, description, stereotypes, tags, category, properties, generation hints); a synthesized table\nwithout an overlay has none. The Database workspace draws table diagrams from it and the Mappings workspace\nsets it beside the entity. A model with errors returns `view: null` and the diagnostics.\n",
+        "description": "The physical model after conventions, mappings and table overlays are applied: every table (synthesized,\ndesigned or imported), its columns with the attribute each one stores, keys, foreign keys and indexes, and\nevery view, sequence and schema. The database, each schema, table, column, view and sequence carries the\nannotations of its own file or entry (display and plural names, description, stereotypes, tags, category,\nproperties, generation hints); a synthesized table without an overlay, or a synthesized column without an\noverlay entry, has none. The Database workspace draws table diagrams from it and the Mappings workspace\nsets it beside the entity. A model with errors returns `view: null` and the diagnostics.\n",
         "x-maquettiste-role": "viewer",
         "x-engine-addition": "E1 GenerationService.GetDatabaseViewAsync(databaseId)",
         "responses": {
@@ -6333,6 +6940,73 @@
         "schema": {
           "type": "string"
         }
+      },
+      "FilterKind": {
+        "name": "kind",
+        "in": "query",
+        "description": "Only this kind.",
+        "schema": {
+          "$ref": "#/components/schemas/ElementKind"
+        }
+      },
+      "FilterPackage": {
+        "name": "package",
+        "in": "query",
+        "description": "Only elements directly in this package, by package id or package name (ignoring case).",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "FilterTag": {
+        "name": "tag",
+        "in": "query",
+        "description": "Only elements with this tag key.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "FilterCategory": {
+        "name": "category",
+        "in": "query",
+        "description": "Only elements in this category (its id).",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "FilterStereotype": {
+        "name": "stereotype",
+        "in": "query",
+        "description": "Only elements with this stereotype key.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "FilterQuery": {
+        "name": "query",
+        "in": "query",
+        "description": "Only elements whose name contains this text, ignoring case.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "PageCursor": {
+        "name": "cursor",
+        "in": "query",
+        "description": "The `next` of the previous page, as it was returned (opaque; it encodes the last position read).",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "PageLimit": {
+        "name": "limit",
+        "in": "query",
+        "description": "The page size, 1 to 1000; 100 when absent. Out of range is `bad-request`.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "default": 100
+        }
       }
     },
     "headers": {
@@ -6357,6 +7031,13 @@
           "type": "string",
           "const": "no-cache"
         }
+      },
+      "NextLink": {
+        "description": "While more rows follow a paged answer: `<url>; rel=\"next\"`, the same request with `cursor` set to the next page's.",
+        "schema": {
+          "type": "string"
+        },
+        "example": "</api/model/index?kind=entity&limit=100&cursor=cDEAZW50aXR5AEludm9pY2UAMDFKOTJQMFYwRkoyM0NHU05LTTdQMVc1Vjc>; rel=\"next\""
       }
     },
     "responses": {
@@ -9320,6 +10001,2747 @@
           }
         }
       },
+      "ElementPage": {
+        "x-engine-record": "Maquettiste.Engine.ElementPage",
+        "description": "One page of a bulk document read (`getElements`).",
+        "type": "object",
+        "required": [
+          "items",
+          "next",
+          "missing"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ElementPageItem"
+            },
+            "description": "The documents, by kind, name and id (ordinal)."
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The cursor of the next page; null on the last one."
+          },
+          "missing": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The requested ids that match no element or sub-element, in request order."
+          }
+        }
+      },
+      "ElementPageItem": {
+        "x-engine-record": "Maquettiste.Engine.ElementPageItem",
+        "description": "One document of a bulk read.",
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "path",
+          "hash",
+          "json"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ElementKind"
+          },
+          "path": {
+            "type": "string",
+            "description": "The repo-relative file path."
+          },
+          "hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "The file hash, the expected hash of a save."
+          },
+          "json": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "The canonical document as `getElement` returns it, trimmed to `fields` when given (`id` and `kind` always kept)."
+          }
+        }
+      },
+      "ModelKindsResult": {
+        "x-engine-record": "Maquettiste.Engine.ModelKindsResult",
+        "description": "The kinds present with their counts (`getModelKinds`).",
+        "type": "object",
+        "required": [
+          "total",
+          "kinds",
+          "packages"
+        ],
+        "properties": {
+          "total": {
+            "type": "integer",
+            "description": "The number of top-level elements."
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KindCount"
+            },
+            "description": "The count of each kind present, by kind name."
+          },
+          "packages": {
+            "oneOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PackageKindCounts"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "With `by=package`: the counts per package, the elements in no package first; otherwise null."
+          }
+        }
+      },
+      "KindCount": {
+        "x-engine-record": "Maquettiste.Engine.KindCount",
+        "description": "How many elements of one kind.",
+        "type": "object",
+        "required": [
+          "kind",
+          "count"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ElementKind"
+          },
+          "count": {
+            "type": "integer"
+          }
+        }
+      },
+      "PackageKindCounts": {
+        "x-engine-record": "Maquettiste.Engine.PackageKindCounts",
+        "description": "The kinds directly in one package.",
+        "type": "object",
+        "required": [
+          "package",
+          "name",
+          "count",
+          "kinds"
+        ],
+        "properties": {
+          "package": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The package id; null for the elements in no package."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "count": {
+            "type": "integer"
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KindCount"
+            }
+          }
+        }
+      },
+      "ResolvedPage": {
+        "x-engine-record": "Maquettiste.Engine.ResolvedPage",
+        "description": "One page of the resolved model (`getResolvedModel`).",
+        "type": "object",
+        "required": [
+          "items",
+          "next",
+          "diagnostics"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "description": "The records, by kind, name and id (ordinal).",
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/PackageRecord"
+                },
+                {
+                  "$ref": "#/components/schemas/EntityRecord"
+                },
+                {
+                  "$ref": "#/components/schemas/RelationRecord"
+                },
+                {
+                  "$ref": "#/components/schemas/EnumRecord"
+                },
+                {
+                  "$ref": "#/components/schemas/ValueObjectRecord"
+                },
+                {
+                  "$ref": "#/components/schemas/ScalarTypeRecord"
+                },
+                {
+                  "$ref": "#/components/schemas/ReferenceTypeRecord"
+                },
+                {
+                  "$ref": "#/components/schemas/SeedRecord"
+                },
+                {
+                  "$ref": "#/components/schemas/ProcessRecord"
+                },
+                {
+                  "$ref": "#/components/schemas/ActorRecord"
+                },
+                {
+                  "$ref": "#/components/schemas/ScenarioRecord"
+                },
+                {
+                  "$ref": "#/components/schemas/DatabaseRecord"
+                },
+                {
+                  "$ref": "#/components/schemas/TableRecord"
+                }
+              ]
+            }
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The cursor of the next page; null on the last one."
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            },
+            "description": "When the model has errors, the errors that prevented resolution (and `items` is empty); otherwise empty."
+          }
+        }
+      },
+      "ResolvedAnnotations": {
+        "description": "The annotations every conceptual record carries (`RAnnotated`): the display and plural names fall back to the name and the inflector.",
+        "type": "object",
+        "required": [
+          "displayName",
+          "pluralName",
+          "description",
+          "tags",
+          "category",
+          "stereotypes",
+          "properties",
+          "generation"
+        ],
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "pluralName": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The description text, a sidecar file loaded."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The category id."
+          },
+          "stereotypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The stereotype keys, in application order."
+          },
+          "properties": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Custom properties, the stereotypes' defaults merged under the element's own."
+          },
+          "generation": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/GenerationHintsView"
+            },
+            "description": "Generation hints by pack name or `*`."
+          }
+        }
+      },
+      "ProcessNodeAnnotations": {
+        "description": "The annotations of a state, transition, event, guard, action, gate or invoke.",
+        "type": "object",
+        "required": [
+          "displayName",
+          "description",
+          "stereotypes",
+          "properties"
+        ],
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stereotypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "properties": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "PackageRecord": {
+        "x-engine-record": "Maquettiste.Engine.PackageRecord",
+        "description": "A resolved package.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResolvedAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "package",
+              "qualifiedName",
+              "children",
+              "entities",
+              "valueObjects",
+              "enums",
+              "relations"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "const": "package"
+              },
+              "name": {
+                "type": "string"
+              },
+              "package": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The parent package id."
+              },
+              "qualifiedName": {
+                "type": "string"
+              },
+              "children": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "entities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "valueObjects": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "enums": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "relations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "EntityRecord": {
+        "x-engine-record": "Maquettiste.Engine.EntityRecord",
+        "description": "A resolved entity: attributes resolved (the base's first, marked `isInherited`), keys, inheritance, navigations, relations and one mapping per database.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResolvedAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "package",
+              "isAbstract",
+              "base",
+              "derived",
+              "attributes",
+              "key",
+              "alternateKeys",
+              "navigations",
+              "relations",
+              "mappings",
+              "isPromoted",
+              "promotedFrom",
+              "seeds",
+              "lifecycle"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "const": "entity"
+              },
+              "name": {
+                "type": "string"
+              },
+              "package": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "isAbstract": {
+                "type": "boolean"
+              },
+              "base": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The base entity id."
+              },
+              "derived": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "The ids of the entities deriving from it directly."
+              },
+              "attributes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AttributeRecord"
+                }
+              },
+              "key": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/KeyRecord"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "alternateKeys": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AlternateKeyRecord"
+                }
+              },
+              "navigations": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NavigationRecord"
+                }
+              },
+              "relations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "The ids of the relations with an end at this entity."
+              },
+              "mappings": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/EntityMappingRecord"
+                }
+              },
+              "isPromoted": {
+                "type": "boolean"
+              },
+              "promotedFrom": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "seeds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "lifecycle": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The id of the process that is its lifecycle."
+              }
+            }
+          }
+        ]
+      },
+      "AttributeRecord": {
+        "x-engine-record": "Maquettiste.Engine.AttributeRecord",
+        "description": "A resolved attribute.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResolvedAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "owner",
+              "declaringEntity",
+              "type",
+              "required",
+              "default",
+              "defaultExpression",
+              "length",
+              "precision",
+              "scale",
+              "collection",
+              "unique",
+              "indexed",
+              "readOnly",
+              "immutable",
+              "derived",
+              "sensitive",
+              "validation",
+              "order",
+              "isKey",
+              "isInherited",
+              "isVirtual",
+              "fromStereotype",
+              "reference"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "owner": {
+                "type": "string",
+                "description": "The id of the element that holds it."
+              },
+              "declaringEntity": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The entity that declares it."
+              },
+              "type": {
+                "$ref": "#/components/schemas/TypeRecord"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "default": {
+                "description": "The default, a plain value (an enum member by name)."
+              },
+              "defaultExpression": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "length": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "precision": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "scale": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "collection": {
+                "type": "boolean"
+              },
+              "unique": {
+                "type": "boolean"
+              },
+              "indexed": {
+                "type": "boolean"
+              },
+              "readOnly": {
+                "type": "boolean"
+              },
+              "immutable": {
+                "type": "boolean"
+              },
+              "derived": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/DerivedRecord"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sensitive": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "validation": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ValidationRecord"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "order": {
+                "type": "integer"
+              },
+              "isKey": {
+                "type": "boolean",
+                "description": "Part of its entity's primary key."
+              },
+              "isInherited": {
+                "type": "boolean",
+                "description": "Comes from a base entity."
+              },
+              "isVirtual": {
+                "type": "boolean"
+              },
+              "fromStereotype": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The key of the stereotype that adds it."
+              },
+              "reference": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ReferenceUsageRecord"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "TypeRecord": {
+        "x-engine-record": "Maquettiste.Engine.TypeRecord",
+        "description": "An attribute's resolved type; the named type by id.",
+        "type": "object",
+        "required": [
+          "kind",
+          "name",
+          "builtin",
+          "enum",
+          "valueObject",
+          "scalar",
+          "referenceType"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "builtin",
+              "enum",
+              "value-object",
+              "scalar",
+              "reference"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "builtin": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The built-in keyword at the bottom."
+          },
+          "enum": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "valueObject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scalar": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "referenceType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "DerivedRecord": {
+        "x-engine-record": "Maquettiste.Engine.DerivedRecord",
+        "description": "A derived attribute's expression.",
+        "type": "object",
+        "required": [
+          "expression",
+          "stored"
+        ],
+        "properties": {
+          "expression": {
+            "type": "string"
+          },
+          "stored": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ValidationRecord": {
+        "x-engine-record": "Maquettiste.Engine.ValidationRecord",
+        "description": "Validation of an attribute or scalar type.",
+        "type": "object",
+        "required": [
+          "min",
+          "max",
+          "pattern",
+          "allowedValues",
+          "rules"
+        ],
+        "properties": {
+          "min": {},
+          "max": {},
+          "pattern": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "allowedValues": {
+            "type": "array",
+            "items": {}
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ReferenceUsageRecord": {
+        "x-engine-record": "Maquettiste.Engine.ReferenceUsageRecord",
+        "description": "How an attribute uses its reference type.",
+        "type": "object",
+        "required": [
+          "type",
+          "isCollection",
+          "required",
+          "allowed",
+          "defaultRow",
+          "storage"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "isCollection": {
+            "type": "boolean"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "allowed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The ids of the rows allowed (all when empty)."
+          },
+          "defaultRow": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "storage": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StorageChoiceRecord"
+            }
+          }
+        }
+      },
+      "StorageChoiceRecord": {
+        "x-engine-record": "Maquettiste.Engine.StorageChoiceRecord",
+        "description": "The effective storage of a reference type in one database.",
+        "type": "object",
+        "required": [
+          "database",
+          "strategy",
+          "options",
+          "source",
+          "description",
+          "collections"
+        ],
+        "properties": {
+          "database": {
+            "type": "string"
+          },
+          "strategy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "options": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "collections": {
+            "type": "boolean"
+          }
+        }
+      },
+      "KeyRecord": {
+        "x-engine-record": "Maquettiste.Engine.KeyRecord",
+        "description": "An entity's primary key.",
+        "type": "object",
+        "required": [
+          "attributes",
+          "strategy",
+          "sequences"
+        ],
+        "properties": {
+          "attributes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "strategy": {
+            "type": "string"
+          },
+          "sequences": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KeySequenceRecord"
+            }
+          }
+        }
+      },
+      "KeySequenceRecord": {
+        "x-engine-record": "Maquettiste.Engine.KeySequenceRecord",
+        "description": "The key sequence of an entity in one database.",
+        "type": "object",
+        "required": [
+          "database",
+          "sequence"
+        ],
+        "properties": {
+          "database": {
+            "type": "string"
+          },
+          "sequence": {
+            "type": "string",
+            "description": "As `SequenceView.id`."
+          }
+        }
+      },
+      "AlternateKeyRecord": {
+        "x-engine-record": "Maquettiste.Engine.AlternateKeyRecord",
+        "description": "An alternate key.",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "attributes"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "attributes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "NavigationRecord": {
+        "x-engine-record": "Maquettiste.Engine.NavigationRecord",
+        "description": "A navigation across a relation.",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "relation",
+          "from",
+          "to",
+          "target",
+          "isCollection"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "relation": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string",
+            "description": "The end at this entity."
+          },
+          "to": {
+            "type": "string",
+            "description": "The end it leads to."
+          },
+          "target": {
+            "type": "string",
+            "description": "The entity it leads to."
+          },
+          "isCollection": {
+            "type": "boolean"
+          }
+        }
+      },
+      "EntityMappingRecord": {
+        "x-engine-record": "Maquettiste.Engine.EntityMappingRecord",
+        "description": "An entity's mapping to one database.",
+        "type": "object",
+        "required": [
+          "database",
+          "table",
+          "inheritance",
+          "discriminatorColumn",
+          "discriminatorValue",
+          "columns"
+        ],
+        "properties": {
+          "database": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string",
+            "description": "The table key, as `TableView.key`."
+          },
+          "inheritance": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "discriminatorColumn": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "discriminatorValue": {},
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ColumnMappingRecord"
+            }
+          }
+        }
+      },
+      "ColumnMappingRecord": {
+        "x-engine-record": "Maquettiste.Engine.ColumnMappingRecord",
+        "description": "The column that stores an attribute path.",
+        "type": "object",
+        "required": [
+          "attributePath",
+          "column"
+        ],
+        "properties": {
+          "attributePath": {
+            "type": "string"
+          },
+          "column": {
+            "type": "string",
+            "description": "The column key, as `ColumnView.key`."
+          }
+        }
+      },
+      "RelationRecord": {
+        "x-engine-record": "Maquettiste.Engine.RelationRecord",
+        "description": "A resolved relation.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResolvedAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "package",
+              "inverseName",
+              "relationKind",
+              "cardinality",
+              "allowDuplicates",
+              "ends",
+              "attributes",
+              "mappings",
+              "seeds"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "const": "relation"
+              },
+              "name": {
+                "type": "string"
+              },
+              "package": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "inverseName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "relationKind": {
+                "type": "string"
+              },
+              "cardinality": {
+                "type": "string"
+              },
+              "allowDuplicates": {
+                "type": "boolean"
+              },
+              "ends": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/EndRecord"
+                }
+              },
+              "attributes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AttributeRecord"
+                }
+              },
+              "mappings": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RelationMappingRecord"
+                }
+              },
+              "seeds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "EndRecord": {
+        "x-engine-record": "Maquettiste.Engine.EndRecord",
+        "description": "A relation end.",
+        "type": "object",
+        "required": [
+          "id",
+          "entity",
+          "role",
+          "navigation",
+          "min",
+          "max",
+          "isMany",
+          "onDelete",
+          "ordered",
+          "opposite"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "entity": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "navigation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "min": {
+            "type": "integer"
+          },
+          "max": {
+            "type": "string",
+            "description": "A number or `*`."
+          },
+          "isMany": {
+            "type": "boolean"
+          },
+          "onDelete": {
+            "type": "string"
+          },
+          "ordered": {
+            "type": "boolean"
+          },
+          "opposite": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RelationMappingRecord": {
+        "x-engine-record": "Maquettiste.Engine.RelationMappingRecord",
+        "description": "A relation's mapping to one database.",
+        "type": "object",
+        "required": [
+          "database",
+          "shape",
+          "foreignKey",
+          "junctionTable",
+          "promotedEntity"
+        ],
+        "properties": {
+          "database": {
+            "type": "string"
+          },
+          "shape": {
+            "type": "string",
+            "description": "`foreign-key`, `junction` or `promoted`."
+          },
+          "foreignKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The foreign key name."
+          },
+          "junctionTable": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The junction table key."
+          },
+          "promotedEntity": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "EnumRecord": {
+        "x-engine-record": "Maquettiste.Engine.EnumRecord",
+        "description": "A resolved enum.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResolvedAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "package",
+              "flags",
+              "members"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "const": "enum"
+              },
+              "name": {
+                "type": "string"
+              },
+              "package": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "flags": {
+                "type": "boolean"
+              },
+              "members": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/EnumMemberRecord"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "EnumMemberRecord": {
+        "x-engine-record": "Maquettiste.Engine.EnumMemberRecord",
+        "description": "An enum member.",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "displayName",
+          "description",
+          "value",
+          "code",
+          "properties"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "properties": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "ValueObjectRecord": {
+        "x-engine-record": "Maquettiste.Engine.ValueObjectRecord",
+        "description": "A resolved value object.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResolvedAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "package",
+              "attributes"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "const": "value-object"
+              },
+              "name": {
+                "type": "string"
+              },
+              "package": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "attributes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AttributeRecord"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ScalarTypeRecord": {
+        "x-engine-record": "Maquettiste.Engine.ScalarTypeRecord",
+        "description": "A resolved custom scalar type.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResolvedAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "package",
+              "base",
+              "length",
+              "precision",
+              "scale",
+              "validation"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "const": "scalar-type"
+              },
+              "name": {
+                "type": "string"
+              },
+              "package": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "base": {
+                "type": "string"
+              },
+              "length": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "precision": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "scale": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "validation": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ValidationRecord"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "ReferenceTypeRecord": {
+        "x-engine-record": "Maquettiste.Engine.ReferenceTypeRecord",
+        "description": "A resolved reference type with every row.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResolvedAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "package",
+              "code",
+              "label",
+              "attributes",
+              "rows",
+              "seeds",
+              "usedBy",
+              "storage"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "const": "reference-type"
+              },
+              "name": {
+                "type": "string"
+              },
+              "package": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "code": {
+                "$ref": "#/components/schemas/ReferenceFieldRecord"
+              },
+              "label": {
+                "$ref": "#/components/schemas/ReferenceFieldRecord"
+              },
+              "attributes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AttributeRecord"
+                }
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RowRecord"
+                }
+              },
+              "seeds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "usedBy": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "The ids of the attributes typed by it."
+              },
+              "storage": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/StorageChoiceRecord"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ReferenceFieldRecord": {
+        "x-engine-record": "Maquettiste.Engine.ReferenceFieldRecord",
+        "description": "The code or label field of a reference type.",
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "length",
+          "pattern",
+          "displayName",
+          "description"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "length": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "pattern": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RowRecord": {
+        "x-engine-record": "Maquettiste.Engine.RowRecord",
+        "description": "A row of a reference type.",
+        "type": "object",
+        "required": [
+          "id",
+          "code",
+          "label",
+          "description",
+          "values",
+          "seed",
+          "order"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "code": {},
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "values": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "User fields by name; a reference-typed field holds its code or codes."
+          },
+          "seed": {
+            "type": "string"
+          },
+          "order": {
+            "type": "integer"
+          }
+        }
+      },
+      "SeedRecord": {
+        "x-engine-record": "Maquettiste.Engine.SeedRecord",
+        "description": "A resolved seed.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResolvedAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "package",
+              "target",
+              "columns",
+              "rows"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "const": "seed"
+              },
+              "name": {
+                "type": "string"
+              },
+              "package": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "target": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "columns": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SeedColumnRecord"
+                }
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SeedRowRecord"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "SeedColumnRecord": {
+        "x-engine-record": "Maquettiste.Engine.SeedColumnRecord",
+        "description": "A seed column.",
+        "type": "object",
+        "required": [
+          "name",
+          "kind",
+          "attribute",
+          "end"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "attribute": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "end": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "SeedRowRecord": {
+        "x-engine-record": "Maquettiste.Engine.SeedRowRecord",
+        "description": "A seed row.",
+        "type": "object",
+        "required": [
+          "id",
+          "order",
+          "values"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "order": {
+            "type": "integer"
+          },
+          "values": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Cells by column name (an enum cell by member name, a reference cell as its code, an end cell as a row id)."
+          }
+        }
+      },
+      "ProcessRecord": {
+        "x-engine-record": "Maquettiste.Engine.ProcessRecord",
+        "description": "A resolved process: every state at every depth (`parent` and `children` give the tree), the transitions, events, guards, actions, gates and invokes; actors by id.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResolvedAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "package",
+              "use",
+              "subject",
+              "boundAttribute",
+              "boundEnum",
+              "initial",
+              "context",
+              "states",
+              "transitions",
+              "events",
+              "guards",
+              "actions",
+              "gates",
+              "invokes",
+              "actors",
+              "scenarios"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "const": "process"
+              },
+              "name": {
+                "type": "string"
+              },
+              "package": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "use": {
+                "type": "string"
+              },
+              "subject": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "boundAttribute": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "boundEnum": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "initial": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "context": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AttributeRecord"
+                }
+              },
+              "states": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/StateRecord"
+                }
+              },
+              "transitions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TransitionRecord"
+                }
+              },
+              "events": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/EventRecord"
+                }
+              },
+              "guards": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/GuardRecord"
+                }
+              },
+              "actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ActionRecord"
+                }
+              },
+              "gates": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/GateRecord"
+                }
+              },
+              "invokes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/InvokeRecord"
+                }
+              },
+              "actors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "scenarios": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "StateRecord": {
+        "x-engine-record": "Maquettiste.Engine.StateRecord",
+        "description": "A state.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ProcessNodeAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "path",
+              "type",
+              "parent",
+              "children",
+              "initial",
+              "history",
+              "defaultTarget",
+              "entry",
+              "exit",
+              "invoke",
+              "isFinal",
+              "isAtomic",
+              "depth",
+              "boundMember",
+              "transitionsOut",
+              "regionIndex"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "parent": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "children": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "initial": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "history": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "defaultTarget": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "entry": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "exit": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "invoke": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "isFinal": {
+                "type": "boolean"
+              },
+              "isAtomic": {
+                "type": "boolean"
+              },
+              "depth": {
+                "type": "integer"
+              },
+              "boundMember": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "transitionsOut": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "regionIndex": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "TransitionRecord": {
+        "x-engine-record": "Maquettiste.Engine.TransitionRecord",
+        "description": "A transition.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ProcessNodeAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "source",
+              "targets",
+              "trigger",
+              "event",
+              "after",
+              "afterMs",
+              "afterTicks",
+              "invoke",
+              "guard",
+              "guardMissing",
+              "actions",
+              "external",
+              "gate",
+              "label",
+              "isTargetless"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "targets": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "trigger": {
+                "type": "string"
+              },
+              "event": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "after": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "afterMs": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "afterTicks": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "invoke": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "guard": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "guardMissing": {
+                "type": "boolean"
+              },
+              "actions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "external": {
+                "type": "boolean"
+              },
+              "gate": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "isTargetless": {
+                "type": "boolean"
+              }
+            }
+          }
+        ]
+      },
+      "EventRecord": {
+        "x-engine-record": "Maquettiste.Engine.EventRecord",
+        "description": "An event.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ProcessNodeAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "payload",
+              "actors",
+              "transitions"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "payload": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AttributeRecord"
+                }
+              },
+              "actors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "transitions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "GuardRecord": {
+        "x-engine-record": "Maquettiste.Engine.GuardRecord",
+        "description": "A guard.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ProcessNodeAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "expression",
+              "isStub",
+              "usedBy"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "expression": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "isStub": {
+                "type": "boolean"
+              },
+              "usedBy": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ActionRecord": {
+        "x-engine-record": "Maquettiste.Engine.ActionRecord",
+        "description": "An action.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ProcessNodeAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "expression",
+              "isStub",
+              "raises",
+              "usedBy"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "expression": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "isStub": {
+                "type": "boolean"
+              },
+              "raises": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "usedBy": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "InvokeRecord": {
+        "x-engine-record": "Maquettiste.Engine.InvokeRecord",
+        "description": "An invocation of a service or another process.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ProcessNodeAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "type",
+              "process",
+              "actors",
+              "state"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "process": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "actors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "state": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "GateRecord": {
+        "x-engine-record": "Maquettiste.Engine.GateRecord",
+        "description": "An approval gate on a transition.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ProcessNodeAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "transition",
+              "required",
+              "signers",
+              "requiredActors",
+              "allowRepeatSigner",
+              "reasonRequired",
+              "meanings",
+              "audit"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "transition": {
+                "type": "string"
+              },
+              "required": {
+                "type": "integer"
+              },
+              "signers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "requiredActors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "allowRepeatSigner": {
+                "type": "boolean"
+              },
+              "reasonRequired": {
+                "type": "boolean"
+              },
+              "meanings": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MeaningRecord"
+                }
+              },
+              "audit": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AuditFieldRecord"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "MeaningRecord": {
+        "x-engine-record": "Maquettiste.Engine.MeaningRecord",
+        "description": "A meaning of a gate's signature.",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "displayName",
+          "description"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AuditFieldRecord": {
+        "x-engine-record": "Maquettiste.Engine.AuditFieldRecord",
+        "description": "An audit field of a gate.",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "type",
+          "required",
+          "description",
+          "values",
+          "attribute"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "attribute": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ActorRecord": {
+        "x-engine-record": "Maquettiste.Engine.ActorRecord",
+        "description": "A resolved actor.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResolvedAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "package",
+              "type",
+              "processes",
+              "events",
+              "gates"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "const": "actor"
+              },
+              "name": {
+                "type": "string"
+              },
+              "package": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "type": {
+                "type": "string"
+              },
+              "processes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "events": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "gates": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ScenarioRecord": {
+        "x-engine-record": "Maquettiste.Engine.ScenarioRecord",
+        "description": "A resolved scenario.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResolvedAnnotations"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "package",
+              "process",
+              "start",
+              "steps",
+              "outcome"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "const": "scenario"
+              },
+              "name": {
+                "type": "string"
+              },
+              "package": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "process": {
+                "type": "string"
+              },
+              "start": {
+                "$ref": "#/components/schemas/ScenarioStartRecord"
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/StepRecord"
+                }
+              },
+              "outcome": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "ScenarioStartRecord": {
+        "x-engine-record": "Maquettiste.Engine.ScenarioStartRecord",
+        "description": "Where a scenario's run starts.",
+        "type": "object",
+        "required": [
+          "context",
+          "at"
+        ],
+        "properties": {
+          "context": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "at": {
+            "type": "string"
+          }
+        }
+      },
+      "StepRecord": {
+        "x-engine-record": "Maquettiste.Engine.StepRecord",
+        "description": "A scenario step.",
+        "type": "object",
+        "required": [
+          "id",
+          "index",
+          "input",
+          "event",
+          "invoke",
+          "after",
+          "afterMs",
+          "afterTicks",
+          "actor",
+          "signer",
+          "meaning",
+          "reason",
+          "payload",
+          "assume",
+          "expect",
+          "description"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "index": {
+            "type": "integer"
+          },
+          "input": {
+            "type": "string"
+          },
+          "event": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "invoke": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "afterMs": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "afterTicks": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "actor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "signer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meaning": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "assume": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "expect": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExpectationRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ExpectationRecord": {
+        "x-engine-record": "Maquettiste.Engine.ExpectationRecord",
+        "description": "What a step expects.",
+        "type": "object",
+        "required": [
+          "accepted",
+          "states",
+          "statePaths",
+          "context"
+        ],
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "states": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "statePaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "context": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "DatabaseRecord": {
+        "x-engine-record": "Maquettiste.Engine.DatabaseRecord",
+        "description": "A resolved database: every field of the database view (`DatabaseView`) with its kind.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/DatabaseView"
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "database"
+              }
+            }
+          }
+        ]
+      },
+      "TableRecord": {
+        "x-engine-record": "Maquettiste.Engine.TableRecord",
+        "description": "One table of a database on its own (scope `tables`).",
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "database",
+          "table"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The table key, as `TableView.key`."
+          },
+          "kind": {
+            "type": "string",
+            "const": "table"
+          },
+          "name": {
+            "type": "string"
+          },
+          "database": {
+            "type": "string"
+          },
+          "table": {
+            "$ref": "#/components/schemas/TableView"
+          }
+        }
+      },
       "DatabaseViewResult": {
         "x-engine-addition": "E1",
         "x-engine-record": "Maquettiste.Engine.DatabaseViewResult",
@@ -9485,6 +12907,7 @@
       "DatabaseView": {
         "x-engine-addition": "E1",
         "x-engine-record": "Maquettiste.Engine.DatabaseView",
+        "description": "One resolved database. The annotation members (`displayName` to `generation`) come from the database file, with no\nfallback for the names; `schemas` lists every schema, each with the annotations of its own entry in that file.\n",
         "type": "object",
         "required": [
           "id",
@@ -9494,7 +12917,20 @@
           "defaultSchema",
           "tables",
           "views",
-          "sequences"
+          "sequences",
+          "schemas",
+          "quoting",
+          "maxIdentifierLength",
+          "byConvention",
+          "packages",
+          "displayName",
+          "pluralName",
+          "description",
+          "stereotypes",
+          "tags",
+          "category",
+          "properties",
+          "generation"
         ],
         "properties": {
           "id": {
@@ -9537,6 +12973,214 @@
             "items": {
               "$ref": "#/components/schemas/SequenceView"
             }
+          },
+          "schemas": {
+            "type": "array",
+            "description": "Every schema, by name; the ones the file declares and the ones a table, view or sequence uses.",
+            "items": {
+              "$ref": "#/components/schemas/SchemaView"
+            }
+          },
+          "quoting": {
+            "type": "string",
+            "enum": [
+              "always",
+              "reserved",
+              "never"
+            ]
+          },
+          "maxIdentifierLength": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The effective identifier length limit (the dialect's when the file sets none), or null for none."
+          },
+          "byConvention": {
+            "type": "string",
+            "enum": [
+              "all",
+              "packages",
+              "none"
+            ],
+            "description": "Which entities map here by convention, as the resolver applies it (a file without the member reads as `all`, or `packages` when it lists packages)."
+          },
+          "packages": {
+            "type": "array",
+            "description": "The packages whose entities map here by convention, in file order.",
+            "items": {
+              "$ref": "#/components/schemas/ConventionPackageView"
+            }
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The display name the database file sets, or null; there is no fallback."
+          },
+          "pluralName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The plural name the database file sets, or null; there is no fallback."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The description text, a sidecar file's content loaded."
+          },
+          "stereotypes": {
+            "type": "array",
+            "description": "The stereotype keys, in application order.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "category": {
+            "description": "The id of the category-tree node.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "properties": {
+            "type": "object",
+            "description": "The custom properties, the stereotypes' default properties merged under the file's own.",
+            "additionalProperties": true
+          },
+          "generation": {
+            "type": "object",
+            "description": "The generation hints by pack name or `*`.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/GenerationHintsView"
+            }
+          }
+        }
+      },
+      "SchemaView": {
+        "x-engine-record": "Maquettiste.Engine.SchemaView",
+        "description": "One schema of a resolved database, with the annotations of its entry in the database file; a schema the file does not declare has none.",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "isDefault",
+          "isDeclared",
+          "displayName",
+          "pluralName",
+          "description",
+          "stereotypes",
+          "tags",
+          "category",
+          "properties",
+          "generation"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The schema entry's id, or `<databaseId>/<name>` for a schema the file does not declare."
+          },
+          "name": {
+            "type": "string"
+          },
+          "isDefault": {
+            "type": "boolean",
+            "description": "Whether it is the database's effective default schema."
+          },
+          "isDeclared": {
+            "type": "boolean",
+            "description": "Whether the database file declares it."
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The display name the schema entry sets, or null; there is no fallback."
+          },
+          "pluralName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The plural name the schema entry sets, or null; there is no fallback."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The description text."
+          },
+          "stereotypes": {
+            "type": "array",
+            "description": "The stereotype keys, in application order.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "category": {
+            "description": "The id of the category-tree node.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "properties": {
+            "type": "object",
+            "description": "The custom properties, the stereotypes' default properties merged under the entry's own.",
+            "additionalProperties": true
+          },
+          "generation": {
+            "type": "object",
+            "description": "The generation hints by pack name or `*`.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/GenerationHintsView"
+            }
+          }
+        }
+      },
+      "ConventionPackageView": {
+        "x-engine-record": "Maquettiste.Engine.ConventionPackageView",
+        "type": "object",
+        "required": [
+          "packageId",
+          "schema"
+        ],
+        "properties": {
+          "packageId": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "schema": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The schema name the package's conventional tables go to, or null for the default schema."
           }
         }
       },
@@ -9993,6 +13637,7 @@
       "ColumnView": {
         "x-engine-addition": "E1",
         "x-engine-record": "Maquettiste.Engine.ColumnView",
+        "description": "One resolved column. The annotation members (`displayName` to `generation`) come from the column's own entry in a table\nfile: a designed or extra column, or the overlay entry of a synthesized column. A synthesized column without an overlay\nentry has none; it never takes its attribute's, which `attributeId` leads to.\n",
         "type": "object",
         "required": [
           "key",
@@ -10011,7 +13656,20 @@
           "isPrimaryKey",
           "isForeignKey",
           "isDiscriminator",
-          "position"
+          "position",
+          "default",
+          "computedStored",
+          "sequenceId",
+          "collation",
+          "comment",
+          "displayName",
+          "pluralName",
+          "description",
+          "stereotypes",
+          "tags",
+          "category",
+          "properties",
+          "generation"
         ],
         "properties": {
           "key": {
@@ -10088,6 +13746,88 @@
           },
           "position": {
             "type": "integer"
+          },
+          "default": {
+            "description": "The literal default as a plain JSON value, or null."
+          },
+          "computedStored": {
+            "type": "boolean"
+          },
+          "sequenceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The id of the sequence that supplies values (a sequence file's id, or a synthesized key such as `<entityId>.sequence@<databaseId>`)."
+          },
+          "collation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The display name the column's own entry sets, or null; there is no fallback."
+          },
+          "pluralName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The plural name the column's own entry sets, or null; there is no fallback."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The description text."
+          },
+          "stereotypes": {
+            "type": "array",
+            "description": "The stereotype keys, in application order.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "category": {
+            "description": "The id of the category-tree node.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "properties": {
+            "type": "object",
+            "description": "The custom properties, the stereotypes' default properties merged under the entry's own.",
+            "additionalProperties": true
+          },
+          "generation": {
+            "type": "object",
+            "description": "The generation hints by pack name or `*`.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/GenerationHintsView"
+            }
           }
         }
       },
@@ -19602,7 +23342,7 @@
                 },
                 "for": {
                   "type": "string",
-                  "pattern": "^(model|each (package|entity|relation|enum|value object|table|reference type|seed|locale|process|actor|scenario)|select [A-Za-z_][A-Za-z0-9_]*)$"
+                  "pattern": "^(model|each (package|entity|relation|enum|value object|table|view|sequence|reference type|seed|locale|process|actor|scenario)|select [A-Za-z_][A-Za-z0-9_]*)$"
                 },
                 "where": {
                   "title": "Unit filters",

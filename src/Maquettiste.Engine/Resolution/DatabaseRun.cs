@@ -69,7 +69,16 @@ internal sealed partial class DatabaseRun
                 _ => null,
             },
         };
-        _rdb.Dependencies = [$"e:{db.Id}", $"r:{db.Id}"];
+        _rdb.ByConvention = db.ByConvention is { } byConvention ? ResolutionValues.Kebab(byConvention) : db.Packages.Count == 0 ? "all" : "packages";
+        _rdb.Packages = [.. db.Packages.Select(p => new RConventionPackage
+        {
+            Package = run.PackageOf(p.Package),
+            PackageId = p.Package,
+            Schema = p.Schema is { } schemaId ? db.Schemas.FirstOrDefault(s => string.Equals(s.Id, schemaId, StringComparison.Ordinal))?.Name : null,
+        })];
+        var deps = new DependencySet(run.Keys).Element(db.Id).Referrers(db.Id);
+        run.FillPhysicalAnnotations(_rdb, db, deps);
+        _rdb.Dependencies = deps.ToList();
     }
 
     /// <summary>Resolves the database.</summary>
@@ -106,6 +115,7 @@ internal sealed partial class DatabaseRun
                 Id = sequence.Id,
                 Name = sequence.Name,
                 Schema = SchemaName(sequence.Schema),
+                Database = _rdb,
                 Type = sequence.Type,
                 NativeType = DialectTypeMaps.Render(_typeMap, sequence.Type, null, null, null, _conv),
                 Start = sequence.Start,
@@ -217,14 +227,16 @@ internal sealed partial class DatabaseRun
 
             if (pk.Name is not null)
                 t.PrimaryKeyName = pk.Name;
+            if (pk.Clustered is not null)
+                t.PrimaryKeyClustered = pk.Clustered;
         }
 
         foreach (var unique in table.Uniques)
-            t.Uniques.Add(new UniqueSpec(unique.Columns, unique.Name, null));
+            t.Uniques.Add(new UniqueSpec(unique.Columns, unique.Name, null, unique.Id));
         foreach (var fk in table.ForeignKeys)
         {
             var spec = new ForeignKeySpec(t, fk.Columns, null, fk.ReferencesTable, fk.ReferencesColumns, ResolutionValues.Kebab(fk.OnDelete),
-                ResolutionValues.Kebab(fk.OnUpdate), fk.Name) { FileId = table.Id };
+                ResolutionValues.Kebab(fk.OnUpdate), fk.Name) { FileId = table.Id, Id = fk.Id };
             t.ForeignKeys.Add(spec);
             _foreignKeysById.TryAdd(fk.Id, spec);
         }
@@ -234,19 +246,23 @@ internal sealed partial class DatabaseRun
         {
             var expression = ForDialect(check.Expression);
             if (expression is not null)
-                t.Checks.Add(new CheckSpec(expression, check.Name, ++ordinal));
+                t.Checks.Add(new CheckSpec(expression, check.Name, ++ordinal, check.Id));
         }
 
         foreach (var index in table.Indexes)
         {
             t.Indexes.Add(new IndexSpec([.. index.Columns.Select(c => (c.Column, c.Descending))], index.Include, index.Where, index.Unique,
-                ResolutionValues.Kebab(index.Method), index.Name, FromFile: true));
+                ResolutionValues.Kebab(index.Method), index.Name, FromFile: true, Id: index.Id));
         }
     }
 
-    /// <summary>Applies the physical properties a column file sets (designed column or overlay) to a column.</summary>
+    /// <summary>
+    /// Applies the physical properties and the annotations a column file sets (designed column, extra column or overlay entry) to a
+    /// column; the annotations' stereotype and category keys join the table's dependencies.
+    /// </summary>
     private void ApplyColumnFile(TableBuild t, RColumn c, Column column)
     {
+        _run.FillPhysicalAnnotations(c, column, null, t.Deps);
         if (column.Default is { } value)
             c.Default = ResolutionValues.Plain(value);
         if (ForDialect(column.DefaultSql) is { } sql)
@@ -745,6 +761,7 @@ internal sealed partial class DatabaseRun
                     Id = key,
                     Name = Render(_conv.SequenceName, ("table", tableName), ("entity", p.Root.Entity.Name)),
                     Schema = t.Table.Schema,
+                    Database = _rdb,
                     Type = type,
                     NativeType = DialectTypeMaps.Render(_typeMap, type, null, null, null, _conv),
                 };
