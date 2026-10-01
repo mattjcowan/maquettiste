@@ -180,12 +180,19 @@ export function connectRealtime(deps: SyncDeps): () => void {
     }),
   );
 
+  // On every connection (a reconnect brings a new connection id) this window joins the editors group, and its
+  // connect-time presence report follows the join: the server knows a connection once the hub has registered it, and
+  // the join's answer proves it has. A report sent straight after the state change raced that registration and was
+  // refused with 404 on a slow machine (gate 3 on a hosted runner).
   const onConnected = () => {
     store.getState().setConnection("connected");
-    void reportPresence(deps);
     void qc.invalidateQueries({ queryKey: keys.index, exact: true });
     void qc.invalidateQueries({ queryKey: keys.validation, exact: true });
     void qc.invalidateQueries({ queryKey: keys.tables });
+    void realtime
+      .join("editors")
+      .then(() => reportPresence(deps))
+      .catch((error: unknown) => store.getState().setBanner({ kind: "realtime", text: `Live updates are unavailable: ${(error as Error).message}` }));
   };
   offs.push(
     realtime.onStateChange((state) => {
@@ -193,16 +200,12 @@ export function connectRealtime(deps: SyncDeps): () => void {
       if (state === "connected") onConnected();
     }),
   );
-
-  void realtime
-    .join("editors")
-    .then(() => {
-      if (realtime.state === "connected") {
-        store.getState().setConnection("connected");
-        void reportPresence(deps);
-      }
-    })
-    .catch((error: unknown) => store.getState().setBanner({ kind: "realtime", text: `Live updates are unavailable: ${(error as Error).message}` }));
+  // Nothing else opens the connection: the join used to, before it moved behind the state change.
+  if (realtime.state === "connected") onConnected();
+  else
+    void realtime
+      .connect()
+      .catch((error: unknown) => store.getState().setBanner({ kind: "realtime", text: `Live updates are unavailable: ${(error as Error).message}` }));
 
   return () => {
     for (const off of offs) off();
