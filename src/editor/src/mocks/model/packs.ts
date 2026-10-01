@@ -51,6 +51,11 @@ export class MockPacks {
     return [...this.files.keys()].sort();
   }
 
+  /** A pack's files, pack-relative, ordinal. */
+  fileNames(pack: string): string[] {
+    return [...(this.files.get(pack)?.keys() ?? [])].sort();
+  }
+
   has(pack: string): boolean {
     return this.files.has(pack);
   }
@@ -335,6 +340,26 @@ export class MockPacks {
     const index = this.model.packs.findIndex((p) => p.name === pack);
     if (index >= 0) this.model.packs.splice(index, 1);
     return files;
+  }
+
+  /**
+   * Renames a pack's folder (its files keep their bytes, pack.json names the new folder) and its entry in the model's
+   * pack list; answers the files that moved, ordinal, and the new pack.json hash.
+   */
+  rename(from: string, to: string): { files: string[]; hash: string } {
+    const files = this.files.get(from)!;
+    const manifest = JSON.parse(files.get("pack.json")!) as Record<string, unknown>;
+    files.set("pack.json", `${JSON.stringify({ ...manifest, name: to }, null, 2)}\n`);
+    this.files.delete(from);
+    this.files.set(to, files);
+    const index = this.model.packs.findIndex((p) => p.name === from);
+    const renamed = this.manifest(to);
+    if (index >= 0) this.model.packs.splice(index, 1);
+    if (renamed) {
+      this.model.packs.push(renamed);
+      this.model.packs.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return { files: [...files.keys()].sort(), hash: sha256Hex(files.get("pack.json")!) };
   }
 
   create(name: string, from: string): WriteAnswer | { problem: string } {

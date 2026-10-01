@@ -19,6 +19,7 @@ export type BrandingIconUpload = S["BrandingIconUpload"];
 export type BrandingIconSaved = S["BrandingIconSaved"];
 export type ConventionsJson = S["conventions"];
 export type PackManifest = S["PackManifest"];
+export type PackRenameResult = S["PackRenameResult"];
 export type ExtensionSchema = S["ExtensionSchema"];
 export type ElementKind = S["ElementKind"];
 export type ElementSummary = S["ElementSummary"];

@@ -653,6 +653,19 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
       const removed = backend.removePack(params.pack, hash);
       return HttpResponse.json(removed.body, { status: removed.status }) as never;
     }),
+    http.post("/api/packs/{pack}/rename", async ({ params, request }) => {
+      if (!/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(params.pack)) return problem(400, "bad-request", `'${params.pack}' is not a pack name.`);
+      const hash = ifMatch(request);
+      if (!hash) return problem(428, "precondition-required", "Send the pack.json hash you loaded in If-Match.");
+      const body = await jsonBody(request);
+      if (!body.ok) return body.response;
+      if (typeof body.value.name !== "string") return problem(400, "bad-request", "name is required.");
+      const renamed = backend.renamePack(params.pack, body.value.name, hash, body.value.dryRun === true);
+      return HttpResponse.json(renamed.body, {
+        status: renamed.status,
+        headers: renamed.status === 200 && renamed.body.hash ? etag(renamed.body.hash) : {},
+      }) as never;
+    }),
     http.get("/api/packs/{pack}/file", ({ params, request }) => {
       const path = new URL(request.url).searchParams.get("path") ?? "";
       if (!validPackPath(path)) return problem(400, "bad-request", `'${path}' is not a pack-relative path.`);

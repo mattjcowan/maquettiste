@@ -3,6 +3,7 @@
 // model.changed, a settings change publishes project.changed, and after a quiet period a
 // whole-model validation.completed follows.
 import { MockPackAuthoring } from "./model/packAuthoring";
+import { namesPack } from "@/workspaces/generate/packHints";
 import type { PresenceEntry, components } from "@/api/types";
 import { newId as randomId } from "@/lib/ids";
 import { MockRealtime } from "@/realtime/mock";
@@ -22,6 +23,8 @@ import { truncateChangeEvent } from "./wire";
  * that scripts/gen-scale-model.mjs writes (browser.ts loads it and passes it as `seed`).
  */
 type PackRemoveResult = components["schemas"]["PackRemoveResult"];
+type PackRenameResult = components["schemas"]["PackRenameResult"];
+const PACK_NAME = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
 export type Scenario =
   "conflict" | "slow" | "empty" | "medium" | "wide" | "large" | "unauthenticated" | "presence" | "invalid" | "locales" | "drift" | "lifecycle" | "chart400";
@@ -150,6 +153,79 @@ export class MockBackend {
     this.realtime.publish("templates.changed", { pack, files: [] });
     this.realtime.publish("packs.changed", { packs: [pack] });
     return { status: 200, body: result("saved", { files, untracked: untracked.sort(), settingsHash }) };
+  }
+
+  /**
+   * Renames a pack as GenerationService.RenamePackAsync does (POST /api/packs/{pack}/rename): pack.json must still have
+   * `expected`, the new name must be a free pack name; the packs.<pack> settings entry moves first (a refused save renames
+   * nothing), then the folder, then the manifest entries, so the files it generated stay tracked. Publishes
+   * templates.changed for both names and packs.changed as the host does.
+   */
+  renamePack(pack: string, name: string, expected: string, dryRun = false): { status: 200 | 404 | 409 | 422; body: PackRenameResult } {
+    const result = (outcome: PackRenameResult["outcome"], extra: Partial<PackRenameResult> = {}): PackRenameResult => ({
+      outcome,
+      from: pack,
+      to: name,
+      hash: null,
+      current: null,
+      settingsHash: null,
+      files: [],
+      tracked: [],
+      hints: [],
+      hintsUpdated: [],
+      diagnostics: [],
+      ...extra,
+    });
+    const refusedName = (message: string) => ({
+      status: 422 as const,
+      body: result("invalid", {
+        diagnostics: [
+          {
+            rule: "MQ6001",
+            severity: "error",
+            message,
+            elementId: null,
+            filePath: `.maquettiste/templates/${name}/pack.json`,
+            jsonPointer: "/name",
+            line: null,
+            column: null,
+          },
+        ],
+      }),
+    });
+    const refused = this.packs.removalRefusal(pack, expected);
+    if (refused?.status === 404) return { status: 404, body: result("not-found") };
+    if (!PACK_NAME.test(name))
+      return refusedName(`'${name}' is not a pack name: lowercase letters and digits separated by single hyphens, starting with a letter.`);
+    if (name === pack) return refusedName(`The pack is already named '${pack}'.`);
+    if (refused) return { status: 409, body: result("conflict", { hash: refused.hash, current: refused.current }) };
+    if (this.packs.has(name)) return refusedName(`templates/${name}/ already exists; choose another name.`);
+    const settings = this.model.settingsDocument();
+    const json = structuredClone(settings.json) as { packs?: Record<string, unknown> };
+    if (json.packs?.[name] !== undefined) return refusedName(`maquettiste.json already has a packs.${name} entry; remove it or choose another name.`);
+    const hints = [...this.model.docs()]
+      .filter(([, doc]) => namesPack(doc, pack))
+      .map(([id]) => id)
+      .sort();
+    if (dryRun) {
+      const files = this.packs.names().includes(pack) ? this.packs.fileNames(pack) : [];
+      const tracked = [...this.generation.manifest].filter(([, entry]) => entry.pack === pack).map(([path]) => path);
+      return { status: 200, body: result("saved", { files, tracked: tracked.sort(), hints }) };
+    }
+    let settingsHash: string | null = null;
+    if (json.packs?.[pack] !== undefined) {
+      const { [pack]: section, ...others } = json.packs;
+      json.packs = { ...others, [name]: section };
+      const saved = this.model.saveSettings(json as never, settings.hash);
+      if (saved.body.outcome !== "saved") return { status: 422, body: result("invalid", { diagnostics: saved.body.diagnostics }) };
+      settingsHash = saved.body.hash;
+    }
+    const { files, hash } = this.packs.rename(pack, name);
+    const tracked = this.generation.renamePack(pack, name);
+    this.realtime.publish("templates.changed", { pack: [pack, name].sort()[0], files: [] });
+    this.realtime.publish("templates.changed", { pack: [pack, name].sort()[1], files: [] });
+    this.realtime.publish("packs.changed", { packs: [pack, name].sort() });
+    return { status: 200, body: result("saved", { hash, settingsHash, files, tracked, hints }) };
   }
 
   /** Publishes model.changed for a translation write: no element changed, the display names of every affected locale. */

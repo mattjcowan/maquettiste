@@ -14,6 +14,11 @@ public sealed record PackListResponse(IReadOnlyList<PackSummary> Packs);
 /// <param name="From"><c>empty</c> (the default) or the name of a pack of this project to copy.</param>
 public sealed record NewPackRequest(string? Name, string? From);
 
+/// <summary>The body of <c>POST /api/packs/{pack}/rename</c>.</summary>
+/// <param name="Name">The new name (the folder it moves to).</param>
+/// <param name="DryRun">Check everything and report what would move (with the generation hints that name the pack), writing nothing.</param>
+public sealed record PackRenameRequest(string? Name, bool DryRun = false);
+
 /// <summary>The body of <c>PUT /api/packs/{pack}/file</c>.</summary>
 /// <param name="Text">The file's UTF-8 text.</param>
 public sealed record PackFileWrite(string? Text);
@@ -111,6 +116,36 @@ public static class PackEndpoints
             if (result.SettingsHash is { } settingsHash)
                 await events.OnSettingsChangedAsync(settingsHash, ct).ConfigureAwait(false);
             await events.OnPackFilesChangedAsync([new TemplatesChangedEvent(pack, [])], ct).ConfigureAwait(false);
+        }
+        return Api.Json(result, Api.StatusOf(result.Outcome));
+    }));
+
+    /// <summary>
+    /// Renames a pack (<c>If-Match</c>: the <c>pack.json</c> hash): its folder, its <c>packs.&lt;pack&gt;</c> settings entry, its manifests and
+    /// unit states move to the new name together, so the files it generated stay tracked. The new <c>pack.json</c> hash is the ETag.
+    /// </summary>
+    [HttpPost("/api/packs/{pack}/rename")]
+    public static Task<IResult> Rename(HttpContext context, string pack, GenerationService generation, EditorEvents events, CancellationToken ct) => Api.GuardAsync(context, () => RefusedAsync(async () =>
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(generation);
+        ArgumentNullException.ThrowIfNull(events);
+        if (Api.Require(context, "maintainer") is { } forbidden)
+            return forbidden;
+        if (!Api.TryGetIfMatch(context.Request, out var expected))
+            return Api.PreconditionRequired();
+        var (request, error) = await Api.ReadJsonAsync<PackRenameRequest>(context.Request, null, ct).ConfigureAwait(false);
+        if (error is not null)
+            return error;
+        if (request!.Name is null)
+            return Api.BadRequest("name is required.");
+        var result = await generation.RenamePackAsync(pack, request.Name, expected, ct, dryRun: request.DryRun).ConfigureAwait(false);
+        if (result.Outcome == SaveOutcome.Saved && !request.DryRun)
+        {
+            Api.SetETag(context, result.Hash);
+            if (result.SettingsHash is { } settingsHash)
+                await events.OnSettingsChangedAsync(settingsHash, ct).ConfigureAwait(false);
+            await events.OnPackFilesChangedAsync([new TemplatesChangedEvent(pack, []), new TemplatesChangedEvent(result.To, [])], ct).ConfigureAwait(false);
         }
         return Api.Json(result, Api.StatusOf(result.Outcome));
     }));

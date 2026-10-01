@@ -102,4 +102,41 @@ public sealed class McpPackToolTests
         var after = await session.OkAsync("get_settings", new { });
         Assert.Null(after["settings"]!["packs"]!["docs"]);
     }
+
+    [Fact]
+    public async Task A_client_renames_a_pack_with_its_hash_and_its_settings_entry_follows()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var session = await McpSession.StartAsync(ct: ct);
+        await session.OkAsync("new_pack", new { name = "docs", from = "empty" });
+        var settings = await session.OkAsync("get_settings", new { });
+        await session.OkAsync("save_pack_settings", new { pack = "docs", settings = new { enabled = false }, expectedHash = (string)settings["hash"]! });
+        var pack = await session.OkAsync("get_pack", new { pack = "docs" });
+        var hash = (string)pack["hash"]!;
+
+        Assert.Equal("precondition-required", (await session.ErrorAsync("rename_pack", new { pack = "docs", name = "notes" })).Code);
+        Assert.Equal("bad-request", (await session.ErrorAsync("rename_pack", new { pack = "docs", expectedHash = hash })).Code);
+        Assert.Equal("conflict", (await session.ErrorAsync("rename_pack", new { pack = "docs", name = "notes", expectedHash = new string('0', 64) })).Code);
+        Assert.Equal("not-found", (await session.ErrorAsync("rename_pack", new { pack = "ghost", name = "notes", expectedHash = hash })).Code);
+        Assert.Equal("invalid", (await session.ErrorAsync("rename_pack", new { pack = "docs", name = "Bad Name", expectedHash = hash })).Code);
+
+        var customer = await session.OkAsync("get_element", new { id = McpSession.Customer });
+        var hinted = customer["json"]!.DeepClone().AsObject();
+        hinted["generation"] = new System.Text.Json.Nodes.JsonObject { ["docs"] = new System.Text.Json.Nodes.JsonObject { ["skip"] = true } };
+        await session.OkAsync("save_element", new { id = McpSession.Customer, element = hinted, expectedHash = (string)customer["hash"]! });
+
+        var renamed = await session.OkAsync("rename_pack", new { pack = "docs", name = "notes", expectedHash = hash });
+        Assert.Equal([McpSession.Customer], renamed["hintsUpdated"]!.AsArray().Select(h => (string)h!));
+        var moved = await session.OkAsync("get_element", new { id = McpSession.Customer });
+        Assert.True((bool)moved["json"]!["generation"]!["notes"]!["skip"]!);
+        Assert.Null(moved["json"]!["generation"]!["docs"]);
+        Assert.Equal(("saved", "docs", "notes"), ((string)renamed["outcome"]!, (string)renamed["from"]!, (string)renamed["to"]!));
+        Assert.Contains("pack.json", renamed["files"]!.AsArray().Select(f => (string)f!));
+        Assert.NotNull((string?)renamed["settingsHash"]);
+        Assert.Equal("not-found", (await session.ErrorAsync("get_pack", new { pack = "docs" })).Code);
+        Assert.Equal((string)renamed["hash"]!, (string)(await session.OkAsync("get_pack", new { pack = "notes" }))["hash"]!);
+        var after = await session.OkAsync("get_settings", new { });
+        Assert.Null(after["settings"]!["packs"]!["docs"]);
+        Assert.False((bool)after["settings"]!["packs"]!["notes"]!["enabled"]!);
+    }
 }

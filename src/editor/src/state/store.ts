@@ -85,6 +85,8 @@ export interface GenerationState {
   packFocus: { pack: string; unit?: string; parameter?: string; file?: string } | null;
   /** The New pack dialog is open (explorer header, palette). */
   newPack: boolean;
+  /** The Rename pack dialog is open for this pack, with the pack.json hash its editor showed (pack editor header). */
+  renamePack: { pack: string; hash: string } | null;
   /** The packs ticked for the next plan; null: the enabled packs. Kept in the page state. */
   chosenPacks: string[] | null;
 }
@@ -372,7 +374,18 @@ export function createEditorStore(): EditorStore {
     output: [],
     diff: null,
     connection: "disconnected",
-    generation: { planJob: null, planId: null, applyJob: null, packTabs: [], packTab: null, packPane: {}, packFocus: null, newPack: false, chosenPacks: null },
+    generation: {
+      planJob: null,
+      planId: null,
+      applyJob: null,
+      packTabs: [],
+      packTab: null,
+      packPane: {},
+      packFocus: null,
+      newPack: false,
+      renamePack: null,
+      chosenPacks: null,
+    },
 
     // Another screen shows in the centre area: the editor tabs stay open behind it.
     setWorkspace: (workspace) => set((s) => ({ workspace, editors: s.workspace === workspace ? s.editors : activate(s.editors, null) })),

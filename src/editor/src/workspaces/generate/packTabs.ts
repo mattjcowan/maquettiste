@@ -20,3 +20,26 @@ export function closePackTab(state: Tabs, pack: string): Tabs {
   void _closed;
   return { packTabs, packTab, packPane, packFocus: null };
 }
+
+/**
+ * Follows a pack rename: the tab keeps its place and its pane under the new name, and a focus or a ticked plan choice
+ * on the old name moves too.
+ */
+export function renamePackTab<T extends Tabs & Pick<GenerationState, "chosenPacks">>(state: T, from: string, to: string): T {
+  const swap = (name: string) => (name === from ? to : name);
+  const { [from]: pane, ...others } = state.packPane;
+  return {
+    ...state,
+    packTabs: state.packTabs.map(swap),
+    packTab: state.packTab === null ? null : swap(state.packTab),
+    packPane: pane ? { ...others, [to]: pane } : state.packPane,
+    packFocus: state.packFocus?.pack === from ? { ...state.packFocus, pack: to } : state.packFocus,
+    chosenPacks: state.chosenPacks ? [...new Set(state.chosenPacks.map(swap))].sort() : null,
+  };
+}
+
+/** The Generate explorer's expanded rows after a pack rename (`p:<pack>` and the rows under it). */
+export function renameExpandedKeys(expanded: ReadonlySet<string>, from: string, to: string): Set<string> {
+  const head = `p:${from}`;
+  return new Set([...expanded].map((key) => (key === head || key.startsWith(`${head}/`) ? `p:${to}${key.slice(head.length)}` : key)));
+}

@@ -41,6 +41,7 @@ import type {
   ImportPreview,
   ReferenceTypeUsage,
   RuleCatalogEntry,
+  PackRenameResult,
 } from "./types";
 
 function must<T>(data: T | undefined, response: Response): T {
@@ -327,6 +328,20 @@ export async function deletePack(pack: string, hash: string): Promise<PackRemove
     params: { path: { pack }, header: { "If-Match": `"${hash}"` } },
   });
   return record<PackRemoveResult>(data as PackRemoveResult | undefined, error, response);
+}
+
+/**
+ * Renames a pack with the pack.json hash read: its folder, its `packs.<pack>` settings entry, its manifests and unit
+ * states move to `name` together, so the files it generated stay tracked (`tracked` lists them); 409 `conflict` when
+ * pack.json changed, 422 `invalid` when the name is refused. `dryRun` checks and answers what would move (with `hints`, the
+ * elements whose generation hints name the pack), writing nothing.
+ */
+export async function renamePack(pack: string, name: string, hash: string, dryRun = false): Promise<PackRenameResult> {
+  const { data, error, response } = await api().POST("/api/packs/{pack}/rename", {
+    params: { path: { pack }, header: { "If-Match": `"${hash}"` } },
+    body: { name, dryRun },
+  });
+  return record<PackRenameResult>(data as PackRenameResult | undefined, error, response);
 }
 
 export type PackFileContent = Schemas["PackFileContent"];

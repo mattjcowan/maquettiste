@@ -138,6 +138,90 @@ public sealed class PackRemoveTests
     }
 }
 
+public sealed class PackRenameTests
+{
+    [Fact]
+    public async Task Pack_rename_previews_then_renames_the_pack_and_keeps_its_files_tracked()
+    {
+        using var repo = CliRepo.Billing();
+        Assert.Equal(0, (await repo.RunAsync("generate")).ExitCode);
+        var generated = Directory.EnumerateFiles(repo.PathOf("db"), "*", SearchOption.AllDirectories)
+            .Select(f => Path.GetRelativePath(repo.PathOf(""), f).Replace(Path.DirectorySeparatorChar, '/')).Order(StringComparer.Ordinal).ToList();
+        Assert.NotEmpty(generated);
+        var before = generated.ToDictionary(g => g, repo.Read, StringComparer.Ordinal);
+        const string Customer = ".maquettiste/model/entities/customer.json";
+        var hinted = System.Text.Json.Nodes.JsonNode.Parse(repo.Read(Customer))!.AsObject();
+        hinted["generation"] = new System.Text.Json.Nodes.JsonObject { ["ddl"] = new System.Text.Json.Nodes.JsonObject { ["skip"] = false } };
+        repo.Write(Customer, hinted.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
+
+        var preview = await repo.RunAsync("pack", "rename", "ddl", "sql");
+        Assert.True(preview.ExitCode == 0, preview.ToString());
+        Assert.Contains("move .maquettiste/templates/ddl/ to .maquettiste/templates/sql/", preview.Out, StringComparison.Ordinal);
+        Assert.Contains("move packs.ddl to packs.sql in .maquettiste/maquettiste.json", Text.Lines(preview.Out));
+        Assert.Contains("tracked " + generated[0], Text.Lines(preview.Out));
+        Assert.Contains("hint 01J92P0V0ETQKXXP951CMMNHH3 move generation.ddl to generation.sql", Text.Lines(preview.Out));
+        Assert.Contains("run with --apply", preview.Error, StringComparison.Ordinal);
+        Assert.True(File.Exists(repo.PathOf(".maquettiste/templates/ddl/pack.json")));
+        Assert.False(Directory.Exists(repo.PathOf(".maquettiste/templates/sql")));
+        Assert.Contains("\"ddl\"", repo.Read(Customer), StringComparison.Ordinal);
+
+        var applied = await repo.RunAsync("pack", "rename", "ddl", "sql", "--apply", "--format", "json");
+        Assert.True(applied.ExitCode == 0, applied.ToString());
+        using (var doc = JsonDocument.Parse(applied.Out))
+        {
+            Assert.True(doc.RootElement.GetProperty("applied").GetBoolean());
+            Assert.True(doc.RootElement.GetProperty("settingsEntry").GetBoolean());
+            Assert.Equal(generated, doc.RootElement.GetProperty("tracked").EnumerateArray().Select(e => e.GetString()!));
+            Assert.Equal(["01J92P0V0ETQKXXP951CMMNHH3"], doc.RootElement.GetProperty("hintsUpdated").EnumerateArray().Select(e => e.GetString()!));
+        }
+
+        Assert.Contains("\"sql\"", repo.Read(Customer), StringComparison.Ordinal);
+        Assert.DoesNotContain("\"ddl\"", repo.Read(Customer), StringComparison.Ordinal);
+        Assert.False(Directory.Exists(repo.PathOf(".maquettiste/templates/ddl")));
+        Assert.Contains("\"name\": \"sql\"", repo.Read(".maquettiste/templates/sql/pack.json"), StringComparison.Ordinal);
+        Assert.DoesNotContain("\"ddl\"", repo.Read(".maquettiste/maquettiste.json"), StringComparison.Ordinal);
+        Assert.False(File.Exists(repo.PathOf(".maquettiste/manifest/ddl.json")));
+        Assert.True(File.Exists(repo.PathOf(".maquettiste/manifest/sql.json")));
+
+        // The next full run finds every file tracked under the new name: nothing is deleted or reported as a hand edit.
+        var next = await repo.RunAsync("generate");
+        Assert.True(next.ExitCode == 0, next.ToString());
+        Assert.All(generated, g => Assert.Equal(before[g], repo.Read(g)));
+        Assert.True(File.Exists(repo.PathOf(".maquettiste/manifest/sql.json")));
+    }
+
+    [Fact]
+    public async Task Pack_rename_with_keep_hints_leaves_the_hints_that_name_the_old_pack()
+    {
+        using var repo = CliRepo.Billing();
+        const string Customer = ".maquettiste/model/entities/customer.json";
+        var hinted = System.Text.Json.Nodes.JsonNode.Parse(repo.Read(Customer))!.AsObject();
+        hinted["generation"] = new System.Text.Json.Nodes.JsonObject { ["ddl"] = new System.Text.Json.Nodes.JsonObject { ["skip"] = true } };
+        repo.Write(Customer, hinted.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
+
+        var applied = await repo.RunAsync("pack", "rename", "ddl", "sql", "--apply", "--keep-hints");
+        Assert.True(applied.ExitCode == 0, applied.ToString());
+        Assert.Contains("hint 01J92P0V0ETQKXXP951CMMNHH3 keeps generation.ddl", Text.Lines(applied.Out));
+        Assert.Contains("generation hints still name 'ddl'", applied.Error, StringComparison.Ordinal);
+        Assert.True(Directory.Exists(repo.PathOf(".maquettiste/templates/sql")));
+        Assert.Contains("\"ddl\"", repo.Read(Customer), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Pack_rename_refuses_an_unknown_pack_a_taken_or_bad_name_and_a_missing_argument()
+    {
+        using var repo = CliRepo.Billing();
+        var ghost = await repo.RunAsync("pack", "rename", "ghost", "sql", "--apply");
+        Assert.Equal(1, ghost.ExitCode);
+        Assert.Contains("no pack named 'ghost'", ghost.Error, StringComparison.Ordinal);
+        var bad = await repo.RunAsync("pack", "rename", "ddl", "Bad_Name");
+        Assert.Equal(1, bad.ExitCode);
+        Assert.Contains("is not a pack name", bad.Error, StringComparison.Ordinal);
+        Assert.Equal(4, (await repo.RunAsync("pack", "rename", "ddl")).ExitCode);
+        Assert.True(File.Exists(repo.PathOf(".maquettiste/templates/ddl/pack.json")));
+    }
+}
+
 public sealed class BenchTests
 {
     [Fact]

@@ -1,5 +1,5 @@
 // The pack editor (generation-ui.md 3): a centre tab per pack with a header (name and version, description, engine
-// range, Enabled, output base, the project's hand-edit policy read-only, diagnostics, Remove pack…) and the tabs Units,
+// range, Enabled, output base, the project's hand-edit policy read-only, diagnostics, Rename pack… and Remove pack…) and the tabs Units,
 // Parameters, Templates and Outputs (Alt+1 to Alt+4). Enabled, the output base and parameter values save through
 // PUT /api/project/settings/packs/{pack} (maintainer), which writes only packs.<pack> in maquettiste.json; the
 // units save pack.json itself. Everything edits the pack's own files: the CLI and git see the same thing.
@@ -20,6 +20,7 @@ import { useEditor, type PackPane } from "@/state/store";
 import { groupOutputs, outputRows, type OutputState } from "./outputsModel";
 import { displayValue, packSection, parameterRows, parseParameter, undeclared, withParameter, type ParameterRow } from "./parametersModel";
 import { RemovePackButton } from "./RemovePackDialog";
+import { RenamePackButton } from "./RenamePackDialog";
 import { TemplatesTab } from "./TemplatesTab";
 import { UnitsTab } from "./UnitsTab";
 import type { PackJson } from "./unitsModel";
@@ -147,7 +148,10 @@ export function PackEditor({ pack }: { pack: string }) {
             <TriangleAlert className="size-3" aria-hidden /> {diagnostics}
           </Badge>
         ) : null}
-        <RemovePackButton pack={pack} hash={d.hash} fileCount={d.files.length} outputBase={d.output} />
+        <span className="ml-auto flex items-center gap-1">
+          <RenamePackButton pack={pack} hash={d.hash} />
+          <RemovePackButton pack={pack} hash={d.hash} fileCount={d.files.length} outputBase={d.output} />
+        </span>
         {typeof json.description === "string" ? (
           <p className="w-full truncate text-secondary" title={json.description}>
             {json.description}

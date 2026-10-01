@@ -1,14 +1,14 @@
 // The Database workspace (phase2-design.md 4.8): a database picker, the resolved tables of
 // GET /api/databases/{id}/view as TableNodes and ForeignKeyEdges (auto-laid out, positions per
 // browser), the dialect selector (edits the database element) and the live DDL preview
-// (POST /api/templates/preview with sql-ddl/schema or sql-ddl/table), refreshed 400 ms after any
-// model.changed.
+// (POST /api/templates/preview with the unit ddlPreview.ts picks: an enabled pack's database unit, or its each-table
+// unit for a selected table), refreshed 400 ms after any model.changed.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Background, Controls, MiniMap, ReactFlow, ReactFlowProvider, useNodesInitialized, useReactFlow, type NodeChange, type Viewport } from "@xyflow/react";
 import { Download, LayoutGrid } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/menu";
 import { exportCanvas } from "@/canvas/export";
-import { useDatabaseTables, useDatabaseView, useIndex, usePreview, useProject } from "@/api/queries";
+import { useDatabaseTables, useDatabaseView, useIndex, usePacks, usePreview, useProject } from "@/api/queries";
 import type { DatabaseDoc } from "@/api/types";
 import { useEditor } from "@/state/store";
 import { useServices } from "@/app/context";
@@ -28,6 +28,7 @@ import { useDraftDocument } from "@/inspector/useDraft";
 import { DIALECTS } from "@/inspector/fields";
 import { EdgeToggle, PanelToggle } from "@/app/panels";
 import { ColumnPanel } from "./ColumnGrid";
+import { ddlPreviewCaption, ddlPreviewTarget, NO_DDL_UNIT } from "./ddlPreview";
 
 const nodeTypes = { table: TableNode };
 const edgeTypes = { foreignKey: ForeignKeyEdge };
@@ -251,9 +252,10 @@ function DatabaseCanvas() {
   const [tableFilter, setTableFilter] = useState("");
   const listed = useMemo(() => filterTables(summaries.data?.tables ?? [], tableFilter), [summaries.data, tableFilter]);
 
-  const hasPack = (project.data?.packs ?? []).some((p) => p.name === "sql-ddl");
+  const packs = usePacks();
   const table = tables.find((t) => t.key === selectedTable) ?? null;
-  const preview = usePreview("sql-ddl", table ? "table" : "schema", table ? table.key : activeDatabase, hasPack && !!activeDatabase && !!view.data?.view);
+  const target = ddlPreviewTarget(packs.data ?? [], activeDatabase ?? null, table?.key ?? null);
+  const preview = usePreview(target?.pack ?? "", target?.unit ?? "", target?.elementId ?? null, !!target && !!view.data?.view);
   const dialect = (database.json as DatabaseDoc | undefined)?.dialect;
 
   if (project.isPending) return <EmptyState title="Loading the project…" />;
@@ -407,14 +409,18 @@ function DatabaseCanvas() {
           >
             <div className="flex h-6 shrink-0 items-center gap-2 border-b border-default px-2 text-12" data-testid="ddl-panel-header">
               <span className="font-semibold">DDL preview</span>
-              <span className="min-w-0 flex-1 truncate text-secondary">{table ? `sql-ddl/table · ${table.name}` : "sql-ddl/schema · whole database"}</span>
+              <span className="min-w-0 flex-1 truncate text-secondary" data-testid="ddl-preview-unit" title="The pack and unit this preview renders">
+                {target ? ddlPreviewCaption(target, table?.name ?? null) : "no unit"}
+              </span>
               {preview.isFetching ? <Spinner label="Rendering" /> : null}
               <PanelToggle panel="ddl" />
             </div>
             <div className="min-h-0 flex-1">
-              {!hasPack ? (
-                <EmptyState title="Install the sql-ddl pack to preview DDL">
-                  Copy packs/sql-ddl into .maquettiste/templates/ and enable it in maquettiste.json.
+              {packs.isPending ? (
+                <Spinner label="Reading the packs" />
+              ) : !target ? (
+                <EmptyState title="Nothing to preview">
+                  <span data-testid="ddl-preview-none">{NO_DDL_UNIT}</span>
                 </EmptyState>
               ) : preview.data?.diagnostics.length && !preview.data.files.length ? (
                 <ul className="p-2 text-12 text-danger">

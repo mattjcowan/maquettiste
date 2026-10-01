@@ -1244,6 +1244,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/packs/{pack}/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack: components["parameters"]["PackName"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rename a pack, keeping the files it generated tracked
+         * @description `If-Match` carries the `pack.json` hash read. The new name follows the pack-name rule (lowercase letters and digits separated
+         *     by single hyphens, starting with a letter) and must not be used by another pack folder, a `packs.<name>` settings entry or
+         *     the manifests of a former pack. Moves the `packs.<pack>` entry of `maquettiste.json` to `packs.<name>` with its values
+         *     (through the settings save), renames the folder `.maquettiste/templates/<pack>/` (never a copy), writes the new name into
+         *     `pack.json`, and moves the pack's committed and built manifests and its unit states, so the files it generated stay tracked
+         *     and no later run deletes them as orphans. Generation hints keyed by the old name are listed in `hints` and left as they are:
+         *     the editor moves them with one model batch after the rename, so they are one undo step.
+         *     With `dryRun` every check runs and the answer says what would move, writing nothing. Waits for a generation run in
+         *     progress. 409 when `pack.json` changed (or `maquettiste.json` kept changing meanwhile); 422 (nothing changed) when the
+         *     name is refused or the settings save is. Sends `project.changed` when the settings changed, then
+         *     `templates.changed` (empty `files`) for both names and `packs.changed`. The ETag is the new `pack.json` hash.
+         */
+        post: operations["renamePack"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/packs/{pack}/file": {
         parameters: {
             query: {
@@ -3566,6 +3598,38 @@ export interface components {
             /** @description The hash of maquettiste.json after its packs.<pack> entry was removed; null when it had no entry. */
             settingsHash: components["schemas"]["Hash"] | null;
             /** @description Why nothing was removed (a refused settings save). */
+            diagnostics: components["schemas"]["Diagnostic"][];
+        };
+        PackRenameRequest: {
+            /** @description The new name; the pack-name rule is checked by the operation (422), so a refused name says why. */
+            name: string;
+            /**
+             * @description Check everything and answer what would move, including `hints`, writing nothing and sending no event (the editor's dialog counts the hints it offers to update this way).
+             * @default false
+             */
+            dryRun?: boolean;
+        };
+        PackRenameResult: {
+            outcome: components["schemas"]["SaveOutcome"];
+            /** @description The old name. */
+            from: string;
+            /** @description The new name. */
+            to: string;
+            /** @description The new pack.json hash when renamed; the disk hash on conflict; else null. */
+            hash: components["schemas"]["Hash"] | null;
+            /** @description The disk text of pack.json on conflict, else null. */
+            current: string | null;
+            /** @description The hash of maquettiste.json after its packs.<pack> entry moved to the new name; null when it had no entry. */
+            settingsHash: components["schemas"]["Hash"] | null;
+            /** @description The pack-relative files that moved with the folder, ordinal. */
+            files: string[];
+            /** @description The repo-relative generated files the pack's manifests record, now under the new name, ordinal. */
+            tracked: string[];
+            /** @description The ids of the elements whose generation hints are keyed by the old name, ordinal. This operation leaves them as they are; the editor then moves them to the new name with one `POST /api/model/batch` (one undo step). */
+            hints: string[];
+            /** @description The ids of the elements whose hints the rename moved itself (the MCP tool and the command line ask for it); always empty here. */
+            hintsUpdated: string[];
+            /** @description Why nothing was renamed. */
             diagnostics: components["schemas"]["Diagnostic"][];
         };
         PlanCause: {
@@ -9004,6 +9068,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PackRemoveResult"];
+                };
+            };
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    renamePack: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description The hash the caller loaded, quoted as an ETag or bare. Missing is 428.
+                 * @example "4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                pack: components["parameters"]["PackName"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "name": "ddl"
+                 *     }
+                 */
+                "application/json": components["schemas"]["PackRenameRequest"];
+            };
+        };
+        responses: {
+            /** @description Renamed. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "outcome": "saved",
+                     *       "from": "sql-ddl",
+                     *       "to": "ddl",
+                     *       "hash": "3f1c9a2b7d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8",
+                     *       "current": null,
+                     *       "settingsHash": "9a8b7c6d5e4f30211203f4e5d6c7b8a9f0e1d2c3b4a5968778695a4b3c2d1e0f",
+                     *       "files": [
+                     *         "README.md",
+                     *         "_table.scriban",
+                     *         "helpers.js",
+                     *         "pack.json",
+                     *         "schema.scriban",
+                     *         "table.scriban"
+                     *       ],
+                     *       "tracked": [
+                     *         "db/main/billing/tables/customers.sql",
+                     *         "db/main/schema.sql"
+                     *       ],
+                     *       "hints": [],
+                     *       "hintsUpdated": [],
+                     *       "diagnostics": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PackRenameResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description No such pack. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackRenameResult"];
+                };
+            };
+            /** @description pack.json changed since it was read; `hash` and `current` are the disk version. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackRenameResult"];
+                };
+            };
+            /** @description The new name is not a pack name, is the current one, or is taken, or the settings save was refused; nothing changed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackRenameResult"];
                 };
             };
             428: components["responses"]["PreconditionRequired"];

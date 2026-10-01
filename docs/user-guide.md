@@ -337,7 +337,9 @@ database shows on the Database screen at once. The explorers remember which rows
   and the attribute mapped onto the column (once the entity is expanded; a collapsed folder shows "n related").
   Enter or a double click on a table opens its screen with that table focused. The screen shows table diagrams per
   database, a Tables list with a filter (the first 300 matches), a dialect selector, and a live DDL preview for the
-  selected table. The Tables list and the DDL preview each hide from the button in their header ("Hide tables list",
+  selected table. The preview renders the enabled pack that has a unit rendered per database (a unit named schema or
+  table first; with a table selected, that pack's unit for each table), names the pack and unit in its header, and says
+  so when no enabled pack has such a unit. The Tables list and the DDL preview each hide from the button in their header ("Hide tables list",
   "Hide DDL preview") or with Alt+Shift+L and Alt+Shift+D on this screen, and come back from the slim strip they leave
   at the edge or the same shortcut; the palette has "Toggle tables list" and "Toggle DDL preview". Like the other
   panels, what you hid stays hidden after a reload, and "Reset layout" shows both again. A database of more than 300 tables is not drawn whole: with no table selected the screen says
@@ -962,7 +964,12 @@ In the editor, **+** in the Generate explorer header (or **New pack…** in the 
 or in `maquettiste.json`, edit its units and templates, and plan. The copy is yours: change it freely; the example
 packs are not updated under you. To remove a pack, use **Remove pack…** in the pack editor's header (or
 `maquettiste pack remove <name> --apply`): it deletes the pack's folder and its `packs.<name>` settings entry, and the
-files it generated stay on disk, no longer tracked.
+files it generated stay on disk, no longer tracked. To rename a pack, use **Rename pack…** beside it (or
+`maquettiste pack rename <name> <new-name> --apply`): the folder, the `packs.<name>` settings entry and the record of
+the files it generated move to the new name together, so those files stay tracked. Generation hints keyed by the old
+name (`generation.<name>` on elements, tables, columns and other parts) move to the new name too: the dialog's **Also
+update the generation hints that name this pack** is ticked by default and saves them as one change you can undo, and
+the command does the same unless you add `--keep-hints`.
 
 ### outputs.allow: what generation may touch
 

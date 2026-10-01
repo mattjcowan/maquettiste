@@ -63,6 +63,43 @@ describe("mock pack authoring", () => {
     expect((settings.json.json as { packs?: Json }).packs?.["sql-ddl"]).toBeUndefined();
   });
 
+  it("renames a pack with the pack.json hash and keeps its settings entry under the new name", async () => {
+    const pack = await call("GET", "/api/packs/sql-ddl");
+    const match = { "If-Match": `"${String(pack.json.hash)}"` };
+    const route = "/api/packs/{pack}/rename";
+    expect((await call("POST", "/api/packs/sql-ddl/rename", undefined, { name: "ddl" })).status).toBe(428);
+    const stale = await call("POST", "/api/packs/sql-ddl/rename", route, { name: "ddl" }, { "If-Match": `"${"0".repeat(64)}"` });
+    expect(stale.status).toBe(409);
+    expect(stale.json.hash).toBe(pack.json.hash);
+    expect((await call("POST", "/api/packs/ghost/rename", route, { name: "ddl" }, match)).status).toBe(404);
+    expect((await call("POST", "/api/packs/sql-ddl/rename", route, { name: "csharp-dapper" }, match)).status).toBe(422);
+    expect((await call("POST", "/api/packs/sql-ddl/rename", route, { name: "Bad--name" }, match)).status).toBe(422);
+    expect((await call("POST", "/api/packs/sql-ddl/rename", undefined, {}, match)).status).toBe(400);
+
+    const dry = await call("POST", "/api/packs/sql-ddl/rename", route, { name: "ddl", dryRun: true }, match);
+    expect(dry.status).toBe(200);
+    expect(dry.json.files as string[]).toContain("pack.json");
+    expect(dry.json.hints).toEqual([]);
+    expect((await call("GET", "/api/packs/sql-ddl")).status).toBe(200);
+
+    const renamed = await call("POST", "/api/packs/sql-ddl/rename", route, { name: "ddl" }, match);
+    expect(renamed.status).toBe(200);
+    expect([renamed.json.from, renamed.json.to]).toEqual(["sql-ddl", "ddl"]);
+    expect(renamed.etag).toBe(`"${String(renamed.json.hash)}"`);
+    expect(renamed.json.files as string[]).toContain("pack.json");
+    expect(renamed.json.settingsHash).not.toBeNull();
+    expect((await call("GET", "/api/packs/sql-ddl")).status).toBe(404);
+    const moved = await call("GET", "/api/packs/ddl");
+    expect(moved.json.hash).toBe(renamed.json.hash);
+    expect((moved.json.document as Json).name).toBe("ddl");
+    const list = await call("GET", "/api/packs");
+    expect((list.json.packs as Json[]).map((p) => p.name)).toEqual(["csharp-dapper", "ddl"]);
+    const settings = await call("GET", "/api/project/settings");
+    const packs = (settings.json.json as { packs?: Json }).packs ?? {};
+    expect(packs["sql-ddl"]).toBeUndefined();
+    expect(packs.ddl).toBeDefined();
+  });
+
   it("serves the template context of a unit", async () => {
     const context = await call("GET", "/api/templates/context?pack=sql-ddl&unit=table", "/api/templates/context");
     expect((context.json.variables as Json[]).map((v) => v.name)).toContain("table");

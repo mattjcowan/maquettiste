@@ -17,8 +17,9 @@ import { rowHeight } from "@/design/density";
 import { cn } from "@/lib/cn";
 import type { PackPane } from "@/state/store";
 import { packRows, packTotals, type PackDetails, type PackRow } from "./explorerModel";
-import { openPackTab } from "./packTabs";
+import { openPackTab, renameExpandedKeys } from "./packTabs";
 import { NewPackDialog } from "./NewPackDialog";
+import { RenamePackDialog } from "./RenamePackDialog";
 import { PanelToggle } from "@/app/panels";
 
 const PANE: Partial<Record<PackRow["kind"], PackPane>> = {
@@ -192,6 +193,7 @@ export function GenerateExplorer() {
         {packs.data && !list.length ? <p className="px-2 py-1 text-12 text-secondary">No packs. Create one with New pack.</p> : null}
       </div>
       <NewPackDialog />
+      <RenamePackDialog onRenamed={(from, to) => setExpanded((prev) => renameExpandedKeys(prev, from, to))} />
     </section>
   );
 }

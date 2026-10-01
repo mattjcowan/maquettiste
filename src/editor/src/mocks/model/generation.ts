@@ -68,9 +68,21 @@ export class MockGeneration {
     private readonly newId: () => string,
   ) {}
 
+  /** Which example renderer each pack name uses: the two example packs, under their current names (a rename moves them). */
+  private readonly renderers = new Map<string, "sql-ddl" | "csharp-dapper">([
+    ["sql-ddl", "sql-ddl"],
+    ["csharp-dapper", "csharp-dapper"],
+  ]);
+
+  /** The pack name the example renderer `kind` renders for now, or null when it was renamed away and nothing took it. */
+  private packOf(kind: "sql-ddl" | "csharp-dapper"): string | null {
+    for (const [name, k] of this.renderers) if (k === kind) return name;
+    return null;
+  }
+
   private packOutput(pack: string): { path: string; commit: boolean } {
     const settings = this.model.projectSettings();
-    const output = settings.packs[pack]?.output || (pack === "sql-ddl" ? "db" : "src/Generated");
+    const output = settings.packs[pack]?.output || ((this.renderers.get(pack) ?? pack) === "sql-ddl" ? "db" : "src/Generated");
     const allow = settings.outputs.allow.find((a) => output === a.path || output.startsWith(a.path + "/"));
     return { path: output, commit: allow?.commit ?? false };
   }
@@ -170,6 +182,30 @@ export class MockGeneration {
   }
 
   /**
+   * Moves a pack's manifest entries and unit states to a new name (a pack rename), so its files stay tracked; answers the
+   * paths now tracked under the new name, ordinal.
+   */
+  renamePack(from: string, to: string): string[] {
+    const tracked: string[] = [];
+    for (const [path, entry] of this.manifest)
+      if (entry.pack === from) {
+        entry.pack = to;
+        tracked.push(path);
+      }
+    const renderer = this.renderers.get(from);
+    if (renderer) {
+      this.renderers.delete(from);
+      this.renderers.set(to, renderer);
+    }
+    for (const [key, state] of [...this.unitState])
+      if (key.startsWith(`${from}/`)) {
+        this.unitState.delete(key);
+        this.unitState.set(`${to}/${key.slice(from.length + 1)}`, state);
+      }
+    return tracked.sort();
+  }
+
+  /**
    * The name and kind a unit path carries for its element (UnitPath.elementName and elementKind), as the engine gives
    * them: a database by name, a table as `name (database)` (schema-qualified when not the default), an element by name.
    */
@@ -224,43 +260,45 @@ export class MockGeneration {
   renderUnits(packs: string[]): RenderUnit[] {
     const units: RenderUnit[] = [];
     const docs = this.model.docs();
-    if (packs.includes("sql-ddl")) {
-      const root = this.packOutput("sql-ddl").path;
+    const ddl = this.packOf("sql-ddl");
+    if (ddl && packs.includes(ddl)) {
+      const root = this.packOutput(ddl).path;
       for (const view of this.views()) {
         for (const table of view.tables) {
           const entityName = table.entityId ? String(docs.get(table.entityId)?.name ?? "") : null;
           units.push({
-            pack: "sql-ddl",
+            pack: ddl,
             unit: "table",
             elementId: table.key,
-            unitKey: `sql-ddl/table:${table.key}`,
+            unitKey: `${ddl}/table:${table.key}`,
             files: [renderTable(view, table, entityName, root)],
           });
         }
-        units.push({ pack: "sql-ddl", unit: "schema", elementId: view.id, unitKey: `sql-ddl/schema:${view.id}`, files: [renderSchema(view, root)] });
+        units.push({ pack: ddl, unit: "schema", elementId: view.id, unitKey: `${ddl}/schema:${view.id}`, files: [renderSchema(view, root)] });
         // The seed script of every database (the unit is "select databases"), with the rows of the types stored as
         // lookup tables there.
         units.push({
-          pack: "sql-ddl",
+          pack: ddl,
           unit: "seed",
           elementId: view.id,
-          unitKey: `sql-ddl/seed:${view.id}`,
+          unitKey: `${ddl}/seed:${view.id}`,
           files: [renderSeed(view, this.referenceRows(view), root)],
         });
       }
     }
-    if (packs.includes("csharp-dapper")) {
-      const root = this.packOutput("csharp-dapper").path;
-      const namespace = String((this.model.packs.find((p) => p.name === "csharp-dapper")?.parameters as Json | undefined)?.namespace ?? "App.Model");
+    const dapper = this.packOf("csharp-dapper");
+    if (dapper && packs.includes(dapper)) {
+      const root = this.packOutput(dapper).path;
+      const namespace = String((this.model.packs.find((p) => p.name === dapper)?.parameters as Json | undefined)?.namespace ?? "App.Model");
       const sorted = [...docs.values()].sort((a, b) => String(a.name).localeCompare(String(b.name)));
       for (const doc of sorted) {
         const unit = doc.kind === "entity" ? "entity" : doc.kind === "enum" ? "enum" : doc.kind === "value-object" ? "value-object" : null;
         if (!unit) continue;
         units.push({
-          pack: "csharp-dapper",
+          pack: dapper,
           unit,
           elementId: String(doc.id),
-          unitKey: `csharp-dapper/${unit}:${String(doc.id)}`,
+          unitKey: `${dapper}/${unit}:${String(doc.id)}`,
           files: renderCSharp(doc, docs, root, namespace),
         });
       }

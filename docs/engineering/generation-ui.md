@@ -73,7 +73,7 @@ The summary turns an output pattern into placeholders without rendering: the pat
 
 ## 3. The pack editor screen
 
-Opening a pack brings the **pack editor** to the centre: a header (`sql-ddl 1.0.0`, description, engine range, Enabled switch, output base, the project's hand-edit policy shown read-only with a link to Settings because it is project-wide, the pack's diagnostics count) and four tabs: **Units**, **Parameters**, **Templates**, **Outputs**. `PUT /api/project/settings` is admin-only (`saveSettings`), while plan and apply are maintainer, so the Enabled switch, the output base and the parameter values save through a narrow `PUT /api/project/settings/packs/{pack}` (§5.1) at maintainer role, which writes only `packs.<pack>` in `maquettiste.json` with the settings ETag; `outputs.allow` and every other section stay admin. The tabs write the pack's own files (§5.1). Unsaved changes are per tab and per file; leaving the screen with unsaved changes asks once.
+Opening a pack brings the **pack editor** to the centre: a header (`sql-ddl 1.0.0`, description, engine range, Enabled switch, output base, the project's hand-edit policy shown read-only with a link to Settings because it is project-wide, the pack's diagnostics count, then **Rename pack…** and **Remove pack…**) and four tabs: **Units**, **Parameters**, **Templates**, **Outputs**. `PUT /api/project/settings` is admin-only (`saveSettings`), while plan and apply are maintainer, so the Enabled switch, the output base and the parameter values save through a narrow `PUT /api/project/settings/packs/{pack}` (§5.1) at maintainer role, which writes only `packs.<pack>` in `maquettiste.json` with the settings ETag; `outputs.allow` and every other section stay admin. The tabs write the pack's own files (§5.1). Unsaved changes are per tab and per file; leaving the screen with unsaved changes asks once.
 
 ### 3.1 Units
 
@@ -309,3 +309,22 @@ Total: about 22.5 working days. Steps 0, 1 and 8 are independent; 2 and 3 need 1
   else "entity @ database" for a synthesized table key, else the id (the option's tooltip). The Units picker reads up to
   the server's 2000 paths and turns into a searchable list past 20 elements (`exampleOptions`, `filterExamples`).
 - **New pack.** The choices read **Empty pack** and **Copy of <pack>**, with the line under them described in §2.1.
+- **Rename pack** (the owner: "how do i rename the pack?"; added 2026-10-01). **Rename pack…** sits beside **Remove
+  pack…** in the pack editor's header and opens a small dialog: a Name field with the engine's pack-name rule as its hint
+  (lowercase letters and digits separated by single hyphens, starting with a letter; the current name, a taken name and
+  any other name are refused before anything is sent), the folder it moves to, the count of generated files that stay
+  tracked, and "This cannot be undone from the editor": the rename moves files outside the model, so it is not an undo
+  step. It calls `POST /api/packs/{pack}/rename` (engine-design.md 12.3a) with the `pack.json` hash the editor showed.
+  The dialog is mounted beside the Generate explorer, not in the pack editor, so it outlives the pack's tab, which closes
+  while the request runs (nothing reads the old name meanwhile) and comes back in the same place under the new name, with
+  its pane, focus and plan choice; the explorer's expanded rows follow too. A refused rename reopens the tab under the old
+  name and keeps the dialog open with the reason. Unsaved edits in the pack disable the rename until they are saved or
+  discarded (`RenamePackDialog.tsx`, `renamePackTab` and `renameExpandedKeys` in `packTabs.ts`). Once the name is valid,
+  a dry run of the rename (`dryRun: true`) runs the server's checks and counts the elements whose generation hints name
+  the pack; **Also update the generation hints that name this pack (N elements)**, ticked by default, then moves them to
+  the new name after the rename as one model batch through the normal element save path (`useBatchEdit`,
+  `renamePackHints` in `packHints.ts`), one undo step.
+- **DDL preview** (added 2026-10-01). The Database screen's DDL preview no longer assumes a pack named `sql-ddl`: it
+  renders the enabled pack with a unit rendered per database (the Storage tab's `databaseUnits` rule), preferring a unit
+  whose name mentions schema or table, and for a selected table that pack's `each table` unit; its header names the
+  pack and unit, and with no such pack the pane says so instead of hiding (`database/ddlPreview.ts`).

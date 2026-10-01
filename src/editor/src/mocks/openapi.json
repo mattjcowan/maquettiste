@@ -6336,6 +6336,120 @@
         }
       }
     },
+    "/api/packs/{pack}/rename": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/PackName"
+        }
+      ],
+      "post": {
+        "tags": [
+          "packs"
+        ],
+        "operationId": "renamePack",
+        "summary": "Rename a pack, keeping the files it generated tracked",
+        "description": "`If-Match` carries the `pack.json` hash read. The new name follows the pack-name rule (lowercase letters and digits separated\nby single hyphens, starting with a letter) and must not be used by another pack folder, a `packs.<name>` settings entry or\nthe manifests of a former pack. Moves the `packs.<pack>` entry of `maquettiste.json` to `packs.<name>` with its values\n(through the settings save), renames the folder `.maquettiste/templates/<pack>/` (never a copy), writes the new name into\n`pack.json`, and moves the pack's committed and built manifests and its unit states, so the files it generated stay tracked\nand no later run deletes them as orphans. Generation hints keyed by the old name are listed in `hints` and left as they are:\nthe editor moves them with one model batch after the rename, so they are one undo step.\nWith `dryRun` every check runs and the answer says what would move, writing nothing. Waits for a generation run in\nprogress. 409 when `pack.json` changed (or `maquettiste.json` kept changing meanwhile); 422 (nothing changed) when the\nname is refused or the settings save is. Sends `project.changed` when the settings changed, then\n`templates.changed` (empty `files`) for both names and `packs.changed`. The ETag is the new `pack.json` hash.\n",
+        "x-maquettiste-role": "maintainer",
+        "x-maquettiste-engine": "GenerationService.RenamePackAsync(pack, newName, expectedHash)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackRenameRequest"
+              },
+              "example": {
+                "name": "ddl"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Renamed.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackRenameResult"
+                },
+                "example": {
+                  "outcome": "saved",
+                  "from": "sql-ddl",
+                  "to": "ddl",
+                  "hash": "3f1c9a2b7d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8",
+                  "current": null,
+                  "settingsHash": "9a8b7c6d5e4f30211203f4e5d6c7b8a9f0e1d2c3b4a5968778695a4b3c2d1e0f",
+                  "files": [
+                    "README.md",
+                    "_table.scriban",
+                    "helpers.js",
+                    "pack.json",
+                    "schema.scriban",
+                    "table.scriban"
+                  ],
+                  "tracked": [
+                    "db/main/billing/tables/customers.sql",
+                    "db/main/schema.sql"
+                  ],
+                  "hints": [],
+                  "hintsUpdated": [],
+                  "diagnostics": []
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "description": "No such pack.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackRenameResult"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "pack.json changed since it was read; `hash` and `current` are the disk version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackRenameResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The new name is not a pack name, is the current one, or is taken, or the settings save was refused; nothing changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackRenameResult"
+                }
+              }
+            }
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          }
+        }
+      }
+    },
     "/api/packs/{pack}/file": {
       "parameters": [
         {
@@ -15624,6 +15738,117 @@
           "diagnostics": {
             "type": "array",
             "description": "Why nothing was removed (a refused settings save).",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
+          }
+        }
+      },
+      "PackRenameRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The new name; the pack-name rule is checked by the operation (422), so a refused name says why."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "default": false,
+            "description": "Check everything and answer what would move, including `hints`, writing nothing and sending no event (the editor's dialog counts the hints it offers to update this way)."
+          }
+        }
+      },
+      "PackRenameResult": {
+        "x-engine-record": "Maquettiste.Engine.PackRenameResult",
+        "type": "object",
+        "required": [
+          "outcome",
+          "from",
+          "to",
+          "hash",
+          "current",
+          "settingsHash",
+          "files",
+          "tracked",
+          "hints",
+          "hintsUpdated",
+          "diagnostics"
+        ],
+        "properties": {
+          "outcome": {
+            "$ref": "#/components/schemas/SaveOutcome"
+          },
+          "from": {
+            "type": "string",
+            "description": "The old name."
+          },
+          "to": {
+            "type": "string",
+            "description": "The new name."
+          },
+          "hash": {
+            "description": "The new pack.json hash when renamed; the disk hash on conflict; else null.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Hash"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current": {
+            "description": "The disk text of pack.json on conflict, else null.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "settingsHash": {
+            "description": "The hash of maquettiste.json after its packs.<pack> entry moved to the new name; null when it had no entry.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Hash"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "files": {
+            "type": "array",
+            "description": "The pack-relative files that moved with the folder, ordinal.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tracked": {
+            "type": "array",
+            "description": "The repo-relative generated files the pack's manifests record, now under the new name, ordinal.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "hints": {
+            "type": "array",
+            "description": "The ids of the elements whose generation hints are keyed by the old name, ordinal. This operation leaves them as they are; the editor then moves them to the new name with one `POST /api/model/batch` (one undo step).",
+            "items": {
+              "type": "string"
+            }
+          },
+          "hintsUpdated": {
+            "type": "array",
+            "description": "The ids of the elements whose hints the rename moved itself (the MCP tool and the command line ask for it); always empty here.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "diagnostics": {
+            "type": "array",
+            "description": "Why nothing was renamed.",
             "items": {
               "$ref": "#/components/schemas/Diagnostic"
             }

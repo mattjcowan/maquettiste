@@ -111,6 +111,55 @@ public sealed class PackEndpointTests
     }
 
     [Fact]
+    public async Task A_pack_is_renamed_with_if_match_and_its_settings_entry_follows()
+    {
+        await using var host = EditorHost.Create();
+        var pack = await host.GetAsync("/api/packs/sql-ddl");
+        var hash = Hash(pack);
+        const string Route = "/api/packs/{pack}/rename";
+
+        Assert.Equal(428, (await host.SendJsonAsync("POST", "/api/packs/sql-ddl/rename", new { name = "ddl" })).Status);
+        var stale = await host.SendJsonAsync("POST", "/api/packs/sql-ddl/rename", new { name = "ddl" }, r => r.IfMatch(new string('0', 64)));
+        Assert.Equal(409, stale.Status);
+        Contract.AssertResponse(stale, Route);
+        Assert.Equal(hash, Hash(stale));
+        var taken = await host.SendJsonAsync("POST", "/api/packs/sql-ddl/rename", new { name = "csharp-dapper" }, r => r.IfMatch(hash));
+        Assert.Equal(422, taken.Status);
+        Contract.AssertResponse(taken, Route);
+        Assert.Equal(422, (await host.SendJsonAsync("POST", "/api/packs/sql-ddl/rename", new { name = "Bad Name" }, r => r.IfMatch(hash))).Status);
+        Assert.Equal(400, (await host.SendJsonAsync("POST", "/api/packs/sql-ddl/rename", new { }, r => r.IfMatch(hash))).Status);
+        Assert.Equal(400, (await host.SendJsonAsync("POST", "/api/packs/Bad%20Name/rename", new { name = "ddl" }, r => r.IfMatch(hash))).Status);
+        var ghost = await host.SendJsonAsync("POST", "/api/packs/ghost/rename", new { name = "ddl" }, r => r.IfMatch(hash));
+        Assert.Equal(404, ghost.Status);
+        Contract.AssertResponse(ghost, Route);
+        Assert.True(File.Exists(host.PathOf(".maquettiste/templates/sql-ddl/pack.json")));
+
+        var dry = await host.SendJsonAsync("POST", "/api/packs/sql-ddl/rename", new { name = "ddl", dryRun = true }, r => r.IfMatch(hash));
+        Assert.Equal(200, dry.Status);
+        Contract.AssertResponse(dry, Route);
+        Assert.Contains(dry.Json["files"]!.AsArray(), f => f!.GetValue<string>() == "pack.json");
+        Assert.True(File.Exists(host.PathOf(".maquettiste/templates/sql-ddl/pack.json")));
+        Assert.Empty(host.Published("packs.changed"));
+
+        var renamed = await host.SendJsonAsync("POST", "/api/packs/sql-ddl/rename", new { name = "ddl" }, r => r.IfMatch(hash));
+        Assert.Equal(200, renamed.Status);
+        Contract.AssertResponse(renamed, Route);
+        Assert.Equal(("saved", "sql-ddl", "ddl"), (renamed.Json["outcome"]!.GetValue<string>(), renamed.Json["from"]!.GetValue<string>(), renamed.Json["to"]!.GetValue<string>()));
+        Assert.Equal("\"" + Hash(renamed) + "\"", renamed.Headers.ETag!.ToString());
+        Assert.False(Directory.Exists(host.PathOf(".maquettiste/templates/sql-ddl")));
+        Assert.True(File.Exists(host.PathOf(".maquettiste/templates/ddl/pack.json")));
+        var settings = File.ReadAllText(host.PathOf(".maquettiste/maquettiste.json"));
+        Assert.DoesNotContain("\"sql-ddl\"", settings, StringComparison.Ordinal);
+        Assert.Contains("\"ddl\"", settings, StringComparison.Ordinal);
+        Assert.Equal(404, (await host.GetAsync("/api/packs/sql-ddl")).Status);
+        Assert.Equal(renamed.Json["hash"]!.GetValue<string>(), Hash(await host.GetAsync("/api/packs/ddl")));
+        // Every editor hears the settings change and that both names' files changed (the old one is gone, the new one appears).
+        Assert.Contains(host.Published("project.changed"), e => e.Payload["settingsHash"]!.GetValue<string>() == renamed.Json["settingsHash"]!.GetValue<string>());
+        Assert.Equal(["ddl", "sql-ddl"], host.Published("templates.changed").Select(e => e.Payload["pack"]!.GetValue<string>()));
+        Assert.Equal(["ddl", "sql-ddl"], Assert.Single(host.Published("packs.changed")).Payload["packs"]!.AsArray().Select(p => p!.GetValue<string>()));
+    }
+
+    [Fact]
     public async Task Pack_json_saves_canonical_with_if_match_and_new_packs_are_created()
     {
         await using var host = EditorHost.Create();

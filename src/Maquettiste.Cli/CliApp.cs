@@ -148,6 +148,10 @@ public sealed class CliApp(CliEnvironment environment)
                                   --from empty|sql-ddl|csharp-dapper
           pack remove <name>    Preview removing a pack (its folder, its packs.<name> settings entry and its manifests);
                                   --apply removes it; the files it generated stay on disk, untracked; --format text|json
+          pack rename <name> <new-name>
+                                Preview renaming a pack (its folder, its packs.<name> settings entry, its manifests and unit
+                                  states); --apply renames it and moves the generation hints that name it (--keep-hints
+                                  leaves them); the files it generated stay tracked; --format text|json
           bench                 Run the synthetic benchmark
                                   --out <dir>, --seed, --entities, --relations, --enums, --fanout, --keep,
                                   --baseline <file>, --max-regression <percent>, --format text|json, --no-example-packs,

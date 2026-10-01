@@ -85,6 +85,26 @@ internal sealed partial class ModelTools
         return result.Outcome == SaveOutcome.NotFound ? NotFound("pack", pack) : FromOutcome(result.Outcome, result, null);
     }), ct);
 
+    /// <summary>Renames a pack (renamePack).</summary>
+    [McpServerTool(Name = "rename_pack", Title = "Rename pack", Destructive = false, Idempotent = false, OpenWorld = false)]
+    [Description("Renames a template pack if pack.json still has expectedHash (the hash from get_pack): its packs.<pack> entry in maquettiste.json becomes packs.<name> with its values, the folder .maquettiste/templates/<pack>/ is renamed and pack.json names it, and its manifests and unit states move, so the files it generated stay tracked (tracked lists them). The name follows the pack-name rule (lowercase letters and digits separated by single hyphens) and must not be taken by another pack, settings entry or former pack's manifests; otherwise invalid and nothing changes. hints lists the elements whose generation hints name the old pack; with updateHints (the default) they move to the new name in one model batch after the rename, and hintsUpdated lists them (a refused batch leaves the rename in place and adds a warning). Waits for a generation run in progress.")]
+    public Task<CallToolResult> RenamePack(
+        [Description("The pack name; required.")] string? pack = null,
+        [Description("The new name; required.")] string? name = null,
+        [Description("The pack.json hash returned by get_pack; required.")] string? expectedHash = null,
+        [Description("Move the generation hints keyed by the old name to the new one (default true).")] bool updateHints = true,
+        CancellationToken ct = default) => GuardAsync(() => PackAsync(async () =>
+    {
+        if (string.IsNullOrEmpty(pack))
+            return BadRequest("pack is required.");
+        if (name is null)
+            return BadRequest("name is required.");
+        if (string.IsNullOrEmpty(expectedHash))
+            return Problem("precondition-required", 428, "expectedHash is required: read the pack with get_pack first.");
+        var result = await _generation.RenamePackAsync(pack, name, expectedHash, ct, ChangeSource.Cli, updateHints: updateHints).ConfigureAwait(false);
+        return result.Outcome == SaveOutcome.NotFound ? NotFound("pack", pack) : FromOutcome(result.Outcome, result, null);
+    }), ct);
+
     /// <summary>Reads one pack file (getPackFile).</summary>
     [McpServerTool(Name = "read_pack_file", Title = "Read pack file", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("The text and hash of one pack file (a template, partial, script or other file) by its pack-relative path.")]

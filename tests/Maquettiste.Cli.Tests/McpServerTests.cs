@@ -14,7 +14,7 @@ public sealed class McpSurfaceTests
         "get_pack_outputs", "get_plan", "get_plan_diff", "get_project", "get_references", "get_resolved_model", "get_schema", "get_settings", "get_template_context",
         "get_translations", "import_process", "import_seed_csv", "list_pack_files", "list_packs", "list_validation_rules",
         "localization_status", "move_pack_file", "new_pack", "plan", "preview_unit", "read_pack_file", "record_scenario",
-        "reference_type_usage", "save_element", "save_pack", "save_pack_settings", "save_settings", "set_translations", "simulate_process",
+        "reference_type_usage", "rename_pack", "save_element", "save_pack", "save_pack_settings", "save_settings", "set_translations", "simulate_process",
         "sync_enum_from_process", "unit_paths", "validate", "verify_scenarios", "write_pack_file",
     ];
 

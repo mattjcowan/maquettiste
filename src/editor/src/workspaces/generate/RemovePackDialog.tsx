@@ -29,7 +29,7 @@ export function RemovePackButton({ pack, hash, fileCount, outputBase }: { pack: 
       <Button
         size="sm"
         variant="ghost"
-        className="ml-auto text-danger"
+        className="text-danger"
         title={`Delete .maquettiste/templates/${pack}/ and its settings; generated files stay on disk`}
         onClick={() => setOpen(true)}
         data-testid="pack-remove"

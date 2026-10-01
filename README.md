@@ -23,7 +23,7 @@ value objects, custom types, domains, databases and mappings, diagrams, referenc
 canonical form; a loader, validator (every rule an MQ id in the rule catalog, with a test) and resolver; template packs in
 a sandbox; an incremental planner that explains why each unit renders; a writer that never writes outside `outputs.allow`;
 a manifest, hand-edit detection and `generate --check` for CI; the CLI (`init`, `validate`, `generate`, `format`, `l10n`,
-`seed`, `pack new`, `mcp`, and later `model export` and `model stats`) and an agent server with 39 tools at the time, 50 today (`docs/mcp.md`), including the bulk reads an external system needs to pull a model of thousands of elements: documents in pages, the resolved model as flat records, and kind counts. Example packs: `sql-ddl` and `csharp-dapper`.
+`seed`, `pack new`, `mcp`, and later `model export` and `model stats`) and an agent server with 39 tools at the time, 51 today (`docs/mcp.md`), including the bulk reads an external system needs to pull a model of thousands of elements: documents in pages, the resolved model as flat records, and kind counts. Example packs: `sql-ddl` and `csharp-dapper`.
 
 **Gate 1 (pass).** The synthetic benchmark (5,000 entities, 20,000 relations, seed 42, `--jobs 8`) writes 100,050 files;
 against the Section 13 budgets: load, validate and resolve 1.7 s (3 s), plan 0.1 s (2 s), render 2.2 s (40 s), post-process

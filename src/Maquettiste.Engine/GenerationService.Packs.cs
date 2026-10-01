@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Generation;
 using Maquettiste.Engine.Hashing;
@@ -441,6 +442,89 @@ public sealed partial class GenerationService
                 _registrations.TryRemove(pack, out _);
             }
         }
+    }
+
+    /// <summary>
+    /// Renames a pack when <c>pack.json</c> still has <paramref name="expectedHash"/>: its <c>packs.&lt;pack&gt;</c> settings entry becomes
+    /// <c>packs.&lt;newName&gt;</c>, its folder under <c>.maquettiste/templates/</c> is renamed and <c>pack.json</c> names it, and its manifests and
+    /// unit states move to the new name, under the run lock (waiting for a run in progress), so the files it generated stay tracked
+    /// (engine-design.md, pack rename). Generation hints keyed by the old name are listed; with <paramref name="updateHints"/> they then
+    /// move to the new name in one model batch (<see cref="RenamePackHintsAsync"/>).
+    /// </summary>
+    /// <param name="pack">The pack name.</param>
+    /// <param name="newName">The new name: a pack key no other pack, settings entry or manifest uses.</param>
+    /// <param name="expectedHash">The <c>pack.json</c> hash the caller read (<c>GET /api/packs/{pack}</c>).</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <param name="source">What caused the settings and model changes.</param>
+    /// <param name="dryRun">Check everything and report what would move, writing nothing.</param>
+    /// <param name="updateHints">After the rename, move the hints keyed by the old name to the new one.</param>
+    /// <returns>Saved with what moved; conflict, invalid or not-found with nothing changed.</returns>
+    /// <exception cref="PackPathException">The name is not a pack key, the folder is a link, or a path may not be written.</exception>
+    public async Task<PackRenameResult> RenamePackAsync(string pack, string newName, string expectedHash, CancellationToken ct,
+        ChangeSource source = ChangeSource.Editor, bool dryRun = false, bool updateHints = false)
+    {
+        ArgumentNullException.ThrowIfNull(newName);
+        ArgumentNullException.ThrowIfNull(expectedHash);
+        if (!File.Exists(Path.Combine(PackAuthoring.PackRoot(_options, pack), "pack.json")))
+            return new PackRenameResult(SaveOutcome.NotFound, pack, newName, null, null, null, [], [], [], []);
+        PackRenameResult result;
+        var held = Epoched(await _services.RunLock.AcquireAsync(true, ct).ConfigureAwait(false))
+            ?? throw new InvalidOperationException("The run lock was not acquired.");
+        await using (held.ConfigureAwait(false))
+        {
+            try
+            {
+                result = await PackAuthoring.RenameAsync(_services, _store, pack, newName, expectedHash, dryRun, source, ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                foreach (var name in new[] { pack, newName })
+                {
+                    _sessions.TryRemove(name, out _);
+                    _registrations.TryRemove(name, out _);
+                }
+            }
+        }
+
+        if (dryRun || !updateHints || result.Outcome != SaveOutcome.Saved || result.Hints.Count == 0)
+            return result;
+        // The folder has moved: the hint update no longer depends on the caller's token.
+        var batch = await RenamePackHintsAsync(pack, newName, CancellationToken.None, source).ConfigureAwait(false);
+        if (batch is null)
+            return result;
+        if (batch.Outcome == SaveOutcome.Saved)
+            return result with { HintsUpdated = [.. batch.Items.Select(i => i.Id).OfType<string>().Order(StringComparer.Ordinal)] };
+        var why = batch.Items.SelectMany(i => i.Diagnostics).Select(d => d.Message).FirstOrDefault() ?? batch.Outcome.ToString();
+        return result with
+        {
+            Diagnostics = [RuleCatalog.Create("MQ6001", $"The pack was renamed, but its generation hints still name '{pack}': the hint update was refused ({why}).")
+                with { Severity = DiagnosticSeverity.Warning }],
+        };
+    }
+
+    /// <summary>
+    /// Moves every generation hint keyed by <paramref name="from"/> to <paramref name="to"/> in one model batch (all or nothing), each element
+    /// checked against the hash it has now (<see cref="PackHints.Rename"/>): what a pack rename does with <c>updateHints</c>.
+    /// </summary>
+    /// <param name="from">The old pack name.</param>
+    /// <param name="to">The new pack name.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <param name="source">What caused the change.</param>
+    /// <returns>The batch result, or <see langword="null"/> when no hint names <paramref name="from"/>.</returns>
+    public async Task<BatchResult?> RenamePackHintsAsync(string from, string to, CancellationToken ct, ChangeSource source = ChangeSource.Editor)
+    {
+        var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var operations = new List<BatchOperation>();
+        foreach (var document in snapshot.Documents.Where(d => PackHints.Names(d.Json, from)).OrderBy(d => d.Element.Id, StringComparer.Ordinal))
+        {
+            var node = JsonNode.Parse(document.Json.GetRawText())!;
+            if (PackHints.Rename(node, from, to) == 0)
+                continue;
+            using var json = JsonDocument.Parse(node.ToJsonString());
+            operations.Add(new BatchOperation(BatchOp.Update, document.Element.Id, document.Hash, json.RootElement.Clone()));
+        }
+
+        return operations.Count == 0 ? null : await _store.ApplyBatchAsync(new ModelBatch(operations), source, ct).ConfigureAwait(false);
     }
 
     /// <summary>One unit of a stored plan with its reason, causes and grouped read keys; <see langword="null"/> when not found.</summary>
