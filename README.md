@@ -1,73 +1,167 @@
-# maquettiste
-Visual designer for entities, relations, processes and databases with code generation capabilities
+# Maquettiste
 
-## Building
+Maquettiste is a visual designer for entities, relations, processes and databases that generates code through template
+packs your team owns. An editor, a command line and an agent server all work over one model, kept as JSON files in your
+repository.
 
-Requires the .NET SDK pinned in `global.json` (10.0.109).
+![The editor in dark mode: the domain model explorer listing twelve domains, and the Returns and service diagram on the canvas, ten entity cards with their attributes and types joined by named relations](docs/images/editor-dark.png)
+
+## What you get
+
+- **One model in the repository.** Each domain, entity, relation, enum, process and database is one JSON file under
+  `.maquettiste/`, always written in one canonical form, so a change reviews and merges like code
+  ([what you are editing](docs/user-guide.md#what-you-are-editing)).
+- **An editor.** It has a domain model canvas with element editors, databases that hold only what you map to them,
+  reference data with seed rows, and processes as statecharts you can simulate
+  ([the explorers and screens](docs/user-guide.md#the-explorers-and-screens)).
+- **Generation you control.** Template packs live in the repository and you edit them like any other file. A plan says
+  why each file renders before you apply it, and `generate --check` fails a CI job when the committed output no longer
+  matches the model ([generation](docs/user-guide.md#generation-how-the-model-becomes-files)).
+- **An agent server.** `maquettiste mcp` serves the model to coding agents over the Model Context Protocol, through the
+  same write path as the editor. Its tools read, change, validate and generate the model, 51 today
+  ([docs/mcp.md](docs/mcp.md)).
+- **A command line.** The same engine without the editor, for terminals and CI
+  ([the command line](docs/user-guide.md#the-command-line)).
+- **Localization.** The names, labels and descriptions of the model translate per locale, with XLIFF and CSV files for
+  translators ([translating the model](docs/user-guide.md#translating-the-model-in-the-editor)).
+
+Processes are statecharts. A lifecycle gives one entity its states, and an orchestration coordinates people, systems and
+other processes. The simulation panel runs a process step by step and records a run as a scenario. The engine replays
+every scenario as a test, and the example packs generate code and documentation from processes
+([processes, actors and scenarios](docs/user-guide.md#processes-actors-and-scenarios)).
+
+![The process editor in dark mode: the purchase approval orchestration as a statechart, with a review state whose budget and compliance regions run in parallel, an approval state with a gate of signers, and the ordering states after it](docs/images/process-chart-dark.png)
+
+## Getting started
+
+You need Docker or Podman. One image, `mattjcowan/maquettiste:<tag>`, carries the editor, the command line and the agent
+server. The current tag is in [docs/demo.md](docs/demo.md) and on the
+[registry](https://hub.docker.com/r/mattjcowan/maquettiste). Use the same tag everywhere below. With Podman, type
+`podman` where this says `docker`.
+
+Save this as `maquettiste.compose.yaml` in the root of your repository, with the tag filled in:
+
+```yaml
+services:
+  maquettiste:
+    image: mattjcowan/maquettiste:<tag>
+    user: "0:0"                                                     # starts as root, then runs as the owner of .maquettiste/
+    ports: ["127.0.0.1:8080:8080"]
+    volumes:
+      - maquettiste-host:/data                                      # the editor's own state (users, keys, index cache)
+      - ./.maquettiste:/data/sites/maquettiste.localhost/data       # the model
+      - ./:/repo                                                    # the repository: generated files land here
+    environment:
+      MAQUETTISTE_REPO_ROOT: /repo
+      MAQUETTISTE_UID: ${MAQUETTISTE_UID:-}                         # optional override; empty = the owner of .maquettiste/
+      MAQUETTISTE_GID: ${MAQUETTISTE_GID:-}
+      MAQUETTISTE_EDITOR_TOKEN: ${MAQUETTISTE_EDITOR_TOKEN:-}
+volumes:
+  maquettiste-host:
+```
+
+Run `init` before the first `up`. Otherwise Docker creates `.maquettiste/` empty and the editor starts on a project with
+no settings.
+
+### Mac
+
+```zsh
+cd <your repository>
+docker run --rm --user 0:0 -v "$(pwd -P):/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste init
+export MAQUETTISTE_EDITOR_TOKEN=$(openssl rand -hex 24)
+docker compose -f maquettiste.compose.yaml up -d
+```
+
+Open http://maquettiste.localhost:8080. Docker Desktop on the Mac may show the sign-in page, because the browser's
+requests reach the container from another address: paste the token (`echo $MAQUETTISTE_EDITOR_TOKEN | pbcopy`). The
+repository must sit in a folder Docker shares with containers (your home folder is shared by default). `$(pwd -P)` mounts
+the real path of the folder, which file sharing needs when you reached it through a link. An agent client started from
+the Dock does not inherit your shell's `PATH`, so the entry `init --mcp --docker` writes adds `/opt/homebrew/bin`,
+`/usr/local/bin` and `$HOME/.docker/bin` to find `docker`.
+
+### Linux
+
+```sh
+cd <your repository>
+docker run --rm --user 0:0 -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste init
+docker compose -f maquettiste.compose.yaml up -d
+```
+
+Open http://maquettiste.localhost:8080. Nothing else is needed. The container runs as the owner of the folder, so the
+model and the generated files stay yours, and there is no sign-in in local mode. Rootless Podman works with the same file.
+
+### Windows with WSL
+
+Run the Linux commands in a WSL terminal. Keep the repository in the WSL filesystem (for example `~/src`), not under
+`/mnt/c`: file access across the Windows drive is slow, and file change events from Windows do not reach Linux. WSL
+forwards the port to Windows, so open http://maquettiste.localhost:8080 in a Windows browser. If Windows already uses
+port 8080, change the ports line to another host port, such as `"127.0.0.1:8094:8080"`, and open that port. With Docker
+Engine inside WSL there is no sign-in; with Docker Desktop, set a token as on the Mac.
+
+## Updating
+
+A new version is a new image tag. In the repository:
+
+```sh
+docker pull mattjcowan/maquettiste:<new tag>
+# change the image: line of maquettiste.compose.yaml to the new tag
+docker compose -f maquettiste.compose.yaml up -d
+docker run --rm --user 0:0 -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<new tag> maquettiste init
+```
+
+`init` refreshes the JSON schema copies under `.maquettiste/.schema/` and keeps everything else. If you registered the
+agent server, run `init --mcp --docker mattjcowan/maquettiste:<new tag> --skill` instead. That also replaces the
+`.mcp.json` entry with the new tag, refreshes the modeling skill and removes the `mcp.sh` wrapper an earlier version
+wrote. Commit the compose file and what `init` changed, so the whole team moves together.
+
+A new version never rewrites your model files. It may report new validation findings, and the next plan may render
+files again because the engine changed.
+
+## Agents
+
+`maquettiste init --mcp --docker mattjcowan/maquettiste:<tag>` writes a `maquettiste` entry to `.mcp.json` that runs
+`maquettiste mcp` in the image over the repository, so any MCP client started there can use it. Add `--skill` for the
+modeling skill; [docs/mcp.md](docs/mcp.md) shows the entry and lists the tools.
+
+## Command line
+
+The image carries the CLI. A shell function makes it a local command:
+
+```sh
+maquettiste() { docker run --rm $([ -t 0 ] && echo -it) --user 0:0 -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste "$@"; }
+```
+
+```sh
+maquettiste validate             # checks the model and the packs, and replays every scenario
+maquettiste generate             # renders the packs into the output roots, incrementally
+maquettiste generate --check     # exits 2 when the committed output differs from the model
+```
+
+The user guide has a variant that reads the tag from the compose file, so the editor, the CLI and the agent server agree
+([from the Docker image](docs/user-guide.md#from-the-docker-image)). With the .NET SDK, the CLI is also a .NET tool:
+`dotnet tool install -g Maquettiste.Cli --prerelease`.
+
+## Documentation
+
+- [docs/user-guide.md](docs/user-guide.md): the editor, generation, processes and the command line.
+- [docs/mcp.md](docs/mcp.md): the agent server and its tools.
+- [docs/demo.md](docs/demo.md): a 20-minute walkthrough in an existing repository.
+- [docs/engineering/status.md](docs/engineering/status.md): what each phase delivered and what each gate measured.
+- [docs/engineering/](docs/engineering/): the design documents.
+- [SPEC.md](SPEC.md): the specification.
+
+## Building from source
+
+The .NET SDK pinned in `global.json` builds the engine, the CLI and the editor's functions:
 
 ```sh
 dotnet build maquettiste.slnx   # warnings are errors
 dotnet test maquettiste.slnx
+cd src/editor && npm ci && npm test
 ```
 
-`SPEC.md` is the specification; `docs/engineering/engine-design.md` is the phase 1 engine contract and
-`docs/engineering/host-contracts.md` what the editor host requires of the engine.
+The image, the bench and the end-to-end tests are in [the development notes](.claude/skills/maquettiste-dev/SKILL.md).
 
-## What is built
+## License
 
-Phases 1, 2 and 3 of `SPEC.md` Section 21 are complete (product version 0.5.1). Phase 3 answers
-`docs/engineering/phase-3-brief.md` with `docs/engineering/phase-3-design.md`, whose section 9 records every round.
-
-**Phase 1: engine and CLI.** The model as one JSON file per element under `.maquettiste/` (entities, relations, enums,
-value objects, custom types, domains, databases and mappings, diagrams, reference types, seeds, locale shards), in one
-canonical form; a loader, validator (every rule an MQ id in the rule catalog, with a test) and resolver; template packs in
-a sandbox; an incremental planner that explains why each unit renders; a writer that never writes outside `outputs.allow`;
-a manifest, hand-edit detection and `generate --check` for CI; the CLI (`init`, `validate`, `generate`, `format`, `l10n`,
-`seed`, `pack new`, `mcp`, and later `model export` and `model stats`) and an agent server with 39 tools at the time, 51 today (`docs/mcp.md`), including the bulk reads an external system needs to pull a model of thousands of elements: documents in pages, the resolved model as flat records, and kind counts. Example packs: `sql-ddl` and `csharp-dapper`.
-
-**Gate 1 (pass).** The synthetic benchmark (5,000 entities, 20,000 relations, seed 42, `--jobs 8`) writes 100,050 files;
-against the Section 13 budgets: load, validate and resolve 1.7 s (3 s), plan 0.1 s (2 s), render 2.2 s (40 s), post-process
-and write 4.5 s (15 s), cold total 6.7 s (60 s), incremental 1.4 s (2 s); output is byte-identical across runs and
-platforms and `--check` catches drift, orphans and hand edits (`bench/README.md`, `bench/baseline.json`).
-
-**Phase 2: editor.** The IDE-style shell (rail of explorers, inspector, bottom panel, collapsible panels and restored page
-state, command palette, one density), the domain model canvas and element editors (entities with inheritance and
-mappings, relationships, enums, value objects, custom types, domains with their own tags and categories), explicit
-database mapping (a database holds only what is mapped to it) with the Database screen, reference data with storage
-strategies and seed data grids, localization of the standard fields, the Generate screen with the pack editor (units,
-parameters, templates with completion and live preview, outputs) and an explained plan, project branding, and realtime
-saves with conflict handling. The user guide is `docs/user-guide.md`.
-
-**Gate 2 (pass).** The reference application (`samples/reference-app`: 200 entities in 12 domains, 439 relations, 2
-reference types) is modeled through the editor's API, edited in a browser walk, generated and applied, and its data layer
-compiles; `tools/gate2.sh` checks 209 tables, 1 view and 3 sequences applied to a live database, and `generate --check`
-keeps the committed output current.
-
-**Phase 3: processes, actors and scenarios.** Processes as statecharts (atomic, compound, parallel, final, history and
-choice states; event, delayed, completion and eventless transitions; guards and actions as JavaScript expressions or
-named stubs; service tasks, human tasks and sub-processes; gates with N of M signatures, required actors, meanings and an
-audit record), used as the lifecycle of an entity bound to an enum attribute or as an orchestration; actors (people, roles,
-external systems) and scenarios (recorded runs that the engine replays as tests) as element kinds; 49 MQ9xxx rules with
-quick fixes in the Problems panel; one interpreter in the engine for validation, simulation and verification; XState import
-and export as a projection that round-trips byte for byte; the Processes explorer, the process, actor and scenario
-editors, the statechart canvas with nested layered layout and the simulation panel that records scenarios; the CLI's
-`process simulate|record|verify|export|import|sync-enum` and six process tools in the agent server (46 tools in all at the time).
-Example packs: `csharp-dapper` gains the process units (states, definition, contracts, handler, service, machine and store
-pairs, endpoints with user-code regions, a typed dispatcher with pipeline behaviours, a generated interpreter and one test
-per scenario), `sql-ddl` gains optional process tables, and the new `process-docs` pack writes Markdown pages; the
-TypeScript sample pack mirrors the process units. The user guide's chapter is "Processes, actors and scenarios".
-
-**Gate 3 (pass).** Over `tests/fixtures/models/processes` (a sales-order lifecycle and a purchase-approval orchestration,
-both with parallel states and a gate), `tools/gate3.sh` on the merged phase 3 tree (24 cores): validate with no error and
-no warning, every file canonical; 16 of 16 scenarios verified in the engine (the fixture's 14 and one recorded through the
-editor's simulation panel for each process); `generate` with the three packs clean under `--check`, 110 files
-byte-identical at `--jobs 1`, `--jobs 24` and in the editor's apply, and the generated solution builds with
-`-warnaserror`; 16 of 16 generated scenario tests pass; each process exported to XState and imported over itself gives the
-same bytes; the bench (5,000 entities, 1,000 processes, 5 of 400 states, 5,000 scenarios) meets every budget: macrostep
-p95 0.006 ms (0.2 ms), guard p95 0.003 ms (0.05 ms), simulate of 200 inputs 12.7 ms (30 ms), rules of one 400-state process
-2.9 ms (10 ms), whole-model rules 359 ms added (400 ms), replay of every scenario 2.74 s (3 s), export 5.8 ms and import
-8.3 ms (50 ms).
-
-Known misses carried forward, none a gate item: a few editor timings on the 5,000-entity scale dataset
-(`docs/engineering/explorer-redesign.md` §4.5) and the listed "Left" items of the design documents, the phase 3 ones
-gathered in `docs/engineering/phase-3-design.md`'s close-out paragraph.
+MIT. See [LICENSE](LICENSE).
