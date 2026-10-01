@@ -14,6 +14,8 @@ import {
   NODE_WIDTH,
   parseView,
   relationEnds,
+  relationBoxRows,
+  relationBoxSize,
   relationLabelSize,
   selectedEntities,
   storedPosition,
@@ -22,7 +24,7 @@ import {
 } from "@/canvas/model";
 import { reapplyDiagram } from "@/state/drafts";
 import { elkGraph } from "@/canvas/layout";
-import { labelOffset } from "@/canvas/RelationEdge";
+import { attributeBoxPlacement, labelOffset } from "@/canvas/RelationEdge";
 import type { ModelJson } from "@/api/types";
 
 const rows = [
@@ -219,6 +221,83 @@ describe("layout input", () => {
     expect(labelOffset({ sourceX: 0, sourceY: 0, targetX: 300, targetY: 0 }, label)).toEqual({ dx: 0, dy: 0 });
     expect(labelOffset({ sourceX: 0, sourceY: 0, targetX: 96, targetY: 4 }, label)).toEqual({ dx: 0, dy: -17 });
     expect(labelOffset({ sourceX: 0, sourceY: 0, targetX: 2, targetY: 30 }, label)).toEqual({ dx: -56, dy: 0 });
+  });
+
+  describe("relation attributes on the diagram (the attribute box)", () => {
+    const settles = {
+      name: "settles",
+      attributes: [
+        { id: "a1", name: "allocated", type: { ref: "money" }, required: true },
+        { id: "a2", name: "note", type: "string" as const },
+      ],
+    } as Pick<RelationDoc, "name" | "attributes">;
+    const typeLabel = (a: { type: unknown }) => (typeof a.type === "string" ? a.type : "Money");
+    const all = { mode: "all" as const, typeLabel };
+
+    it("sizes the box from its widest row, one 24 px row per attribute under a 24 px header", () => {
+      const size = relationBoxSize(settles, all);
+      // "allocated" (9 chars, 12 px) and "Money" (5 chars, 11 px mono): 16 + 16 + 4 + 64.8 + 4 + 33 = 137.8, plus the border.
+      expect(size).toEqual({ width: 140, height: 2 + 24 + 4 + 2 * 24 });
+      // Names only drops the type column: narrower, never under the minimum width.
+      expect(relationBoxSize(settles, { mode: "names", typeLabel })).toEqual({ width: 120, height: 78 });
+      // A long type makes the box wider, up to a card's width.
+      expect(relationBoxSize(settles, { mode: "all", typeLabel: () => "x".repeat(80) })?.width).toBe(NODE_WIDTH);
+    });
+
+    it("draws no box for Keys only (a relation has no key of its own) or a relation without attributes", () => {
+      expect(relationBoxRows(settles, "keys")).toEqual([]);
+      expect(relationBoxRows(settles, "names").map((a) => a.name)).toEqual(["allocated", "note"]);
+      expect(relationBoxSize(settles, { mode: "keys", typeLabel })).toBeNull();
+      expect(relationBoxSize({ name: "places" }, all)).toBeNull();
+      // No box: the pill keeps its attribute count badge.
+      expect(relationLabelSize(settles, { mode: "keys", typeLabel })).toEqual(relationLabelSize(settles));
+    });
+
+    it("gives the layout the pill and the box under it, without the badge the box replaces", () => {
+      const pill = relationLabelSize({ name: "settles" });
+      expect(relationLabelSize(settles).width).toBeGreaterThan(pill.width);
+      // As wide as the box on either side of the line (it moves beside an upright stretch), the box under the pill.
+      expect(relationLabelSize(settles, all)).toEqual({ width: 2 * 140 + 12, height: pill.height + 12 + 78 });
+      const input = layoutInput([{ id: "a" }, { id: "b" }], [{ id: "r", source: "a", target: "b", data: { relation: settles, attributeBox: all } }]);
+      expect(input.edges[0].label).toEqual({ width: 292 + 24, height: 22 + 12 + 78 + 12 });
+      // Off: the pill alone, as before.
+      const off = layoutInput([{ id: "a" }, { id: "b" }], [{ id: "r", source: "a", target: "b", data: { relation: settles, attributeBox: null } }]);
+      expect(off.edges[0].label).toEqual({ width: relationLabelSize(settles).width + 24, height: 22 + 12 });
+    });
+
+    it("hangs the box off the pill, clear of the line, joined by a short connector", () => {
+      const pill = { width: 60, height: 22 };
+      const box = { width: 140, height: 78 };
+      // The line level through the label: the pill on the line, the box centered below it.
+      expect(attributeBoxPlacement({ sourceX: 0, sourceY: 0, targetX: 400, targetY: 20 }, pill, box)).toEqual({
+        pill: { dx: 0, dy: 0 },
+        box: { dx: 0, dy: 11 + 12 + 39 },
+        connector: { x1: 0, y1: 11, x2: 0, y2: 23 },
+      });
+      // A short horizontal run: the pill moved above the line (labelOffset), the box above the pill.
+      expect(attributeBoxPlacement({ sourceX: 0, sourceY: 0, targetX: 50, targetY: 0 }, pill, box)).toEqual({
+        pill: { dx: 0, dy: -17 },
+        box: { dx: 0, dy: -17 - 11 - 12 - 39 },
+        connector: { x1: 0, y1: -28, x2: 0, y2: -40 },
+      });
+      // A short vertical run: the pill moved left of the line, the line too short to reach the box below.
+      expect(attributeBoxPlacement({ sourceX: 0, sourceY: 0, targetX: 0, targetY: 30 }, pill, box)).toEqual({
+        pill: { dx: -36, dy: 0 },
+        box: { dx: -36, dy: 11 + 12 + 39 },
+        connector: { x1: -36, y1: 11, x2: -36, y2: 23 },
+      });
+      // The label on an upright stretch, the target lower and to the right: the line turns right at the bottom, so the
+      // box hangs below and left of the stretch, the connector from the pill's left half.
+      expect(attributeBoxPlacement({ sourceX: 0, sourceY: 0, targetX: 200, targetY: 100 }, pill, box)).toEqual({
+        pill: { dx: 0, dy: 0 },
+        box: { dx: -(6 + 70), dy: 11 + 12 + 39 },
+        connector: { x1: -15, y1: 11, x2: -15, y2: 23 },
+      });
+      // The target higher: the lower end turns left toward the source, so the box goes right.
+      expect(attributeBoxPlacement({ sourceX: 0, sourceY: 100, targetX: 200, targetY: 0 }, pill, box).box).toEqual({ dx: 6 + 70, dy: 62 });
+      // A long vertical run (the target below, a little right): the same rule.
+      expect(attributeBoxPlacement({ sourceX: 0, sourceY: 0, targetX: 10, targetY: 300 }, pill, box).box).toEqual({ dx: -76, dy: 62 });
+    });
   });
 
   it("uses measured sizes and falls back to the default card size", () => {

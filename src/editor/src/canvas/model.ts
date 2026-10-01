@@ -1,7 +1,7 @@
 // The Entities canvas model (phase2-design.md 4.8), kept free of React so it can be unit tested:
 // which elements a view shows, where each card goes, how a relation edge attaches, how positions
 // are written back into a diagram, and what "Add related to depth N" adds.
-import type { DiagramDoc, DiagramMember, ElementSummary, RelationDoc } from "@/api/types";
+import type { AttributeDoc, DiagramDoc, DiagramMember, ElementSummary, RelationDoc } from "@/api/types";
 import { indexPatchOf } from "@/api/indexPatch";
 import type { LayoutEdge, LayoutNode } from "./layout";
 
@@ -145,23 +145,77 @@ export const LABEL_HEIGHT = 22;
 /** The clear space the layout keeps between a label and the cards beside it. */
 export const LABEL_GAP = 12;
 
-/** The size of a relation's label pill from its text (the name, plus the attribute count when it has attributes). */
-export function relationLabelSize(relation: Pick<RelationDoc, "name" | "attributes">): { width: number; height: number } {
-  const badge = relation.attributes?.length ? 2 + String(relation.attributes.length).length : 0;
-  return { width: Math.ceil(((relation.name ?? "").length + badge) * LABEL_TEXT_PX * 0.6) + 2 * LABEL_PADDING, height: LABEL_HEIGHT };
+/** The Display menu's attribute detail: every attribute, the key attributes only, or the names without types. */
+export type DisplayMode = "all" | "keys" | "names";
+
+/**
+ * The Display menu's "Relation attributes" option: each relation's attributes drawn in a box hung off its label pill
+ * (the UML association class), with the attribute detail of the cards and the type text the cards use.
+ */
+export interface AttributeBox {
+  mode: DisplayMode;
+  typeLabel: (attribute: AttributeDoc) => string;
+}
+
+/** The attribute box: 24 px rows (the cards' rows), a 24 px header with the relation's name, 2 px padding above and below
+ * the rows, a 1 px border; between 120 px and a card's width wide. */
+export const BOX_ROW = 24;
+export const BOX_HEADER = 24;
+export const BOX_MIN_WIDTH = 120;
+export const BOX_MAX_WIDTH = NODE_WIDTH;
+/** The space between the label pill and the box, which the dashed connector spans. */
+export const BOX_GAP = 12;
+
+/**
+ * The attributes a relation's box lists. Keys only lists the key attributes, and a relation has no key of its own (its
+ * ends identify it), so it lists none; All attributes and Names only list them all (Names only without their types).
+ */
+export function relationBoxRows(relation: Pick<RelationDoc, "attributes">, mode: DisplayMode): AttributeDoc[] {
+  return mode === "keys" ? [] : [...(relation.attributes ?? [])];
+}
+
+/** The size of a relation's attribute box, or null when it would list nothing (no box is drawn, the pill keeps its badge). */
+export function relationBoxSize(relation: Pick<RelationDoc, "name" | "attributes">, box: AttributeBox): { width: number; height: number } | null {
+  const rows = relationBoxRows(relation, box.mode);
+  if (!rows.length) return null;
+  // The header: 12 px semibold text; a row: padding, the 16 px marker column, the name in 12 px, the type in 11 px monospace.
+  const header = (relation.name ?? "").length * 12 * 0.62 + 2 * LABEL_PADDING;
+  const row = (a: AttributeDoc) =>
+    2 * LABEL_PADDING + 16 + 4 + (a.name ?? "").length * 12 * 0.6 + (box.mode === "names" ? 0 : 4 + box.typeLabel(a).length * LABEL_TEXT_PX * 0.6);
+  const width = Math.ceil(Math.max(header, ...rows.map(row))) + 2;
+  return { width: Math.min(BOX_MAX_WIDTH, Math.max(BOX_MIN_WIDTH, width)), height: 2 + BOX_HEADER + 4 + rows.length * BOX_ROW };
+}
+
+/**
+ * The size of a relation's label from its text: the pill (the name, plus the attribute count when it has attributes and
+ * no box lists them). With the attribute box, the pill and the box under it, as wide as the box on either side of the
+ * line (where the label sits on an upright stretch the box moves beside it), so the layout makes room for both.
+ */
+export function relationLabelSize(relation: Pick<RelationDoc, "name" | "attributes">, box?: AttributeBox | null): { width: number; height: number } {
+  const boxSize = box ? relationBoxSize(relation, box) : null;
+  const badge = !boxSize && relation.attributes?.length ? 2 + String(relation.attributes.length).length : 0;
+  const pill = { width: Math.ceil(((relation.name ?? "").length + badge) * LABEL_TEXT_PX * 0.6) + 2 * LABEL_PADDING, height: LABEL_HEIGHT };
+  if (!boxSize) return pill;
+  return { width: Math.max(pill.width, 2 * boxSize.width + BOX_GAP), height: pill.height + BOX_GAP + boxSize.height };
 }
 
 /** The layout input for a set of cards and edges, with measured sizes when React Flow has them, and each relation
- * edge's label size so the layout makes room for it (a label sitting on a card is unreadable on a large diagram). */
+ * edge's label size so the layout makes room for it (a label sitting on a card is unreadable on a large diagram); with
+ * the attribute box on, the label is the pill and its box. */
 export function layoutInput(
   nodes: readonly { id: string; measured?: { width?: number; height?: number } }[],
-  edges: readonly { id: string; source: string; target: string; data?: { relation?: Pick<RelationDoc, "name" | "attributes"> } }[],
+  edges: readonly {
+    id: string;
+    source: string;
+    target: string;
+    data?: { relation?: Pick<RelationDoc, "name" | "attributes">; attributeBox?: AttributeBox | null };
+  }[],
 ): { nodes: LayoutNode[]; edges: LayoutEdge[] } {
   return {
     nodes: nodes.map((n) => ({ id: n.id, width: n.measured?.width || NODE_WIDTH, height: n.measured?.height || NODE_HEIGHT })),
     edges: edges.map((e) => {
       const relation = e.data?.relation;
-      const label = relation ? relationLabelSize(relation) : null;
+      const label = relation ? relationLabelSize(relation, e.data?.attributeBox) : null;
       return {
         id: e.id,
         source: e.source,

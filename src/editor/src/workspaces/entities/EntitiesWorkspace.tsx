@@ -36,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -78,6 +79,15 @@ import { allOf, DOMAIN_VIEWS_LABEL, KIND_LABELS } from "@/model/labels";
 
 const nodeTypes = { entity: EntityNode };
 const edgeTypes = { relation: RelationEdge };
+
+/** The Display menu's options, kept per browser for each view (PD18): attribute detail, cardinality notation, and
+ * whether relations show their attributes in a box off the label. */
+interface DisplayOptions {
+  mode: DisplayMode;
+  notation: Notation;
+  relationAttributes: boolean;
+}
+const DEFAULT_DISPLAY: DisplayOptions = { mode: "all", notation: "uml", relationAttributes: false };
 
 function cssColor(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -200,11 +210,11 @@ function EntitiesCanvas() {
     return map;
   }, [validation.data]);
 
-  const [display, setDisplay] = useState<{ mode: DisplayMode; notation: Notation }>({ mode: "all", notation: "uml" });
+  const [display, setDisplay] = useState<DisplayOptions>(DEFAULT_DISPLAY);
   useEffect(() => {
-    setDisplay(local.getJson<{ mode: DisplayMode; notation: Notation }>(`mq.display.${viewKey}`) ?? { mode: "all", notation: "uml" });
+    setDisplay({ ...DEFAULT_DISPLAY, ...local.getJson<Partial<DisplayOptions>>(`mq.display.${viewKey}`) });
   }, [viewKey]);
-  const changeDisplay = (next: { mode: DisplayMode; notation: Notation }) => {
+  const changeDisplay = (next: DisplayOptions) => {
     setDisplay(next);
     local.setJson(`mq.display.${viewKey}`, next);
   };
@@ -299,6 +309,18 @@ function EntitiesCanvas() {
   );
 
   const positionOf = useMemo(() => new Map(nodes.map((n) => [n.id, n.position])), [nodes]);
+  // The Display menu's "Relation attributes": each relation's attributes in a box off its label, at the cards' detail.
+  const attributeBox = useMemo(
+    () => (display.relationAttributes ? { mode: display.mode, typeLabel: typeOf } : null),
+    [display.relationAttributes, display.mode, typeOf],
+  );
+  const selectRelation = useCallback(
+    (id: string, additive: boolean) => {
+      const current = store.getState().selection;
+      select(additive ? (current.includes(id) ? current.filter((x) => x !== id) : [...current, id]) : [id]);
+    },
+    [select, store],
+  );
   const edges: RelationFlowEdge[] = useMemo(
     () =>
       relationIds
@@ -314,11 +336,11 @@ function EntitiesCanvas() {
             ...ends,
             selected: canvasSelection.includes(rid),
             ariaLabel: `${KIND_LABELS.relation} ${relation.name}`,
-            data: { relation, notation: display.notation },
+            data: { relation, notation: display.notation, attributeBox, onSelect: selectRelation },
           };
         })
         .filter((e): e is NonNullable<typeof e> => e !== null),
-    [relationIds, docs.byId, draftsState, positionOf, canvasSelection, display.notation],
+    [relationIds, docs.byId, draftsState, positionOf, canvasSelection, display.notation, attributeBox, selectRelation],
   );
 
   // The first arrangement of a domain's canvas (a drag, Auto-layout, a pan or zoom) creates the domain's diagram, with
@@ -838,6 +860,13 @@ function EntitiesCanvas() {
                 <DropdownMenuRadioItem value="keys">Keys only</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="names">Names only</DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
+              <DropdownMenuCheckboxItem
+                checked={display.relationAttributes}
+                onCheckedChange={(checked) => changeDisplay({ ...display, relationAttributes: checked === true })}
+                data-testid="display-relation-attributes"
+              >
+                Relation attributes
+              </DropdownMenuCheckboxItem>
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Cardinality</DropdownMenuLabel>
               <DropdownMenuRadioGroup value={display.notation} onValueChange={(v) => changeDisplay({ ...display, notation: v as Notation })}>

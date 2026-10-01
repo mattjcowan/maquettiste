@@ -7,8 +7,24 @@ import { Asterisk, ChevronDown, ChevronRight, KeyRound } from "lucide-react";
 import type { AttributeDoc, EntityDoc } from "@/api/types";
 import { categoryVar } from "@/design/theme";
 import { cn } from "@/lib/cn";
+import type { DisplayMode } from "./model";
 
-export type DisplayMode = "all" | "keys" | "names";
+export type { DisplayMode };
+
+/** An attribute row of a card (and of a relation's attribute box): the key or required marker, the name, and the type in
+ * monospace right-aligned (null: no type, as Names only shows a relation's attributes). */
+export function AttributeRow({ attribute, isKey, type, testid }: { attribute: AttributeDoc; isKey: boolean; type: string | null; testid: string }) {
+  return (
+    <li className="flex h-6 items-center gap-1 px-2 text-12" data-testid={testid}>
+      <span className="flex w-4 shrink-0 justify-center" aria-hidden>
+        {isKey ? <KeyRound className="size-3 text-accent" /> : attribute.required ? <Asterisk className="size-3 text-secondary" /> : null}
+      </span>
+      <span className="min-w-0 flex-1 truncate">{attribute.name}</span>
+      {type !== null ? <span className="shrink-0 font-mono text-11 text-secondary">{type}</span> : null}
+      <span className="sr-only">{isKey ? "key" : attribute.required ? "required" : ""}</span>
+    </li>
+  );
+}
 
 export interface EntityNodeData extends Record<string, unknown> {
   entity: EntityDoc;
@@ -85,14 +101,7 @@ function EntityNodeView({ id, data, selected }: NodeProps<EntityFlowNode>) {
       {showAttributes ? (
         <ul className="py-0.5" aria-label={`Attributes of ${entity.name}`}>
           {attributes.map((a) => (
-            <li key={a.id} className="flex h-6 items-center gap-1 px-2 text-12" data-testid="card-attribute">
-              <span className="flex w-4 shrink-0 justify-center" aria-hidden>
-                {keys.has(a.id) ? <KeyRound className="size-3 text-accent" /> : a.required ? <Asterisk className="size-3 text-secondary" /> : null}
-              </span>
-              <span className="min-w-0 flex-1 truncate">{a.name}</span>
-              <span className="shrink-0 font-mono text-11 text-secondary">{data.typeLabel(a)}</span>
-              <span className="sr-only">{keys.has(a.id) ? "key" : a.required ? "required" : ""}</span>
-            </li>
+            <AttributeRow key={a.id} attribute={a} isKey={keys.has(a.id)} type={data.typeLabel(a)} testid="card-attribute" />
           ))}
           {attributes.length === 0 ? <li className="px-2 py-1 text-11 text-secondary">No attributes</li> : null}
         </ul>

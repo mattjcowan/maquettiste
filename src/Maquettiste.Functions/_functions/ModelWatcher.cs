@@ -35,6 +35,9 @@ public static class ModelWatcher
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(events);
         ArgumentNullException.ThrowIfNull(settings);
+        // Subscribed before the schema refresh and the load: a save served in that first second (an endpoint loads the
+        // store on demand) must still publish model.changed, or the editor and the tests waiting on it never hear of it.
+        using var subscription = store.OnChanged(events.OnModelChangedAsync);
         await RefreshSchemasAsync(settings.Engine, logger, stoppingToken).ConfigureAwait(false);
         try
         {
@@ -47,7 +50,6 @@ public static class ModelWatcher
             throw;
         }
 
-        using var subscription = store.OnChanged(events.OnModelChangedAsync);
         var validation = events.RunValidationLoopAsync(stoppingToken);
         var root = settings.Engine.ModelRoot!;
         var paths = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true });

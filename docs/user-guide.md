@@ -223,6 +223,17 @@ database shows on the Database screen at once. The explorers remember which rows
   opens. A card that arrives later (a new entity, an entity added to the diagram without a position, one that joined
   the domain) is placed on its own, in free space beside a card it has a relationship with, or else in a row under the
   drawing; nothing else moves and the zoom stays, and a new card you just created is scrolled into view.
+
+  **Display.** The canvas toolbar's **Display** menu sets how much each card shows (**All attributes**, **Keys only**,
+  **Names only**) and the cardinality notation (**UML multiplicities** or **Crow's feet**); this browser keeps the
+  choice for each diagram. A relationship that has attributes shows a paperclip with their count on its label (point
+  at it for their names). Tick **Relation attributes** to draw them instead in a small box hung off the label by a
+  dashed line, as a UML association class: the relationship's name, then one row per attribute with its type and the
+  key and required marks, as on the cards. The box follows the attribute choice: **Names only** leaves out the types,
+  and **Keys only** shows no box (a relationship has no key of its own; its ends identify it). It sits below the label,
+  beside the line where the label is on an upright stretch, and follows the edge when you move cards; clicking it
+  selects the relationship. Turning it on moves nothing: run Auto-layout to make room for the boxes. Export to SVG or
+  PNG includes them. It is off until you tick it.
 - **Reference data**: the reference types and their rows. The Reference data explorer is the screen's list: the types
   nested by category with a count on every group, and the explorer's search operators (`*` contains, `^` starts with,
   `~` like with `%`, `=` equals); its **…** menu has **Types A to Z (no categories)** for one flat list. Clicking a
