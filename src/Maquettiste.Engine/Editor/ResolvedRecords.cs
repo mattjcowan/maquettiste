@@ -308,6 +308,7 @@ public sealed record ValueObjectRecord(string Id, string Kind, string Name, stri
 /// <param name="Precision">The precision.</param>
 /// <param name="Scale">The scale.</param>
 /// <param name="Validation">The validation, or <see langword="null"/>.</param>
+/// <param name="NativeTypes">The native type per dialect name, as written (sorted by dialect name; empty when none).</param>
 /// <param name="DisplayName">As <see cref="PackageRecord.DisplayName"/>.</param>
 /// <param name="PluralName">As <see cref="PackageRecord.PluralName"/>.</param>
 /// <param name="Description">As <see cref="PackageRecord.Description"/>.</param>
@@ -317,7 +318,7 @@ public sealed record ValueObjectRecord(string Id, string Kind, string Name, stri
 /// <param name="Properties">As <see cref="PackageRecord.Properties"/>.</param>
 /// <param name="Generation">As <see cref="PackageRecord.Generation"/>.</param>
 public sealed record ScalarTypeRecord(string Id, string Kind, string Name, string? Package, string Base, int? Length, int? Precision, int? Scale,
-    ValidationRecord? Validation, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags, string? Category,
+    ValidationRecord? Validation, IReadOnlyDictionary<string, string> NativeTypes, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags, string? Category,
     IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation);
 
 /// <summary>A resolved reference type with its rows (every seed's rows merged).</summary>
@@ -895,7 +896,7 @@ public static class ResolvedRecords
             v.DisplayName, v.PluralName, v.Description, v.Tags, v.Category?.Id, Keys(v.Stereotypes), Plain(v.Properties), v.Generation);
 
         public ScalarTypeRecord ScalarType(RScalarType s) => new(s.Id, "scalar-type", s.Name, s.Package?.Id, s.Base, s.Length, s.Precision, s.Scale, Validation(s.Validation),
-            s.DisplayName, s.PluralName, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation);
+            s.NativeTypes, s.DisplayName, s.PluralName, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation);
 
         public ReferenceTypeRecord ReferenceType(RReferenceType t) => new(t.Id, "reference-type", t.Name, t.Package?.Id, Field(t.Code), Field(t.Label),
             [.. t.Attributes.Select(a => Attribute(a))],

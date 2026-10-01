@@ -302,6 +302,7 @@ internal sealed partial class ResolveRun
         r.Precision = scalar.Precision;
         r.Scale = scalar.Scale;
         r.Validation = Validation(scalar.Validation, null);
+        r.NativeTypes = scalar.NativeTypes.ToImmutableSortedDictionary(StringComparer.Ordinal);
         _scalars[scalar.Id] = r;
         Register(r);
         Report();

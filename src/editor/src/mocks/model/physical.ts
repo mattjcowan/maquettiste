@@ -183,6 +183,14 @@ const NATIVE: Record<string, Record<string, (a: { length?: number; precision?: n
   },
 };
 
+/** Renders a native type pattern's {length}, {precision} and {scale} placeholders, missing facets taking the defaults. */
+export function renderNativePattern(pattern: string, type: string, facets: { length: number | null; precision: number | null; scale: number | null }): string {
+  return pattern
+    .replaceAll("{length}", String(facets.length ?? 255))
+    .replaceAll("{precision}", String(facets.precision ?? (type === "decimal" ? 18 : 6)))
+    .replaceAll("{scale}", String(facets.scale ?? 2));
+}
+
 export function nativeType(dialect: string, type: string, facets: { length?: number; precision?: number; scale?: number }): string {
   const map = NATIVE[dialect] ?? NATIVE.postgresql;
   return (map[type] ?? (() => type))(facets);
@@ -342,13 +350,19 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
     }
     if (target.kind === "scalar-type") {
       const base = String(target.base);
+      const length = (target.length as number | undefined) ?? (base === "string" ? defaultStringLength : null);
+      const precision = (target.precision as number | undefined) ?? null;
+      const scale = (target.scale as number | undefined) ?? null;
+      // A custom type's own native type for the dialect replaces the base's type map entry (as the engine's resolver does).
+      const own = (target.nativeTypes as Record<string, string> | undefined)?.[dialect];
       return [
         {
           name: colName(prefix + String(attr.name)),
           type: base,
-          length: base === "string" ? ((target.length as number | undefined) ?? defaultStringLength) : null,
-          precision: (target.precision as number | undefined) ?? null,
-          scale: (target.scale as number | undefined) ?? null,
+          length,
+          precision,
+          scale,
+          nativeOverride: own === undefined ? undefined : renderNativePattern(own, base, { length, precision, scale }),
           nullable: !required,
           attributeId: attrId,
           attributePath: path,
@@ -424,7 +438,7 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
           nullable: typeof entry?.nullable === "boolean" ? entry.nullable : c.nullable,
           isPrimaryKey: keyIds.has(String(attr.id)),
           isForeignKey: false,
-          nativeOverride: nativeByAttr.get(String(c.key)),
+          nativeOverride: nativeByAttr.get(String(c.key)) ?? c.nativeOverride,
           entry,
         });
       }

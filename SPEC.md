@@ -628,10 +628,10 @@ Each output root in `maquettiste.json` declares `commit: true | false`, and the 
 
 | Root kind | Default | Examples |
 | --- | --- | --- |
-| Built (gitignored, generated on every build) | `commit: false` | C# entities and repositories, TypeScript types and clients, generated tests |
+| Built (generated on every build; ignored or committed as the team prefers, Errata E39) | `commit: false` | C# entities and repositories, TypeScript types and clients, generated tests |
 | Committed (applied or published, not compiled) | `commit: true` | SQL migrations, OpenAPI specs, protobufs shared with other repos, docs, seed scripts |
 
-- `maquettiste init` writes the `.gitignore` entries for built roots. The manifest for a built root lives in `.cache/`; only committed roots keep a manifest under `.maquettiste/manifest/`, and `--check` covers committed roots only.
+- *(Errata E39, docs/engineering/spec-errata.md.)* Whether a built root is gitignored or committed is the customer's decision: a plain `maquettiste init` never reads or writes the repository's `.gitignore`, and only names the built roots. Writing the entries is an additive opt-in: `maquettiste init --gitignore` appends (or, run again, refreshes in place) a marked block listing the built roots and `.maquettiste/.cache/`, only when asked. The engine's own `.maquettiste/.cache/` ignores itself with a `.gitignore` of its own holding `*`. The manifest for a built root lives in `.cache/`; only committed roots keep a manifest under `.maquettiste/manifest/`, and `--check` covers committed roots only.
 - `regions` mode works only on committed roots. On built roots the customization pattern is `pair` and `once`, with the hand-written half in a committed path (partial classes, extension modules).
 - A clean clone pays one full run; every later build is the incremental path. A git `post-checkout` hook can prime built roots so IDE IntelliSense works before the first build.
 - A later add-on for C# only: a Roslyn source generator that runs the engine in-process, so C# output never touches disk.

@@ -10,16 +10,19 @@ using Maquettiste.Engine.Writing;
 namespace Maquettiste.Cli.Commands;
 
 /// <summary>
-/// <c>maquettiste init [--pack sql-ddl|csharp-dapper|none] [--name &lt;name&gt;] [--hooks] [--mcp] [--skill] [--agent-setup]
+/// <c>maquettiste init [--pack sql-ddl|csharp-dapper|none] [--name &lt;name&gt;] [--hooks] [--gitignore] [--mcp] [--skill] [--agent-setup]
 /// [--docker &lt;image&gt; [--runtime docker|podman]]</c> (engine-design.md section 16; SPEC sections 4, 11, 12 and 17).
 /// <para>
 /// Creates <c>.maquettiste/</c> with the phase 1 folders, <c>maquettiste.json</c> (format 1, output roots <c>db</c> committed and
-/// <c>src/Generated</c> built), the JSON schemas in <c>.schema/v1/</c>, the starter pack, and a <c>.gitignore</c> block for the built
-/// roots and <c>.maquettiste/.cache/</c>. The project is named by <c>--name</c>, else as <see cref="ProjectName"/> derives it.
+/// <c>src/Generated</c> built), the JSON schemas in <c>.schema/v1/</c> and the starter pack. The project is named by <c>--name</c>, else
+/// as <see cref="ProjectName"/> derives it. The repository's <c>.gitignore</c> belongs to the customer: a plain <c>init</c> never reads
+/// or writes it (the write guard refuses it), and only prints the built roots, which the team may ignore or commit. The engine's
+/// <c>.maquettiste/.cache/</c> ignores itself (Engine <c>Writing/CacheFolder</c>).
 /// </para>
 /// <para>
-/// Idempotent: existing files are kept, except <c>.schema/v1</c>, which is refreshed, and the <c>.gitignore</c> block, which is
-/// rewritten in place. <c>--hooks</c> installs the post-checkout and post-merge hooks; <c>--mcp</c> registers <c>maquettiste mcp</c> in
+/// Idempotent: existing files are kept, except <c>.schema/v1</c>, which is refreshed. <c>--gitignore</c> (an opt-in, SPEC section 12, errata E39)
+/// appends or refreshes a <c># maquettiste:begin</c> … <c># maquettiste:end</c> block of the built roots and <c>.maquettiste/.cache/</c>
+/// in <c>.gitignore</c>, rewritten in place on a re-run. <c>--hooks</c> installs the post-checkout and post-merge hooks; <c>--mcp</c> registers <c>maquettiste mcp</c> in
 /// <c>.mcp.json</c>; <c>--skill</c> installs the modeling skill under <c>.claude/skills/</c>; <c>--agent-setup</c> does both; and
 /// <c>--docker &lt;image&gt;</c> registers the server as a <c>docker run</c> of that image (<c>podman run</c> with <c>--runtime podman</c>)
 /// and removes the <c>mcp.sh</c> wrapper earlier versions wrote (<see cref="AgentSetup"/>).
@@ -49,7 +52,7 @@ internal static class InitCommand
     /// <returns>The exit code.</returns>
     public static async Task<int> RunAsync(GlobalContext context, CancellationToken ct)
     {
-        context.Line.Expect("init", 1, "--pack", "--hooks", "--mcp", "--skill", "--agent-setup", "--name", "--docker", "--runtime");
+        context.Line.Expect("init", 1, "--pack", "--hooks", "--gitignore", "--mcp", "--skill", "--agent-setup", "--name", "--docker", "--runtime");
         if (context.Line.Value("--name") is { } given && string.IsNullOrWhiteSpace(given))
             throw new UsageException("--name needs a project name.");
         var dockerImage = context.Line.Value("--docker");
@@ -63,13 +66,19 @@ internal static class InitCommand
         if (!Directory.Exists(repo))
             throw new UsageException($"The repo folder {repo} does not exist.");
 
-        // The .gitignore markers are checked before anything is written, so a malformed block stops init with nothing changed.
+        // The repository's .gitignore is read and written only with --gitignore; the guard refuses it otherwise. With the option, its
+        // markers are checked before anything is written, so a malformed block stops init with nothing changed.
+        var withGitignore = context.Line.Has("--gitignore");
         var gitignore = Path.Combine(repo, ".gitignore");
-        var existing = File.Exists(gitignore) ? await File.ReadAllTextAsync(gitignore, ct).ConfigureAwait(false) : null;
-        _ = WithBlock(existing, []);
+        string? existing = null;
+        if (withGitignore)
+        {
+            existing = File.Exists(gitignore) ? await File.ReadAllTextAsync(gitignore, ct).ConfigureAwait(false) : null;
+            _ = WithBlock(existing, []);
+        }
 
         var options = context.EngineOptions(repo);
-        var files = new GuardedFiles(new OutputPathPolicy(options, null));
+        var files = new GuardedFiles(new OutputPathPolicy(options, null, allowGitignore: withGitignore));
         var modelRoot = Path.Combine(repo, GlobalContext.ModelFolder);
         var report = new List<string>();
 
@@ -115,11 +124,13 @@ internal static class InitCommand
                 await files.WriteAsync(WriteTarget.Model, Path.Combine(full, ".gitkeep"), Array.Empty<byte>(), overwrite: false, ct).ConfigureAwait(false);
         }
 
-        // .gitignore block.
         var builtRoots = BuiltRoots(settingsPath);
-        var updated = WithBlock(existing, builtRoots);
-        var gitOutcome = await files.WriteAsync(WriteTarget.Setup, gitignore, new UTF8Encoding(false).GetBytes(updated), overwrite: true, ct).ConfigureAwait(false);
-        report.Add(Describe(gitOutcome, ".gitignore") + " (maquettiste block)");
+        if (withGitignore)
+        {
+            var updated = WithBlock(existing, builtRoots);
+            var gitOutcome = await files.WriteAsync(WriteTarget.Setup, gitignore, new UTF8Encoding(false).GetBytes(updated), overwrite: true, ct).ConfigureAwait(false);
+            report.Add(Describe(gitOutcome, ".gitignore") + " (maquettiste block)");
+        }
 
         if (context.Line.Has("--hooks"))
             await InstallHooksAsync(files, repo, report, ct).ConfigureAwait(false);
@@ -131,7 +142,25 @@ internal static class InitCommand
         foreach (var line in report)
             context.Info(line);
         context.Info($"Initialized maquettiste in {repo}.");
+        if (!withGitignore && BuiltRootsNote(builtRoots) is { } note)
+            context.Info(note);
         return Program.ExitCodes.Success;
+    }
+
+    /// <summary>
+    /// The line a plain <c>init</c> prints about the built roots (<c>commit</c> false): whether git ignores them is the team's choice,
+    /// and <c>init</c> leaves <c>.gitignore</c> alone unless asked. <see langword="null"/> without built roots.
+    /// </summary>
+    /// <param name="builtRoots">The built roots, repo-relative.</param>
+    /// <returns>The line.</returns>
+    internal static string? BuiltRootsNote(IReadOnlyList<string> builtRoots)
+    {
+        var roots = builtRoots.Select(r => r.Trim('/')).Distinct(StringComparer.Ordinal).ToList();
+        if (roots.Count == 0)
+            return null;
+        return $"Built output {(roots.Count == 1 ? "root" : "roots")} (commit: false): {string.Join(", ", roots)}. maquettiste generate "
+            + $"regenerates {(roots.Count == 1 ? "it" : "them")}; ignore or commit {(roots.Count == 1 ? "it" : "them")} as your team prefers "
+            + "(init --gitignore adds the built roots and .maquettiste/.cache/ to .gitignore).";
     }
 
     /// <summary>Replaces (or appends) the maquettiste block of a <c>.gitignore</c>, keeping every other line.</summary>
@@ -186,7 +215,7 @@ internal static class InitCommand
     /// <returns>The script.</returns>
     public static string HookScript(string hook) =>
         "#!/bin/sh\n" + HookMarker + "\n"
-        + "# Regenerates the built (gitignored) output roots after a " + (hook == "post-merge" ? "merge" : "branch checkout") + ", so IDEs see generated code before the first build.\n"
+        + "# Regenerates the built output roots after a " + (hook == "post-merge" ? "merge" : "branch checkout") + ", so IDEs see generated code before the first build.\n"
         + (hook == "post-checkout" ? "[ \"$3\" = \"0\" ] && exit 0\n" : "")
         + "if command -v maquettiste >/dev/null 2>&1; then\n"
         + "  maquettiste generate --roots built --quiet || true\n"

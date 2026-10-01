@@ -9,6 +9,7 @@ CREATE TABLE payments (
     received_at text NOT NULL,
     reference text NULL,
     method text NULL,
+    ledger_position blob NULL,
     created_at text NOT NULL,
     updated_at text NULL
 );

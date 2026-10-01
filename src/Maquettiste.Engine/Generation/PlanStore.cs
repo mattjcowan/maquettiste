@@ -20,7 +20,7 @@ internal sealed class PlanStore(EngineOptions options, IOutputPathPolicy paths)
     /// <summary>How many plans are kept.</summary>
     public const int Keep = 20;
 
-    private readonly EngineFiles _files = new(paths, WriteTarget.Cache);
+    private readonly EngineFiles _files = new(paths, WriteTarget.Cache, options);
     private readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
 
     /// <summary>The plans folder.</summary>

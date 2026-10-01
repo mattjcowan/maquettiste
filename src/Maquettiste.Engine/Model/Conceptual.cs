@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -231,6 +232,13 @@ public sealed record ScalarType : Element
 
     /// <summary>Validation constraints every use of the type inherits.</summary>
     public AttributeValidation? Validation { get; init; }
+
+    /// <summary>
+    /// The native type per dialect name (<c>postgresql</c>, <c>sqlserver</c>, <c>mysql</c>, <c>sqlite</c>, <c>oracle</c>): a pattern
+    /// with the type maps' <c>{length}</c>, <c>{precision}</c> and <c>{scale}</c> placeholders, used instead of the base's type map entry
+    /// for the columns that store the type in a database of that dialect.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> NativeTypes { get; init; } = ImmutableDictionary<string, string>.Empty;
 }
 
 /// <summary>A closed set of named members (<c>model/enums/</c>).</summary>

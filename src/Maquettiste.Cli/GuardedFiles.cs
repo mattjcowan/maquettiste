@@ -25,7 +25,7 @@ internal sealed class RefusedWriteException(string message) : Exception(message)
 /// <summary>
 /// Every file and folder the CLI itself creates (<c>init</c>, <c>pack new</c>, <c>validate --output</c>) goes through
 /// <see cref="IOutputPathPolicy.CheckEngineWrite"/> first (S23, D40): <see cref="WriteTarget.Model"/> under the model root,
-/// <see cref="WriteTarget.Setup"/> for <c>.gitignore</c> and the git hooks, <see cref="WriteTarget.Output"/> for a report file.
+/// <see cref="WriteTarget.Setup"/> for the git hooks, the agent setup and (only with <c>init --gitignore</c>) <c>.gitignore</c>, <see cref="WriteTarget.Output"/> for a report file.
 /// </summary>
 /// <param name="policy">The policy.</param>
 internal sealed class GuardedFiles(IOutputPathPolicy policy)

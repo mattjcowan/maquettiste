@@ -3868,6 +3868,7 @@
         "allowedValues": [],
         "rules": []
       },
+      "nativeTypes": {},
       "displayName": "EmailAddress",
       "pluralName": "EmailAddresses",
       "description": null,

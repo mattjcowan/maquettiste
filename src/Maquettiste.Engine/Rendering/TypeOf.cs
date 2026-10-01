@@ -14,8 +14,9 @@ namespace Maquettiste.Engine.Rendering;
 /// <para>A <b>dialect target</b> (<c>postgresql</c>, <c>sqlserver</c>, <c>mysql</c>, <c>sqlite</c>, <c>oracle</c>, with the aliases
 /// of <see cref="SqlDialects.TryParse"/>) needs no file: a column of a database in that dialect yields its resolved native type;
 /// anything else goes through the dialect's type map (<c>typeMaps.&lt;dialect&gt;</c> overrides applied, recording
-/// <c>s:typeMaps</c>) with the value's facets, missing facets taking the conventions' defaults (<c>s:conventions</c>). Enums map
-/// as <c>int32</c> and value objects as <c>json</c>. Pack maps win over dialect names.</para>
+/// <c>s:typeMaps</c>) with the value's facets, missing facets taking the conventions' defaults (<c>s:conventions</c>); a value of a
+/// custom type that declares a native type for the dialect takes that one instead. Enums map as <c>int32</c> and value objects as
+/// <c>json</c>. Pack maps win over dialect names.</para>
 /// </summary>
 internal static class TypeOf
 {
@@ -140,6 +141,7 @@ internal static class TypeOf
         string keyword;
         int? length = null, precision = null, scale = null;
         string? databaseName = null;
+        RScalarType? custom = null;
         switch (value)
         {
             case RColumn column:
@@ -154,17 +156,26 @@ internal static class TypeOf
                 context.Recorder.RecordObject(attribute);
                 keyword = KeywordOf(attribute.Type);
                 (length, precision, scale) = (attribute.Length, attribute.Precision, attribute.Scale);
+                custom = attribute.Type.Scalar;
                 break;
             case RViewColumn viewColumn:
                 keyword = viewColumn.Type ?? "string";
                 break;
             case RType type:
                 keyword = KeywordOf(type);
+                if (type.Scalar is { } typeScalar)
+                {
+                    context.Recorder.RecordObject(typeScalar);
+                    (length, precision, scale) = (typeScalar.Length, typeScalar.Precision, typeScalar.Scale);
+                    custom = typeScalar;
+                }
+
                 break;
             case RScalarType scalar:
                 context.Recorder.RecordObject(scalar);
                 keyword = scalar.Base;
                 (length, precision, scale) = (scalar.Length, scalar.Precision, scalar.Scale);
+                custom = scalar;
                 break;
             case string text:
                 keyword = text;
@@ -177,6 +188,8 @@ internal static class TypeOf
         context.Recorder.Record("s:conventions");
         var map = DialectTypeMaps.Effective(dialect, run.Context.Model.Settings);
         var conventions = EffectiveConventions.For(run.Context.Model.Settings, databaseName);
+        if (custom is not null && custom.NativeTypes.TryGetValue(DialectTypeMaps.Name(dialect), out var pattern))
+            return DialectTypeMaps.RenderPattern(pattern, keyword, length, precision, scale, conventions);
         if (!map.ContainsKey(keyword))
             throw new RenderHelperException("MQ6006", $"`type_of`: the {DialectTypeMaps.Name(dialect)} type map has no entry for '{keyword}'.");
         return DialectTypeMaps.Render(map, keyword, length, precision, scale, conventions);

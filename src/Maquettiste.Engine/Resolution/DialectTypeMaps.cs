@@ -53,6 +53,21 @@ internal static class DialectTypeMaps
     {
         if (!map.TryGetValue(keyword, out var pattern))
             return keyword;
+        return RenderPattern(pattern, keyword, length, precision, scale, conventions);
+    }
+
+    /// <summary>
+    /// Renders a native type pattern, such as a custom type's native type for the dialect; missing facets take the given defaults.
+    /// </summary>
+    /// <param name="pattern">The pattern, with <c>{length}</c>, <c>{precision}</c> and <c>{scale}</c> placeholders.</param>
+    /// <param name="keyword">The built-in keyword the value has (<c>decimal</c> takes the decimal precision default).</param>
+    /// <param name="length">The length, or <see langword="null"/> for the default.</param>
+    /// <param name="precision">The precision, or <see langword="null"/> for the default.</param>
+    /// <param name="scale">The scale, or <see langword="null"/> for the default.</param>
+    /// <param name="conventions">The conventions that supply facet defaults.</param>
+    /// <returns>The native type.</returns>
+    public static string RenderPattern(string pattern, string keyword, int? length, int? precision, int? scale, EffectiveConventions conventions)
+    {
         var isDecimal = string.Equals(keyword, "decimal", StringComparison.Ordinal);
         return pattern
             .Replace("{length}", Invariant(length ?? conventions.DefaultStringLength), StringComparison.Ordinal)

@@ -14,6 +14,7 @@ public partial class Payment
     public DateTimeOffset ReceivedAt { get; set; }
     public string? Reference { get; set; }
     public string? Method { get; set; }
+    public byte[]? LedgerPosition { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
 }

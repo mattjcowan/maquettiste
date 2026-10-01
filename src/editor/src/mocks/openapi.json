@@ -12003,7 +12003,8 @@
               "length",
               "precision",
               "scale",
-              "validation"
+              "validation",
+              "nativeTypes"
             ],
             "properties": {
               "id": {
@@ -12052,6 +12053,13 @@
                     "type": "null"
                   }
                 ]
+              },
+              "nativeTypes": {
+                "description": "The native type per dialect name, as written (a pattern with {length}, {precision} and {scale}); empty when the type declares none.",
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -19674,6 +19682,7 @@
           "precision",
           "scale",
           "validation",
+          "nativeTypes",
           "properties",
           "generation",
           "source"
@@ -19729,6 +19738,24 @@
           },
           "validation": {
             "$ref": "#/components/schemas/validation"
+          },
+          "nativeTypes": {
+            "description": "The native type per dialect name, used instead of the base's type map entry for the columns that store this type in a database of that dialect. A value may use the type maps' {length}, {precision} and {scale} placeholders.",
+            "type": "object",
+            "propertyNames": {
+              "enum": [
+                "postgresql",
+                "sqlserver",
+                "mysql",
+                "sqlite",
+                "oracle"
+              ]
+            },
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1
+            },
+            "default": {}
           },
           "properties": {
             "$ref": "#/components/schemas/properties",

@@ -60,7 +60,10 @@ public enum WriteTarget
     /// <summary>Under <c>CacheDirectory</c> or <c>JournalDirectory</c>: <c>cache</c>.</summary>
     [JsonStringEnumMemberName("cache")] Cache,
 
-    /// <summary><c>init</c> only: <c>.gitignore</c> and the git hooks: <c>setup</c>.</summary>
+    /// <summary>
+    /// <c>init</c> only: the git hooks (<c>--hooks</c>), <c>.mcp.json</c>, the modeling skill, and the repository's <c>.gitignore</c>
+    /// only for <c>--gitignore</c>: <c>setup</c>.
+    /// </summary>
     [JsonStringEnumMemberName("setup")] Setup,
 }
 

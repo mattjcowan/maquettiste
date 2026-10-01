@@ -20,25 +20,44 @@ internal static partial class DialectInfo
         "timestamp without time zone", "date", "time", "timetz", "time with time zone", "time without time zone", "interval", "boolean",
         "bool", "uuid", "json", "jsonb", "xml", "inet", "cidr", "macaddr", "macaddr8", "bit", "bit varying", "varbit", "tsvector",
         "tsquery", "point", "line", "lseg", "box", "path", "polygon", "circle", "hstore", "int4range", "int8range", "numrange",
-        "tsrange", "tstzrange", "daterange", "oid", "name");
+        "tsrange", "tstzrange", "daterange", "oid", "name",
+        // The rest of the documented built-in data types: system identifiers and the object identifier aliases, log sequence numbers
+        // and snapshots, multiranges and the SQL/JSON path type.
+        "pg_lsn", "pg_snapshot", "txid_snapshot", "xid", "xid8", "cid", "tid", "regclass", "regcollation", "regconfig", "regdictionary",
+        "regnamespace", "regoper", "regoperator", "regproc", "regprocedure", "regrole", "regtype", "jsonpath", "int4multirange",
+        "int8multirange", "nummultirange", "tsmultirange", "tstzmultirange", "datemultirange",
+        // Extension types, as citext and hstore above: ltree's three, cube and earth, and the spatial geometry and geography.
+        "ltree", "lquery", "ltxtquery", "cube", "earth", "geometry", "geography");
 
     private static readonly FrozenSet<string> SqlServerTypes = Set(
         "bigint", "int", "smallint", "tinyint", "bit", "decimal", "numeric", "money", "smallmoney", "float", "real", "date", "time",
         "datetime", "datetime2", "datetimeoffset", "smalldatetime", "char", "varchar", "text", "nchar", "nvarchar", "ntext", "binary",
         "varbinary", "image", "uniqueidentifier", "xml", "json", "sql_variant", "rowversion", "timestamp", "hierarchyid", "geography",
-        "geometry");
+        "geometry", "vector", "sysname",
+        // The documented synonyms of the ISO names.
+        "integer", "dec", "double precision", "character", "character varying", "char varying", "binary varying", "national character",
+        "national char", "national character varying", "national char varying", "national text");
 
     private static readonly FrozenSet<string> MySqlTypes = Set(
         "tinyint", "smallint", "mediumint", "int", "integer", "bigint", "decimal", "dec", "numeric", "fixed", "float", "double",
         "double precision", "real", "bit", "bool", "boolean", "serial", "date", "datetime", "timestamp", "time", "year", "char", "varchar",
         "binary", "varbinary", "tinyblob", "blob", "mediumblob", "longblob", "tinytext", "text", "mediumtext", "longtext", "enum",
-        "set", "json", "geometry", "point", "linestring", "polygon", "multipoint", "multilinestring", "multipolygon", "geometrycollection");
+        "set", "json", "geometry", "point", "linestring", "polygon", "multipoint", "multilinestring", "multipolygon", "geometrycollection",
+        "geomcollection", "vector", "uuid", "inet4", "inet6",
+        // The documented synonyms: national character types and the names kept for other databases' types.
+        "nchar", "nvarchar", "national char", "national character", "national varchar", "national character varying", "national char varying",
+        "nchar varchar", "character", "character varying", "char varying", "long", "long varchar", "long varbinary", "int1", "int2", "int3",
+        "int4", "int8", "middleint", "float4", "float8");
 
     private static readonly FrozenSet<string> OracleTypes = Set(
         "number", "integer", "int", "smallint", "float", "binary_float", "binary_double", "decimal", "numeric", "real",
         "double precision", "char", "nchar", "varchar2", "nvarchar2", "varchar", "clob", "nclob", "blob", "bfile", "raw", "long",
         "long raw", "date", "timestamp", "timestamp with time zone", "timestamp with local time zone", "interval year to month",
-        "interval day to second", "boolean", "rowid", "urowid", "xmltype", "json");
+        "interval day to second", "boolean", "rowid", "urowid", "xmltype", "json", "vector",
+        // The documented ANSI names, the spatial types and the supplied any and URI types.
+        "dec", "character", "character varying", "char varying", "national character", "national char", "national character varying",
+        "national char varying", "nchar varying", "sdo_geometry", "sdo_topo_geometry", "sdo_georaster", "anydata", "anytype", "anydataset",
+        "uritype", "dburitype", "xdburitype", "httpuritype");
 
     /// <summary>The JSON name of a dialect (<c>postgresql</c>, <c>sqlserver</c>, <c>mysql</c>, <c>sqlite</c>, <c>oracle</c>).</summary>
     /// <param name="dialect">The dialect.</param>
@@ -107,13 +126,15 @@ internal static partial class DialectInfo
     }
 
     /// <summary>
-    /// The base names a dialect knows: its fixed list and the base names of a type map's values (pass the effective map, which holds
-    /// the embedded defaults with the project's <c>typeMaps</c> applied).
+    /// The base names a dialect knows: its fixed list, the base names of a type map's values (pass the effective map, which holds
+    /// the embedded defaults with the project's <c>typeMaps</c> applied) and the base names of further native types, such as the
+    /// native types the model's custom types declare for the dialect.
     /// </summary>
     /// <param name="dialect">The dialect.</param>
     /// <param name="typeMap">The type map.</param>
+    /// <param name="more">Further native types, as written, or <see langword="null"/>.</param>
     /// <returns>The base names.</returns>
-    public static FrozenSet<string> KnownBaseNames(Dialect dialect, IReadOnlyDictionary<string, string> typeMap)
+    public static FrozenSet<string> KnownBaseNames(Dialect dialect, IReadOnlyDictionary<string, string> typeMap, IEnumerable<string>? more = null)
     {
         var names = new HashSet<string>(dialect switch
         {
@@ -122,7 +143,7 @@ internal static partial class DialectInfo
             Dialect.MySql => MySqlTypes,
             _ => OracleTypes,
         }, StringComparer.Ordinal);
-        foreach (var value in typeMap.Values)
+        foreach (var value in more is null ? typeMap.Values : typeMap.Values.Concat(more))
         {
             var name = Parse(value).BaseName;
             if (name.Length > 0)

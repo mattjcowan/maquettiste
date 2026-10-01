@@ -8,7 +8,10 @@ namespace Maquettiste.Engine.Planning;
 /// with <see cref="IOutputPathPolicy.CheckEngineWrite"/> first (D40), a refusal throws <see cref="UnauthorizedAccessException"/> and
 /// nothing is written, and a file is replaced by writing a temporary file in the same folder and renaming it over the target.
 /// </summary>
-internal sealed class EngineFiles(IOutputPathPolicy paths, WriteTarget target)
+/// <param name="paths">The engine-write guard.</param>
+/// <param name="target">The write target of every path.</param>
+/// <param name="options">The engine options; given, a write under the engine's own folder first makes the folder ignore itself (<see cref="Writing.CacheFolder"/>).</param>
+internal sealed class EngineFiles(IOutputPathPolicy paths, WriteTarget target, EngineOptions? options = null)
 {
     private long _counter;
 
@@ -25,6 +28,8 @@ internal sealed class EngineFiles(IOutputPathPolicy paths, WriteTarget target)
             + Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "-"
             + Interlocked.Increment(ref _counter).ToString(CultureInfo.InvariantCulture) + ".tmp");
         Check(temp);
+        if (options is not null)
+            Writing.CacheFolder.EnsureIgnored(options, paths, folder);
         Directory.CreateDirectory(folder);
         try
         {

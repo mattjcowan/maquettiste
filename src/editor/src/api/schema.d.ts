@@ -2743,6 +2743,10 @@ export interface components {
             precision: number | null;
             scale: number | null;
             validation: components["schemas"]["ValidationRecord"] | null;
+            /** @description The native type per dialect name, as written (a pattern with {length}, {precision} and {scale}); empty when the type declares none. */
+            nativeTypes: {
+                [key: string]: string;
+            };
         };
         /** @description A resolved reference type with every row. */
         ReferenceTypeRecord: components["schemas"]["ResolvedAnnotations"] & {
@@ -4703,6 +4707,13 @@ export interface components {
             precision?: components["schemas"]["precision"];
             scale?: components["schemas"]["scale"];
             validation?: components["schemas"]["validation"];
+            /**
+             * @description The native type per dialect name, used instead of the base's type map entry for the columns that store this type in a database of that dialect. A value may use the type maps' {length}, {precision} and {scale} placeholders.
+             * @default {}
+             */
+            nativeTypes?: {
+                [key: string]: string;
+            };
             /** @default {} */
             properties?: components["schemas"]["properties"];
             /** @default {} */

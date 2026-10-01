@@ -80,11 +80,17 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
   diagrams,vocabularies}`, `templates`, `extensions`; a `.gitkeep` in each folder still empty), a canonical `maquettiste.json`
   (format 1, `outputs.allow` `db` committed and `src/Generated` built, `packs.<starter>.output` `db` for sql-ddl or
   `src/Generated` for csharp-dapper), every embedded schema in `.schema/v1/` (refreshed on every run through the engine's
-  `SchemaFolder.RefreshAsync`, which `mcp` and the editor also run at their start; files no longer shipped are removed), the starter pack in `templates/<pack>/`, and a `# maquettiste:begin` … `# maquettiste:end` block in `.gitignore` with
-  the built roots of the settings file and `/.maquettiste/.cache/` (rewritten in place, other lines kept). Existing files are kept,
-  except that a kept settings file without a `packs.<starter>` entry gets one (re-running `init --pack <other>`). A `.gitignore`
-  whose markers are not exactly one begin line followed by one end line is refused with the line number (exit 4) before anything
-  is written, so stray markers never cause user lines to be dropped.
+  `SchemaFolder.RefreshAsync`, which `mcp` and the editor also run at their start; files no longer shipped are removed) and the starter pack in `templates/<pack>/`. Existing files are kept,
+  except that a kept settings file without a `packs.<starter>` entry gets one (re-running `init --pack <other>`). After its report
+  a plain `init` prints one line naming the built roots of the settings file (`InitCommand.BuiltRootsNote`): `generate`
+  regenerates them, and the team ignores or commits them as it prefers. It never reads or writes the repository's `.gitignore`,
+  which is the customer's file: its `OutputPathPolicy` is built without `allowGitignore`, so the guard refuses that path, and a
+  block an earlier version wrote stays exactly as it is. The engine's `.maquettiste/.cache/` ignores itself instead (a `.gitignore`
+  holding `*`, written by the engine's `Writing/CacheFolder` before its first write there).
+  `--gitignore` is the opt-in: it adds a `# maquettiste:begin` … `# maquettiste:end` block to `.gitignore` with the built roots of
+  the settings file and `/.maquettiste/.cache/` (rewritten in place on a re-run, other lines kept), through a policy built with
+  `allowGitignore: true`. With the option, a `.gitignore` whose markers are not exactly one begin line followed by one end line is
+  refused with the line number (exit 4) before anything is written, so stray markers never cause user lines to be dropped.
   `--hooks` writes `post-checkout` and `post-merge` hooks (mode 755) that run `maquettiste generate --roots built --quiet` and never
   fail git; a hook that init did not write is kept; without a `.git` folder the hooks are skipped with a message.
   `--mcp` registers `maquettiste mcp` in `.mcp.json` (merged, an existing `maquettiste` entry kept; `dotnet tool run maquettiste mcp`

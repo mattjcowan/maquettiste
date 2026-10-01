@@ -130,8 +130,9 @@ public sealed class CliApp(CliEnvironment environment)
         Usage: maquettiste [global options] <command> [options]
 
         Commands:
-          init                  Create .maquettiste/, the schema files, a starter pack and .gitignore entries
+          init                  Create .maquettiste/, the schema files and a starter pack
                                   --pack sql-ddl|csharp-dapper|none (default sql-ddl), --hooks,
+                                  --gitignore (add the built roots and the cache to .gitignore),
                                   --mcp (.mcp.json), --skill (.claude/skills), --agent-setup (both),
                                   --docker <image> (implies --mcp: .mcp.json runs the server in the image),
                                   --runtime docker|podman (the container command for --docker, default docker),

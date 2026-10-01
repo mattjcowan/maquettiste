@@ -47,6 +47,7 @@ CREATE TABLE dbo.payments (
     received_at datetimeoffset(6) NOT NULL,
     reference nvarchar(64) NULL,
     method nvarchar(16) NULL,
+    ledger_position binary(8) NULL,
     created_at datetimeoffset(6) NOT NULL,
     updated_at datetimeoffset(6) NULL,
     CONSTRAINT pk_payments PRIMARY KEY (id)

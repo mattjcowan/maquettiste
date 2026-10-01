@@ -584,6 +584,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
     private async Task<bool> WriteCacheIfChangedAsync(Dictionary<string, FileEntry> entries, CancellationToken ct)
     {
         await Task.Yield(); // runs beside the snapshot assembly
+        Writing.CacheFolder.EnsureIgnored(options, paths, options.CacheDirectory);
         WriteShardCache(entries, ct);
         var records = entries.Values
             .Where(e => e.Hash.Length > 0)

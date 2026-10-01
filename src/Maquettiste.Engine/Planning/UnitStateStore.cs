@@ -31,7 +31,7 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
     private const int Format = 4;
     private static ReadOnlySpan<byte> Magic => "MQUS"u8;
 
-    private readonly EngineFiles _files = new(paths, WriteTarget.Cache);
+    private readonly EngineFiles _files = new(paths, WriteTarget.Cache, options);
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Decoded> _last = new(StringComparer.Ordinal);
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _reset = new(StringComparer.Ordinal);
 

@@ -14,7 +14,8 @@ A project lives under a `.maquettiste/` folder in a repository. It holds:
   own. The model files call them relations.
 - **Enums**: closed sets of named values that belong to the code (InvoiceStatus).
 - **Value objects**: reusable groups of fields without identity, such as Address or Money.
-- **Custom types**: named restrictions of a built-in type, such as Email.
+- **Custom types**: named restrictions of a built-in type, such as Email, which can also name the native type their
+  columns take in each database dialect (a log sequence number stored as `pg_lsn` on PostgreSQL).
 - **Reference data**: reference types, sets of rows managed as data (units of measure, countries), each with a code
   and a label, usable as the type of an attribute.
 - **Seed data**: rows an element starts with (an entity's initial rows, a reference type's rows).
@@ -164,6 +165,13 @@ entity its key, **Base entity**, **Is abstract**, stereotypes, tags and category
   the **Junction table** name and the **Promoted entity name**; the first edit creates the relationship's mapping in
   that database when it has none. Every edit here is one undo step.
 - **Enum**: Members; **value object**: Attributes; **custom type**: Definition; each with Code generation and References.
+- **Custom type › Definition**: the base type, length, precision and scale, then **Native types**: one row per dialect
+  the project's databases use, and **Add a dialect** for another. A value such as `pg_lsn` or `binary({length})`
+  replaces the base type's type map entry for every column that stores the type in a database of that dialect: entity
+  and child tables, junction tables and the foreign keys that copy a key of the type. `{length}`, `{precision}` and
+  `{scale}` take the type's facets; an empty row keeps the type map, and an overlay column's own native type still wins.
+  Each value is one undo step. The inspector shows the same fields. Generated code keeps the base type (a `binary`
+  custom type is still a byte array in C#).
 - **Domain**: General, Tags and Categories. The display name, plural name and description are edited in the editor's
   header only, not again on General.
 
@@ -399,6 +407,12 @@ database shows on the Database screen at once. The explorers remember which rows
     quotes or a schema, such as `"public"."unit_of_measure"`, names a type the database defines, which Maquettiste cannot
     check: it is MQ4016 (info), reported once per type with the number of columns that use it. A native type named after
     a reference type or an enum of the model (`unit_of_measure`, `unit_of_measure_t`) is known.
+  - The dialect lists hold each dialect's documented built-in types (on PostgreSQL also `pg_lsn`, `xid8`, `tid`, the
+    `reg` types such as `regclass`, the multiranges and `jsonpath`) and the common extension types `citext`, `hstore`,
+    `ltree`, `cube`, `earth`, `geometry` and `geography`. To use a type the list lacks, give a custom type a native type
+    for the dialect (on its Definition tab): every column of that type takes it, and the name counts as known. For a
+    single column, set its native type in the table's overlay. A type the database itself defines (a domain, an enum
+    made by hand) can be written quoted or with its schema, `"public"."ledger_position"`, which MQ4016 covers.
 
   **Schemas.** A PostgreSQL or SQL Server database can hold several schemas (namespaces such as `sales` or `ops`).
 
@@ -465,7 +479,9 @@ database shows on the Database screen at once. The explorers remember which rows
   - **Locales**: the content locales (see "Translating the model in the editor").
   - **Validation**: the severity of each built-in rule (see "Settings › Validation" below).
   - **Type maps, outputs, formatters**: the output allowlist (`outputs.allow`), the type maps, the formatters and the
-    packs, shown read-only; edit `maquettiste.json` to change them.
+    packs, shown read-only; edit `maquettiste.json` to change them. A type map entry changes the native type of every
+    value of a built-in type in a dialect (`typeMaps.postgresql.binary`); to change it for one kind of value only, give a
+    custom type its own native types instead, which win over the type map.
   - **Explorer**: your preferences in this browser (Highlight related elements), your saved scopes and the team scopes
     from `maquettiste.json`.
 - **Settings › General** names and brands the project; none of it changes generated output.
@@ -1009,7 +1025,11 @@ In a large repository with many projects, list each generated folder as its own 
 code, other teams' folders, `.git`, `.maquettiste`) is out of reach. A path outside every root is refused before
 anything is written (MQ6019, shown in the Units grid next to the pattern), and `deny` globs carve exceptions out of a
 root. `commit: true` marks output that belongs in git (its manifest is committed and `generate --check` guards it in
-CI); `commit: false` marks build output that `init` adds to `.gitignore`.
+CI); `commit: false` marks build output, which `generate` writes again wherever a build runs. Whether git ignores a built
+root or the team commits it is the team's choice: Maquettiste does not touch the repository's `.gitignore` unless asked
+(`maquettiste init --gitignore` adds the built roots to it). Its own working folder, `.maquettiste/.cache/` (the run
+journal and the built roots' manifests), holds a `.gitignore` with a single `*` line, so it is never committed by
+accident whatever the repository's `.gitignore` says.
 
 ## Packs in the editor: what generation does
 
@@ -1190,7 +1210,7 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 
 | Command | What it does |
 | --- | --- |
-| `maquettiste init` | Creates `.maquettiste/` (`maquettiste.json`, the JSON schemas for editor completion, the `sql-ddl` starter pack) and a `.gitignore` block. `--pack csharp-dapper` or `--pack none` picks another starter; `--mcp`, `--skill` and `--agent-setup` register the agent server, and `--mcp --docker <image>` registers it as a `docker run` of the image (`--runtime podman` for `podman run`; docs/mcp.md). The project is named by `--name <name>`, else the `name` of `package.json`, else the git remote's repository name, else the folder name (so a repository mounted at `/repo` in the image keeps its real name). Running `init` again, starting the editor or starting `maquettiste mcp` refreshes the JSON schemas when a new version ships different ones; until then `validate` and `generate` warn MQ1008 and name the files that differ. Running it again keeps what is there. |
+| `maquettiste init` | Creates `.maquettiste/` (`maquettiste.json`, the JSON schemas for editor completion, the `sql-ddl` starter pack) and prints the built output roots, which `generate` regenerates and the team may ignore or commit as it prefers. It does not read or write the repository's `.gitignore`; `--gitignore` asks it to add (or, run again, refresh in place) a `# maquettiste:begin` … `# maquettiste:end` block listing the built roots and `.maquettiste/.cache/`. A block written by an earlier version, which added it on every run, stays as it is: it is yours to keep, edit or remove. `--hooks` installs git hooks that regenerate the built roots after a checkout or merge. `--pack csharp-dapper` or `--pack none` picks another starter; `--mcp`, `--skill` and `--agent-setup` register the agent server, and `--mcp --docker <image>` registers it as a `docker run` of the image (`--runtime podman` for `podman run`; docs/mcp.md). The project is named by `--name <name>`, else the `name` of `package.json`, else the git remote's repository name, else the folder name (so a repository mounted at `/repo` in the image keeps its real name). Running `init` again, starting the editor or starting `maquettiste mcp` refreshes the JSON schemas when a new version ships different ones; until then `validate` and `generate` warn MQ1008 and name the files that differ. Running it again keeps what is there. |
 | `maquettiste validate` | Validates the model and the packs, and replays every scenario of every process (MQ9301 to MQ9306 and MQ9502 to MQ9507); `--format sarif` for code-scanning tools. |
 | `maquettiste generate` | Renders the packs into the output roots of `maquettiste.json`, incrementally: only units whose inputs changed re-render. Prints one line per file (`A` added, `M` modified, `D` deleted, `K` kept). A generated file edited by hand stops the run (exit 3); `--hand-edits overwrite` replaces it. |
 | `maquettiste generate --check` | Renders without writing and exits 2 when the committed output differs from the model: the CI gate. |

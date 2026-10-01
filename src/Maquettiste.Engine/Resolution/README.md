@@ -43,8 +43,9 @@ The resolver (stage 3), the resolved model types (`RList<T>`, `RElement`, `REnti
   identifier over `MaxIdentifierLength` (dialect default: pg 63, sqlserver 128, mysql 64, oracle 128, sqlite none), honouring
   `validation.rules`.
 - Dialect maps for PostgreSQL, SQL Server, MySQL/MariaDB (`mysql`), SQLite and Oracle; `typeMaps.<dialect>` overrides single
-  entries; `Column.NativeType` wins; missing facets take `defaultStringLength`, `decimalPrecision`/`decimalScale`,
-  `datetimePrecision`.
+  entries; a custom type's `nativeTypes.<dialect>` wins over both for the columns that store it (applied once, in
+  `AddColumn`, so entity, child and junction tables and copied key columns agree; 2026-10-01); `Column.NativeType` wins over
+  all; missing facets take `defaultStringLength`, `decimalPrecision`/`decimalScale`, `datetimePrecision`.
 - Dependency keys (section 11, D38): `e:` of every contributing file, `s:conventions`, `s:typeMaps`, `s:inflection` when used, and
   `r:<id>` for every entity and relation an object derives from (lookup tables: `r:<enumId>`; designed tables: `r:<tableId>`).
   A foreign-key relation also lists what its resolved `RForeignKey`'s name and actions come from (the host table's designed or

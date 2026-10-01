@@ -7,7 +7,7 @@ machine and store as generated and hand-written pairs, HTTP endpoints with user-
 pipeline behaviours, a generated statechart interpreter and one xunit test per scenario (see Processes).
 
 The pack writes to a **built** output root. `maquettiste init --pack csharp-dapper` sets `packs.csharp-dapper.output` to
-`src/Generated` and declares that root without `commit`, so it is gitignored and regenerated on every build; every path below is
+`src/Generated` and declares that root without `commit`, so it is regenerated on every build and is yours to ignore or commit (`init --gitignore` writes the entry); every path below is
 under `src/Generated/`. The generated code needs C# 12, .NET 9 or later (`Guid.CreateVersion7`) and the `Dapper` package.
 
 ## Output
@@ -47,7 +47,7 @@ public partial class Invoice
 The C# compiler merges both halves. The generated half never needs editing, so regeneration never loses work, and deleting a
 companion brings back the empty stub.
 
-With the default settings the companions sit next to the generated files, in the gitignored `src/Generated` root. To commit
+With the default settings the companions sit next to the generated files, in the built `src/Generated` root, which is regenerated on every build. To commit
 them, give them their own committed root: set `packs.csharp-dapper.output` to `src`, `generatedFolder` to `Generated` and
 `partialFolder` to `Model`, and declare `src/Generated` (built) and `src/Model` (`commit: true`) in `outputs.allow`.
 

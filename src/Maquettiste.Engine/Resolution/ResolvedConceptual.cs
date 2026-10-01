@@ -303,6 +303,12 @@ public sealed class RScalarType : RElement
 
     /// <summary>Validation constraints.</summary>
     public RValidation? Validation { get; internal set; }
+
+    /// <summary>
+    /// The native type per dialect name, as written (a pattern with <c>{length}</c>, <c>{precision}</c> and <c>{scale}</c>), sorted by
+    /// dialect name; a column of the type in a database of a listed dialect takes it instead of the base's type map entry.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> NativeTypes { get; internal set; } = FrozenDictionary<string, string>.Empty;
 }
 
 /// <summary>A resolved relation.</summary>

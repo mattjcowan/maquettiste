@@ -84,9 +84,7 @@ internal sealed partial class DatabaseRun
             return;
         }
 
-        if (a.Type.Scalar is { } scalar)
-            t.Deps.AddRange(_run.DepsOf(scalar).ToList());
-        AddColumn(t, path, name, a.Type.Builtin ?? "string", a.Length, a.Precision, a.Scale, nullable, a.Default, a, path);
+        AddColumn(t, path, name, a.Type.Builtin ?? "string", a.Length, a.Precision, a.Scale, nullable, a.Default, a, path, scalar: a.Type.Scalar);
     }
 
     private StorageKind CollectionStorage(StorageKind? storage) =>
@@ -123,9 +121,8 @@ internal sealed partial class DatabaseRun
             }
             else
             {
-                if (m.Type.Scalar is { } scalar)
-                    t.Deps.AddRange(_run.DepsOf(scalar).ToList());
-                AddColumn(t, memberPath, memberName, m.Type.Builtin ?? "string", m.Length, m.Precision, m.Scale, memberNullable, m.Default, m, memberPath);
+                AddColumn(t, memberPath, memberName, m.Type.Builtin ?? "string", m.Length, m.Precision, m.Scale, memberNullable, m.Default, m, memberPath,
+                    scalar: m.Type.Scalar);
             }
         }
     }
@@ -226,7 +223,8 @@ internal sealed partial class DatabaseRun
                 continue;
             var columnName = Render(_conv.ForeignKeyColumn, ("role", ownerName), ("key", ownerColumn.Attribute?.Name ?? ownerColumn.Name),
                 ("entity", ownerName), ("table", r.Name));
-            AddColumn(t, ownerColumn.Key, columnName, ownerColumn.Type, ownerColumn.Length, ownerColumn.Precision, ownerColumn.Scale, false, null, null, null);
+            AddColumn(t, ownerColumn.Key, columnName, ownerColumn.Type, ownerColumn.Length, ownerColumn.Precision, ownerColumn.Scale, false, null, null, null,
+                scalar: ScalarOf(ownerColumn));
             ownerKeys.Add(ownerColumn.Key);
         }
 
@@ -269,12 +267,17 @@ internal sealed partial class DatabaseRun
         if (a.Type.Enum is { } e)
             AddEnumColumn(t, a, e, path, name, false, null);
         else
-            AddColumn(t, path, name, a.Type.Builtin ?? "string", a.Length, a.Precision, a.Scale, false, null, a, path);
+            AddColumn(t, path, name, a.Type.Builtin ?? "string", a.Length, a.Precision, a.Scale, false, null, a, path, scalar: a.Type.Scalar);
     }
 
-    /// <summary>Adds a synthesized column (or returns the existing one with that key), with its overlay applied.</summary>
+    /// <summary>
+    /// Adds a synthesized column (or returns the existing one with that key), with its overlay applied. A column that stores a custom
+    /// type (<paramref name="scalar"/>: an attribute's value, a child table's value, or a key column copied from one) takes the
+    /// custom type's native type for the dialect, unless an overlay sets the native type or changes the type away from the custom
+    /// type's base; this is the one place the custom type's native types apply, so entity, child and junction tables agree.
+    /// </summary>
     private RColumn AddColumn(TableBuild t, string key, string name, string type, int? length, int? precision, int? scale, bool nullable,
-        object? defaultValue, RAttribute? attribute, string? path, RReferenceType? reference = null)
+        object? defaultValue, RAttribute? attribute, string? path, RReferenceType? reference = null, RScalarType? scalar = null)
     {
         if (t.ByKey.TryGetValue(key, out var existing))
             return existing;
@@ -310,7 +313,16 @@ internal sealed partial class DatabaseRun
         }
 
         ApplyFacetDefaults(c);
-        c.NativeType = overlay?.NativeType ?? NativeType(PhysicalType(c), c.Length, c.Precision, c.Scale);
+        if (scalar is not null)
+        {
+            t.Deps.AddRange(_run.DepsOf(scalar).ToList());
+            if (string.Equals(PhysicalType(c), scalar.Base, StringComparison.Ordinal))
+                _columnScalars[c] = scalar;
+            else
+                scalar = null;
+        }
+
+        c.NativeType = overlay?.NativeType ?? NativeType(PhysicalType(c), c.Length, c.Precision, c.Scale, scalar);
         t.Columns.Add(c);
         t.ByKey[key] = c;
         _run.Register(c);

@@ -51,7 +51,7 @@ maquettiste --version                    # maquettiste 0.5.2 (engine contract 1.
 ```zsh
 cd $REPO
 git switch -c maquettiste-demo
-maquettiste init                         # writes .maquettiste/ (settings, schemas, the sql-ddl pack) and a .gitignore block
+maquettiste init                         # writes .maquettiste/ (settings, schemas, the sql-ddl pack); .gitignore is left alone
 maquettiste validate                     # Validation passed: 0 errors, 0 warnings, 0 infos.
 git clone --depth 1 git@github.com:mattjcowan/maquettiste.git /tmp/maquettiste   # only for the TypeScript pack sample (part 2)
 export MQ=/tmp/maquettiste
@@ -261,7 +261,7 @@ nothing is written. Without the editor at all, Claude Code over MCP (part 3) can
 
 | Step | Command | Expected |
 | --- | --- | --- |
-| 2.1 (45 s) | `maquettiste init` then `git status --short` | Now prints `kept .maquettiste/maquettiste.json`, `kept .maquettiste/.schema/v1/ (26 schemas, current)`, `kept .maquettiste/templates/sql-ddl/ (12 files, 12 kept)`, `kept .gitignore (maquettiste block)`. Explain what the first run wrote: `maquettiste.json` (output roots `db` committed and `src/Generated` built, the `sql-ddl` pack writing to `db`), the JSON schemas for editor completion, the pack's templates as plain files, and a `.gitignore` block; the project's name came from the repository (`--name`, else `package.json`'s `name`, else the git remote, else the folder), which is what the editor's top bar shows (re-check on the Mac). `git status` shows ` M .gitignore` and `?? .maquettiste/`. |
+| 2.1 (45 s) | `maquettiste init` then `git status --short` | Now prints `kept .maquettiste/maquettiste.json`, `kept .maquettiste/.schema/v1/ (26 schemas, current)`, `kept .maquettiste/templates/sql-ddl/ (12 files, 12 kept)`, `Initialized maquettiste in <the repository>.` and `Built output root (commit: false): src/Generated. maquettiste generate regenerates it; ignore or commit it as your team prefers (init --gitignore adds the built roots and .maquettiste/.cache/ to .gitignore).` Explain what the first run wrote: `maquettiste.json` (output roots `db` committed and `src/Generated` built, the `sql-ddl` pack writing to `db`), the JSON schemas for editor completion and the pack's templates as plain files, and that it did not touch the repository's `.gitignore`: whether built output is committed is the team's call, and the engine's own `.maquettiste/.cache/` ignores itself. The project's name came from the repository (`--name`, else `package.json`'s `name`, else the git remote, else the folder), which is what the editor's top bar shows (re-check on the Mac). `git status` shows only `?? .maquettiste/`. |
 | 2.2 (45 s) | `ls .maquettiste/model/*/` then `cat .maquettiste/model/entities/order.json` | One folder per kind (databases, diagrams, entities, enums, packages, relations, ...), one file per element; the entity with ULID ids, and `status` typed `{ "ref": "<the enum's id>" }` (references are ids, never names). |
 | 2.3 (1 min) | `maquettiste validate && maquettiste generate --progress none` then `cat db/main/shop/tables/orders.sql` | `Validation passed`; `A db/main/migrations/0001.sql`, `A db/main/schema.sql`, `A db/main/seed.sql`, `A db/main/shop/tables/<4 tables>.sql`, "Outcome: Succeeded" (validate 0.8 s, generate 1.3 s from the image). The `shop` folder is 1.6's Default schema. The DDL has `customer_id uuid NOT NULL` and `fk_orders_customer_id ... ON DELETE RESTRICT`. |
 | 2.4 (1.5 min) | Install the custom pack, then register it (below). `maquettiste generate --progress none`, `cat src/generated/order.ts src/generated/order.schema.ts`, `npx tsc --noEmit` | `A src/generated/customer.ts` ... `A src/generated/index.ts`, `order-status.ts`, four `*.schema.ts` (1.35 s); `K db/main/migrations/0001.sql` means the migration is kept (written once, yours). `order.ts` has `status: OrderStatus`, `customerId: string`, `customer?: Customer`, `lines?: OrderLine[]`. `tsc` prints nothing (0.8 s). |
@@ -304,7 +304,8 @@ EOF
 ```
 
 Say while it generates: `src/generated` is a committed root so `--check` guards it in CI; a built root would be
-gitignored instead. Show `src/generated/index.ts` and, if the service has an entry point, import from it
+regenerated wherever a build runs instead, and the team decides whether git ignores it. Show `src/generated/index.ts`
+and, if the service has an entry point, import from it
 (`import { orderSchema, type Order } from './generated/index.js';`).
 
 For 2.5, in the code editor, make the `typescript` entry of `.maquettiste/maquettiste.json` read
@@ -515,7 +516,7 @@ Linux (WSL2, amd64, Docker Engine 29.6.1), image `mattjcowan/maquettiste:0.1.0` 
 | Image build, `--no-cache`, base images present | succeeded | 70 s |
 | CLI `dotnet pack` (host SDK 10.0.109) / in the SDK container with dotnet-install | succeeded | 24 s / 70 s |
 | `dotnet tool install` from the local feed | succeeded | 1 s |
-| `maquettiste init` | 4 lines, `.maquettiste/` and `.gitignore` | 0.2 s |
+| `maquettiste init` | 4 lines, `.maquettiste/` and `.gitignore` (that version also wrote a `.gitignore` block; `init` now leaves the file alone unless given `--gitignore`) | 0.2 s |
 | `compose up` to `/api/health` 200: first boot / restart | succeeded | 7 s / 1.2 s |
 | Model through `POST /api/model/batch` (11 elements) | `200 saved` | under 1 s |
 | Editor walk in Playwright: sign in with the token, open Order; New entity x2; Shift+click, New relation | all passed | 0.4 s / 1.1 s / 1.8 s |

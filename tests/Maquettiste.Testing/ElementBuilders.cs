@@ -363,6 +363,7 @@ public sealed class ScalarTypeBuilder : ElementBuilder<ScalarTypeBuilder>, IType
     private int? _precision;
     private int? _scale;
     private string? _pattern;
+    private readonly SortedDictionary<string, string> _nativeTypes = new(StringComparer.Ordinal);
 
     internal ScalarTypeBuilder(ModelBuilder model, string name, string baseType, string? package)
         : base(model, name)
@@ -400,6 +401,16 @@ public sealed class ScalarTypeBuilder : ElementBuilder<ScalarTypeBuilder>, IType
         return this;
     }
 
+    /// <summary>Sets the native type of a dialect (<c>nativeTypes</c>).</summary>
+    /// <param name="dialect">The dialect name (<c>postgresql</c>, <c>sqlserver</c>, ...).</param>
+    /// <param name="nativeType">The native type pattern.</param>
+    /// <returns>This builder.</returns>
+    public ScalarTypeBuilder NativeType(string dialect, string nativeType)
+    {
+        _nativeTypes[dialect] = nativeType;
+        return this;
+    }
+
     /// <inheritdoc/>
     protected override Element CreateElement() => new ScalarType
     {
@@ -411,6 +422,7 @@ public sealed class ScalarTypeBuilder : ElementBuilder<ScalarTypeBuilder>, IType
         Precision = _precision,
         Scale = _scale,
         Validation = _pattern is null ? null : new AttributeValidation { Pattern = _pattern },
+        NativeTypes = _nativeTypes.ToImmutableSortedDictionary(StringComparer.Ordinal),
     };
 }
 

@@ -29,7 +29,9 @@ Tests: `tests/Maquettiste.Engine.Tests/Writing/`.
   Matching is case-insensitive (denying more is the safe side). Globs match the whole repo-relative path, not a file name at any
   depth: write `**/*.pem`, not `*.pem`.
 - `CheckEngineWrite`: `Model` under `ModelRoot`, `Cache` under `CacheDirectory` or `JournalDirectory`, `Setup` exactly
-  `.gitignore`, `.git/hooks/post-checkout` and `.git/hooks/post-merge`; the path must be absolute and strictly inside its folder,
+  `.git/hooks/post-checkout`, `.git/hooks/post-merge`, `.mcp.json`, `mcp.sh` (removed only) and
+  `.claude/skills/maquettiste-modeling/SKILL.md`, plus the repository's `.gitignore` only in a policy built with
+  `allowGitignore` (which `init --gitignore` alone passes, so no other write can reach that file); the path must be absolute and strictly inside its folder,
   and links are resolved on both sides (a link cycle or an unreadable link is an `MQ6004` refusal, never an exception). `Output` maps the path to repo-relative and runs `Check`. A policy built with
   `null` settings (`EngineServices.EnginePaths`) refuses every `Check`.
 - `MQ6005` (duplicate and case-colliding paths) needs the whole run, so the writer reports it, not the policy. The first claimant

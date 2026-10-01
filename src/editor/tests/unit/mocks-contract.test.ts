@@ -187,6 +187,22 @@ describe("mock contract", () => {
     expect(missing.status).toBe(428);
   });
 
+  it("saves a custom type's native types and serves them in the database view and the resolved model", async () => {
+    const emailAddress = "01J92P0V04TDYE2C73WMNXVDBV";
+    const { payload: doc } = await call("get", `/api/model/elements/${emailAddress}`, "/api/model/elements/{id}");
+    const { json, hash } = doc as { json: Json; hash: string };
+    const nativeTypes = { postgresql: "character varying({length})", sqlserver: "nvarchar({length})" };
+    const saved = await call("put", `/api/model/elements/${emailAddress}`, "/api/model/elements/{id}", { ...json, nativeTypes }, { "If-Match": `"${hash}"` });
+    expect(saved.status).toBe(200);
+    expect((mock.backend.model.get(emailAddress)!.json as Json).nativeTypes).toEqual(nativeTypes);
+    const { payload: index } = await call("get", "/api/model/index", "/api/model/index");
+    const database = (index as { id: string; kind: string; name: string }[]).find((e) => e.kind === "database" && e.name === "main")!;
+    const { payload } = await call("get", `/api/databases/${database.id}/view`, "/api/databases/{id}/view");
+    const customers = (payload as { view: DatabaseView }).view.tables.find((t) => t.name === "customers")!;
+    expect(customers.columns.find((c) => c.name === "email")?.nativeType).toBe("character varying(254)");
+    await call("get", "/api/model/resolved?scope=scalar-types", "/api/model/resolved");
+  });
+
   it("creates, references and deletes elements in contract shape", async () => {
     const created = await call("post", "/api/model/elements", "/api/model/elements", { kind: "entity", name: "Refund", abstract: true, attributes: [] });
     expect(created.status, JSON.stringify(created.payload).slice(0, 400)).toBe(201);

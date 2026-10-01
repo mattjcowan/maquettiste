@@ -41,6 +41,7 @@ public partial class PaymentRepository(IDbConnection connection, IDbTransaction?
         received_at AS ReceivedAt,
         reference AS Reference,
         method AS Method,
+        ledger_position AS LedgerPosition,
         created_at AS CreatedAt,
         updated_at AS UpdatedAt
         """;
@@ -50,13 +51,13 @@ public partial class PaymentRepository(IDbConnection connection, IDbTransaction?
     private const string ListSql = "SELECT " + Columns + " FROM payments ORDER BY id LIMIT @Take OFFSET @Skip";
 
     private const string InsertSql = """
-        INSERT INTO payments (amount_amount, amount_currency, received_at, reference, method, created_at, updated_at)
-        VALUES (@AmountAmount, @AmountCurrency, @ReceivedAt, @Reference, @Method, @CreatedAt, @UpdatedAt)
+        INSERT INTO payments (amount_amount, amount_currency, received_at, reference, method, ledger_position, created_at, updated_at)
+        VALUES (@AmountAmount, @AmountCurrency, @ReceivedAt, @Reference, @Method, @LedgerPosition, @CreatedAt, @UpdatedAt)
         RETURNING id
         """;
 
     private const string UpdateSql = """
-        UPDATE payments SET amount_amount = @AmountAmount, amount_currency = @AmountCurrency, received_at = @ReceivedAt, reference = @Reference, method = @Method, created_at = @CreatedAt, updated_at = @UpdatedAt
+        UPDATE payments SET amount_amount = @AmountAmount, amount_currency = @AmountCurrency, received_at = @ReceivedAt, reference = @Reference, method = @Method, ledger_position = @LedgerPosition, created_at = @CreatedAt, updated_at = @UpdatedAt
         WHERE id = @Id
         """;
 
@@ -105,6 +106,7 @@ public partial class PaymentRepository(IDbConnection connection, IDbTransaction?
         public DateTimeOffset ReceivedAt { get; set; }
         public string? Reference { get; set; }
         public string? Method { get; set; }
+        public byte[]? LedgerPosition { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset? UpdatedAt { get; set; }
 
@@ -115,6 +117,7 @@ public partial class PaymentRepository(IDbConnection connection, IDbTransaction?
             ReceivedAt = row.ReceivedAt,
             Reference = row.Reference,
             Method = row.Method,
+            LedgerPosition = row.LedgerPosition,
             CreatedAt = row.CreatedAt,
             UpdatedAt = row.UpdatedAt,
         };
@@ -127,6 +130,7 @@ public partial class PaymentRepository(IDbConnection connection, IDbTransaction?
             ReceivedAt = entity.ReceivedAt,
             Reference = entity.Reference,
             Method = entity.Method,
+            LedgerPosition = entity.LedgerPosition,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt,
         };

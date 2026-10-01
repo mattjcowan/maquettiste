@@ -7564,7 +7564,7 @@ components:
       allOf:
       - $ref: '#/components/schemas/ResolvedAnnotations'
       - type: object
-        required: [id, kind, name, package, base, length, precision, scale, validation]
+        required: [id, kind, name, package, base, length, precision, scale, validation, nativeTypes]
         properties:
           id:
             type: string
@@ -7587,6 +7587,11 @@ components:
             oneOf:
             - $ref: '#/components/schemas/ValidationRecord'
             - type: 'null'
+          nativeTypes:
+            description: The native type per dialect name, as written (a pattern with {length}, {precision} and {scale}); empty when the type declares none.
+            type: object
+            additionalProperties:
+              type: string
     ReferenceTypeRecord:
       x-engine-record: Maquettiste.Engine.ReferenceTypeRecord
       description: A resolved reference type with every row.

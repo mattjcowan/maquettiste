@@ -164,7 +164,8 @@ internal sealed partial class DatabaseRun
             var name = Render(_conv.ForeignKeyColumn, ("role", end.Role), ("key", ka.Name), ("entity", end.Entity.Name), ("relation", rel.Name),
                 ("table", host.Table.Name));
             AddColumn(host, columnKey, name, referenced?.Type ?? ka.Type.Builtin ?? "string", referenced?.Length ?? ka.Length,
-                referenced?.Precision ?? ka.Precision, referenced?.Scale ?? ka.Scale, nullable, null, null, null);
+                referenced?.Precision ?? ka.Precision, referenced?.Scale ?? ka.Scale, nullable, null, null, null,
+                scalar: referenced is not null ? ScalarOf(referenced) : ka.Type.Scalar);
             keys.Add(columnKey);
         }
 

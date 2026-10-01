@@ -104,6 +104,57 @@ public sealed class DialectTests
     }
 
     [Fact]
+    public void A_custom_type_native_type_wins_in_entity_child_and_junction_tables()
+    {
+        var b = new ModelBuilder(seed: 55);
+        var lsn = b.ScalarType("Lsn", "binary").Length(8).NativeType("postgresql", "pg_lsn").NativeType("sqlserver", "binary({length})");
+        var ledger = b.Entity("Ledger").Attr("position", lsn, a => a.Required()).CompositeKey("position");
+        var entry = b.Entity("Entry").Key("id", "int64").Attr("at", lsn).Attr("history", lsn, a => a.Collection()).Attr("raw", "binary");
+        b.Relation("records", ledger, entry, fromMax: MaxCardinality.One, toMax: MaxCardinality.Many, fromRole: "ledger");
+        b.Relation("audits", ledger, entry, fromRole: "auditor", toRole: "audited");
+        b.Database("pg", Dialect.PostgreSql);
+        b.Database("ss", Dialect.SqlServer);
+        b.Database("my", Dialect.MySql);
+        // The project's type map for the base does not reach the custom type's own native type.
+        b.Settings(s => s with
+        {
+            TypeMaps = ImmutableDictionary<string, IReadOnlyDictionary<string, string>>.Empty
+                .Add("postgresql", ImmutableDictionary<string, string>.Empty.Add("binary", "bytea")),
+        });
+        var model = ResolutionKit.Resolve(b);
+
+        Assert.Equal(ImmutableSortedDictionary<string, string>.Empty.Add("postgresql", "pg_lsn").Add("sqlserver", "binary({length})"),
+            model.ScalarTypes.Single().NativeTypes);
+        foreach (var (db, native, plain) in new[] { ("pg", "pg_lsn", "bytea"), ("ss", "binary(8)", "varbinary(max)"), ("my", "longblob", "longblob") })
+        {
+            var tables = model.Db(db).Tables;
+            string Native(Func<RTable, bool> table, Func<RColumn, bool> column) => tables.Single(table).Columns.Single(column).NativeType;
+            Assert.Equal(native, Native(t => t.Name == "ledgers", c => c.Name == "position"));
+            Assert.Equal(native, Native(t => t.Name == "entries", c => c.Name == "at"));
+            Assert.Equal(plain, Native(t => t.Name == "entries", c => c.Name == "raw"));
+            Assert.Equal(native, Native(t => t.Name == "entries", c => c.IsForeignKey));
+            Assert.Equal(native, Native(t => t.Attribute?.Name == "history", c => c.AttributePath is not null));
+            Assert.Equal(native, Native(t => t.IsJunction, c => c.IsForeignKey && c.Name.StartsWith("auditor", StringComparison.Ordinal)));
+            Assert.Equal("int64", tables.Single(t => t.IsJunction).Columns.Single(c => c.Name.StartsWith("audited", StringComparison.Ordinal)).Type);
+        }
+
+        Assert.Contains(model.Db("pg").Tables.Single(t => t.Name == "entries").Dependencies, d => d.Contains(lsn.Id, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void An_overlay_native_type_wins_over_the_custom_type()
+    {
+        var b = new ModelBuilder(seed: 56);
+        var lsn = b.ScalarType("Lsn", "binary").Length(8).NativeType("postgresql", "pg_lsn");
+        var thing = b.Entity("Thing").Key("id", "int64").Attr("at", lsn).Attr("seen", lsn);
+        var db = b.Database("db", Dialect.PostgreSql);
+        b.Table("", db).OverlayFor(thing).Overlay(thing.AttrId("seen"), nativeType: "bytea");
+        var table = ResolutionKit.Resolve(b).Db("db").Table("things");
+        Assert.Equal("pg_lsn", table.Column("at").NativeType);
+        Assert.Equal("bytea", table.Column("seen").NativeType);
+    }
+
+    [Fact]
     public void Database_defaults_follow_the_dialect()
     {
         var b = new ModelBuilder(seed: 54);

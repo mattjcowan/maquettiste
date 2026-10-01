@@ -107,6 +107,7 @@ internal sealed class ManifestStore(EngineOptions options, ICanonicalJson json, 
             return;
         var tag = "manifest-" + Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "-"
             + Interlocked.Increment(ref _tempCounter).ToString(CultureInfo.InvariantCulture);
+        CacheFolder.EnsureIgnored(options, paths, file);
         await AtomicFile.WriteAsync(file, bytes, tag, ct).ConfigureAwait(false);
     }
 

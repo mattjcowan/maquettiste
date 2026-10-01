@@ -269,6 +269,7 @@ internal sealed class RunJournal(EngineOptions options, IOutputPathPolicy paths)
     {
         var temp = AtomicFile.TempPath(file, runId);
         Guard(temp);
+        CacheFolder.EnsureIgnored(options, paths, file);
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
         try
         {

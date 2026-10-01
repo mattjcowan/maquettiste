@@ -24,6 +24,7 @@ internal sealed class RunLock(EngineOptions options, IOutputPathPolicy paths) : 
         var check = paths.CheckEngineWrite(WriteTarget.Cache, file);
         if (!check.Allowed)
             throw new UnauthorizedAccessException($"{check.RuleId}: run lock refused for {file}: {check.Reason}");
+        CacheFolder.EnsureIgnored(options, paths, file);
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
         while (true)
         {

@@ -555,9 +555,9 @@ internal sealed class ValidationContext
 
     /// <summary>
     /// Classifies a column's native type for MQ4006 and MQ4016: known when its base name is a native type of the dialect, the base of
-    /// a value of the dialect's effective type map, or the snake or kebab name (with or without a <c>_t</c> suffix) of one of the
-    /// model's reference types or enums; user-defined when it is otherwise written with identifier quotes or a prefix such as a
-    /// schema; else unknown. SQLite accepts any type name.
+    /// a value of the dialect's effective type map, the base of a native type a custom type declares for the dialect, or the snake or
+    /// kebab name (with or without a <c>_t</c> suffix) of one of the model's reference types or enums; user-defined when it is
+    /// otherwise written with identifier quotes or a prefix such as a schema; else unknown. SQLite accepts any type name.
     /// </summary>
     /// <param name="dialect">The database's dialect.</param>
     /// <param name="nativeType">The native type as written.</param>
@@ -571,12 +571,26 @@ internal sealed class ValidationContext
         var name = parsed.BaseName;
         if (name.Length > 0)
         {
-            var known = _knownNativeTypes.GetOrAdd(dialect, d => DialectInfo.KnownBaseNames(d, Resolution.DialectTypeMaps.Effective(d, Model.Settings)));
+            var known = _knownNativeTypes.GetOrAdd(dialect, d => DialectInfo.KnownBaseNames(d, Resolution.DialectTypeMaps.Effective(d, Model.Settings),
+                ScalarNativeTypes(d)));
             if (known.Contains(name) || _modelTypeNames.Value.Contains(name))
                 return NativeTypeStatus.Known;
         }
 
         return parsed.IsQuotedOrQualified ? NativeTypeStatus.UserDefined : NativeTypeStatus.Unknown;
+    }
+
+    /// <summary>The native types the active custom types declare for a dialect (<c>nativeTypes</c>), as written.</summary>
+    /// <param name="dialect">The dialect.</param>
+    /// <returns>The native types.</returns>
+    private IEnumerable<string> ScalarNativeTypes(Dialect dialect)
+    {
+        var name = DialectInfo.Name(dialect);
+        foreach (var doc in Documents)
+        {
+            if (doc.Element is ScalarType scalar && scalar.NativeTypes.TryGetValue(name, out var native))
+                yield return native;
+        }
     }
 
     /// <summary>
@@ -609,7 +623,8 @@ internal sealed class ValidationContext
     /// <summary>
     /// The tables whose MQ4006 or MQ4016 findings can change with a document they do not reference: for a table, the first holder of
     /// each user-defined native type it uses (that holder reports the column count); for a reference type or an enum, the tables with
-    /// a column whose native type carries one of its names.
+    /// a column whose native type carries one of its names; for a custom type, the tables with a column whose native type has the base
+    /// name of one of the native types it declares.
     /// </summary>
     /// <param name="element">The changed element.</param>
     /// <returns>The documents (duplicates are possible).</returns>
@@ -629,6 +644,15 @@ internal sealed class ValidationContext
         else if (element is ReferenceType or EnumType)
         {
             var names = ModelTypeNames(element.Name);
+            foreach (var doc in Documents)
+            {
+                if (doc.Element is Table other && other.Columns.Any(c => c.NativeType is { } n && names.Contains(DialectInfo.Parse(n).BaseName)))
+                    yield return doc;
+            }
+        }
+        else if (element is ScalarType { NativeTypes.Count: > 0 } scalar)
+        {
+            var names = scalar.NativeTypes.Values.Select(v => DialectInfo.Parse(v).BaseName).Where(n => n.Length > 0).ToHashSet(StringComparer.Ordinal);
             foreach (var doc in Documents)
             {
                 if (doc.Element is Table other && other.Columns.Any(c => c.NativeType is { } n && names.Contains(DialectInfo.Parse(n).BaseName)))

@@ -53,10 +53,10 @@ The user is the owner of the mounted model folder (`.maquettiste/`) for the edit
 (`-w /repo`) for a command, which under Docker on Linux and on the Mac is you; the entrypoint hands its own volume (`/data`) and
 `/home/app` to that user, and with nothing mounted it runs as the image's user, UID 1654 (`app`). Repair means that every file
 or folder that another user owns (root, or 1654 from an older image) inside the model folder, inside the output roots that
-`outputs.allow` lists, and for a command in the files `init` writes at the project root (`.gitignore`, `.mcp.json`,
-the modeling skill) is given to that user, without following symbolic links and without changing the mount point itself; the
-entrypoint logs `repaired N files owned by another user under <path>` when it changed any, so a run as root never leaves you
-needing `sudo chown`. When Docker shows the model folder itself as root's (Docker created it because `init` had not run, or an
+`outputs.allow` lists, and for a command in the files `init` writes at the project root (`.mcp.json`, the modeling skill;
+the repository's `.gitignore` is the customer's file and is left alone) is given to that user, without following symbolic
+links and without changing the mount point itself; the entrypoint logs `repaired N files owned by another user under <path>`
+when it changed any, so a run as root never leaves you needing `sudo chown`. When Docker shows the model folder itself as root's (Docker created it because `init` had not run, or an
 earlier run as root did), the editor takes the owner of the repository mount `/repo` instead and claims the folder as well;
 with no such owner it stays root and logs how to set the variables. `MAQUETTISTE_UID` sets the user id to run as (`0` stays
 root; empty means the folder's owner) and `MAQUETTISTE_GID` the group id (empty means the folder's group; `0` with another user

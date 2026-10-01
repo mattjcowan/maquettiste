@@ -1,5 +1,6 @@
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Rendering;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Rendering;
 
@@ -177,5 +178,20 @@ public sealed class TemplateCacheAndHelperTests
         var columnUnit = await Adhoc.RenderAsync(
             $"{{{{ c = (lookup '{table.Id}').columns | array.first }}}}{{{{ for c in (lookup '{table.Id}').columns }}}}{{{{ if c.name == '{column.Name}' }}}}{{{{ type_of c 'postgresql' }}}}|{{{{ type_of c 'oracle' }}}}{{{{ end }}}}{{{{ end }}}}");
         Assert.Equal(column.NativeType + "|number(" + (column.Precision ?? 18) + "," + (column.Scale ?? 2) + ")", columnUnit.Text());
+    }
+
+    [Fact]
+    public async Task Type_of_a_dialect_takes_a_custom_types_native_type()
+    {
+        var b = new ModelBuilder(seed: 57);
+        var lsn = b.ScalarType("Lsn", "binary").Length(8).NativeType("postgresql", "pg_lsn").NativeType("sqlserver", "binary({length})");
+        b.Entity("Thing").Key("id", "int64").Attr("at", lsn);
+        b.Database("db", Dialect.PostgreSql);
+        var model = Resolution.ResolutionKit.Resolve(b);
+        var unit = await Adhoc.RenderAsync(
+            "{{ for a in entity.attributes }}{{ a.name }}:{{ type_of a 'postgresql' }}/{{ type_of a.type 'sqlserver' }}/{{ type_of a 'oracle' }};{{ end }}"
+            + "{{ type_of (model.scalar_types | array.first) 'sqlserver' }}|{{ (model.scalar_types | array.first).native_types.postgresql }}",
+            model.Entities.Single(e => e.Name == "Thing"), model: model);
+        Assert.Equal("id:bigint/bigint/number(19);at:pg_lsn/binary(8)/blob;binary(8)|pg_lsn", unit.Text());
     }
 }

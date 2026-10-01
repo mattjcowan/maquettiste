@@ -17,7 +17,7 @@ internal sealed class JobStore(EngineOptions options, IOutputPathPolicy paths)
     /// <summary>How many job records are kept.</summary>
     public const int Keep = 200;
 
-    private readonly EngineFiles _files = new(paths, WriteTarget.Cache);
+    private readonly EngineFiles _files = new(paths, WriteTarget.Cache, options);
     private readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
 
     /// <summary>The jobs folder.</summary>

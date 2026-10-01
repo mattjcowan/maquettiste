@@ -102,7 +102,7 @@ public sealed class RuleHelperTests
 
     [Fact]
     public void Type_map_values_extend_the_known_native_types() =>
-        Assert.True(DialectInfo.IsKnownNativeType(Dialect.PostgreSql, "ltree", new Dictionary<string, string> { ["string"] = "ltree" }));
+        Assert.True(DialectInfo.IsKnownNativeType(Dialect.PostgreSql, "ledger_path", new Dictionary<string, string> { ["string"] = "ledger_path" }));
 
     [Fact]
     public void Identifier_length_is_bytes_on_postgresql_and_characters_elsewhere()

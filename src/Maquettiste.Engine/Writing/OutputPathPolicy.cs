@@ -37,16 +37,21 @@ internal sealed class OutputPathPolicy : IOutputPathPolicy
     /// <summary>Creates the policy.</summary>
     /// <param name="options">The engine options.</param>
     /// <param name="settings">The project settings; <see langword="null"/> allows engine-write checks only.</param>
-    public OutputPathPolicy(EngineOptions options, ProjectSettings? settings)
+    /// <param name="allowGitignore">
+    /// Whether <see cref="WriteTarget.Setup"/> may write the repository's <c>.gitignore</c>: only <c>init --gitignore</c> passes
+    /// <see langword="true"/>, so no other write, by any command, can reach that file.
+    /// </param>
+    public OutputPathPolicy(EngineOptions options, ProjectSettings? settings, bool allowGitignore = false)
     {
         ArgumentNullException.ThrowIfNull(options);
         _repoRoot = Full(options.RepoRoot);
         _modelRoot = Full(options.EffectiveModelRoot);
         _cacheDirectory = Full(options.CacheDirectory);
         _journalDirectory = Full(options.EffectiveJournalDirectory);
+        ImmutableArray<string> gitignore = allowGitignore ? [Path.Combine(_repoRoot, ".gitignore")] : [];
         _setupPaths =
         [
-            Path.Combine(_repoRoot, ".gitignore"),
+            .. gitignore,
             Path.Combine(_repoRoot, ".git", "hooks", "post-checkout"),
             Path.Combine(_repoRoot, ".git", "hooks", "post-merge"),
             Path.Combine(_repoRoot, ".mcp.json"),
@@ -154,7 +159,7 @@ internal sealed class OutputPathPolicy : IOutputPathPolicy
             case WriteTarget.Setup:
             {
                 if (!_setupPaths.Any(p => string.Equals(p, full, FileSystemPaths.Comparison)))
-                    return Refuse(full, null, "setup writes are limited to .gitignore, the post-checkout and post-merge hooks, .mcp.json, mcp.sh and .claude/skills/maquettiste-modeling/SKILL.md");
+                    return Refuse(full, null, "setup writes are limited to the post-checkout and post-merge hooks, .mcp.json, mcp.sh, .claude/skills/maquettiste-modeling/SKILL.md and, with init --gitignore only, .gitignore");
                 try
                 {
                     var realRepo = FileSystemPaths.RealPath(_repoRoot);

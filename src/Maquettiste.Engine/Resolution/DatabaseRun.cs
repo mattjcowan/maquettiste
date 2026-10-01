@@ -37,7 +37,8 @@ internal sealed partial class DatabaseRun
     private readonly Dictionary<string, string> _rendered = new(StringComparer.Ordinal);
     private readonly System.Text.StringBuilder _renderKey = new();
     private readonly List<string> _renderWords = new(16);
-    private readonly Dictionary<(string, int?, int?, int?), string> _nativeTypes = [];
+    private readonly Dictionary<(string, int?, int?, int?, string?), string> _nativeTypes = [];
+    private readonly Dictionary<RColumn, RScalarType> _columnScalars = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Placement, IReadOnlyList<string>> _keyDeps = new(ReferenceEqualityComparer.Instance);
 
     public DatabaseRun(ResolveRun run, Database db)
@@ -524,17 +525,27 @@ internal sealed partial class DatabaseRun
         return name;
     }
 
-    private string NativeType(string type, int? length, int? precision, int? scale)
+    /// <summary>
+    /// The native type of a logical type with its facets: the custom type's native type for the dialect when the value is of a custom
+    /// type that declares one, else the effective type map's entry for the built-in keyword.
+    /// </summary>
+    private string NativeType(string type, int? length, int? precision, int? scale, RScalarType? scalar = null)
     {
-        var key = (type, length, precision, scale);
+        var pattern = scalar is not null && scalar.NativeTypes.TryGetValue(_dialect, out var own) ? own : null;
+        var key = (type, length, precision, scale, pattern);
         if (!_nativeTypes.TryGetValue(key, out var native))
         {
-            native = DialectTypeMaps.Render(_typeMap, type, length, precision, scale, _conv);
+            native = pattern is null
+                ? DialectTypeMaps.Render(_typeMap, type, length, precision, scale, _conv)
+                : DialectTypeMaps.RenderPattern(pattern, type, length, precision, scale, _conv);
             _nativeTypes[key] = native;
         }
 
         return native;
     }
+
+    /// <summary>The custom type a synthesized column stores, when its native type came from that type (see <c>AddColumn</c>).</summary>
+    private RScalarType? ScalarOf(RColumn? column) => column is not null && _columnScalars.TryGetValue(column, out var scalar) ? scalar : null;
 
     /// <summary>
     /// Renders a non-table name pattern with the column case (section 2.4). Same result as <see cref="NamePattern.Render"/>, with

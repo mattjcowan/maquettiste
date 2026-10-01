@@ -322,7 +322,7 @@ internal sealed class LastRun(EngineServices services)
     /// </summary>
     private static readonly FrozenSet<string> Unsettled = new[] { "MQ6004", "MQ6005", "MQ6009", "MQ6010", "MQ6015" }.ToFrozenSet(StringComparer.Ordinal);
 
-    private readonly EngineFiles _files = new(services.EnginePaths, WriteTarget.Cache);
+    private readonly EngineFiles _files = new(services.EnginePaths, WriteTarget.Cache, services.Options);
 
     private EngineOptions Options => services.Options;
 

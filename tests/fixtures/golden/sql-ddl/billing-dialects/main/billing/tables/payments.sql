@@ -9,6 +9,7 @@ CREATE TABLE billing.payments (
     received_at timestamptz(6) NOT NULL,
     reference varchar(64) NULL,
     method varchar(16) NULL,
+    ledger_position pg_lsn NULL,
     created_at timestamptz(6) NOT NULL,
     updated_at timestamptz(6) NULL,
     CONSTRAINT pk_payments PRIMARY KEY (id)

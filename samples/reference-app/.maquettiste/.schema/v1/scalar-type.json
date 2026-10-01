@@ -20,6 +20,7 @@
     "precision",
     "scale",
     "validation",
+    "nativeTypes",
     "properties",
     "generation",
     "source"
@@ -75,6 +76,18 @@
     },
     "validation": {
       "$ref": "common.json#/$defs/validation"
+    },
+    "nativeTypes": {
+      "description": "The native type per dialect name, used instead of the base's type map entry for the columns that store this type in a database of that dialect. A value may use the type maps' {length}, {precision} and {scale} placeholders.",
+      "type": "object",
+      "propertyNames": {
+        "enum": ["postgresql", "sqlserver", "mysql", "sqlite", "oracle"]
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": {}
     },
     "properties": {
       "$ref": "common.json#/$defs/properties",

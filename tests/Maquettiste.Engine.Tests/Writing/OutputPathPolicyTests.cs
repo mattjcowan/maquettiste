@@ -211,13 +211,38 @@ public sealed class OutputPathPolicyTests
         Assert.False(f.EnginePaths.CheckEngineWrite(WriteTarget.Model, Path.Combine(f.Repo.RepoRoot, "db", "a.sql")).Allowed);
         Assert.False(f.EnginePaths.CheckEngineWrite(WriteTarget.Model, Path.Combine(f.Repo.CacheDirectory, "a.json")).Allowed);
 
-        Assert.True(f.EnginePaths.CheckEngineWrite(WriteTarget.Setup, Path.Combine(f.Repo.RepoRoot, ".gitignore")).Allowed);
+        Assert.False(f.EnginePaths.CheckEngineWrite(WriteTarget.Setup, Path.Combine(f.Repo.RepoRoot, ".gitignore")).Allowed);
         Assert.True(f.EnginePaths.CheckEngineWrite(WriteTarget.Setup, Path.Combine(f.Repo.RepoRoot, ".git", "hooks", "post-checkout")).Allowed);
         Assert.True(f.EnginePaths.CheckEngineWrite(WriteTarget.Setup, Path.Combine(f.Repo.RepoRoot, ".git", "hooks", "post-merge")).Allowed);
         Assert.False(f.EnginePaths.CheckEngineWrite(WriteTarget.Setup, Path.Combine(f.Repo.RepoRoot, ".git", "hooks", "pre-commit")).Allowed);
         Assert.False(f.EnginePaths.CheckEngineWrite(WriteTarget.Setup, Path.Combine(f.Repo.RepoRoot, ".git", "config")).Allowed);
 
         Assert.False(f.EnginePaths.CheckEngineWrite(WriteTarget.Cache, "relative/index.bin").Allowed);
+    }
+
+    [Fact]
+    public void The_repository_gitignore_is_a_setup_write_only_when_init_gitignore_allows_it()
+    {
+        using var f = new WritingFixture();
+        var gitignore = Path.Combine(f.Repo.RepoRoot, ".gitignore");
+
+        // Without the opt-in, no target reaches the customer's file.
+        foreach (var target in new[] { WriteTarget.Setup, WriteTarget.Model, WriteTarget.Cache, WriteTarget.Output })
+        {
+            var refused = f.EnginePaths.CheckEngineWrite(target, gitignore);
+            Assert.False(refused.Allowed, target.ToString());
+            Assert.Equal(OutputPathPolicy.RefusedRule, refused.RuleId);
+        }
+
+        Assert.False(f.Paths.CheckEngineWrite(WriteTarget.Output, gitignore).Allowed);
+        Assert.Contains("with init --gitignore only", f.EnginePaths.CheckEngineWrite(WriteTarget.Setup, gitignore).Reason, StringComparison.Ordinal);
+
+        // With it, the file (and only the root one) is allowed; the other setup paths are unchanged.
+        var optedIn = new OutputPathPolicy(f.Repo.Options, null, allowGitignore: true);
+        Assert.True(optedIn.CheckEngineWrite(WriteTarget.Setup, gitignore).Allowed);
+        Assert.False(optedIn.CheckEngineWrite(WriteTarget.Setup, Path.Combine(f.Repo.RepoRoot, "src", ".gitignore")).Allowed);
+        Assert.True(optedIn.CheckEngineWrite(WriteTarget.Setup, Path.Combine(f.Repo.RepoRoot, ".git", "hooks", "post-merge")).Allowed);
+        Assert.True(f.EnginePaths.CheckEngineWrite(WriteTarget.Setup, Path.Combine(f.Repo.RepoRoot, ".mcp.json")).Allowed);
     }
 
     [Fact]

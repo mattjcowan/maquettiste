@@ -12,7 +12,8 @@ namespace Maquettiste.Packs.Tests;
 /// (<c>reporting</c>) and a SQLite database (<c>local</c>) next to the PostgreSQL one, so every dialect branch of the packs runs,
 /// a <c>PaymentMethod</c> reference type used by <c>Payment.method</c> (a CHECK, and a lookup table in <c>local</c>), and a
 /// <c>CreditNote</c> entity derived from <c>Invoice</c> (table per hierarchy, so a
-/// discriminator column).
+/// discriminator column), and a custom type <c>Lsn</c> (binary, length 8) with its own native types, <c>pg_lsn</c> on PostgreSQL and
+/// <c>binary(8)</c> on SQL Server, used by <c>Payment.ledgerPosition</c>.
 /// </summary>
 internal sealed class PackRepo : IDisposable
 {
@@ -127,6 +128,24 @@ internal sealed class PackRepo : IDisposable
 
         """;
 
+    private const string Lsn = """
+        {
+          "$schema": "../../.schema/v1/scalar-type.json",
+          "kind": "scalar-type",
+          "id": "01J92P0V2G0000000000000001",
+          "name": "Lsn",
+          "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+          "description": "A position in the ledger's write-ahead log.",
+          "base": "binary",
+          "length": 8,
+          "nativeTypes": {
+            "postgresql": "pg_lsn",
+            "sqlserver": "binary(8)"
+          }
+        }
+
+        """;
+
     private PackRepo(bool dialects)
     {
         Repo = new TempRepo();
@@ -152,6 +171,14 @@ internal sealed class PackRepo : IDisposable
                 ["id"] = "01J92P0V2F0000000000000020",
                 ["name"] = "method",
                 ["type"] = new JsonObject { ["ref"] = "01J92P0V2F0000000000000001" },
+            }));
+            // A custom type with native types of its own: pg_lsn on PostgreSQL, binary(8) on SQL Server, the base's blob on SQLite.
+            Repo.WriteFile(".maquettiste/model/types/lsn.json", Lsn);
+            EditJson(".maquettiste/model/entities/payment.json", payment => payment["attributes"]!.AsArray().Add(new JsonObject
+            {
+                ["id"] = "01J92P0V2G0000000000000002",
+                ["name"] = "ledgerPosition",
+                ["type"] = new JsonObject { ["ref"] = "01J92P0V2G0000000000000001" },
             }));
         }
     }

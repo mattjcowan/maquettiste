@@ -738,41 +738,178 @@ export function EnumFields({ id, json, edit, flush }: FormProps) {
   );
 }
 
-export function ScalarFields({ id, json, edit, flush }: FormProps) {
+export function ScalarFields(props: FormProps) {
+  const { id, json, edit, flush } = props;
   const s = json as ScalarTypeDoc;
   return (
-    <div className="grid grid-cols-2 gap-2">
-      <Field label="Base type" htmlFor={`${id}-base`}>
-        <Select
-          id={`${id}-base`}
-          value={s.base}
-          onChange={(e) => {
-            edit((j) => void ((j as ScalarTypeDoc).base = e.target.value as ScalarTypeDoc["base"]));
-            flush();
-          }}
-        >
-          {BUILTIN_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      {(["length", "precision", "scale"] as const).map((k) => (
-        <TextField
-          key={k}
-          id={`${id}-${k}`}
-          label={k[0].toUpperCase() + k.slice(1)}
-          value={s[k] === undefined ? "" : String(s[k])}
-          onChange={(v) => edit((j) => setOptional(j as Rec, k, /^\d+$/.test(v) ? Number(v) : undefined))}
-          onBlur={flush}
-        />
-      ))}
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Base type" htmlFor={`${id}-base`}>
+          <Select
+            id={`${id}-base`}
+            value={s.base}
+            onChange={(e) => {
+              edit((j) => void ((j as ScalarTypeDoc).base = e.target.value as ScalarTypeDoc["base"]));
+              flush();
+            }}
+          >
+            {BUILTIN_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {(["length", "precision", "scale"] as const).map((k) => (
+          <TextField
+            key={k}
+            id={`${id}-${k}`}
+            label={k[0].toUpperCase() + k.slice(1)}
+            value={s[k] === undefined ? "" : String(s[k])}
+            onChange={(v) => edit((j) => setOptional(j as Rec, k, /^\d+$/.test(v) ? Number(v) : undefined))}
+            onBlur={flush}
+          />
+        ))}
+      </div>
+      <NativeTypesSection {...props} />
     </div>
   );
 }
 
 export const DIALECTS = ["postgresql", "sqlserver", "sqlite", "mysql", "oracle"] as const;
+
+/** The dialects the project's databases use, in {@link DIALECTS} order. */
+function useProjectDialects(): string[] {
+  const index = useIndex();
+  const ids = indexLookup(index.data)
+    .ofKind("database")
+    .map((d) => d.id);
+  const docs = useElements(ids);
+  const used = new Set(ids.map((x) => (docs.byId.get(x)?.json as DatabaseDoc | undefined)?.dialect));
+  return DIALECTS.filter((d) => used.has(d));
+}
+
+/**
+ * Sets or clears a custom type's native type for one dialect. The map's keys stay in ordinal order (the canonical form),
+ * and an empty map is dropped.
+ */
+export function setNativeType(json: Rec, dialect: string, value: string): void {
+  const current = (json.nativeTypes as Record<string, string> | undefined) ?? {};
+  const next: Record<string, string> = {};
+  const keys = [...new Set([...Object.keys(current), dialect])].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  for (const key of keys) {
+    const v = key === dialect ? value.trim() : current[key];
+    if (v) next[key] = v;
+  }
+  setOptional(json, "nativeTypes", Object.keys(next).length ? next : undefined);
+}
+
+/**
+ * A custom type's native types: one row per dialect the project's databases use or the type already names, and a select
+ * that adds a row for another dialect. A value replaces the base type's type map entry for the type's columns in
+ * databases of that dialect; an empty row keeps the type map.
+ */
+function NativeTypesSection({ id, json, edit, flush }: FormProps) {
+  const s = json as ScalarTypeDoc;
+  const native = (s.nativeTypes ?? {}) as Record<string, string>;
+  const used = useProjectDialects();
+  const [added, setAdded] = useState<string[]>([]);
+  const rows = DIALECTS.filter((d) => used.includes(d) || native[d] !== undefined || added.includes(d));
+  const others = DIALECTS.filter((d) => !rows.includes(d));
+  return (
+    <section className="flex flex-col gap-1" aria-label="Native types">
+      <SectionTitle
+        actions={
+          others.length ? (
+            <Select
+              aria-label="Add a dialect"
+              title="Add a native type for another dialect"
+              className="h-6 w-auto text-12"
+              value=""
+              onChange={(e) => {
+                const dialect = e.target.value;
+                if (dialect) setAdded((a) => [...a, dialect]);
+              }}
+            >
+              <option value="">(add a dialect)</option>
+              {others.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </Select>
+          ) : null
+        }
+      >
+        Native types
+      </SectionTitle>
+      {rows.length ? (
+        <div className="grid grid-cols-[max-content_1fr_auto] items-center gap-x-2 gap-y-1">
+          {rows.map((d) => (
+            <NativeTypeRow
+              key={d}
+              id={`${id}-native-${d}`}
+              dialect={d}
+              value={native[d] ?? ""}
+              onChange={(v) => edit((j) => setNativeType(j as Rec, d, v))}
+              onBlur={flush}
+              onClear={() => {
+                edit((j) => setNativeType(j as Rec, d, ""));
+                flush();
+                setAdded((a) => a.filter((x) => x !== d));
+              }}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="text-12 text-secondary">No database yet: add a dialect to give this type a native type there.</p>
+      )}
+      <p className="text-11 text-secondary">
+        Empty uses the type map of the base type. A value such as <code className="font-mono">binary({"{length}"})</code> may use{" "}
+        <code className="font-mono">{"{length}"}</code>, <code className="font-mono">{"{precision}"}</code> and <code className="font-mono">{"{scale}"}</code>,
+        which take this type&apos;s facets.
+      </p>
+    </section>
+  );
+}
+
+function NativeTypeRow({
+  id,
+  dialect,
+  value,
+  onChange,
+  onBlur,
+  onClear,
+}: {
+  id: string;
+  dialect: string;
+  value: string;
+  onChange: (v: string) => void;
+  onBlur: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <>
+      <label htmlFor={id} className="text-12 font-medium text-secondary">
+        {dialect}
+      </label>
+      <Input
+        id={id}
+        value={value}
+        placeholder="From the type map"
+        className="h-7 font-mono text-12"
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onBlur();
+        }}
+      />
+      <Button size="icon-sm" variant="ghost" label={`Clear the ${dialect} native type`} disabled={!value} onClick={onClear}>
+        <X />
+      </Button>
+    </>
+  );
+}
 
 export function DatabaseFields({ id, json, edit, flush }: FormProps) {
   const db = json as DatabaseDoc;

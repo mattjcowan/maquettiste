@@ -79,10 +79,10 @@ public sealed class NativeTypeRuleTests
     {
         var b = new ModelBuilder();
         var db = b.Database("main", Dialect.PostgreSql);
-        b.Table("paths", db).Column("path", "string", nativeType: "ltree");
+        b.Table("paths", db).Column("path", "string", nativeType: "ledger_path");
         Assert.Equal("MQ4006", Assert.Single(await NativeTypeFindings(b.Build())).Rule);
 
-        b.Settings(s => s with { TypeMaps = new Dictionary<string, IReadOnlyDictionary<string, string>> { ["postgresql"] = new Dictionary<string, string> { ["text"] = "ltree" } } });
+        b.Settings(s => s with { TypeMaps = new Dictionary<string, IReadOnlyDictionary<string, string>> { ["postgresql"] = new Dictionary<string, string> { ["text"] = "ledger_path" } } });
         Assert.Empty(await NativeTypeFindings(b.Build()));
     }
 
@@ -97,6 +97,94 @@ public sealed class NativeTypeRuleTests
             foreach (var value in Engine.Resolution.DialectTypeMaps.Default(dialect).Values)
                 Assert.True(DialectInfo.IsKnownNativeType(dialect, value, null), $"{dialect}: {value}");
         }
+    }
+
+    /// <summary>The documented built-in types each dialect's fixed list gained on 2026-10-01 (the types a column may name).</summary>
+    public static TheoryData<Dialect, string[]> AddedNativeTypes => new()
+    {
+        {
+            Dialect.PostgreSql,
+            [
+                "pg_lsn", "pg_snapshot", "txid_snapshot", "xid", "xid8", "cid", "tid", "regclass", "regcollation", "regconfig", "regdictionary",
+                "regnamespace", "regoper", "regoperator", "regproc", "regprocedure", "regrole", "regtype", "jsonpath", "int4multirange",
+                "int8multirange", "nummultirange", "tsmultirange", "tstzmultirange", "datemultirange", "ltree", "lquery", "ltxtquery", "cube",
+                "earth", "geometry", "geography",
+            ]
+        },
+        {
+            Dialect.SqlServer,
+            [
+                "vector(3)", "sysname", "integer", "dec(10,2)", "double precision", "character(4)", "character varying(20)", "char varying(20)",
+                "binary varying(16)", "national character(4)", "national char(4)", "national character varying(20)", "national char varying(20)",
+                "national text",
+            ]
+        },
+        {
+            Dialect.MySql,
+            [
+                "geomcollection", "vector(3)", "uuid", "inet4", "inet6", "nchar(4)", "nvarchar(20)", "national char(4)", "national character(4)",
+                "national varchar(20)", "national character varying(20)", "national char varying(20)", "nchar varchar(20)", "character(4)",
+                "character varying(20)", "char varying(20)", "long", "long varchar", "long varbinary", "int1", "int2", "int3", "int4", "int8",
+                "middleint", "float4", "float8",
+            ]
+        },
+        {
+            Dialect.Oracle,
+            [
+                "vector(3, float32)", "dec(10,2)", "character(4)", "character varying(20)", "char varying(20)", "national character(4)",
+                "national char(4)", "national character varying(20)", "national char varying(20)", "nchar varying(20)", "mdsys.sdo_geometry",
+                "sdo_topo_geometry", "sdo_georaster", "sys.anydata", "anytype", "anydataset", "uritype", "dburitype", "xdburitype", "httpuritype",
+            ]
+        },
+    };
+
+    [Theory]
+    [MemberData(nameof(AddedNativeTypes))]
+    public void The_documented_built_in_types_of_each_dialect_are_known(Dialect dialect, string[] nativeTypes)
+    {
+        foreach (var nativeType in nativeTypes)
+            Assert.True(DialectInfo.IsKnownNativeType(dialect, nativeType, null), $"{dialect}: {nativeType}");
+    }
+
+    [Fact]
+    public async Task A_pg_lsn_column_on_postgresql_draws_nothing()
+    {
+        var b = new ModelBuilder();
+        var db = b.Database("main", Dialect.PostgreSql);
+        b.Table("replication", db).Column("position", "binary", nativeType: "pg_lsn").Column("snapshot", "string", nativeType: "pg_snapshot")
+            .Column("owner", "string", nativeType: "regrole").Column("spans", "string", nativeType: "int4multirange");
+
+        Assert.Empty(await NativeTypeFindings(b.Build()));
+    }
+
+    [Fact]
+    public async Task Native_types_a_custom_type_declares_are_known_for_their_dialect()
+    {
+        var b = new ModelBuilder();
+        var db = b.Database("main", Dialect.PostgreSql);
+        var other = b.Database("reporting", Dialect.SqlServer);
+        b.Table("ledger", db).Column("position", "binary", nativeType: "ledger_position");
+        b.Table("ledger", other).Column("position", "binary", nativeType: "ledger_position");
+        Assert.Equal(2, (await NativeTypeFindings(b.Build())).Count(d => d.Rule == "MQ4006"));
+
+        b.ScalarType("LedgerPosition", "binary").NativeType("postgresql", "ledger_position");
+        var finding = Assert.Single(await NativeTypeFindings(b.Build()));
+        Assert.Equal("MQ4006", finding.Rule);
+        Assert.Contains("sqlserver", finding.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_custom_type_revisits_the_tables_whose_native_types_carry_one_of_its_native_types()
+    {
+        var b = new ModelBuilder();
+        var db = b.Database("billing", Dialect.PostgreSql);
+        var position = b.ScalarType("LedgerPosition", "binary").NativeType("postgresql", "ledger_position(8)");
+        var ledger = b.Table("ledger", db).Column("position", "binary", nativeType: "\"public\".\"ledger_position\"");
+        b.Table("plain", db).Column("id", "int64");
+        var model = b.Build();
+        var context = new ValidationContext(model, ModelValidator.ActiveDocuments(model), new ReferenceWalker(), null);
+
+        Assert.Equal([ledger.Id], context.NativeTypePeers(model.Get<ScalarType>(position.Id)!).Select(d => d.Element.Id));
     }
 
     [Fact]
