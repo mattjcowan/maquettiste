@@ -1,0 +1,108 @@
+{{-
+# The handler registry: a typed list of registrations (command type, envelope, handler), built without reflection, and the
+# descriptors the behaviours read. A container registers the handlers through Register, which hands it typed factories.
+include "_csharp.scriban"
+include "_process.scriban"
+usings = []
+for p in model.processes
+  if !(usings | array.contains ns(p))
+    usings[usings.size] = ns(p)
+  end
+end
+usings = usings | array.sort
+if model.processes.size > 0
+-}}
+{{- capture content -}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+using {{ actors_ns() }};
+using {{ runtime_ns() }};
+{{- for u in usings }}
+using {{ u }};
+{{- end }}
+
+namespace {{ dispatch_ns() }};
+
+/// <summary>A dependency-injection container's registration surface for <see cref="HandlerRegistry.Register"/>.</summary>
+public interface IHandlerRegistrar
+{
+    /// <summary>Registers a handler the container builds with a factory.</summary>
+    /// <typeparam name="THandler">The handler type.</typeparam>
+    /// <param name="factory">Builds the handler from the container's services.</param>
+    void Add<THandler>(Func<IServiceProvider, THandler> factory)
+        where THandler : class;
+}
+
+/// <summary>Every command of the model's processes with its handler: a complete list derived from the model.</summary>
+public sealed partial class HandlerRegistry
+{
+    /// <summary>Creates the registry over the processes' command handlers.</summary>
+{{- for p in model.processes }}
+    /// <param name="{{ camel p.name }}">The command handler of {{ p.name }}.</param>
+{{- end }}
+    public HandlerRegistry({{ for p in model.processes }}{{ if !for.first }}, {{ end }}{{ p_name(p) }}CommandHandler {{ cs_ident (camel p.name) }}{{ end }})
+    {
+{{- for p in model.processes }}
+        ArgumentNullException.ThrowIfNull({{ cs_ident (camel p.name) }});
+{{- end }}
+        All =
+        [
+{{- for p in model.processes }}
+{{- h = cs_ident (camel p.name) }}
+{{- n = p_name(p) }}
+            new HandlerRegistration<{{ n }}StartControl>(Commands.{{ n }}StartControl, c => c.Envelope, {{ h }}),
+{{- for e in p.events }}
+            new HandlerRegistration<{{ command_type(p, e) }}>(Commands.{{ command_type(p, e) }}, c => c.Envelope, {{ h }}),
+{{- end }}
+            new HandlerRegistration<{{ n }}InvokeResultControl>(Commands.{{ n }}InvokeResultControl, c => c.Envelope, {{ h }}),
+            new HandlerRegistration<{{ n }}TimersDueControl>(Commands.{{ n }}TimersDueControl, c => c.Envelope, {{ h }}),
+{{- end }}
+        ];
+    }
+
+    /// <summary>The registrations, process by process.</summary>
+    public IReadOnlyList<IHandlerRegistration> All { get; }
+
+    /// <summary>
+    /// Hands a dependency-injection container one typed factory per command handler: the container calls the factory, which builds
+    /// the handler from the machine and the store the container holds, so no handler type is looked up or activated by reflection.
+    /// </summary>
+    /// <param name="registrar">The container's registration surface.</param>
+    public static void Register(IHandlerRegistrar registrar)
+    {
+        ArgumentNullException.ThrowIfNull(registrar);
+{{- for p in model.processes }}
+        registrar.Add(services => new {{ p_name(p) }}CommandHandler(Resolve<{{ p_name(p) }}Machine>(services), Resolve<I{{ p_name(p) }}Store>(services)));
+{{- end }}
+    }
+
+    // A service provider looks services up by a type token, so this is the one place the registry names a type as a value.
+    private static T Resolve<T>(IServiceProvider services)
+        where T : class =>
+        services.GetService(typeof(T)) as T ?? throw new InvalidOperationException("The container lacks a machine or store of a process; register them before the handlers.");
+
+    /// <summary>The descriptors of the commands.</summary>
+    public static class Commands
+    {
+{{- for p in model.processes }}
+{{- n = p_name(p) }}
+        /// <summary>Starts an instance of {{ p.name }}.</summary>
+        public static CommandDescriptor {{ n }}StartControl { get; } = new({{ json (p.name + ":start") }}, {{ json p.name }}, ":start", [], false);
+{{ for e in p.events }}
+        /// <summary>Event {{ e.name }} of {{ p.name }}.</summary>
+        public static CommandDescriptor {{ command_type(p, e) }} { get; } = new({{ json (p.name + "." + e.name) }}, {{ json p.name }}, {{ json e.name }}, Actors.Events.{{ n }}{{ pascal e.name }}, {{ is_gated(e) ? "true" : "false" }});
+{{ end }}
+        /// <summary>An invoke result of {{ p.name }}.</summary>
+        public static CommandDescriptor {{ n }}InvokeResultControl { get; } = new({{ json (p.name + ":invoke-result") }}, {{ json p.name }}, ":invoke-result", [], false);
+
+        /// <summary>The due timers of an instance of {{ p.name }}.</summary>
+        public static CommandDescriptor {{ n }}TimersDueControl { get; } = new({{ json (p.name + ":timers-due") }}, {{ json p.name }}, ":time", [], false);
+{{- if !for.last }}
+{{ end }}
+{{- end }}
+    }
+}
+{{ end -}}
+{{- file (join_path pack.params.generatedFolder "Dispatch" "HandlerRegistry.g.cs") content -}}
+{{- end -}}

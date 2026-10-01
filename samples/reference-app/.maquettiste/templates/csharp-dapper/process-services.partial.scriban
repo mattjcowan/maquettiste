@@ -1,0 +1,30 @@
+{{-
+include "_csharp.scriban"
+include "_process.scriban"
+p = process
+name = p_name(p)
+-}}
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using {{ runtime_ns() }};
+
+namespace {{ ns(p) }};
+
+// The hand-written half of {{ name }}Services. Maquettiste wrote this file once and never touches it again: implement the
+// service tasks here (a service added to the model later fails the build until it is implemented), and the optional
+// human-task hooks.
+public sealed partial class {{ name }}Services
+{
+{{- first = true }}
+{{- for i in p.invokes }}
+{{- if i.type == "service" }}
+{{- if !first }}
+{{ end }}
+{{- first = false }}
+    /// <inheritdoc/>
+    public Task<bool> {{ pascal i.name }}Async(InvokeRequest request, CancellationToken cancellationToken) =>
+        throw new NotImplementedException("Service {{ i.name }} of process {{ p.name }} is not implemented yet.");
+{{- end }}
+{{- end }}
+}

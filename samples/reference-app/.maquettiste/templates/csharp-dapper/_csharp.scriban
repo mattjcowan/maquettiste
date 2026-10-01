@@ -57,7 +57,7 @@ func doc(text, pad)
   if !text
     ret ""
   end
-  $lines = text | string.rstrip | string.split "\n"
+  $lines = text | string.replace "\r\n" "\n" | string.replace "\r" "\n" | string.rstrip | string.split "\n"
   if $lines.size == 1
     ret pad + "/// <summary>" + ($lines[0] | string.strip | escape_xml) + "</summary>\n"
   end

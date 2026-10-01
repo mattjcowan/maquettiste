@@ -1,0 +1,107 @@
+{{-
+# The HTTP endpoints of a process (regions): one POST <route>/{instance}/<event> per event, mapping the request to the command
+# and sending it through the dispatcher, with one user-code region per endpoint for request mapping and response shaping. A
+# region's id is its event's id, so renaming an event keeps the region's body.
+# Regions need a committed root, so the file is written only when the endpointsFolder parameter names a folder of one. The
+# code uses ASP.NET Core minimal APIs (the project references the Microsoft.AspNetCore.App framework).
+include "_csharp.scriban"
+include "_process.scriban"
+p = process
+name = p_name(p)
+route = "/processes/" + (kebab p.name)
+if pack.params.endpointsFolder != ""
+-}}
+{{- capture content -}}
+{{ header() }}
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
+using {{ dispatch_ns() }};
+using {{ runtime_ns() }};
+
+namespace {{ ns(p) }};
+
+/// <summary>The HTTP endpoints of process {{ p.name }}: one POST per event under {{ route }}/{instance}/.</summary>
+public static partial class {{ name }}Endpoints
+{
+    /// <summary>Maps the endpoints of {{ p.name }}.</summary>
+    /// <param name="routes">The route builder.</param>
+    /// <returns>The route builder.</returns>
+    public static IEndpointRouteBuilder Map{{ name }}Endpoints(this IEndpointRouteBuilder routes)
+    {
+        ArgumentNullException.ThrowIfNull(routes);
+{{- for e in p.events }}
+        routes.MapPost({{ json (route + "/{instance}/" + (kebab e.name)) }}, {{ pascal e.name }}Async);
+{{- end }}
+        return routes;
+    }
+{{- for e in p.events }}
+{{- cmd = command_type(p, e) }}
+{{- extra = audit_attributes(e) }}
+{{- body = (e.payload.size > 0 || extra.size > 0) ? "EventRequest<" + cmd + "Payload>" : "EventRequest" }}
+
+    /// <summary>POST {{ route }}/{instance}/{{ kebab e.name }}: raises {{ e.name }}.</summary>
+    /// <param name="instance">The instance identity.</param>
+    /// <param name="request">The envelope{{ if body != "EventRequest" }} and the payload{{ end }}.</param>
+    /// <param name="dispatcher">The dispatcher.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>200 with the result when accepted, 409 when refused.</returns>
+    public static async Task<IResult> {{ pascal e.name }}Async(string instance, {{ body }} request, [FromServices] Dispatcher dispatcher, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(dispatcher);
+        var command = new {{ cmd }}(new ProcessEnvelope(instance, request.Actor, request.Signer, request.Meaning, request.Reason))
+{{- if body != "EventRequest" }}
+        {
+{{- for a in e.payload }}
+            {{ prop_name(a, cmd) }} = request.Payload.{{ prop_name(a, cmd) }},
+{{- end }}
+{{- for a in extra }}
+{{- if !by_name(e.payload, a.name) }}
+            {{ prop_name(a, cmd) }} = request.Payload.{{ prop_name(a, cmd) }},
+{{- end }}
+{{- end }}
+        };
+{{- else }};
+{{- end }}
+        Func<CommandResult, IResult> respond = Respond;
+        // maquettiste:keep id={{ e.id }}
+        // maquettiste:end-keep
+        return respond(await dispatcher.SendAsync(command, cancellationToken).ConfigureAwait(false));
+    }
+{{- end }}
+
+    private static IResult Respond(CommandResult result) => result.Accepted ? Results.Ok(result) : Results.Conflict(result);
+}
+{{- for e in p.events }}
+{{- cmd = command_type(p, e) }}
+{{- extra = audit_attributes(e) }}
+{{- if e.payload.size > 0 || extra.size > 0 }}
+
+/// <summary>The request payload of {{ e.name }}.</summary>
+public sealed record {{ cmd }}Payload
+{
+{{- for a in e.payload }}
+{{- if !for.first }}
+{{ end }}
+    /// <summary>{{ cs_line (a.description ?? ("Payload attribute " + a.name + ".")) | string.strip | escape_xml }}</summary>
+    public {{ attr_type(a) }} {{ prop_name(a, cmd) }} { get; init; }{{ if a.required && a.type.kind != "enum" && !(cs_value_type (type_of a.type "csharp")) }} = default!;{{ end }}
+{{- end }}
+{{- for a in extra }}
+{{- if !by_name(e.payload, a.name) }}
+{{- if e.payload.size > 0 || !for.first }}
+{{ end }}
+    /// <summary>{{ cs_line (a.description ?? ("Audit attribute " + a.name)) | string.strip | escape_xml }} (recorded with the signature).</summary>
+    public {{ attr_type(a) }} {{ prop_name(a, cmd) }} { get; init; }
+{{- end }}
+{{- end }}
+}
+{{- end }}
+{{- end }}
+{{ end -}}
+{{- file (join_path pack.params.endpointsFolder (p_folder("", p)) "Endpoints" (name + "Endpoints.cs")) content -}}
+{{- end -}}

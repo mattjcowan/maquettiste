@@ -1,0 +1,134 @@
+{{-
+# One xunit test per scenario: every step sent through the dispatcher to the generated interpreter on a manual clock, then
+# acceptance (with the engine's refusal reason for a refused step), the gate audit outcomes the engine's replay wrote, the
+# active states and the changed context asserted after each step, and the outcome after the last. The test
+# project supplies ScenarioHost (StartAsync(ManualClock, CancellationToken) and Dispatcher), which wires the stores. Written
+# only when the testsFolder parameter names a folder. A failing test is fixed in the model or in a handler, never here.
+include "_csharp.scriban"
+include "_process.scriban"
+s = scenario
+p = s.process
+name = p_name(p)
+ctx = name + "Context"
+test = (pascal s.name) + "Tests"
+func has(map, key)
+  ret map | object.has_key key
+end
+func envelope(step)
+  $parts = "Instance"
+  if step.actor
+    $parts = $parts + ", Actor: Actors." + (pascal step.actor.name)
+  end
+  if step.signer
+    $parts = $parts + ", Signer: " + (json step.signer)
+  end
+  if step.meaning
+    $parts = $parts + ", Meaning: " + (json step.meaning.name)
+  end
+  if step.reason
+    $parts = $parts + ", Reason: " + (json step.reason)
+  end
+  ret "new ProcessEnvelope(" + $parts + ")"
+end
+func command(step)
+  if step.input == "time"
+    ret "new " + name + "TimersDueControl(" + envelope(step) + ")"
+  else if step.input == "invoke-done" || step.input == "invoke-error"
+    ret "new " + name + "InvokeResultControl(" + envelope(step) + ", " + (json step.invoke.name) + (step.input == "invoke-error" ? ", Failed: true" : "") + ")"
+  end
+  $cmd = command_type(p, step.event)
+  $init = ""
+  for a in step.event.payload
+    if has(step.payload, a.name)
+      $init = $init + ($init == "" ? "" : ", ") + prop_name(a, $cmd) + " = " + cs_literal(step.payload[a.name], a)
+    else if a.required
+      $init = $init + ($init == "" ? "" : ", ") + prop_name(a, $cmd) + " = default!"
+    end
+  end
+  for a in audit_attributes(step.event)
+    if has(step.payload, a.name) && !by_name(step.event.payload, a.name)
+      $init = $init + ($init == "" ? "" : ", ") + prop_name(a, $cmd) + " = " + cs_literal(step.payload[a.name], a)
+    end
+  end
+  ret "new " + $cmd + "(" + envelope(step) + ")" + ($init == "" ? "" : " { " + $init + " }")
+end
+func step_text(step)
+  if step.input == "time"
+    ret "time +" + step.after
+  else if step.input == "invoke-done" || step.input == "invoke-error"
+    ret step.input + " " + step.invoke.name + (step.actor ? " by " + step.actor.name : "")
+  end
+  ret step.event.name + (step.actor ? " by " + step.actor.name : "") + (step.signer ? ", signed by " + step.signer : "")
+end
+start = ""
+for a in p.context
+  if has(s.start.context, a.name)
+    start = start + (start == "" ? "" : ", ") + prop_name(a, ctx) + " = " + cs_literal(s.start.context[a.name], a)
+  end
+end
+if pack.params.testsFolder != ""
+-}}
+{{- capture content -}}
+{{ header() }}
+using System;
+using System.Globalization;
+using System.Linq;
+using System.Threading.Tasks;
+using {{ actors_ns() }};
+using {{ runtime_ns() }};
+using Xunit;
+
+namespace {{ ns(p) }}.Tests;
+
+/// <summary>Scenario {{ s.name }} of process {{ p.name }}{{ if s.description }}: {{ cs_line s.description | string.strip | escape_xml }}{{ end }}</summary>
+public sealed class {{ test }}
+{
+    private const string Instance = {{ json (ulid_uuid s.id) }};
+
+    /// <summary>Runs the {{ s.steps.size }} steps of {{ s.name }} and checks each one and the outcome ({{ s.outcome }}).</summary>
+    /// <returns>The task.</returns>
+    [Fact]
+    public async Task {{ pascal s.name }}()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var clock = new ManualClock(DateTimeOffset.Parse({{ json s.start.at }}, CultureInfo.InvariantCulture));
+        await using var host = await ScenarioHost.StartAsync(clock, cancellationToken);
+        var result = await host.Dispatcher.SendAsync(new {{ name }}StartControl(new ProcessEnvelope(Instance)) { Context = new {{ ctx }}{{ if start != "" }} { {{ start }} }{{ else }}(){{ end }} }, cancellationToken);
+        Assert.True(result.Accepted, result.Refusal);
+{{- for step in s.steps }}
+
+        // Step {{ step.index + 1 }}: {{ cs_line step_text(step) }}.{{ if step.description }} {{ cs_line step.description | string.strip }}{{ end }}
+{{- if step.input == "time" }}
+        clock.Advance(TimeSpan.FromTicks({{ step.after_ticks }}));
+{{- end }}
+        result = await host.Dispatcher.SendAsync({{ command(step) }}, cancellationToken);
+{{- if step.expect }}
+{{- if step.expect.accepted }}
+        Assert.True(result.Accepted, result.Refusal);
+{{- else }}
+        Assert.False(result.Accepted);
+{{- if step.trace && step.trace.refusal }}
+        Assert.Equal({{ json step.trace.refusal }}, result.Refusal);
+{{- end }}
+{{- end }}
+{{- if step.trace && step.trace.audit.size > 0 }}
+        Assert.Equal<string>([{{ for x in step.trace.audit }}{{ if !for.first }}, {{ end }}{{ json x }}{{ end }}], [.. result.Audit.Select(a => a.OutcomeText)]);
+{{- end }}
+{{- if step.expect.state_paths.size > 0 }}
+        Assert.Equal<string>([{{ for x in step.expect.state_paths }}{{ if !for.first }}, {{ end }}{{ json x }}{{ end }}], result.States);
+{{- end }}
+{{- changed = [] }}
+{{- for a in p.context }}{{ if has(step.expect.context, a.name) }}{{ changed[changed.size] = a }}{{ end }}{{ end }}
+        Assert.Equal<string>([{{ for a in changed }}{{ if !for.first }}, {{ end }}{{ json a.name }}{{ end }}], result.Changed);
+{{- for a in changed }}
+        Assert.Equal({{ cs_literal(step.expect.context[a.name], a) }}, (({{ ctx }})result.Context!).{{ prop_name(a, ctx) }});
+{{- end }}
+{{- end }}
+{{- end }}
+
+        Assert.{{ s.outcome == "final" ? "True" : "False" }}(result.Final);
+    }
+}
+{{ end -}}
+{{- file (join_path pack.params.testsFolder (p_name(p)) (test + ".cs")) content -}}
+{{- end -}}

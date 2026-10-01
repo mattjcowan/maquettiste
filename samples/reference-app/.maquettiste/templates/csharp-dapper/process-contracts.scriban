@@ -1,0 +1,157 @@
+{{-
+# The contracts of a process: its context, one command per event (<P><Event>Command: the envelope plus the typed payload), the
+# built-in start, invoke-result and timers-due commands (<P>StartControl, <P>InvokeResultControl, <P>TimersDueControl: their
+# names end in Control and every event command's in Command, so no event name collides with them), the Transitioned event
+# record and one audit record per gate. Plain types: nothing here depends on the dispatcher, so other services can share them.
+include "_csharp.scriban"
+include "_process.scriban"
+p = process
+name = p_name(p)
+ctx = name + "Context"
+func init_of(a)
+  if a.default != null
+    ret " = " + cs_literal(a.default, a) + ";"
+  end
+  if a.collection
+    ret " = [];"
+  end
+  if a.required && !(cs_value_type (type_of a.type "csharp")) && a.type.kind != "enum"
+    ret " = default!;"
+  end
+  ret ""
+end
+func property(a, owner, pad, required)
+  ret pad + "public " + (required && a.required ? "required " : "") + attr_type(a) + " " + prop_name(a, owner) + " { get; init; }" + (required && a.required ? "" : init_of(a))
+end
+-}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using {{ runtime_ns() }};
+
+namespace {{ ns(p) }};
+
+/// <summary>The context of process {{ p.name }}: the running instance's data.</summary>
+public sealed partial record {{ ctx }}
+{
+{{- for a in p.context }}
+{{ doc(a.description ?? ("Context attribute " + a.name + "."), "    ") }}{{ property(a, ctx, "    ", false) }}
+{{ end }}
+    /// <summary>The names of the attributes whose values differ between two contexts, in declaration order.</summary>
+    /// <param name="before">The context before.</param>
+    /// <param name="after">The context after.</param>
+    /// <returns>The names.</returns>
+    public static IReadOnlyList<string> Changed({{ ctx }} before, {{ ctx }} after)
+    {
+        ArgumentNullException.ThrowIfNull(before);
+        ArgumentNullException.ThrowIfNull(after);
+        var changed = new List<string>();
+{{- for a in p.context }}
+        if (!EqualityComparer<{{ attr_type(a) }}>.Default.Equals(before.{{ prop_name(a, ctx) }}, after.{{ prop_name(a, ctx) }}))
+            changed.Add({{ json a.name }});
+{{- end }}
+        return changed;
+    }
+}
+
+/// <summary>Starts an instance of {{ p.name }}.</summary>
+/// <param name="Envelope">The instance identity and the caller.</param>
+public sealed partial record {{ name }}StartControl(ProcessEnvelope Envelope) : IProcessCommand
+{
+    /// <summary>The initial context; the attribute defaults when null.</summary>
+    public {{ ctx }}? Context { get; init; }
+}
+{{- for e in p.events }}
+{{- extra = audit_attributes(e) }}
+{{- cmd = command_type(p, e) }}
+
+/// <summary>Event {{ e.name }} of {{ p.name }}{{ if e.actors.size > 0 }}, raised by {{ for a in e.actors }}{{ if !for.first }}{{ if for.last }} or {{ else }}, {{ end }}{{ end }}{{ a.name }}{{ end }}{{ end }}{{ if is_gated(e) }}; it signs a gate, so the envelope carries a signer{{ end }}.</summary>
+/// <param name="Envelope">The instance identity, the actor and, for a gate, the signer, meaning and reason.</param>
+public sealed partial record {{ cmd }}(ProcessEnvelope Envelope) : IProcessCommand
+{
+{{- for a in e.payload }}
+{{ doc(a.description ?? ("Payload attribute " + a.name + "."), "    ") }}{{ property(a, cmd, "    ", true) }}
+{{ end }}
+{{- for a in extra }}
+{{- if !by_name(e.payload, a.name) }}
+{{ doc(a.description ?? ("Recorded with the signature (audit attribute " + a.name + ")."), "    ") }}{{ property(a, cmd, "    ", false) }}
+{{ end }}
+{{- end }}
+    /// <summary>The payload by attribute name, as guards and actions see it.</summary>
+    /// <returns>The values.</returns>
+{{- if e.payload.size == 0 }}
+    public IReadOnlyDictionary<string, object?> Payload() => new Dictionary<string, object?>(StringComparer.Ordinal);
+{{- else }}
+    public IReadOnlyDictionary<string, object?> Payload() => new Dictionary<string, object?>(StringComparer.Ordinal)
+    {
+{{- for a in e.payload }}
+        [{{ json a.name }}] = {{ prop_name(a, cmd) }},
+{{- end }}
+    };
+{{- end }}
+
+    /// <summary>The gate audit attributes by name.</summary>
+    /// <returns>The values.</returns>
+{{- if extra.size == 0 }}
+    public IReadOnlyDictionary<string, object?> AuditValues() => new Dictionary<string, object?>(StringComparer.Ordinal);
+{{- else }}
+    public IReadOnlyDictionary<string, object?> AuditValues() => new Dictionary<string, object?>(StringComparer.Ordinal)
+    {
+{{- for a in extra }}
+        [{{ json a.name }}] = {{ prop_name(a, cmd) }},
+{{- end }}
+    };
+{{- end }}
+}
+{{- end }}
+
+/// <summary>Reports the result of an invoke of {{ p.name }} (a service task, a human task or a sub-process).</summary>
+/// <param name="Envelope">The instance identity and, for a human task, the actor completing it.</param>
+/// <param name="Invoke">The invoke name (<see cref="{{ name }}Definition.Invokes"/>).</param>
+/// <param name="Failed">True for an error, false for done.</param>
+public sealed partial record {{ name }}InvokeResultControl(ProcessEnvelope Envelope, string Invoke, bool Failed = false) : IProcessCommand;
+
+/// <summary>Fires the timers of an instance of {{ p.name }} that are due at the clock's current instant.</summary>
+/// <param name="Envelope">The instance identity.</param>
+public sealed partial record {{ name }}TimersDueControl(ProcessEnvelope Envelope) : IProcessCommand;
+
+/// <summary>An instance of {{ p.name }} moved: the active states before and after one input.</summary>
+/// <param name="Instance">The instance identity.</param>
+/// <param name="From">The active leaf states before.</param>
+/// <param name="To">The active leaf states after.</param>
+/// <param name="Event">The input: an event name, invoke-done:&lt;invoke&gt;, invoke-error:&lt;invoke&gt;, :time or :start (an event name is an
+/// identifier, so the other forms never collide with one).</param>
+/// <param name="At">When.</param>
+public sealed partial record {{ name }}Transitioned(string Instance, IReadOnlyList<string> From, IReadOnlyList<string> To, string Event, DateTimeOffset At);
+{{- for g in p.gates }}
+{{- rec = name + (pascal g.name) + "AuditRecord" }}
+
+/// <summary>The audit record of gate {{ g.name }} of {{ p.name }}: one per signature attempt and per outcome.</summary>
+public sealed partial record {{ rec }}
+{
+{{- for f in g.audit }}
+    /// <summary>{{ cs_line (f.description ?? ("Audit attribute " + f.name + ".")) | string.strip | escape_xml }}</summary>
+    public {{ audit_type(f) }} {{ pascal f.name }} { get; init; }{{ if f.required && audit_type(f) == "string" }} = "";{{ end }}
+{{ end }}
+    /// <summary>The typed record of a runtime audit record.</summary>
+    /// <param name="record">The record.</param>
+    /// <returns>The typed record.</returns>
+    public static {{ rec }} From(GateAuditRecord record)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        return new()
+        {
+{{- for f in g.audit }}
+{{- if f.attribute }}
+            {{ pascal f.name }} = record.Attribute<{{ attr_type(f.attribute) | string.replace "?" "" }}>({{ json f.name }}),
+{{- else if f.name == "outcome" }}
+            Outcome = record.OutcomeText,
+{{- else }}
+            {{ pascal f.name }} = record.{{ pascal f.name }},
+{{- end }}
+{{- end }}
+        };
+    }
+}
+{{- end }}

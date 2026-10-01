@@ -1,0 +1,72 @@
+{{-
+# The state enum and path constants of a process. A lifecycle's state enum is its bound enum (the enum unit writes it), so
+# this file adds the mapping from active states to it; an orchestration gets an enum with one member per state path.
+include "_csharp.scriban"
+include "_process.scriban"
+p = process
+name = p_name(p)
+-}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+
+namespace {{ ns(p) }};
+
+/// <summary>The state paths of process {{ p.name }}, as constants.</summary>
+public static partial class {{ name }}States
+{
+{{- for s in p.all_states }}
+    /// <summary>State {{ s.path }} ({{ s.type }}).</summary>
+    public const string {{ state_member(s) }} = {{ json s.path }};
+{{ end }}
+    /// <summary>Every state path, in document order.</summary>
+    public static IReadOnlyList<string> All { get; } =
+    [
+{{- for s in p.all_states }}
+        {{ state_member(s) }},
+{{- end }}
+    ];
+{{- if p.bound_enum }}
+
+    /// <summary>The {{ p.bound_enum.name }} value of a configuration: the root-level state of its first active state.</summary>
+    /// <param name="states">The active leaf states' paths.</param>
+    /// <returns>The value.</returns>
+    public static {{ type_of p.bound_attribute.type "csharp" }} ToStatus(IReadOnlyList<string> states)
+    {
+        ArgumentNullException.ThrowIfNull(states);
+        var root = states.Count == 0 ? "" : states[0].Split('.')[0];
+        return root switch
+        {
+{{- for s in p.bound_states }}
+{{- if s.bound_member }}
+            {{ json s.name }} => {{ type_of p.bound_attribute.type "csharp" }}.{{ cs_ident (pascal s.bound_member.name) }},
+{{- end }}
+{{- end }}
+            _ => throw new ArgumentOutOfRangeException(nameof(states), root, "No {{ p.bound_enum.name }} member for this state."),
+        };
+    }
+{{- else }}
+
+    /// <summary>The state of a path.</summary>
+    /// <param name="path">The dotted path.</param>
+    /// <returns>The state.</returns>
+    public static {{ name }}State Parse(string path) => path switch
+    {
+{{- for s in p.all_states }}
+        {{ state_member(s) }} => {{ name }}State.{{ state_member(s) }},
+{{- end }}
+        _ => throw new ArgumentOutOfRangeException(nameof(path), path, "Not a state of {{ p.name }}."),
+    };
+{{- end }}
+}
+{{- if !p.bound_enum }}
+
+/// <summary>The states of process {{ p.name }}, one member per state path.</summary>
+public enum {{ name }}State
+{
+{{- for s in p.all_states }}
+    /// <summary>{{ s.path }}</summary>
+    {{ state_member(s) }},
+{{- end }}
+}
+{{- end }}

@@ -1,0 +1,231 @@
+{{-
+# The default pipeline behaviours, derived from the model: validation (payload attributes: required, length, range, allowed
+# values), authorization by actor, logging (attributes marked sensitive are never logged), transaction and outbox hand-off.
+# Their policy hooks are partial methods of Pipeline, implemented in the companion Pipeline.cs.
+include "_csharp.scriban"
+include "_process.scriban"
+usings = []
+for p in model.processes
+  if !(usings | array.contains ns(p))
+    usings[usings.size] = ns(p)
+  end
+end
+usings = usings | array.sort
+func is_text(a)
+  ret a.type.builtin == "string" || a.type.builtin == "text" || a.type.builtin == "ulid"
+end
+# Validation statements for one payload attribute of a command held in "c".
+func checks(a, cmd)
+  $x = "c." + prop_name(a, cmd)
+  $out = ""
+  $nullable = (attr_type(a) | string.ends_with "?")
+  if a.required
+    if is_text(a)
+      $out = $out + "                if (string.IsNullOrWhiteSpace(" + $x + "))\n                    errors.Add(" + (json (a.name + " is required.")) + ");\n"
+    else if $nullable || !(cs_value_type (type_of a.type "csharp")) && a.type.kind != "enum"
+      $out = $out + "                if (" + $x + " is null)\n                    errors.Add(" + (json (a.name + " is required.")) + ");\n"
+    end
+  end
+  if is_text(a) && a.length
+    $out = $out + "                if (" + $x + " is { Length: > " + a.length + " })\n                    errors.Add(" + (json (a.name + " is longer than " + a.length + " characters.")) + ");\n"
+  end
+  if a.validation && a.validation.min != null
+    $out = $out + "                if (" + $x + " < " + cs_literal(a.validation.min, a) + ")\n                    errors.Add(" + (json (a.name + " is below " + a.validation.min + ".")) + ");\n"
+  end
+  if a.validation && a.validation.max != null
+    $out = $out + "                if (" + $x + " > " + cs_literal(a.validation.max, a) + ")\n                    errors.Add(" + (json (a.name + " is above " + a.validation.max + ".")) + ");\n"
+  end
+  if a.validation && a.validation.allowed_values.size > 0
+    $lits = ""
+    for v in a.validation.allowed_values
+      $lits = $lits + (for.first ? "" : " or ") + cs_literal(v, a)
+    end
+    $out = $out + "                if (" + $x + " is not null && " + $x + " is not (" + $lits + "))\n                    errors.Add(" + (json (a.name + " is not an allowed value.")) + ");\n"
+  end
+  ret $out
+end
+if model.processes.size > 0
+-}}
+{{- capture content -}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using {{ runtime_ns() }};
+{{- for u in usings }}
+using {{ u }};
+{{- end }}
+
+namespace {{ dispatch_ns() }};
+
+/// <summary>The pipeline's policy hooks, implemented in Pipeline.cs.</summary>
+public sealed partial class Pipeline
+{
+    /// <summary>Whether the caller may act as the envelope's actor (maps the host's principal to actors).</summary>
+    private partial bool Authorize(CommandContext context);
+
+    /// <summary>Begins the unit of work around a command.</summary>
+    private partial Task<IProcessTransaction> BeginTransactionAsync(CommandContext context, CancellationToken cancellationToken);
+
+    /// <summary>Adds the project's own validation messages (optional).</summary>
+    partial void OnValidate(CommandContext context, List<string> errors);
+
+    /// <summary>Writes a log line (optional; nothing is logged without it). Sensitive attributes never reach it.</summary>
+    partial void OnLog(CommandContext context, string message);
+
+    internal bool CanAct(CommandContext context) => Authorize(context);
+
+    internal Task<IProcessTransaction> BeginAsync(CommandContext context, CancellationToken cancellationToken) => BeginTransactionAsync(context, cancellationToken);
+
+    internal void Validate(CommandContext context, List<string> errors) => OnValidate(context, errors);
+
+    internal void Log(CommandContext context, string message) => OnLog(context, message);
+}
+
+/// <summary>Refuses a command whose payload breaks its attributes' rules (required, length, range, allowed values).</summary>
+/// <param name="pipeline">The pipeline.</param>
+public sealed class ValidationBehaviour(Pipeline pipeline) : IPipelineBehaviour
+{
+    /// <inheritdoc/>
+    public async Task<CommandResult> HandleAsync(CommandContext context, CommandStep next, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(next);
+        var errors = CommandPolicies.Validate(context.Command);
+        pipeline.Validate(context, errors);
+        if (errors.Count > 0)
+            return (await context.RefuseAsync(Refusals.Validation, cancellationToken).ConfigureAwait(false)) with { Errors = errors };
+        return await next(cancellationToken).ConfigureAwait(false);
+    }
+}
+
+/// <summary>
+/// Refuses a command whose envelope's actor may not send it and a caller the Authorize hook rejects. Gates are the interpreter's: a
+/// gated event without a signer reaches it and is refused there with its audit record, as in the engine.
+/// </summary>
+/// <param name="pipeline">The pipeline.</param>
+public sealed class AuthorizationBehaviour(Pipeline pipeline) : IPipelineBehaviour
+{
+    /// <inheritdoc/>
+    public async Task<CommandResult> HandleAsync(CommandContext context, CommandStep next, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(next);
+        var envelope = context.Envelope;
+        var actors = context.Descriptor.Actors;
+        if (actors.Count > 0 && (envelope.Actor is null || !actors.Contains(envelope.Actor, StringComparer.Ordinal)))
+            return await context.RefuseAsync(Refusals.Actor, cancellationToken).ConfigureAwait(false);
+        if (!pipeline.CanAct(context))
+            return await context.RefuseAsync(Refusals.Actor, cancellationToken).ConfigureAwait(false);
+        return await next(cancellationToken).ConfigureAwait(false);
+    }
+}
+
+/// <summary>Logs each command and its outcome through the OnLog hook, without the attributes marked sensitive.</summary>
+/// <param name="pipeline">The pipeline.</param>
+public sealed class LoggingBehaviour(Pipeline pipeline) : IPipelineBehaviour
+{
+    /// <inheritdoc/>
+    public async Task<CommandResult> HandleAsync(CommandContext context, CommandStep next, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(next);
+        var envelope = context.Envelope;
+        pipeline.Log(context, $"{context.Descriptor.Name} {envelope.Instance} as {envelope.Actor ?? "-"}{CommandPolicies.Describe(context.Command)}");
+        var result = await next(cancellationToken).ConfigureAwait(false);
+        pipeline.Log(context, result.Accepted
+            ? $"{context.Descriptor.Name} {envelope.Instance}: accepted, now {string.Join(", ", result.States ?? [])}"
+            : $"{context.Descriptor.Name} {envelope.Instance}: refused ({result.Refusal})");
+        return result;
+    }
+}
+
+/// <summary>Runs the rest of the pipeline in the unit of work the BeginTransactionAsync hook opens, and commits it.</summary>
+/// <param name="pipeline">The pipeline.</param>
+public sealed class TransactionBehaviour(Pipeline pipeline) : IPipelineBehaviour
+{
+    /// <inheritdoc/>
+    public async Task<CommandResult> HandleAsync(CommandContext context, CommandStep next, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(next);
+        var transaction = await pipeline.BeginAsync(context, cancellationToken).ConfigureAwait(false);
+        await using (transaction.ConfigureAwait(false))
+        {
+            var result = await next(cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return result;
+        }
+    }
+}
+
+/// <summary>Hands the Transitioned and gate audit records of a command to the outbox, inside its transaction.</summary>
+/// <param name="pipeline">The pipeline.</param>
+public sealed class OutboxBehaviour(Pipeline pipeline) : IPipelineBehaviour
+{
+    /// <inheritdoc/>
+    public async Task<CommandResult> HandleAsync(CommandContext context, CommandStep next, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(next);
+        var result = await next(cancellationToken).ConfigureAwait(false);
+        if (result.Events.Count > 0)
+            await pipeline.Outbox.WriteAsync(result.Events, cancellationToken).ConfigureAwait(false);
+        return result;
+    }
+}
+
+/// <summary>The model-derived rules of the commands: payload validation and the loggable description.</summary>
+public static class CommandPolicies
+{
+    /// <summary>The validation messages of a command.</summary>
+    /// <param name="command">The command.</param>
+    /// <returns>The messages; empty when it is valid.</returns>
+    public static List<string> Validate(object command)
+    {
+        var errors = new List<string>();
+        switch (command)
+        {
+{{- for p in model.processes }}
+{{- for e in p.events }}
+{{- cmd = command_type(p, e) }}
+{{- body = "" }}
+{{- for a in e.payload }}{{ body = body + checks(a, cmd) }}{{ end }}
+{{- if body != "" }}
+            case {{ cmd }} c:
+{{ body }}                break;
+{{- end }}
+{{- end }}
+{{- end }}
+            default:
+                break;
+        }
+
+        return errors;
+    }
+
+    /// <summary>The payload of a command for a log line, without the attributes marked sensitive.</summary>
+    /// <param name="command">The command.</param>
+    /// <returns>" name=value ..." or "".</returns>
+    public static string Describe(object command) => command switch
+    {
+{{- for p in model.processes }}
+{{- for e in p.events }}
+{{- cmd = command_type(p, e) }}
+{{- parts = "" }}
+{{- for a in e.payload }}
+{{- if !a.sensitive }}{{ parts = parts + " " + a.name + "={c." + prop_name(a, cmd) + "}" }}{{ end }}
+{{- end }}
+{{- if parts != "" }}
+        {{ cmd }} c => string.Create(CultureInfo.InvariantCulture, $"{{ parts }}"),
+{{- end }}
+{{- end }}
+{{- end }}
+        _ => "",
+    };
+}
+{{ end -}}
+{{- file (join_path pack.params.generatedFolder "Dispatch" "Behaviours.g.cs") content -}}
+{{- end -}}

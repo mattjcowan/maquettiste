@@ -1,0 +1,14 @@
+{{-
+include "_csharp.scriban"
+include "_process.scriban"
+p = process
+-}}
+using System;
+
+namespace {{ ns(p) }};
+
+// The hand-written half of {{ p_name(p) }}Machine. Maquettiste wrote this file once and never touches it again: add queries and
+// conveniences here. The generated half is {{ p_name(p) }}Machine.g.cs.
+public sealed partial class {{ p_name(p) }}Machine
+{
+}

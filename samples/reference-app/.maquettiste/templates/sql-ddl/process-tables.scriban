@@ -1,0 +1,74 @@
+{{-
+# Instance, history and gate audit tables of a process, one script per database: <db>/processes/<process>.sql. Off unless the
+# parameter processTables is true: a template choice for projects that do not model these tables (the engine creates none).
+# The instance row holds the generated interpreter's snapshot as JSON; the audit table has the gate audit record's fields
+# (phase-3-design.md 2.3) plus every audit attribute of the process's gates.
+include "_sql.scriban"
+p = process
+func col_type(kind, db)
+  $d = db.dialect
+  if kind == "text"
+    ret $d == "postgresql" ? "text" : ($d == "sqlserver" ? "nvarchar(max)" : ($d == "sqlite" ? "TEXT" : "varchar(4000)"))
+  else if kind == "int64"
+    ret $d == "sqlite" ? "INTEGER" : "bigint"
+  else if kind == "datetimeoffset"
+    ret $d == "postgresql" ? "timestamptz" : ($d == "sqlserver" ? "datetimeoffset" : ($d == "sqlite" ? "TEXT" : "timestamp"))
+  else if kind == "bool"
+    ret $d == "postgresql" ? "boolean" : ($d == "sqlserver" ? "bit" : ($d == "sqlite" ? "INTEGER" : "smallint"))
+  end
+  ret $d == "sqlserver" ? "nvarchar(255)" : ($d == "sqlite" ? "TEXT" : "varchar(255)")
+end
+func col(name, type, required, db)
+  ret "    " + q(name, db) + " " + type + (required ? " NOT NULL" : " NULL")
+end
+if pack.params.processTables
+  base = snake p.name
+  # The audit fields: the gate audit record's fixed fields (the same for every gate), then each audit attribute once.
+  fields = []
+  names = []
+  for g in p.gates
+    for f in g.audit
+      if !(names | array.contains f.name)
+        names[names.size] = f.name
+        fields[fields.size] = f
+      end
+    end
+  end
+  for db in model.databases
+-}}
+{{- capture content -}}
+{{ banner "--" }}
+-- Tables of process {{ p.name }} ({{ p.use }}) for database {{ db.name }} ({{ dialect_title(db) }}): its instances, their history
+-- and {{ if p.gates.size > 0 }}the audit records of its gates{{ else }}(no gate) no audit records{{ end }}. Written because the processTables parameter is true.
+
+CREATE TABLE {{ q(base + "_instances", db) }} (
+{{ col("instance", col_type("string", db), true, db) }},
+{{ col("states", col_type("text", db), true, db) }},
+{{ col("snapshot", col_type("text", db), true, db) }},
+{{ col("final", col_type("bool", db), true, db) }},
+{{ col("updated_at", col_type("datetimeoffset", db), true, db) }},
+    CONSTRAINT {{ q("pk_" + base + "_instances", db) }} PRIMARY KEY ({{ q("instance", db) }})
+);
+
+CREATE TABLE {{ q(base + "_history", db) }} (
+{{ col("instance", col_type("string", db), true, db) }},
+{{ col("sequence", col_type("int64", db), true, db) }},
+{{ col("from_states", col_type("text", db), false, db) }},
+{{ col("to_states", col_type("text", db), true, db) }},
+{{ col("event", col_type("string", db), true, db) }},
+{{ col("at", col_type("datetimeoffset", db), true, db) }},
+    CONSTRAINT {{ q("pk_" + base + "_history", db) }} PRIMARY KEY ({{ q("instance", db) }}, {{ q("sequence", db) }})
+);
+{{- if fields.size > 0 }}
+
+CREATE TABLE {{ q(base + "_audit", db) }} (
+{{- for f in fields }}
+{{ col(snake f.name, f.attribute ? (type_of f.attribute db.dialect) : col_type(f.type, db), f.required, db) }},
+{{- end }}
+    CONSTRAINT {{ q("pk_" + base + "_audit", db) }} PRIMARY KEY ({{ q("instance", db) }}, {{ q("sequence", db) }})
+);
+{{- end }}
+{{ end -}}
+{{- file ((kebab db.name) + "/processes/" + (kebab p.name) + ".sql") content -}}
+{{- end -}}
+{{- end -}}

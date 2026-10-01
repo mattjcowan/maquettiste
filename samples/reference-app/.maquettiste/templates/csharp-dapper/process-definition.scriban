@@ -1,0 +1,159 @@
+{{-
+# A process's chart as static data for the generated interpreter: the states (the root first, document order), the transitions
+# (priority order), events, actions, invokes, gates and meanings.
+include "_csharp.scriban"
+include "_process.scriban"
+p = process
+name = p_name(p)
+# State indexes: 0 is the root, then document order.
+index = {}
+for s in p.all_states
+  index[s.id] = for.index + 1
+end
+gate_index = {}
+for g in p.gates
+  gate_index[g.id] = for.index
+end
+func state_kind(s)
+  ret "StateKind." + (s.type == "human-task" ? "HumanTask" : (pascal s.type))
+end
+func trigger_kind(t)
+  ret "TriggerKind." + (pascal t.trigger)
+end
+func index_of(s)
+  ret s ? index[s.id] : -1
+end
+func action_names(actions)
+  ret name_list(actions)
+end
+-}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+using {{ runtime_ns() }};
+using {{ actors_ns() }};
+
+namespace {{ ns(p) }};
+
+{{ doc(p.description, "") }}/// <remarks>The chart of process {{ p.name }} ({{ p.use }}) as the interpreter reads it.</remarks>
+public static partial class {{ name }}Definition
+{
+    /// <summary>The process id.</summary>
+    public const string ProcessId = {{ json p.id }};
+
+    /// <summary>The process name.</summary>
+    public const string ProcessName = {{ json p.name }};
+
+    /// <summary>The chart.</summary>
+    public static ChartDefinition Chart { get; } = new(
+        ProcessId,
+        ProcessName,
+        [
+            new({{ json p.id }}, {{ json p.name }}, StateKind.Compound, -1, initial: {{ index_of(p.initial) }}),
+{{- for s in p.all_states }}
+            new({{ json s.id }}, {{ json s.name }}, {{ state_kind(s) }}, {{ s.parent ? index_of(s.parent) : 0 }}
+{{- if s.type == "compound" && s.initial }}, initial: {{ index_of(s.initial) }}{{ end }}
+{{- if s.type == "history" }}, deepHistory: {{ s.history == "deep" ? "true" : "false" }}{{ if s.default_target }}, defaultTarget: {{ index_of(s.default_target) }}{{ end }}{{ end }}
+{{- if s.entry.size > 0 }}, entry: {{ action_names(s.entry) }}{{ end }}
+{{- if s.exit.size > 0 }}, exit: {{ action_names(s.exit) }}{{ end }}), // {{ index_of(s) }} {{ s.path }}
+{{- end }}
+        ],
+        [
+{{- for t in p.transitions }}
+{{- key = t.event ? t.event.name : (t.invoke ? t.invoke.name : "") }}
+{{- targets = [] }}
+{{- for x in t.targets }}{{ targets[targets.size] = index_of(x) }}{{ end }}
+            new({{ json t.id }}, {{ index_of(t.source) }}, {{ trigger_kind(t) }}, {{ json key }}, [{{ targets | array.join ", " }}]
+{{- if t.guard }}, guard: {{ json t.guard.name }}{{ end }}
+{{- if t.actions.size > 0 }}, actions: {{ action_names(t.actions) }}{{ end }}
+{{- if t.after_ticks != null }}, afterTicks: {{ t.after_ticks }}{{ end }}
+{{- if t.external }}, external: true{{ end }}
+{{- if t.gate }}, gate: {{ gate_index[t.gate.id] }}{{ end }}
+{{- if t.guard_missing }}, guardMissing: true{{ end }}), // {{ cs_line t.label }}
+{{- end }}
+        ],
+{{- if p.events.size == 0 }}
+        []
+{{- else }}
+        [
+{{- for e in p.events }}
+            new({{ json e.name }}, {{ actor_list(e.actors) }}),
+{{- end }}
+        ]
+{{- end }},
+{{- if p.actions.size == 0 }}
+        []
+{{- else }}
+        [
+{{- for a in p.actions }}
+            new({{ json a.name }}, {{ name_list(a.raises) }}),
+{{- end }}
+        ]
+{{- end }},
+{{- if p.invokes.size == 0 }}
+        []
+{{- else }}
+        [
+{{- for i in p.invokes }}
+            new({{ json i.name }}, InvokeKind.{{ i.type == "human-task" ? "HumanTask" : (pascal i.type) }}, {{ index_of(i.state) }}, {{ actor_list(i.actors) }}{{ if i.process }}, {{ json i.process.name }}{{ end }}),
+{{- end }}
+        ]
+{{- end }},
+{{- if p.gates.size == 0 }}
+        []
+{{- else }}
+        [
+{{- for g in p.gates }}
+            new({{ json g.id }}, {{ json g.name }}, {{ g.required }}, {{ actor_list(g.signers) }}, {{ actor_list(g.required_actors) }}, {{ g.allow_repeat_signer ? "true" : "false" }}, {{ g.reason_required ? "true" : "false" }}, {{ name_list(g.meanings) }}, {{ id_list(g.meanings) }}),
+{{- end }}
+        ]
+{{- end }},
+{{- if p.actors.size == 0 }}
+        null);
+{{- else }}
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+{{- for a in p.actors }}
+            [Actors.{{ pascal a.name }}] = {{ json a.id }},
+{{- end }}
+        });
+{{- end }}
+
+    /// <summary>The event names.</summary>
+    public static class Events
+    {
+{{- for e in p.events }}
+        /// <summary>{{ cs_line e.display_name | escape_xml }}{{ if e.description }}: {{ cs_line e.description | string.strip | escape_xml }}{{ end }}</summary>
+        public const string {{ member_name(e.name, "Events") }} = {{ json e.name }};
+{{- if !for.last }}
+{{ end }}
+{{- end }}
+    }
+
+    /// <summary>The invoke names.</summary>
+    public static class Invokes
+    {
+{{- for i in p.invokes }}
+        /// <summary>{{ cs_line i.display_name | escape_xml }} ({{ i.type }}, started by {{ i.state.path }}).</summary>
+        public const string {{ member_name(i.name, "Invokes") }} = {{ json i.name }};
+{{- if !for.last }}
+{{ end }}
+{{- end }}
+    }
+
+    /// <summary>The gates and the meanings of their signatures.</summary>
+    public static class Gates
+    {
+{{- for g in p.gates }}
+{{- if !for.first }}
+{{ end }}
+        /// <summary>{{ cs_line g.display_name | escape_xml }}: {{ g.required }} signature(s) on transition {{ cs_line g.transition.label | escape_xml }}.</summary>
+        public const string {{ member_name(g.name, "Gates") }} = {{ json g.name }};
+{{- for m in g.meanings }}
+
+        /// <summary>Meaning of a {{ g.name }} signature: {{ cs_line m.display_name | escape_xml }}.</summary>
+        public const string {{ pascal g.name }}{{ pascal m.name }} = {{ json m.name }};
+{{- end }}
+{{- end }}
+    }
+}

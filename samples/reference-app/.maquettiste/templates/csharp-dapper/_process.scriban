@@ -1,0 +1,224 @@
+{{-
+# Shared functions of the process units. Include after _csharp.scriban; it prints nothing.
+
+# The C# name of a process (and the prefix of its types).
+func p_name(p)
+  ret pascal p.name
+end
+
+# The folder of a process's files under a base folder: <base>/Processes/<Process>.
+func p_folder(base, p)
+  ret join_path base "Processes" (p_name(p))
+end
+
+# The namespaces of the runtime, the dispatcher and the actors.
+func runtime_ns()
+  ret pack.params.namespace + ".Runtime"
+end
+
+func dispatch_ns()
+  ret pack.params.namespace + ".Dispatch"
+end
+
+func actors_ns()
+  ret pack.params.namespace + ".Processes"
+end
+
+# The C# constant name of a state: its path parts in PascalCase, joined ("Fulfilment.Processing" -> FulfilmentProcessing).
+func state_member(s)
+  $out = ""
+  for part in (s.path | string.split ".")
+    $out = $out + (pascal part)
+  end
+  ret $out
+end
+
+# The C# type of a context, payload or audit attribute: the type map's type, nullable when the value may be absent (not
+# required and no default).
+func attr_type(a)
+  if a.collection
+    ret type_of a "csharp"
+  end
+  $t = type_of a.type "csharp"
+  if a.required || a.default != null
+    ret $t
+  end
+  ret $t + "?"
+end
+
+# A C# literal of a model value for an attribute's type ("2500m", "SalesOrderStatus.Draft", "\"text\"").
+func cs_literal(value, a)
+  if value == null
+    ret "null"
+  end
+  if a.type.kind == "enum"
+    ret (type_of a.type "csharp") + "." + (cs_ident (pascal value))
+  end
+  $b = a.type.builtin
+  if $b == "decimal"
+    ret value + "m"
+  else if $b == "double"
+    ret value + "d"
+  else if $b == "float"
+    ret value + "f"
+  else if $b == "int64"
+    ret value + "L"
+  else if $b == "int16" || $b == "int32"
+    ret "" + value
+  else if $b == "bool"
+    ret value ? "true" : "false"
+  else if $b == "uuid"
+    ret "Guid.Parse(" + (json value) + ")"
+  else if $b == "datetimeoffset"
+    ret "DateTimeOffset.Parse(" + (json value) + ", CultureInfo.InvariantCulture)"
+  else if $b == "datetime"
+    ret "DateTime.Parse(" + (json value) + ", CultureInfo.InvariantCulture)"
+  else if $b == "date"
+    ret "DateOnly.Parse(" + (json value) + ", CultureInfo.InvariantCulture)"
+  end
+  ret json value
+end
+
+# The C# type of a field of a gate's audit record (gate.audit).
+func audit_type(f)
+  if f.attribute
+    ret attr_type(f.attribute)
+  end
+  $t = "string"
+  if f.type == "int64"
+    $t = "long"
+  else if f.type == "datetimeoffset"
+    $t = "DateTimeOffset"
+  end
+  ret f.required ? $t : $t + "?"
+end
+
+# The attribute of a list with a name, or null.
+func by_name(list, name)
+  for x in list
+    if x.name == name
+      ret x
+    end
+  end
+  ret null
+end
+
+# The type-and-members spec of a process's context for the expression translator (helpers.js): one entry per attribute,
+# "name|C# name|C# type|kind|member=C# member,...", joined with ";".
+func member_spec(attributes, owner)
+  $out = ""
+  for a in attributes
+    $kind = "value"
+    $members = ""
+    if a.type.kind == "enum"
+      $kind = "enum"
+      for m in a.type.enum.members
+        $members = $members + (for.first ? "" : ",") + m.name + "=" + (cs_ident (pascal m.name))
+      end
+    else if a.type.builtin == "string" || a.type.builtin == "text" || a.type.builtin == "ulid"
+      $kind = "string"
+    else if a.type.builtin == "bool"
+      $kind = "bool"
+    else if a.type.builtin == "decimal" || a.type.builtin == "double" || a.type.builtin == "float"
+      $kind = a.type.builtin
+    else if a.type.builtin == "int16" || a.type.builtin == "int32" || a.type.builtin == "int64"
+      $kind = "int"
+    end
+    $out = $out + (for.first ? "" : ";") + a.name + "|" + (prop_name(a, owner)) + "|" + (attr_type(a)) + "|" + $kind + "|" + $members
+  end
+  ret $out
+end
+
+# Every payload attribute of a process's events, first declaration of each name (for event.payload.x in expressions).
+func payload_spec(p)
+  $seen = []
+  $list = []
+  for e in p.events
+    for a in e.payload
+      if !($seen | array.contains a.name)
+        $seen[$seen.size] = a.name
+        $list[$list.size] = a
+      end
+    end
+  end
+  ret member_spec($list, "")
+end
+
+# The C# translation of a guard or action expression (7.1 subset), or "" when it is outside the subset (a stub).
+func translate(p, node, kind)
+  if !node.expression
+    ret ""
+  end
+  ret cs_expression node.expression kind (member_spec(p.context, (p_name(p)) + "Context")) (payload_spec(p))
+end
+
+# The C# name of a process event's command type. The built-in commands are <P>StartControl, <P>InvokeResultControl and
+# <P>TimersDueControl: a name ending in Control is never an event command's, so no event name collides with them.
+func command_type(p, e)
+  ret p_name(p) + (pascal e.name) + "Command"
+end
+
+# The C# name of a member for a model name inside a class: PascalCase, with "Value" appended when it equals the class's own name
+# (C# forbids a member named like its enclosing type, so an event named "events" stays legal).
+func member_name(n, owner)
+  $c = pascal n
+  if $c == owner
+    ret $c + "Value"
+  end
+  ret cs_ident $c
+end
+
+# The audit attributes of the gates on an event's transitions (the gated event's command carries them), first of each name.
+func audit_attributes(e)
+  $seen = []
+  $list = []
+  for t in e.transitions
+    if t.gate
+      for a in t.gate.audit_attributes
+        if !($seen | array.contains a.name)
+          $seen[$seen.size] = a.name
+          $list[$list.size] = a
+        end
+      end
+    end
+  end
+  ret $list
+end
+
+# Whether an event is gated (one of its transitions has a gate).
+func is_gated(e)
+  for t in e.transitions
+    if t.gate
+      ret true
+    end
+  end
+  ret false
+end
+
+# The C# string array literal of actor names ("[Actors.Approver, Actors.FinanceController]"), or "[]".
+func actor_list(actors)
+  $out = ""
+  for a in actors
+    $out = $out + (for.first ? "" : ", ") + "Actors." + (pascal a.name)
+  end
+  ret "[" + $out + "]"
+end
+
+# The C# string array literal of ids.
+func id_list(items)
+  $out = ""
+  for x in items
+    $out = $out + (for.first ? "" : ", ") + (json x.id)
+  end
+  ret "[" + $out + "]"
+end
+
+# The C# string array literal of names.
+func name_list(items)
+  $out = ""
+  for x in items
+    $out = $out + (for.first ? "" : ", ") + (json x.name)
+  end
+  ret "[" + $out + "]"
+end
+-}}

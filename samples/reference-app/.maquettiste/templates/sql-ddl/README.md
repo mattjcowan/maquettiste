@@ -17,6 +17,7 @@ For a database `main` (PostgreSQL, schema `billing`) with a table `invoices`:
 | `schema` | `overwrite` | `select databases` | `main/schema.sql`: schemas, sequences, every table in foreign-key dependency order, then views |
 | `migration` | `once` | `select databases` | `main/migrations/0001.sql`, `0002.sql`, …: one script per schema revision, from `schema_diff` |
 | `seed` | `regions` | `select databases` | `main/seed.sql`: the reference data of reference types reconciled on every run, the rows of entity and relation seeds, plus a `seed-data` region the team fills in |
+| `process-tables` | file blocks | `each process` | `main/processes/purchase-approval.sql`: instance, history and gate audit tables of a process, one script per database; only when `processTables` is `true` (see Process tables) |
 
 Database folders are the kebab-case database name; the schema folder is left out when the table has no schema (SQLite).
 
@@ -116,6 +117,22 @@ of seeds, written so the script can run again on a database that has them), but 
 is carried over from the file on disk. Edits outside the region are reported as hand edits. `regions` mode only works on a
 committed root.
 
+## Process tables
+
+The engine creates no table for process instances: a project models where they live (the gate 3 fixture maps `SalesOrder`,
+`ProcessInstance` and `GateSignature` entities) and the C# store companion adapts to that. For a project that does not model
+them, `"processTables": true` writes one script per process and database with three tables named after the process
+(`purchase_approval_instances`, `_history`, `_audit`):
+
+| Table | Columns | Key |
+| --- | --- | --- |
+| `<process>_instances` | `instance`, `states` (the active leaf paths, JSON), `snapshot` (the generated interpreter's snapshot, JSON), `final`, `updated_at` | `instance` |
+| `<process>_history` | `instance`, `sequence`, `from_states`, `to_states`, `event`, `at` | `instance`, `sequence` |
+| `<process>_audit` | the gate audit record of phase-3-design.md section 2.3 (`instance`, `process`, `gate`, `transition`, `sequence`, `signer`, `actor`, `meaning`, `reason`, `at`, `outcome`), then every audit attribute of the process's gates (typed by the dialect) | `instance`, `sequence` |
+
+The audit table is left out for a process without gates. The scripts are not part of `schema.sql`, the schema snapshot or the
+migrations: they are plain `CREATE TABLE` scripts for a first deployment, owned by the template choice, not by the model.
+
 ## Parameters
 
 Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
@@ -126,6 +143,7 @@ Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
 | `referenceStrategy` | `"lookup-table"` | The strategy key for reference types whose storage the project leaves to the template (see Reference data). |
 | `quoting` | `""` | `always`, `reserved` or `never` to override every database's `quoting` setting; empty keeps the database's. |
 | `strategyMap` | each key to itself | From the project's reference storage strategy keys to `lookup-table`, `check` or `native` (see Reference data). |
+| `processTables` | `false` | Write `<db>/processes/<process>.sql` for every process (see Process tables). |
 | `schemaScript` | `"inline"` | `inline` puts every table's DDL in `schema.sql` (runs with any client); `include` writes client include directives instead (`\ir` for psql, `:r` for sqlcmd followed by `GO`, `.read` for sqlite3; paths use `/`, which sqlcmd accepts on every OS; run sqlcmd and sqlite3 from the database folder). |
 
 ## Files
@@ -139,7 +157,7 @@ Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
 | `_objects.scriban` | Sequences, views, schemas, include directives and the dependency spec for `ddl_order`. |
 | `_migration.scriban` | Statement builders over the schema diff. |
 | `_reference.scriban` | Reference data: the realizations, their reconciliation and the seed-row inserts, used by `schema`, `migration` and `seed`. |
-| `table.scriban`, `schema.scriban`, `migration.scriban`, `seed.scriban` | The unit templates. |
+| `table.scriban`, `schema.scriban`, `migration.scriban`, `seed.scriban`, `process-tables.scriban` | The unit templates. |
 
 ## Notes
 

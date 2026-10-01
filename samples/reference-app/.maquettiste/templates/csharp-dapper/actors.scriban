@@ -1,0 +1,70 @@
+{{-
+# The actors of the model as constants, with their type, and each process event's allowed actors.
+include "_csharp.scriban"
+include "_process.scriban"
+if model.processes.size > 0
+-}}
+{{- capture content -}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+
+namespace {{ actors_ns() }};
+
+/// <summary>The type of an actor.</summary>
+public enum ActorType
+{
+    /// <summary>A person.</summary>
+    Person,
+
+    /// <summary>A role people act in.</summary>
+    Role,
+
+    /// <summary>Another system.</summary>
+    ExternalSystem,
+}
+
+/// <summary>The actors of the model: the names envelopes carry, their types, and who may raise each process event.</summary>
+public static partial class Actors
+{
+{{- for a in model.actors }}
+    /// <summary>{{ cs_line a.display_name | escape_xml }} ({{ a.type }}){{ if a.description }}: {{ cs_line a.description | string.strip | escape_xml }}{{ end }}</summary>
+    public const string {{ pascal a.name }} = {{ json a.name }};
+{{ end }}
+    /// <summary>Every actor, by name.</summary>
+    public static IReadOnlyList<string> All { get; } =
+    [
+{{- for a in model.actors }}
+        {{ pascal a.name }},
+{{- end }}
+    ];
+
+    /// <summary>The type of an actor.</summary>
+    /// <param name="actor">The actor's name.</param>
+    /// <returns>The type.</returns>
+    public static ActorType TypeOf(string actor) => actor switch
+    {
+{{- for a in model.actors }}
+        {{ pascal a.name }} => ActorType.{{ pascal a.type }},
+{{- end }}
+        _ => throw new ArgumentOutOfRangeException(nameof(actor), actor, "Not an actor of the model."),
+    };
+
+    /// <summary>The actors that may raise each process event (empty: any actor).</summary>
+    public static class Events
+    {
+{{- first = true }}
+{{- for p in model.processes }}
+{{- for e in p.events }}
+{{- if !first }}
+{{ end }}
+{{- first = false }}
+        /// <summary>Event {{ e.name }} of {{ p.name }}.</summary>
+        public static IReadOnlyList<string> {{ pascal p.name }}{{ pascal e.name }} { get; } = {{ actor_list(e.actors) }};
+{{- end }}
+{{- end }}
+    }
+}
+{{ end -}}
+{{- file (join_path pack.params.generatedFolder "Processes" "Actors.cs") content -}}
+{{- end -}}
