@@ -13,3 +13,10 @@ CREATE TABLE northwind.product_images (
     CONSTRAINT pk_product_images PRIMARY KEY (id),
     CONSTRAINT fk_product_images_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.product_images IS 'An image of a product, stored in the media CDN.';
+COMMENT ON COLUMN northwind.product_images.id IS 'Surrogate key of the product image.';
+COMMENT ON COLUMN northwind.product_images.url IS 'Image URL.';
+COMMENT ON COLUMN northwind.product_images.alt_text IS 'Accessible description.';
+COMMENT ON COLUMN northwind.product_images.width_px IS 'Width in pixels.';
+COMMENT ON COLUMN northwind.product_images.height_px IS 'Height in pixels.';
+COMMENT ON COLUMN northwind.product_images.is_primary IS 'Image used in listings.';

@@ -2822,7 +2822,7 @@
         ],
         "operationId": "deleteElement",
         "summary": "Delete an element",
-        "description": "Refused while other elements reference it unless `resolution=remove-references`, which clears optional references (a required reference makes the delete `invalid`).",
+        "description": "Refused while other elements reference it unless `resolution` says otherwise. `remove-references` clears optional\nreferences; a required one makes the delete `invalid`, and the first diagnostic is the readable MQ2001 naming the referrer.\n`delete-dependents` also resolves required references in the same change: the referrer loses the smallest part that is\nvalid without the reference (an attribute whose type is deleted, a diagram member, a key, a foreign key), or, when only\nthe whole referrer would do (a table, view, sequence or mapping of a deleted database; a relation, mapping or overlay of a\ndeleted entity), it is deleted with its own dependents, recursively. A deleted database's `databases.<name>` conventions\nentry in `maquettiste.json` goes in the same change. `GET /api/model/elements/{id}/delete-plan` shows all of it first.\n",
         "x-maquettiste-role": "editor",
         "x-maquettiste-engine": "ModelStore.DeleteAsync(id, expectedHash, resolution, ChangeSource.Editor)",
         "parameters": [
@@ -2833,7 +2833,7 @@
             "name": "resolution",
             "in": "query",
             "required": false,
-            "description": "The handler binds it as a string and maps the two values itself: the host binds enum parameters by C# member name (`RemoveReferences`), not by these JSON names.",
+            "description": "The handler binds it as a string and maps the three values itself: the host binds enum parameters by C# member name (`RemoveReferences`), not by these JSON names.",
             "schema": {
               "$ref": "#/components/schemas/DeleteResolution"
             }
@@ -2873,7 +2873,7 @@
             }
           },
           "400": {
-            "description": "`resolution` is not `refuse` or `remove-references` (`bad-request`).",
+            "description": "`resolution` is not `refuse`, `remove-references` or `delete-dependents` (`bad-request`).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -3002,6 +3002,138 @@
           },
           "428": {
             "$ref": "#/components/responses/PreconditionRequired"
+          }
+        }
+      }
+    },
+    "/api/model/elements/{id}/delete-plan": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ElementId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "model"
+        ],
+        "operationId": "getDeletePlan",
+        "summary": "What a delete would do",
+        "description": "The elements a delete with `resolution` would take with it, the references it would clear, the parts it would remove\nfrom elements that stay and what blocks it, with kinds and names from the index, computed like the delete itself\n(the same planner and validation) without writing anything. `outcome` is what the delete would return now.\n",
+        "x-maquettiste-role": "viewer",
+        "x-maquettiste-engine": "ModelStore.GetDeletePlanAsync([id], resolution) (404 when ModelStore.GetElementAsync finds no element with that id)",
+        "parameters": [
+          {
+            "name": "resolution",
+            "in": "query",
+            "required": false,
+            "description": "The resolution to plan for; `delete-dependents` when absent.",
+            "schema": {
+              "$ref": "#/components/schemas/DeleteResolution"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The plan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletePlan"
+                },
+                "examples": {
+                  "product": {
+                    "summary": "Deleting Product with its dependents",
+                    "value": {
+                      "ids": [
+                        "01J92P0V0JR8BE8253SKT29ZG7"
+                      ],
+                      "resolution": "delete-dependents",
+                      "outcome": "saved",
+                      "deletes": [
+                        {
+                          "id": "01J92P0V1CC98R0RRCAV73SGF4",
+                          "kind": "relation",
+                          "name": "refers to",
+                          "path": ".maquettiste/model/relations/refers-to.json",
+                          "because": "needs entity Product"
+                        }
+                      ],
+                      "clears": [],
+                      "removes": [
+                        {
+                          "id": "01J92P0V2164SDBW687ZV6E1MV",
+                          "kind": "diagram",
+                          "name": "Billing overview",
+                          "pointer": "/members/4",
+                          "what": "member Product",
+                          "subKind": "member",
+                          "because": "shows entity Product"
+                        }
+                      ],
+                      "refused": [],
+                      "settings": [],
+                      "warnings": []
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`resolution` is not `refuse`, `remove-references` or `delete-dependents` (`bad-request`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/model/delete-plan": {
+      "post": {
+        "tags": [
+          "model"
+        ],
+        "operationId": "getBulkDeletePlan",
+        "summary": "What deleting several elements would do",
+        "description": "The combined plan of deleting `ids` in one batch with `resolution` (the explorer's bulk delete): the same answer as\n`GET /api/model/elements/{id}/delete-plan`, for a batch whose delete operations all carry the resolution. An unknown id\nis listed in `refused` (rule `not-found`). Nothing is written.\n",
+        "x-maquettiste-role": "viewer",
+        "x-maquettiste-engine": "ModelStore.GetDeletePlanAsync(ids, resolution)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeletePlanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The plan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletePlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
           }
         }
       }
@@ -6136,6 +6268,72 @@
             "$ref": "#/components/responses/PreconditionRequired"
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "packs"
+        ],
+        "operationId": "deletePack",
+        "summary": "Remove a pack, leaving the files it generated on disk",
+        "description": "`If-Match` carries the `pack.json` hash read. Removes the `packs.<pack>` entry of `maquettiste.json` (through the settings\nsave), then the folder `.maquettiste/templates/<pack>/`, then the pack's committed and built manifests and its unit states.\nThe files the pack generated stay on disk and are no longer tracked: `untracked` lists them. Waits for a generation run in\nprogress. 409 when `pack.json` changed (or `maquettiste.json` kept changing meanwhile); 422 (nothing removed) when the settings save is refused. Sends `project.changed`\nwhen the settings changed, then `templates.changed` (empty `files`) and `packs.changed`.\n",
+        "x-maquettiste-role": "maintainer",
+        "x-maquettiste-engine": "GenerationService.DeletePackAsync(pack, expectedHash)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackRemoveResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "description": "No such pack.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackRemoveResult"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "pack.json changed since it was read; `hash` and `current` are the disk version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackRemoveResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The settings save was refused; nothing was removed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackRemoveResult"
+                }
+              }
+            }
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          }
+        }
       }
     },
     "/api/packs/{pack}/file": {
@@ -8231,8 +8429,26 @@
                 "type": "null"
               }
             ]
+          },
+          "comments": {
+            "description": "Where a table's or column's comment comes from when its file sets none; `null` inherits (the engine default is\n`descriptions`: the table's own description, else its entity's, and the column's own description, else its attribute's).\n",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CommentSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
+      },
+      "CommentSource": {
+        "type": "string",
+        "enum": [
+          "none",
+          "descriptions"
+        ]
       },
       "LocalizationSettings": {
         "x-engine-record": "Maquettiste.Engine.Model.LocalizationSettings",
@@ -9576,9 +9792,290 @@
         "type": "string",
         "enum": [
           "refuse",
-          "remove-references"
+          "remove-references",
+          "delete-dependents"
         ],
-        "default": "refuse"
+        "default": "refuse",
+        "description": "`refuse`: refused while anything references the element. `remove-references`: optional references are cleared, a\nrequired one makes the delete invalid. `delete-dependents`: required references are resolved too, by removing the part\nof the referrer that needs the element or deleting the referrer with its own dependents.\n"
+      },
+      "DeletePlanRequest": {
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 200,
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          "resolution": {
+            "$ref": "#/components/schemas/DeleteResolution"
+          }
+        }
+      },
+      "DeletePlan": {
+        "x-engine-record": "Maquettiste.Engine.DeletePlan",
+        "type": "object",
+        "required": [
+          "ids",
+          "resolution",
+          "outcome",
+          "deletes",
+          "clears",
+          "removes",
+          "refused",
+          "settings",
+          "warnings"
+        ],
+        "properties": {
+          "ids": {
+            "type": "array",
+            "description": "The elements the delete names.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "resolution": {
+            "$ref": "#/components/schemas/DeleteResolution"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/SaveOutcome"
+          },
+          "deletes": {
+            "type": "array",
+            "description": "Every other element deleted with them, in the order the cascade reached it.",
+            "items": {
+              "$ref": "#/components/schemas/DeletePlanDelete"
+            }
+          },
+          "clears": {
+            "type": "array",
+            "description": "References cleared from elements that stay.",
+            "items": {
+              "$ref": "#/components/schemas/DeletePlanClear"
+            }
+          },
+          "removes": {
+            "type": "array",
+            "description": "Parts removed from elements that stay.",
+            "items": {
+              "$ref": "#/components/schemas/DeletePlanRemove"
+            }
+          },
+          "refused": {
+            "type": "array",
+            "description": "What blocks the delete; empty when `outcome` is `saved`.",
+            "items": {
+              "$ref": "#/components/schemas/DeletePlanRefusal"
+            }
+          },
+          "settings": {
+            "type": "array",
+            "description": "Entries of `maquettiste.json` removed in the same change (a deleted database's conventions).",
+            "items": {
+              "$ref": "#/components/schemas/DeletePlanSetting"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "description": "What the delete leaves as it is but stops matching (a pack unit whose `where.database` names a deleted database).",
+            "items": {
+              "$ref": "#/components/schemas/DeletePlanWarning"
+            }
+          }
+        }
+      },
+      "DeletePlanDelete": {
+        "x-engine-record": "Maquettiste.Engine.DeletePlanDelete",
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "path",
+          "because"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ElementKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "$ref": "#/components/schemas/RepoPath"
+          },
+          "because": {
+            "type": "string",
+            "description": "For example `needs database main` or `belongs to entity Invoice`."
+          }
+        }
+      },
+      "DeletePlanClear": {
+        "x-engine-record": "Maquettiste.Engine.DeletePlanClear",
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "pointer",
+          "field",
+          "target",
+          "because"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ElementKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pointer": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string",
+            "description": "The deleted id the reference pointed to."
+          },
+          "because": {
+            "type": "string",
+            "description": "For example `pointed to package Catalog`."
+          }
+        }
+      },
+      "DeletePlanRemove": {
+        "x-engine-record": "Maquettiste.Engine.DeletePlanRemove",
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "pointer",
+          "what",
+          "because"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ElementKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pointer": {
+            "type": "string",
+            "description": "The removed part in the element's file."
+          },
+          "what": {
+            "type": "string",
+            "description": "For example `attribute unitPrice`, `member Product` or `key`."
+          },
+          "subId": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "subKind": {
+            "type": "string",
+            "description": "The removed part's kind (`attribute`, `end`, `member`, ...), when known."
+          },
+          "because": {
+            "type": "string"
+          }
+        }
+      },
+      "DeletePlanRefusal": {
+        "x-engine-record": "Maquettiste.Engine.DeletePlanRefusal",
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "pointer",
+          "why",
+          "rule"
+        ],
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pointer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "why": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string",
+            "description": "`MQ2001` for a reference that cannot be resolved, `referenced` (refuse), `not-found`, `conflict`, or the rule of an error the change would introduce."
+          }
+        }
+      },
+      "DeletePlanSetting": {
+        "x-engine-record": "Maquettiste.Engine.DeletePlanSetting",
+        "type": "object",
+        "required": [
+          "pointer",
+          "what"
+        ],
+        "properties": {
+          "pointer": {
+            "type": "string"
+          },
+          "what": {
+            "type": "string"
+          }
+        }
+      },
+      "DeletePlanWarning": {
+        "x-engine-record": "Maquettiste.Engine.DeletePlanWarning",
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "pack": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          }
+        }
       },
       "SaveResult": {
         "x-engine-record": "Maquettiste.Engine.SaveResult",
@@ -15065,6 +15562,74 @@
           }
         }
       },
+      "PackRemoveResult": {
+        "x-engine-record": "Maquettiste.Engine.PackRemoveResult",
+        "type": "object",
+        "required": [
+          "outcome",
+          "hash",
+          "current",
+          "files",
+          "untracked",
+          "settingsHash",
+          "diagnostics"
+        ],
+        "properties": {
+          "outcome": {
+            "$ref": "#/components/schemas/SaveOutcome"
+          },
+          "hash": {
+            "description": "The disk hash of pack.json on conflict, else null.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Hash"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current": {
+            "description": "The disk text of pack.json on conflict, else null.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "files": {
+            "type": "array",
+            "description": "The pack-relative files deleted, ordinal.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "untracked": {
+            "type": "array",
+            "description": "The repo-relative generated files the pack's manifests recorded, left on disk and no longer tracked, ordinal.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "settingsHash": {
+            "description": "The hash of maquettiste.json after its packs.<pack> entry was removed; null when it had no entry.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Hash"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "diagnostics": {
+            "type": "array",
+            "description": "Why nothing was removed (a refused settings save).",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
+          }
+        }
+      },
       "PlanCause": {
         "x-engine-record": "Maquettiste.Engine.PlanCause",
         "type": "object",
@@ -15209,7 +15774,9 @@
           "role",
           "root",
           "allowed",
-          "rule"
+          "rule",
+          "elementName",
+          "elementKind"
         ],
         "properties": {
           "elementId": {
@@ -15238,6 +15805,20 @@
             "type": "boolean"
           },
           "rule": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "elementName": {
+            "description": "The resolved element's name for people: an element's name; a table, view or sequence as `name (database)`, the name\nqualified by its schema when that is not the database's default (`sales.orders (billing)`); a column as\n`table.column (database)`; a locale's tag (`fr-CA`). Null for model scope and for an object with no name.\n",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "elementKind": {
+            "description": "The resolved element's kind (`entity`, `table`, `view`, `locale`, ...); null for model scope.",
             "type": [
               "string",
               "null"
@@ -17099,7 +17680,8 @@
           "valueObjectCollectionStorage",
           "relationsWithAttributes",
           "inheritance",
-          "referenceStorage"
+          "referenceStorage",
+          "comments"
         ],
         "properties": {
           "tableCase": {
@@ -17232,6 +17814,13 @@
           "referenceStorage": {
             "description": "The storage choice for reference types: the project default under conventions, a per-database override under databases.",
             "$ref": "#/components/schemas/storageChoice"
+          },
+          "comments": {
+            "description": "Where a table's or column's comment comes from when its file sets none: descriptions (the default) takes the table's own description, else its entity's, and the column's own description, else its attribute's; none keeps only explicit comments.",
+            "enum": [
+              "none",
+              "descriptions"
+            ]
           }
         },
         "additionalProperties": false
@@ -17974,7 +18563,8 @@
               "valueObjectCollectionStorage",
               "relationsWithAttributes",
               "inheritance",
-              "referenceStorage"
+              "referenceStorage",
+              "comments"
             ],
             "properties": {
               "tableCase": {
@@ -18107,6 +18697,13 @@
               "referenceStorage": {
                 "description": "The storage choice for reference types: the project default under conventions, a per-database override under databases.",
                 "$ref": "#/components/schemas/storageChoice"
+              },
+              "comments": {
+                "description": "Where a table's or column's comment comes from when its file sets none: descriptions (the default) takes the table's own description, else its entity's, and the column's own description, else its attribute's; none keeps only explicit comments.",
+                "enum": [
+                  "none",
+                  "descriptions"
+                ]
               }
             },
             "additionalProperties": false
@@ -23022,6 +23619,7 @@
                 "op",
                 "id",
                 "expectedHash",
+                "resolution",
                 "element",
                 "locale",
                 "field",
@@ -23054,6 +23652,14 @@
                 "expectedHash": {
                   "type": "string",
                   "pattern": "^[0-9a-f]{64}$"
+                },
+                "resolution": {
+                  "description": "What a delete does with references to the element: refuse (the default) while anything references it, remove-references to clear optional references, or delete-dependents to also remove or delete what cannot exist without it (delete only).",
+                  "enum": [
+                    "refuse",
+                    "remove-references",
+                    "delete-dependents"
+                  ]
                 },
                 "element": {
                   "type": "object",

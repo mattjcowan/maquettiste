@@ -73,6 +73,9 @@ internal sealed class ChangePlan
     /// <summary>The change index of each element a change created, updated, deleted or rewrote (reference removal).</summary>
     public required IReadOnlyDictionary<string, int> ChangeByElement { get; init; }
 
+    /// <summary>What the deletes that resolve references do, when the plan has any (the delete plan read).</summary>
+    public DeletePlanReport? DeleteReport { get; init; }
+
     /// <summary>Whether any change failed.</summary>
     public bool Failed => Outcomes.Any(o => o.Outcome != SaveOutcome.Saved);
 
@@ -159,6 +162,11 @@ internal sealed partial class ChangePlanner
             }
         }
 
+        if (outcomes.All(o => o.Outcome == SaveOutcome.Saved))
+            FinishCascade(outcomes);
+        else if (_cascadeOrder.Count > 0)
+            CascadeReport = BuildReport();
+
         ModelSnapshot? candidate = null;
         if (outcomes.All(o => o.Outcome == SaveOutcome.Saved))
             ReconcileTranslations();
@@ -178,6 +186,7 @@ internal sealed partial class ChangePlanner
             Candidate = candidate,
             ChangedIds = changedIds,
             ChangeByElement = _changeByElement,
+            DeleteReport = CascadeReport,
         };
     }
 
@@ -353,7 +362,14 @@ internal sealed partial class ChangePlanner
 
     private void DeleteCore(int index, string id, Working current, DeleteResolution resolution, ChangeOutcome outcome)
     {
-        var subIds = SubElementIds(id, current.Json);
+        if (resolution != DeleteResolution.Refuse)
+        {
+            // Clearing references (and deleting dependents) is planned for the whole batch first and staged once every operation has
+            // run (ChangePlanner.Cascade.cs), so pointers into a referrer always address the file as the index read it.
+            CascadeDelete(index, id, resolution);
+            return;
+        }
+
         // Seeds belong to their target (section 2.7): they are deleted with it, and the references to their rows are judged like the
         // target's own. Seeds the batch names itself are left to their own operation.
         var owned = _snapshot.ReferencesTo(id)
@@ -362,11 +378,25 @@ internal sealed partial class ChangePlanner
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)
             .ToList();
-        if (resolution == DeleteResolution.RemoveReferences)
-            RemoveReferences(index, id, subIds, outcome, owned);
-        if (outcome.Outcome != SaveOutcome.Saved)
-            return;
+        var subIds = StageDelete(index, id, current);
+        foreach (var seedId in owned)
+        {
+            if (!TryGetCurrent(seedId, null, out var seed))
+                continue;
+            _changeByElement.TryAdd(seedId, index);
+            Touch(seedId, seed);
+            DeleteCore(index, seedId, seed, resolution, outcome);
+        }
 
+        // Columns of other seeds that name the deleted element's attributes or ends go with them (section 2.7).
+        if (outcome.Outcome == SaveOutcome.Saved && subIds.Length > 0)
+            DropSeedColumns(index, subIds, outcome);
+    }
+
+    /// <summary>Plans an element's file (and its sidecars no other element uses) for deletion; returns its sub-element ids.</summary>
+    private ImmutableArray<string> StageDelete(int index, string id, Working current)
+    {
+        var subIds = SubElementIds(id, current.Json);
         _deleted.Add(id);
         _working.Remove(id);
         _deletes.Add(current.ModelPath);
@@ -382,71 +412,20 @@ internal sealed partial class ChangePlanner
         _deleteChecks.Add((index, id, subIds));
         _removedIds.Add(id);
         _removedIds.UnionWith(subIds);
-        foreach (var seedId in owned)
-        {
-            if (!TryGetCurrent(seedId, null, out var seed))
-                continue;
-            _changeByElement.TryAdd(seedId, index);
-            Touch(seedId, seed);
-            DeleteCore(index, seedId, seed, resolution, outcome);
-        }
-
-        // Columns of other seeds that name the deleted element's attributes or ends go with them (section 2.7).
-        if (outcome.Outcome == SaveOutcome.Saved && subIds.Length > 0)
-            DropSeedColumns(index, subIds, outcome);
-    }
-
-    private void RemoveReferences(int index, string id, ImmutableArray<string> subIds, ChangeOutcome outcome, IReadOnlyCollection<string> owned)
-    {
-        var references = subIds.Prepend(id)
-            .SelectMany(target => _snapshot.ReferencesTo(target))
-            .Where(r => r.FromElementId != id && !_deleted.Contains(r.FromElementId) && !r.Owning && !owned.Contains(r.FromElementId))
-            .Where(r => r.Field != "columns" || _snapshot.Get<Seed>(r.FromElementId) is null) // seed columns are dropped with their cells
-            .Distinct()
-            .ToList();
-        foreach (var group in references.GroupBy(r => r.FromElementId, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal))
-        {
-            var referrerId = group.Key;
-            if (!TryGetCurrent(referrerId, null, out var referrer))
-                continue;
-            var repoPath = _paths.ToRepoPath(referrer.ModelPath);
-            var node = JsonNode.Parse(referrer.Json.GetRawText())!.AsObject();
-            var failed = false;
-            foreach (var pointer in group.Select(r => r.JsonPointer).Distinct(StringComparer.Ordinal).OrderByDescending(p => p, PointerOrder.Instance))
-            {
-                if (RemoveAt(node, pointer, referrer.Element.Kind) is { } reason)
-                {
-                    failed = true;
-                    outcome.Fail(SaveOutcome.Invalid, RuleCatalog.Create("MQ2001", $"{pointer} The reference to {id} cannot be removed: {reason}", referrerId, repoPath, pointer));
-                }
-            }
-
-            if (failed)
-                continue;
-            var info = KindInfo.Get(referrer.Element.Kind);
-            var probe = new ChangeOutcome();
-            if (Read(node, info, repoPath, probe) is not { } element)
-            {
-                outcome.Fail(SaveOutcome.Invalid, RuleCatalog.Create(
-                    "MQ2001",
-                    $"{referrer.Element.KindName} '{referrer.Element.Name}' holds a required reference to {id} ({string.Join(", ", group.Select(r => r.JsonPointer).Distinct(StringComparer.Ordinal))}); change or delete it first.",
-                    referrerId,
-                    repoPath,
-                    group.First().JsonPointer));
-                outcome.Diagnostics.AddRange(probe.Diagnostics);
-                continue;
-            }
-
-            outcome.Referrers.AddRange(group);
-            _changeByElement.TryAdd(referrerId, index);
-            Stage(referrerId, element, node, info, referrer.ModelPath, outcome, referrer);
-        }
+        return subIds;
     }
 
     /// <summary>Removes one reference; returns <see langword="null"/> when done, else why it cannot be removed.</summary>
-    private static string? RemoveAt(JsonNode root, string pointer, ElementKind referrerKind)
+    /// <param name="root">The referrer's document.</param>
+    /// <param name="pointer">The reference.</param>
+    /// <param name="referrerKind">The referrer's kind.</param>
+    /// <param name="narrow">Whether a database's last convention package may go by narrowing its convention to the listed packages
+    /// (<c>byConvention: packages</c>), so the emptied list means none instead of every package.</param>
+    /// <param name="widening">Set when the reference is the last entry of a list whose emptiness means something wider.</param>
+    private static string? RemoveAt(JsonNode root, string pointer, ElementKind referrerKind, bool narrow, out bool widening)
     {
         const string NotFound = "it is not where the index says.";
+        widening = false;
         if (!JsonPointer.TryParse(pointer, out var segments) || segments.Length == 0)
             return NotFound;
         // A diagram member without its element means nothing: drop the member.
@@ -483,8 +462,18 @@ internal sealed partial class ChangePlanner
                 return obj.Remove(last) ? null : NotFound;
             case JsonArray array when JsonPointer.TryIndex(last, out var i) && i < array.Count:
                 // Some lists mean something wider when empty; emptying one would widen the element instead of clearing a reference.
-                if (array.Count == 1 && EmptyListMeaning(referrerKind, segments) is { } meaning)
+                if (array.Count == 1 && EmptyListMeaning(root, referrerKind, segments) is { } meaning)
+                {
+                    if (narrow && referrerKind == ElementKind.Database && root is JsonObject database)
+                    {
+                        database["byConvention"] = "packages";
+                        array.RemoveAt(i);
+                        return null;
+                    }
+
+                    widening = true;
                     return $"it is the last entry, and an empty list means {meaning}; change the list first.";
+                }
                 array.RemoveAt(i);
                 return null;
             default:
@@ -493,9 +482,10 @@ internal sealed partial class ChangePlanner
     }
 
     /// <summary>What an empty reference list means, for the lists where empty is not simply "none" (D6; foreign keys).</summary>
-    private static string? EmptyListMeaning(ElementKind kind, string[] segments) => kind switch
+    private static string? EmptyListMeaning(JsonNode root, ElementKind kind, string[] segments) => kind switch
     {
-        ElementKind.Database when segments.Length == 2 && segments[0] == "packages" => "every package",
+        // Only a database written before byConvention (absent) reads an empty list as every package; with packages it means none.
+        ElementKind.Database when segments.Length == 2 && segments[0] == "packages" && root["byConvention"] is null => "every package",
         ElementKind.Table when segments.Length >= 4 && segments[^2] == "referencesColumns" && segments[^4] == "foreignKeys" => "the referenced table's primary key",
         _ => null,
     };
@@ -739,7 +729,8 @@ internal sealed partial class ChangePlanner
         }
 
         // Patched from the current snapshot's indexes when the change is small (the result equals a full build).
-        return ModelSnapshot.CreateAfter(_snapshot, documents, _snapshot.Settings, _snapshot.SettingsHash, _snapshot.Extensions, _snapshot.RuleScripts,
+        return ModelSnapshot.CreateAfter(_snapshot, documents, _candidateSettings ?? _snapshot.Settings, _candidateSettingsHash ?? _snapshot.SettingsHash,
+            _snapshot.Extensions, _snapshot.RuleScripts,
             _snapshot.Version, null, _parallelism, _ct);
     }
 

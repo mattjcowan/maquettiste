@@ -21,3 +21,16 @@ CREATE TABLE northwind.discount_rules (
     CONSTRAINT fk_discount_rules_product_category_id FOREIGN KEY (product_category_id) REFERENCES northwind.product_categories (id) ON DELETE SET NULL,
     CONSTRAINT fk_discount_rules_customer_group_id FOREIGN KEY (customer_group_id) REFERENCES northwind.customer_groups (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.discount_rules IS 'An automatic discount, such as 3 percent off janitorial supplies for buying group A.';
+COMMENT ON COLUMN northwind.discount_rules.id IS 'Surrogate key of the discount rule.';
+COMMENT ON COLUMN northwind.discount_rules.name IS 'Rule name.';
+COMMENT ON COLUMN northwind.discount_rules.discount_type IS 'How the discount is computed.';
+COMMENT ON COLUMN northwind.discount_rules.value IS 'Percentage or amount, depending on the type.';
+COMMENT ON COLUMN northwind.discount_rules.priority IS 'Evaluation order; lower runs first.';
+COMMENT ON COLUMN northwind.discount_rules.is_stackable IS 'Whether it combines with other discounts.';
+COMMENT ON COLUMN northwind.discount_rules.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.discount_rules.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.discount_rules.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.discount_rules.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.discount_rules.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.discount_rules.updated_by IS 'User name of the last editor.';

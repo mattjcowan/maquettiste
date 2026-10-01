@@ -15,3 +15,13 @@ CREATE TABLE northwind.sales_channels (
     CONSTRAINT pk_sales_channels PRIMARY KEY (id),
     CONSTRAINT uq_sales_channels_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.sales_channels IS 'A route to market, such as the customer portal, EDI or a marketplace.';
+COMMENT ON COLUMN northwind.sales_channels.id IS 'Surrogate key of the sales channel.';
+COMMENT ON COLUMN northwind.sales_channels.code IS 'Channel code.';
+COMMENT ON COLUMN northwind.sales_channels.name IS 'Channel name.';
+COMMENT ON COLUMN northwind.sales_channels.is_marketplace IS 'Whether a third party hosts the channel.';
+COMMENT ON COLUMN northwind.sales_channels.commission_rate IS 'Fee the channel charges on sales.';
+COMMENT ON COLUMN northwind.sales_channels.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.sales_channels.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.sales_channels.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.sales_channels.updated_by IS 'User name of the last editor.';

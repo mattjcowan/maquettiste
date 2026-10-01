@@ -8,3 +8,4 @@ CREATE TABLE billing.customers (
     updated_at timestamptz(6),
     CONSTRAINT pk_customers PRIMARY KEY (id)
 );
+COMMENT ON TABLE customers IS 'Someone we bill.';

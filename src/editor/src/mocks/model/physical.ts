@@ -205,7 +205,13 @@ interface ResolvedColumn {
   nativeOverride?: string;
   /** The overlay's entry for this column (by attribute key), whose annotations and comment the column takes. */
   entry?: Json;
+  /** The description of the attribute the column stores, for the comments convention. */
+  attributeDescription?: string | null;
 }
+
+/** A description as plain text: an inline description, trimmed; a sidecar one, or none, as null. */
+const descriptionText = (doc: Json | undefined): string | null =>
+  typeof doc?.description === "string" && doc.description.trim() ? doc.description.trim() : null;
 
 /** A column's own members the mock does not resolve from conventions: no default, collation or sequence, no annotations. */
 const plainColumn = (entry: Json | undefined, stereotypes: ReadonlyMap<string, Json>) => ({
@@ -230,6 +236,15 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
   const enumStorage = String(conventions.enumStorage ?? "int");
   const defaultStringLength = typeof conventions.defaultStringLength === "number" ? conventions.defaultStringLength : 255;
   const defaultSchema = typeof db.defaultSchema === "string" ? db.defaultSchema : null;
+  // The comments convention (engine-design.md 2.4): with "descriptions" (the default) a table or column without an explicit comment
+  // takes its own description, else the description of what it stores.
+  const commentsFromDescriptions = conventions.comments !== "none";
+  const commentOf = (entry: Json | undefined, ...fallbacks: (string | null | undefined)[]): string | null =>
+    typeof entry?.comment === "string"
+      ? entry.comment
+      : commentsFromDescriptions
+        ? (descriptionText(entry) ?? fallbacks.find((f): f is string => typeof f === "string" && f.length > 0) ?? null)
+        : null;
   // What the database holds (D46): its byConvention (a file without it: every entity, or its packages') plus the
   // entities a mapping names, less the ignored ones.
   const convention = conventionOf(db as Parameters<typeof conventionOf>[0]);
@@ -293,6 +308,7 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
           key: path,
           unique: attr.unique === true,
           indexed: attr.indexed === true,
+          attributeDescription: descriptionText(attr),
         },
       ];
     }
@@ -320,6 +336,7 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
           key: path,
           unique: attr.unique === true,
           indexed: attr.indexed === true,
+          attributeDescription: descriptionText(attr),
         },
       ];
     }
@@ -338,6 +355,7 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
           key: path,
           unique: attr.unique === true,
           indexed: attr.indexed === true,
+          attributeDescription: descriptionText(attr),
         },
       ];
     }
@@ -364,6 +382,7 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
     isDiscriminator: false,
     position,
     ...plainColumn(c.entry, stereotypes),
+    comment: commentOf(c.entry, c.attributeDescription),
   });
 
   for (const entity of entities) {
@@ -395,14 +414,20 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
         storage: override?.storage as string | undefined,
         prefix: override?.prefix as string | undefined,
       });
-      for (const c of produced)
+      for (const c of produced) {
+        const entry = entryByAttr.get(String(c.key));
         columns.push({
           ...c,
+          // An overlay entry's name, type and nullability override the synthesized column's.
+          name: typeof entry?.name === "string" && entry.name ? entry.name : c.name,
+          type: typeof entry?.type === "string" ? entry.type : c.type,
+          nullable: typeof entry?.nullable === "boolean" ? entry.nullable : c.nullable,
           isPrimaryKey: keyIds.has(String(attr.id)),
           isForeignKey: false,
           nativeOverride: nativeByAttr.get(String(c.key)),
-          entry: entryByAttr.get(String(c.key)),
+          entry,
         });
+      }
     }
     const name = tableName(String(entity.name));
     const table: TableView = {
@@ -414,7 +439,7 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
       relationId: null,
       isJunction: false,
       isLookup: false,
-      comment: typeof overlay?.comment === "string" ? overlay.comment : null,
+      comment: commentOf(overlay, descriptionText(entity)),
       columns: [],
       primaryKey: null,
       uniques: [],
@@ -527,7 +552,10 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
         relationId: String(relation.id),
         isJunction: true,
         isLookup: false,
-        comment: null,
+        comment: commentOf(
+          overlays.find((t) => t.relation === relation.id),
+          descriptionText(relation),
+        ),
         columns: [],
         primaryKey: null,
         uniques: [],

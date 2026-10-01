@@ -14,3 +14,12 @@ CREATE TABLE northwind.opportunity_stages (
     CONSTRAINT pk_opportunity_stages PRIMARY KEY (id),
     CONSTRAINT uq_opportunity_stages_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.opportunity_stages IS 'A pipeline stage, such as Discovery, Proposal or Negotiation.';
+COMMENT ON COLUMN northwind.opportunity_stages.id IS 'Surrogate key of the opportunity stage.';
+COMMENT ON COLUMN northwind.opportunity_stages.default_probability IS 'Win probability assigned on entering the stage.';
+COMMENT ON COLUMN northwind.opportunity_stages.is_closed IS 'Whether the stage ends the pipeline.';
+COMMENT ON COLUMN northwind.opportunity_stages.is_won IS 'Whether the stage means the deal was won.';
+COMMENT ON COLUMN northwind.opportunity_stages.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.opportunity_stages.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.opportunity_stages.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.opportunity_stages.is_active IS 'Whether the value can be chosen for new records.';

@@ -12,6 +12,7 @@ CREATE TABLE public.sales_orders (
     credit_limit numeric(18,2) NOT NULL,
     CONSTRAINT pk_sales_orders PRIMARY KEY (id)
 );
+COMMENT ON COLUMN public.sales_orders.configuration IS 'The active states of the lifecycle, for the nested states the status cannot hold.';
 
 CREATE TABLE public.sales_order_histories (
     id uuid NOT NULL,
@@ -21,6 +22,7 @@ CREATE TABLE public.sales_order_histories (
     at timestamptz(6) NOT NULL,
     CONSTRAINT pk_sales_order_histories PRIMARY KEY (id)
 );
+COMMENT ON TABLE public.sales_order_histories IS 'One row per status change of a sales order.';
 
 CREATE TABLE public.purchase_requests (
     id uuid NOT NULL,
@@ -38,6 +40,7 @@ CREATE TABLE public.process_instances (
     updated_at timestamptz(6) NOT NULL,
     CONSTRAINT pk_process_instances PRIMARY KEY (id)
 );
+COMMENT ON TABLE public.process_instances IS 'A running orchestration: its active states and context.';
 
 CREATE TABLE public.gate_signatures (
     id uuid NOT NULL,
@@ -52,5 +55,6 @@ CREATE TABLE public.gate_signatures (
     at timestamptz(6) NOT NULL,
     CONSTRAINT pk_gate_signatures PRIMARY KEY (id)
 );
+COMMENT ON TABLE public.gate_signatures IS 'The audit record of a gate: one row per signature attempt and outcome.';
 
 COMMIT;

@@ -21,3 +21,12 @@ CREATE TABLE northwind.order_holds (
     CONSTRAINT fk_order_holds_released_by_id FOREIGN KEY (released_by_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL,
     CONSTRAINT fk_order_holds_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.order_holds IS 'A hold that blocks an order from shipping until released, such as a credit hold.';
+COMMENT ON COLUMN northwind.order_holds.id IS 'Surrogate key of the order hold.';
+COMMENT ON COLUMN northwind.order_holds.placed_at IS 'When the hold was placed.';
+COMMENT ON COLUMN northwind.order_holds.released_at IS 'When it was released.';
+COMMENT ON COLUMN northwind.order_holds.comment IS 'Explanation.';
+COMMENT ON COLUMN northwind.order_holds.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.order_holds.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.order_holds.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.order_holds.updated_by IS 'User name of the last editor.';

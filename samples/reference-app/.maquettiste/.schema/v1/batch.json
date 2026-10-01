@@ -10,7 +10,7 @@
       "items": {
         "title": "Batch operation",
         "type": "object",
-        "x-order": ["op", "id", "expectedHash", "element", "locale", "field", "value", "schema", "name", "target", "default"],
+        "x-order": ["op", "id", "expectedHash", "resolution", "element", "locale", "field", "value", "schema", "name", "target", "default"],
         "properties": {
           "op": {
             "enum": ["create", "update", "delete", "translate", "add-schema", "rename-schema", "remove-schema", "set-default-schema", "sync-enum", "set-lifecycle", "set-initial", "refresh-scenario"]
@@ -21,6 +21,10 @@
           "expectedHash": {
             "type": "string",
             "pattern": "^[0-9a-f]{64}$"
+          },
+          "resolution": {
+            "description": "What a delete does with references to the element: refuse (the default) while anything references it, remove-references to clear optional references, or delete-dependents to also remove or delete what cannot exist without it (delete only).",
+            "enum": ["refuse", "remove-references", "delete-dependents"]
           },
           "element": {
             "type": "object",

@@ -127,7 +127,7 @@ The counts on collapsed Databases rows come from the index (databases, views, se
 - **Where they live.** The Diagrams root sits beside Domain model, not inside it, because a diagram spans domains; it is a root of its own because SPEC §5 keeps the view layer apart (§1.1). A diagram whose file names a `package` (its home domain) is listed in a folder named after that domain (domain icon, tooltip "Diagrams whose home is Billing"); diagrams without one are listed directly under Diagrams. Each diagram row shows its member count from `memberCount` on the index row (E5, built); the tree never GETs a diagram to label it.
 - **Domain view.** The virtual "Package: X" view becomes **All of Billing** in the diagram picker, offered only when the domain has 300 entities or fewer. Above that, the picker offers "New diagram from Billing…", which opens the add-elements dialog scoped to that domain. A domain's context menu has "Diagrams of this domain", which switches the rail to Diagrams, filtered.
 - **Membership in the tree.** Each tree row shows a small dot when its element is on the active diagram. The members come from the diagram document, which is already loaded.
-- **From the tree to the canvas** (row context menu, plus drag and drop onto the canvas): **Add to diagram** (multi-select, one batch); **Add with related…** (neighbours to depth N, §14 "add related"; the dialog previews the node count and warns past 300); **Show on canvas** (centres the element on the active diagram, or lists the diagrams that contain it, "In 3 diagrams", from the references endpoint; `ReferenceWalker` must be confirmed to count diagram membership as the mock's `refs.ts` does); **New diagram from selection** (in the selection's domain); **Where used** (§3.3).
+- **From the tree to the canvas** (row context menu, plus drag and drop onto the canvas): **Add to diagram** (multi-select, one batch); **Add with related…** (neighbours to depth N, §14 "add related"; the dialog previews the node count and warns past 300); **Show on canvas** (centres the element on the active diagram, or lists the diagrams that contain it, "In 3 diagrams", from the references endpoint; `ReferenceWalker` must be confirmed to count diagram membership as the mock's `refs.ts` does); **New diagram from selection** (in the selection's domain); **Used** (§3.3; labelled "Where used" until the owner asked for one word that does not wrap in the inspector).
 - **From the canvas to the tree.** With "Follow selection" on (the default), selecting a node reveals it in the tree: only its ancestors expand, and it scrolls into view.
 
 ### 1.6 Settings, and project-defined explorer folders
@@ -156,11 +156,11 @@ The counts on collapsed Databases rows come from the index (databases, views, se
 | Explorer header (*revised 2026-09-28*: the Project node is gone) | Collapse all, Pin beside…, Highlight related elements |
 | Domain | Open (General, Tags, Categories, §1.11), New entity, New relationship, New enum, New value object, New custom type, New sub-domain, Search in this domain, Diagrams of this domain, New diagram from this domain, Rename, Move to domain…, Delete |
 | Kind folder | New (that kind), Select all ✱, Expand all |
-| Entity ✱ | Open, Open in new tab, Add to diagram ✱, Add with related… ✱, Show on canvas, Where used, Go to table, Apply stereotype… ✱, Tag… ✱, Set category… ✱, Move to domain… ✱, Edit seed data, Rename, Delete ✱ |
-| Relationship ✱ | Open, Add to diagram ✱, Go to ends, Where used, Promote to entity, Move to domain… ✱, Delete ✱ |
-| Enum, value object, custom type ✱ | Open, Where used, Move to domain… ✱, Delete ✱ |
+| Entity ✱ | Open, Open in new tab, Add to diagram ✱, Add with related… ✱, Show on canvas, Used, Go to table, Apply stereotype… ✱, Tag… ✱, Set category… ✱, Move to domain… ✱, Edit seed data, Rename, Delete ✱ |
+| Relationship ✱ | Open, Add to diagram ✱, Go to ends, Used, Promote to entity, Move to domain… ✱, Delete ✱ |
+| Enum, value object, custom type ✱ | Open, Used, Move to domain… ✱, Delete ✱ |
 | Database | New schema, New table, Open Database screen, Coverage report, Generate DDL |
-| Table ✱ | Open, Go to entity, Create entity from table ✱, Copy SELECT, Copy DDL, Where used |
+| Table ✱ | Open, Go to entity, Create entity from table ✱, Copy SELECT, Copy DDL, Used |
 | Diagram ✱ | Open, Duplicate, Move to domain… ✱, Delete ✱ |
 
 **As built (creation, 2026-09-29).** `explorer/create.ts` (pure): the New actions (`CREATE_LABELS`; `DOMAIN_CREATE` on a domain row, `folderCreate` on a kind folder, `EXPLORER_CREATE` per explorer for the header's **+** button and the empty state, `FIRST_RUN_CREATE` for the first-run panel of an empty model), `domainOfKey` and `currentDomain` (the row's domain, else the selection's, else the open diagram's home) and `buildElement` (only the fields each schema requires: a custom type's `base`, a database's `dialect`, a relationship's two ends; a sub-domain's `parent`). `explorer/NewElementDialog.tsx` is one dialog for every kind, opened through the store's `newElement` (`requestNew`) and mounted once in the shell; it saves through `createElement` (a reference type with its seed through the Reference data screen's batch), pushes an undo entry, shows the element's explorer and opens the element. The canvas's own New entity dialog now starts on the selected element's domain, else the view's. Also built: Duplicate on a diagram row; the explorers' expanded rows persist per browser (`mq.explorer.expanded.<id>`, the first 2,000 keys); "All of X" shows at most 300 entities and only relationships whose ends are all shown (`canvas/model.ts` `ALL_OF_CAP`), and the picker offers it only for a domain of at most 300 entities. Tests: `tests/unit/create.test.ts`, Playwright `create.mock-only.spec.ts`. **Not built:** Promote to entity, Apply stereotype… / Tag… / Set category… from the menu (the bulk inspector does these for a selection), Edit seed data, Diagrams of this domain, New schema and New table, Create entity from table, Copy SELECT, Copy DDL.
@@ -289,7 +289,7 @@ Active filters show a count on the filter button, and counts in the tree reflect
 *Revised 2026-09-28: reference types as targets, generated files, favorites and recents.*
 
 - **Go to definition** (F12, or Ctrl/Cmd+click on a reference in the inspector, an editor or a grid). It follows an attribute's type to its enum, value object, custom type or reference type (the last opens the Reference data screen), a relation end to its entity, a mapping to its entity or table, and a table or column to its entity or attribute. It then selects the target, reveals it in the tree and centres it on the canvas when the target is on the active diagram.
-- **Where used** (Shift+F12). A **References** tab in the bottom panel lists the results of `GET /api/model/references/{id}` in a virtualized list, grouped by kind of the referencing element, then by domain, with the JSON pointer field shown ("InvoiceLine · attribute amount → type"). A diagram membership shows as "on diagram Billing overview". Clicking a row goes to that element and pointer. Later, as an impact analysis, the tab adds a **Generated files** group from the last plan (the template units that read the element).
+- **Used** (Shift+F12; the menu item and the inspector tab, formerly "Where used"). A **References** tab in the bottom panel lists the results of `GET /api/model/references/{id}` in a virtualized list, grouped by kind of the referencing element, then by domain, with the JSON pointer field shown ("InvoiceLine · attribute amount → type"). A diagram membership shows as "on diagram Billing overview". Clicking a row goes to that element and pointer. Later, as an impact analysis, the tab adds a **Generated files** group from the last plan (the template units that read the element).
 - **Breadcrumbs.** Above the canvas and the editors: `Domain model › Sales › Orders › Entities › Order`. Each segment opens a menu of its siblings. The same path appears under each search result.
 - **History.** Alt+Left and Alt+Right move back and forward through selections.
 - **Favorites and recents**: a star on any row adds it to a **Favorites** list, and a **Recent** list holds the last 20 opened elements; both sit in a collapsible strip above the tree, per user.
@@ -415,7 +415,7 @@ only (Alt+Shift+T is the browser's), edge strips, Reset layout; Playwright `data
 
 - **At start:** the index, validation, the settings, and the active diagram's members (in batches).
 - **Right after the tree's first paint, in the background:** the table summaries (E5c) of every database, at low priority, so the Databases counts, the coverage line and table-name search fill in within about 1 s per database on the scale model (one per-database resolve each, §4.5) without blocking the tree.
-- **When needed:** a selected element (the inspector, the editor), an expanded entity, relationship, enum or value object (one batched read covers every row expanded in the same frame), an expanded table (E5f), hovered rows (prefetch), references when Where used, Show on canvas or a reference type's Used by tab asks for them, and a reference type's rows when the Reference data screen shows them.
+- **When needed:** a selected element (the inspector, the editor), an expanded entity, relationship, enum or value object (one batched read covers every row expanded in the same frame), an expanded table (E5f), hovered rows (prefetch), references when Used, Show on canvas or a reference type's Used by tab asks for them, and a reference type's rows when the Reference data screen shows them.
 - TanStack Query's `gcTime` for element documents drops to 5 minutes, so browsing does not keep thousands of documents in memory. The General-mode editor (§3.6) prefetches the next and previous rows' documents.
 
 ### 4.3 Tree model and virtualization
@@ -437,6 +437,13 @@ only (Alt+Shift+T is the browser's), edge strips, Reset layout; Playwright `data
 - With E5d, each `ElementChange` carries its new summary, and each id in `ChangeSet.deleted` removes a row. The index cache is patched, the tree patches the affected node and its ancestor counts, and the search worker updates its entry. There is no refetch.
 - Without E5d (older server, or `truncated: true`), the current behaviour stays: a debounced refetch after 250 ms, sent with `If-None-Match`. The tree is rebuilt, and expansion and selection are kept because they are keyed by id.
 - The editor's own saves keep patching from `SaveResult.current` (phase2-design §4.3).
+- *Added 2026-10-01 (the owner: "I click Layout, and States and Events disappear from the tree").* Children that come
+  from an element's document (an entity's or relationship's Attributes, an enum's Members, a process's States and
+  Events) are not in the index, so a rebuilt forest, or a patch that replaces a changed row's node, has none. Each row
+  node records the index hash its document children were read at (`needsDocument` in `tree.ts`); after every new forest
+  the explorer reads them again for each visible expanded row that lacks them or shows an older version, from the cached
+  document when its hash matches the index and from the server otherwise. A node a patch leaves alone keeps its children
+  and its mark. Tables keep their per-forest record of loaded details.
 
 ### 4.5 Targets
 

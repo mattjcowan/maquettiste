@@ -22,3 +22,18 @@ CREATE TABLE northwind.product_variants (
     CONSTRAINT uq_product_variants_sku UNIQUE (sku),
     CONSTRAINT fk_product_variants_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.product_variants IS 'A sellable option of a product, such as a size or a color, with its own SKU.';
+COMMENT ON COLUMN northwind.product_variants.id IS 'Surrogate key of the product variant.';
+COMMENT ON COLUMN northwind.product_variants.sku IS 'SKU of the variant.';
+COMMENT ON COLUMN northwind.product_variants.name IS 'Variant name, such as Nitrile gloves, large.';
+COMMENT ON COLUMN northwind.product_variants.option_summary IS 'Option values, such as Blue / Large.';
+COMMENT ON COLUMN northwind.product_variants.list_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.product_variants.list_price_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.product_variants.weight_value IS 'The weight.';
+COMMENT ON COLUMN northwind.product_variants.weight_unit IS 'Unit of the weight.';
+COMMENT ON COLUMN northwind.product_variants.is_active IS 'Whether the variant can be ordered.';
+COMMENT ON COLUMN northwind.product_variants.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.product_variants.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.product_variants.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.product_variants.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.product_variants.deleted_at IS 'When the row was marked deleted; null while it is live.';

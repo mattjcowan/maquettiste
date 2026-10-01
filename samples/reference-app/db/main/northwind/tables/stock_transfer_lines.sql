@@ -14,3 +14,7 @@ CREATE TABLE northwind.stock_transfer_lines (
     CONSTRAINT fk_stock_transfer_lines_lot_id FOREIGN KEY (lot_id) REFERENCES northwind.stock_lots (id) ON DELETE SET NULL,
     CONSTRAINT fk_stock_transfer_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.stock_transfer_lines IS 'A product and quantity on a stock transfer.';
+COMMENT ON COLUMN northwind.stock_transfer_lines.id IS 'Surrogate key of the stock transfer line.';
+COMMENT ON COLUMN northwind.stock_transfer_lines.quantity IS 'Quantity shipped.';
+COMMENT ON COLUMN northwind.stock_transfer_lines.received_quantity IS 'Quantity received.';

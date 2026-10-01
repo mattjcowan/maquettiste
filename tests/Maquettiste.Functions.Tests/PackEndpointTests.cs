@@ -77,6 +77,40 @@ public sealed class PackEndpointTests
     }
 
     [Fact]
+    public async Task A_pack_is_removed_with_if_match_and_its_settings_entry_goes_with_it()
+    {
+        await using var host = EditorHost.Create();
+        var pack = await host.GetAsync("/api/packs/sql-ddl");
+        var hash = Hash(pack);
+
+        Assert.Equal(428, (await host.SendAsync(TestRequest.Local("DELETE", "/api/packs/sql-ddl"))).Status);
+        var stale = await host.SendAsync(TestRequest.Local("DELETE", "/api/packs/sql-ddl").With(r => r.IfMatch(new string('0', 64))));
+        Assert.Equal(409, stale.Status);
+        Contract.AssertResponse(stale, "/api/packs/{pack}");
+        Assert.Equal(hash, Hash(stale));
+        Assert.True(File.Exists(host.PathOf(".maquettiste/templates/sql-ddl/pack.json")));
+        Assert.Equal(400, (await host.SendAsync(TestRequest.Local("DELETE", "/api/packs/Bad%20Name").With(r => r.IfMatch(hash)))).Status);
+        var ghost = await host.SendAsync(TestRequest.Local("DELETE", "/api/packs/ghost").With(r => r.IfMatch(hash)));
+        Assert.Equal(404, ghost.Status);
+        Contract.AssertResponse(ghost, "/api/packs/{pack}");
+
+        var removed = await host.SendAsync(TestRequest.Local("DELETE", "/api/packs/sql-ddl").With(r => r.IfMatch(hash)));
+        Assert.Equal(200, removed.Status);
+        Contract.AssertResponse(removed, "/api/packs/{pack}");
+        Assert.Equal("saved", removed.Json["outcome"]!.GetValue<string>());
+        Assert.Contains(removed.Json["files"]!.AsArray(), f => f!.GetValue<string>() == "pack.json");
+        Assert.False(Directory.Exists(host.PathOf(".maquettiste/templates/sql-ddl")));
+        Assert.DoesNotContain("\"sql-ddl\"", File.ReadAllText(host.PathOf(".maquettiste/maquettiste.json")), StringComparison.Ordinal);
+        Assert.Equal(404, (await host.GetAsync("/api/packs/sql-ddl")).Status);
+        // Every editor hears the settings change and that the pack's files changed (an empty file list: reload the pack).
+        Assert.Contains(host.Published("project.changed"), e => e.Payload["settingsHash"]!.GetValue<string>() == removed.Json["settingsHash"]!.GetValue<string>());
+        var templates = Assert.Single(host.Published("templates.changed"));
+        Assert.Equal("sql-ddl", templates.Payload["pack"]!.GetValue<string>());
+        Assert.Empty(templates.Payload["files"]!.AsArray());
+        Assert.Equal("sql-ddl", Assert.Single(host.Published("packs.changed")).Payload["packs"]![0]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task Pack_json_saves_canonical_with_if_match_and_new_packs_are_created()
     {
         await using var host = EditorHost.Create();

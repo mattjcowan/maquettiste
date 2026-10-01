@@ -15,3 +15,10 @@ CREATE TABLE northwind.contract_prices (
     CONSTRAINT fk_contract_prices_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_contract_prices_supplier_contract_id FOREIGN KEY (supplier_contract_id) REFERENCES northwind.supplier_contracts (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.contract_prices IS 'A contracted cost of a product under a supplier contract.';
+COMMENT ON COLUMN northwind.contract_prices.id IS 'Surrogate key of the contract price.';
+COMMENT ON COLUMN northwind.contract_prices.unit_cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.contract_prices.unit_cost_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.contract_prices.minimum_quantity IS 'Minimum quantity for the cost.';
+COMMENT ON COLUMN northwind.contract_prices.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.contract_prices.validity_ends_on IS 'Last day of the range; null when open-ended.';

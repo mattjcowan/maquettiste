@@ -14,3 +14,9 @@ CREATE TABLE northwind.warehouse_shifts (
     CONSTRAINT fk_warehouse_shifts_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE CASCADE,
     CONSTRAINT fk_warehouse_shifts_supervisor_id FOREIGN KEY (supervisor_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.warehouse_shifts IS 'A working shift of a warehouse, such as the night picking shift.';
+COMMENT ON COLUMN northwind.warehouse_shifts.id IS 'Surrogate key of the warehouse shift.';
+COMMENT ON COLUMN northwind.warehouse_shifts.name IS 'Shift name.';
+COMMENT ON COLUMN northwind.warehouse_shifts.starts_at IS 'Start time, local to the warehouse.';
+COMMENT ON COLUMN northwind.warehouse_shifts.ends_at IS 'End time.';
+COMMENT ON COLUMN northwind.warehouse_shifts.weekdays IS 'Days worked, such as Mon-Fri.';

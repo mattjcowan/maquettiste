@@ -19,3 +19,15 @@ CREATE TABLE northwind.price_lists (
     CONSTRAINT uq_price_lists_code UNIQUE (code),
     CONSTRAINT fk_price_lists_currency_code FOREIGN KEY (currency_code) REFERENCES northwind.currencies (code) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.price_lists IS 'A list of prices in one currency, such as the US wholesale list or the Canada distributor list.';
+COMMENT ON COLUMN northwind.price_lists.id IS 'Surrogate key of the price list.';
+COMMENT ON COLUMN northwind.price_lists.code IS 'Price list code.';
+COMMENT ON COLUMN northwind.price_lists.name IS 'Price list name.';
+COMMENT ON COLUMN northwind.price_lists.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.price_lists.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.price_lists.is_default IS 'List used when a customer has no other list.';
+COMMENT ON COLUMN northwind.price_lists.prices_include_tax IS 'Whether prices are tax-inclusive.';
+COMMENT ON COLUMN northwind.price_lists.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.price_lists.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.price_lists.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.price_lists.updated_by IS 'User name of the last editor.';

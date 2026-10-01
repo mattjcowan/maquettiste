@@ -29,3 +29,17 @@ CREATE TABLE northwind.repair_orders (
     CONSTRAINT fk_repair_orders_technician_id FOREIGN KEY (technician_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_repair_orders_serial_number_id FOREIGN KEY (serial_number_id) REFERENCES northwind.serial_numbers (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.repair_orders IS 'A repair of a returned or warranty unit, in house or at a service partner.';
+COMMENT ON COLUMN northwind.repair_orders.id IS 'Surrogate key of the repair order.';
+COMMENT ON COLUMN northwind.repair_orders.repair_number IS 'Repair number.';
+COMMENT ON COLUMN northwind.repair_orders.received_on IS 'Date the unit arrived.';
+COMMENT ON COLUMN northwind.repair_orders.status IS 'open, diagnosing, repairing or done.';
+COMMENT ON COLUMN northwind.repair_orders.diagnosis IS 'Technician''s diagnosis.';
+COMMENT ON COLUMN northwind.repair_orders.labor_hours IS 'Hours worked.';
+COMMENT ON COLUMN northwind.repair_orders.cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.repair_orders.cost_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.repair_orders.completed_on IS 'Date finished.';
+COMMENT ON COLUMN northwind.repair_orders.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.repair_orders.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.repair_orders.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.repair_orders.updated_by IS 'User name of the last editor.';

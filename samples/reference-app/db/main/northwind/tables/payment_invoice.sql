@@ -14,3 +14,9 @@ CREATE TABLE northwind.payment_invoice (
     CONSTRAINT fk_payment_invoice_payments_id FOREIGN KEY (payments_id) REFERENCES northwind.payments (id) ON DELETE CASCADE,
     CONSTRAINT fk_payment_invoice_invoices_id FOREIGN KEY (invoices_id) REFERENCES northwind.invoices (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.payment_invoice IS 'How a payment is allocated to the invoices it pays; one payment can settle many invoices and one invoice can be paid in instalments.';
+COMMENT ON COLUMN northwind.payment_invoice.allocated_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.payment_invoice.allocated_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.payment_invoice.allocated_at IS 'When the allocation was made.';
+COMMENT ON COLUMN northwind.payment_invoice.discount_taken_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.payment_invoice.discount_taken_currency IS 'The ISO 4217 currency of the amount.';

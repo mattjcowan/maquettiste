@@ -1,8 +1,11 @@
 // The explorer's dialogs (explorer-redesign.md 1.8): Move to domain… (a domain's Open is the domain editor,
 // editors/DomainEditor), the delete confirmation and Add with related… (canvas in step, step 10).
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useElements } from "@/api/queries";
-import type { ElementSummary } from "@/api/types";
+import type { DeletePlan, DeleteResolution, ElementSummary } from "@/api/types";
+import { useServices } from "@/app/context";
+import { DeletePlanDialog, runPlannedDelete } from "@/inspector/DeletePlanView";
+import { requestDelete, useDeleteRequest } from "./deleteRequest";
 import { marksLeavingScope } from "@/model/vocabularies";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -97,25 +100,36 @@ export function MoveDialog({
   );
 }
 
-export function DeleteDialog({ names, onClose, onDelete }: { names: string[] | null; onClose: () => void; onDelete: () => void }) {
-  const title = names?.length === 1 ? `Delete ${names[0]}?` : `Delete ${names?.length ?? 0} elements?`;
-  return (
-    <Dialog open={!!names} onOpenChange={(open) => !open && onClose()}>
-      {names ? (
-        <DialogContent title={title} description="An element that is still referenced is not deleted; the editor says which.">
-          {names.length > 1 ? <p className="max-h-40 overflow-auto text-13 text-secondary">{names.join(", ")}</p> : null}
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="button" variant="danger" onClick={onDelete} data-testid="confirm-delete">
-              Delete
-            </Button>
-          </div>
-        </DialogContent>
-      ) : null}
-    </Dialog>
-  );
+/**
+ * Delete (1.8): the explorer opens it with the names of what to delete; it hands them straight to the explorer's
+ * remove action (`onDelete`), which records the ids, and shows the delete plan dialog for them: what each way
+ * through deletes, removes and clears, then one batch and one undo step.
+ */
+export function DeleteDialog({ names, onDelete }: { names: string[] | null; onClose: () => void; onDelete: () => void }) {
+  const handOver = useRef(onDelete);
+  handOver.current = onDelete;
+  useEffect(() => {
+    if (names) handOver.current();
+  }, [names]);
+  const request = useDeleteRequest();
+  const { queryClient, drafts, store } = useServices();
+  const first = request ? (request.names.get(request.ids[0]) ?? request.ids[0]) : "";
+  const title = !request ? "" : request.ids.length === 1 ? `Delete ${first}?` : `Delete ${request.ids.length} elements?`;
+  const run = async (resolution: DeleteResolution, plan: DeletePlan) => {
+    const target = request;
+    requestDelete(null);
+    if (!target) return;
+    const what = target.ids.length === 1 ? first : `${target.ids.length} elements`;
+    const label =
+      resolution === "delete-dependents"
+        ? `Delete ${what} with dependents`
+        : resolution === "remove-references"
+          ? `Delete ${what} and clear references`
+          : `Delete ${what}`;
+    const reason = await runPlannedDelete({ queryClient, drafts, store }, { ids: target.ids, resolution, plan, label });
+    if (reason) store.getState().notify(`Not deleted: ${reason}`, "error");
+  };
+  return <DeletePlanDialog ids={request?.ids ?? null} title={title} onClose={() => requestDelete(null)} onDelete={(r, p) => void run(r, p)} />;
 }
 
 /** Add with related… (1.8): the diagram and the depth of the relation walk. */

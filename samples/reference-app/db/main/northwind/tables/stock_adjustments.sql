@@ -23,3 +23,15 @@ CREATE TABLE northwind.stock_adjustments (
     CONSTRAINT fk_stock_adjustments_approved_by_id FOREIGN KEY (approved_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_stock_adjustments_reason_id FOREIGN KEY (reason_id) REFERENCES northwind.adjustment_reasons (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.stock_adjustments IS 'A correction of on-hand stock after a count, damage or theft, approved above a value threshold.';
+COMMENT ON COLUMN northwind.stock_adjustments.id IS 'Surrogate key of the stock adjustment.';
+COMMENT ON COLUMN northwind.stock_adjustments.adjustment_number IS 'Adjustment number.';
+COMMENT ON COLUMN northwind.stock_adjustments.adjusted_at IS 'When the adjustment was booked.';
+COMMENT ON COLUMN northwind.stock_adjustments.quantity_delta IS 'Change in quantity.';
+COMMENT ON COLUMN northwind.stock_adjustments.value_delta_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.stock_adjustments.value_delta_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.stock_adjustments.notes IS 'Explanation.';
+COMMENT ON COLUMN northwind.stock_adjustments.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.stock_adjustments.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.stock_adjustments.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.stock_adjustments.updated_by IS 'User name of the last editor.';

@@ -21,3 +21,16 @@ CREATE TABLE northwind.supplier_scorecards (
     CONSTRAINT fk_supplier_scorecards_reviewed_by_id FOREIGN KEY (reviewed_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_supplier_scorecards_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.supplier_scorecards IS 'A periodic rating of a supplier''s delivery, fill rate and quality.';
+COMMENT ON COLUMN northwind.supplier_scorecards.id IS 'Surrogate key of the supplier scorecard.';
+COMMENT ON COLUMN northwind.supplier_scorecards.period_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.supplier_scorecards.period_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.supplier_scorecards.on_time_rate IS 'Share of lines delivered on time.';
+COMMENT ON COLUMN northwind.supplier_scorecards.fill_rate IS 'Share of quantity delivered.';
+COMMENT ON COLUMN northwind.supplier_scorecards.quality_rate IS 'Share of quantity accepted.';
+COMMENT ON COLUMN northwind.supplier_scorecards.overall_score IS 'Weighted score.';
+COMMENT ON COLUMN northwind.supplier_scorecards.comments IS 'Reviewer''s comments.';
+COMMENT ON COLUMN northwind.supplier_scorecards.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.supplier_scorecards.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.supplier_scorecards.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.supplier_scorecards.updated_by IS 'User name of the last editor.';

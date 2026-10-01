@@ -18,3 +18,11 @@ CREATE TABLE northwind.credit_note_lines (
     CONSTRAINT fk_credit_note_lines_invoice_line_id FOREIGN KEY (invoice_line_id) REFERENCES northwind.invoice_lines (id) ON DELETE SET NULL,
     CONSTRAINT fk_credit_note_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.credit_note_lines IS 'A credited item of a credit note.';
+COMMENT ON COLUMN northwind.credit_note_lines.id IS 'Surrogate key of the credit note line.';
+COMMENT ON COLUMN northwind.credit_note_lines.description IS 'Line text.';
+COMMENT ON COLUMN northwind.credit_note_lines.quantity IS 'Quantity credited.';
+COMMENT ON COLUMN northwind.credit_note_lines.unit_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.credit_note_lines.unit_price_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.credit_note_lines.line_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.credit_note_lines.line_total_currency IS 'The ISO 4217 currency of the amount.';

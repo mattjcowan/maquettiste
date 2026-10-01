@@ -338,9 +338,65 @@ export interface paths {
         post?: never;
         /**
          * Delete an element
-         * @description Refused while other elements reference it unless `resolution=remove-references`, which clears optional references (a required reference makes the delete `invalid`).
+         * @description Refused while other elements reference it unless `resolution` says otherwise. `remove-references` clears optional
+         *     references; a required one makes the delete `invalid`, and the first diagnostic is the readable MQ2001 naming the referrer.
+         *     `delete-dependents` also resolves required references in the same change: the referrer loses the smallest part that is
+         *     valid without the reference (an attribute whose type is deleted, a diagram member, a key, a foreign key), or, when only
+         *     the whole referrer would do (a table, view, sequence or mapping of a deleted database; a relation, mapping or overlay of a
+         *     deleted entity), it is deleted with its own dependents, recursively. A deleted database's `databases.<name>` conventions
+         *     entry in `maquettiste.json` goes in the same change. `GET /api/model/elements/{id}/delete-plan` shows all of it first.
          */
         delete: operations["deleteElement"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/model/elements/{id}/delete-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description An element or sub-element id (uppercase ULID).
+                 * @example 01J92P0V0FJ23CGSNKM7P1W5V7
+                 */
+                id: components["parameters"]["ElementId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * What a delete would do
+         * @description The elements a delete with `resolution` would take with it, the references it would clear, the parts it would remove
+         *     from elements that stay and what blocks it, with kinds and names from the index, computed like the delete itself
+         *     (the same planner and validation) without writing anything. `outcome` is what the delete would return now.
+         */
+        get: operations["getDeletePlan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/model/delete-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What deleting several elements would do
+         * @description The combined plan of deleting `ids` in one batch with `resolution` (the explorer's bulk delete): the same answer as
+         *     `GET /api/model/elements/{id}/delete-plan`, for a batch whose delete operations all carry the resolution. An unknown id
+         *     is listed in `refused` (rule `not-found`). Nothing is written.
+         */
+        post: operations["getBulkDeletePlan"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1174,7 +1230,15 @@ export interface paths {
          */
         put: operations["savePack"];
         post?: never;
-        delete?: never;
+        /**
+         * Remove a pack, leaving the files it generated on disk
+         * @description `If-Match` carries the `pack.json` hash read. Removes the `packs.<pack>` entry of `maquettiste.json` (through the settings
+         *     save), then the folder `.maquettiste/templates/<pack>/`, then the pack's committed and built manifests and its unit states.
+         *     The files the pack generated stay on disk and are no longer tracked: `untracked` lists them. Waits for a generation run in
+         *     progress. 409 when `pack.json` changed (or `maquettiste.json` kept changing meanwhile); 422 (nothing removed) when the settings save is refused. Sends `project.changed`
+         *     when the settings changed, then `templates.changed` (empty `files`) and `packs.changed`.
+         */
+        delete: operations["deletePack"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1763,7 +1827,14 @@ export interface components {
             inheritance?: components["schemas"]["InheritanceStrategy"] | null;
             /** @description The storage choice for reference types; `null` inherits (and, at the project level, means template-defined). */
             referenceStorage?: components["schemas"]["StorageChoice"] | null;
+            /**
+             * @description Where a table's or column's comment comes from when its file sets none; `null` inherits (the engine default is
+             *     `descriptions`: the table's own description, else its entity's, and the column's own description, else its attribute's).
+             */
+            comments?: components["schemas"]["CommentSource"] | null;
         };
+        /** @enum {string} */
+        CommentSource: "none" | "descriptions";
         LocalizationSettings: {
             defaultLocale: string;
             locales?: string[];
@@ -2131,10 +2202,85 @@ export interface components {
          */
         SaveOutcome: "saved" | "conflict" | "invalid" | "not-found" | "referenced";
         /**
+         * @description `refuse`: refused while anything references the element. `remove-references`: optional references are cleared, a
+         *     required one makes the delete invalid. `delete-dependents`: required references are resolved too, by removing the part
+         *     of the referrer that needs the element or deleting the referrer with its own dependents.
          * @default refuse
          * @enum {string}
          */
-        DeleteResolution: "refuse" | "remove-references";
+        DeleteResolution: "refuse" | "remove-references" | "delete-dependents";
+        DeletePlanRequest: {
+            ids: components["schemas"]["Ulid"][];
+            resolution?: components["schemas"]["DeleteResolution"];
+        };
+        DeletePlan: {
+            /** @description The elements the delete names. */
+            ids: string[];
+            resolution: components["schemas"]["DeleteResolution"];
+            outcome: components["schemas"]["SaveOutcome"];
+            /** @description Every other element deleted with them, in the order the cascade reached it. */
+            deletes: components["schemas"]["DeletePlanDelete"][];
+            /** @description References cleared from elements that stay. */
+            clears: components["schemas"]["DeletePlanClear"][];
+            /** @description Parts removed from elements that stay. */
+            removes: components["schemas"]["DeletePlanRemove"][];
+            /** @description What blocks the delete; empty when `outcome` is `saved`. */
+            refused: components["schemas"]["DeletePlanRefusal"][];
+            /** @description Entries of `maquettiste.json` removed in the same change (a deleted database's conventions). */
+            settings: components["schemas"]["DeletePlanSetting"][];
+            /** @description What the delete leaves as it is but stops matching (a pack unit whose `where.database` names a deleted database). */
+            warnings: components["schemas"]["DeletePlanWarning"][];
+        };
+        DeletePlanDelete: {
+            id: components["schemas"]["Ulid"];
+            kind: components["schemas"]["ElementKind"];
+            name: string;
+            path: components["schemas"]["RepoPath"];
+            /** @description For example `needs database main` or `belongs to entity Invoice`. */
+            because: string;
+        };
+        DeletePlanClear: {
+            id: components["schemas"]["Ulid"];
+            kind: components["schemas"]["ElementKind"];
+            name: string;
+            pointer: string;
+            field: string;
+            /** @description The deleted id the reference pointed to. */
+            target: string;
+            /** @description For example `pointed to package Catalog`. */
+            because: string;
+        };
+        DeletePlanRemove: {
+            id: components["schemas"]["Ulid"];
+            kind: components["schemas"]["ElementKind"];
+            name: string;
+            /** @description The removed part in the element's file. */
+            pointer: string;
+            /** @description For example `attribute unitPrice`, `member Product` or `key`. */
+            what: string;
+            subId?: components["schemas"]["Ulid"];
+            /** @description The removed part's kind (`attribute`, `end`, `member`, ...), when known. */
+            subKind?: string;
+            because: string;
+        };
+        DeletePlanRefusal: {
+            id: string | null;
+            kind: string | null;
+            name: string | null;
+            pointer: string | null;
+            why: string;
+            /** @description `MQ2001` for a reference that cannot be resolved, `referenced` (refuse), `not-found`, `conflict`, or the rule of an error the change would introduce. */
+            rule: string;
+        };
+        DeletePlanSetting: {
+            pointer: string;
+            what: string;
+        };
+        DeletePlanWarning: {
+            message: string;
+            pack?: string;
+            unit?: string;
+        };
         SaveResult: {
             outcome: components["schemas"]["SaveOutcome"];
             /** @description The element's id (a ULID when `saved`). Echoes the id the request named, so an `invalid` outcome for a body id that is not a ULID (MQ1006) carries that string unchanged; `null` when the request named none. */
@@ -3407,6 +3553,21 @@ export interface components {
             /** @description Pack-relative files written or deleted, ordinal. */
             files: string[];
         };
+        PackRemoveResult: {
+            outcome: components["schemas"]["SaveOutcome"];
+            /** @description The disk hash of pack.json on conflict, else null. */
+            hash: components["schemas"]["Hash"] | null;
+            /** @description The disk text of pack.json on conflict, else null. */
+            current: string | null;
+            /** @description The pack-relative files deleted, ordinal. */
+            files: string[];
+            /** @description The repo-relative generated files the pack's manifests recorded, left on disk and no longer tracked, ordinal. */
+            untracked: string[];
+            /** @description The hash of maquettiste.json after its packs.<pack> entry was removed; null when it had no entry. */
+            settingsHash: components["schemas"]["Hash"] | null;
+            /** @description Why nothing was removed (a refused settings save). */
+            diagnostics: components["schemas"]["Diagnostic"][];
+        };
         PlanCause: {
             /** @enum {string} */
             kind: "element" | "kind-set" | "referrers" | "setting" | "template" | "schema-diff" | "translation" | "localization" | "absent" | "inputs" | "output-missing" | "output-edited" | "state-reset" | "pack-version" | "unit" | "parameter" | "scripts" | "output-base" | "formatter";
@@ -3445,6 +3606,14 @@ export interface components {
             root: string | null;
             allowed: boolean;
             rule: string | null;
+            /**
+             * @description The resolved element's name for people: an element's name; a table, view or sequence as `name (database)`, the name
+             *     qualified by its schema when that is not the database's default (`sales.orders (billing)`); a column as
+             *     `table.column (database)`; a locale's tag (`fr-CA`). Null for model scope and for an object with no name.
+             */
+            elementName: string | null;
+            /** @description The resolved element's kind (`entity`, `table`, `view`, `locale`, ...); null for model scope. */
+            elementKind: string | null;
         };
         UnitPathsResult: {
             count: number;
@@ -3951,6 +4120,11 @@ export interface components {
             inheritance?: "tph" | "tpt" | "tpc";
             /** @description The storage choice for reference types: the project default under conventions, a per-database override under databases. */
             referenceStorage?: components["schemas"]["storageChoice"];
+            /**
+             * @description Where a table's or column's comment comes from when its file sets none: descriptions (the default) takes the table's own description, else its entity's, and the column's own description, else its attribute's; none keeps only explicit comments.
+             * @enum {unknown}
+             */
+            comments?: "none" | "descriptions";
         };
         /** @description A BCP 47 language tag. */
         locale: string;
@@ -4219,6 +4393,11 @@ export interface components {
                     inheritance?: "tph" | "tpt" | "tpc";
                     /** @description The storage choice for reference types: the project default under conventions, a per-database override under databases. */
                     referenceStorage?: components["schemas"]["storageChoice"];
+                    /**
+                     * @description Where a table's or column's comment comes from when its file sets none: descriptions (the default) takes the table's own description, else its entity's, and the column's own description, else its attribute's; none keeps only explicit comments.
+                     * @enum {unknown}
+                     */
+                    comments?: "none" | "descriptions";
                 };
             };
         };
@@ -5887,6 +6066,11 @@ export interface components {
                 op: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "sync-enum" | "set-lifecycle" | "set-initial" | "refresh-scenario";
                 id?: components["schemas"]["id"];
                 expectedHash?: string;
+                /**
+                 * @description What a delete does with references to the element: refuse (the default) while anything references it, remove-references to clear optional references, or delete-dependents to also remove or delete what cannot exist without it (delete only).
+                 * @enum {unknown}
+                 */
+                resolution?: "refuse" | "remove-references" | "delete-dependents";
                 element?: Record<string, never>;
                 locale?: components["schemas"]["locale"];
                 /** @enum {unknown} */
@@ -6868,7 +7052,7 @@ export interface operations {
     deleteElement: {
         parameters: {
             query?: {
-                /** @description The handler binds it as a string and maps the two values itself: the host binds enum parameters by C# member name (`RemoveReferences`), not by these JSON names. */
+                /** @description The handler binds it as a string and maps the three values itself: the host binds enum parameters by C# member name (`RemoveReferences`), not by these JSON names. */
                 resolution?: components["schemas"]["DeleteResolution"];
             };
             header: {
@@ -6898,7 +7082,7 @@ export interface operations {
                     "application/json": components["schemas"]["SaveResult"];
                 };
             };
-            /** @description `resolution` is not `refuse` or `remove-references` (`bad-request`). */
+            /** @description `resolution` is not `refuse`, `remove-references` or `delete-dependents` (`bad-request`). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -6936,6 +7120,72 @@ export interface operations {
                 };
             };
             428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    getDeletePlan: {
+        parameters: {
+            query?: {
+                /** @description The resolution to plan for; `delete-dependents` when absent. */
+                resolution?: components["schemas"]["DeleteResolution"];
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description An element or sub-element id (uppercase ULID).
+                 * @example 01J92P0V0FJ23CGSNKM7P1W5V7
+                 */
+                id: components["parameters"]["ElementId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The plan. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletePlan"];
+                };
+            };
+            /** @description `resolution` is not `refuse`, `remove-references` or `delete-dependents` (`bad-request`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getBulkDeletePlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeletePlanRequest"];
+            };
+        };
+        responses: {
+            /** @description The plan. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletePlan"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
         };
     };
     applyBatch: {
@@ -8696,6 +8946,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    deletePack: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description The hash the caller loaded, quoted as an ETag or bare. Missing is 428.
+                 * @example "4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                pack: components["parameters"]["PackName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackRemoveResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description No such pack. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackRemoveResult"];
+                };
+            };
+            /** @description pack.json changed since it was read; `hash` and `current` are the disk version. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackRemoveResult"];
+                };
+            };
+            /** @description The settings save was refused; nothing was removed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackRemoveResult"];
                 };
             };
             428: components["responses"]["PreconditionRequired"];

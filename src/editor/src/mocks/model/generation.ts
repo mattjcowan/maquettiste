@@ -170,6 +170,24 @@ export class MockGeneration {
   }
 
   /**
+   * The name and kind a unit path carries for its element (UnitPath.elementName and elementKind), as the engine gives
+   * them: a database by name, a table as `name (database)` (schema-qualified when not the default), an element by name.
+   */
+  elementLabel(id: string | null): { elementName: string | null; elementKind: string | null } {
+    if (id === null) return { elementName: null, elementKind: null };
+    for (const view of this.views()) {
+      if (view.id === id) return { elementName: view.name, elementKind: "database" };
+      const table = view.tables.find((t) => t.key === id);
+      if (table) {
+        const qualified = table.schema && table.schema !== view.defaultSchema ? `${table.schema}.${table.name}` : table.name;
+        return { elementName: `${qualified} (${view.name})`, elementKind: "table" };
+      }
+    }
+    const doc = this.model.docs().get(id);
+    return doc ? { elementName: String(doc.name), elementKind: String(doc.kind) } : { elementName: null, elementKind: null };
+  }
+
+  /**
    * Each reference type with rows, by name: its strategy in the database (type[db id] → type["*"] → the database's
    * settings → the project's, as the Storage tab resolves it), and its codes and labels across its seeds, in seed name
    * then row order.

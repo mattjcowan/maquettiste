@@ -17,6 +17,7 @@ internal sealed partial class DatabaseRun
             AddOverlayExtraColumns(t);
             for (var i = 0; i < t.Columns.Count; i++)
                 t.Columns[i].Position = i;
+            FillComments(t);
             var pk = t.PrimaryKey.Select(t.Resolve).OfType<RColumn>().Distinct().ToList();
             if (pk.Count == 0)
                 continue;
@@ -125,6 +126,26 @@ internal sealed partial class DatabaseRun
             foreach (var column in t.Columns)
                 column.Dependencies = deps;
         });
+    }
+
+    /// <summary>
+    /// The <c>comments</c> convention: with <c>descriptions</c> (the default), a table without an explicit comment takes its own
+    /// description, else the description of what it stores (a child table's attribute, an entity table's entity, a junction's
+    /// relation), and a column without one takes its own entry's description, else its attribute's. Those elements are already
+    /// among the table's dependencies (the entity, value object or relation that produced the table and its columns, and the
+    /// conventions key), so a changed description replans the table.
+    /// </summary>
+    private void FillComments(TableBuild t)
+    {
+        if (_conv.Comments != CommentSource.Descriptions)
+            return;
+        var table = t.Table;
+        table.Comment ??= Text(table.Description)
+            ?? (table.Attribute is { } attribute ? Text(attribute.Description) : Text(table.Entity?.Description) ?? Text(table.Relation?.Description));
+        foreach (var column in t.Columns)
+            column.Comment ??= Text(column.Description) ?? Text(column.Attribute?.Description);
+
+        static string? Text(string? description) => string.IsNullOrWhiteSpace(description) ? null : description.Trim();
     }
 
     /// <summary>MQ4008: a foreign key that cannot be resolved is left out of its table, and said so.</summary>

@@ -26,3 +26,20 @@ CREATE TABLE northwind.contacts (
     CONSTRAINT fk_contacts_language_code FOREIGN KEY (language_code) REFERENCES northwind.languages (code) ON DELETE SET NULL
 );
 CREATE INDEX ix_contacts_email ON northwind.contacts (email);
+COMMENT ON TABLE northwind.contacts IS 'A person at a party that Northwind deals with, such as a buyer, an accounts payable clerk or a dispatcher.';
+COMMENT ON COLUMN northwind.contacts.id IS 'Surrogate key of the contact.';
+COMMENT ON COLUMN northwind.contacts.name_given_name IS 'First or given name.';
+COMMENT ON COLUMN northwind.contacts.name_family_name IS 'Last or family name.';
+COMMENT ON COLUMN northwind.contacts.name_title IS 'Salutation, such as Dr. or Ms.';
+COMMENT ON COLUMN northwind.contacts.job_title IS 'Position at the party.';
+COMMENT ON COLUMN northwind.contacts.email IS 'Work email.';
+COMMENT ON COLUMN northwind.contacts.phone_number IS 'Number in E.164 form, such as +14155550100.';
+COMMENT ON COLUMN northwind.contacts.phone_extension IS 'Internal extension.';
+COMMENT ON COLUMN northwind.contacts.additional_phones IS 'Mobile and other numbers.';
+COMMENT ON COLUMN northwind.contacts.is_primary IS 'Main contact of the party.';
+COMMENT ON COLUMN northwind.contacts.is_billing_contact IS 'Receives invoices and statements.';
+COMMENT ON COLUMN northwind.contacts.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.contacts.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.contacts.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.contacts.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.contacts.deleted_at IS 'When the row was marked deleted; null while it is live.';

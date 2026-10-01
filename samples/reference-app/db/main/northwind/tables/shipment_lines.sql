@@ -15,3 +15,6 @@ CREATE TABLE northwind.shipment_lines (
     CONSTRAINT fk_shipment_lines_lot_id FOREIGN KEY (lot_id) REFERENCES northwind.stock_lots (id) ON DELETE SET NULL,
     CONSTRAINT fk_shipment_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.shipment_lines IS 'The quantity of an order line included in a shipment.';
+COMMENT ON COLUMN northwind.shipment_lines.id IS 'Surrogate key of the shipment line.';
+COMMENT ON COLUMN northwind.shipment_lines.quantity IS 'Quantity shipped.';

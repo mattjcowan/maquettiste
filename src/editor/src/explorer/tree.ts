@@ -1743,10 +1743,34 @@ function mappingRows(forest: Forest, node: TreeNode, entity: string): TreeNode[]
   return out.sort(byLabel);
 }
 
+/**
+ * Per row node, the index hash of the element when its document children were added. A rebuilt forest makes new
+ * nodes, and a patch replaces the node of a row it changes (and drops its children), so a node missing here, or
+ * marked at another hash, has lost its document children or shows an older document's.
+ */
+const documentHashes = new WeakMap<TreeNode, string>();
+
+/** Whether the row `key` takes children from its element's document and they are missing or out of date. */
+export function needsDocument(forest: Forest, key: string): boolean {
+  const node = nodeOf(forest, key);
+  if (!node || node.load !== "document" || !node.id) return false;
+  return documentHashes.get(node) !== (forest.byId.get(node.id)?.hash ?? "");
+}
+
+/**
+ * The expanded rows among `rows` whose document children must be read (again): after a rebuild (a diagram added for a
+ * chart, a process change) an expanded process keeps its States and Events, an entity its Attributes, an enum its
+ * Members.
+ */
+export function rowsNeedingDocuments(forest: Forest, rows: readonly { key: string }[], open: ReadonlySet<string>): string[] {
+  return rows.filter((r) => open.has(r.key) && needsDocument(forest, r.key)).map((r) => r.key);
+}
+
 /** Children that need the element's document: Attributes (entity, value object, relation) or Members (enum), first. */
 export function documentChildren(forest: Forest, key: string, doc: ElementDocument, boundAttribute?: string): readonly string[] {
   const node = nodeOf(forest, key);
   if (!node) return [];
+  if (node.id) documentHashes.set(node, forest.byId.get(node.id)?.hash ?? "");
   if (node.kind === "process") return processChildren(forest, node, doc, boundAttribute);
   const rest = childKeys(forest, key).filter((k) => k !== `${key}/attributes` && k !== `${key}/members`);
   const json = doc.json as Record<string, unknown>;

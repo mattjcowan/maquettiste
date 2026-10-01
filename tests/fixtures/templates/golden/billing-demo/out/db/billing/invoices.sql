@@ -13,3 +13,4 @@ CREATE TABLE billing.invoices (
     customer_id uuid NOT NULL,
     CONSTRAINT pk_invoices PRIMARY KEY (id)
 );
+COMMENT ON TABLE invoices IS 'One row per issued invoice; finance reconciles it monthly.';

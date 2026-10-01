@@ -95,4 +95,40 @@ public sealed class ModelCommandTests
         Assert.Equal(4, (await repo.RunAsync("model")).ExitCode);
         Assert.Equal(4, (await repo.RunAsync("model", "count")).ExitCode);
     }
+
+    [Fact]
+    public async Task Delete_prints_the_plan_with_dry_run_and_deletes_with_dependents_in_one_change()
+    {
+        using var repo = CliRepo.Billing();
+        var product = ".maquettiste/model/entities/product.json";
+        var relation = ".maquettiste/model/relations/refers-to.json";
+
+        var preview = await repo.RunAsync("model", "delete", "Product", "--resolution", "delete-dependents", "--dry-run");
+        Assert.True(preview.ExitCode == 0, preview.Error);
+        Assert.Contains("Deleting entity Product (delete-dependents) would:", preview.Out, StringComparison.Ordinal);
+        Assert.Contains("delete relation refers to (needs entity Product)", preview.Out, StringComparison.Ordinal);
+        Assert.Contains("remove member Product from diagram Billing overview", preview.Out, StringComparison.Ordinal);
+        Assert.True(File.Exists(repo.PathOf(product)));
+
+        var json = await repo.RunAsync("model", "delete", "Product", "--resolution", "remove-references", "--dry-run", "--format", "json");
+        Assert.Equal(1, json.ExitCode);
+        var plan = JsonNode.Parse(json.Out)!;
+        Assert.Equal("invalid", (string)plan["outcome"]!);
+        Assert.Equal("MQ2001", (string)plan["refused"]![0]!["rule"]!);
+
+        var refused = await repo.RunAsync("model", "delete", "Product");
+        Assert.Equal(1, refused.ExitCode);
+        Assert.Contains("--resolution remove-references or delete-dependents", refused.Error, StringComparison.Ordinal);
+        Assert.True(File.Exists(repo.PathOf(product)));
+
+        var deleted = await repo.RunAsync("model", "delete", "01J92P0V0JR8BE8253SKT29ZG7", "--resolution", "delete-dependents");
+        Assert.True(deleted.ExitCode == 0, deleted.Error);
+        Assert.Contains("Deleted 2 elements and changed 1.", deleted.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(repo.PathOf(product)));
+        Assert.False(File.Exists(repo.PathOf(relation)));
+
+        Assert.Equal(1, (await repo.RunAsync("model", "delete", "Nothing")).ExitCode);
+        Assert.Equal(4, (await repo.RunAsync("model", "delete", "Invoice", "--resolution", "cascade")).ExitCode);
+        Assert.Equal(4, (await repo.RunAsync("model", "delete")).ExitCode);
+    }
 }

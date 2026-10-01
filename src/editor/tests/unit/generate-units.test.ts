@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import { NO_OUTPUT, pathSummary } from "@/workspaces/generate/pathSummary";
 import {
   duplicateUnit,
+  exampleOptions,
   examplePath,
   filesLabel,
+  filterExamples,
   filterWords,
   insertUnit,
   modeLabel,
@@ -156,7 +158,17 @@ describe("example path", () => {
   const result = (paths: [string | null, string][], extra: Partial<S["UnitPath"]> = {}): S["UnitPathsResult"] => ({
     count: paths.length,
     rendered: paths.length,
-    paths: paths.map(([elementId, path]) => ({ elementId, path, role: "main", root: "db", allowed: true, rule: null, ...extra })),
+    paths: paths.map(([elementId, path]) => ({
+      elementId,
+      path,
+      role: "main",
+      root: "db",
+      allowed: true,
+      rule: null,
+      elementName: null,
+      elementKind: null,
+      ...extra,
+    })),
     diagnostics: [],
     elapsedMs: 1,
   });
@@ -181,6 +193,58 @@ describe("example path", () => {
     expect(examplePath(same, "b")).toMatchObject({ rule: "MQ6020", collisions: ["a", "c"] });
     expect(examplePath(result([["a", "../x.sql"]], { allowed: false, rule: "MQ6019" }), null)).toMatchObject({ rule: "MQ6019", allowed: false });
     expect(examplePath(result([]), null)).toMatchObject({ path: null, count: 0 });
+  });
+});
+
+describe("example element choices", () => {
+  const path = (elementId: string | null, extra: Record<string, string> = {}) => ({
+    elementId,
+    path: `db/${elementId}.sql`,
+    role: "main" as const,
+    root: "db",
+    allowed: true,
+    rule: null,
+    elementName: null,
+    elementKind: null,
+    ...extra,
+  });
+  const index = new Map([
+    ["e1", { name: "Customer", kind: "entity" }],
+    ["db1", { name: "main", kind: "database" }],
+  ]);
+  const word = (k: string) => (k === "relation" ? "relationship" : k);
+
+  it("names each planned element once: the server's name and kind, else the index, else entity @ database, else the id", () => {
+    const options = exampleOptions(
+      [
+        path("e1"),
+        path("e1", { role: "companion" }),
+        path("r1", { elementName: "Places", elementKind: "relation" }),
+        path("e1@db1"),
+        path("e9@db7"),
+        path("fr-CA"),
+        path(null),
+      ],
+      (id) => index.get(id),
+      word,
+    );
+    expect(options.map((o) => [o.id, o.label])).toEqual([
+      ["e1", "Customer (entity)"],
+      ["r1", "Places (relationship)"],
+      ["e1@db1", "Customer @ main (table)"],
+      ["e9@db7", "e9 @ db7 (table)"],
+      ["fr-CA", "fr-CA"],
+    ]);
+    // The server's kind wins over the guess for a table key.
+    expect(exampleOptions([path("e1@db1", { elementName: "customers", elementKind: "table" })], (id) => index.get(id))[0].label).toBe("customers (table)");
+  });
+
+  it("filters by every typed word, in the label or the id", () => {
+    const options = exampleOptions([path("e1"), path("e1@db1"), path("fr-CA")], (id) => index.get(id));
+    expect(filterExamples(options, "").length).toBe(3);
+    expect(filterExamples(options, "customer main").map((o) => o.id)).toEqual(["e1@db1"]);
+    expect(filterExamples(options, "FR").map((o) => o.id)).toEqual(["fr-CA"]);
+    expect(filterExamples(options, "db1").map((o) => o.id)).toEqual(["e1@db1"]);
   });
 });
 

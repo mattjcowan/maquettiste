@@ -12,3 +12,10 @@ CREATE TABLE northwind.product_attributes (
     CONSTRAINT pk_product_attributes PRIMARY KEY (id),
     CONSTRAINT uq_product_attributes_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.product_attributes IS 'Definition of a filterable product characteristic, such as Glove size or Voltage.';
+COMMENT ON COLUMN northwind.product_attributes.id IS 'Surrogate key of the product attribute.';
+COMMENT ON COLUMN northwind.product_attributes.code IS 'Attribute code used in feeds.';
+COMMENT ON COLUMN northwind.product_attributes.name IS 'Display name.';
+COMMENT ON COLUMN northwind.product_attributes.data_type IS 'Value type - text, number, boolean or option.';
+COMMENT ON COLUMN northwind.product_attributes.unit IS 'Unit of numeric values, such as mm.';
+COMMENT ON COLUMN northwind.product_attributes.is_filterable IS 'Whether the storefront offers it as a filter.';

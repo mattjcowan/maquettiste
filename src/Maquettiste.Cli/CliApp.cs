@@ -146,6 +146,8 @@ public sealed class CliApp(CliEnvironment environment)
                                   --check (write nothing; exit 2 when a file would change)
           pack new <name>       Scaffold a template pack under .maquettiste/templates/<name>/
                                   --from empty|sql-ddl|csharp-dapper
+          pack remove <name>    Preview removing a pack (its folder, its packs.<name> settings entry and its manifests);
+                                  --apply removes it; the files it generated stay on disk, untracked; --format text|json
           bench                 Run the synthetic benchmark
                                   --out <dir>, --seed, --entities, --relations, --enums, --fanout, --keep,
                                   --baseline <file>, --max-regression <percent>, --format text|json, --no-example-packs,
@@ -181,6 +183,10 @@ public sealed class CliApp(CliEnvironment environment)
                                   --kind, --package <id|name>, --tag, --category, --stereotype, --query, --ids <a,b,...>;
                                   --resolved --scope all|entities|relations|processes|databases|tables|... --database <id|name>
           model stats           The kinds present with their counts: --by kind|package, --format text|json
+          model delete <id|name>
+                                Delete an element: --resolution refuse|remove-references|delete-dependents (default refuse;
+                                  delete-dependents also deletes what cannot exist without it), --dry-run (print what the
+                                  delete would do and write nothing), --format text|json
           mcp                   Serve the model to agents over the Model Context Protocol (stdio; see docs/mcp.md)
 
         Global options:

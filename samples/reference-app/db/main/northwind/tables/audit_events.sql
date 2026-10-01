@@ -16,4 +16,11 @@ CREATE TABLE northwind.audit_events (
 );
 CREATE INDEX ix_audit_events_entity ON northwind.audit_events (entity_type, entity_key);
 CREATE INDEX ix_audit_events_occurred_at ON northwind.audit_events (occurred_at);
+COMMENT ON TABLE northwind.audit_events IS 'Details are stored as jsonb so auditors can query inside them.';
+COMMENT ON COLUMN northwind.audit_events.id IS 'Surrogate key of the audit event.';
+COMMENT ON COLUMN northwind.audit_events.occurred_at IS 'When the action happened.';
+COMMENT ON COLUMN northwind.audit_events.action IS 'What happened, such as role.granted.';
+COMMENT ON COLUMN northwind.audit_events.entity_type IS 'Kind of record affected.';
+COMMENT ON COLUMN northwind.audit_events.entity_key IS 'Key of the record affected.';
 COMMENT ON COLUMN northwind.audit_events.details IS 'Before and after values, queried with jsonb operators.';
+COMMENT ON COLUMN northwind.audit_events.ip_address IS 'Client IP address.';

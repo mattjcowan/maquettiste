@@ -90,7 +90,7 @@ describe("Processes explorer", () => {
       "Simulate",
       "Verify scenarios",
       "Export XState",
-      "Where used",
+      "Used",
       "Move to domain…",
       "Rename",
       "Add to favorites",

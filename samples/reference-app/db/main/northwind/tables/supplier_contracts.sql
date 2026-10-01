@@ -22,3 +22,16 @@ CREATE TABLE northwind.supplier_contracts (
     CONSTRAINT fk_supplier_contracts_owner_id FOREIGN KEY (owner_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_supplier_contracts_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.supplier_contracts IS 'A purchasing contract with a supplier, fixing prices and commitments for a period.';
+COMMENT ON COLUMN northwind.supplier_contracts.id IS 'Surrogate key of the supplier contract.';
+COMMENT ON COLUMN northwind.supplier_contracts.contract_number IS 'Contract number.';
+COMMENT ON COLUMN northwind.supplier_contracts.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.supplier_contracts.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.supplier_contracts.terms IS 'Key terms.';
+COMMENT ON COLUMN northwind.supplier_contracts.auto_renew IS 'Whether it renews automatically.';
+COMMENT ON COLUMN northwind.supplier_contracts.spend_commitment_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.supplier_contracts.spend_commitment_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.supplier_contracts.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.supplier_contracts.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.supplier_contracts.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.supplier_contracts.updated_by IS 'User name of the last editor.';

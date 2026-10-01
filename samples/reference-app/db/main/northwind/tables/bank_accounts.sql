@@ -20,3 +20,14 @@ CREATE TABLE northwind.bank_accounts (
     CONSTRAINT fk_bank_accounts_currency_code FOREIGN KEY (currency_code) REFERENCES northwind.currencies (code) ON DELETE RESTRICT,
     CONSTRAINT fk_bank_accounts_ledger_account_id FOREIGN KEY (ledger_account_id) REFERENCES northwind.ledger_accounts (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.bank_accounts IS 'A Northwind bank account that receives customer payments.';
+COMMENT ON COLUMN northwind.bank_accounts.id IS 'Surrogate key of the bank account.';
+COMMENT ON COLUMN northwind.bank_accounts.name IS 'Account name, such as Operating account USD.';
+COMMENT ON COLUMN northwind.bank_accounts.bank_name IS 'Bank.';
+COMMENT ON COLUMN northwind.bank_accounts.account_number_masked IS 'Masked account number.';
+COMMENT ON COLUMN northwind.bank_accounts.iban IS 'IBAN, for euro accounts.';
+COMMENT ON COLUMN northwind.bank_accounts.routing_number IS 'ABA routing number, for US accounts.';
+COMMENT ON COLUMN northwind.bank_accounts.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.bank_accounts.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.bank_accounts.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.bank_accounts.updated_by IS 'User name of the last editor.';

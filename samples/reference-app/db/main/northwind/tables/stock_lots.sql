@@ -20,3 +20,13 @@ CREATE TABLE northwind.stock_lots (
 );
 CREATE INDEX ix_stock_lots_lot_number ON northwind.stock_lots (lot_number);
 CREATE INDEX ix_stock_lots_expires_on ON northwind.stock_lots (expires_on);
+COMMENT ON TABLE northwind.stock_lots IS 'A production lot or batch of a lot-controlled product, with its expiry date.';
+COMMENT ON COLUMN northwind.stock_lots.id IS 'Surrogate key of the stock lot.';
+COMMENT ON COLUMN northwind.stock_lots.lot_number IS 'Lot number.';
+COMMENT ON COLUMN northwind.stock_lots.supplier_lot_number IS 'Lot number on the supplier''s label.';
+COMMENT ON COLUMN northwind.stock_lots.manufactured_on IS 'Production date.';
+COMMENT ON COLUMN northwind.stock_lots.expires_on IS 'Expiry date, for first-expired-first-out picking.';
+COMMENT ON COLUMN northwind.stock_lots.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.stock_lots.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.stock_lots.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.stock_lots.updated_by IS 'User name of the last editor.';

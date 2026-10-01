@@ -32,6 +32,12 @@ import {
   type Diagnostic,
 } from "./templatesModel";
 import { matchLines, type LineMap } from "./lineMap";
+import type { NamedUnitPath } from "./unitsModel";
+import { useServices } from "@/app/context";
+import { EdgeToggle, PanelToggle } from "@/app/panels";
+import { Splitter } from "@/components/ui/splitter";
+import { LIMITS } from "@/state/layout";
+import { useEditor } from "@/state/store";
 
 interface Props {
   pack: string;
@@ -56,6 +62,13 @@ const PREVIEW_DELAY = 300;
 
 export function TemplatesTab({ pack, packHash, files, units, scopes, focusFile, onDirty }: Props) {
   const qc = useQueryClient();
+  // The file list and the preview hide and resize like the shell's panels (layout.ts: kept per browser, Reset layout
+  // brings them back): a header button, Alt+Shift+F and Alt+Shift+V, the palette, and a slim edge while hidden.
+  const { store } = useServices();
+  const filesHidden = useEditor(store, (s) => s.packFilesCollapsed);
+  const previewHidden = useEditor(store, (s) => s.templatePreviewCollapsed);
+  const filesSize = useEditor(store, (s) => s.packFilesSize);
+  const previewSize = useEditor(store, (s) => s.templatePreviewSize);
   const tree = useMemo(() => fileTree(files), [files]);
   const firstFile = tree.find((r) => r.file?.role === "template")?.path ?? tree.find((r) => !r.folder)?.path ?? null;
   const [selected, setSelected] = useState<string | null>(focusFile ?? firstFile);
@@ -277,7 +290,14 @@ export function TemplatesTab({ pack, packHash, files, units, scopes, focusFile, 
     return <EmptyState title="No template files">This pack has only pack.json. Add templates under .maquettiste/templates/{pack}/.</EmptyState>;
   return (
     <div className="flex h-full min-h-0" data-testid="templates-tab" onKeyDown={onKeyDown}>
-      <nav aria-label="Pack files" className="flex w-48 shrink-0 flex-col overflow-auto border-r border-default text-12">
+      {filesHidden ? <EdgeToggle panel="packFiles" side="left" /> : null}
+      <nav
+        id="mq-pack-files"
+        aria-label="Pack files"
+        className={cn("flex shrink-0 flex-col overflow-auto text-12", filesHidden && "hidden")}
+        style={{ width: filesSize }}
+        data-testid="pack-files"
+      >
         <div className="flex h-6 shrink-0 items-center gap-0.5 border-b border-default px-1" role="toolbar" aria-label="File actions">
           <Button
             size="icon"
@@ -314,6 +334,9 @@ export function TemplatesTab({ pack, packHash, files, units, scopes, focusFile, 
           >
             <Trash2 className="size-3.5" />
           </Button>
+          <span className="flex-1" />
+          {/* A hidden pane stays mounted (its form and scroll survive); its edge, not this button, brings it back. */}
+          {filesHidden ? null : <PanelToggle panel="packFiles" />}
         </div>
         {fileAction ? (
           <form
@@ -389,7 +412,18 @@ export function TemplatesTab({ pack, packHash, files, units, scopes, focusFile, 
           )}
         </ul>
       </nav>
-      <section className="flex min-w-0 flex-1 flex-col" aria-label="Template">
+      {filesHidden ? null : (
+        <Splitter
+          orientation="vertical"
+          value={filesSize}
+          {...LIMITS.packFiles}
+          direction={1}
+          label="Resize the pack files"
+          controls="mq-pack-files"
+          onChange={(v) => store.setState({ packFilesSize: v })}
+        />
+      )}
+      <section className="flex min-w-60 flex-1 flex-col" aria-label="Template">
         <Toolbar label="Template file" className="gap-1 px-1 text-12">
           <span className="min-w-0 truncate font-mono text-11" data-testid="template-path">
             {path}
@@ -423,7 +457,8 @@ export function TemplatesTab({ pack, packHash, files, units, scopes, focusFile, 
         ) : null}
         {conflict && conflict.current !== null && comparing && buffer ? (
           <div className="h-48 shrink-0 border-b border-default" data-testid="template-compare-view">
-            <pre className="h-full overflow-auto font-mono text-11" aria-label={`${path}: on disk (-) and yours (+)`}>
+            {/* Focusable: a scrolling region must be reachable from the keyboard (the editor pane can be narrow). */}
+            <pre tabIndex={0} className="h-full overflow-auto font-mono text-11" aria-label={`${path}: on disk (-) and yours (+)`}>
               {lineDiff(conflict.current, buffer.text).map((l, n) => (
                 <div key={n} className={cn(l.op === "-" && "text-danger", l.op === "+" && "text-success")}>
                   {l.op} {l.text}
@@ -462,7 +497,22 @@ export function TemplatesTab({ pack, packHash, files, units, scopes, focusFile, 
           )}
         </div>
       </section>
+      {previewHidden ? (
+        <EdgeToggle panel="templatePreview" side="right" />
+      ) : (
+        <Splitter
+          orientation="vertical"
+          value={previewSize}
+          {...LIMITS.templatePreview}
+          direction={-1}
+          label="Resize the template preview"
+          controls="mq-template-preview"
+          onChange={(v) => store.setState({ templatePreviewSize: v })}
+        />
+      )}
       <PreviewPane
+        hidden={previewHidden}
+        width={previewSize}
         pack={pack}
         units={units}
         feeding={feeding}
@@ -515,9 +565,14 @@ function usePreview(pack: string, unit: string, scope: UnitScope, remembered: st
   });
   const planned = useMemo(() => (paths.data?.paths ?? []).map((p) => p.elementId).filter((x): x is string => !!x), [paths.data]);
   const inScope = useMemo(() => (paths.data && paths.data.count <= paths.data.paths.length ? new Set(planned) : null), [paths.data, planned]);
+  // The server names each planned element (`elementName`, read through NamedUnitPath until the schema carries it).
+  const plannedNames = useMemo(
+    () => new Map(((paths.data?.paths ?? []) as NamedUnitPath[]).flatMap((p) => (p.elementId && p.elementName ? [[p.elementId, p.elementName] as const] : []))),
+    [paths.data],
+  );
   const candidates = useMemo(
-    () => scopeCandidates(scope, index.data ?? [], fromPaths ? planned : [], inScope),
-    [scope, index.data, fromPaths, planned, inScope],
+    () => scopeCandidates(scope, index.data ?? [], fromPaths ? planned : [], inScope, plannedNames),
+    [scope, index.data, fromPaths, planned, inScope, plannedNames],
   );
   const elementId = pickElement(candidates, remembered);
   const overlay = useMemo(() => overlayOf(buffers), [buffers]);
@@ -556,6 +611,8 @@ function usePreview(pack: string, unit: string, scope: UnitScope, remembered: st
 }
 
 function PreviewPane(props: {
+  hidden: boolean;
+  width: number;
   pack: string;
   units: string[];
   feeding: string[];
@@ -574,7 +631,13 @@ function PreviewPane(props: {
   const others = units.filter((u) => !feeding.includes(u));
   const result = preview.result;
   return (
-    <section className="flex w-[42%] min-w-0 shrink-0 flex-col border-l border-default" aria-label="Preview" data-testid="template-preview">
+    <section
+      id="mq-template-preview"
+      className={cn("flex min-w-0 flex-col", props.hidden && "hidden")}
+      style={{ width: props.width, maxWidth: "60%" }}
+      aria-label="Preview"
+      data-testid="template-preview"
+    >
       <Toolbar label="Preview" className="gap-1 px-1 text-12">
         <label className="flex items-center gap-1 text-secondary">
           Unit
@@ -626,6 +689,7 @@ function PreviewPane(props: {
             lines matched by text (approximate)
           </span>
         ) : null}
+        {props.hidden ? null : <PanelToggle panel="templatePreview" className="ml-auto" />}
       </Toolbar>
       {props.note ? (
         <p className="border-b border-default px-2 py-0.5 text-11 text-secondary" data-testid="preview-note">
@@ -653,7 +717,8 @@ function PreviewPane(props: {
           ))}
         </ul>
       ) : null}
-      <div className="min-h-0 flex-1 overflow-auto">
+      {/* Focusable: the rendered text scrolls both ways in a narrow pane, and a scrolling region needs the keyboard. */}
+      <div className="min-h-0 flex-1 overflow-auto" role="region" aria-label="Rendered output" tabIndex={0}>
         {!unit ? (
           <EmptyState title="No unit to preview">Add a unit on the Units tab; it names the template it runs.</EmptyState>
         ) : preview.scopeMessage ? null : preview.error ? (

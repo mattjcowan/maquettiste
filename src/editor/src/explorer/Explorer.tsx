@@ -11,6 +11,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { MoreHorizontal, Plus } from "lucide-react";
 import {
   elementQuery,
+  keys,
   prefetchAllTables,
   prefetchElement,
   tableDetailQuery,
@@ -23,7 +24,7 @@ import {
   type TablesState,
 } from "@/api/queries";
 import { editorPerf, perfOnce, perfStart, perfSync } from "@/lib/perf";
-import type { CategoryTreeDoc, ElementSummary } from "@/api/types";
+import type { CategoryTreeDoc, ElementDocument, ElementSummary } from "@/api/types";
 import { mergeCategoryTrees, type CategoryMaps } from "@/model/vocabularies";
 import { EmptyState, Spinner } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,8 @@ import {
   collapseAt,
   databaseOf,
   documentChildren,
+  needsDocument,
+  rowsNeedingDocuments,
   tableChildren,
   errorCounts,
   expandAt,
@@ -613,34 +616,43 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   }, [related]);
 
   // ------------------------------------------------------------------ expand and collapse
+  /** Adds a row's children from its element's document: the cached one when it is the version the index lists, else
+   * read again (a renamed state or attribute never shows stale). */
+  const loadDocument = useCallback(
+    async (f: Forest, key: string, node: TreeNode) => {
+      const id = node.id!;
+      const hash = f.byId.get(id)?.hash;
+      const cached = queryClient.getQueryData<ElementDocument>(keys.element(id));
+      const doc = cached && (!hash || cached.hash === hash) ? cached : await queryClient.fetchQuery({ ...elementQuery(id), staleTime: 0 });
+      // A lifecycle row says Subject.attribute: the attribute's name is in the subject's document.
+      const json = doc.json as { subject?: string; boundAttribute?: string };
+      let attribute: string | undefined;
+      if (node.kind === "process" && json.subject && json.boundAttribute) {
+        const subject = await queryClient.fetchQuery(elementQuery(json.subject)).catch(() => null);
+        const list = ((subject?.json as { attributes?: { id?: string; name?: string }[] } | undefined)?.attributes ?? []).filter(Boolean);
+        attribute = list.find((a) => a.id === json.boundAttribute)?.name;
+      }
+      documentChildren(f, key, doc, attribute);
+    },
+    [queryClient],
+  );
   const expand = useCallback(
     async (key: string) => {
       if (!forest) return;
       const node = nodeOf(forest, key);
       if (!node || !isExpandable(forest, key)) return;
-      const loaded = loadedDocs.get(forest) ?? new Set<string>();
-      loadedDocs.set(forest, loaded);
+      const loaded = loadedTables.get(forest) ?? new Set<string>();
+      loadedTables.set(forest, loaded);
       const database = node.load === "table" && node.table ? databaseOf(forest, key) : undefined;
-      if (((node.load === "document" && node.id) || database) && !loaded.has(key)) {
+      if ((database && !loaded.has(key)) || needsDocument(forest, key)) {
         setLoading((s) => new Set(s).add(key));
         try {
           if (database) {
             // A table's children (1.3): its detail (E5f, else the database read) as Columns, keys and indexes.
             const view = await queryClient.fetchQuery(tableDetailQuery(database, node.table!.key));
             if (view) tableChildren(forest, key, view);
-          } else {
-            const doc = await queryClient.fetchQuery(elementQuery(node.id!));
-            // A lifecycle row says Subject.attribute: the attribute's name is in the subject's document.
-            const json = doc.json as { subject?: string; boundAttribute?: string };
-            let attribute: string | undefined;
-            if (node.kind === "process" && json.subject && json.boundAttribute) {
-              const subject = await queryClient.fetchQuery(elementQuery(json.subject)).catch(() => null);
-              const list = ((subject?.json as { attributes?: { id?: string; name?: string }[] } | undefined)?.attributes ?? []).filter(Boolean);
-              attribute = list.find((a) => a.id === json.boundAttribute)?.name;
-            }
-            documentChildren(forest, key, doc, attribute);
-          }
-          loaded.add(key);
+            loaded.add(key);
+          } else await loadDocument(forest, key, node);
         } catch {
           // The row expands with the children the index answers.
         } finally {
@@ -658,8 +670,40 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       expandAt(forest, list, i, set);
       bump();
     },
-    [forest, queryClient],
+    [forest, queryClient, loadDocument],
   );
+  // A new forest (a rebuild, such as the one adding a chart's diagram causes, or a patch that replaced a changed row)
+  // has no document children on the rows it made: every expanded row that takes them (a process's States and Events,
+  // an entity's Attributes, an enum's Members) gets them again from its document, read again when it changed.
+  const forestNow = useRef(forest);
+  forestNow.current = forest;
+  const reloading = useRef(new Set<string>());
+  const failedDocs = useRef(new WeakSet<TreeNode>());
+  useEffect(() => {
+    if (!forest || cache.current.filtering) return;
+    const todo = rowsNeedingDocuments(forest, rows, open).filter((key) => {
+      const node = nodeOf(forest, key);
+      return !reloading.current.has(key) && !!node && !failedDocs.current.has(node);
+    });
+    if (!todo.length) return;
+    void Promise.all(
+      todo.map(async (key) => {
+        const node = nodeOf(forest, key)!;
+        reloading.current.add(key);
+        try {
+          await loadDocument(forest, key, node);
+          return true;
+        } catch {
+          failedDocs.current.add(node);
+          return false;
+        } finally {
+          reloading.current.delete(key);
+        }
+      }),
+    ).then((done) => {
+      if (done.some(Boolean) && forestNow.current === forest) rebuild();
+    });
+  }, [forest, rows, open, loadDocument, rebuild]);
   const collapse = useCallback((key: string) => {
     const { rows: list, open: set } = cache.current;
     const i = list.findIndex((r) => r.key === key);
@@ -1536,8 +1580,9 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   );
 }
 
-/** Rows whose document children were added (per forest: a rebuilt forest starts over). */
-const loadedDocs = new WeakMap<Forest, Set<string>>();
+/** Table rows whose detail children were added (per forest: a rebuilt forest starts over). Document children are
+ * tracked per node (tree.ts `needsDocument`), so a patched forest keeps the ones it did not replace. */
+const loadedTables = new WeakMap<Forest, Set<string>>();
 /** The process rows whose Subject.attribute secondary text was read, per forest. */
 const labelledProcesses = new WeakMap<Forest, Set<string>>();
 

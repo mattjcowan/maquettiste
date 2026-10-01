@@ -7,10 +7,11 @@ using Maquettiste.Engine;
 namespace Maquettiste.Cli.Commands;
 
 /// <summary>
-/// <c>maquettiste model export|stats</c>: the whole model, or a filtered part of it, as data for another system. <c>export</c> writes the
+/// <c>maquettiste model export|stats|delete</c>: the whole model, or a filtered part of it, as data for another system. <c>export</c> writes the
 /// canonical documents (or, with <c>--resolved</c>, the resolved model's flat records) as one JSON array or as one JSON value per line;
 /// <c>stats</c> counts the kinds present, per package with <c>--by package</c>. Both read the same pages the editor API and the MCP
-/// server serve (<c>GET /api/model/elements</c>, <c>/api/model/resolved</c>, <c>/api/model/kinds</c>).
+/// server serve (<c>GET /api/model/elements</c>, <c>/api/model/resolved</c>, <c>/api/model/kinds</c>). <c>delete</c> deletes one element
+/// with a resolution, or with <c>--dry-run</c> prints what the delete would do (<c>GET /api/model/elements/{id}/delete-plan</c>).
 /// </summary>
 internal static class ModelCommand
 {
@@ -24,7 +25,7 @@ internal static class ModelCommand
     public static async Task<int> RunAsync(GlobalContext context, CancellationToken ct)
     {
         var line = context.Line;
-        var verb = line.Positionals.Count > 1 ? line.Positionals[1] : throw new UsageException("'model' needs a verb: export or stats.");
+        var verb = line.Positionals.Count > 1 ? line.Positionals[1] : throw new UsageException("'model' needs a verb: export, stats or delete.");
         switch (verb)
         {
             case "export":
@@ -34,8 +35,11 @@ internal static class ModelCommand
             case "stats":
                 line.Expect("model stats", 2, "--format", "--by");
                 break;
+            case "delete":
+                line.Expect("model delete", 3, "--resolution", "--dry-run", "--format");
+                break;
             default:
-                throw new UsageException($"Unknown model verb '{verb}': use export or stats.");
+                throw new UsageException($"Unknown model verb '{verb}': use export, stats or delete.");
         }
 
         if (await ProjectGuard.RepoAsync(context).ConfigureAwait(false) is not { } repo)
@@ -45,6 +49,8 @@ internal static class ModelCommand
         await using (store.ConfigureAwait(false))
         {
             var snapshot = await store.GetSnapshotAsync(ct).ConfigureAwait(false);
+            if (verb == "delete")
+                return await DeleteAsync(context, store, snapshot, ct).ConfigureAwait(false);
             if (verb == "stats")
                 return await StatsAsync(context, snapshot, ct).ConfigureAwait(false);
             var ndjson = line.Choice("--format", "json", "json", "ndjson") == "ndjson";
@@ -128,6 +134,98 @@ internal static class ModelCommand
         await CliFiles.EmitAsync(context, Join(values, ndjson), ct).ConfigureAwait(false);
         context.Info(string.Create(CultureInfo.InvariantCulture, $"Exported {values.Count} resolved {(values.Count == 1 ? "record" : "records")} ({scope})."));
         return Program.ExitCodes.Success;
+    }
+
+    private static async Task<int> DeleteAsync(GlobalContext context, ModelStore store, Engine.Model.ModelSnapshot snapshot, CancellationToken ct)
+    {
+        var line = context.Line;
+        var json = line.Choice("--format", "text", "text", "json") == "json";
+        var dryRun = line.Has("--dry-run");
+        var resolution = line.Choice("--resolution", "refuse", "refuse", "remove-references", "delete-dependents") switch
+        {
+            "remove-references" => DeleteResolution.RemoveReferences,
+            "delete-dependents" => DeleteResolution.DeleteDependents,
+            _ => DeleteResolution.Refuse,
+        };
+        var wanted = line.Positionals[2];
+        var matches = snapshot.Summaries().Where(s => s.Id == wanted).ToList();
+        if (matches.Count == 0)
+            matches = [.. snapshot.Summaries().Where(s => string.Equals(s.Name, wanted, StringComparison.OrdinalIgnoreCase))];
+        if (matches.Count != 1)
+        {
+            await context.Error.WriteLineAsync(matches.Count == 0
+                ? $"maquettiste: no element has the id or name '{wanted}'."
+                : $"maquettiste: '{wanted}' names {matches.Count} elements ({string.Join(", ", matches.Select(m => m.Kind + " " + m.Id))}); pass one id.").ConfigureAwait(false);
+            return Program.ExitCodes.Invalid;
+        }
+
+        var target = matches[0];
+        var plan = await store.GetDeletePlanAsync([target.Id], resolution, ct).ConfigureAwait(false);
+        SaveResult? result = null;
+        if (!dryRun)
+            result = await store.DeleteAsync(target.Id, target.Hash, resolution, ChangeSource.Cli, ct).ConfigureAwait(false);
+
+        if (json)
+        {
+            var body = dryRun ? JsonSerializer.Serialize(plan, Options) : JsonSerializer.Serialize(new { plan, result }, Options);
+            await context.Out.WriteLineAsync(body).ConfigureAwait(false);
+        }
+        else
+        {
+            await context.Out.WriteAsync(PlanText(plan, $"{target.Kind} {target.Name}", dryRun)).ConfigureAwait(false);
+            if (result is not null && result.Outcome != SaveOutcome.Saved)
+            {
+                foreach (var d in result.Diagnostics)
+                    await context.Error.WriteLineAsync(DiagnosticOutput.Line(d)).ConfigureAwait(false);
+            }
+        }
+
+        await context.Out.FlushAsync(ct).ConfigureAwait(false);
+        var outcome = result?.Outcome ?? plan.Outcome;
+        if (result is null)
+            return outcome == SaveOutcome.Saved ? Program.ExitCodes.Success : Program.ExitCodes.Invalid;
+        if (outcome == SaveOutcome.Saved)
+        {
+            context.Info(string.Create(CultureInfo.InvariantCulture,
+                $"Deleted {result.Changes?.Deleted.Count ?? 0} {(result.Changes?.Deleted.Count == 1 ? "element" : "elements")} and changed {result.Changes?.Changed.Count ?? 0}."));
+            return Program.ExitCodes.Success;
+        }
+
+        await context.Error.WriteLineAsync(outcome switch
+        {
+            SaveOutcome.Referenced => "maquettiste: nothing was deleted: other elements reference it. Pass --resolution remove-references or delete-dependents (--dry-run shows what each does).",
+            SaveOutcome.Conflict => "maquettiste: nothing was deleted: the file changed while the command ran; run it again.",
+            _ => "maquettiste: nothing was deleted.",
+        }).ConfigureAwait(false);
+        return outcome == SaveOutcome.Conflict ? Program.ExitCodes.Conflicts : Program.ExitCodes.Invalid;
+    }
+
+    /// <summary>The plan as lines: what is deleted, removed and cleared, the settings entries, warnings, and what blocks it.</summary>
+    private static string PlanText(DeletePlan plan, string what, bool dryRun)
+    {
+        var text = new StringBuilder();
+        var resolution = plan.Resolution switch
+        {
+            DeleteResolution.RemoveReferences => "remove-references",
+            DeleteResolution.DeleteDependents => "delete-dependents",
+            _ => "refuse",
+        };
+        text.Append(dryRun ? "Deleting " : "Delete ").Append(what).Append(" (").Append(resolution).Append(')')
+            .Append(plan.Outcome == SaveOutcome.Saved ? (dryRun ? " would:\n" : ":\n") : " cannot go ahead:\n");
+        text.Append("  delete ").Append(what).Append('\n');
+        foreach (var d in plan.Deletes)
+            text.Append(CultureInfo.InvariantCulture, $"  delete {d.Kind} {d.Name} ({d.Because})\n");
+        foreach (var r in plan.Removes)
+            text.Append(CultureInfo.InvariantCulture, $"  remove {r.What} from {r.Kind} {r.Name} ({r.Because})\n");
+        foreach (var c in plan.Clears)
+            text.Append(CultureInfo.InvariantCulture, $"  clear {c.Field} of {c.Kind} {c.Name} ({c.Because})\n");
+        foreach (var s in plan.Settings)
+            text.Append(CultureInfo.InvariantCulture, $"  remove {s.What} from maquettiste.json ({s.Pointer})\n");
+        foreach (var w in plan.Warnings)
+            text.Append("  warning: ").Append(w.Message).Append('\n');
+        foreach (var r in plan.Refused)
+            text.Append(CultureInfo.InvariantCulture, $"  cannot resolve: {(r.Kind is null ? "" : r.Kind + " " + r.Name + ": ")}{r.Why}\n");
+        return text.ToString();
     }
 
     private static async Task<int> StatsAsync(GlobalContext context, Engine.Model.ModelSnapshot snapshot, CancellationToken ct)

@@ -13,14 +13,16 @@ $rowid = sqlite_rowid($t)
 $body = ""
 $after = ""
 for c in $t.columns
-  $body = $body + (for.first ? "" : ",\n") + "    " + column_def(c)
+  $body = $body + (for.first ? "" : ",\n")
   if pack.params.comments && c.comment
     if $d == "sqlite"
-      $body = $body + " -- " + (c.comment | string.replace "\n" " ")
+      # A line of its own above the column: a trailing comment would swallow the comma that follows the column.
+      $body = $body + "    -- " + (c.comment | string.replace "\n" " ") + "\n"
     else
       $after = $after + "\n" + comment_sql($t, c, c.comment)
     end
   end
+  $body = $body + "    " + column_def(c)
 end
 if $t.primary_key && !$rowid
   $clustered = ""

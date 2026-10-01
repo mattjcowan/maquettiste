@@ -17,3 +17,12 @@ CREATE TABLE northwind.dunning_notices (
     CONSTRAINT fk_dunning_notices_collection_case_id FOREIGN KEY (collection_case_id) REFERENCES northwind.collection_cases (id) ON DELETE SET NULL,
     CONSTRAINT fk_dunning_notices_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.dunning_notices IS 'A payment reminder for an overdue invoice, escalating by level.';
+COMMENT ON COLUMN northwind.dunning_notices.id IS 'Surrogate key of the dunning notice.';
+COMMENT ON COLUMN northwind.dunning_notices.level IS 'Escalation level.';
+COMMENT ON COLUMN northwind.dunning_notices.issued_on IS 'Date sent.';
+COMMENT ON COLUMN northwind.dunning_notices.amount_overdue_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.dunning_notices.amount_overdue_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.dunning_notices.fee_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.dunning_notices.fee_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.dunning_notices.sent_via IS 'email or mail.';

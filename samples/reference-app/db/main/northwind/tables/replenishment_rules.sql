@@ -20,3 +20,13 @@ CREATE TABLE northwind.replenishment_rules (
     CONSTRAINT fk_replenishment_rules_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_replenishment_rules_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.replenishment_rules IS 'Min-max replenishment settings of a product in a warehouse.';
+COMMENT ON COLUMN northwind.replenishment_rules.id IS 'Surrogate key of the replenishment rule.';
+COMMENT ON COLUMN northwind.replenishment_rules.min_quantity IS 'Reorder when available stock falls below it.';
+COMMENT ON COLUMN northwind.replenishment_rules.max_quantity IS 'Order up to this level.';
+COMMENT ON COLUMN northwind.replenishment_rules.reorder_quantity IS 'Fixed order quantity, when used instead of max.';
+COMMENT ON COLUMN northwind.replenishment_rules.is_active IS 'Whether the rule is evaluated.';
+COMMENT ON COLUMN northwind.replenishment_rules.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.replenishment_rules.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.replenishment_rules.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.replenishment_rules.updated_by IS 'User name of the last editor.';

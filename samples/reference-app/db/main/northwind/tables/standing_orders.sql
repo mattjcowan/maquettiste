@@ -21,3 +21,15 @@ CREATE TABLE northwind.standing_orders (
     CONSTRAINT fk_standing_orders_ship_to_id FOREIGN KEY (ship_to_id) REFERENCES northwind.party_addresses (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_standing_orders_next_run_on ON northwind.standing_orders (next_run_on);
+COMMENT ON TABLE northwind.standing_orders IS 'A recurring order that the scheduler places automatically, such as weekly cleaning supplies.';
+COMMENT ON COLUMN northwind.standing_orders.id IS 'Surrogate key of the standing order.';
+COMMENT ON COLUMN northwind.standing_orders.name IS 'Name shown to the customer.';
+COMMENT ON COLUMN northwind.standing_orders.frequency IS 'weekly, biweekly or monthly.';
+COMMENT ON COLUMN northwind.standing_orders.next_run_on IS 'Date the next order will be placed.';
+COMMENT ON COLUMN northwind.standing_orders.is_active IS 'Whether it is running.';
+COMMENT ON COLUMN northwind.standing_orders.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.standing_orders.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.standing_orders.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.standing_orders.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.standing_orders.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.standing_orders.updated_by IS 'User name of the last editor.';

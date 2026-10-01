@@ -10,3 +10,4 @@ CREATE TABLE public.sales_orders (
     credit_limit numeric(18,2) NOT NULL,
     CONSTRAINT pk_sales_orders PRIMARY KEY (id)
 );
+COMMENT ON COLUMN public.sales_orders.configuration IS 'The active states of the lifecycle, for the nested states the status cannot hold.';

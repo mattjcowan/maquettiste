@@ -15,3 +15,10 @@ CREATE TABLE northwind.order_charges (
     CONSTRAINT fk_order_charges_surcharge_id FOREIGN KEY (surcharge_id) REFERENCES northwind.surcharges (id) ON DELETE SET NULL,
     CONSTRAINT fk_order_charges_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.order_charges IS 'A charge added to a sales order, such as freight, handling or a fuel surcharge.';
+COMMENT ON COLUMN northwind.order_charges.id IS 'Surrogate key of the order charge.';
+COMMENT ON COLUMN northwind.order_charges.charge_type IS 'freight, handling, fuel-surcharge or small-order.';
+COMMENT ON COLUMN northwind.order_charges.description IS 'Text printed on the invoice.';
+COMMENT ON COLUMN northwind.order_charges.amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.order_charges.amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.order_charges.is_taxable IS 'Whether sales tax applies.';

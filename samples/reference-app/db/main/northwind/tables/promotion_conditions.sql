@@ -16,3 +16,9 @@ CREATE TABLE northwind.promotion_conditions (
     CONSTRAINT fk_promotion_conditions_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE SET NULL,
     CONSTRAINT fk_promotion_conditions_promotion_id FOREIGN KEY (promotion_id) REFERENCES northwind.promotions (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.promotion_conditions IS 'A condition an order must meet for a promotion to apply.';
+COMMENT ON COLUMN northwind.promotion_conditions.id IS 'Surrogate key of the promotion condition.';
+COMMENT ON COLUMN northwind.promotion_conditions.condition_type IS 'Kind of condition - product-quantity, category-amount or order-amount.';
+COMMENT ON COLUMN northwind.promotion_conditions.threshold_quantity IS 'Minimum quantity.';
+COMMENT ON COLUMN northwind.promotion_conditions.threshold_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.promotion_conditions.threshold_amount_currency IS 'The ISO 4217 currency of the amount.';

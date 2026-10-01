@@ -14,3 +14,12 @@ CREATE TABLE northwind.hazard_classes (
     CONSTRAINT pk_hazard_classes PRIMARY KEY (id),
     CONSTRAINT uq_hazard_classes_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.hazard_classes IS 'A dangerous goods class for shipping and storage, such as 3 Flammable liquids.';
+COMMENT ON COLUMN northwind.hazard_classes.id IS 'Surrogate key of the hazard class.';
+COMMENT ON COLUMN northwind.hazard_classes.un_number IS 'UN number of the typical substance.';
+COMMENT ON COLUMN northwind.hazard_classes.packing_group IS 'Packing group I, II or III.';
+COMMENT ON COLUMN northwind.hazard_classes.requires_placard IS 'Whether vehicles must display a placard.';
+COMMENT ON COLUMN northwind.hazard_classes.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.hazard_classes.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.hazard_classes.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.hazard_classes.is_active IS 'Whether the value can be chosen for new records.';

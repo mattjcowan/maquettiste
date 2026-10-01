@@ -41,3 +41,28 @@ CREATE TABLE northwind.shipments (
     CONSTRAINT fk_shipments_delivery_route_id FOREIGN KEY (delivery_route_id) REFERENCES northwind.delivery_routes (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_shipments_tracking_number ON northwind.shipments (tracking_number);
+COMMENT ON TABLE northwind.shipments IS 'Goods leaving a warehouse for one destination, on a carrier or an own-fleet route.';
+COMMENT ON COLUMN northwind.shipments.id IS 'Surrogate key of the shipment.';
+COMMENT ON COLUMN northwind.shipments.shipment_number IS 'Shipment number printed on the packing slip.';
+COMMENT ON COLUMN northwind.shipments.status IS 'Lifecycle state.';
+COMMENT ON COLUMN northwind.shipments.ship_to_line1 IS 'Street and number, or PO box.';
+COMMENT ON COLUMN northwind.shipments.ship_to_line2 IS 'Suite, floor or building.';
+COMMENT ON COLUMN northwind.shipments.ship_to_city IS 'City or locality.';
+COMMENT ON COLUMN northwind.shipments.ship_to_region IS 'State, province or county.';
+COMMENT ON COLUMN northwind.shipments.ship_to_postal_code IS 'Postal or ZIP code.';
+COMMENT ON COLUMN northwind.shipments.ship_to_country_code IS 'ISO country code.';
+COMMENT ON COLUMN northwind.shipments.freight_terms IS 'Incoterm of the shipment.';
+COMMENT ON COLUMN northwind.shipments.tracking_number IS 'Master tracking or PRO number.';
+COMMENT ON COLUMN northwind.shipments.estimated_delivery_on IS 'Carrier''s estimate.';
+COMMENT ON COLUMN northwind.shipments.shipped_at IS 'When it left the dock.';
+COMMENT ON COLUMN northwind.shipments.delivered_at IS 'When it was delivered.';
+COMMENT ON COLUMN northwind.shipments.freight_cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.shipments.freight_cost_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.shipments.declared_value_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.shipments.declared_value_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.shipments.total_weight_value IS 'The weight.';
+COMMENT ON COLUMN northwind.shipments.total_weight_unit IS 'Unit of the weight.';
+COMMENT ON COLUMN northwind.shipments.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.shipments.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.shipments.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.shipments.updated_by IS 'User name of the last editor.';

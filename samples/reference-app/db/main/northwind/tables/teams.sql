@@ -16,3 +16,12 @@ CREATE TABLE northwind.teams (
     CONSTRAINT uq_teams_name UNIQUE (name),
     CONSTRAINT fk_teams_lead_id FOREIGN KEY (lead_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.teams IS 'A working group that shares a queue or a territory, such as the Northeast inside sales team.';
+COMMENT ON COLUMN northwind.teams.id IS 'Surrogate key of the team.';
+COMMENT ON COLUMN northwind.teams.name IS 'Team name.';
+COMMENT ON COLUMN northwind.teams.purpose IS 'What the team does.';
+COMMENT ON COLUMN northwind.teams.email IS 'Shared mailbox.';
+COMMENT ON COLUMN northwind.teams.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.teams.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.teams.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.teams.updated_by IS 'User name of the last editor.';

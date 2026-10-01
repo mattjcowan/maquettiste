@@ -29,6 +29,15 @@ CREATE TABLE northwind.cost_centers (
     CONSTRAINT uq_cost_centers_code UNIQUE (code),
     CONSTRAINT fk_cost_centers_parent_id FOREIGN KEY (parent_id) REFERENCES northwind.cost_centers (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.cost_centers IS 'A unit that collects costs for management reporting, such as Denver warehouse or Inside sales.';
+COMMENT ON COLUMN northwind.cost_centers.id IS 'Surrogate key of the cost center.';
+COMMENT ON COLUMN northwind.cost_centers.code IS 'Cost center code.';
+COMMENT ON COLUMN northwind.cost_centers.name IS 'Cost center name.';
+COMMENT ON COLUMN northwind.cost_centers.is_active IS 'Whether it can be charged.';
+COMMENT ON COLUMN northwind.cost_centers.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.cost_centers.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.cost_centers.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.cost_centers.updated_by IS 'User name of the last editor.';
 
 -- northwind.departments
 CREATE TABLE northwind.departments (
@@ -47,6 +56,15 @@ CREATE TABLE northwind.departments (
     CONSTRAINT fk_departments_cost_center_id FOREIGN KEY (cost_center_id) REFERENCES northwind.cost_centers (id) ON DELETE SET NULL,
     CONSTRAINT fk_departments_parent_id FOREIGN KEY (parent_id) REFERENCES northwind.departments (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.departments IS 'An organizational unit of Northwind, nested into a hierarchy (Operations > Warehousing > Receiving).';
+COMMENT ON COLUMN northwind.departments.id IS 'Surrogate key of the department.';
+COMMENT ON COLUMN northwind.departments.code IS 'Short department code used in cost reports.';
+COMMENT ON COLUMN northwind.departments.name IS 'Department name.';
+COMMENT ON COLUMN northwind.departments.is_active IS 'Whether employees can be assigned.';
+COMMENT ON COLUMN northwind.departments.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.departments.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.departments.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.departments.updated_by IS 'User name of the last editor.';
 
 -- northwind.warehouses
 CREATE TABLE northwind.warehouses (
@@ -74,6 +92,25 @@ CREATE TABLE northwind.warehouses (
     CONSTRAINT uq_warehouses_code UNIQUE (code),
     CONSTRAINT fk_warehouses_cost_center_id FOREIGN KEY (cost_center_id) REFERENCES northwind.cost_centers (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.warehouses IS 'A distribution center Northwind ships from, such as Denver DC or Reno DC.';
+COMMENT ON COLUMN northwind.warehouses.id IS 'Surrogate key of the warehouse.';
+COMMENT ON COLUMN northwind.warehouses.code IS 'Warehouse code printed on labels.';
+COMMENT ON COLUMN northwind.warehouses.name IS 'Warehouse name.';
+COMMENT ON COLUMN northwind.warehouses.address_line1 IS 'Street and number, or PO box.';
+COMMENT ON COLUMN northwind.warehouses.address_line2 IS 'Suite, floor or building.';
+COMMENT ON COLUMN northwind.warehouses.address_city IS 'City or locality.';
+COMMENT ON COLUMN northwind.warehouses.address_region IS 'State, province or county.';
+COMMENT ON COLUMN northwind.warehouses.address_postal_code IS 'Postal or ZIP code.';
+COMMENT ON COLUMN northwind.warehouses.address_country_code IS 'ISO country code.';
+COMMENT ON COLUMN northwind.warehouses.location_latitude IS 'Degrees north of the equator.';
+COMMENT ON COLUMN northwind.warehouses.location_longitude IS 'Degrees east of Greenwich.';
+COMMENT ON COLUMN northwind.warehouses.time_zone IS 'IANA time zone, such as America/Denver.';
+COMMENT ON COLUMN northwind.warehouses.floor_area_sqm IS 'Floor area in square meters.';
+COMMENT ON COLUMN northwind.warehouses.is_active IS 'Whether it can receive and ship.';
+COMMENT ON COLUMN northwind.warehouses.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.warehouses.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.warehouses.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.warehouses.updated_by IS 'User name of the last editor.';
 
 -- northwind.employees
 CREATE TABLE northwind.employees (
@@ -104,6 +141,24 @@ CREATE TABLE northwind.employees (
     CONSTRAINT fk_employees_home_warehouse_id FOREIGN KEY (home_warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE SET NULL,
     CONSTRAINT fk_employees_manager_id FOREIGN KEY (manager_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.employees IS 'A person employed by Northwind, from warehouse associates to account managers.';
+COMMENT ON COLUMN northwind.employees.id IS 'Surrogate key of the employee.';
+COMMENT ON COLUMN northwind.employees.employee_number IS 'Payroll number.';
+COMMENT ON COLUMN northwind.employees.name_given_name IS 'First or given name.';
+COMMENT ON COLUMN northwind.employees.name_family_name IS 'Last or family name.';
+COMMENT ON COLUMN northwind.employees.name_title IS 'Salutation, such as Dr. or Ms.';
+COMMENT ON COLUMN northwind.employees.work_email IS 'Company email address.';
+COMMENT ON COLUMN northwind.employees.work_phone_number IS 'Number in E.164 form, such as +14155550100.';
+COMMENT ON COLUMN northwind.employees.work_phone_extension IS 'Internal extension.';
+COMMENT ON COLUMN northwind.employees.job_title IS 'Position title.';
+COMMENT ON COLUMN northwind.employees.hired_on IS 'First day of employment.';
+COMMENT ON COLUMN northwind.employees.terminated_on IS 'Last day of employment; null while employed.';
+COMMENT ON COLUMN northwind.employees.is_sales_rep IS 'Whether the employee can own customer accounts and earn commission.';
+COMMENT ON COLUMN northwind.employees.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.employees.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.employees.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.employees.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.employees.deleted_at IS 'When the row was marked deleted; null while it is live.';
 
 -- northwind.sales_territories
 CREATE TABLE northwind.sales_territories (
@@ -123,6 +178,16 @@ CREATE TABLE northwind.sales_territories (
     CONSTRAINT fk_sales_territories_parent_id FOREIGN KEY (parent_id) REFERENCES northwind.sales_territories (id) ON DELETE SET NULL,
     CONSTRAINT fk_sales_territories_manager_id FOREIGN KEY (manager_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.sales_territories IS 'A geographic sales territory, nested into regions (US > West > Pacific Northwest).';
+COMMENT ON COLUMN northwind.sales_territories.id IS 'Surrogate key of the sales territory.';
+COMMENT ON COLUMN northwind.sales_territories.code IS 'Territory code.';
+COMMENT ON COLUMN northwind.sales_territories.name IS 'Territory name.';
+COMMENT ON COLUMN northwind.sales_territories.annual_quota_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.sales_territories.annual_quota_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.sales_territories.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.sales_territories.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.sales_territories.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.sales_territories.updated_by IS 'User name of the last editor.';
 
 -- northwind.customer_groups
 CREATE TABLE northwind.customer_groups (
@@ -137,6 +202,15 @@ CREATE TABLE northwind.customer_groups (
     CONSTRAINT pk_customer_groups PRIMARY KEY (id),
     CONSTRAINT uq_customer_groups_name UNIQUE (name)
 );
+COMMENT ON TABLE northwind.customer_groups IS 'A group of customers that share price lists and discounts, such as Buying group A.';
+COMMENT ON COLUMN northwind.customer_groups.id IS 'Surrogate key of the customer group.';
+COMMENT ON COLUMN northwind.customer_groups.name IS 'Group name.';
+COMMENT ON COLUMN northwind.customer_groups.description IS 'Who belongs to the group.';
+COMMENT ON COLUMN northwind.customer_groups.default_discount IS 'Discount applied when no better price exists.';
+COMMENT ON COLUMN northwind.customer_groups.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.customer_groups.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.customer_groups.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.customer_groups.updated_by IS 'User name of the last editor.';
 
 -- northwind.customer_segments
 CREATE TABLE northwind.customer_segments (
@@ -149,6 +223,13 @@ CREATE TABLE northwind.customer_segments (
     CONSTRAINT pk_customer_segments PRIMARY KEY (id),
     CONSTRAINT uq_customer_segments_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.customer_segments IS 'Marketing segment of a customer, such as Independent retailer or National chain.';
+COMMENT ON COLUMN northwind.customer_segments.id IS 'Surrogate key of the customer segment.';
+COMMENT ON COLUMN northwind.customer_segments.description IS 'Who belongs to the segment.';
+COMMENT ON COLUMN northwind.customer_segments.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.customer_segments.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.customer_segments.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.customer_segments.is_active IS 'Whether the value can be chosen for new records.';
 
 -- northwind.industries
 CREATE TABLE northwind.industries (
@@ -161,6 +242,13 @@ CREATE TABLE northwind.industries (
     CONSTRAINT pk_industries PRIMARY KEY (id),
     CONSTRAINT uq_industries_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.industries IS 'Industry classification of a customer or lead, based on NAICS sectors.';
+COMMENT ON COLUMN northwind.industries.id IS 'Surrogate key of the industry.';
+COMMENT ON COLUMN northwind.industries.naics_code IS 'NAICS code of the sector.';
+COMMENT ON COLUMN northwind.industries.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.industries.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.industries.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.industries.is_active IS 'Whether the value can be chosen for new records.';
 
 -- northwind.payment_terms
 CREATE TABLE northwind.payment_terms (
@@ -175,6 +263,15 @@ CREATE TABLE northwind.payment_terms (
     CONSTRAINT pk_payment_terms PRIMARY KEY (id),
     CONSTRAINT uq_payment_terms_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.payment_terms IS 'Payment terms, such as Net 30 or 2/10 Net 30.';
+COMMENT ON COLUMN northwind.payment_terms.id IS 'Surrogate key of the payment term.';
+COMMENT ON COLUMN northwind.payment_terms.net_days IS 'Days until the invoice is due.';
+COMMENT ON COLUMN northwind.payment_terms.discount_days IS 'Days within which the early payment discount applies.';
+COMMENT ON COLUMN northwind.payment_terms.discount_percent IS 'Early payment discount.';
+COMMENT ON COLUMN northwind.payment_terms.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.payment_terms.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.payment_terms.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.payment_terms.is_active IS 'Whether the value can be chosen for new records.';
 
 -- northwind.currencies
 CREATE TABLE northwind.currencies (
@@ -186,6 +283,13 @@ CREATE TABLE northwind.currencies (
     is_active boolean NOT NULL DEFAULT true,
     CONSTRAINT pk_currencies PRIMARY KEY (code)
 );
+COMMENT ON TABLE northwind.currencies IS 'A currency from ISO 4217 that prices, invoices and payments may be expressed in.';
+COMMENT ON COLUMN northwind.currencies.code IS 'ISO 4217 alphabetic code; the natural key.';
+COMMENT ON COLUMN northwind.currencies.numeric_code IS 'ISO 4217 numeric code.';
+COMMENT ON COLUMN northwind.currencies.name IS 'English name, such as Euro.';
+COMMENT ON COLUMN northwind.currencies.symbol IS 'Display symbol, such as the euro sign.';
+COMMENT ON COLUMN northwind.currencies.minor_units IS 'Number of decimals in the minor unit.';
+COMMENT ON COLUMN northwind.currencies.is_active IS 'Whether new documents may use the currency.';
 
 -- northwind.languages
 CREATE TABLE northwind.languages (
@@ -195,6 +299,11 @@ CREATE TABLE northwind.languages (
     is_right_to_left boolean NOT NULL DEFAULT false,
     CONSTRAINT pk_languages PRIMARY KEY (code)
 );
+COMMENT ON TABLE northwind.languages IS 'A language (ISO 639-1) used for product translations, documents and customer communication.';
+COMMENT ON COLUMN northwind.languages.code IS 'BCP 47 language tag, such as en or fr-CA; the natural key.';
+COMMENT ON COLUMN northwind.languages.name IS 'English name.';
+COMMENT ON COLUMN northwind.languages.native_name IS 'Name in the language itself.';
+COMMENT ON COLUMN northwind.languages.is_right_to_left IS 'Whether text is written right to left.';
 
 -- northwind.parties
 CREATE TABLE northwind.parties (
@@ -260,6 +369,44 @@ CREATE TABLE northwind.parties (
     CONSTRAINT fk_parties_preferred_language_code FOREIGN KEY (preferred_language_code) REFERENCES northwind.languages (code) ON DELETE SET NULL
 );
 CREATE INDEX ix_parties_name ON northwind.parties (name);
+COMMENT ON TABLE northwind.parties IS 'Any organization Northwind does business with. Customers, suppliers and carriers are kinds of party and share one table (TPH).';
+COMMENT ON COLUMN northwind.parties.id IS 'Surrogate key of the party.';
+COMMENT ON COLUMN northwind.parties.party_number IS 'Business number shown on documents, such as C-104233.';
+COMMENT ON COLUMN northwind.parties.name IS 'Legal name.';
+COMMENT ON COLUMN northwind.parties.trading_name IS 'Name the party trades under, when different.';
+COMMENT ON COLUMN northwind.parties.tax_id IS 'VAT or EIN registration number.';
+COMMENT ON COLUMN northwind.parties.website IS 'Public website URL.';
+COMMENT ON COLUMN northwind.parties.email IS 'General mailbox.';
+COMMENT ON COLUMN northwind.parties.phone_number IS 'Number in E.164 form, such as +14155550100.';
+COMMENT ON COLUMN northwind.parties.phone_extension IS 'Internal extension.';
+COMMENT ON COLUMN northwind.parties.hq_line1 IS 'Street and number, or PO box.';
+COMMENT ON COLUMN northwind.parties.hq_line2 IS 'Suite, floor or building.';
+COMMENT ON COLUMN northwind.parties.hq_city IS 'City or locality.';
+COMMENT ON COLUMN northwind.parties.hq_region IS 'State, province or county.';
+COMMENT ON COLUMN northwind.parties.hq_postal_code IS 'Postal or ZIP code.';
+COMMENT ON COLUMN northwind.parties.hq_country_code IS 'ISO country code.';
+COMMENT ON COLUMN northwind.parties.is_active IS 'Whether new transactions may reference the party.';
+COMMENT ON COLUMN northwind.parties.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.parties.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.parties.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.parties.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.parties.deleted_at IS 'When the row was marked deleted; null while it is live.';
+COMMENT ON COLUMN northwind.parties.scac_code IS 'Standard Carrier Alpha Code.';
+COMMENT ON COLUMN northwind.parties.carrier_account_number IS 'Northwind''s shipper account number with the carrier.';
+COMMENT ON COLUMN northwind.parties.tracking_url_template IS 'URL with a {tracking} placeholder.';
+COMMENT ON COLUMN northwind.parties.offers_ltl IS 'Whether the carrier moves less-than-truckload freight.';
+COMMENT ON COLUMN northwind.parties.insurance_expires_on IS 'Expiry of the carrier''s cargo insurance certificate.';
+COMMENT ON COLUMN northwind.parties.account_number IS 'Customer account number used on orders and remittances.';
+COMMENT ON COLUMN northwind.parties.customer_since IS 'Date the account was opened.';
+COMMENT ON COLUMN northwind.parties.on_credit_hold IS 'Whether new orders are held for credit review.';
+COMMENT ON COLUMN northwind.parties.is_tax_exempt IS 'Whether sales tax is waived; requires a valid exemption certificate.';
+COMMENT ON COLUMN northwind.parties.annual_revenue_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.parties.annual_revenue_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.parties.lead_time_days IS 'Typical days from purchase order to receipt.';
+COMMENT ON COLUMN northwind.parties.minimum_order_value_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.parties.minimum_order_value_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.parties.is_preferred IS 'Whether buyers should source from this supplier first.';
+COMMENT ON COLUMN northwind.parties.onboarded_on IS 'Date the supplier passed vendor onboarding.';
 
 -- northwind.account_assignments
 CREATE TABLE northwind.account_assignments (
@@ -278,6 +425,16 @@ CREATE TABLE northwind.account_assignments (
     CONSTRAINT fk_account_assignments_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE CASCADE,
     CONSTRAINT fk_account_assignments_employee_id FOREIGN KEY (employee_id) REFERENCES northwind.employees (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.account_assignments IS 'Assignment of an employee to a customer account in a role, such as inside sales or key account manager.';
+COMMENT ON COLUMN northwind.account_assignments.id IS 'Surrogate key of the account assignment.';
+COMMENT ON COLUMN northwind.account_assignments.assignment_role IS 'Role on the account, such as key-account.';
+COMMENT ON COLUMN northwind.account_assignments.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.account_assignments.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.account_assignments.is_primary IS 'Primary owner of the account.';
+COMMENT ON COLUMN northwind.account_assignments.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.account_assignments.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.account_assignments.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.account_assignments.updated_by IS 'User name of the last editor.';
 
 -- northwind.adjustment_reasons
 CREATE TABLE northwind.adjustment_reasons (
@@ -290,6 +447,13 @@ CREATE TABLE northwind.adjustment_reasons (
     CONSTRAINT pk_adjustment_reasons PRIMARY KEY (id),
     CONSTRAINT uq_adjustment_reasons_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.adjustment_reasons IS 'A reason for a stock adjustment, such as Damaged in warehouse or Count correction.';
+COMMENT ON COLUMN northwind.adjustment_reasons.id IS 'Surrogate key of the adjustment reason.';
+COMMENT ON COLUMN northwind.adjustment_reasons.affects_cost IS 'Whether it posts a write-off to the ledger.';
+COMMENT ON COLUMN northwind.adjustment_reasons.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.adjustment_reasons.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.adjustment_reasons.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.adjustment_reasons.is_active IS 'Whether the value can be chosen for new records.';
 
 -- northwind.purchase_requisitions
 CREATE TABLE northwind.purchase_requisitions (
@@ -312,6 +476,17 @@ CREATE TABLE northwind.purchase_requisitions (
     CONSTRAINT fk_purchase_requisitions_requested_by_id FOREIGN KEY (requested_by_id) REFERENCES northwind.employees (id) ON DELETE RESTRICT,
     CONSTRAINT fk_purchase_requisitions_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.purchase_requisitions IS 'An internal request to buy goods, turned into purchase orders by a buyer.';
+COMMENT ON COLUMN northwind.purchase_requisitions.id IS 'Surrogate key of the purchase requisition.';
+COMMENT ON COLUMN northwind.purchase_requisitions.requisition_number IS 'Requisition number.';
+COMMENT ON COLUMN northwind.purchase_requisitions.requested_on IS 'Request date.';
+COMMENT ON COLUMN northwind.purchase_requisitions.needed_by IS 'Date the goods are needed.';
+COMMENT ON COLUMN northwind.purchase_requisitions.status IS 'open, approved, ordered or rejected.';
+COMMENT ON COLUMN northwind.purchase_requisitions.justification IS 'Business reason.';
+COMMENT ON COLUMN northwind.purchase_requisitions.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.purchase_requisitions.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.purchase_requisitions.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.purchase_requisitions.updated_by IS 'User name of the last editor.';
 
 -- northwind.supplier_contracts
 CREATE TABLE northwind.supplier_contracts (
@@ -334,6 +509,19 @@ CREATE TABLE northwind.supplier_contracts (
     CONSTRAINT fk_supplier_contracts_owner_id FOREIGN KEY (owner_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_supplier_contracts_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.supplier_contracts IS 'A purchasing contract with a supplier, fixing prices and commitments for a period.';
+COMMENT ON COLUMN northwind.supplier_contracts.id IS 'Surrogate key of the supplier contract.';
+COMMENT ON COLUMN northwind.supplier_contracts.contract_number IS 'Contract number.';
+COMMENT ON COLUMN northwind.supplier_contracts.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.supplier_contracts.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.supplier_contracts.terms IS 'Key terms.';
+COMMENT ON COLUMN northwind.supplier_contracts.auto_renew IS 'Whether it renews automatically.';
+COMMENT ON COLUMN northwind.supplier_contracts.spend_commitment_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.supplier_contracts.spend_commitment_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.supplier_contracts.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.supplier_contracts.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.supplier_contracts.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.supplier_contracts.updated_by IS 'User name of the last editor.';
 
 -- northwind.purchase_orders
 CREATE TABLE northwind.purchase_orders (
@@ -374,7 +562,27 @@ CREATE TABLE northwind.purchase_orders (
     CONSTRAINT fk_purchase_orders_payment_term_id FOREIGN KEY (payment_term_id) REFERENCES northwind.payment_terms (id) ON DELETE SET NULL,
     CONSTRAINT fk_purchase_orders_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.purchase_orders IS 'PO number default from purchase_order_number_seq.';
+COMMENT ON COLUMN northwind.purchase_orders.id IS 'Surrogate key of the purchase order.';
 COMMENT ON COLUMN northwind.purchase_orders.po_number IS 'Assigned from purchase_order_number_seq when the application does not supply one.';
+COMMENT ON COLUMN northwind.purchase_orders.ordered_on IS 'Order date.';
+COMMENT ON COLUMN northwind.purchase_orders.status IS 'Lifecycle state.';
+COMMENT ON COLUMN northwind.purchase_orders.expected_on IS 'Expected delivery date.';
+COMMENT ON COLUMN northwind.purchase_orders.freight_terms IS 'Incoterm agreed.';
+COMMENT ON COLUMN northwind.purchase_orders.subtotal_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.purchase_orders.subtotal_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.purchase_orders.tax_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.purchase_orders.tax_total_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.purchase_orders.freight_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.purchase_orders.freight_total_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.purchase_orders.grand_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.purchase_orders.grand_total_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.purchase_orders.notes IS 'Instructions to the supplier.';
+COMMENT ON COLUMN northwind.purchase_orders.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.purchase_orders.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.purchase_orders.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.purchase_orders.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.purchase_orders.deleted_at IS 'When the row was marked deleted; null while it is live.';
 
 -- northwind.advance_ship_notices
 CREATE TABLE northwind.advance_ship_notices (
@@ -391,6 +599,14 @@ CREATE TABLE northwind.advance_ship_notices (
     CONSTRAINT fk_advance_ship_notices_purchase_order_id FOREIGN KEY (purchase_order_id) REFERENCES northwind.purchase_orders (id) ON DELETE SET NULL,
     CONSTRAINT fk_advance_ship_notices_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.advance_ship_notices IS 'An EDI 856 advance ship notice announcing an inbound delivery.';
+COMMENT ON COLUMN northwind.advance_ship_notices.id IS 'Surrogate key of the advance ship notice.';
+COMMENT ON COLUMN northwind.advance_ship_notices.asn_number IS 'Supplier''s ASN number.';
+COMMENT ON COLUMN northwind.advance_ship_notices.shipped_on IS 'Ship date.';
+COMMENT ON COLUMN northwind.advance_ship_notices.expected_arrival_on IS 'Expected arrival.';
+COMMENT ON COLUMN northwind.advance_ship_notices.carrier_name IS 'Carrier.';
+COMMENT ON COLUMN northwind.advance_ship_notices.tracking_number IS 'Tracking number.';
+COMMENT ON COLUMN northwind.advance_ship_notices.raw_document IS 'Original EDI document, as JSON.';
 
 -- northwind.product_categories
 CREATE TABLE northwind.product_categories (
@@ -409,6 +625,17 @@ CREATE TABLE northwind.product_categories (
     CONSTRAINT uq_product_categories_code UNIQUE (code),
     CONSTRAINT fk_product_categories_parent_id FOREIGN KEY (parent_id) REFERENCES northwind.product_categories (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.product_categories IS 'A node of the catalog tree (Janitorial > Gloves > Nitrile gloves).';
+COMMENT ON COLUMN northwind.product_categories.id IS 'Surrogate key of the product category.';
+COMMENT ON COLUMN northwind.product_categories.code IS 'Stable category code used in feeds.';
+COMMENT ON COLUMN northwind.product_categories.name IS 'Category name.';
+COMMENT ON COLUMN northwind.product_categories.description IS 'Category landing page copy.';
+COMMENT ON COLUMN northwind.product_categories.sort_order IS 'Position among its siblings.';
+COMMENT ON COLUMN northwind.product_categories.is_active IS 'Whether the category is shown.';
+COMMENT ON COLUMN northwind.product_categories.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.product_categories.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.product_categories.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.product_categories.updated_by IS 'User name of the last editor.';
 
 -- northwind.hazard_classes
 CREATE TABLE northwind.hazard_classes (
@@ -423,6 +650,15 @@ CREATE TABLE northwind.hazard_classes (
     CONSTRAINT pk_hazard_classes PRIMARY KEY (id),
     CONSTRAINT uq_hazard_classes_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.hazard_classes IS 'A dangerous goods class for shipping and storage, such as 3 Flammable liquids.';
+COMMENT ON COLUMN northwind.hazard_classes.id IS 'Surrogate key of the hazard class.';
+COMMENT ON COLUMN northwind.hazard_classes.un_number IS 'UN number of the typical substance.';
+COMMENT ON COLUMN northwind.hazard_classes.packing_group IS 'Packing group I, II or III.';
+COMMENT ON COLUMN northwind.hazard_classes.requires_placard IS 'Whether vehicles must display a placard.';
+COMMENT ON COLUMN northwind.hazard_classes.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.hazard_classes.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.hazard_classes.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.hazard_classes.is_active IS 'Whether the value can be chosen for new records.';
 
 -- northwind.countries
 CREATE TABLE northwind.countries (
@@ -438,6 +674,14 @@ CREATE TABLE northwind.countries (
     CONSTRAINT uq_countries_alpha3_code UNIQUE (alpha3_code),
     CONSTRAINT fk_countries_currency_code FOREIGN KEY (currency_code) REFERENCES northwind.currencies (code) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.countries IS 'A country or territory from ISO 3166-1. Drives address validation, tax jurisdictions and customs paperwork.';
+COMMENT ON COLUMN northwind.countries.code IS 'ISO 3166-1 alpha-2 code; the natural key.';
+COMMENT ON COLUMN northwind.countries.alpha3_code IS 'ISO 3166-1 alpha-3 code.';
+COMMENT ON COLUMN northwind.countries.numeric_code IS 'ISO 3166-1 numeric code.';
+COMMENT ON COLUMN northwind.countries.name IS 'English short name.';
+COMMENT ON COLUMN northwind.countries.calling_code IS 'International dialling prefix, such as +49.';
+COMMENT ON COLUMN northwind.countries.is_eu_member IS 'Whether intra-community VAT rules apply.';
+COMMENT ON COLUMN northwind.countries.is_sanctioned IS 'Whether trade with the country is blocked by export controls.';
 
 -- northwind.tariff_codes
 CREATE TABLE northwind.tariff_codes (
@@ -450,6 +694,11 @@ CREATE TABLE northwind.tariff_codes (
     CONSTRAINT uq_tariff_codes_code UNIQUE (code),
     CONSTRAINT fk_tariff_codes_country_code FOREIGN KEY (country_code) REFERENCES northwind.countries (code) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.tariff_codes IS 'A Harmonized System tariff code with the default import duty rate.';
+COMMENT ON COLUMN northwind.tariff_codes.id IS 'Surrogate key of the tariff code.';
+COMMENT ON COLUMN northwind.tariff_codes.code IS 'HS or HTS code, such as 4015.19.1010.';
+COMMENT ON COLUMN northwind.tariff_codes.description IS 'Official description.';
+COMMENT ON COLUMN northwind.tariff_codes.duty_rate IS 'General duty rate.';
 
 -- northwind.manufacturers
 CREATE TABLE northwind.manufacturers (
@@ -467,6 +716,18 @@ CREATE TABLE northwind.manufacturers (
     CONSTRAINT pk_manufacturers PRIMARY KEY (id),
     CONSTRAINT uq_manufacturers_name UNIQUE (name)
 );
+COMMENT ON TABLE northwind.manufacturers IS 'A company that produces goods Northwind sells.';
+COMMENT ON COLUMN northwind.manufacturers.id IS 'Surrogate key of the manufacturer.';
+COMMENT ON COLUMN northwind.manufacturers.name IS 'Manufacturer name.';
+COMMENT ON COLUMN northwind.manufacturers.website IS 'Website.';
+COMMENT ON COLUMN northwind.manufacturers.support_email IS 'Technical support mailbox.';
+COMMENT ON COLUMN northwind.manufacturers.support_phone_number IS 'Number in E.164 form, such as +14155550100.';
+COMMENT ON COLUMN northwind.manufacturers.support_phone_extension IS 'Internal extension.';
+COMMENT ON COLUMN northwind.manufacturers.country_code IS 'Country of the head office.';
+COMMENT ON COLUMN northwind.manufacturers.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.manufacturers.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.manufacturers.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.manufacturers.updated_by IS 'User name of the last editor.';
 
 -- northwind.units_of_measure
 CREATE TABLE northwind.units_of_measure (
@@ -477,6 +738,12 @@ CREATE TABLE northwind.units_of_measure (
     decimals_allowed smallint NOT NULL DEFAULT 0,
     CONSTRAINT pk_units_of_measure PRIMARY KEY (code)
 );
+COMMENT ON TABLE northwind.units_of_measure IS 'A unit in which goods are counted, weighed or sold, from UN/CEFACT Recommendation 20.';
+COMMENT ON COLUMN northwind.units_of_measure.code IS 'UN/CEFACT common code, such as EA, KGM or CS; the natural key.';
+COMMENT ON COLUMN northwind.units_of_measure.name IS 'Display name, such as each, kilogram or case.';
+COMMENT ON COLUMN northwind.units_of_measure.dimension IS 'What the unit measures - count, mass, length, volume or area.';
+COMMENT ON COLUMN northwind.units_of_measure.is_base_unit IS 'Whether the unit is the base of its dimension.';
+COMMENT ON COLUMN northwind.units_of_measure.decimals_allowed IS 'Decimals allowed on quantities in the unit.';
 
 -- northwind.brands
 CREATE TABLE northwind.brands (
@@ -494,6 +761,16 @@ CREATE TABLE northwind.brands (
     CONSTRAINT uq_brands_name UNIQUE (name),
     CONSTRAINT fk_brands_manufacturer_id FOREIGN KEY (manufacturer_id) REFERENCES northwind.manufacturers (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.brands IS 'A brand products are marketed under, which may differ from the manufacturer.';
+COMMENT ON COLUMN northwind.brands.id IS 'Surrogate key of the brand.';
+COMMENT ON COLUMN northwind.brands.name IS 'Brand name.';
+COMMENT ON COLUMN northwind.brands.description IS 'Brand story.';
+COMMENT ON COLUMN northwind.brands.logo_url IS 'Logo image URL.';
+COMMENT ON COLUMN northwind.brands.website IS 'Brand website.';
+COMMENT ON COLUMN northwind.brands.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.brands.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.brands.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.brands.updated_by IS 'User name of the last editor.';
 
 -- northwind.storage_conditions
 CREATE TABLE northwind.storage_conditions (
@@ -508,6 +785,15 @@ CREATE TABLE northwind.storage_conditions (
     CONSTRAINT pk_storage_conditions PRIMARY KEY (id),
     CONSTRAINT uq_storage_conditions_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.storage_conditions IS 'A storage requirement, such as Ambient, Chilled 2-8 C or Frozen.';
+COMMENT ON COLUMN northwind.storage_conditions.id IS 'Surrogate key of the storage condition.';
+COMMENT ON COLUMN northwind.storage_conditions.min_temperature_c IS 'Lowest allowed temperature.';
+COMMENT ON COLUMN northwind.storage_conditions.max_temperature_c IS 'Highest allowed temperature.';
+COMMENT ON COLUMN northwind.storage_conditions.requires_humidity_control IS 'Whether humidity is controlled.';
+COMMENT ON COLUMN northwind.storage_conditions.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.storage_conditions.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.storage_conditions.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.storage_conditions.is_active IS 'Whether the value can be chosen for new records.';
 
 -- northwind.products
 CREATE TABLE northwind.products (
@@ -560,7 +846,32 @@ CREATE TABLE northwind.products (
 );
 CREATE INDEX ix_products_status_name ON northwind.products (status, name);
 CREATE INDEX ix_products_name ON northwind.products (name);
+COMMENT ON TABLE northwind.products IS 'Product search and integrity tuning.';
+COMMENT ON COLUMN northwind.products.id IS 'Surrogate key of the product.';
+COMMENT ON COLUMN northwind.products.sku IS 'Stock keeping unit of the base product.';
 COMMENT ON COLUMN northwind.products.name IS 'Searched with a trigram index in production.';
+COMMENT ON COLUMN northwind.products.short_description IS 'One-paragraph description for listings.';
+COMMENT ON COLUMN northwind.products.long_description IS 'Full description in Markdown.';
+COMMENT ON COLUMN northwind.products.status IS 'Lifecycle state.';
+COMMENT ON COLUMN northwind.products.is_serialized IS 'Whether each unit carries a serial number.';
+COMMENT ON COLUMN northwind.products.is_lot_controlled IS 'Whether stock is tracked by lot or batch.';
+COMMENT ON COLUMN northwind.products.shelf_life_days IS 'Days from production to expiry, for perishables.';
+COMMENT ON COLUMN northwind.products.dimensions_length IS 'Longest side.';
+COMMENT ON COLUMN northwind.products.dimensions_width IS 'Second side.';
+COMMENT ON COLUMN northwind.products.dimensions_height IS 'Vertical side.';
+COMMENT ON COLUMN northwind.products.dimensions_unit IS 'Unit of the three measures.';
+COMMENT ON COLUMN northwind.products.weight_value IS 'The weight.';
+COMMENT ON COLUMN northwind.products.weight_unit IS 'Unit of the weight.';
+COMMENT ON COLUMN northwind.products.list_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.products.list_price_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.products.country_of_origin IS 'Where the goods were produced, for customs.';
+COMMENT ON COLUMN northwind.products.launched_on IS 'First sale date.';
+COMMENT ON COLUMN northwind.products.discontinued_on IS 'Last sale date.';
+COMMENT ON COLUMN northwind.products.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.products.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.products.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.products.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.products.deleted_at IS 'When the row was marked deleted; null while it is live.';
 
 -- northwind.customer_price_agreements
 CREATE TABLE northwind.customer_price_agreements (
@@ -582,6 +893,18 @@ CREATE TABLE northwind.customer_price_agreements (
     CONSTRAINT fk_customer_price_agreements_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
     CONSTRAINT fk_customer_price_agreements_approved_by_id FOREIGN KEY (approved_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.customer_price_agreements IS 'A negotiated contract price agreement with one customer, overriding the price lists for the products it covers.';
+COMMENT ON COLUMN northwind.customer_price_agreements.id IS 'Surrogate key of the customer price agreement.';
+COMMENT ON COLUMN northwind.customer_price_agreements.agreement_number IS 'Contract number.';
+COMMENT ON COLUMN northwind.customer_price_agreements.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.customer_price_agreements.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.customer_price_agreements.is_approved IS 'Whether pricing approved the agreement.';
+COMMENT ON COLUMN northwind.customer_price_agreements.approved_on IS 'Approval date.';
+COMMENT ON COLUMN northwind.customer_price_agreements.notes IS 'Negotiation notes.';
+COMMENT ON COLUMN northwind.customer_price_agreements.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.customer_price_agreements.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.customer_price_agreements.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.customer_price_agreements.updated_by IS 'User name of the last editor.';
 
 -- northwind.agreement_lines
 CREATE TABLE northwind.agreement_lines (
@@ -598,6 +921,12 @@ CREATE TABLE northwind.agreement_lines (
     CONSTRAINT fk_agreement_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE SET NULL,
     CONSTRAINT fk_agreement_lines_customer_price_agreement_id FOREIGN KEY (customer_price_agreement_id) REFERENCES northwind.customer_price_agreements (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.agreement_lines IS 'A price or discount for a product or a whole category within a customer agreement.';
+COMMENT ON COLUMN northwind.agreement_lines.id IS 'Surrogate key of the agreement line.';
+COMMENT ON COLUMN northwind.agreement_lines.agreed_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.agreement_lines.agreed_price_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.agreement_lines.discount IS 'Discount off list price, when no fixed price is agreed.';
+COMMENT ON COLUMN northwind.agreement_lines.minimum_quantity IS 'Minimum order quantity for the price.';
 
 -- northwind.api_clients
 CREATE TABLE northwind.api_clients (
@@ -616,6 +945,19 @@ CREATE TABLE northwind.api_clients (
     CONSTRAINT pk_api_clients PRIMARY KEY (id),
     CONSTRAINT uq_api_clients_name UNIQUE (name)
 );
+COMMENT ON TABLE northwind.api_clients IS 'A machine client (EDI gateway, marketplace connector, carrier webhook) that calls Northwind APIs.';
+COMMENT ON COLUMN northwind.api_clients.id IS 'Surrogate key of the api client.';
+COMMENT ON COLUMN northwind.api_clients.name IS 'Client name.';
+COMMENT ON COLUMN northwind.api_clients.description IS 'What the integration does.';
+COMMENT ON COLUMN northwind.api_clients.owner_email IS 'Contact for the integration.';
+COMMENT ON COLUMN northwind.api_clients.allowed_scopes IS 'Space-separated OAuth scopes.';
+COMMENT ON COLUMN northwind.api_clients.rate_limit_per_minute IS 'Request budget per minute.';
+COMMENT ON COLUMN northwind.api_clients.is_enabled IS 'Whether the client can obtain tokens.';
+COMMENT ON COLUMN northwind.api_clients.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.api_clients.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.api_clients.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.api_clients.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.api_clients.deleted_at IS 'When the row was marked deleted; null while it is live.';
 
 -- northwind.api_keys
 CREATE TABLE northwind.api_keys (
@@ -634,6 +976,17 @@ CREATE TABLE northwind.api_keys (
     CONSTRAINT uq_api_keys_prefix UNIQUE (prefix),
     CONSTRAINT fk_api_keys_api_client_id FOREIGN KEY (api_client_id) REFERENCES northwind.api_clients (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.api_keys IS 'A secret credential of an API client; only a hash is stored.';
+COMMENT ON COLUMN northwind.api_keys.id IS 'Surrogate key of the api key.';
+COMMENT ON COLUMN northwind.api_keys.prefix IS 'Public prefix shown in the console to identify the key.';
+COMMENT ON COLUMN northwind.api_keys.key_hash IS 'SHA-256 hash of the secret.';
+COMMENT ON COLUMN northwind.api_keys.expires_on IS 'Expiry date; null for no expiry.';
+COMMENT ON COLUMN northwind.api_keys.last_used_at IS 'Most recent use.';
+COMMENT ON COLUMN northwind.api_keys.revoked_at IS 'When the key was revoked.';
+COMMENT ON COLUMN northwind.api_keys.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.api_keys.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.api_keys.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.api_keys.updated_by IS 'User name of the last editor.';
 
 -- northwind.contacts
 CREATE TABLE northwind.contacts (
@@ -660,6 +1013,23 @@ CREATE TABLE northwind.contacts (
     CONSTRAINT fk_contacts_language_code FOREIGN KEY (language_code) REFERENCES northwind.languages (code) ON DELETE SET NULL
 );
 CREATE INDEX ix_contacts_email ON northwind.contacts (email);
+COMMENT ON TABLE northwind.contacts IS 'A person at a party that Northwind deals with, such as a buyer, an accounts payable clerk or a dispatcher.';
+COMMENT ON COLUMN northwind.contacts.id IS 'Surrogate key of the contact.';
+COMMENT ON COLUMN northwind.contacts.name_given_name IS 'First or given name.';
+COMMENT ON COLUMN northwind.contacts.name_family_name IS 'Last or family name.';
+COMMENT ON COLUMN northwind.contacts.name_title IS 'Salutation, such as Dr. or Ms.';
+COMMENT ON COLUMN northwind.contacts.job_title IS 'Position at the party.';
+COMMENT ON COLUMN northwind.contacts.email IS 'Work email.';
+COMMENT ON COLUMN northwind.contacts.phone_number IS 'Number in E.164 form, such as +14155550100.';
+COMMENT ON COLUMN northwind.contacts.phone_extension IS 'Internal extension.';
+COMMENT ON COLUMN northwind.contacts.additional_phones IS 'Mobile and other numbers.';
+COMMENT ON COLUMN northwind.contacts.is_primary IS 'Main contact of the party.';
+COMMENT ON COLUMN northwind.contacts.is_billing_contact IS 'Receives invoices and statements.';
+COMMENT ON COLUMN northwind.contacts.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.contacts.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.contacts.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.contacts.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.contacts.deleted_at IS 'When the row was marked deleted; null while it is live.';
 
 -- northwind.cancellation_reasons
 CREATE TABLE northwind.cancellation_reasons (
@@ -672,6 +1042,13 @@ CREATE TABLE northwind.cancellation_reasons (
     CONSTRAINT pk_cancellation_reasons PRIMARY KEY (id),
     CONSTRAINT uq_cancellation_reasons_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.cancellation_reasons IS 'A reason for cancelling an order, such as Customer changed mind or Duplicate order.';
+COMMENT ON COLUMN northwind.cancellation_reasons.id IS 'Surrogate key of the cancellation reason.';
+COMMENT ON COLUMN northwind.cancellation_reasons.counts_as_lost_sale IS 'Whether the cancellation counts as a lost sale in reports.';
+COMMENT ON COLUMN northwind.cancellation_reasons.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.cancellation_reasons.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.cancellation_reasons.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.cancellation_reasons.is_active IS 'Whether the value can be chosen for new records.';
 
 -- northwind.sales_quotes
 CREATE TABLE northwind.sales_quotes (
@@ -697,6 +1074,20 @@ CREATE TABLE northwind.sales_quotes (
     CONSTRAINT fk_sales_quotes_currency_code FOREIGN KEY (currency_code) REFERENCES northwind.currencies (code) ON DELETE RESTRICT,
     CONSTRAINT fk_sales_quotes_prepared_by_id FOREIGN KEY (prepared_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.sales_quotes IS 'A priced offer to a customer that can be converted into an order.';
+COMMENT ON COLUMN northwind.sales_quotes.id IS 'Surrogate key of the sales quote.';
+COMMENT ON COLUMN northwind.sales_quotes.quote_number IS 'Quote number.';
+COMMENT ON COLUMN northwind.sales_quotes.issued_on IS 'Date the quote was sent.';
+COMMENT ON COLUMN northwind.sales_quotes.valid_until IS 'Last day the prices hold.';
+COMMENT ON COLUMN northwind.sales_quotes.status IS 'Lifecycle state.';
+COMMENT ON COLUMN northwind.sales_quotes.total_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.sales_quotes.total_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.sales_quotes.notes IS 'Terms and remarks.';
+COMMENT ON COLUMN northwind.sales_quotes.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.sales_quotes.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.sales_quotes.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.sales_quotes.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.sales_quotes.deleted_at IS 'When the row was marked deleted; null while it is live.';
 
 -- northwind.price_lists
 CREATE TABLE northwind.price_lists (
@@ -716,6 +1107,18 @@ CREATE TABLE northwind.price_lists (
     CONSTRAINT uq_price_lists_code UNIQUE (code),
     CONSTRAINT fk_price_lists_currency_code FOREIGN KEY (currency_code) REFERENCES northwind.currencies (code) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.price_lists IS 'A list of prices in one currency, such as the US wholesale list or the Canada distributor list.';
+COMMENT ON COLUMN northwind.price_lists.id IS 'Surrogate key of the price list.';
+COMMENT ON COLUMN northwind.price_lists.code IS 'Price list code.';
+COMMENT ON COLUMN northwind.price_lists.name IS 'Price list name.';
+COMMENT ON COLUMN northwind.price_lists.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.price_lists.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.price_lists.is_default IS 'List used when a customer has no other list.';
+COMMENT ON COLUMN northwind.price_lists.prices_include_tax IS 'Whether prices are tax-inclusive.';
+COMMENT ON COLUMN northwind.price_lists.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.price_lists.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.price_lists.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.price_lists.updated_by IS 'User name of the last editor.';
 
 -- northwind.sales_channels
 CREATE TABLE northwind.sales_channels (
@@ -731,6 +1134,16 @@ CREATE TABLE northwind.sales_channels (
     CONSTRAINT pk_sales_channels PRIMARY KEY (id),
     CONSTRAINT uq_sales_channels_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.sales_channels IS 'A route to market, such as the customer portal, EDI or a marketplace.';
+COMMENT ON COLUMN northwind.sales_channels.id IS 'Surrogate key of the sales channel.';
+COMMENT ON COLUMN northwind.sales_channels.code IS 'Channel code.';
+COMMENT ON COLUMN northwind.sales_channels.name IS 'Channel name.';
+COMMENT ON COLUMN northwind.sales_channels.is_marketplace IS 'Whether a third party hosts the channel.';
+COMMENT ON COLUMN northwind.sales_channels.commission_rate IS 'Fee the channel charges on sales.';
+COMMENT ON COLUMN northwind.sales_channels.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.sales_channels.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.sales_channels.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.sales_channels.updated_by IS 'User name of the last editor.';
 
 -- northwind.sales_orders
 CREATE TABLE northwind.sales_orders (
@@ -796,7 +1209,44 @@ CREATE TABLE northwind.sales_orders (
 );
 CREATE INDEX ix_sales_orders_ordered_at ON northwind.sales_orders (ordered_at DESC);
 CREATE INDEX ix_sales_orders_customer_po_number ON northwind.sales_orders (customer_po_number);
+COMMENT ON TABLE northwind.sales_orders IS 'Order number default, amount checks and the order-date index.';
+COMMENT ON COLUMN northwind.sales_orders.id IS 'Surrogate key of the sales order.';
 COMMENT ON COLUMN northwind.sales_orders.order_number IS 'Assigned from sales_order_number_seq when the application does not supply one.';
+COMMENT ON COLUMN northwind.sales_orders.ordered_at IS 'When the order was placed.';
+COMMENT ON COLUMN northwind.sales_orders.status IS 'Lifecycle state.';
+COMMENT ON COLUMN northwind.sales_orders.customer_po_number IS 'Customer''s purchase order number.';
+COMMENT ON COLUMN northwind.sales_orders.source IS 'Entry channel - portal, edi, phone or email.';
+COMMENT ON COLUMN northwind.sales_orders.requested_delivery_on IS 'Delivery date the customer asked for.';
+COMMENT ON COLUMN northwind.sales_orders.promised_delivery_on IS 'Delivery date Northwind committed to.';
+COMMENT ON COLUMN northwind.sales_orders.bill_line1 IS 'Street and number, or PO box.';
+COMMENT ON COLUMN northwind.sales_orders.bill_line2 IS 'Suite, floor or building.';
+COMMENT ON COLUMN northwind.sales_orders.bill_city IS 'City or locality.';
+COMMENT ON COLUMN northwind.sales_orders.bill_region IS 'State, province or county.';
+COMMENT ON COLUMN northwind.sales_orders.bill_postal_code IS 'Postal or ZIP code.';
+COMMENT ON COLUMN northwind.sales_orders.bill_country_code IS 'ISO country code.';
+COMMENT ON COLUMN northwind.sales_orders.ship_line1 IS 'Street and number, or PO box.';
+COMMENT ON COLUMN northwind.sales_orders.ship_line2 IS 'Suite, floor or building.';
+COMMENT ON COLUMN northwind.sales_orders.ship_city IS 'City or locality.';
+COMMENT ON COLUMN northwind.sales_orders.ship_region IS 'State, province or county.';
+COMMENT ON COLUMN northwind.sales_orders.ship_postal_code IS 'Postal or ZIP code.';
+COMMENT ON COLUMN northwind.sales_orders.ship_country_code IS 'ISO country code.';
+COMMENT ON COLUMN northwind.sales_orders.freight_terms IS 'Incoterm that decides who pays freight.';
+COMMENT ON COLUMN northwind.sales_orders.subtotal_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.sales_orders.subtotal_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.sales_orders.discount_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.sales_orders.discount_total_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.sales_orders.tax_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.sales_orders.tax_total_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.sales_orders.freight_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.sales_orders.freight_total_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.sales_orders.grand_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.sales_orders.grand_total_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.sales_orders.notes IS 'Instructions from the customer.';
+COMMENT ON COLUMN northwind.sales_orders.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.sales_orders.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.sales_orders.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.sales_orders.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.sales_orders.deleted_at IS 'When the row was marked deleted; null while it is live.';
 
 -- northwind.product_variants
 CREATE TABLE northwind.product_variants (
@@ -819,6 +1269,21 @@ CREATE TABLE northwind.product_variants (
     CONSTRAINT uq_product_variants_sku UNIQUE (sku),
     CONSTRAINT fk_product_variants_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.product_variants IS 'A sellable option of a product, such as a size or a color, with its own SKU.';
+COMMENT ON COLUMN northwind.product_variants.id IS 'Surrogate key of the product variant.';
+COMMENT ON COLUMN northwind.product_variants.sku IS 'SKU of the variant.';
+COMMENT ON COLUMN northwind.product_variants.name IS 'Variant name, such as Nitrile gloves, large.';
+COMMENT ON COLUMN northwind.product_variants.option_summary IS 'Option values, such as Blue / Large.';
+COMMENT ON COLUMN northwind.product_variants.list_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.product_variants.list_price_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.product_variants.weight_value IS 'The weight.';
+COMMENT ON COLUMN northwind.product_variants.weight_unit IS 'Unit of the weight.';
+COMMENT ON COLUMN northwind.product_variants.is_active IS 'Whether the variant can be ordered.';
+COMMENT ON COLUMN northwind.product_variants.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.product_variants.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.product_variants.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.product_variants.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.product_variants.deleted_at IS 'When the row was marked deleted; null while it is live.';
 
 -- northwind.sales_order_lines
 CREATE TABLE northwind.sales_order_lines (
@@ -851,6 +1316,23 @@ CREATE TABLE northwind.sales_order_lines (
     CONSTRAINT fk_sales_order_lines_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE SET NULL,
     CONSTRAINT ck_sales_order_lines_quantity_positive CHECK (quantity > 0)
 );
+COMMENT ON TABLE northwind.sales_order_lines IS 'Quantity must be positive.';
+COMMENT ON COLUMN northwind.sales_order_lines.id IS 'Surrogate key of the sales order line.';
+COMMENT ON COLUMN northwind.sales_order_lines.line_number IS 'Line number printed on documents.';
+COMMENT ON COLUMN northwind.sales_order_lines.description IS 'Line text, defaulting to the product name.';
+COMMENT ON COLUMN northwind.sales_order_lines.quantity IS 'Quantity ordered, in the line''s unit.';
+COMMENT ON COLUMN northwind.sales_order_lines.unit_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.sales_order_lines.unit_price_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.sales_order_lines.discount IS 'Line discount.';
+COMMENT ON COLUMN northwind.sales_order_lines.tax_rate IS 'Sales tax rate applied.';
+COMMENT ON COLUMN northwind.sales_order_lines.line_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.sales_order_lines.line_total_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.sales_order_lines.status IS 'Fulfillment state.';
+COMMENT ON COLUMN northwind.sales_order_lines.requested_on IS 'Requested delivery date, when it differs from the order''s.';
+COMMENT ON COLUMN northwind.sales_order_lines.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.sales_order_lines.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.sales_order_lines.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.sales_order_lines.updated_by IS 'User name of the last editor.';
 
 -- northwind.promotions
 CREATE TABLE northwind.promotions (
@@ -871,6 +1353,21 @@ CREATE TABLE northwind.promotions (
     CONSTRAINT pk_promotions PRIMARY KEY (id),
     CONSTRAINT uq_promotions_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.promotions IS 'A time-boxed marketing promotion with conditions and rewards, such as buy 10 cases get 1 free.';
+COMMENT ON COLUMN northwind.promotions.id IS 'Surrogate key of the promotion.';
+COMMENT ON COLUMN northwind.promotions.code IS 'Promotion code.';
+COMMENT ON COLUMN northwind.promotions.name IS 'Promotion name.';
+COMMENT ON COLUMN northwind.promotions.description IS 'Terms shown to customers.';
+COMMENT ON COLUMN northwind.promotions.status IS 'Lifecycle state.';
+COMMENT ON COLUMN northwind.promotions.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.promotions.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.promotions.budget_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.promotions.budget_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.promotions.max_redemptions IS 'Cap on redemptions across all customers.';
+COMMENT ON COLUMN northwind.promotions.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.promotions.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.promotions.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.promotions.updated_by IS 'User name of the last editor.';
 
 -- northwind.applied_promotions
 CREATE TABLE northwind.applied_promotions (
@@ -886,6 +1383,11 @@ CREATE TABLE northwind.applied_promotions (
     CONSTRAINT fk_applied_promotions_promotion_id FOREIGN KEY (promotion_id) REFERENCES northwind.promotions (id) ON DELETE RESTRICT,
     CONSTRAINT fk_applied_promotions_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.applied_promotions IS 'A promotion applied to a sales order or one of its lines, with the discount it granted.';
+COMMENT ON COLUMN northwind.applied_promotions.id IS 'Surrogate key of the applied promotion.';
+COMMENT ON COLUMN northwind.applied_promotions.discount_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.applied_promotions.discount_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.applied_promotions.applied_at IS 'When it was applied.';
 
 -- northwind.user_accounts
 CREATE TABLE northwind.user_accounts (
@@ -914,6 +1416,22 @@ CREATE TABLE northwind.user_accounts (
     CONSTRAINT fk_user_accounts_contact_id FOREIGN KEY (contact_id) REFERENCES northwind.contacts (id) ON DELETE SET NULL,
     CONSTRAINT fk_user_accounts_employee_id FOREIGN KEY (employee_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.user_accounts IS 'A person or service that signs in to Northwind systems, either an employee or a customer portal user.';
+COMMENT ON COLUMN northwind.user_accounts.id IS 'Surrogate key of the user account.';
+COMMENT ON COLUMN northwind.user_accounts.user_name IS 'Sign-in name, lower case.';
+COMMENT ON COLUMN northwind.user_accounts.email IS 'Address for sign-in links and notifications.';
+COMMENT ON COLUMN northwind.user_accounts.display_name IS 'Name shown in the user interface.';
+COMMENT ON COLUMN northwind.user_accounts.status IS 'Lifecycle state of the account.';
+COMMENT ON COLUMN northwind.user_accounts.password_hash IS 'Argon2id hash of the password; null for single sign-on users.';
+COMMENT ON COLUMN northwind.user_accounts.mfa_enabled IS 'Whether a second factor is required.';
+COMMENT ON COLUMN northwind.user_accounts.last_sign_in_at IS 'Most recent successful sign-in.';
+COMMENT ON COLUMN northwind.user_accounts.failed_sign_in_count IS 'Consecutive failed attempts since the last success.';
+COMMENT ON COLUMN northwind.user_accounts.preferred_language IS 'BCP 47 tag of the interface language.';
+COMMENT ON COLUMN northwind.user_accounts.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.user_accounts.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.user_accounts.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.user_accounts.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.user_accounts.deleted_at IS 'When the row was marked deleted; null while it is live.';
 
 -- northwind.audit_events
 CREATE TABLE northwind.audit_events (
@@ -930,7 +1448,14 @@ CREATE TABLE northwind.audit_events (
 );
 CREATE INDEX ix_audit_events_entity ON northwind.audit_events (entity_type, entity_key);
 CREATE INDEX ix_audit_events_occurred_at ON northwind.audit_events (occurred_at);
+COMMENT ON TABLE northwind.audit_events IS 'Details are stored as jsonb so auditors can query inside them.';
+COMMENT ON COLUMN northwind.audit_events.id IS 'Surrogate key of the audit event.';
+COMMENT ON COLUMN northwind.audit_events.occurred_at IS 'When the action happened.';
+COMMENT ON COLUMN northwind.audit_events.action IS 'What happened, such as role.granted.';
+COMMENT ON COLUMN northwind.audit_events.entity_type IS 'Kind of record affected.';
+COMMENT ON COLUMN northwind.audit_events.entity_key IS 'Key of the record affected.';
 COMMENT ON COLUMN northwind.audit_events.details IS 'Before and after values, queried with jsonb operators.';
+COMMENT ON COLUMN northwind.audit_events.ip_address IS 'Client IP address.';
 
 -- northwind.supplier_products
 CREATE TABLE northwind.supplier_products (
@@ -955,6 +1480,20 @@ CREATE TABLE northwind.supplier_products (
     CONSTRAINT fk_supplier_products_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_supplier_products_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.supplier_products IS 'A product as offered in a supplier''s catalog, with the supplier''s SKU, cost and lead time.';
+COMMENT ON COLUMN northwind.supplier_products.id IS 'Surrogate key of the supplier product.';
+COMMENT ON COLUMN northwind.supplier_products.supplier_sku IS 'Supplier''s item number.';
+COMMENT ON COLUMN northwind.supplier_products.supplier_description IS 'Supplier''s item description.';
+COMMENT ON COLUMN northwind.supplier_products.unit_cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.supplier_products.unit_cost_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.supplier_products.minimum_order_quantity IS 'Minimum order quantity.';
+COMMENT ON COLUMN northwind.supplier_products.pack_size IS 'Base units per purchase unit.';
+COMMENT ON COLUMN northwind.supplier_products.lead_time_days IS 'Lead time for the item.';
+COMMENT ON COLUMN northwind.supplier_products.is_preferred IS 'Preferred source for the product.';
+COMMENT ON COLUMN northwind.supplier_products.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.supplier_products.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.supplier_products.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.supplier_products.updated_by IS 'User name of the last editor.';
 
 -- northwind.purchase_order_lines
 CREATE TABLE northwind.purchase_order_lines (
@@ -982,6 +1521,21 @@ CREATE TABLE northwind.purchase_order_lines (
     CONSTRAINT fk_purchase_order_lines_unit_code FOREIGN KEY (unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE RESTRICT,
     CONSTRAINT fk_purchase_order_lines_supplier_product_id FOREIGN KEY (supplier_product_id) REFERENCES northwind.supplier_products (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.purchase_order_lines IS 'A product and quantity ordered from a supplier.';
+COMMENT ON COLUMN northwind.purchase_order_lines.id IS 'Surrogate key of the purchase order line.';
+COMMENT ON COLUMN northwind.purchase_order_lines.line_number IS 'Line number.';
+COMMENT ON COLUMN northwind.purchase_order_lines.quantity IS 'Quantity ordered.';
+COMMENT ON COLUMN northwind.purchase_order_lines.unit_cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.purchase_order_lines.unit_cost_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.purchase_order_lines.line_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.purchase_order_lines.line_total_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.purchase_order_lines.expected_on IS 'Line delivery date, when split.';
+COMMENT ON COLUMN northwind.purchase_order_lines.received_quantity IS 'Quantity received so far.';
+COMMENT ON COLUMN northwind.purchase_order_lines.is_closed IS 'Whether no more receipts are expected.';
+COMMENT ON COLUMN northwind.purchase_order_lines.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.purchase_order_lines.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.purchase_order_lines.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.purchase_order_lines.updated_by IS 'User name of the last editor.';
 
 -- northwind.backorders
 CREATE TABLE northwind.backorders (
@@ -1000,6 +1554,16 @@ CREATE TABLE northwind.backorders (
     CONSTRAINT fk_backorders_sales_order_line_id FOREIGN KEY (sales_order_line_id) REFERENCES northwind.sales_order_lines (id) ON DELETE CASCADE,
     CONSTRAINT fk_backorders_purchase_order_line_id FOREIGN KEY (purchase_order_line_id) REFERENCES northwind.purchase_order_lines (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.backorders IS 'A quantity of an order line that could not be allocated and waits for replenishment.';
+COMMENT ON COLUMN northwind.backorders.id IS 'Surrogate key of the backorder.';
+COMMENT ON COLUMN northwind.backorders.quantity IS 'Quantity waiting.';
+COMMENT ON COLUMN northwind.backorders.expected_on IS 'Expected availability date.';
+COMMENT ON COLUMN northwind.backorders.customer_notified_at IS 'When the customer was told.';
+COMMENT ON COLUMN northwind.backorders.is_fulfilled IS 'Whether it has been allocated since.';
+COMMENT ON COLUMN northwind.backorders.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.backorders.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.backorders.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.backorders.updated_by IS 'User name of the last editor.';
 
 -- northwind.ledger_accounts
 CREATE TABLE northwind.ledger_accounts (
@@ -1021,6 +1585,18 @@ CREATE TABLE northwind.ledger_accounts (
     CONSTRAINT fk_ledger_accounts_currency_code FOREIGN KEY (currency_code) REFERENCES northwind.currencies (code) ON DELETE SET NULL,
     CONSTRAINT fk_ledger_accounts_parent_id FOREIGN KEY (parent_id) REFERENCES northwind.ledger_accounts (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.ledger_accounts IS 'An account of the chart of accounts, such as 1200 Accounts receivable, nested into summary accounts.';
+COMMENT ON COLUMN northwind.ledger_accounts.id IS 'Surrogate key of the ledger account.';
+COMMENT ON COLUMN northwind.ledger_accounts.account_number IS 'Account number.';
+COMMENT ON COLUMN northwind.ledger_accounts.name IS 'Account name.';
+COMMENT ON COLUMN northwind.ledger_accounts.account_type IS 'Statement classification.';
+COMMENT ON COLUMN northwind.ledger_accounts.normal_balance IS 'debit or credit.';
+COMMENT ON COLUMN northwind.ledger_accounts.is_postable IS 'Whether journal lines may post to it; summary accounts are not postable.';
+COMMENT ON COLUMN northwind.ledger_accounts.is_active IS 'Whether it can be used.';
+COMMENT ON COLUMN northwind.ledger_accounts.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.ledger_accounts.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.ledger_accounts.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.ledger_accounts.updated_by IS 'User name of the last editor.';
 
 -- northwind.bank_accounts
 CREATE TABLE northwind.bank_accounts (
@@ -1041,6 +1617,17 @@ CREATE TABLE northwind.bank_accounts (
     CONSTRAINT fk_bank_accounts_currency_code FOREIGN KEY (currency_code) REFERENCES northwind.currencies (code) ON DELETE RESTRICT,
     CONSTRAINT fk_bank_accounts_ledger_account_id FOREIGN KEY (ledger_account_id) REFERENCES northwind.ledger_accounts (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.bank_accounts IS 'A Northwind bank account that receives customer payments.';
+COMMENT ON COLUMN northwind.bank_accounts.id IS 'Surrogate key of the bank account.';
+COMMENT ON COLUMN northwind.bank_accounts.name IS 'Account name, such as Operating account USD.';
+COMMENT ON COLUMN northwind.bank_accounts.bank_name IS 'Bank.';
+COMMENT ON COLUMN northwind.bank_accounts.account_number_masked IS 'Masked account number.';
+COMMENT ON COLUMN northwind.bank_accounts.iban IS 'IBAN, for euro accounts.';
+COMMENT ON COLUMN northwind.bank_accounts.routing_number IS 'ABA routing number, for US accounts.';
+COMMENT ON COLUMN northwind.bank_accounts.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.bank_accounts.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.bank_accounts.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.bank_accounts.updated_by IS 'User name of the last editor.';
 
 -- northwind.payment_batches
 CREATE TABLE northwind.payment_batches (
@@ -1061,6 +1648,19 @@ CREATE TABLE northwind.payment_batches (
     CONSTRAINT uq_payment_batches_batch_number UNIQUE (batch_number),
     CONSTRAINT fk_payment_batches_bank_account_id FOREIGN KEY (bank_account_id) REFERENCES northwind.bank_accounts (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.payment_batches IS 'A group of payments deposited together, such as a lockbox file or a card settlement.';
+COMMENT ON COLUMN northwind.payment_batches.id IS 'Surrogate key of the payment batch.';
+COMMENT ON COLUMN northwind.payment_batches.batch_number IS 'Batch number.';
+COMMENT ON COLUMN northwind.payment_batches.batch_date IS 'Deposit date.';
+COMMENT ON COLUMN northwind.payment_batches.source IS 'lockbox, ach-file or card-settlement.';
+COMMENT ON COLUMN northwind.payment_batches.item_count IS 'Payments in the batch.';
+COMMENT ON COLUMN northwind.payment_batches.total_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.payment_batches.total_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.payment_batches.is_posted IS 'Whether it was posted to the ledger.';
+COMMENT ON COLUMN northwind.payment_batches.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.payment_batches.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.payment_batches.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.payment_batches.updated_by IS 'User name of the last editor.';
 
 -- northwind.fiscal_periods
 CREATE TABLE northwind.fiscal_periods (
@@ -1079,6 +1679,19 @@ CREATE TABLE northwind.fiscal_periods (
     CONSTRAINT pk_fiscal_periods PRIMARY KEY (id),
     CONSTRAINT uq_fiscal_periods_name UNIQUE (name)
 );
+COMMENT ON TABLE northwind.fiscal_periods IS 'A monthly accounting period of a fiscal year.';
+COMMENT ON COLUMN northwind.fiscal_periods.id IS 'Surrogate key of the fiscal period.';
+COMMENT ON COLUMN northwind.fiscal_periods.name IS 'Period name, such as FY2026-09.';
+COMMENT ON COLUMN northwind.fiscal_periods.fiscal_year IS 'Fiscal year.';
+COMMENT ON COLUMN northwind.fiscal_periods.period_number IS 'Period within the year; 13 is the adjustment period.';
+COMMENT ON COLUMN northwind.fiscal_periods.period_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.fiscal_periods.period_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.fiscal_periods.is_closed IS 'Whether posting is closed.';
+COMMENT ON COLUMN northwind.fiscal_periods.closed_at IS 'When it was closed.';
+COMMENT ON COLUMN northwind.fiscal_periods.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.fiscal_periods.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.fiscal_periods.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.fiscal_periods.updated_by IS 'User name of the last editor.';
 
 -- northwind.journal_entries
 CREATE TABLE northwind.journal_entries (
@@ -1102,7 +1715,18 @@ CREATE TABLE northwind.journal_entries (
     CONSTRAINT fk_journal_entries_reversal_of_id FOREIGN KEY (reversal_of_id) REFERENCES northwind.journal_entries (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_journal_entries_entry_date ON northwind.journal_entries (entry_date);
+COMMENT ON TABLE northwind.journal_entries IS 'Journal entry keys come from the named, uncached journal_entry_seq.';
 COMMENT ON COLUMN northwind.journal_entries.id IS 'Drawn from journal_entry_seq.';
+COMMENT ON COLUMN northwind.journal_entries.entry_date IS 'Accounting date.';
+COMMENT ON COLUMN northwind.journal_entries.reference IS 'Source document number.';
+COMMENT ON COLUMN northwind.journal_entries.description IS 'What the entry records.';
+COMMENT ON COLUMN northwind.journal_entries.status IS 'Posting state.';
+COMMENT ON COLUMN northwind.journal_entries.source_document IS 'Kind of source, such as invoice or goods-receipt.';
+COMMENT ON COLUMN northwind.journal_entries.posted_at IS 'When it was posted.';
+COMMENT ON COLUMN northwind.journal_entries.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.journal_entries.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.journal_entries.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.journal_entries.updated_by IS 'User name of the last editor.';
 
 -- northwind.payments
 CREATE TABLE northwind.payments (
@@ -1130,6 +1754,20 @@ CREATE TABLE northwind.payments (
     CONSTRAINT fk_payments_payment_batch_id FOREIGN KEY (payment_batch_id) REFERENCES northwind.payment_batches (id) ON DELETE SET NULL,
     CONSTRAINT fk_payments_journal_entry_id FOREIGN KEY (journal_entry_id) REFERENCES northwind.journal_entries (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.payments IS 'Money received from a customer. Card payments and bank transfers extend it in their own tables (TPT); checks and cash use the base table only.';
+COMMENT ON COLUMN northwind.payments.id IS 'Surrogate key of the payment.';
+COMMENT ON COLUMN northwind.payments.payment_number IS 'Payment number.';
+COMMENT ON COLUMN northwind.payments.received_at IS 'When the payment was received.';
+COMMENT ON COLUMN northwind.payments.amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.payments.amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.payments.unapplied_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.payments.unapplied_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.payments.status IS 'Processing state.';
+COMMENT ON COLUMN northwind.payments.reference IS 'Payer''s reference, such as a check number.';
+COMMENT ON COLUMN northwind.payments.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.payments.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.payments.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.payments.updated_by IS 'User name of the last editor.';
 
 -- northwind.bank_transfers
 CREATE TABLE northwind.bank_transfers (
@@ -1141,6 +1779,12 @@ CREATE TABLE northwind.bank_transfers (
     CONSTRAINT pk_bank_transfers PRIMARY KEY (id),
     CONSTRAINT fk_bank_transfers_id FOREIGN KEY (id) REFERENCES northwind.payments (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.bank_transfers IS 'A payment by ACH, wire or SEPA transfer, identified on the bank statement.';
+COMMENT ON COLUMN northwind.bank_transfers.id IS 'Surrogate key of the payment.';
+COMMENT ON COLUMN northwind.bank_transfers.transfer_reference IS 'Reference on the bank statement.';
+COMMENT ON COLUMN northwind.bank_transfers.payer_bank_name IS 'Payer''s bank.';
+COMMENT ON COLUMN northwind.bank_transfers.payer_account_last4 IS 'Last digits of the payer''s account.';
+COMMENT ON COLUMN northwind.bank_transfers.value_date IS 'Date the funds became available.';
 
 -- northwind.billing_accounts
 CREATE TABLE northwind.billing_accounts (
@@ -1167,6 +1811,23 @@ CREATE TABLE northwind.billing_accounts (
     CONSTRAINT fk_billing_accounts_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE CASCADE,
     CONSTRAINT fk_billing_accounts_currency_code FOREIGN KEY (currency_code) REFERENCES northwind.currencies (code) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.billing_accounts IS 'How and where a customer wants to be invoiced; large customers have one per division.';
+COMMENT ON COLUMN northwind.billing_accounts.id IS 'Surrogate key of the billing account.';
+COMMENT ON COLUMN northwind.billing_accounts.account_number IS 'Billing account number.';
+COMMENT ON COLUMN northwind.billing_accounts.name IS 'Account name, such as Facilities division.';
+COMMENT ON COLUMN northwind.billing_accounts.billing_address_line1 IS 'Street and number, or PO box.';
+COMMENT ON COLUMN northwind.billing_accounts.billing_address_line2 IS 'Suite, floor or building.';
+COMMENT ON COLUMN northwind.billing_accounts.billing_address_city IS 'City or locality.';
+COMMENT ON COLUMN northwind.billing_accounts.billing_address_region IS 'State, province or county.';
+COMMENT ON COLUMN northwind.billing_accounts.billing_address_postal_code IS 'Postal or ZIP code.';
+COMMENT ON COLUMN northwind.billing_accounts.billing_address_country_code IS 'ISO country code.';
+COMMENT ON COLUMN northwind.billing_accounts.invoice_delivery_method IS 'email, portal, edi or mail.';
+COMMENT ON COLUMN northwind.billing_accounts.invoice_email IS 'Mailbox for invoices.';
+COMMENT ON COLUMN northwind.billing_accounts.consolidate_invoices IS 'Whether to send one monthly invoice.';
+COMMENT ON COLUMN northwind.billing_accounts.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.billing_accounts.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.billing_accounts.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.billing_accounts.updated_by IS 'User name of the last editor.';
 
 -- northwind.warehouse_zones
 CREATE TABLE northwind.warehouse_zones (
@@ -1184,6 +1845,15 @@ CREATE TABLE northwind.warehouse_zones (
     CONSTRAINT fk_warehouse_zones_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE CASCADE,
     CONSTRAINT fk_warehouse_zones_storage_condition_id FOREIGN KEY (storage_condition_id) REFERENCES northwind.storage_conditions (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.warehouse_zones IS 'An area of a warehouse with one purpose, such as receiving, bulk storage, pick faces or a freezer.';
+COMMENT ON COLUMN northwind.warehouse_zones.id IS 'Surrogate key of the warehouse zone.';
+COMMENT ON COLUMN northwind.warehouse_zones.code IS 'Zone code within the warehouse.';
+COMMENT ON COLUMN northwind.warehouse_zones.name IS 'Zone name.';
+COMMENT ON COLUMN northwind.warehouse_zones.zone_type IS 'receiving, bulk, pick, staging, quarantine or shipping.';
+COMMENT ON COLUMN northwind.warehouse_zones.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.warehouse_zones.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.warehouse_zones.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.warehouse_zones.updated_by IS 'User name of the last editor.';
 
 -- northwind.bin_locations
 CREATE TABLE northwind.bin_locations (
@@ -1202,6 +1872,17 @@ CREATE TABLE northwind.bin_locations (
     CONSTRAINT fk_bin_locations_warehouse_zone_id FOREIGN KEY (warehouse_zone_id) REFERENCES northwind.warehouse_zones (id) ON DELETE CASCADE
 );
 CREATE INDEX ix_bin_locations_code ON northwind.bin_locations (code);
+COMMENT ON TABLE northwind.bin_locations IS 'A storage location addressed by aisle, rack, level and position.';
+COMMENT ON COLUMN northwind.bin_locations.id IS 'Surrogate key of the bin location.';
+COMMENT ON COLUMN northwind.bin_locations.code IS 'Location code, such as A-01-02-03.';
+COMMENT ON COLUMN northwind.bin_locations.aisle IS 'Aisle.';
+COMMENT ON COLUMN northwind.bin_locations.rack IS 'Rack or bay.';
+COMMENT ON COLUMN northwind.bin_locations.level IS 'Shelf level.';
+COMMENT ON COLUMN northwind.bin_locations.position IS 'Position on the shelf.';
+COMMENT ON COLUMN northwind.bin_locations.max_weight_value IS 'The weight.';
+COMMENT ON COLUMN northwind.bin_locations.max_weight_unit IS 'Unit of the weight.';
+COMMENT ON COLUMN northwind.bin_locations.is_pick_face IS 'Whether pickers pick from it.';
+COMMENT ON COLUMN northwind.bin_locations.is_active IS 'Whether stock can be put away there.';
 
 -- northwind.blanket_orders
 CREATE TABLE northwind.blanket_orders (
@@ -1225,6 +1906,20 @@ CREATE TABLE northwind.blanket_orders (
     CONSTRAINT fk_blanket_orders_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
     CONSTRAINT fk_blanket_orders_currency_code FOREIGN KEY (currency_code) REFERENCES northwind.currencies (code) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.blanket_orders IS 'A long-term purchase commitment by a customer, released in smaller orders over time.';
+COMMENT ON COLUMN northwind.blanket_orders.id IS 'Surrogate key of the blanket order.';
+COMMENT ON COLUMN northwind.blanket_orders.blanket_number IS 'Agreement number.';
+COMMENT ON COLUMN northwind.blanket_orders.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.blanket_orders.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.blanket_orders.committed_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.blanket_orders.committed_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.blanket_orders.released_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.blanket_orders.released_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.blanket_orders.is_closed IS 'Whether the commitment is closed.';
+COMMENT ON COLUMN northwind.blanket_orders.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.blanket_orders.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.blanket_orders.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.blanket_orders.updated_by IS 'User name of the last editor.';
 
 -- northwind.blanket_order_lines
 CREATE TABLE northwind.blanket_order_lines (
@@ -1239,6 +1934,12 @@ CREATE TABLE northwind.blanket_order_lines (
     CONSTRAINT fk_blanket_order_lines_blanket_order_id FOREIGN KEY (blanket_order_id) REFERENCES northwind.blanket_orders (id) ON DELETE CASCADE,
     CONSTRAINT fk_blanket_order_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.blanket_order_lines IS 'A product and quantity committed on a blanket order.';
+COMMENT ON COLUMN northwind.blanket_order_lines.id IS 'Surrogate key of the blanket order line.';
+COMMENT ON COLUMN northwind.blanket_order_lines.committed_quantity IS 'Quantity committed.';
+COMMENT ON COLUMN northwind.blanket_order_lines.released_quantity IS 'Quantity released so far.';
+COMMENT ON COLUMN northwind.blanket_order_lines.unit_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.blanket_order_lines.unit_price_currency IS 'The ISO 4217 currency of the amount.';
 
 -- northwind.budgets
 CREATE TABLE northwind.budgets (
@@ -1255,6 +1956,16 @@ CREATE TABLE northwind.budgets (
     CONSTRAINT pk_budgets PRIMARY KEY (id),
     CONSTRAINT fk_budgets_cost_center_id FOREIGN KEY (cost_center_id) REFERENCES northwind.cost_centers (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.budgets IS 'An approved spending budget for a fiscal year and cost center.';
+COMMENT ON COLUMN northwind.budgets.id IS 'Surrogate key of the budget.';
+COMMENT ON COLUMN northwind.budgets.name IS 'Budget name.';
+COMMENT ON COLUMN northwind.budgets.fiscal_year IS 'Fiscal year.';
+COMMENT ON COLUMN northwind.budgets.is_approved IS 'Whether finance approved it.';
+COMMENT ON COLUMN northwind.budgets.notes IS 'Assumptions.';
+COMMENT ON COLUMN northwind.budgets.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.budgets.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.budgets.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.budgets.updated_by IS 'User name of the last editor.';
 
 -- northwind.budget_lines
 CREATE TABLE northwind.budget_lines (
@@ -1269,6 +1980,10 @@ CREATE TABLE northwind.budget_lines (
     CONSTRAINT fk_budget_lines_fiscal_period_id FOREIGN KEY (fiscal_period_id) REFERENCES northwind.fiscal_periods (id) ON DELETE RESTRICT,
     CONSTRAINT fk_budget_lines_ledger_account_id FOREIGN KEY (ledger_account_id) REFERENCES northwind.ledger_accounts (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.budget_lines IS 'A budgeted amount for one ledger account and period.';
+COMMENT ON COLUMN northwind.budget_lines.id IS 'Surrogate key of the budget line.';
+COMMENT ON COLUMN northwind.budget_lines.amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.budget_lines.amount_currency IS 'The ISO 4217 currency of the amount.';
 
 -- northwind.product_bundles
 CREATE TABLE northwind.product_bundles (
@@ -1286,6 +2001,18 @@ CREATE TABLE northwind.product_bundles (
     CONSTRAINT pk_product_bundles PRIMARY KEY (id),
     CONSTRAINT uq_product_bundles_sku UNIQUE (sku)
 );
+COMMENT ON TABLE northwind.product_bundles IS 'A kit sold under one SKU and assembled from component products at picking time, such as a janitorial starter kit.';
+COMMENT ON COLUMN northwind.product_bundles.id IS 'Surrogate key of the product bundle.';
+COMMENT ON COLUMN northwind.product_bundles.sku IS 'SKU of the bundle.';
+COMMENT ON COLUMN northwind.product_bundles.name IS 'Bundle name.';
+COMMENT ON COLUMN northwind.product_bundles.price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.product_bundles.price_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.product_bundles.is_active IS 'Whether the bundle can be ordered.';
+COMMENT ON COLUMN northwind.product_bundles.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.product_bundles.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.product_bundles.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.product_bundles.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.product_bundles.deleted_at IS 'When the row was marked deleted; null while it is live.';
 
 -- northwind.bundle_components
 CREATE TABLE northwind.bundle_components (
@@ -1297,6 +2024,9 @@ CREATE TABLE northwind.bundle_components (
     CONSTRAINT fk_bundle_components_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_bundle_components_product_bundle_id FOREIGN KEY (product_bundle_id) REFERENCES northwind.product_bundles (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.bundle_components IS 'A product and quantity included in a bundle.';
+COMMENT ON COLUMN northwind.bundle_components.id IS 'Surrogate key of the bundle component.';
+COMMENT ON COLUMN northwind.bundle_components.quantity IS 'Quantity per bundle, in the product''s base unit.';
 
 -- northwind.campaigns
 CREATE TABLE northwind.campaigns (
@@ -1317,6 +2047,19 @@ CREATE TABLE northwind.campaigns (
     CONSTRAINT uq_campaigns_name UNIQUE (name),
     CONSTRAINT fk_campaigns_owner_id FOREIGN KEY (owner_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.campaigns IS 'A marketing campaign, such as a spring catalog mailing or a trade show.';
+COMMENT ON COLUMN northwind.campaigns.id IS 'Surrogate key of the campaign.';
+COMMENT ON COLUMN northwind.campaigns.name IS 'Campaign name.';
+COMMENT ON COLUMN northwind.campaigns.description IS 'Goals and audience.';
+COMMENT ON COLUMN northwind.campaigns.channel IS 'Channel, such as email, print or event.';
+COMMENT ON COLUMN northwind.campaigns.period_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.campaigns.period_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.campaigns.budget_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.campaigns.budget_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.campaigns.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.campaigns.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.campaigns.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.campaigns.updated_by IS 'User name of the last editor.';
 
 -- northwind.lead_sources
 CREATE TABLE northwind.lead_sources (
@@ -1329,6 +2072,13 @@ CREATE TABLE northwind.lead_sources (
     CONSTRAINT pk_lead_sources PRIMARY KEY (id),
     CONSTRAINT uq_lead_sources_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.lead_sources IS 'Origin of a lead, such as Trade show or Website form.';
+COMMENT ON COLUMN northwind.lead_sources.id IS 'Surrogate key of the lead source.';
+COMMENT ON COLUMN northwind.lead_sources.channel IS 'Marketing channel the source rolls up to.';
+COMMENT ON COLUMN northwind.lead_sources.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.lead_sources.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.lead_sources.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.lead_sources.is_active IS 'Whether the value can be chosen for new records.';
 
 -- northwind.leads
 CREATE TABLE northwind.leads (
@@ -1361,6 +2111,25 @@ CREATE TABLE northwind.leads (
     CONSTRAINT fk_leads_industry_id FOREIGN KEY (industry_id) REFERENCES northwind.industries (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_leads_email ON northwind.leads (email);
+COMMENT ON TABLE northwind.leads IS 'A prospective customer not yet qualified, captured from a trade show, the website or a referral.';
+COMMENT ON COLUMN northwind.leads.id IS 'Surrogate key of the lead.';
+COMMENT ON COLUMN northwind.leads.company_name IS 'Prospect''s company.';
+COMMENT ON COLUMN northwind.leads.contact_name_given_name IS 'First or given name.';
+COMMENT ON COLUMN northwind.leads.contact_name_family_name IS 'Last or family name.';
+COMMENT ON COLUMN northwind.leads.contact_name_title IS 'Salutation, such as Dr. or Ms.';
+COMMENT ON COLUMN northwind.leads.email IS 'Prospect''s email.';
+COMMENT ON COLUMN northwind.leads.phone_number IS 'Number in E.164 form, such as +14155550100.';
+COMMENT ON COLUMN northwind.leads.phone_extension IS 'Internal extension.';
+COMMENT ON COLUMN northwind.leads.status IS 'Qualification state.';
+COMMENT ON COLUMN northwind.leads.estimated_annual_value_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.leads.estimated_annual_value_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.leads.notes IS 'Qualification notes.';
+COMMENT ON COLUMN northwind.leads.converted_on IS 'Date the lead became a customer.';
+COMMENT ON COLUMN northwind.leads.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.leads.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.leads.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.leads.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.leads.deleted_at IS 'When the row was marked deleted; null while it is live.';
 
 -- northwind.campaign_responses
 CREATE TABLE northwind.campaign_responses (
@@ -1376,6 +2145,11 @@ CREATE TABLE northwind.campaign_responses (
     CONSTRAINT fk_campaign_responses_campaign_id FOREIGN KEY (campaign_id) REFERENCES northwind.campaigns (id) ON DELETE CASCADE,
     CONSTRAINT fk_campaign_responses_lead_id FOREIGN KEY (lead_id) REFERENCES northwind.leads (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.campaign_responses IS 'A response to a campaign by a contact or a lead, such as a click, a booth visit or a request for quote.';
+COMMENT ON COLUMN northwind.campaign_responses.id IS 'Surrogate key of the campaign response.';
+COMMENT ON COLUMN northwind.campaign_responses.responded_at IS 'When the response happened.';
+COMMENT ON COLUMN northwind.campaign_responses.response_type IS 'Kind of response, such as clicked or visited-booth.';
+COMMENT ON COLUMN northwind.campaign_responses.notes IS 'Details.';
 
 -- northwind.stored_payment_methods
 CREATE TABLE northwind.stored_payment_methods (
@@ -1395,6 +2169,19 @@ CREATE TABLE northwind.stored_payment_methods (
     CONSTRAINT pk_stored_payment_methods PRIMARY KEY (id),
     CONSTRAINT fk_stored_payment_methods_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.stored_payment_methods IS 'A tokenized card or bank account a customer saved on the portal; the details stay with the processor.';
+COMMENT ON COLUMN northwind.stored_payment_methods.id IS 'Surrogate key of the stored payment method.';
+COMMENT ON COLUMN northwind.stored_payment_methods.method_type IS 'card or bank-account.';
+COMMENT ON COLUMN northwind.stored_payment_methods.card_brand IS 'Card network, for cards.';
+COMMENT ON COLUMN northwind.stored_payment_methods.last4 IS 'Last four digits.';
+COMMENT ON COLUMN northwind.stored_payment_methods.expires_on IS 'Expiry, for cards.';
+COMMENT ON COLUMN northwind.stored_payment_methods.processor_token IS 'Token issued by the processor.';
+COMMENT ON COLUMN northwind.stored_payment_methods.is_default IS 'Used for automatic payments.';
+COMMENT ON COLUMN northwind.stored_payment_methods.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.stored_payment_methods.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.stored_payment_methods.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.stored_payment_methods.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.stored_payment_methods.deleted_at IS 'When the row was marked deleted; null while it is live.';
 
 -- northwind.card_payments
 CREATE TABLE northwind.card_payments (
@@ -1411,6 +2198,14 @@ CREATE TABLE northwind.card_payments (
     CONSTRAINT fk_card_payments_stored_payment_method_id FOREIGN KEY (stored_payment_method_id) REFERENCES northwind.stored_payment_methods (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_card_payments_processor_reference ON northwind.card_payments (processor_reference);
+COMMENT ON TABLE northwind.card_payments IS 'A payment by credit or purchasing card through the payment processor.';
+COMMENT ON COLUMN northwind.card_payments.id IS 'Surrogate key of the payment.';
+COMMENT ON COLUMN northwind.card_payments.card_brand IS 'Card network.';
+COMMENT ON COLUMN northwind.card_payments.last4 IS 'Last four digits of the card.';
+COMMENT ON COLUMN northwind.card_payments.expiry_month IS 'Card expiry month.';
+COMMENT ON COLUMN northwind.card_payments.expiry_year IS 'Card expiry year.';
+COMMENT ON COLUMN northwind.card_payments.authorization_code IS 'Issuer''s authorization code.';
+COMMENT ON COLUMN northwind.card_payments.processor_reference IS 'Processor transaction id.';
 
 -- northwind.carrier_services
 CREATE TABLE northwind.carrier_services (
@@ -1428,6 +2223,17 @@ CREATE TABLE northwind.carrier_services (
     CONSTRAINT pk_carrier_services PRIMARY KEY (id),
     CONSTRAINT fk_carrier_services_carrier_id FOREIGN KEY (carrier_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.carrier_services IS 'A service a carrier offers, such as Ground, 2-day air or LTL standard.';
+COMMENT ON COLUMN northwind.carrier_services.id IS 'Surrogate key of the carrier service.';
+COMMENT ON COLUMN northwind.carrier_services.code IS 'Carrier''s service code.';
+COMMENT ON COLUMN northwind.carrier_services.name IS 'Service name.';
+COMMENT ON COLUMN northwind.carrier_services.service_level IS 'ground, express, overnight, ltl or ftl.';
+COMMENT ON COLUMN northwind.carrier_services.transit_days IS 'Typical business days in transit.';
+COMMENT ON COLUMN northwind.carrier_services.is_active IS 'Whether it can be booked.';
+COMMENT ON COLUMN northwind.carrier_services.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.carrier_services.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.carrier_services.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.carrier_services.updated_by IS 'User name of the last editor.';
 
 -- northwind.carts
 CREATE TABLE northwind.carts (
@@ -1448,6 +2254,15 @@ CREATE TABLE northwind.carts (
     CONSTRAINT fk_carts_converted_order_id FOREIGN KEY (converted_order_id) REFERENCES northwind.sales_orders (id) ON DELETE SET NULL,
     CONSTRAINT fk_carts_user_account_id FOREIGN KEY (user_account_id) REFERENCES northwind.user_accounts (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.carts IS 'A customer portal shopping cart that becomes a sales order at checkout.';
+COMMENT ON COLUMN northwind.carts.id IS 'Surrogate key of the cart.';
+COMMENT ON COLUMN northwind.carts.cart_token IS 'Opaque token held by the browser.';
+COMMENT ON COLUMN northwind.carts.last_activity_at IS 'Last change to the cart.';
+COMMENT ON COLUMN northwind.carts.is_abandoned IS 'Flagged by the abandoned-cart job.';
+COMMENT ON COLUMN northwind.carts.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.carts.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.carts.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.carts.updated_by IS 'User name of the last editor.';
 
 -- northwind.cart_items
 CREATE TABLE northwind.cart_items (
@@ -1464,6 +2279,12 @@ CREATE TABLE northwind.cart_items (
     CONSTRAINT fk_cart_items_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_cart_items_variant_id FOREIGN KEY (variant_id) REFERENCES northwind.product_variants (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.cart_items IS 'A product in a portal cart.';
+COMMENT ON COLUMN northwind.cart_items.id IS 'Surrogate key of the cart item.';
+COMMENT ON COLUMN northwind.cart_items.quantity IS 'Quantity wanted.';
+COMMENT ON COLUMN northwind.cart_items.added_at IS 'When it was added.';
+COMMENT ON COLUMN northwind.cart_items.unit_price_snapshot_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.cart_items.unit_price_snapshot_currency IS 'The ISO 4217 currency of the amount.';
 
 -- northwind.channel_listings
 CREATE TABLE northwind.channel_listings (
@@ -1483,6 +2304,17 @@ CREATE TABLE northwind.channel_listings (
     CONSTRAINT fk_channel_listings_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE,
     CONSTRAINT fk_channel_listings_sales_channel_id FOREIGN KEY (sales_channel_id) REFERENCES northwind.sales_channels (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.channel_listings IS 'A product offered on a sales channel, with the channel''s identifier and price.';
+COMMENT ON COLUMN northwind.channel_listings.id IS 'Surrogate key of the channel listing.';
+COMMENT ON COLUMN northwind.channel_listings.external_id IS 'Channel''s identifier for the listing.';
+COMMENT ON COLUMN northwind.channel_listings.listed_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.channel_listings.listed_price_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.channel_listings.is_published IS 'Whether the listing is live.';
+COMMENT ON COLUMN northwind.channel_listings.published_at IS 'When it went live.';
+COMMENT ON COLUMN northwind.channel_listings.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.channel_listings.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.channel_listings.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.channel_listings.updated_by IS 'User name of the last editor.';
 
 -- northwind.collection_cases
 CREATE TABLE northwind.collection_cases (
@@ -1506,6 +2338,20 @@ CREATE TABLE northwind.collection_cases (
     CONSTRAINT fk_collection_cases_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
     CONSTRAINT fk_collection_cases_assigned_to_id FOREIGN KEY (assigned_to_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.collection_cases IS 'A collection effort on a customer''s overdue balance, possibly handed to an agency.';
+COMMENT ON COLUMN northwind.collection_cases.id IS 'Surrogate key of the collection case.';
+COMMENT ON COLUMN northwind.collection_cases.case_number IS 'Case number.';
+COMMENT ON COLUMN northwind.collection_cases.opened_on IS 'Date opened.';
+COMMENT ON COLUMN northwind.collection_cases.status IS 'open, promise-to-pay, agency or closed.';
+COMMENT ON COLUMN northwind.collection_cases.total_overdue_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.collection_cases.total_overdue_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.collection_cases.agency_name IS 'Collection agency, when outsourced.';
+COMMENT ON COLUMN northwind.collection_cases.closed_on IS 'Date closed.';
+COMMENT ON COLUMN northwind.collection_cases.notes IS 'Case notes.';
+COMMENT ON COLUMN northwind.collection_cases.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.collection_cases.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.collection_cases.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.collection_cases.updated_by IS 'User name of the last editor.';
 
 -- northwind.communication_preferences
 CREATE TABLE northwind.communication_preferences (
@@ -1519,6 +2365,13 @@ CREATE TABLE northwind.communication_preferences (
     CONSTRAINT pk_communication_preferences PRIMARY KEY (id),
     CONSTRAINT fk_communication_preferences_contact_id FOREIGN KEY (contact_id) REFERENCES northwind.contacts (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.communication_preferences IS 'A contact''s opt-in or opt-out for a channel and topic, kept for anti-spam compliance.';
+COMMENT ON COLUMN northwind.communication_preferences.id IS 'Surrogate key of the communication preference.';
+COMMENT ON COLUMN northwind.communication_preferences.channel IS 'Channel, such as email or sms.';
+COMMENT ON COLUMN northwind.communication_preferences.topic IS 'Topic, such as promotions or order-updates.';
+COMMENT ON COLUMN northwind.communication_preferences.opted_in IS 'Whether the contact agreed to receive it.';
+COMMENT ON COLUMN northwind.communication_preferences.changed_at IS 'When the preference was last set.';
+COMMENT ON COLUMN northwind.communication_preferences.source IS 'Where it was set, such as portal or phone.';
 
 -- northwind.contract_prices
 CREATE TABLE northwind.contract_prices (
@@ -1534,6 +2387,13 @@ CREATE TABLE northwind.contract_prices (
     CONSTRAINT fk_contract_prices_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_contract_prices_supplier_contract_id FOREIGN KEY (supplier_contract_id) REFERENCES northwind.supplier_contracts (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.contract_prices IS 'A contracted cost of a product under a supplier contract.';
+COMMENT ON COLUMN northwind.contract_prices.id IS 'Surrogate key of the contract price.';
+COMMENT ON COLUMN northwind.contract_prices.unit_cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.contract_prices.unit_cost_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.contract_prices.minimum_quantity IS 'Minimum quantity for the cost.';
+COMMENT ON COLUMN northwind.contract_prices.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.contract_prices.validity_ends_on IS 'Last day of the range; null when open-ended.';
 
 -- northwind.coupons
 CREATE TABLE northwind.coupons (
@@ -1553,6 +2413,16 @@ CREATE TABLE northwind.coupons (
     CONSTRAINT fk_coupons_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE SET NULL,
     CONSTRAINT fk_coupons_promotion_id FOREIGN KEY (promotion_id) REFERENCES northwind.promotions (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.coupons IS 'A code customers enter to redeem a promotion.';
+COMMENT ON COLUMN northwind.coupons.id IS 'Surrogate key of the coupon.';
+COMMENT ON COLUMN northwind.coupons.code IS 'Coupon code.';
+COMMENT ON COLUMN northwind.coupons.max_uses IS 'Maximum redemptions of the code.';
+COMMENT ON COLUMN northwind.coupons.used_count IS 'Redemptions so far.';
+COMMENT ON COLUMN northwind.coupons.expires_on IS 'Last day the code works.';
+COMMENT ON COLUMN northwind.coupons.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.coupons.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.coupons.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.coupons.updated_by IS 'User name of the last editor.';
 
 -- northwind.coupon_redemptions
 CREATE TABLE northwind.coupon_redemptions (
@@ -1566,6 +2436,11 @@ CREATE TABLE northwind.coupon_redemptions (
     CONSTRAINT fk_coupon_redemptions_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE,
     CONSTRAINT fk_coupon_redemptions_coupon_id FOREIGN KEY (coupon_id) REFERENCES northwind.coupons (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.coupon_redemptions IS 'One use of a coupon on a sales order.';
+COMMENT ON COLUMN northwind.coupon_redemptions.id IS 'Surrogate key of the coupon redemption.';
+COMMENT ON COLUMN northwind.coupon_redemptions.redeemed_at IS 'When the coupon was applied.';
+COMMENT ON COLUMN northwind.coupon_redemptions.discount_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.coupon_redemptions.discount_amount_currency IS 'The ISO 4217 currency of the amount.';
 
 -- northwind.invoices
 CREATE TABLE northwind.invoices (
@@ -1614,6 +2489,34 @@ CREATE TABLE northwind.invoices (
 );
 CREATE INDEX ix_invoices_open_by_due_date ON northwind.invoices (due_date) WHERE status <> 'PAID';
 CREATE INDEX ix_invoices_invoice_date ON northwind.invoices (invoice_date);
+COMMENT ON TABLE northwind.invoices IS 'The due date cannot precede the invoice date; open invoices are listed by due date.';
+COMMENT ON COLUMN northwind.invoices.id IS 'Surrogate key of the invoice.';
+COMMENT ON COLUMN northwind.invoices.invoice_number IS 'Invoice number.';
+COMMENT ON COLUMN northwind.invoices.invoice_date IS 'Invoice date.';
+COMMENT ON COLUMN northwind.invoices.due_date IS 'Payment due date.';
+COMMENT ON COLUMN northwind.invoices.status IS 'Lifecycle state.';
+COMMENT ON COLUMN northwind.invoices.billing_address_line1 IS 'Street and number, or PO box.';
+COMMENT ON COLUMN northwind.invoices.billing_address_line2 IS 'Suite, floor or building.';
+COMMENT ON COLUMN northwind.invoices.billing_address_city IS 'City or locality.';
+COMMENT ON COLUMN northwind.invoices.billing_address_region IS 'State, province or county.';
+COMMENT ON COLUMN northwind.invoices.billing_address_postal_code IS 'Postal or ZIP code.';
+COMMENT ON COLUMN northwind.invoices.billing_address_country_code IS 'ISO country code.';
+COMMENT ON COLUMN northwind.invoices.subtotal_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.invoices.subtotal_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.invoices.tax_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.invoices.tax_total_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.invoices.grand_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.invoices.grand_total_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.invoices.amount_paid_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.invoices.amount_paid_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.invoices.balance_due_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.invoices.balance_due_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.invoices.sent_at IS 'When it was delivered to the customer.';
+COMMENT ON COLUMN northwind.invoices.notes IS 'Remarks printed on the invoice.';
+COMMENT ON COLUMN northwind.invoices.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.invoices.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.invoices.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.invoices.updated_by IS 'User name of the last editor.';
 
 -- northwind.return_authorizations
 CREATE TABLE northwind.return_authorizations (
@@ -1642,6 +2545,19 @@ CREATE TABLE northwind.return_authorizations (
     CONSTRAINT fk_return_authorizations_receiving_warehouse_id FOREIGN KEY (receiving_warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE SET NULL,
     CONSTRAINT fk_return_authorizations_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.return_authorizations IS 'A return merchandise authorization (RMA) permitting a customer to send goods back.';
+COMMENT ON COLUMN northwind.return_authorizations.id IS 'Surrogate key of the return authorization.';
+COMMENT ON COLUMN northwind.return_authorizations.rma_number IS 'RMA number the customer writes on the parcel.';
+COMMENT ON COLUMN northwind.return_authorizations.requested_on IS 'Request date.';
+COMMENT ON COLUMN northwind.return_authorizations.status IS 'Lifecycle state.';
+COMMENT ON COLUMN northwind.return_authorizations.approved_on IS 'Approval date.';
+COMMENT ON COLUMN northwind.return_authorizations.return_method IS 'carrier-pickup or drop-off.';
+COMMENT ON COLUMN northwind.return_authorizations.restocking_fee_percent IS 'Restocking fee charged.';
+COMMENT ON COLUMN northwind.return_authorizations.customer_comments IS 'What the customer said.';
+COMMENT ON COLUMN northwind.return_authorizations.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.return_authorizations.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.return_authorizations.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.return_authorizations.updated_by IS 'User name of the last editor.';
 
 -- northwind.credit_notes
 CREATE TABLE northwind.credit_notes (
@@ -1665,6 +2581,18 @@ CREATE TABLE northwind.credit_notes (
     CONSTRAINT fk_credit_notes_return_authorization_id FOREIGN KEY (return_authorization_id) REFERENCES northwind.return_authorizations (id) ON DELETE SET NULL,
     CONSTRAINT fk_credit_notes_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.credit_notes IS 'A document reducing what a customer owes, after a return, a price correction or a goodwill gesture.';
+COMMENT ON COLUMN northwind.credit_notes.id IS 'Surrogate key of the credit note.';
+COMMENT ON COLUMN northwind.credit_notes.credit_note_number IS 'Credit note number.';
+COMMENT ON COLUMN northwind.credit_notes.issued_on IS 'Issue date.';
+COMMENT ON COLUMN northwind.credit_notes.reason IS 'Why the credit was given.';
+COMMENT ON COLUMN northwind.credit_notes.total_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.credit_notes.total_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.credit_notes.status IS 'open, applied or refunded.';
+COMMENT ON COLUMN northwind.credit_notes.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.credit_notes.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.credit_notes.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.credit_notes.updated_by IS 'User name of the last editor.';
 
 -- northwind.drivers
 CREATE TABLE northwind.drivers (
@@ -1684,6 +2612,17 @@ CREATE TABLE northwind.drivers (
     CONSTRAINT uq_drivers_employee_id UNIQUE (employee_id),
     CONSTRAINT fk_drivers_employee_id FOREIGN KEY (employee_id) REFERENCES northwind.employees (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.drivers IS 'An employee licensed to drive the own fleet.';
+COMMENT ON COLUMN northwind.drivers.id IS 'Surrogate key of the driver.';
+COMMENT ON COLUMN northwind.drivers.license_number IS 'Driving license number.';
+COMMENT ON COLUMN northwind.drivers.license_class IS 'License class, such as CDL-B.';
+COMMENT ON COLUMN northwind.drivers.license_expires_on IS 'License expiry.';
+COMMENT ON COLUMN northwind.drivers.mobile_phone_number IS 'Number in E.164 form, such as +14155550100.';
+COMMENT ON COLUMN northwind.drivers.mobile_phone_extension IS 'Internal extension.';
+COMMENT ON COLUMN northwind.drivers.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.drivers.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.drivers.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.drivers.updated_by IS 'User name of the last editor.';
 
 -- northwind.vehicles
 CREATE TABLE northwind.vehicles (
@@ -1704,6 +2643,19 @@ CREATE TABLE northwind.vehicles (
     CONSTRAINT uq_vehicles_registration_number UNIQUE (registration_number),
     CONSTRAINT fk_vehicles_home_warehouse_id FOREIGN KEY (home_warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.vehicles IS 'A truck or van of the own delivery fleet.';
+COMMENT ON COLUMN northwind.vehicles.id IS 'Surrogate key of the vehicle.';
+COMMENT ON COLUMN northwind.vehicles.registration_number IS 'License plate.';
+COMMENT ON COLUMN northwind.vehicles.vehicle_type IS 'box-truck, van or tractor.';
+COMMENT ON COLUMN northwind.vehicles.capacity_weight_value IS 'The weight.';
+COMMENT ON COLUMN northwind.vehicles.capacity_weight_unit IS 'Unit of the weight.';
+COMMENT ON COLUMN northwind.vehicles.capacity_volume_m3 IS 'Cargo volume.';
+COMMENT ON COLUMN northwind.vehicles.is_refrigerated IS 'Whether it can carry chilled goods.';
+COMMENT ON COLUMN northwind.vehicles.is_active IS 'Whether it is in service.';
+COMMENT ON COLUMN northwind.vehicles.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.vehicles.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.vehicles.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.vehicles.updated_by IS 'User name of the last editor.';
 
 -- northwind.delivery_routes
 CREATE TABLE northwind.delivery_routes (
@@ -1725,6 +2677,16 @@ CREATE TABLE northwind.delivery_routes (
     CONSTRAINT fk_delivery_routes_vehicle_id FOREIGN KEY (vehicle_id) REFERENCES northwind.vehicles (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_delivery_routes_route_date ON northwind.delivery_routes (route_date);
+COMMENT ON TABLE northwind.delivery_routes IS 'A day''s delivery run of an own-fleet truck, visiting stops in order.';
+COMMENT ON COLUMN northwind.delivery_routes.id IS 'Surrogate key of the delivery route.';
+COMMENT ON COLUMN northwind.delivery_routes.route_code IS 'Route code, such as DEN-NORTH-2.';
+COMMENT ON COLUMN northwind.delivery_routes.route_date IS 'Delivery date.';
+COMMENT ON COLUMN northwind.delivery_routes.status IS 'planned, loading, on-road or complete.';
+COMMENT ON COLUMN northwind.delivery_routes.planned_distance_km IS 'Planned distance.';
+COMMENT ON COLUMN northwind.delivery_routes.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.delivery_routes.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.delivery_routes.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.delivery_routes.updated_by IS 'User name of the last editor.';
 
 -- northwind.shipments
 CREATE TABLE northwind.shipments (
@@ -1766,6 +2728,31 @@ CREATE TABLE northwind.shipments (
     CONSTRAINT fk_shipments_delivery_route_id FOREIGN KEY (delivery_route_id) REFERENCES northwind.delivery_routes (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_shipments_tracking_number ON northwind.shipments (tracking_number);
+COMMENT ON TABLE northwind.shipments IS 'Goods leaving a warehouse for one destination, on a carrier or an own-fleet route.';
+COMMENT ON COLUMN northwind.shipments.id IS 'Surrogate key of the shipment.';
+COMMENT ON COLUMN northwind.shipments.shipment_number IS 'Shipment number printed on the packing slip.';
+COMMENT ON COLUMN northwind.shipments.status IS 'Lifecycle state.';
+COMMENT ON COLUMN northwind.shipments.ship_to_line1 IS 'Street and number, or PO box.';
+COMMENT ON COLUMN northwind.shipments.ship_to_line2 IS 'Suite, floor or building.';
+COMMENT ON COLUMN northwind.shipments.ship_to_city IS 'City or locality.';
+COMMENT ON COLUMN northwind.shipments.ship_to_region IS 'State, province or county.';
+COMMENT ON COLUMN northwind.shipments.ship_to_postal_code IS 'Postal or ZIP code.';
+COMMENT ON COLUMN northwind.shipments.ship_to_country_code IS 'ISO country code.';
+COMMENT ON COLUMN northwind.shipments.freight_terms IS 'Incoterm of the shipment.';
+COMMENT ON COLUMN northwind.shipments.tracking_number IS 'Master tracking or PRO number.';
+COMMENT ON COLUMN northwind.shipments.estimated_delivery_on IS 'Carrier''s estimate.';
+COMMENT ON COLUMN northwind.shipments.shipped_at IS 'When it left the dock.';
+COMMENT ON COLUMN northwind.shipments.delivered_at IS 'When it was delivered.';
+COMMENT ON COLUMN northwind.shipments.freight_cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.shipments.freight_cost_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.shipments.declared_value_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.shipments.declared_value_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.shipments.total_weight_value IS 'The weight.';
+COMMENT ON COLUMN northwind.shipments.total_weight_unit IS 'Unit of the weight.';
+COMMENT ON COLUMN northwind.shipments.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.shipments.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.shipments.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.shipments.updated_by IS 'User name of the last editor.';
 
 -- northwind.stock_lots
 CREATE TABLE northwind.stock_lots (
@@ -1786,6 +2773,16 @@ CREATE TABLE northwind.stock_lots (
 );
 CREATE INDEX ix_stock_lots_lot_number ON northwind.stock_lots (lot_number);
 CREATE INDEX ix_stock_lots_expires_on ON northwind.stock_lots (expires_on);
+COMMENT ON TABLE northwind.stock_lots IS 'A production lot or batch of a lot-controlled product, with its expiry date.';
+COMMENT ON COLUMN northwind.stock_lots.id IS 'Surrogate key of the stock lot.';
+COMMENT ON COLUMN northwind.stock_lots.lot_number IS 'Lot number.';
+COMMENT ON COLUMN northwind.stock_lots.supplier_lot_number IS 'Lot number on the supplier''s label.';
+COMMENT ON COLUMN northwind.stock_lots.manufactured_on IS 'Production date.';
+COMMENT ON COLUMN northwind.stock_lots.expires_on IS 'Expiry date, for first-expired-first-out picking.';
+COMMENT ON COLUMN northwind.stock_lots.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.stock_lots.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.stock_lots.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.stock_lots.updated_by IS 'User name of the last editor.';
 
 -- northwind.shipment_lines
 CREATE TABLE northwind.shipment_lines (
@@ -1801,6 +2798,9 @@ CREATE TABLE northwind.shipment_lines (
     CONSTRAINT fk_shipment_lines_lot_id FOREIGN KEY (lot_id) REFERENCES northwind.stock_lots (id) ON DELETE SET NULL,
     CONSTRAINT fk_shipment_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.shipment_lines IS 'The quantity of an order line included in a shipment.';
+COMMENT ON COLUMN northwind.shipment_lines.id IS 'Surrogate key of the shipment line.';
+COMMENT ON COLUMN northwind.shipment_lines.quantity IS 'Quantity shipped.';
 
 -- northwind.invoice_lines
 CREATE TABLE northwind.invoice_lines (
@@ -1826,6 +2826,17 @@ CREATE TABLE northwind.invoice_lines (
     CONSTRAINT fk_invoice_lines_shipment_line_id FOREIGN KEY (shipment_line_id) REFERENCES northwind.shipment_lines (id) ON DELETE SET NULL,
     CONSTRAINT fk_invoice_lines_revenue_account_id FOREIGN KEY (revenue_account_id) REFERENCES northwind.ledger_accounts (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.invoice_lines IS 'A line of an invoice - a shipped product or a charge.';
+COMMENT ON COLUMN northwind.invoice_lines.id IS 'Surrogate key of the invoice line.';
+COMMENT ON COLUMN northwind.invoice_lines.line_number IS 'Line number.';
+COMMENT ON COLUMN northwind.invoice_lines.description IS 'Line text.';
+COMMENT ON COLUMN northwind.invoice_lines.quantity IS 'Quantity invoiced.';
+COMMENT ON COLUMN northwind.invoice_lines.unit_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.invoice_lines.unit_price_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.invoice_lines.discount IS 'Discount.';
+COMMENT ON COLUMN northwind.invoice_lines.tax_rate IS 'Tax rate.';
+COMMENT ON COLUMN northwind.invoice_lines.line_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.invoice_lines.line_total_currency IS 'The ISO 4217 currency of the amount.';
 
 -- northwind.credit_note_lines
 CREATE TABLE northwind.credit_note_lines (
@@ -1844,6 +2855,14 @@ CREATE TABLE northwind.credit_note_lines (
     CONSTRAINT fk_credit_note_lines_invoice_line_id FOREIGN KEY (invoice_line_id) REFERENCES northwind.invoice_lines (id) ON DELETE SET NULL,
     CONSTRAINT fk_credit_note_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.credit_note_lines IS 'A credited item of a credit note.';
+COMMENT ON COLUMN northwind.credit_note_lines.id IS 'Surrogate key of the credit note line.';
+COMMENT ON COLUMN northwind.credit_note_lines.description IS 'Line text.';
+COMMENT ON COLUMN northwind.credit_note_lines.quantity IS 'Quantity credited.';
+COMMENT ON COLUMN northwind.credit_note_lines.unit_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.credit_note_lines.unit_price_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.credit_note_lines.line_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.credit_note_lines.line_total_currency IS 'The ISO 4217 currency of the amount.';
 
 -- northwind.credit_profiles
 CREATE TABLE northwind.credit_profiles (
@@ -1863,6 +2882,18 @@ CREATE TABLE northwind.credit_profiles (
     CONSTRAINT uq_credit_profiles_customer_id UNIQUE (customer_id),
     CONSTRAINT fk_credit_profiles_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.credit_profiles IS 'The credit standing of a customer, reviewed by the credit department before limits change.';
+COMMENT ON COLUMN northwind.credit_profiles.id IS 'Surrogate key of the credit profile.';
+COMMENT ON COLUMN northwind.credit_profiles.credit_limit_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.credit_profiles.credit_limit_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.credit_profiles.risk_rating IS 'Internal rating from A1 (best) to D (worst).';
+COMMENT ON COLUMN northwind.credit_profiles.external_score IS 'Score from the credit bureau.';
+COMMENT ON COLUMN northwind.credit_profiles.last_reviewed_on IS 'Date of the last credit review.';
+COMMENT ON COLUMN northwind.credit_profiles.review_notes IS 'Reviewer''s notes.';
+COMMENT ON COLUMN northwind.credit_profiles.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.credit_profiles.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.credit_profiles.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.credit_profiles.updated_by IS 'User name of the last editor.';
 
 -- northwind.service_cases
 CREATE TABLE northwind.service_cases (
@@ -1893,6 +2924,20 @@ CREATE TABLE northwind.service_cases (
     CONSTRAINT fk_service_cases_contact_id FOREIGN KEY (contact_id) REFERENCES northwind.contacts (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_service_cases_sla_due_at ON northwind.service_cases (sla_due_at);
+COMMENT ON TABLE northwind.service_cases IS 'A customer service request, such as a missing delivery, a billing question or a product problem.';
+COMMENT ON COLUMN northwind.service_cases.id IS 'Surrogate key of the service case.';
+COMMENT ON COLUMN northwind.service_cases.case_number IS 'Case number.';
+COMMENT ON COLUMN northwind.service_cases.subject IS 'One-line summary.';
+COMMENT ON COLUMN northwind.service_cases.description IS 'Customer''s description.';
+COMMENT ON COLUMN northwind.service_cases.priority IS 'Urgency.';
+COMMENT ON COLUMN northwind.service_cases.status IS 'Lifecycle state.';
+COMMENT ON COLUMN northwind.service_cases.opened_at IS 'When the case was opened.';
+COMMENT ON COLUMN northwind.service_cases.sla_due_at IS 'When the first answer is due.';
+COMMENT ON COLUMN northwind.service_cases.resolved_at IS 'When it was resolved.';
+COMMENT ON COLUMN northwind.service_cases.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.service_cases.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.service_cases.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.service_cases.updated_by IS 'User name of the last editor.';
 
 -- northwind.customer_feedback
 CREATE TABLE northwind.customer_feedback (
@@ -1912,6 +2957,13 @@ CREATE TABLE northwind.customer_feedback (
     CONSTRAINT fk_customer_feedback_contact_id FOREIGN KEY (contact_id) REFERENCES northwind.contacts (id) ON DELETE SET NULL,
     CONSTRAINT fk_customer_feedback_service_case_id FOREIGN KEY (service_case_id) REFERENCES northwind.service_cases (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.customer_feedback IS 'A rating and comment from a customer after a delivery or a service case.';
+COMMENT ON COLUMN northwind.customer_feedback.id IS 'Surrogate key of the customer feedback.';
+COMMENT ON COLUMN northwind.customer_feedback.submitted_at IS 'When it was submitted.';
+COMMENT ON COLUMN northwind.customer_feedback.rating IS 'Rating from 1 to 5.';
+COMMENT ON COLUMN northwind.customer_feedback.channel IS 'survey, portal or phone.';
+COMMENT ON COLUMN northwind.customer_feedback.comments IS 'Free text.';
+COMMENT ON COLUMN northwind.customer_feedback.follow_up_required IS 'Whether someone should call back.';
 
 -- northwind.customer_statements
 CREATE TABLE northwind.customer_statements (
@@ -1929,6 +2981,15 @@ CREATE TABLE northwind.customer_statements (
     CONSTRAINT fk_customer_statements_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
     CONSTRAINT fk_customer_statements_billing_account_id FOREIGN KEY (billing_account_id) REFERENCES northwind.billing_accounts (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.customer_statements IS 'A periodic statement of a customer''s open items and balance.';
+COMMENT ON COLUMN northwind.customer_statements.id IS 'Surrogate key of the customer statement.';
+COMMENT ON COLUMN northwind.customer_statements.statement_date IS 'Statement date.';
+COMMENT ON COLUMN northwind.customer_statements.opening_balance_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.customer_statements.opening_balance_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.customer_statements.closing_balance_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.customer_statements.closing_balance_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.customer_statements.sent_at IS 'When it was sent.';
+COMMENT ON COLUMN northwind.customer_statements.document_url IS 'Rendered PDF.';
 
 -- northwind.cycle_counts
 CREATE TABLE northwind.cycle_counts (
@@ -1950,6 +3011,16 @@ CREATE TABLE northwind.cycle_counts (
     CONSTRAINT fk_cycle_counts_assigned_to_id FOREIGN KEY (assigned_to_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_cycle_counts_zone_id FOREIGN KEY (zone_id) REFERENCES northwind.warehouse_zones (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.cycle_counts IS 'A scheduled count of part of a warehouse to verify stock accuracy.';
+COMMENT ON COLUMN northwind.cycle_counts.id IS 'Surrogate key of the cycle count.';
+COMMENT ON COLUMN northwind.cycle_counts.count_number IS 'Count number.';
+COMMENT ON COLUMN northwind.cycle_counts.scheduled_on IS 'Planned date.';
+COMMENT ON COLUMN northwind.cycle_counts.status IS 'planned, counting, review or closed.';
+COMMENT ON COLUMN northwind.cycle_counts.completed_at IS 'When counting finished.';
+COMMENT ON COLUMN northwind.cycle_counts.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.cycle_counts.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.cycle_counts.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.cycle_counts.updated_by IS 'User name of the last editor.';
 
 -- northwind.cycle_count_lines
 CREATE TABLE northwind.cycle_count_lines (
@@ -1968,6 +3039,12 @@ CREATE TABLE northwind.cycle_count_lines (
     CONSTRAINT fk_cycle_count_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_cycle_count_lines_bin_id FOREIGN KEY (bin_id) REFERENCES northwind.bin_locations (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.cycle_count_lines IS 'One product in one bin to count, with the expected and counted quantities.';
+COMMENT ON COLUMN northwind.cycle_count_lines.id IS 'Surrogate key of the cycle count line.';
+COMMENT ON COLUMN northwind.cycle_count_lines.expected_quantity IS 'Quantity on record.';
+COMMENT ON COLUMN northwind.cycle_count_lines.counted_quantity IS 'Quantity found.';
+COMMENT ON COLUMN northwind.cycle_count_lines.counted_at IS 'When it was counted.';
+COMMENT ON COLUMN northwind.cycle_count_lines.variance_approved IS 'Whether a variance was approved.';
 
 -- northwind.discount_rules
 CREATE TABLE northwind.discount_rules (
@@ -1989,6 +3066,19 @@ CREATE TABLE northwind.discount_rules (
     CONSTRAINT fk_discount_rules_product_category_id FOREIGN KEY (product_category_id) REFERENCES northwind.product_categories (id) ON DELETE SET NULL,
     CONSTRAINT fk_discount_rules_customer_group_id FOREIGN KEY (customer_group_id) REFERENCES northwind.customer_groups (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.discount_rules IS 'An automatic discount, such as 3 percent off janitorial supplies for buying group A.';
+COMMENT ON COLUMN northwind.discount_rules.id IS 'Surrogate key of the discount rule.';
+COMMENT ON COLUMN northwind.discount_rules.name IS 'Rule name.';
+COMMENT ON COLUMN northwind.discount_rules.discount_type IS 'How the discount is computed.';
+COMMENT ON COLUMN northwind.discount_rules.value IS 'Percentage or amount, depending on the type.';
+COMMENT ON COLUMN northwind.discount_rules.priority IS 'Evaluation order; lower runs first.';
+COMMENT ON COLUMN northwind.discount_rules.is_stackable IS 'Whether it combines with other discounts.';
+COMMENT ON COLUMN northwind.discount_rules.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.discount_rules.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.discount_rules.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.discount_rules.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.discount_rules.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.discount_rules.updated_by IS 'User name of the last editor.';
 
 -- northwind.disputes
 CREATE TABLE northwind.disputes (
@@ -2012,6 +3102,20 @@ CREATE TABLE northwind.disputes (
     CONSTRAINT fk_disputes_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE SET NULL,
     CONSTRAINT fk_disputes_card_payment_id FOREIGN KEY (card_payment_id) REFERENCES northwind.card_payments (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.disputes IS 'A chargeback or dispute raised by a cardholder''s bank against a card payment.';
+COMMENT ON COLUMN northwind.disputes.id IS 'Surrogate key of the dispute.';
+COMMENT ON COLUMN northwind.disputes.dispute_number IS 'Dispute number from the processor.';
+COMMENT ON COLUMN northwind.disputes.opened_on IS 'Date opened.';
+COMMENT ON COLUMN northwind.disputes.reason_code IS 'Network reason code.';
+COMMENT ON COLUMN northwind.disputes.amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.disputes.amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.disputes.status IS 'open, evidence-submitted, won or lost.';
+COMMENT ON COLUMN northwind.disputes.resolved_on IS 'Date resolved.';
+COMMENT ON COLUMN northwind.disputes.resolution IS 'Outcome notes.';
+COMMENT ON COLUMN northwind.disputes.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.disputes.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.disputes.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.disputes.updated_by IS 'User name of the last editor.';
 
 -- northwind.dock_doors
 CREATE TABLE northwind.dock_doors (
@@ -2024,6 +3128,12 @@ CREATE TABLE northwind.dock_doors (
     CONSTRAINT pk_dock_doors PRIMARY KEY (id),
     CONSTRAINT fk_dock_doors_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.dock_doors IS 'A loading dock door of a warehouse, scheduled for inbound and outbound trailers.';
+COMMENT ON COLUMN northwind.dock_doors.id IS 'Surrogate key of the dock door.';
+COMMENT ON COLUMN northwind.dock_doors.door_number IS 'Door number.';
+COMMENT ON COLUMN northwind.dock_doors.door_type IS 'inbound, outbound or both.';
+COMMENT ON COLUMN northwind.dock_doors.has_leveler IS 'Whether it has a dock leveler.';
+COMMENT ON COLUMN northwind.dock_doors.is_active IS 'Whether it can be scheduled.';
 
 -- northwind.dunning_notices
 CREATE TABLE northwind.dunning_notices (
@@ -2041,6 +3151,15 @@ CREATE TABLE northwind.dunning_notices (
     CONSTRAINT fk_dunning_notices_collection_case_id FOREIGN KEY (collection_case_id) REFERENCES northwind.collection_cases (id) ON DELETE SET NULL,
     CONSTRAINT fk_dunning_notices_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.dunning_notices IS 'A payment reminder for an overdue invoice, escalating by level.';
+COMMENT ON COLUMN northwind.dunning_notices.id IS 'Surrogate key of the dunning notice.';
+COMMENT ON COLUMN northwind.dunning_notices.level IS 'Escalation level.';
+COMMENT ON COLUMN northwind.dunning_notices.issued_on IS 'Date sent.';
+COMMENT ON COLUMN northwind.dunning_notices.amount_overdue_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.dunning_notices.amount_overdue_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.dunning_notices.fee_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.dunning_notices.fee_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.dunning_notices.sent_via IS 'email or mail.';
 
 -- northwind.exchange_rates
 CREATE TABLE northwind.exchange_rates (
@@ -2056,6 +3175,12 @@ CREATE TABLE northwind.exchange_rates (
     CONSTRAINT fk_exchange_rates_to_currency_code FOREIGN KEY (to_currency_code) REFERENCES northwind.currencies (code) ON DELETE RESTRICT
 );
 CREATE INDEX ix_exchange_rates_effective_on ON northwind.exchange_rates (effective_on);
+COMMENT ON TABLE northwind.exchange_rates IS 'A currency conversion rate on a date, loaded daily from the central bank feed.';
+COMMENT ON COLUMN northwind.exchange_rates.id IS 'Surrogate key of the exchange rate.';
+COMMENT ON COLUMN northwind.exchange_rates.rate IS 'Units of the target currency per unit of the source currency.';
+COMMENT ON COLUMN northwind.exchange_rates.effective_on IS 'Date the rate applies.';
+COMMENT ON COLUMN northwind.exchange_rates.rate_type IS 'spot, average or budget.';
+COMMENT ON COLUMN northwind.exchange_rates.source IS 'Feed the rate came from.';
 
 -- northwind.freight_claims
 CREATE TABLE northwind.freight_claims (
@@ -2080,6 +3205,21 @@ CREATE TABLE northwind.freight_claims (
     CONSTRAINT fk_freight_claims_carrier_id FOREIGN KEY (carrier_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
     CONSTRAINT fk_freight_claims_shipment_id FOREIGN KEY (shipment_id) REFERENCES northwind.shipments (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.freight_claims IS 'A claim against a carrier for lost, damaged or delayed freight.';
+COMMENT ON COLUMN northwind.freight_claims.id IS 'Surrogate key of the freight claim.';
+COMMENT ON COLUMN northwind.freight_claims.claim_number IS 'Claim number.';
+COMMENT ON COLUMN northwind.freight_claims.filed_on IS 'Filing date.';
+COMMENT ON COLUMN northwind.freight_claims.claim_type IS 'loss, damage or delay.';
+COMMENT ON COLUMN northwind.freight_claims.claimed_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.freight_claims.claimed_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.freight_claims.settled_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.freight_claims.settled_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.freight_claims.status IS 'filed, under-review, settled or denied.';
+COMMENT ON COLUMN northwind.freight_claims.notes IS 'Claim narrative.';
+COMMENT ON COLUMN northwind.freight_claims.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.freight_claims.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.freight_claims.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.freight_claims.updated_by IS 'User name of the last editor.';
 
 -- northwind.shipping_zones
 CREATE TABLE northwind.shipping_zones (
@@ -2094,6 +3234,11 @@ CREATE TABLE northwind.shipping_zones (
     CONSTRAINT fk_shipping_zones_country_code FOREIGN KEY (country_code) REFERENCES northwind.countries (code) ON DELETE SET NULL,
     CONSTRAINT fk_shipping_zones_origin_warehouse_id FOREIGN KEY (origin_warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.shipping_zones IS 'A destination zone used to rate freight, such as zone 5 from Denver.';
+COMMENT ON COLUMN northwind.shipping_zones.id IS 'Surrogate key of the shipping zone.';
+COMMENT ON COLUMN northwind.shipping_zones.code IS 'Zone code.';
+COMMENT ON COLUMN northwind.shipping_zones.name IS 'Zone name.';
+COMMENT ON COLUMN northwind.shipping_zones.description IS 'Postal code ranges in the zone.';
 
 -- northwind.freight_rates
 CREATE TABLE northwind.freight_rates (
@@ -2114,6 +3259,18 @@ CREATE TABLE northwind.freight_rates (
     CONSTRAINT fk_freight_rates_carrier_service_id FOREIGN KEY (carrier_service_id) REFERENCES northwind.carrier_services (id) ON DELETE CASCADE,
     CONSTRAINT fk_freight_rates_shipping_zone_id FOREIGN KEY (shipping_zone_id) REFERENCES northwind.shipping_zones (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.freight_rates IS 'A contracted rate of a carrier service for a zone and weight band.';
+COMMENT ON COLUMN northwind.freight_rates.id IS 'Surrogate key of the freight rate.';
+COMMENT ON COLUMN northwind.freight_rates.weight_from_kg IS 'Lower bound of the weight band.';
+COMMENT ON COLUMN northwind.freight_rates.weight_to_kg IS 'Upper bound; null for no limit.';
+COMMENT ON COLUMN northwind.freight_rates.rate_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.freight_rates.rate_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.freight_rates.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.freight_rates.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.freight_rates.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.freight_rates.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.freight_rates.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.freight_rates.updated_by IS 'User name of the last editor.';
 
 -- northwind.goods_receipts
 CREATE TABLE northwind.goods_receipts (
@@ -2139,6 +3296,16 @@ CREATE TABLE northwind.goods_receipts (
     CONSTRAINT fk_goods_receipts_received_by_id FOREIGN KEY (received_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_goods_receipts_dock_door_id FOREIGN KEY (dock_door_id) REFERENCES northwind.dock_doors (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.goods_receipts IS 'The receipt of goods at a warehouse dock, against a purchase order or an advance ship notice.';
+COMMENT ON COLUMN northwind.goods_receipts.id IS 'Surrogate key of the goods receipt.';
+COMMENT ON COLUMN northwind.goods_receipts.receipt_number IS 'Receipt number.';
+COMMENT ON COLUMN northwind.goods_receipts.received_at IS 'When the goods were received.';
+COMMENT ON COLUMN northwind.goods_receipts.delivery_note IS 'Supplier''s delivery note number.';
+COMMENT ON COLUMN northwind.goods_receipts.notes IS 'Damage or discrepancies noted.';
+COMMENT ON COLUMN northwind.goods_receipts.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.goods_receipts.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.goods_receipts.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.goods_receipts.updated_by IS 'User name of the last editor.';
 
 -- northwind.goods_receipt_lines
 CREATE TABLE northwind.goods_receipt_lines (
@@ -2158,6 +3325,11 @@ CREATE TABLE northwind.goods_receipt_lines (
     CONSTRAINT fk_goods_receipt_lines_bin_id FOREIGN KEY (bin_id) REFERENCES northwind.bin_locations (id) ON DELETE SET NULL,
     CONSTRAINT fk_goods_receipt_lines_purchase_order_line_id FOREIGN KEY (purchase_order_line_id) REFERENCES northwind.purchase_order_lines (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.goods_receipt_lines IS 'A product and quantity received, with rejects.';
+COMMENT ON COLUMN northwind.goods_receipt_lines.id IS 'Surrogate key of the goods receipt line.';
+COMMENT ON COLUMN northwind.goods_receipt_lines.quantity_received IS 'Quantity accepted.';
+COMMENT ON COLUMN northwind.goods_receipt_lines.quantity_rejected IS 'Quantity refused.';
+COMMENT ON COLUMN northwind.goods_receipt_lines.rejection_reason IS 'Why goods were refused.';
 
 -- northwind.hold_reasons
 CREATE TABLE northwind.hold_reasons (
@@ -2170,6 +3342,13 @@ CREATE TABLE northwind.hold_reasons (
     CONSTRAINT pk_hold_reasons PRIMARY KEY (id),
     CONSTRAINT uq_hold_reasons_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.hold_reasons IS 'A reason for holding an order, such as Credit limit exceeded or Price below cost.';
+COMMENT ON COLUMN northwind.hold_reasons.id IS 'Surrogate key of the hold reason.';
+COMMENT ON COLUMN northwind.hold_reasons.requires_credit_approval IS 'Whether only the credit department can release it.';
+COMMENT ON COLUMN northwind.hold_reasons.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.hold_reasons.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.hold_reasons.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.hold_reasons.is_active IS 'Whether the value can be chosen for new records.';
 
 -- northwind.integration_outbox
 CREATE TABLE northwind.integration_outbox (
@@ -2210,6 +3389,13 @@ CREATE TABLE northwind.inventory_cost_layers (
     CONSTRAINT fk_inventory_cost_layers_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT,
     CONSTRAINT fk_inventory_cost_layers_goods_receipt_line_id FOREIGN KEY (goods_receipt_line_id) REFERENCES northwind.goods_receipt_lines (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.inventory_cost_layers IS 'A FIFO cost layer created by a receipt and consumed by issues, for inventory valuation.';
+COMMENT ON COLUMN northwind.inventory_cost_layers.id IS 'Surrogate key of the inventory cost layer.';
+COMMENT ON COLUMN northwind.inventory_cost_layers.received_on IS 'Date the layer was created.';
+COMMENT ON COLUMN northwind.inventory_cost_layers.quantity IS 'Quantity received.';
+COMMENT ON COLUMN northwind.inventory_cost_layers.remaining_quantity IS 'Quantity not yet consumed.';
+COMMENT ON COLUMN northwind.inventory_cost_layers.unit_cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.inventory_cost_layers.unit_cost_currency IS 'The ISO 4217 currency of the amount.';
 
 -- northwind.inventory_holds
 CREATE TABLE northwind.inventory_holds (
@@ -2232,6 +3418,16 @@ CREATE TABLE northwind.inventory_holds (
     CONSTRAINT fk_inventory_holds_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT,
     CONSTRAINT fk_inventory_holds_placed_by_id FOREIGN KEY (placed_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.inventory_holds IS 'A hold that blocks stock from being picked, such as a recall or a failed inspection.';
+COMMENT ON COLUMN northwind.inventory_holds.id IS 'Surrogate key of the inventory hold.';
+COMMENT ON COLUMN northwind.inventory_holds.reason IS 'Why the stock is held.';
+COMMENT ON COLUMN northwind.inventory_holds.placed_at IS 'When the hold was placed.';
+COMMENT ON COLUMN northwind.inventory_holds.released_at IS 'When it was released.';
+COMMENT ON COLUMN northwind.inventory_holds.quantity IS 'Quantity held; null for everything in scope.';
+COMMENT ON COLUMN northwind.inventory_holds.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.inventory_holds.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.inventory_holds.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.inventory_holds.updated_by IS 'User name of the last editor.';
 
 -- northwind.inventory_items
 CREATE TABLE northwind.inventory_items (
@@ -2254,6 +3450,17 @@ CREATE TABLE northwind.inventory_items (
     CONSTRAINT fk_inventory_items_default_bin_id FOREIGN KEY (default_bin_id) REFERENCES northwind.bin_locations (id) ON DELETE SET NULL,
     CONSTRAINT ck_inventory_items_allocation CHECK (quantity_allocated <= quantity_on_hand + quantity_on_order)
 );
+COMMENT ON TABLE northwind.inventory_items IS 'Allocation can never exceed what is on hand plus what is inbound.';
+COMMENT ON COLUMN northwind.inventory_items.id IS 'Surrogate key of the inventory item.';
+COMMENT ON COLUMN northwind.inventory_items.quantity_on_hand IS 'Physical quantity in the warehouse.';
+COMMENT ON COLUMN northwind.inventory_items.quantity_allocated IS 'Quantity reserved for open orders.';
+COMMENT ON COLUMN northwind.inventory_items.quantity_on_order IS 'Quantity on open purchase orders.';
+COMMENT ON COLUMN northwind.inventory_items.reorder_point IS 'Quantity that triggers replenishment.';
+COMMENT ON COLUMN northwind.inventory_items.last_counted_on IS 'Date of the last cycle count.';
+COMMENT ON COLUMN northwind.inventory_items.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.inventory_items.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.inventory_items.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.inventory_items.updated_by IS 'User name of the last editor.';
 
 -- northwind.journal_lines
 CREATE TABLE northwind.journal_lines (
@@ -2271,6 +3478,13 @@ CREATE TABLE northwind.journal_lines (
     CONSTRAINT fk_journal_lines_cost_center_id FOREIGN KEY (cost_center_id) REFERENCES northwind.cost_centers (id) ON DELETE SET NULL,
     CONSTRAINT fk_journal_lines_ledger_account_id FOREIGN KEY (ledger_account_id) REFERENCES northwind.ledger_accounts (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.journal_lines IS 'A debit or credit to one ledger account within a journal entry.';
+COMMENT ON COLUMN northwind.journal_lines.id IS 'Surrogate key of the journal line.';
+COMMENT ON COLUMN northwind.journal_lines.debit_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.journal_lines.debit_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.journal_lines.credit_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.journal_lines.credit_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.journal_lines.memo IS 'Line memo.';
 
 -- northwind.supplier_invoices
 CREATE TABLE northwind.supplier_invoices (
@@ -2297,6 +3511,21 @@ CREATE TABLE northwind.supplier_invoices (
     CONSTRAINT fk_supplier_invoices_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT
 );
 CREATE INDEX ix_supplier_invoices_due_date ON northwind.supplier_invoices (due_date);
+COMMENT ON TABLE northwind.supplier_invoices IS 'An invoice received from a supplier, matched to the order and the receipt before payment.';
+COMMENT ON COLUMN northwind.supplier_invoices.id IS 'Surrogate key of the supplier invoice.';
+COMMENT ON COLUMN northwind.supplier_invoices.invoice_number IS 'Supplier''s invoice number.';
+COMMENT ON COLUMN northwind.supplier_invoices.invoice_date IS 'Invoice date.';
+COMMENT ON COLUMN northwind.supplier_invoices.due_date IS 'Payment due date.';
+COMMENT ON COLUMN northwind.supplier_invoices.total_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.supplier_invoices.total_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.supplier_invoices.tax_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.supplier_invoices.tax_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.supplier_invoices.status IS 'received, matched, approved, paid or disputed.';
+COMMENT ON COLUMN northwind.supplier_invoices.matched_at IS 'When the three-way match succeeded.';
+COMMENT ON COLUMN northwind.supplier_invoices.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.supplier_invoices.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.supplier_invoices.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.supplier_invoices.updated_by IS 'User name of the last editor.';
 
 -- northwind.landed_costs
 CREATE TABLE northwind.landed_costs (
@@ -2311,6 +3540,12 @@ CREATE TABLE northwind.landed_costs (
     CONSTRAINT fk_landed_costs_goods_receipt_id FOREIGN KEY (goods_receipt_id) REFERENCES northwind.goods_receipts (id) ON DELETE CASCADE,
     CONSTRAINT fk_landed_costs_supplier_invoice_id FOREIGN KEY (supplier_invoice_id) REFERENCES northwind.supplier_invoices (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.landed_costs IS 'An extra cost of getting goods to the warehouse, such as freight, duty or brokerage, spread over a receipt.';
+COMMENT ON COLUMN northwind.landed_costs.id IS 'Surrogate key of the landed cost.';
+COMMENT ON COLUMN northwind.landed_costs.cost_type IS 'freight, duty, insurance or brokerage.';
+COMMENT ON COLUMN northwind.landed_costs.amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.landed_costs.amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.landed_costs.allocation_method IS 'value, weight or quantity.';
 
 -- northwind.late_fees
 CREATE TABLE northwind.late_fees (
@@ -2325,6 +3560,14 @@ CREATE TABLE northwind.late_fees (
     CONSTRAINT pk_late_fees PRIMARY KEY (id),
     CONSTRAINT fk_late_fees_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.late_fees IS 'A finance charge assessed on an overdue invoice.';
+COMMENT ON COLUMN northwind.late_fees.id IS 'Surrogate key of the late fee.';
+COMMENT ON COLUMN northwind.late_fees.assessed_on IS 'Date assessed.';
+COMMENT ON COLUMN northwind.late_fees.amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.late_fees.amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.late_fees.rate IS 'Monthly rate applied.';
+COMMENT ON COLUMN northwind.late_fees.is_waived IS 'Whether it was waived.';
+COMMENT ON COLUMN northwind.late_fees.waived_reason IS 'Why it was waived.';
 
 -- northwind.opportunity_stages
 CREATE TABLE northwind.opportunity_stages (
@@ -2339,6 +3582,15 @@ CREATE TABLE northwind.opportunity_stages (
     CONSTRAINT pk_opportunity_stages PRIMARY KEY (id),
     CONSTRAINT uq_opportunity_stages_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.opportunity_stages IS 'A pipeline stage, such as Discovery, Proposal or Negotiation.';
+COMMENT ON COLUMN northwind.opportunity_stages.id IS 'Surrogate key of the opportunity stage.';
+COMMENT ON COLUMN northwind.opportunity_stages.default_probability IS 'Win probability assigned on entering the stage.';
+COMMENT ON COLUMN northwind.opportunity_stages.is_closed IS 'Whether the stage ends the pipeline.';
+COMMENT ON COLUMN northwind.opportunity_stages.is_won IS 'Whether the stage means the deal was won.';
+COMMENT ON COLUMN northwind.opportunity_stages.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.opportunity_stages.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.opportunity_stages.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.opportunity_stages.is_active IS 'Whether the value can be chosen for new records.';
 
 -- northwind.opportunities
 CREATE TABLE northwind.opportunities (
@@ -2363,6 +3615,19 @@ CREATE TABLE northwind.opportunities (
     CONSTRAINT fk_opportunities_owner_id FOREIGN KEY (owner_id) REFERENCES northwind.employees (id) ON DELETE RESTRICT
 );
 CREATE INDEX ix_opportunities_expected_close_on ON northwind.opportunities (expected_close_on);
+COMMENT ON TABLE northwind.opportunities IS 'A potential deal with a customer, tracked through pipeline stages to won or lost.';
+COMMENT ON COLUMN northwind.opportunities.id IS 'Surrogate key of the opportunity.';
+COMMENT ON COLUMN northwind.opportunities.name IS 'Short description of the deal.';
+COMMENT ON COLUMN northwind.opportunities.amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.opportunities.amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.opportunities.probability IS 'Win probability; defaults from the stage.';
+COMMENT ON COLUMN northwind.opportunities.expected_close_on IS 'Expected decision date.';
+COMMENT ON COLUMN northwind.opportunities.closed_on IS 'Date the deal was won or lost.';
+COMMENT ON COLUMN northwind.opportunities.loss_reason IS 'Why the deal was lost.';
+COMMENT ON COLUMN northwind.opportunities.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.opportunities.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.opportunities.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.opportunities.updated_by IS 'User name of the last editor.';
 
 -- northwind.surcharges
 CREATE TABLE northwind.surcharges (
@@ -2384,6 +3649,20 @@ CREATE TABLE northwind.surcharges (
     CONSTRAINT uq_surcharges_code UNIQUE (code),
     CONSTRAINT fk_surcharges_product_category_id FOREIGN KEY (product_category_id) REFERENCES northwind.product_categories (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.surcharges IS 'An extra charge added to orders, such as a fuel surcharge or a small-order fee.';
+COMMENT ON COLUMN northwind.surcharges.id IS 'Surrogate key of the surcharge.';
+COMMENT ON COLUMN northwind.surcharges.code IS 'Surcharge code.';
+COMMENT ON COLUMN northwind.surcharges.name IS 'Name printed on invoices.';
+COMMENT ON COLUMN northwind.surcharges.calculation IS 'percent or flat.';
+COMMENT ON COLUMN northwind.surcharges.rate IS 'Percentage, for percent surcharges.';
+COMMENT ON COLUMN northwind.surcharges.amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.surcharges.amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.surcharges.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.surcharges.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.surcharges.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.surcharges.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.surcharges.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.surcharges.updated_by IS 'User name of the last editor.';
 
 -- northwind.order_charges
 CREATE TABLE northwind.order_charges (
@@ -2399,6 +3678,13 @@ CREATE TABLE northwind.order_charges (
     CONSTRAINT fk_order_charges_surcharge_id FOREIGN KEY (surcharge_id) REFERENCES northwind.surcharges (id) ON DELETE SET NULL,
     CONSTRAINT fk_order_charges_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.order_charges IS 'A charge added to a sales order, such as freight, handling or a fuel surcharge.';
+COMMENT ON COLUMN northwind.order_charges.id IS 'Surrogate key of the order charge.';
+COMMENT ON COLUMN northwind.order_charges.charge_type IS 'freight, handling, fuel-surcharge or small-order.';
+COMMENT ON COLUMN northwind.order_charges.description IS 'Text printed on the invoice.';
+COMMENT ON COLUMN northwind.order_charges.amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.order_charges.amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.order_charges.is_taxable IS 'Whether sales tax applies.';
 
 -- northwind.order_holds
 CREATE TABLE northwind.order_holds (
@@ -2420,6 +3706,15 @@ CREATE TABLE northwind.order_holds (
     CONSTRAINT fk_order_holds_released_by_id FOREIGN KEY (released_by_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL,
     CONSTRAINT fk_order_holds_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.order_holds IS 'A hold that blocks an order from shipping until released, such as a credit hold.';
+COMMENT ON COLUMN northwind.order_holds.id IS 'Surrogate key of the order hold.';
+COMMENT ON COLUMN northwind.order_holds.placed_at IS 'When the hold was placed.';
+COMMENT ON COLUMN northwind.order_holds.released_at IS 'When it was released.';
+COMMENT ON COLUMN northwind.order_holds.comment IS 'Explanation.';
+COMMENT ON COLUMN northwind.order_holds.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.order_holds.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.order_holds.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.order_holds.updated_by IS 'User name of the last editor.';
 
 -- northwind.serial_numbers
 CREATE TABLE northwind.serial_numbers (
@@ -2436,6 +3731,11 @@ CREATE TABLE northwind.serial_numbers (
     CONSTRAINT fk_serial_numbers_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_serial_numbers_current_bin_id FOREIGN KEY (current_bin_id) REFERENCES northwind.bin_locations (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.serial_numbers IS 'A serialized unit of a product, tracked from receipt to the customer.';
+COMMENT ON COLUMN northwind.serial_numbers.id IS 'Surrogate key of the serial number.';
+COMMENT ON COLUMN northwind.serial_numbers.serial IS 'Serial number.';
+COMMENT ON COLUMN northwind.serial_numbers.status IS 'in-stock, shipped, returned or scrapped.';
+COMMENT ON COLUMN northwind.serial_numbers.received_at IS 'When it was received.';
 
 -- northwind.shipment_packages
 CREATE TABLE northwind.shipment_packages (
@@ -2453,6 +3753,17 @@ CREATE TABLE northwind.shipment_packages (
     CONSTRAINT pk_shipment_packages PRIMARY KEY (id),
     CONSTRAINT fk_shipment_packages_shipment_id FOREIGN KEY (shipment_id) REFERENCES northwind.shipments (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.shipment_packages IS 'A carton or pallet of a shipment with its own tracking number.';
+COMMENT ON COLUMN northwind.shipment_packages.id IS 'Surrogate key of the shipment package.';
+COMMENT ON COLUMN northwind.shipment_packages.package_number IS 'Package number within the shipment.';
+COMMENT ON COLUMN northwind.shipment_packages.package_type IS 'carton, pallet or envelope.';
+COMMENT ON COLUMN northwind.shipment_packages.tracking_number IS 'Carrier tracking number.';
+COMMENT ON COLUMN northwind.shipment_packages.dimensions_length IS 'Longest side.';
+COMMENT ON COLUMN northwind.shipment_packages.dimensions_width IS 'Second side.';
+COMMENT ON COLUMN northwind.shipment_packages.dimensions_height IS 'Vertical side.';
+COMMENT ON COLUMN northwind.shipment_packages.dimensions_unit IS 'Unit of the three measures.';
+COMMENT ON COLUMN northwind.shipment_packages.weight_value IS 'The weight.';
+COMMENT ON COLUMN northwind.shipment_packages.weight_unit IS 'Unit of the weight.';
 
 -- northwind.package_contents
 CREATE TABLE northwind.package_contents (
@@ -2466,6 +3777,9 @@ CREATE TABLE northwind.package_contents (
     CONSTRAINT fk_package_contents_serial_number_id FOREIGN KEY (serial_number_id) REFERENCES northwind.serial_numbers (id) ON DELETE SET NULL,
     CONSTRAINT fk_package_contents_shipment_package_id FOREIGN KEY (shipment_package_id) REFERENCES northwind.shipment_packages (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.package_contents IS 'A quantity of a shipment line packed in a package.';
+COMMENT ON COLUMN northwind.package_contents.id IS 'Surrogate key of the package content.';
+COMMENT ON COLUMN northwind.package_contents.quantity IS 'Quantity packed.';
 
 -- northwind.parties_remit_to_addresses
 CREATE TABLE northwind.parties_remit_to_addresses (
@@ -2480,6 +3794,13 @@ CREATE TABLE northwind.parties_remit_to_addresses (
     CONSTRAINT pk_parties_remit_to_addresses PRIMARY KEY (party_id, position),
     CONSTRAINT fk_parties_remit_to_addresses_party_id FOREIGN KEY (party_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.parties_remit_to_addresses IS 'Addresses where payments may be sent; kept in a child table.';
+COMMENT ON COLUMN northwind.parties_remit_to_addresses.line1 IS 'Street and number, or PO box.';
+COMMENT ON COLUMN northwind.parties_remit_to_addresses.line2 IS 'Suite, floor or building.';
+COMMENT ON COLUMN northwind.parties_remit_to_addresses.city IS 'City or locality.';
+COMMENT ON COLUMN northwind.parties_remit_to_addresses.region IS 'State, province or county.';
+COMMENT ON COLUMN northwind.parties_remit_to_addresses.postal_code IS 'Postal or ZIP code.';
+COMMENT ON COLUMN northwind.parties_remit_to_addresses.country_code IS 'ISO country code.';
 
 -- northwind.party_addresses
 CREATE TABLE northwind.party_addresses (
@@ -2504,6 +3825,24 @@ CREATE TABLE northwind.party_addresses (
     CONSTRAINT pk_party_addresses PRIMARY KEY (id),
     CONSTRAINT fk_party_addresses_party_id FOREIGN KEY (party_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.party_addresses IS 'A named address of a party, such as a ship-to location of a customer with several branches.';
+COMMENT ON COLUMN northwind.party_addresses.id IS 'Surrogate key of the party address.';
+COMMENT ON COLUMN northwind.party_addresses.label IS 'Name of the location, such as Denver branch.';
+COMMENT ON COLUMN northwind.party_addresses.address_type IS 'Purpose of the address.';
+COMMENT ON COLUMN northwind.party_addresses.address_line1 IS 'Street and number, or PO box.';
+COMMENT ON COLUMN northwind.party_addresses.address_line2 IS 'Suite, floor or building.';
+COMMENT ON COLUMN northwind.party_addresses.address_city IS 'City or locality.';
+COMMENT ON COLUMN northwind.party_addresses.address_region IS 'State, province or county.';
+COMMENT ON COLUMN northwind.party_addresses.address_postal_code IS 'Postal or ZIP code.';
+COMMENT ON COLUMN northwind.party_addresses.address_country_code IS 'ISO country code.';
+COMMENT ON COLUMN northwind.party_addresses.location_latitude IS 'Degrees north of the equator.';
+COMMENT ON COLUMN northwind.party_addresses.location_longitude IS 'Degrees east of Greenwich.';
+COMMENT ON COLUMN northwind.party_addresses.is_default IS 'Default address of its type.';
+COMMENT ON COLUMN northwind.party_addresses.delivery_instructions IS 'Dock hours, gate codes and the like.';
+COMMENT ON COLUMN northwind.party_addresses.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.party_addresses.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.party_addresses.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.party_addresses.updated_by IS 'User name of the last editor.';
 
 -- northwind.party_notes
 CREATE TABLE northwind.party_notes (
@@ -2520,6 +3859,14 @@ CREATE TABLE northwind.party_notes (
     CONSTRAINT fk_party_notes_party_id FOREIGN KEY (party_id) REFERENCES northwind.parties (id) ON DELETE CASCADE,
     CONSTRAINT fk_party_notes_author_id FOREIGN KEY (author_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.party_notes IS 'A free-text note on a party, such as delivery quirks or negotiation history.';
+COMMENT ON COLUMN northwind.party_notes.id IS 'Surrogate key of the party note.';
+COMMENT ON COLUMN northwind.party_notes.body IS 'Note text in Markdown.';
+COMMENT ON COLUMN northwind.party_notes.is_pinned IS 'Shown at the top of the party''s page.';
+COMMENT ON COLUMN northwind.party_notes.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.party_notes.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.party_notes.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.party_notes.updated_by IS 'User name of the last editor.';
 
 -- northwind.password_resets
 CREATE TABLE northwind.password_resets (
@@ -2533,6 +3880,12 @@ CREATE TABLE northwind.password_resets (
     CONSTRAINT uq_password_resets_token_hash UNIQUE (token_hash),
     CONSTRAINT fk_password_resets_user_account_id FOREIGN KEY (user_account_id) REFERENCES northwind.user_accounts (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.password_resets IS 'A single-use password reset request sent by email.';
+COMMENT ON COLUMN northwind.password_resets.id IS 'Surrogate key of the password reset.';
+COMMENT ON COLUMN northwind.password_resets.token_hash IS 'Hash of the emailed token.';
+COMMENT ON COLUMN northwind.password_resets.requested_at IS 'When the reset was requested.';
+COMMENT ON COLUMN northwind.password_resets.expires_at IS 'When the token stops working.';
+COMMENT ON COLUMN northwind.password_resets.used_at IS 'When the token was used.';
 
 -- northwind.payment_invoice
 CREATE TABLE northwind.payment_invoice (
@@ -2547,6 +3900,12 @@ CREATE TABLE northwind.payment_invoice (
     CONSTRAINT fk_payment_invoice_payments_id FOREIGN KEY (payments_id) REFERENCES northwind.payments (id) ON DELETE CASCADE,
     CONSTRAINT fk_payment_invoice_invoices_id FOREIGN KEY (invoices_id) REFERENCES northwind.invoices (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.payment_invoice IS 'How a payment is allocated to the invoices it pays; one payment can settle many invoices and one invoice can be paid in instalments.';
+COMMENT ON COLUMN northwind.payment_invoice.allocated_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.payment_invoice.allocated_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.payment_invoice.allocated_at IS 'When the allocation was made.';
+COMMENT ON COLUMN northwind.payment_invoice.discount_taken_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.payment_invoice.discount_taken_currency IS 'The ISO 4217 currency of the amount.';
 
 -- northwind.permissions
 CREATE TABLE northwind.permissions (
@@ -2558,6 +3917,12 @@ CREATE TABLE northwind.permissions (
     CONSTRAINT pk_permissions PRIMARY KEY (id),
     CONSTRAINT uq_permissions_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.permissions IS 'A single grantable right on a resource, such as sales-order:approve.';
+COMMENT ON COLUMN northwind.permissions.id IS 'Surrogate key of the permission.';
+COMMENT ON COLUMN northwind.permissions.code IS 'Resource and action, such as sales-order:approve.';
+COMMENT ON COLUMN northwind.permissions.resource IS 'Protected resource.';
+COMMENT ON COLUMN northwind.permissions.action IS 'Action on the resource.';
+COMMENT ON COLUMN northwind.permissions.description IS 'What the permission allows.';
 
 -- northwind.pick_waves
 CREATE TABLE northwind.pick_waves (
@@ -2575,6 +3940,16 @@ CREATE TABLE northwind.pick_waves (
     CONSTRAINT uq_pick_waves_wave_number UNIQUE (wave_number),
     CONSTRAINT fk_pick_waves_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.pick_waves IS 'A batch of orders released to the warehouse floor together, such as the 10:00 parcel wave.';
+COMMENT ON COLUMN northwind.pick_waves.id IS 'Surrogate key of the pick wave.';
+COMMENT ON COLUMN northwind.pick_waves.wave_number IS 'Wave number.';
+COMMENT ON COLUMN northwind.pick_waves.status IS 'planned, released or complete.';
+COMMENT ON COLUMN northwind.pick_waves.planned_start_at IS 'Planned release time.';
+COMMENT ON COLUMN northwind.pick_waves.released_at IS 'Actual release time.';
+COMMENT ON COLUMN northwind.pick_waves.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.pick_waves.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.pick_waves.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.pick_waves.updated_by IS 'User name of the last editor.';
 
 -- northwind.pick_lists
 CREATE TABLE northwind.pick_lists (
@@ -2596,6 +3971,16 @@ CREATE TABLE northwind.pick_lists (
     CONSTRAINT fk_pick_lists_picker_id FOREIGN KEY (picker_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_pick_lists_wave_id FOREIGN KEY (wave_id) REFERENCES northwind.pick_waves (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.pick_lists IS 'A list of picks assigned to one picker, generated when a wave is released.';
+COMMENT ON COLUMN northwind.pick_lists.id IS 'Surrogate key of the pick list.';
+COMMENT ON COLUMN northwind.pick_lists.pick_list_number IS 'Pick list number.';
+COMMENT ON COLUMN northwind.pick_lists.status IS 'open, picking, done or short.';
+COMMENT ON COLUMN northwind.pick_lists.released_at IS 'When it was released to the floor.';
+COMMENT ON COLUMN northwind.pick_lists.completed_at IS 'When the last pick was confirmed.';
+COMMENT ON COLUMN northwind.pick_lists.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.pick_lists.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.pick_lists.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.pick_lists.updated_by IS 'User name of the last editor.';
 
 -- northwind.pick_list_lines
 CREATE TABLE northwind.pick_list_lines (
@@ -2615,6 +4000,11 @@ CREATE TABLE northwind.pick_list_lines (
     CONSTRAINT fk_pick_list_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_pick_list_lines_bin_id FOREIGN KEY (bin_id) REFERENCES northwind.bin_locations (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.pick_list_lines IS 'One pick - a product, a bin and a quantity for an order line.';
+COMMENT ON COLUMN northwind.pick_list_lines.id IS 'Surrogate key of the pick list line.';
+COMMENT ON COLUMN northwind.pick_list_lines.quantity_to_pick IS 'Quantity to pick.';
+COMMENT ON COLUMN northwind.pick_list_lines.quantity_picked IS 'Quantity confirmed.';
+COMMENT ON COLUMN northwind.pick_list_lines.picked_at IS 'When it was confirmed.';
 
 -- northwind.price_list_entries
 CREATE TABLE northwind.price_list_entries (
@@ -2638,6 +4028,17 @@ CREATE TABLE northwind.price_list_entries (
     CONSTRAINT fk_price_list_entries_variant_id FOREIGN KEY (variant_id) REFERENCES northwind.product_variants (id) ON DELETE SET NULL,
     CONSTRAINT fk_price_list_entries_unit_code FOREIGN KEY (unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.price_list_entries IS 'The price of a product or variant on a price list.';
+COMMENT ON COLUMN northwind.price_list_entries.id IS 'Surrogate key of the price list entry.';
+COMMENT ON COLUMN northwind.price_list_entries.unit_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.price_list_entries.unit_price_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.price_list_entries.minimum_quantity IS 'Smallest quantity the price applies to.';
+COMMENT ON COLUMN northwind.price_list_entries.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.price_list_entries.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.price_list_entries.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.price_list_entries.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.price_list_entries.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.price_list_entries.updated_by IS 'User name of the last editor.';
 
 -- northwind.price_change_requests
 CREATE TABLE northwind.price_change_requests (
@@ -2660,6 +4061,18 @@ CREATE TABLE northwind.price_change_requests (
     CONSTRAINT fk_price_change_requests_price_list_entry_id FOREIGN KEY (price_list_entry_id) REFERENCES northwind.price_list_entries (id) ON DELETE CASCADE,
     CONSTRAINT fk_price_change_requests_requested_by_id FOREIGN KEY (requested_by_id) REFERENCES northwind.employees (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.price_change_requests IS 'A requested change to a list price, reviewed by pricing before it takes effect.';
+COMMENT ON COLUMN northwind.price_change_requests.id IS 'Surrogate key of the price change request.';
+COMMENT ON COLUMN northwind.price_change_requests.requested_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.price_change_requests.requested_price_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.price_change_requests.effective_on IS 'Date the new price should apply.';
+COMMENT ON COLUMN northwind.price_change_requests.justification IS 'Reason, such as supplier cost increase.';
+COMMENT ON COLUMN northwind.price_change_requests.decision IS 'pending, approved or rejected.';
+COMMENT ON COLUMN northwind.price_change_requests.decided_at IS 'When the decision was made.';
+COMMENT ON COLUMN northwind.price_change_requests.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.price_change_requests.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.price_change_requests.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.price_change_requests.updated_by IS 'User name of the last editor.';
 
 -- northwind.price_list_customer_group
 CREATE TABLE northwind.price_list_customer_group (
@@ -2669,6 +4082,7 @@ CREATE TABLE northwind.price_list_customer_group (
     CONSTRAINT fk_price_list_customer_group_price_lists_id FOREIGN KEY (price_lists_id) REFERENCES northwind.price_lists (id) ON DELETE CASCADE,
     CONSTRAINT fk_price_list_customer_group_customer_groups_id FOREIGN KEY (customer_groups_id) REFERENCES northwind.customer_groups (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.price_list_customer_group IS 'Customer groups that buy from a price list.';
 
 -- northwind.price_tiers
 CREATE TABLE northwind.price_tiers (
@@ -2680,6 +4094,11 @@ CREATE TABLE northwind.price_tiers (
     CONSTRAINT pk_price_tiers PRIMARY KEY (id),
     CONSTRAINT fk_price_tiers_price_list_entry_id FOREIGN KEY (price_list_entry_id) REFERENCES northwind.price_list_entries (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.price_tiers IS 'A quantity break of a price list entry, such as 5 percent off from 100 cases.';
+COMMENT ON COLUMN northwind.price_tiers.id IS 'Surrogate key of the price tier.';
+COMMENT ON COLUMN northwind.price_tiers.from_quantity IS 'Quantity from which the tier applies.';
+COMMENT ON COLUMN northwind.price_tiers.unit_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.price_tiers.unit_price_currency IS 'The ISO 4217 currency of the amount.';
 
 -- northwind.product_attributes
 CREATE TABLE northwind.product_attributes (
@@ -2692,6 +4111,13 @@ CREATE TABLE northwind.product_attributes (
     CONSTRAINT pk_product_attributes PRIMARY KEY (id),
     CONSTRAINT uq_product_attributes_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.product_attributes IS 'Definition of a filterable product characteristic, such as Glove size or Voltage.';
+COMMENT ON COLUMN northwind.product_attributes.id IS 'Surrogate key of the product attribute.';
+COMMENT ON COLUMN northwind.product_attributes.code IS 'Attribute code used in feeds.';
+COMMENT ON COLUMN northwind.product_attributes.name IS 'Display name.';
+COMMENT ON COLUMN northwind.product_attributes.data_type IS 'Value type - text, number, boolean or option.';
+COMMENT ON COLUMN northwind.product_attributes.unit IS 'Unit of numeric values, such as mm.';
+COMMENT ON COLUMN northwind.product_attributes.is_filterable IS 'Whether the storefront offers it as a filter.';
 
 -- northwind.product_attribute_options
 CREATE TABLE northwind.product_attribute_options (
@@ -2702,6 +4128,10 @@ CREATE TABLE northwind.product_attribute_options (
     CONSTRAINT pk_product_attribute_options PRIMARY KEY (id),
     CONSTRAINT fk_product_attribute_options_product_attribute_id FOREIGN KEY (product_attribute_id) REFERENCES northwind.product_attributes (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.product_attribute_options IS 'An allowed value of an option attribute, such as Large for Glove size.';
+COMMENT ON COLUMN northwind.product_attribute_options.id IS 'Surrogate key of the product attribute option.';
+COMMENT ON COLUMN northwind.product_attribute_options.value IS 'Option value.';
+COMMENT ON COLUMN northwind.product_attribute_options.label IS 'Display label when it differs from the value.';
 
 -- northwind.product_attribute_values
 CREATE TABLE northwind.product_attribute_values (
@@ -2717,6 +4147,11 @@ CREATE TABLE northwind.product_attribute_values (
     CONSTRAINT fk_product_attribute_values_option_id FOREIGN KEY (option_id) REFERENCES northwind.product_attribute_options (id) ON DELETE SET NULL,
     CONSTRAINT fk_product_attribute_values_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.product_attribute_values IS 'The value of one attribute for one product.';
+COMMENT ON COLUMN northwind.product_attribute_values.id IS 'Surrogate key of the product attribute value.';
+COMMENT ON COLUMN northwind.product_attribute_values.text_value IS 'Value of a text attribute.';
+COMMENT ON COLUMN northwind.product_attribute_values.numeric_value IS 'Value of a number attribute.';
+COMMENT ON COLUMN northwind.product_attribute_values.boolean_value IS 'Value of a boolean attribute.';
 
 -- northwind.product_barcodes
 CREATE TABLE northwind.product_barcodes (
@@ -2731,6 +4166,11 @@ CREATE TABLE northwind.product_barcodes (
     CONSTRAINT fk_product_barcodes_unit_code FOREIGN KEY (unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE SET NULL,
     CONSTRAINT fk_product_barcodes_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.product_barcodes IS 'A barcode that identifies a product at a packaging level.';
+COMMENT ON COLUMN northwind.product_barcodes.id IS 'Surrogate key of the product barcode.';
+COMMENT ON COLUMN northwind.product_barcodes.symbology IS 'Barcode type, such as GTIN-13, UPC-A or GS1-128.';
+COMMENT ON COLUMN northwind.product_barcodes.value IS 'Encoded value.';
+COMMENT ON COLUMN northwind.product_barcodes.is_primary IS 'Barcode printed on labels by default.';
 
 -- northwind.product_certifications
 CREATE TABLE northwind.product_certifications (
@@ -2748,6 +4188,17 @@ CREATE TABLE northwind.product_certifications (
     CONSTRAINT pk_product_certifications PRIMARY KEY (id),
     CONSTRAINT fk_product_certifications_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.product_certifications IS 'A certification a product holds, such as UL, CE or FDA 510(k).';
+COMMENT ON COLUMN northwind.product_certifications.id IS 'Surrogate key of the product certification.';
+COMMENT ON COLUMN northwind.product_certifications.certification_type IS 'Scheme, such as UL or CE.';
+COMMENT ON COLUMN northwind.product_certifications.certificate_number IS 'Certificate number.';
+COMMENT ON COLUMN northwind.product_certifications.issued_by IS 'Certification body.';
+COMMENT ON COLUMN northwind.product_certifications.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.product_certifications.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.product_certifications.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.product_certifications.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.product_certifications.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.product_certifications.updated_by IS 'User name of the last editor.';
 
 -- northwind.product_collections
 CREATE TABLE northwind.product_collections (
@@ -2764,6 +4215,17 @@ CREATE TABLE northwind.product_collections (
     CONSTRAINT pk_product_collections PRIMARY KEY (id),
     CONSTRAINT uq_product_collections_name UNIQUE (name)
 );
+COMMENT ON TABLE northwind.product_collections IS 'A curated set of products, such as Back to school or Top sellers, used by merchandising.';
+COMMENT ON COLUMN northwind.product_collections.id IS 'Surrogate key of the product collection.';
+COMMENT ON COLUMN northwind.product_collections.name IS 'Collection name.';
+COMMENT ON COLUMN northwind.product_collections.description IS 'Description shown to customers.';
+COMMENT ON COLUMN northwind.product_collections.is_featured IS 'Shown on the portal home page.';
+COMMENT ON COLUMN northwind.product_collections.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.product_collections.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.product_collections.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.product_collections.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.product_collections.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.product_collections.updated_by IS 'User name of the last editor.';
 
 -- northwind.product_collection_product
 CREATE TABLE northwind.product_collection_product (
@@ -2773,6 +4235,7 @@ CREATE TABLE northwind.product_collection_product (
     CONSTRAINT fk_product_collection_product_collections_id FOREIGN KEY (collections_id) REFERENCES northwind.product_collections (id) ON DELETE CASCADE,
     CONSTRAINT fk_product_collection_product_products_id FOREIGN KEY (products_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.product_collection_product IS 'Products in a merchandising collection; a product may appear in many collections.';
 
 -- northwind.product_documents
 CREATE TABLE northwind.product_documents (
@@ -2791,6 +4254,18 @@ CREATE TABLE northwind.product_documents (
     CONSTRAINT pk_product_documents PRIMARY KEY (id),
     CONSTRAINT fk_product_documents_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.product_documents IS 'A document attached to a product, such as a safety data sheet or an installation guide.';
+COMMENT ON COLUMN northwind.product_documents.id IS 'Surrogate key of the product document.';
+COMMENT ON COLUMN northwind.product_documents.title IS 'Document title.';
+COMMENT ON COLUMN northwind.product_documents.document_type IS 'Kind, such as sds, datasheet or manual.';
+COMMENT ON COLUMN northwind.product_documents.url IS 'Document URL.';
+COMMENT ON COLUMN northwind.product_documents.language_code IS 'Language of the document.';
+COMMENT ON COLUMN northwind.product_documents.revision IS 'Revision label.';
+COMMENT ON COLUMN northwind.product_documents.published_on IS 'Date the revision was published.';
+COMMENT ON COLUMN northwind.product_documents.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.product_documents.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.product_documents.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.product_documents.updated_by IS 'User name of the last editor.';
 
 -- northwind.product_images
 CREATE TABLE northwind.product_images (
@@ -2804,6 +4279,13 @@ CREATE TABLE northwind.product_images (
     CONSTRAINT pk_product_images PRIMARY KEY (id),
     CONSTRAINT fk_product_images_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.product_images IS 'An image of a product, stored in the media CDN.';
+COMMENT ON COLUMN northwind.product_images.id IS 'Surrogate key of the product image.';
+COMMENT ON COLUMN northwind.product_images.url IS 'Image URL.';
+COMMENT ON COLUMN northwind.product_images.alt_text IS 'Accessible description.';
+COMMENT ON COLUMN northwind.product_images.width_px IS 'Width in pixels.';
+COMMENT ON COLUMN northwind.product_images.height_px IS 'Height in pixels.';
+COMMENT ON COLUMN northwind.product_images.is_primary IS 'Image used in listings.';
 
 -- northwind.product_lifecycle_events
 CREATE TABLE northwind.product_lifecycle_events (
@@ -2818,6 +4300,12 @@ CREATE TABLE northwind.product_lifecycle_events (
     CONSTRAINT fk_product_lifecycle_events_changed_by_id FOREIGN KEY (changed_by_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL,
     CONSTRAINT fk_product_lifecycle_events_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.product_lifecycle_events IS 'A change of a product''s lifecycle status, kept as history.';
+COMMENT ON COLUMN northwind.product_lifecycle_events.id IS 'Surrogate key of the product lifecycle event.';
+COMMENT ON COLUMN northwind.product_lifecycle_events.from_status IS 'Status before the change.';
+COMMENT ON COLUMN northwind.product_lifecycle_events.to_status IS 'Status after the change.';
+COMMENT ON COLUMN northwind.product_lifecycle_events.occurred_at IS 'When the change happened.';
+COMMENT ON COLUMN northwind.product_lifecycle_events.reason IS 'Why the status changed.';
 
 -- northwind.product_packagings
 CREATE TABLE northwind.product_packagings (
@@ -2837,6 +4325,17 @@ CREATE TABLE northwind.product_packagings (
     CONSTRAINT fk_product_packagings_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE,
     CONSTRAINT fk_product_packagings_unit_code FOREIGN KEY (unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.product_packagings IS 'A packaging level of a product, such as a case of 12 or a pallet of 60 cases.';
+COMMENT ON COLUMN northwind.product_packagings.id IS 'Surrogate key of the product packaging.';
+COMMENT ON COLUMN northwind.product_packagings.packaging_level IS 'Packaging level - each, inner, case or pallet.';
+COMMENT ON COLUMN northwind.product_packagings.units_per_package IS 'Base units in one package.';
+COMMENT ON COLUMN northwind.product_packagings.dimensions_length IS 'Longest side.';
+COMMENT ON COLUMN northwind.product_packagings.dimensions_width IS 'Second side.';
+COMMENT ON COLUMN northwind.product_packagings.dimensions_height IS 'Vertical side.';
+COMMENT ON COLUMN northwind.product_packagings.dimensions_unit IS 'Unit of the three measures.';
+COMMENT ON COLUMN northwind.product_packagings.gross_weight_value IS 'The weight.';
+COMMENT ON COLUMN northwind.product_packagings.gross_weight_unit IS 'Unit of the weight.';
+COMMENT ON COLUMN northwind.product_packagings.gtin IS 'GTIN of the package.';
 
 -- northwind.product_recommendations
 CREATE TABLE northwind.product_recommendations (
@@ -2850,6 +4349,11 @@ CREATE TABLE northwind.product_recommendations (
     CONSTRAINT fk_product_recommendations_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE,
     CONSTRAINT fk_product_recommendations_recommended_id FOREIGN KEY (recommended_id) REFERENCES northwind.products (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.product_recommendations IS 'A cross-sell, up-sell or accessory suggestion from one product to another.';
+COMMENT ON COLUMN northwind.product_recommendations.id IS 'Surrogate key of the product recommendation.';
+COMMENT ON COLUMN northwind.product_recommendations.recommendation_type IS 'Kind of suggestion - cross-sell, up-sell or accessory.';
+COMMENT ON COLUMN northwind.product_recommendations.score IS 'Relevance score from the recommender.';
+COMMENT ON COLUMN northwind.product_recommendations.is_manual IS 'Whether merchandising added it by hand.';
 
 -- northwind.product_substitutes
 CREATE TABLE northwind.product_substitutes (
@@ -2863,6 +4367,11 @@ CREATE TABLE northwind.product_substitutes (
     CONSTRAINT fk_product_substitutes_substitute_id FOREIGN KEY (substitute_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_product_substitutes_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.product_substitutes IS 'A product that can replace another when it is out of stock, ranked by preference.';
+COMMENT ON COLUMN northwind.product_substitutes.id IS 'Surrogate key of the product substitute.';
+COMMENT ON COLUMN northwind.product_substitutes.reason IS 'Why the substitute fits.';
+COMMENT ON COLUMN northwind.product_substitutes.priority IS 'Rank among substitutes; 1 is preferred.';
+COMMENT ON COLUMN northwind.product_substitutes.requires_approval IS 'Whether the customer must approve the substitution.';
 
 -- northwind.product_translations
 CREATE TABLE northwind.product_translations (
@@ -2876,6 +4385,11 @@ CREATE TABLE northwind.product_translations (
     CONSTRAINT fk_product_translations_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE,
     CONSTRAINT fk_product_translations_language_code FOREIGN KEY (language_code) REFERENCES northwind.languages (code) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.product_translations IS 'The name and descriptions of a product in another language.';
+COMMENT ON COLUMN northwind.product_translations.id IS 'Surrogate key of the product translation.';
+COMMENT ON COLUMN northwind.product_translations.name IS 'Translated name.';
+COMMENT ON COLUMN northwind.product_translations.short_description IS 'Translated short description.';
+COMMENT ON COLUMN northwind.product_translations.long_description IS 'Translated long description.';
 
 -- northwind.promotion_conditions
 CREATE TABLE northwind.promotion_conditions (
@@ -2892,6 +4406,12 @@ CREATE TABLE northwind.promotion_conditions (
     CONSTRAINT fk_promotion_conditions_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE SET NULL,
     CONSTRAINT fk_promotion_conditions_promotion_id FOREIGN KEY (promotion_id) REFERENCES northwind.promotions (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.promotion_conditions IS 'A condition an order must meet for a promotion to apply.';
+COMMENT ON COLUMN northwind.promotion_conditions.id IS 'Surrogate key of the promotion condition.';
+COMMENT ON COLUMN northwind.promotion_conditions.condition_type IS 'Kind of condition - product-quantity, category-amount or order-amount.';
+COMMENT ON COLUMN northwind.promotion_conditions.threshold_quantity IS 'Minimum quantity.';
+COMMENT ON COLUMN northwind.promotion_conditions.threshold_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.promotion_conditions.threshold_amount_currency IS 'The ISO 4217 currency of the amount.';
 
 -- northwind.promotion_customer_segment
 CREATE TABLE northwind.promotion_customer_segment (
@@ -2901,6 +4421,7 @@ CREATE TABLE northwind.promotion_customer_segment (
     CONSTRAINT fk_promotion_customer_segment_promotions_id FOREIGN KEY (promotions_id) REFERENCES northwind.promotions (id) ON DELETE CASCADE,
     CONSTRAINT fk_promotion_customer_segment_segments_id FOREIGN KEY (segments_id) REFERENCES northwind.customer_segments (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.promotion_customer_segment IS 'Customer segments a promotion is offered to; none means everyone.';
 
 -- northwind.promotion_rewards
 CREATE TABLE northwind.promotion_rewards (
@@ -2914,6 +4435,11 @@ CREATE TABLE northwind.promotion_rewards (
     CONSTRAINT fk_promotion_rewards_promotion_id FOREIGN KEY (promotion_id) REFERENCES northwind.promotions (id) ON DELETE CASCADE,
     CONSTRAINT fk_promotion_rewards_free_product_id FOREIGN KEY (free_product_id) REFERENCES northwind.products (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.promotion_rewards IS 'A benefit granted when a promotion''s conditions are met.';
+COMMENT ON COLUMN northwind.promotion_rewards.id IS 'Surrogate key of the promotion reward.';
+COMMENT ON COLUMN northwind.promotion_rewards.reward_type IS 'Kind of benefit.';
+COMMENT ON COLUMN northwind.promotion_rewards.value IS 'Percentage, amount or price, depending on the type.';
+COMMENT ON COLUMN northwind.promotion_rewards.free_quantity IS 'Free units, for free goods.';
 
 -- northwind.proofs_of_delivery
 CREATE TABLE northwind.proofs_of_delivery (
@@ -2930,6 +4456,15 @@ CREATE TABLE northwind.proofs_of_delivery (
     CONSTRAINT uq_proofs_of_delivery_shipment_id UNIQUE (shipment_id),
     CONSTRAINT fk_proofs_of_delivery_shipment_id FOREIGN KEY (shipment_id) REFERENCES northwind.shipments (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.proofs_of_delivery IS 'Evidence that a shipment was delivered - who signed, where and when.';
+COMMENT ON COLUMN northwind.proofs_of_delivery.id IS 'Surrogate key of the proof of delivery.';
+COMMENT ON COLUMN northwind.proofs_of_delivery.delivered_at IS 'Delivery time.';
+COMMENT ON COLUMN northwind.proofs_of_delivery.received_by_name IS 'Name of the person who signed.';
+COMMENT ON COLUMN northwind.proofs_of_delivery.signature_image_url IS 'Signature capture.';
+COMMENT ON COLUMN northwind.proofs_of_delivery.photo_url IS 'Photo of the delivered goods.';
+COMMENT ON COLUMN northwind.proofs_of_delivery.location_latitude IS 'Degrees north of the equator.';
+COMMENT ON COLUMN northwind.proofs_of_delivery.location_longitude IS 'Degrees east of Greenwich.';
+COMMENT ON COLUMN northwind.proofs_of_delivery.notes IS 'Driver''s remarks.';
 
 -- northwind.public_holidays
 CREATE TABLE northwind.public_holidays (
@@ -2942,6 +4477,11 @@ CREATE TABLE northwind.public_holidays (
     CONSTRAINT fk_public_holidays_country_code FOREIGN KEY (country_code) REFERENCES northwind.countries (code) ON DELETE CASCADE
 );
 CREATE INDEX ix_public_holidays_observed_on ON northwind.public_holidays (observed_on);
+COMMENT ON TABLE northwind.public_holidays IS 'A non-working day in a country, used for delivery date promises and payment due dates.';
+COMMENT ON COLUMN northwind.public_holidays.id IS 'Surrogate key of the public holiday.';
+COMMENT ON COLUMN northwind.public_holidays.observed_on IS 'Date the holiday is observed.';
+COMMENT ON COLUMN northwind.public_holidays.name IS 'Name of the holiday.';
+COMMENT ON COLUMN northwind.public_holidays.is_nationwide IS 'Whether it applies to the whole country rather than some regions.';
 
 -- northwind.purchase_approvals
 CREATE TABLE northwind.purchase_approvals (
@@ -2960,6 +4500,16 @@ CREATE TABLE northwind.purchase_approvals (
     CONSTRAINT fk_purchase_approvals_approver_id FOREIGN KEY (approver_id) REFERENCES northwind.employees (id) ON DELETE RESTRICT,
     CONSTRAINT fk_purchase_approvals_purchase_order_id FOREIGN KEY (purchase_order_id) REFERENCES northwind.purchase_orders (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.purchase_approvals IS 'One approval step of a purchase order, by amount threshold.';
+COMMENT ON COLUMN northwind.purchase_approvals.id IS 'Surrogate key of the purchase approval.';
+COMMENT ON COLUMN northwind.purchase_approvals.approval_level IS 'Step number.';
+COMMENT ON COLUMN northwind.purchase_approvals.decision IS 'pending, approved or rejected.';
+COMMENT ON COLUMN northwind.purchase_approvals.decided_at IS 'When the approver decided.';
+COMMENT ON COLUMN northwind.purchase_approvals.comment IS 'Approver''s comment.';
+COMMENT ON COLUMN northwind.purchase_approvals.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.purchase_approvals.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.purchase_approvals.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.purchase_approvals.updated_by IS 'User name of the last editor.';
 
 -- northwind.putaway_tasks
 CREATE TABLE northwind.putaway_tasks (
@@ -2983,6 +4533,15 @@ CREATE TABLE northwind.putaway_tasks (
     CONSTRAINT fk_putaway_tasks_from_bin_id FOREIGN KEY (from_bin_id) REFERENCES northwind.bin_locations (id) ON DELETE SET NULL,
     CONSTRAINT fk_putaway_tasks_to_bin_id FOREIGN KEY (to_bin_id) REFERENCES northwind.bin_locations (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.putaway_tasks IS 'A task to move received goods from the dock to a storage bin.';
+COMMENT ON COLUMN northwind.putaway_tasks.id IS 'Surrogate key of the putaway task.';
+COMMENT ON COLUMN northwind.putaway_tasks.status IS 'open, in-progress or done.';
+COMMENT ON COLUMN northwind.putaway_tasks.quantity IS 'Quantity to put away.';
+COMMENT ON COLUMN northwind.putaway_tasks.completed_at IS 'When it was done.';
+COMMENT ON COLUMN northwind.putaway_tasks.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.putaway_tasks.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.putaway_tasks.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.putaway_tasks.updated_by IS 'User name of the last editor.';
 
 -- northwind.quality_inspections
 CREATE TABLE northwind.quality_inspections (
@@ -3005,6 +4564,16 @@ CREATE TABLE northwind.quality_inspections (
     CONSTRAINT fk_quality_inspections_inspector_id FOREIGN KEY (inspector_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_quality_inspections_goods_receipt_line_id FOREIGN KEY (goods_receipt_line_id) REFERENCES northwind.goods_receipt_lines (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.quality_inspections IS 'An inspection of received or stored goods, which may put them on hold.';
+COMMENT ON COLUMN northwind.quality_inspections.id IS 'Surrogate key of the quality inspection.';
+COMMENT ON COLUMN northwind.quality_inspections.inspected_at IS 'When it was inspected.';
+COMMENT ON COLUMN northwind.quality_inspections.result IS 'passed, failed or conditional.';
+COMMENT ON COLUMN northwind.quality_inspections.sample_size IS 'Units inspected.';
+COMMENT ON COLUMN northwind.quality_inspections.notes IS 'Findings.';
+COMMENT ON COLUMN northwind.quality_inspections.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.quality_inspections.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.quality_inspections.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.quality_inspections.updated_by IS 'User name of the last editor.';
 
 -- northwind.rebate_programs
 CREATE TABLE northwind.rebate_programs (
@@ -3024,6 +4593,19 @@ CREATE TABLE northwind.rebate_programs (
     CONSTRAINT pk_rebate_programs PRIMARY KEY (id),
     CONSTRAINT fk_rebate_programs_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.rebate_programs IS 'A volume rebate agreement that pays a customer back a percentage of purchases over a period.';
+COMMENT ON COLUMN northwind.rebate_programs.id IS 'Surrogate key of the rebate program.';
+COMMENT ON COLUMN northwind.rebate_programs.name IS 'Program name.';
+COMMENT ON COLUMN northwind.rebate_programs.description IS 'Program terms.';
+COMMENT ON COLUMN northwind.rebate_programs.period_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.rebate_programs.period_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.rebate_programs.rebate_rate IS 'Rebate percentage of eligible sales.';
+COMMENT ON COLUMN northwind.rebate_programs.threshold_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.rebate_programs.threshold_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.rebate_programs.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.rebate_programs.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.rebate_programs.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.rebate_programs.updated_by IS 'User name of the last editor.';
 
 -- northwind.rebate_accruals
 CREATE TABLE northwind.rebate_accruals (
@@ -3040,6 +4622,14 @@ CREATE TABLE northwind.rebate_accruals (
     CONSTRAINT fk_rebate_accruals_rebate_program_id FOREIGN KEY (rebate_program_id) REFERENCES northwind.rebate_programs (id) ON DELETE CASCADE,
     CONSTRAINT fk_rebate_accruals_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.rebate_accruals IS 'A rebate accrued on an invoice under a rebate program.';
+COMMENT ON COLUMN northwind.rebate_accruals.id IS 'Surrogate key of the rebate accrual.';
+COMMENT ON COLUMN northwind.rebate_accruals.accrued_on IS 'Date of accrual.';
+COMMENT ON COLUMN northwind.rebate_accruals.base_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.rebate_accruals.base_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.rebate_accruals.rebate_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.rebate_accruals.rebate_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.rebate_accruals.is_settled IS 'Whether it was paid out or credited.';
 
 -- northwind.refunds
 CREATE TABLE northwind.refunds (
@@ -3064,6 +4654,19 @@ CREATE TABLE northwind.refunds (
     CONSTRAINT fk_refunds_payment_id FOREIGN KEY (payment_id) REFERENCES northwind.payments (id) ON DELETE SET NULL,
     CONSTRAINT fk_refunds_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.refunds IS 'Money returned to a customer, from an overpayment or a credit note.';
+COMMENT ON COLUMN northwind.refunds.id IS 'Surrogate key of the refund.';
+COMMENT ON COLUMN northwind.refunds.refund_number IS 'Refund number.';
+COMMENT ON COLUMN northwind.refunds.refunded_at IS 'When it was paid out.';
+COMMENT ON COLUMN northwind.refunds.amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.refunds.amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.refunds.method IS 'card, ach or check.';
+COMMENT ON COLUMN northwind.refunds.status IS 'Processing state.';
+COMMENT ON COLUMN northwind.refunds.reference IS 'Processor or bank reference.';
+COMMENT ON COLUMN northwind.refunds.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.refunds.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.refunds.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.refunds.updated_by IS 'User name of the last editor.';
 
 -- northwind.remittance_advices
 CREATE TABLE northwind.remittance_advices (
@@ -3080,6 +4683,14 @@ CREATE TABLE northwind.remittance_advices (
     CONSTRAINT fk_remittance_advices_payment_id FOREIGN KEY (payment_id) REFERENCES northwind.payments (id) ON DELETE SET NULL,
     CONSTRAINT fk_remittance_advices_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.remittance_advices IS 'A customer''s remittance advice explaining which invoices a payment covers, from EDI 820 or email.';
+COMMENT ON COLUMN northwind.remittance_advices.id IS 'Surrogate key of the remittance advice.';
+COMMENT ON COLUMN northwind.remittance_advices.received_on IS 'Date received.';
+COMMENT ON COLUMN northwind.remittance_advices.payer_reference IS 'Payer''s reference.';
+COMMENT ON COLUMN northwind.remittance_advices.total_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.remittance_advices.total_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.remittance_advices.raw_document IS 'Original document, as JSON.';
+COMMENT ON COLUMN northwind.remittance_advices.is_matched IS 'Whether it was matched to a payment.';
 
 -- northwind.reorder_suggestions
 CREATE TABLE northwind.reorder_suggestions (
@@ -3098,6 +4709,12 @@ CREATE TABLE northwind.reorder_suggestions (
     CONSTRAINT fk_reorder_suggestions_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT,
     CONSTRAINT fk_reorder_suggestions_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.reorder_suggestions IS 'A replenishment proposal computed nightly for a buyer to accept or dismiss.';
+COMMENT ON COLUMN northwind.reorder_suggestions.id IS 'Surrogate key of the reorder suggestion.';
+COMMENT ON COLUMN northwind.reorder_suggestions.suggested_quantity IS 'Quantity to order.';
+COMMENT ON COLUMN northwind.reorder_suggestions.suggested_on IS 'Date computed.';
+COMMENT ON COLUMN northwind.reorder_suggestions.is_accepted IS 'Whether the buyer accepted it; null while undecided.';
+COMMENT ON COLUMN northwind.reorder_suggestions.dismissed_reason IS 'Why it was dismissed.';
 
 -- northwind.warranty_claims
 CREATE TABLE northwind.warranty_claims (
@@ -3124,6 +4741,19 @@ CREATE TABLE northwind.warranty_claims (
     CONSTRAINT fk_warranty_claims_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_warranty_claims_serial_number_id FOREIGN KEY (serial_number_id) REFERENCES northwind.serial_numbers (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.warranty_claims IS 'A claim that a product failed within its warranty, passed on to the manufacturer.';
+COMMENT ON COLUMN northwind.warranty_claims.id IS 'Surrogate key of the warranty claim.';
+COMMENT ON COLUMN northwind.warranty_claims.claim_number IS 'Claim number.';
+COMMENT ON COLUMN northwind.warranty_claims.filed_on IS 'Filing date.';
+COMMENT ON COLUMN northwind.warranty_claims.failure_description IS 'What failed.';
+COMMENT ON COLUMN northwind.warranty_claims.status IS 'filed, approved, denied or reimbursed.';
+COMMENT ON COLUMN northwind.warranty_claims.claim_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.warranty_claims.claim_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.warranty_claims.resolution IS 'Outcome.';
+COMMENT ON COLUMN northwind.warranty_claims.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.warranty_claims.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.warranty_claims.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.warranty_claims.updated_by IS 'User name of the last editor.';
 
 -- northwind.repair_orders
 CREATE TABLE northwind.repair_orders (
@@ -3153,6 +4783,20 @@ CREATE TABLE northwind.repair_orders (
     CONSTRAINT fk_repair_orders_technician_id FOREIGN KEY (technician_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_repair_orders_serial_number_id FOREIGN KEY (serial_number_id) REFERENCES northwind.serial_numbers (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.repair_orders IS 'A repair of a returned or warranty unit, in house or at a service partner.';
+COMMENT ON COLUMN northwind.repair_orders.id IS 'Surrogate key of the repair order.';
+COMMENT ON COLUMN northwind.repair_orders.repair_number IS 'Repair number.';
+COMMENT ON COLUMN northwind.repair_orders.received_on IS 'Date the unit arrived.';
+COMMENT ON COLUMN northwind.repair_orders.status IS 'open, diagnosing, repairing or done.';
+COMMENT ON COLUMN northwind.repair_orders.diagnosis IS 'Technician''s diagnosis.';
+COMMENT ON COLUMN northwind.repair_orders.labor_hours IS 'Hours worked.';
+COMMENT ON COLUMN northwind.repair_orders.cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.repair_orders.cost_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.repair_orders.completed_on IS 'Date finished.';
+COMMENT ON COLUMN northwind.repair_orders.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.repair_orders.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.repair_orders.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.repair_orders.updated_by IS 'User name of the last editor.';
 
 -- northwind.return_reasons
 CREATE TABLE northwind.return_reasons (
@@ -3166,6 +4810,14 @@ CREATE TABLE northwind.return_reasons (
     CONSTRAINT pk_return_reasons PRIMARY KEY (id),
     CONSTRAINT uq_return_reasons_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.return_reasons IS 'A reason for a return, such as Damaged in transit or Ordered in error.';
+COMMENT ON COLUMN northwind.return_reasons.id IS 'Surrogate key of the return reason.';
+COMMENT ON COLUMN northwind.return_reasons.is_customer_fault IS 'Whether a restocking fee applies.';
+COMMENT ON COLUMN northwind.return_reasons.requires_inspection IS 'Whether goods must be inspected before credit.';
+COMMENT ON COLUMN northwind.return_reasons.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.return_reasons.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.return_reasons.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.return_reasons.is_active IS 'Whether the value can be chosen for new records.';
 
 -- northwind.return_lines
 CREATE TABLE northwind.return_lines (
@@ -3194,6 +4846,18 @@ CREATE TABLE northwind.return_lines (
     CONSTRAINT fk_return_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_return_lines_serial_number_id FOREIGN KEY (serial_number_id) REFERENCES northwind.serial_numbers (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.return_lines IS 'A product and quantity on a return authorization, with its condition and disposition.';
+COMMENT ON COLUMN northwind.return_lines.id IS 'Surrogate key of the return line.';
+COMMENT ON COLUMN northwind.return_lines.quantity IS 'Quantity authorized.';
+COMMENT ON COLUMN northwind.return_lines.received_quantity IS 'Quantity received.';
+COMMENT ON COLUMN northwind.return_lines.item_condition IS 'new, opened or damaged.';
+COMMENT ON COLUMN northwind.return_lines.disposition IS 'restock, scrap or return-to-vendor.';
+COMMENT ON COLUMN northwind.return_lines.credit_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.return_lines.credit_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.return_lines.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.return_lines.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.return_lines.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.return_lines.updated_by IS 'User name of the last editor.';
 
 -- northwind.replacements
 CREATE TABLE northwind.replacements (
@@ -3214,6 +4878,16 @@ CREATE TABLE northwind.replacements (
     CONSTRAINT fk_replacements_return_line_id FOREIGN KEY (return_line_id) REFERENCES northwind.return_lines (id) ON DELETE RESTRICT,
     CONSTRAINT fk_replacements_shipment_id FOREIGN KEY (shipment_id) REFERENCES northwind.shipments (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.replacements IS 'A replacement sent for a returned or failed product before or instead of a credit.';
+COMMENT ON COLUMN northwind.replacements.id IS 'Surrogate key of the replacement.';
+COMMENT ON COLUMN northwind.replacements.quantity IS 'Quantity sent.';
+COMMENT ON COLUMN northwind.replacements.shipped_on IS 'Ship date.';
+COMMENT ON COLUMN northwind.replacements.is_charged IS 'Whether the customer pays for it.';
+COMMENT ON COLUMN northwind.replacements.notes IS 'Remarks.';
+COMMENT ON COLUMN northwind.replacements.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.replacements.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.replacements.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.replacements.updated_by IS 'User name of the last editor.';
 
 -- northwind.replenishment_rules
 CREATE TABLE northwind.replenishment_rules (
@@ -3234,6 +4908,16 @@ CREATE TABLE northwind.replenishment_rules (
     CONSTRAINT fk_replenishment_rules_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_replenishment_rules_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.replenishment_rules IS 'Min-max replenishment settings of a product in a warehouse.';
+COMMENT ON COLUMN northwind.replenishment_rules.id IS 'Surrogate key of the replenishment rule.';
+COMMENT ON COLUMN northwind.replenishment_rules.min_quantity IS 'Reorder when available stock falls below it.';
+COMMENT ON COLUMN northwind.replenishment_rules.max_quantity IS 'Order up to this level.';
+COMMENT ON COLUMN northwind.replenishment_rules.reorder_quantity IS 'Fixed order quantity, when used instead of max.';
+COMMENT ON COLUMN northwind.replenishment_rules.is_active IS 'Whether the rule is evaluated.';
+COMMENT ON COLUMN northwind.replenishment_rules.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.replenishment_rules.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.replenishment_rules.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.replenishment_rules.updated_by IS 'User name of the last editor.';
 
 -- northwind.request_for_quotes
 CREATE TABLE northwind.request_for_quotes (
@@ -3254,6 +4938,17 @@ CREATE TABLE northwind.request_for_quotes (
     CONSTRAINT fk_request_for_quotes_buyer_id FOREIGN KEY (buyer_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_request_for_quotes_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.request_for_quotes IS 'A request asking several suppliers to quote for a product.';
+COMMENT ON COLUMN northwind.request_for_quotes.id IS 'Surrogate key of the request for quote.';
+COMMENT ON COLUMN northwind.request_for_quotes.rfq_number IS 'RFQ number.';
+COMMENT ON COLUMN northwind.request_for_quotes.issued_on IS 'Date sent.';
+COMMENT ON COLUMN northwind.request_for_quotes.response_due_on IS 'Deadline for quotes.';
+COMMENT ON COLUMN northwind.request_for_quotes.status IS 'open, evaluating, awarded or cancelled.';
+COMMENT ON COLUMN northwind.request_for_quotes.description IS 'Requirements.';
+COMMENT ON COLUMN northwind.request_for_quotes.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.request_for_quotes.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.request_for_quotes.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.request_for_quotes.updated_by IS 'User name of the last editor.';
 
 -- northwind.request_for_quote_supplier
 CREATE TABLE northwind.request_for_quote_supplier (
@@ -3265,6 +4960,9 @@ CREATE TABLE northwind.request_for_quote_supplier (
     CONSTRAINT fk_request_for_quote_supplier_requests_for_quote_id FOREIGN KEY (requests_for_quote_id) REFERENCES northwind.request_for_quotes (id) ON DELETE CASCADE,
     CONSTRAINT fk_request_for_quote_supplier_invited_suppliers_id FOREIGN KEY (invited_suppliers_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.request_for_quote_supplier IS 'Suppliers invited to quote on a request for quote, with the invitation date.';
+COMMENT ON COLUMN northwind.request_for_quote_supplier.invited_at IS 'When the invitation was sent.';
+COMMENT ON COLUMN northwind.request_for_quote_supplier.declined IS 'Whether the supplier declined to quote.';
 
 -- northwind.requisition_lines
 CREATE TABLE northwind.requisition_lines (
@@ -3281,6 +4979,12 @@ CREATE TABLE northwind.requisition_lines (
     CONSTRAINT fk_requisition_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE SET NULL,
     CONSTRAINT fk_requisition_lines_suggested_supplier_id FOREIGN KEY (suggested_supplier_id) REFERENCES northwind.parties (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.requisition_lines IS 'An item requested on a requisition.';
+COMMENT ON COLUMN northwind.requisition_lines.id IS 'Surrogate key of the requisition line.';
+COMMENT ON COLUMN northwind.requisition_lines.description IS 'What is needed.';
+COMMENT ON COLUMN northwind.requisition_lines.quantity IS 'Quantity.';
+COMMENT ON COLUMN northwind.requisition_lines.estimated_cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.requisition_lines.estimated_cost_currency IS 'The ISO 4217 currency of the amount.';
 
 -- northwind.return_inspections
 CREATE TABLE northwind.return_inspections (
@@ -3295,6 +4999,12 @@ CREATE TABLE northwind.return_inspections (
     CONSTRAINT fk_return_inspections_inspector_id FOREIGN KEY (inspector_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_return_inspections_return_line_id FOREIGN KEY (return_line_id) REFERENCES northwind.return_lines (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.return_inspections IS 'An inspection of returned goods that decides the disposition.';
+COMMENT ON COLUMN northwind.return_inspections.id IS 'Surrogate key of the return inspection.';
+COMMENT ON COLUMN northwind.return_inspections.inspected_at IS 'When it was inspected.';
+COMMENT ON COLUMN northwind.return_inspections.outcome IS 'resaleable, refurbish or scrap.';
+COMMENT ON COLUMN northwind.return_inspections.notes IS 'Findings.';
+COMMENT ON COLUMN northwind.return_inspections.photo_url IS 'Photo of the goods.';
 
 -- northwind.roles
 CREATE TABLE northwind.roles (
@@ -3309,6 +5019,15 @@ CREATE TABLE northwind.roles (
     CONSTRAINT pk_roles PRIMARY KEY (id),
     CONSTRAINT uq_roles_name UNIQUE (name)
 );
+COMMENT ON TABLE northwind.roles IS 'A named set of permissions granted to user accounts, such as Order desk or Warehouse lead.';
+COMMENT ON COLUMN northwind.roles.id IS 'Surrogate key of the role.';
+COMMENT ON COLUMN northwind.roles.name IS 'Role name.';
+COMMENT ON COLUMN northwind.roles.description IS 'What the role is for.';
+COMMENT ON COLUMN northwind.roles.is_system IS 'Built-in role that cannot be deleted.';
+COMMENT ON COLUMN northwind.roles.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.roles.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.roles.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.roles.updated_by IS 'User name of the last editor.';
 
 -- northwind.role_permission
 CREATE TABLE northwind.role_permission (
@@ -3318,6 +5037,7 @@ CREATE TABLE northwind.role_permission (
     CONSTRAINT fk_role_permission_roles_id FOREIGN KEY (roles_id) REFERENCES northwind.roles (id) ON DELETE CASCADE,
     CONSTRAINT fk_role_permission_permissions_id FOREIGN KEY (permissions_id) REFERENCES northwind.permissions (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.role_permission IS 'Permissions included in a role.';
 
 -- northwind.route_stops
 CREATE TABLE northwind.route_stops (
@@ -3339,6 +5059,19 @@ CREATE TABLE northwind.route_stops (
     CONSTRAINT fk_route_stops_delivery_route_id FOREIGN KEY (delivery_route_id) REFERENCES northwind.delivery_routes (id) ON DELETE CASCADE,
     CONSTRAINT fk_route_stops_shipment_id FOREIGN KEY (shipment_id) REFERENCES northwind.shipments (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.route_stops IS 'A stop on a delivery route.';
+COMMENT ON COLUMN northwind.route_stops.id IS 'Surrogate key of the route stop.';
+COMMENT ON COLUMN northwind.route_stops.stop_number IS 'Position on the route.';
+COMMENT ON COLUMN northwind.route_stops.address_line1 IS 'Street and number, or PO box.';
+COMMENT ON COLUMN northwind.route_stops.address_line2 IS 'Suite, floor or building.';
+COMMENT ON COLUMN northwind.route_stops.address_city IS 'City or locality.';
+COMMENT ON COLUMN northwind.route_stops.address_region IS 'State, province or county.';
+COMMENT ON COLUMN northwind.route_stops.address_postal_code IS 'Postal or ZIP code.';
+COMMENT ON COLUMN northwind.route_stops.address_country_code IS 'ISO country code.';
+COMMENT ON COLUMN northwind.route_stops.location_latitude IS 'Degrees north of the equator.';
+COMMENT ON COLUMN northwind.route_stops.location_longitude IS 'Degrees east of Greenwich.';
+COMMENT ON COLUMN northwind.route_stops.planned_arrival_at IS 'Planned arrival.';
+COMMENT ON COLUMN northwind.route_stops.actual_arrival_at IS 'Actual arrival.';
 
 -- northwind.sales_activities
 CREATE TABLE northwind.sales_activities (
@@ -3362,6 +5095,17 @@ CREATE TABLE northwind.sales_activities (
     CONSTRAINT fk_sales_activities_owner_id FOREIGN KEY (owner_id) REFERENCES northwind.employees (id) ON DELETE RESTRICT,
     CONSTRAINT fk_sales_activities_opportunity_id FOREIGN KEY (opportunity_id) REFERENCES northwind.opportunities (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.sales_activities IS 'A call, email, meeting, visit or task logged against a party.';
+COMMENT ON COLUMN northwind.sales_activities.id IS 'Surrogate key of the sales activity.';
+COMMENT ON COLUMN northwind.sales_activities.activity_type IS 'Kind of activity.';
+COMMENT ON COLUMN northwind.sales_activities.subject IS 'One-line summary.';
+COMMENT ON COLUMN northwind.sales_activities.due_at IS 'When the activity is scheduled or due.';
+COMMENT ON COLUMN northwind.sales_activities.completed_at IS 'When it was done.';
+COMMENT ON COLUMN northwind.sales_activities.notes IS 'Outcome and details.';
+COMMENT ON COLUMN northwind.sales_activities.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.sales_activities.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.sales_activities.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.sales_activities.updated_by IS 'User name of the last editor.';
 
 -- northwind.sales_commissions
 CREATE TABLE northwind.sales_commissions (
@@ -3382,6 +5126,18 @@ CREATE TABLE northwind.sales_commissions (
     CONSTRAINT fk_sales_commissions_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE,
     CONSTRAINT fk_sales_commissions_sales_rep_id FOREIGN KEY (sales_rep_id) REFERENCES northwind.employees (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.sales_commissions IS 'Commission earned by a sales rep on an order.';
+COMMENT ON COLUMN northwind.sales_commissions.id IS 'Surrogate key of the sales commission.';
+COMMENT ON COLUMN northwind.sales_commissions.commission_rate IS 'Rate applied.';
+COMMENT ON COLUMN northwind.sales_commissions.commission_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.sales_commissions.commission_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.sales_commissions.earned_on IS 'Date it was earned, usually the invoice date.';
+COMMENT ON COLUMN northwind.sales_commissions.is_paid IS 'Whether payroll paid it.';
+COMMENT ON COLUMN northwind.sales_commissions.paid_on IS 'Payroll date.';
+COMMENT ON COLUMN northwind.sales_commissions.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.sales_commissions.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.sales_commissions.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.sales_commissions.updated_by IS 'User name of the last editor.';
 
 -- northwind.sales_order_attachments
 CREATE TABLE northwind.sales_order_attachments (
@@ -3401,6 +5157,17 @@ CREATE TABLE northwind.sales_order_attachments (
     CONSTRAINT fk_sales_order_attachments_uploaded_by_id FOREIGN KEY (uploaded_by_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL,
     CONSTRAINT fk_sales_order_attachments_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.sales_order_attachments IS 'A file attached to a sales order, such as the customer''s PO PDF.';
+COMMENT ON COLUMN northwind.sales_order_attachments.id IS 'Surrogate key of the sales order attachment.';
+COMMENT ON COLUMN northwind.sales_order_attachments.file_name IS 'Original file name.';
+COMMENT ON COLUMN northwind.sales_order_attachments.content_type IS 'MIME type.';
+COMMENT ON COLUMN northwind.sales_order_attachments.size_bytes IS 'File size.';
+COMMENT ON COLUMN northwind.sales_order_attachments.storage_key IS 'Object storage key.';
+COMMENT ON COLUMN northwind.sales_order_attachments.uploaded_at IS 'When it was uploaded.';
+COMMENT ON COLUMN northwind.sales_order_attachments.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.sales_order_attachments.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.sales_order_attachments.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.sales_order_attachments.updated_by IS 'User name of the last editor.';
 
 -- northwind.sales_order_notes
 CREATE TABLE northwind.sales_order_notes (
@@ -3417,6 +5184,14 @@ CREATE TABLE northwind.sales_order_notes (
     CONSTRAINT fk_sales_order_notes_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE,
     CONSTRAINT fk_sales_order_notes_author_id FOREIGN KEY (author_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.sales_order_notes IS 'A note on a sales order, internal or visible to the customer on the portal.';
+COMMENT ON COLUMN northwind.sales_order_notes.id IS 'Surrogate key of the sales order note.';
+COMMENT ON COLUMN northwind.sales_order_notes.body IS 'Note text.';
+COMMENT ON COLUMN northwind.sales_order_notes.is_customer_visible IS 'Shown on the customer portal.';
+COMMENT ON COLUMN northwind.sales_order_notes.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.sales_order_notes.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.sales_order_notes.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.sales_order_notes.updated_by IS 'User name of the last editor.';
 
 -- northwind.sales_order_status_changes
 CREATE TABLE northwind.sales_order_status_changes (
@@ -3431,6 +5206,12 @@ CREATE TABLE northwind.sales_order_status_changes (
     CONSTRAINT fk_sales_order_status_changes_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE,
     CONSTRAINT fk_sales_order_status_changes_changed_by_id FOREIGN KEY (changed_by_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.sales_order_status_changes IS 'A status transition of a sales order, kept as history.';
+COMMENT ON COLUMN northwind.sales_order_status_changes.id IS 'Surrogate key of the sales order status change.';
+COMMENT ON COLUMN northwind.sales_order_status_changes.from_status IS 'Status before.';
+COMMENT ON COLUMN northwind.sales_order_status_changes.to_status IS 'Status after.';
+COMMENT ON COLUMN northwind.sales_order_status_changes.changed_at IS 'When the change happened.';
+COMMENT ON COLUMN northwind.sales_order_status_changes.reason IS 'Why it changed.';
 
 -- northwind.sales_quote_lines
 CREATE TABLE northwind.sales_quote_lines (
@@ -3449,6 +5230,14 @@ CREATE TABLE northwind.sales_quote_lines (
     CONSTRAINT fk_sales_quote_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_sales_quote_lines_unit_code FOREIGN KEY (unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.sales_quote_lines IS 'A quoted product and price.';
+COMMENT ON COLUMN northwind.sales_quote_lines.id IS 'Surrogate key of the sales quote line.';
+COMMENT ON COLUMN northwind.sales_quote_lines.quantity IS 'Quantity quoted.';
+COMMENT ON COLUMN northwind.sales_quote_lines.unit_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.sales_quote_lines.unit_price_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.sales_quote_lines.discount IS 'Quoted discount.';
+COMMENT ON COLUMN northwind.sales_quote_lines.line_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.sales_quote_lines.line_total_currency IS 'The ISO 4217 currency of the amount.';
 
 -- northwind.service_case_comments
 CREATE TABLE northwind.service_case_comments (
@@ -3462,6 +5251,11 @@ CREATE TABLE northwind.service_case_comments (
     CONSTRAINT fk_service_case_comments_author_id FOREIGN KEY (author_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL,
     CONSTRAINT fk_service_case_comments_service_case_id FOREIGN KEY (service_case_id) REFERENCES northwind.service_cases (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.service_case_comments IS 'A message on a service case, from the customer or an agent.';
+COMMENT ON COLUMN northwind.service_case_comments.id IS 'Surrogate key of the service case comment.';
+COMMENT ON COLUMN northwind.service_case_comments.body IS 'Message.';
+COMMENT ON COLUMN northwind.service_case_comments.is_internal IS 'Hidden from the customer.';
+COMMENT ON COLUMN northwind.service_case_comments.posted_at IS 'When it was posted.';
 
 -- northwind.shipping_labels
 CREATE TABLE northwind.shipping_labels (
@@ -3474,6 +5268,11 @@ CREATE TABLE northwind.shipping_labels (
     CONSTRAINT uq_shipping_labels_shipment_package_id UNIQUE (shipment_package_id),
     CONSTRAINT fk_shipping_labels_shipment_package_id FOREIGN KEY (shipment_package_id) REFERENCES northwind.shipment_packages (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.shipping_labels IS 'A carrier label generated for a package.';
+COMMENT ON COLUMN northwind.shipping_labels.id IS 'Surrogate key of the shipping label.';
+COMMENT ON COLUMN northwind.shipping_labels.format IS 'ZPL or PDF.';
+COMMENT ON COLUMN northwind.shipping_labels.storage_key IS 'Object storage key of the label file.';
+COMMENT ON COLUMN northwind.shipping_labels.generated_at IS 'When the label was generated.';
 
 -- northwind.sign_in_attempts
 CREATE TABLE northwind.sign_in_attempts (
@@ -3488,6 +5287,13 @@ CREATE TABLE northwind.sign_in_attempts (
     CONSTRAINT fk_sign_in_attempts_user_account_id FOREIGN KEY (user_account_id) REFERENCES northwind.user_accounts (id) ON DELETE CASCADE
 );
 CREATE INDEX ix_sign_in_attempts_attempted_at ON northwind.sign_in_attempts (attempted_at);
+COMMENT ON TABLE northwind.sign_in_attempts IS 'One sign-in attempt, successful or not, used for lockout and security reviews.';
+COMMENT ON COLUMN northwind.sign_in_attempts.id IS 'Surrogate key of the sign in attempt.';
+COMMENT ON COLUMN northwind.sign_in_attempts.attempted_at IS 'When the attempt happened.';
+COMMENT ON COLUMN northwind.sign_in_attempts.user_name IS 'User name entered.';
+COMMENT ON COLUMN northwind.sign_in_attempts.succeeded IS 'Whether the attempt succeeded.';
+COMMENT ON COLUMN northwind.sign_in_attempts.failure_reason IS 'Why it failed, such as bad-password or locked.';
+COMMENT ON COLUMN northwind.sign_in_attempts.ip_address IS 'Client IP address.';
 
 -- northwind.standard_costs
 CREATE TABLE northwind.standard_costs (
@@ -3505,6 +5311,17 @@ CREATE TABLE northwind.standard_costs (
     CONSTRAINT pk_standard_costs PRIMARY KEY (id),
     CONSTRAINT fk_standard_costs_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.standard_costs IS 'The standard cost of a product for a period, used for margin reporting and inventory valuation.';
+COMMENT ON COLUMN northwind.standard_costs.id IS 'Surrogate key of the standard cost.';
+COMMENT ON COLUMN northwind.standard_costs.cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.standard_costs.cost_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.standard_costs.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.standard_costs.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.standard_costs.costing_method IS 'standard, average or last-purchase.';
+COMMENT ON COLUMN northwind.standard_costs.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.standard_costs.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.standard_costs.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.standard_costs.updated_by IS 'User name of the last editor.';
 
 -- northwind.standing_orders
 CREATE TABLE northwind.standing_orders (
@@ -3526,6 +5343,18 @@ CREATE TABLE northwind.standing_orders (
     CONSTRAINT fk_standing_orders_ship_to_id FOREIGN KEY (ship_to_id) REFERENCES northwind.party_addresses (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_standing_orders_next_run_on ON northwind.standing_orders (next_run_on);
+COMMENT ON TABLE northwind.standing_orders IS 'A recurring order that the scheduler places automatically, such as weekly cleaning supplies.';
+COMMENT ON COLUMN northwind.standing_orders.id IS 'Surrogate key of the standing order.';
+COMMENT ON COLUMN northwind.standing_orders.name IS 'Name shown to the customer.';
+COMMENT ON COLUMN northwind.standing_orders.frequency IS 'weekly, biweekly or monthly.';
+COMMENT ON COLUMN northwind.standing_orders.next_run_on IS 'Date the next order will be placed.';
+COMMENT ON COLUMN northwind.standing_orders.is_active IS 'Whether it is running.';
+COMMENT ON COLUMN northwind.standing_orders.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.standing_orders.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.standing_orders.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.standing_orders.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.standing_orders.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.standing_orders.updated_by IS 'User name of the last editor.';
 
 -- northwind.standing_order_lines
 CREATE TABLE northwind.standing_order_lines (
@@ -3539,6 +5368,9 @@ CREATE TABLE northwind.standing_order_lines (
     CONSTRAINT fk_standing_order_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_standing_order_lines_unit_code FOREIGN KEY (unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.standing_order_lines IS 'A product and quantity ordered on every run of a standing order.';
+COMMENT ON COLUMN northwind.standing_order_lines.id IS 'Surrogate key of the standing order line.';
+COMMENT ON COLUMN northwind.standing_order_lines.quantity IS 'Quantity per run.';
 
 -- northwind.state_provinces
 CREATE TABLE northwind.state_provinces (
@@ -3551,6 +5383,11 @@ CREATE TABLE northwind.state_provinces (
     CONSTRAINT uq_state_provinces_code UNIQUE (code),
     CONSTRAINT fk_state_provinces_country_code FOREIGN KEY (country_code) REFERENCES northwind.countries (code) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.state_provinces IS 'A first-level subdivision of a country (ISO 3166-2), used for sales tax and shipping zones.';
+COMMENT ON COLUMN northwind.state_provinces.id IS 'Surrogate key of the state province.';
+COMMENT ON COLUMN northwind.state_provinces.code IS 'ISO 3166-2 subdivision code without the country prefix, such as CA.';
+COMMENT ON COLUMN northwind.state_provinces.name IS 'Name of the subdivision.';
+COMMENT ON COLUMN northwind.state_provinces.subdivision_type IS 'Kind of subdivision, such as state, province or county.';
 
 -- northwind.stock_adjustments
 CREATE TABLE northwind.stock_adjustments (
@@ -3574,6 +5411,18 @@ CREATE TABLE northwind.stock_adjustments (
     CONSTRAINT fk_stock_adjustments_approved_by_id FOREIGN KEY (approved_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_stock_adjustments_reason_id FOREIGN KEY (reason_id) REFERENCES northwind.adjustment_reasons (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.stock_adjustments IS 'A correction of on-hand stock after a count, damage or theft, approved above a value threshold.';
+COMMENT ON COLUMN northwind.stock_adjustments.id IS 'Surrogate key of the stock adjustment.';
+COMMENT ON COLUMN northwind.stock_adjustments.adjustment_number IS 'Adjustment number.';
+COMMENT ON COLUMN northwind.stock_adjustments.adjusted_at IS 'When the adjustment was booked.';
+COMMENT ON COLUMN northwind.stock_adjustments.quantity_delta IS 'Change in quantity.';
+COMMENT ON COLUMN northwind.stock_adjustments.value_delta_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.stock_adjustments.value_delta_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.stock_adjustments.notes IS 'Explanation.';
+COMMENT ON COLUMN northwind.stock_adjustments.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.stock_adjustments.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.stock_adjustments.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.stock_adjustments.updated_by IS 'User name of the last editor.';
 
 -- northwind.stock_movements
 CREATE TABLE northwind.stock_movements (
@@ -3597,6 +5446,14 @@ CREATE TABLE northwind.stock_movements (
     CONSTRAINT fk_stock_movements_to_bin_id FOREIGN KEY (to_bin_id) REFERENCES northwind.bin_locations (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_stock_movements_occurred_at ON northwind.stock_movements (occurred_at DESC);
+COMMENT ON TABLE northwind.stock_movements IS 'Movements are read newest first.';
+COMMENT ON COLUMN northwind.stock_movements.id IS 'Surrogate key of the stock movement.';
+COMMENT ON COLUMN northwind.stock_movements.movement_type IS 'Kind of movement.';
+COMMENT ON COLUMN northwind.stock_movements.quantity IS 'Quantity moved, in the base unit; negative for issues.';
+COMMENT ON COLUMN northwind.stock_movements.occurred_at IS 'When the movement happened.';
+COMMENT ON COLUMN northwind.stock_movements.reference_document IS 'Source document number.';
+COMMENT ON COLUMN northwind.stock_movements.unit_cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.stock_movements.unit_cost_currency IS 'The ISO 4217 currency of the amount.';
 
 -- northwind.stock_reservations
 CREATE TABLE northwind.stock_reservations (
@@ -3611,6 +5468,12 @@ CREATE TABLE northwind.stock_reservations (
     CONSTRAINT fk_stock_reservations_inventory_item_id FOREIGN KEY (inventory_item_id) REFERENCES northwind.inventory_items (id) ON DELETE CASCADE,
     CONSTRAINT fk_stock_reservations_sales_order_line_id FOREIGN KEY (sales_order_line_id) REFERENCES northwind.sales_order_lines (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.stock_reservations IS 'A quantity of stock reserved for a sales order line.';
+COMMENT ON COLUMN northwind.stock_reservations.id IS 'Surrogate key of the stock reservation.';
+COMMENT ON COLUMN northwind.stock_reservations.quantity IS 'Quantity reserved.';
+COMMENT ON COLUMN northwind.stock_reservations.reserved_at IS 'When it was reserved.';
+COMMENT ON COLUMN northwind.stock_reservations.expires_at IS 'When a soft reservation lapses.';
+COMMENT ON COLUMN northwind.stock_reservations.status IS 'active, picked, released or expired.';
 
 -- northwind.stock_transfers
 CREATE TABLE northwind.stock_transfers (
@@ -3633,6 +5496,17 @@ CREATE TABLE northwind.stock_transfers (
     CONSTRAINT fk_stock_transfers_carrier_id FOREIGN KEY (carrier_id) REFERENCES northwind.parties (id) ON DELETE SET NULL,
     CONSTRAINT fk_stock_transfers_from_warehouse_id FOREIGN KEY (from_warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.stock_transfers IS 'A movement of stock between two Northwind warehouses.';
+COMMENT ON COLUMN northwind.stock_transfers.id IS 'Surrogate key of the stock transfer.';
+COMMENT ON COLUMN northwind.stock_transfers.transfer_number IS 'Transfer number.';
+COMMENT ON COLUMN northwind.stock_transfers.status IS 'Lifecycle state.';
+COMMENT ON COLUMN northwind.stock_transfers.requested_on IS 'Date requested.';
+COMMENT ON COLUMN northwind.stock_transfers.shipped_at IS 'When it left the source.';
+COMMENT ON COLUMN northwind.stock_transfers.received_at IS 'When it arrived.';
+COMMENT ON COLUMN northwind.stock_transfers.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.stock_transfers.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.stock_transfers.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.stock_transfers.updated_by IS 'User name of the last editor.';
 
 -- northwind.stock_transfer_lines
 CREATE TABLE northwind.stock_transfer_lines (
@@ -3647,6 +5521,10 @@ CREATE TABLE northwind.stock_transfer_lines (
     CONSTRAINT fk_stock_transfer_lines_lot_id FOREIGN KEY (lot_id) REFERENCES northwind.stock_lots (id) ON DELETE SET NULL,
     CONSTRAINT fk_stock_transfer_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.stock_transfer_lines IS 'A product and quantity on a stock transfer.';
+COMMENT ON COLUMN northwind.stock_transfer_lines.id IS 'Surrogate key of the stock transfer line.';
+COMMENT ON COLUMN northwind.stock_transfer_lines.quantity IS 'Quantity shipped.';
+COMMENT ON COLUMN northwind.stock_transfer_lines.received_quantity IS 'Quantity received.';
 
 -- northwind.supplier_certifications
 CREATE TABLE northwind.supplier_certifications (
@@ -3664,6 +5542,17 @@ CREATE TABLE northwind.supplier_certifications (
     CONSTRAINT pk_supplier_certifications PRIMARY KEY (id),
     CONSTRAINT fk_supplier_certifications_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.supplier_certifications IS 'A certification held by a supplier, such as ISO 9001 or a food safety audit.';
+COMMENT ON COLUMN northwind.supplier_certifications.id IS 'Surrogate key of the supplier certification.';
+COMMENT ON COLUMN northwind.supplier_certifications.certification_type IS 'Scheme.';
+COMMENT ON COLUMN northwind.supplier_certifications.certificate_number IS 'Certificate number.';
+COMMENT ON COLUMN northwind.supplier_certifications.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.supplier_certifications.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.supplier_certifications.document_url IS 'Scanned certificate.';
+COMMENT ON COLUMN northwind.supplier_certifications.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.supplier_certifications.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.supplier_certifications.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.supplier_certifications.updated_by IS 'User name of the last editor.';
 
 -- northwind.supplier_invoice_lines
 CREATE TABLE northwind.supplier_invoice_lines (
@@ -3682,6 +5571,14 @@ CREATE TABLE northwind.supplier_invoice_lines (
     CONSTRAINT fk_supplier_invoice_lines_ledger_account_id FOREIGN KEY (ledger_account_id) REFERENCES northwind.ledger_accounts (id) ON DELETE SET NULL,
     CONSTRAINT fk_supplier_invoice_lines_purchase_order_line_id FOREIGN KEY (purchase_order_line_id) REFERENCES northwind.purchase_order_lines (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.supplier_invoice_lines IS 'An invoiced item of a supplier invoice.';
+COMMENT ON COLUMN northwind.supplier_invoice_lines.id IS 'Surrogate key of the supplier invoice line.';
+COMMENT ON COLUMN northwind.supplier_invoice_lines.description IS 'Line text.';
+COMMENT ON COLUMN northwind.supplier_invoice_lines.quantity IS 'Quantity invoiced.';
+COMMENT ON COLUMN northwind.supplier_invoice_lines.unit_cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.supplier_invoice_lines.unit_cost_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.supplier_invoice_lines.line_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.supplier_invoice_lines.line_total_currency IS 'The ISO 4217 currency of the amount.';
 
 -- northwind.supplier_quotes
 CREATE TABLE northwind.supplier_quotes (
@@ -3698,6 +5595,14 @@ CREATE TABLE northwind.supplier_quotes (
     CONSTRAINT fk_supplier_quotes_request_for_quote_id FOREIGN KEY (request_for_quote_id) REFERENCES northwind.request_for_quotes (id) ON DELETE CASCADE,
     CONSTRAINT fk_supplier_quotes_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.supplier_quotes IS 'A supplier''s answer to a request for quote.';
+COMMENT ON COLUMN northwind.supplier_quotes.id IS 'Surrogate key of the supplier quote.';
+COMMENT ON COLUMN northwind.supplier_quotes.quoted_on IS 'Date quoted.';
+COMMENT ON COLUMN northwind.supplier_quotes.unit_cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.supplier_quotes.unit_cost_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.supplier_quotes.lead_time_days IS 'Quoted lead time.';
+COMMENT ON COLUMN northwind.supplier_quotes.valid_until IS 'Last day the quote holds.';
+COMMENT ON COLUMN northwind.supplier_quotes.is_awarded IS 'Whether the business was awarded.';
 
 -- northwind.supplier_scorecards
 CREATE TABLE northwind.supplier_scorecards (
@@ -3719,6 +5624,19 @@ CREATE TABLE northwind.supplier_scorecards (
     CONSTRAINT fk_supplier_scorecards_reviewed_by_id FOREIGN KEY (reviewed_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_supplier_scorecards_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.supplier_scorecards IS 'A periodic rating of a supplier''s delivery, fill rate and quality.';
+COMMENT ON COLUMN northwind.supplier_scorecards.id IS 'Surrogate key of the supplier scorecard.';
+COMMENT ON COLUMN northwind.supplier_scorecards.period_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.supplier_scorecards.period_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.supplier_scorecards.on_time_rate IS 'Share of lines delivered on time.';
+COMMENT ON COLUMN northwind.supplier_scorecards.fill_rate IS 'Share of quantity delivered.';
+COMMENT ON COLUMN northwind.supplier_scorecards.quality_rate IS 'Share of quantity accepted.';
+COMMENT ON COLUMN northwind.supplier_scorecards.overall_score IS 'Weighted score.';
+COMMENT ON COLUMN northwind.supplier_scorecards.comments IS 'Reviewer''s comments.';
+COMMENT ON COLUMN northwind.supplier_scorecards.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.supplier_scorecards.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.supplier_scorecards.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.supplier_scorecards.updated_by IS 'User name of the last editor.';
 
 -- northwind.tax_exemption_certificates
 CREATE TABLE northwind.tax_exemption_certificates (
@@ -3738,6 +5656,17 @@ CREATE TABLE northwind.tax_exemption_certificates (
     CONSTRAINT fk_tax_exemption_certificates_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE CASCADE,
     CONSTRAINT fk_tax_exemption_certificates_state_province_id FOREIGN KEY (state_province_id) REFERENCES northwind.state_provinces (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.tax_exemption_certificates IS 'A resale or exemption certificate a customer filed to buy without sales tax in a state.';
+COMMENT ON COLUMN northwind.tax_exemption_certificates.id IS 'Surrogate key of the tax exemption certificate.';
+COMMENT ON COLUMN northwind.tax_exemption_certificates.certificate_number IS 'Number on the certificate.';
+COMMENT ON COLUMN northwind.tax_exemption_certificates.exemption_reason IS 'Reason, such as resale or nonprofit.';
+COMMENT ON COLUMN northwind.tax_exemption_certificates.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.tax_exemption_certificates.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.tax_exemption_certificates.document_url IS 'Link to the scanned certificate.';
+COMMENT ON COLUMN northwind.tax_exemption_certificates.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.tax_exemption_certificates.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.tax_exemption_certificates.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.tax_exemption_certificates.updated_by IS 'User name of the last editor.';
 
 -- northwind.tax_jurisdictions
 CREATE TABLE northwind.tax_jurisdictions (
@@ -3758,6 +5687,15 @@ CREATE TABLE northwind.tax_jurisdictions (
     CONSTRAINT fk_tax_jurisdictions_state_province_id FOREIGN KEY (state_province_id) REFERENCES northwind.state_provinces (id) ON DELETE SET NULL,
     CONSTRAINT fk_tax_jurisdictions_parent_id FOREIGN KEY (parent_id) REFERENCES northwind.tax_jurisdictions (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.tax_jurisdictions IS 'An authority that levies sales tax - a country, state, county or city.';
+COMMENT ON COLUMN northwind.tax_jurisdictions.id IS 'Surrogate key of the tax jurisdiction.';
+COMMENT ON COLUMN northwind.tax_jurisdictions.code IS 'Jurisdiction code.';
+COMMENT ON COLUMN northwind.tax_jurisdictions.name IS 'Name.';
+COMMENT ON COLUMN northwind.tax_jurisdictions.level IS 'country, state, county, city or district.';
+COMMENT ON COLUMN northwind.tax_jurisdictions.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.tax_jurisdictions.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.tax_jurisdictions.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.tax_jurisdictions.updated_by IS 'User name of the last editor.';
 
 -- northwind.tax_rates
 CREATE TABLE northwind.tax_rates (
@@ -3777,6 +5715,17 @@ CREATE TABLE northwind.tax_rates (
     CONSTRAINT fk_tax_rates_jurisdiction_id FOREIGN KEY (jurisdiction_id) REFERENCES northwind.tax_jurisdictions (id) ON DELETE CASCADE,
     CONSTRAINT fk_tax_rates_sales_tax_account_id FOREIGN KEY (sales_tax_account_id) REFERENCES northwind.ledger_accounts (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.tax_rates IS 'A sales tax rate of a jurisdiction for a tax category and period.';
+COMMENT ON COLUMN northwind.tax_rates.id IS 'Surrogate key of the tax rate.';
+COMMENT ON COLUMN northwind.tax_rates.name IS 'Rate name, such as Colorado state sales tax.';
+COMMENT ON COLUMN northwind.tax_rates.rate IS 'Rate.';
+COMMENT ON COLUMN northwind.tax_rates.tax_category IS 'Goods category, such as general or food.';
+COMMENT ON COLUMN northwind.tax_rates.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.tax_rates.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.tax_rates.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.tax_rates.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.tax_rates.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.tax_rates.updated_by IS 'User name of the last editor.';
 
 -- northwind.teams
 CREATE TABLE northwind.teams (
@@ -3793,6 +5742,15 @@ CREATE TABLE northwind.teams (
     CONSTRAINT uq_teams_name UNIQUE (name),
     CONSTRAINT fk_teams_lead_id FOREIGN KEY (lead_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.teams IS 'A working group that shares a queue or a territory, such as the Northeast inside sales team.';
+COMMENT ON COLUMN northwind.teams.id IS 'Surrogate key of the team.';
+COMMENT ON COLUMN northwind.teams.name IS 'Team name.';
+COMMENT ON COLUMN northwind.teams.purpose IS 'What the team does.';
+COMMENT ON COLUMN northwind.teams.email IS 'Shared mailbox.';
+COMMENT ON COLUMN northwind.teams.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.teams.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.teams.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.teams.updated_by IS 'User name of the last editor.';
 
 -- northwind.team_employee
 CREATE TABLE northwind.team_employee (
@@ -3802,6 +5760,7 @@ CREATE TABLE northwind.team_employee (
     CONSTRAINT fk_team_employee_teams_id FOREIGN KEY (teams_id) REFERENCES northwind.teams (id) ON DELETE CASCADE,
     CONSTRAINT fk_team_employee_members_id FOREIGN KEY (members_id) REFERENCES northwind.employees (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.team_employee IS 'Employees who belong to a team; an employee may belong to several teams.';
 
 -- northwind.tracking_events
 CREATE TABLE northwind.tracking_events (
@@ -3815,6 +5774,13 @@ CREATE TABLE northwind.tracking_events (
     CONSTRAINT pk_tracking_events PRIMARY KEY (id),
     CONSTRAINT fk_tracking_events_shipment_id FOREIGN KEY (shipment_id) REFERENCES northwind.shipments (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.tracking_events IS 'A scan event reported by a carrier for a shipment.';
+COMMENT ON COLUMN northwind.tracking_events.id IS 'Surrogate key of the tracking event.';
+COMMENT ON COLUMN northwind.tracking_events.occurred_at IS 'When the scan happened.';
+COMMENT ON COLUMN northwind.tracking_events.event_code IS 'Carrier event code.';
+COMMENT ON COLUMN northwind.tracking_events.description IS 'Event text.';
+COMMENT ON COLUMN northwind.tracking_events.city IS 'Scan location.';
+COMMENT ON COLUMN northwind.tracking_events.country_code IS 'Scan country.';
 
 -- northwind.user_account_role
 CREATE TABLE northwind.user_account_role (
@@ -3827,6 +5793,10 @@ CREATE TABLE northwind.user_account_role (
     CONSTRAINT fk_user_account_role_users_id FOREIGN KEY (users_id) REFERENCES northwind.user_accounts (id) ON DELETE CASCADE,
     CONSTRAINT fk_user_account_role_roles_id FOREIGN KEY (roles_id) REFERENCES northwind.roles (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.user_account_role IS 'Roles granted to a user account; the grant records who granted it and when.';
+COMMENT ON COLUMN northwind.user_account_role.granted_at IS 'When the role was granted.';
+COMMENT ON COLUMN northwind.user_account_role.granted_by IS 'User name of the administrator who granted it.';
+COMMENT ON COLUMN northwind.user_account_role.expires_on IS 'Date the grant lapses; null for permanent grants.';
 
 -- northwind.user_sessions
 CREATE TABLE northwind.user_sessions (
@@ -3842,6 +5812,14 @@ CREATE TABLE northwind.user_sessions (
     CONSTRAINT fk_user_sessions_user_account_id FOREIGN KEY (user_account_id) REFERENCES northwind.user_accounts (id) ON DELETE CASCADE
 );
 CREATE INDEX ix_user_sessions_expires_at ON northwind.user_sessions (expires_at);
+COMMENT ON TABLE northwind.user_sessions IS 'A signed-in session of a user account, kept to support sign-out everywhere and anomaly detection.';
+COMMENT ON COLUMN northwind.user_sessions.id IS 'Surrogate key of the user session.';
+COMMENT ON COLUMN northwind.user_sessions.started_at IS 'When the session was created.';
+COMMENT ON COLUMN northwind.user_sessions.expires_at IS 'Absolute expiry.';
+COMMENT ON COLUMN northwind.user_sessions.last_seen_at IS 'Last request on the session.';
+COMMENT ON COLUMN northwind.user_sessions.ip_address IS 'Client IP address (IPv4 or IPv6).';
+COMMENT ON COLUMN northwind.user_sessions.user_agent IS 'Client user agent string.';
+COMMENT ON COLUMN northwind.user_sessions.revoked_at IS 'When the session was revoked; null while valid.';
 
 -- northwind.warehouse_equipment
 CREATE TABLE northwind.warehouse_equipment (
@@ -3861,6 +5839,18 @@ CREATE TABLE northwind.warehouse_equipment (
     CONSTRAINT uq_warehouse_equipment_asset_tag UNIQUE (asset_tag),
     CONSTRAINT fk_warehouse_equipment_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.warehouse_equipment IS 'Material handling equipment of a warehouse, such as a forklift or a reach truck.';
+COMMENT ON COLUMN northwind.warehouse_equipment.id IS 'Surrogate key of the warehouse equipment.';
+COMMENT ON COLUMN northwind.warehouse_equipment.asset_tag IS 'Asset tag.';
+COMMENT ON COLUMN northwind.warehouse_equipment.equipment_type IS 'Kind, such as forklift or pallet jack.';
+COMMENT ON COLUMN northwind.warehouse_equipment.manufacturer_name IS 'Maker.';
+COMMENT ON COLUMN northwind.warehouse_equipment.model_name IS 'Model.';
+COMMENT ON COLUMN northwind.warehouse_equipment.last_inspected_on IS 'Last safety inspection.';
+COMMENT ON COLUMN northwind.warehouse_equipment.is_operational IS 'Whether it can be used.';
+COMMENT ON COLUMN northwind.warehouse_equipment.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.warehouse_equipment.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.warehouse_equipment.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.warehouse_equipment.updated_by IS 'User name of the last editor.';
 
 -- northwind.warehouse_shifts
 CREATE TABLE northwind.warehouse_shifts (
@@ -3875,6 +5865,12 @@ CREATE TABLE northwind.warehouse_shifts (
     CONSTRAINT fk_warehouse_shifts_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE CASCADE,
     CONSTRAINT fk_warehouse_shifts_supervisor_id FOREIGN KEY (supervisor_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.warehouse_shifts IS 'A working shift of a warehouse, such as the night picking shift.';
+COMMENT ON COLUMN northwind.warehouse_shifts.id IS 'Surrogate key of the warehouse shift.';
+COMMENT ON COLUMN northwind.warehouse_shifts.name IS 'Shift name.';
+COMMENT ON COLUMN northwind.warehouse_shifts.starts_at IS 'Start time, local to the warehouse.';
+COMMENT ON COLUMN northwind.warehouse_shifts.ends_at IS 'End time.';
+COMMENT ON COLUMN northwind.warehouse_shifts.weekdays IS 'Days worked, such as Mon-Fri.';
 
 -- northwind.write_offs
 CREATE TABLE northwind.write_offs (
@@ -3895,6 +5891,16 @@ CREATE TABLE northwind.write_offs (
     CONSTRAINT fk_write_offs_journal_entry_id FOREIGN KEY (journal_entry_id) REFERENCES northwind.journal_entries (id) ON DELETE SET NULL,
     CONSTRAINT fk_write_offs_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.write_offs IS 'A bad debt write-off of an uncollectable invoice balance.';
+COMMENT ON COLUMN northwind.write_offs.id IS 'Surrogate key of the write off.';
+COMMENT ON COLUMN northwind.write_offs.written_off_on IS 'Date written off.';
+COMMENT ON COLUMN northwind.write_offs.amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.write_offs.amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.write_offs.reason IS 'Why it is uncollectable.';
+COMMENT ON COLUMN northwind.write_offs.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.write_offs.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.write_offs.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.write_offs.updated_by IS 'User name of the last editor.';
 
 ALTER TABLE northwind.cost_centers ADD CONSTRAINT fk_cost_centers_manager_id FOREIGN KEY (manager_id) REFERENCES northwind.employees (id) ON DELETE SET NULL;
 

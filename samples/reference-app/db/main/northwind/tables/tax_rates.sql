@@ -19,3 +19,14 @@ CREATE TABLE northwind.tax_rates (
     CONSTRAINT fk_tax_rates_jurisdiction_id FOREIGN KEY (jurisdiction_id) REFERENCES northwind.tax_jurisdictions (id) ON DELETE CASCADE,
     CONSTRAINT fk_tax_rates_sales_tax_account_id FOREIGN KEY (sales_tax_account_id) REFERENCES northwind.ledger_accounts (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.tax_rates IS 'A sales tax rate of a jurisdiction for a tax category and period.';
+COMMENT ON COLUMN northwind.tax_rates.id IS 'Surrogate key of the tax rate.';
+COMMENT ON COLUMN northwind.tax_rates.name IS 'Rate name, such as Colorado state sales tax.';
+COMMENT ON COLUMN northwind.tax_rates.rate IS 'Rate.';
+COMMENT ON COLUMN northwind.tax_rates.tax_category IS 'Goods category, such as general or food.';
+COMMENT ON COLUMN northwind.tax_rates.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.tax_rates.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.tax_rates.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.tax_rates.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.tax_rates.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.tax_rates.updated_by IS 'User name of the last editor.';

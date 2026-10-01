@@ -17,3 +17,10 @@ CREATE TABLE northwind.inventory_cost_layers (
     CONSTRAINT fk_inventory_cost_layers_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT,
     CONSTRAINT fk_inventory_cost_layers_goods_receipt_line_id FOREIGN KEY (goods_receipt_line_id) REFERENCES northwind.goods_receipt_lines (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.inventory_cost_layers IS 'A FIFO cost layer created by a receipt and consumed by issues, for inventory valuation.';
+COMMENT ON COLUMN northwind.inventory_cost_layers.id IS 'Surrogate key of the inventory cost layer.';
+COMMENT ON COLUMN northwind.inventory_cost_layers.received_on IS 'Date the layer was created.';
+COMMENT ON COLUMN northwind.inventory_cost_layers.quantity IS 'Quantity received.';
+COMMENT ON COLUMN northwind.inventory_cost_layers.remaining_quantity IS 'Quantity not yet consumed.';
+COMMENT ON COLUMN northwind.inventory_cost_layers.unit_cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.inventory_cost_layers.unit_cost_currency IS 'The ISO 4217 currency of the amount.';

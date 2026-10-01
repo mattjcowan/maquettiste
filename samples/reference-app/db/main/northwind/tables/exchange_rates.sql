@@ -15,3 +15,9 @@ CREATE TABLE northwind.exchange_rates (
     CONSTRAINT fk_exchange_rates_to_currency_code FOREIGN KEY (to_currency_code) REFERENCES northwind.currencies (code) ON DELETE RESTRICT
 );
 CREATE INDEX ix_exchange_rates_effective_on ON northwind.exchange_rates (effective_on);
+COMMENT ON TABLE northwind.exchange_rates IS 'A currency conversion rate on a date, loaded daily from the central bank feed.';
+COMMENT ON COLUMN northwind.exchange_rates.id IS 'Surrogate key of the exchange rate.';
+COMMENT ON COLUMN northwind.exchange_rates.rate IS 'Units of the target currency per unit of the source currency.';
+COMMENT ON COLUMN northwind.exchange_rates.effective_on IS 'Date the rate applies.';
+COMMENT ON COLUMN northwind.exchange_rates.rate_type IS 'spot, average or budget.';
+COMMENT ON COLUMN northwind.exchange_rates.source IS 'Feed the rate came from.';

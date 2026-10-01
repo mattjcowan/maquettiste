@@ -12,3 +12,8 @@ CREATE TABLE northwind.public_holidays (
     CONSTRAINT fk_public_holidays_country_code FOREIGN KEY (country_code) REFERENCES northwind.countries (code) ON DELETE CASCADE
 );
 CREATE INDEX ix_public_holidays_observed_on ON northwind.public_holidays (observed_on);
+COMMENT ON TABLE northwind.public_holidays IS 'A non-working day in a country, used for delivery date promises and payment due dates.';
+COMMENT ON COLUMN northwind.public_holidays.id IS 'Surrogate key of the public holiday.';
+COMMENT ON COLUMN northwind.public_holidays.observed_on IS 'Date the holiday is observed.';
+COMMENT ON COLUMN northwind.public_holidays.name IS 'Name of the holiday.';
+COMMENT ON COLUMN northwind.public_holidays.is_nationwide IS 'Whether it applies to the whole country rather than some regions.';

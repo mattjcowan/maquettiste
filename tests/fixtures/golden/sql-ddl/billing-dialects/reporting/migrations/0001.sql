@@ -15,6 +15,7 @@ CREATE TABLE dbo.customers (
     CONSTRAINT pk_customers PRIMARY KEY (id),
     CONSTRAINT uq_customers_email UNIQUE (email)
 );
+EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'Someone we bill.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'customers';
 
 CREATE TABLE dbo.invoices (
     id uniqueidentifier NOT NULL,
@@ -35,6 +36,9 @@ CREATE TABLE dbo.invoices (
     CONSTRAINT fk_invoices_customer_id FOREIGN KEY (customer_id) REFERENCES dbo.customers (id)
 );
 CREATE INDEX ix_invoices_issued_on ON dbo.invoices (issued_on);
+EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'# Invoice
+
+A bill issued to a customer. Its number is assigned when it is issued and never reused.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'invoices';
 
 CREATE TABLE dbo.payments (
     id bigint IDENTITY(1,1) NOT NULL,

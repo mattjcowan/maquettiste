@@ -16,3 +16,11 @@ CREATE TABLE northwind.card_payments (
     CONSTRAINT fk_card_payments_stored_payment_method_id FOREIGN KEY (stored_payment_method_id) REFERENCES northwind.stored_payment_methods (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_card_payments_processor_reference ON northwind.card_payments (processor_reference);
+COMMENT ON TABLE northwind.card_payments IS 'A payment by credit or purchasing card through the payment processor.';
+COMMENT ON COLUMN northwind.card_payments.id IS 'Surrogate key of the payment.';
+COMMENT ON COLUMN northwind.card_payments.card_brand IS 'Card network.';
+COMMENT ON COLUMN northwind.card_payments.last4 IS 'Last four digits of the card.';
+COMMENT ON COLUMN northwind.card_payments.expiry_month IS 'Card expiry month.';
+COMMENT ON COLUMN northwind.card_payments.expiry_year IS 'Card expiry year.';
+COMMENT ON COLUMN northwind.card_payments.authorization_code IS 'Issuer''s authorization code.';
+COMMENT ON COLUMN northwind.card_payments.processor_reference IS 'Processor transaction id.';

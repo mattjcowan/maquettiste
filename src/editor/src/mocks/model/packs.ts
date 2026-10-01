@@ -321,6 +321,22 @@ export class MockPacks {
     return { status: 200, body: result("saved", sha256Hex(text), { diagnostics: this.diagnostics(pack), files: ["pack.json"] }) };
   }
 
+  /** Why a pack cannot be removed with this pack.json hash (404, or 409 with the disk version), or null when it can. */
+  removalRefusal(pack: string, expected: string): { status: 404 | 409; hash: string | null; current: string | null } | null {
+    const disk = this.files.get(pack)?.get("pack.json");
+    if (disk === undefined) return { status: 404, hash: null, current: null };
+    return sha256Hex(disk) === expected ? null : { status: 409, hash: sha256Hex(disk), current: disk };
+  }
+
+  /** Drops a pack's folder and its manifest from the model's pack list; answers the files it held, ordinal. */
+  drop(pack: string): string[] {
+    const files = [...(this.files.get(pack)?.keys() ?? [])].sort();
+    this.files.delete(pack);
+    const index = this.model.packs.findIndex((p) => p.name === pack);
+    if (index >= 0) this.model.packs.splice(index, 1);
+    return files;
+  }
+
   create(name: string, from: string): WriteAnswer | { problem: string } {
     if (!NAME.test(name)) return { problem: `'${name}' is not a pack name.` };
     if (this.files.has(name))

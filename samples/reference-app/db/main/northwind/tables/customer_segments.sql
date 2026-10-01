@@ -12,3 +12,10 @@ CREATE TABLE northwind.customer_segments (
     CONSTRAINT pk_customer_segments PRIMARY KEY (id),
     CONSTRAINT uq_customer_segments_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.customer_segments IS 'Marketing segment of a customer, such as Independent retailer or National chain.';
+COMMENT ON COLUMN northwind.customer_segments.id IS 'Surrogate key of the customer segment.';
+COMMENT ON COLUMN northwind.customer_segments.description IS 'Who belongs to the segment.';
+COMMENT ON COLUMN northwind.customer_segments.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.customer_segments.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.customer_segments.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.customer_segments.is_active IS 'Whether the value can be chosen for new records.';

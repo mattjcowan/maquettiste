@@ -12,3 +12,10 @@ CREATE TABLE northwind.cancellation_reasons (
     CONSTRAINT pk_cancellation_reasons PRIMARY KEY (id),
     CONSTRAINT uq_cancellation_reasons_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.cancellation_reasons IS 'A reason for cancelling an order, such as Customer changed mind or Duplicate order.';
+COMMENT ON COLUMN northwind.cancellation_reasons.id IS 'Surrogate key of the cancellation reason.';
+COMMENT ON COLUMN northwind.cancellation_reasons.counts_as_lost_sale IS 'Whether the cancellation counts as a lost sale in reports.';
+COMMENT ON COLUMN northwind.cancellation_reasons.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.cancellation_reasons.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.cancellation_reasons.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.cancellation_reasons.is_active IS 'Whether the value can be chosen for new records.';

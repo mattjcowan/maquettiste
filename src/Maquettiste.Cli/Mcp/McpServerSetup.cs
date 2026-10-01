@@ -29,7 +29,8 @@ internal static class McpServerSetup
         get_resolved_model returns what generation sees as flat records in pages; pass next as cursor until it is null.
         get_element returns a document and its hash: save_element and delete_element take that hash as expectedHash and never
         overwrite a newer file (a conflict returns the disk version). delete_element refuses while other elements reference the
-        element unless resolution is remove-references. apply_batch applies several changes all or nothing. validate reports
+        element unless resolution is remove-references (clears optional references) or delete-dependents (also removes or deletes
+        what cannot exist without it); dryRun true shows the plan first. apply_batch applies several changes all or nothing. validate reports
         diagnostics with rule ids and positions. To generate code: plan, read get_plan_diff for the files you care about, then
         apply_plan with the plan id (a plan whose inputs changed is refused as stale). Failures are tool errors whose JSON has a
         stable code (not-found, conflict, invalid, referenced, stale, bad-request, ...) and the engine's diagnostics.

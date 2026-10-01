@@ -19,3 +19,15 @@ CREATE TABLE northwind.credit_profiles (
     CONSTRAINT uq_credit_profiles_customer_id UNIQUE (customer_id),
     CONSTRAINT fk_credit_profiles_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.credit_profiles IS 'The credit standing of a customer, reviewed by the credit department before limits change.';
+COMMENT ON COLUMN northwind.credit_profiles.id IS 'Surrogate key of the credit profile.';
+COMMENT ON COLUMN northwind.credit_profiles.credit_limit_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.credit_profiles.credit_limit_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.credit_profiles.risk_rating IS 'Internal rating from A1 (best) to D (worst).';
+COMMENT ON COLUMN northwind.credit_profiles.external_score IS 'Score from the credit bureau.';
+COMMENT ON COLUMN northwind.credit_profiles.last_reviewed_on IS 'Date of the last credit review.';
+COMMENT ON COLUMN northwind.credit_profiles.review_notes IS 'Reviewer''s notes.';
+COMMENT ON COLUMN northwind.credit_profiles.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.credit_profiles.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.credit_profiles.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.credit_profiles.updated_by IS 'User name of the last editor.';

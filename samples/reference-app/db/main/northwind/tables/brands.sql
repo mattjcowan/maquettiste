@@ -17,3 +17,13 @@ CREATE TABLE northwind.brands (
     CONSTRAINT uq_brands_name UNIQUE (name),
     CONSTRAINT fk_brands_manufacturer_id FOREIGN KEY (manufacturer_id) REFERENCES northwind.manufacturers (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.brands IS 'A brand products are marketed under, which may differ from the manufacturer.';
+COMMENT ON COLUMN northwind.brands.id IS 'Surrogate key of the brand.';
+COMMENT ON COLUMN northwind.brands.name IS 'Brand name.';
+COMMENT ON COLUMN northwind.brands.description IS 'Brand story.';
+COMMENT ON COLUMN northwind.brands.logo_url IS 'Logo image URL.';
+COMMENT ON COLUMN northwind.brands.website IS 'Brand website.';
+COMMENT ON COLUMN northwind.brands.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.brands.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.brands.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.brands.updated_by IS 'User name of the last editor.';

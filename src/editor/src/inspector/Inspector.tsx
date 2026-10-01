@@ -2,24 +2,22 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { TranslationsSection } from "@/l10n/TranslationsSection";
 import { CircleAlert, Loader2, Trash2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { applySaveResult, keys, useIndex, usePack, useProject, useReferences } from "@/api/queries";
-import * as endpoints from "@/api/endpoints";
-import type { ElementKind, EntityDoc, ModelJson, ReferenceInfo, StereotypeDoc } from "@/api/types";
+import { useIndex, usePack, useProject, useReferences } from "@/api/queries";
+import type { DeletePlan, DeleteResolution, ElementKind, EntityDoc, ModelJson, ReferenceInfo, StereotypeDoc } from "@/api/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge, EmptyState, SectionTitle, Spinner } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Select, Field } from "@/components/ui/input";
 import { CodeView } from "@/code";
 import { useEditor } from "@/state/store";
 import { displayName, KIND_LABELS } from "@/model/model";
 import { indexLookup } from "@/model/index";
 import { commonDomain } from "@/model/vocabularies";
-import { clone } from "@/lib/json";
 import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
 import { KindIcon } from "@/app/icons";
 import { useDraftDocument } from "./useDraft";
+import { deletesAlone, DeletePlanDialog, loadDeletePlans, runPlannedDelete, type DeletePlans } from "./DeletePlanView";
 import { useBatchEdit } from "@/explorer/marks";
 import {
   AttributesOnlyFields,
@@ -251,7 +249,7 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
               <CommonFields {...props} />
               <TranslationsSection id={id} kind={kind} />
               {kind === "entity" ? <EntityFields {...props} /> : null}
-              {kind === "relation" ? <RelationFields {...props} /> : null}
+              {kind === "relation" ? <RelationFields {...props} withAttributes={false} /> : null}
               {kind === "enum" ? <EnumFields {...props} /> : null}
               {kind === "scalar-type" ? <ScalarFields {...props} /> : null}
               {kind === "database" ? <DatabaseFields {...props} /> : null}
@@ -372,59 +370,59 @@ export function References({ id }: { id: string }) {
   );
 }
 
+/**
+ * Delete: reads both delete plans first. With nothing else involved it deletes at once (one undo step, as before);
+ * otherwise the dialog lists what each way through does and offers "Delete and clear references" and "Delete with
+ * N dependents". A refused delete closes the dialog and says why in the engine's readable words.
+ */
 function DeleteButton({ id, name }: { id: string; name: string }) {
   const { store, drafts } = useServices();
   const qc = useQueryClient();
   const { select } = useEditorNavigation();
-  const [referrers, setReferrers] = useState<ReferenceInfo[] | null>(null);
+  const [plans, setPlans] = useState<DeletePlans | null>(null);
   const [busy, setBusy] = useState(false);
-  const run = async (resolution: "refuse" | "remove-references") => {
-    const doc = qc.getQueryData<{ hash: string; json: ModelJson }>(keys.element(id));
-    if (!doc) return;
+  const run = async (resolution: DeleteResolution, plan: DeletePlan) => {
+    setPlans(null);
+    setBusy(true);
+    try {
+      const label =
+        resolution === "delete-dependents"
+          ? `Delete ${name} with dependents`
+          : resolution === "remove-references"
+            ? `Delete ${name} and clear references`
+            : `Delete ${name}`;
+      const reason = await runPlannedDelete({ queryClient: qc, drafts, store }, { ids: [id], resolution, plan, label });
+      if (reason) store.getState().notify(`${name} was not deleted: ${reason}`, "error");
+      else select([]);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const start = async () => {
     setBusy(true);
     try {
       await drafts.flush(id);
-      const current = qc.getQueryData<{ hash: string; json: ModelJson }>(keys.element(id)) ?? doc;
-      const result = await endpoints.deleteElement(id, current.hash, resolution);
-      if (result.outcome === "referenced") setReferrers(result.referrers);
-      else if (result.outcome === "saved") {
-        applySaveResult(qc, result);
-        drafts.discard(id);
-        setReferrers(null);
-        if (resolution === "refuse")
-          store.getState().pushUndo({ label: `Delete ${name}`, ids: [id], before: [clone(current.json)], after: [null], afterHashes: [null] });
-        else store.getState().notify(`Deleted ${name} and cleared its references. This delete cannot be undone from the editor.`);
-        select([]);
-      } else store.getState().notify(`Delete refused: ${result.outcome}${result.diagnostics[0] ? ` — ${result.diagnostics[0].message}` : ""}`, "error");
+      const loaded = await loadDeletePlans([id]);
+      if (deletesAlone(loaded)) await run("refuse", loaded.dependents);
+      else setPlans(loaded);
+    } catch (e) {
+      store.getState().notify(`${name} was not deleted: ${e instanceof Error ? e.message : String(e)}`, "error");
     } finally {
       setBusy(false);
     }
   };
   return (
     <>
-      <Button size="icon-sm" variant="ghost" label={`Delete ${name}`} disabled={busy} onClick={() => void run("refuse")}>
+      <Button size="icon-sm" variant="ghost" label={`Delete ${name}`} disabled={busy} onClick={() => void start()}>
         <Trash2 />
       </Button>
-      <Dialog open={referrers !== null} onOpenChange={(open) => !open && setReferrers(null)}>
-        <DialogContent title={`${name} is still referenced`} description={`${referrers?.length ?? 0} references block the delete.`}>
-          <ul className="max-h-60 overflow-auto font-mono text-12">
-            {referrers?.map((r, i) => (
-              <li key={i}>
-                {r.fromElementId} {r.jsonPointer}
-              </li>
-            ))}
-          </ul>
-          <p className="text-12 text-secondary">
-            Removing references clears optional ones (such as diagram members); a required reference makes the delete invalid.
-          </p>
-          <div className="flex justify-end gap-2">
-            <Button onClick={() => setReferrers(null)}>Keep it</Button>
-            <Button variant="danger" onClick={() => void run("remove-references")}>
-              Delete and remove references
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <DeletePlanDialog
+        ids={plans ? [id] : null}
+        title={`Delete ${name}?`}
+        preloaded={plans}
+        onClose={() => setPlans(null)}
+        onDelete={(r, p) => void run(r, p)}
+      />
     </>
   );
 }

@@ -350,6 +350,24 @@ public sealed record Conventions
 
     /// <summary>The storage choice for reference types (project default here, per-database override under <c>databases</c>).</summary>
     public StorageChoice? ReferenceStorage { get; init; }
+
+    /// <summary>
+    /// Where a table's or column's comment comes from when its file sets none (default <c>descriptions</c>): <c>descriptions</c>
+    /// takes the table's own description, else its entity's, and the column's own description, else its attribute's; <c>none</c>
+    /// keeps only explicit comments.
+    /// </summary>
+    public CommentSource? Comments { get; init; }
+}
+
+/// <summary>Where the comments of tables and columns come from when their files set none.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<CommentSource>))]
+public enum CommentSource
+{
+    /// <summary><c>none</c>: only an explicit <c>comment</c>.</summary>
+    [JsonStringEnumMemberName("none")] None,
+
+    /// <summary><c>descriptions</c>: the description of the table or column, else of the element it stores.</summary>
+    [JsonStringEnumMemberName("descriptions")] Descriptions,
 }
 
 /// <summary>A casing style for generated names.</summary>

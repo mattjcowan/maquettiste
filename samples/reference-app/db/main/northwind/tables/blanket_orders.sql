@@ -23,3 +23,17 @@ CREATE TABLE northwind.blanket_orders (
     CONSTRAINT fk_blanket_orders_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
     CONSTRAINT fk_blanket_orders_currency_code FOREIGN KEY (currency_code) REFERENCES northwind.currencies (code) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.blanket_orders IS 'A long-term purchase commitment by a customer, released in smaller orders over time.';
+COMMENT ON COLUMN northwind.blanket_orders.id IS 'Surrogate key of the blanket order.';
+COMMENT ON COLUMN northwind.blanket_orders.blanket_number IS 'Agreement number.';
+COMMENT ON COLUMN northwind.blanket_orders.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.blanket_orders.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.blanket_orders.committed_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.blanket_orders.committed_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.blanket_orders.released_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.blanket_orders.released_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.blanket_orders.is_closed IS 'Whether the commitment is closed.';
+COMMENT ON COLUMN northwind.blanket_orders.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.blanket_orders.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.blanket_orders.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.blanket_orders.updated_by IS 'User name of the last editor.';

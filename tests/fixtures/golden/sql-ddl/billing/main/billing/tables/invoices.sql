@@ -20,4 +20,5 @@ CREATE TABLE billing.invoices (
     CONSTRAINT ck_invoice_status CHECK (status in ('D', 'I', 'P', 'V'))
 );
 CREATE INDEX ix_invoices_issued_on ON billing.invoices (issued_on DESC);
+COMMENT ON TABLE billing.invoices IS 'One row per issued invoice; finance reconciles it monthly.';
 COMMENT ON COLUMN billing.invoices.number IS 'Assigned on issue.';

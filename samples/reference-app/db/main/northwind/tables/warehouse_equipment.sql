@@ -19,3 +19,15 @@ CREATE TABLE northwind.warehouse_equipment (
     CONSTRAINT uq_warehouse_equipment_asset_tag UNIQUE (asset_tag),
     CONSTRAINT fk_warehouse_equipment_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.warehouse_equipment IS 'Material handling equipment of a warehouse, such as a forklift or a reach truck.';
+COMMENT ON COLUMN northwind.warehouse_equipment.id IS 'Surrogate key of the warehouse equipment.';
+COMMENT ON COLUMN northwind.warehouse_equipment.asset_tag IS 'Asset tag.';
+COMMENT ON COLUMN northwind.warehouse_equipment.equipment_type IS 'Kind, such as forklift or pallet jack.';
+COMMENT ON COLUMN northwind.warehouse_equipment.manufacturer_name IS 'Maker.';
+COMMENT ON COLUMN northwind.warehouse_equipment.model_name IS 'Model.';
+COMMENT ON COLUMN northwind.warehouse_equipment.last_inspected_on IS 'Last safety inspection.';
+COMMENT ON COLUMN northwind.warehouse_equipment.is_operational IS 'Whether it can be used.';
+COMMENT ON COLUMN northwind.warehouse_equipment.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.warehouse_equipment.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.warehouse_equipment.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.warehouse_equipment.updated_by IS 'User name of the last editor.';

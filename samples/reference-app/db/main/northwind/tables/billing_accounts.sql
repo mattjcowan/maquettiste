@@ -26,3 +26,20 @@ CREATE TABLE northwind.billing_accounts (
     CONSTRAINT fk_billing_accounts_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE CASCADE,
     CONSTRAINT fk_billing_accounts_currency_code FOREIGN KEY (currency_code) REFERENCES northwind.currencies (code) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.billing_accounts IS 'How and where a customer wants to be invoiced; large customers have one per division.';
+COMMENT ON COLUMN northwind.billing_accounts.id IS 'Surrogate key of the billing account.';
+COMMENT ON COLUMN northwind.billing_accounts.account_number IS 'Billing account number.';
+COMMENT ON COLUMN northwind.billing_accounts.name IS 'Account name, such as Facilities division.';
+COMMENT ON COLUMN northwind.billing_accounts.billing_address_line1 IS 'Street and number, or PO box.';
+COMMENT ON COLUMN northwind.billing_accounts.billing_address_line2 IS 'Suite, floor or building.';
+COMMENT ON COLUMN northwind.billing_accounts.billing_address_city IS 'City or locality.';
+COMMENT ON COLUMN northwind.billing_accounts.billing_address_region IS 'State, province or county.';
+COMMENT ON COLUMN northwind.billing_accounts.billing_address_postal_code IS 'Postal or ZIP code.';
+COMMENT ON COLUMN northwind.billing_accounts.billing_address_country_code IS 'ISO country code.';
+COMMENT ON COLUMN northwind.billing_accounts.invoice_delivery_method IS 'email, portal, edi or mail.';
+COMMENT ON COLUMN northwind.billing_accounts.invoice_email IS 'Mailbox for invoices.';
+COMMENT ON COLUMN northwind.billing_accounts.consolidate_invoices IS 'Whether to send one monthly invoice.';
+COMMENT ON COLUMN northwind.billing_accounts.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.billing_accounts.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.billing_accounts.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.billing_accounts.updated_by IS 'User name of the last editor.';

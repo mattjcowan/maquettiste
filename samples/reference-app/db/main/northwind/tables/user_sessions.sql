@@ -15,3 +15,11 @@ CREATE TABLE northwind.user_sessions (
     CONSTRAINT fk_user_sessions_user_account_id FOREIGN KEY (user_account_id) REFERENCES northwind.user_accounts (id) ON DELETE CASCADE
 );
 CREATE INDEX ix_user_sessions_expires_at ON northwind.user_sessions (expires_at);
+COMMENT ON TABLE northwind.user_sessions IS 'A signed-in session of a user account, kept to support sign-out everywhere and anomaly detection.';
+COMMENT ON COLUMN northwind.user_sessions.id IS 'Surrogate key of the user session.';
+COMMENT ON COLUMN northwind.user_sessions.started_at IS 'When the session was created.';
+COMMENT ON COLUMN northwind.user_sessions.expires_at IS 'Absolute expiry.';
+COMMENT ON COLUMN northwind.user_sessions.last_seen_at IS 'Last request on the session.';
+COMMENT ON COLUMN northwind.user_sessions.ip_address IS 'Client IP address (IPv4 or IPv6).';
+COMMENT ON COLUMN northwind.user_sessions.user_agent IS 'Client user agent string.';
+COMMENT ON COLUMN northwind.user_sessions.revoked_at IS 'When the session was revoked; null while valid.';

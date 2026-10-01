@@ -152,6 +152,13 @@ export interface EditorState {
   tablesCollapsed: boolean;
   /** The Database screen's DDL preview is hidden. */
   ddlCollapsed: boolean;
+  /** The pack editor's panes (Templates tab: the file list and the preview; Units tab: the help) are hidden. */
+  packFilesCollapsed: boolean;
+  templatePreviewCollapsed: boolean;
+  unitHelpCollapsed: boolean;
+  packFilesSize: number;
+  templatePreviewSize: number;
+  unitHelpSize: number;
   /** The Settings tab last shown: Settings opens on it when the address names none. */
   settingsTab: string | null;
   bottomTab: BottomTab;
@@ -337,6 +344,12 @@ export function createEditorStore(): EditorStore {
     topbarCollapsed: layout.collapsed.topbar,
     tablesCollapsed: layout.collapsed.tables,
     ddlCollapsed: layout.collapsed.ddl,
+    packFilesCollapsed: layout.collapsed.packFiles,
+    templatePreviewCollapsed: layout.collapsed.templatePreview,
+    unitHelpCollapsed: layout.collapsed.unitHelp,
+    packFilesSize: layout.packFilesSize,
+    templatePreviewSize: layout.templatePreviewSize,
+    unitHelpSize: layout.unitHelpSize,
     settingsTab: null,
     bottomTab: "problems",
     theme: initialTheme(),
@@ -457,6 +470,12 @@ export function createEditorStore(): EditorStore {
         topbarCollapsed: false,
         tablesCollapsed: false,
         ddlCollapsed: false,
+        packFilesCollapsed: false,
+        templatePreviewCollapsed: false,
+        unitHelpCollapsed: false,
+        packFilesSize: d.packFilesSize,
+        templatePreviewSize: d.templatePreviewSize,
+        unitHelpSize: d.unitHelpSize,
         explorer: { ...get().explorer, pinned: null },
       });
     },
@@ -528,6 +547,12 @@ type LayoutFields = Pick<
   | "topbarCollapsed"
   | "tablesCollapsed"
   | "ddlCollapsed"
+  | "packFilesCollapsed"
+  | "templatePreviewCollapsed"
+  | "unitHelpCollapsed"
+  | "packFilesSize"
+  | "templatePreviewSize"
+  | "unitHelpSize"
   | "explorer"
 >;
 
@@ -542,10 +567,16 @@ export function layoutOf(state: LayoutFields): Layout {
       topbar: state.topbarCollapsed,
       tables: state.tablesCollapsed,
       ddl: state.ddlCollapsed,
+      packFiles: state.packFilesCollapsed,
+      templatePreview: state.templatePreviewCollapsed,
+      unitHelp: state.unitHelpCollapsed,
     },
     explorerSize: state.explorerSize,
     inspectorSize: state.inspectorSize,
     bottomSize: state.bottomSize,
+    packFilesSize: state.packFilesSize,
+    templatePreviewSize: state.templatePreviewSize,
+    unitHelpSize: state.unitHelpSize,
     pinned: state.explorer.pinned,
   };
 }
@@ -559,8 +590,9 @@ export function saveLayout(state: LayoutFields): void {
  * once, a resize `delay` ms after the last move. Returns the unsubscribe. */
 export function watchLayout(store: EditorStore, delay = 300): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
-  const sizes = (s: LayoutFields) => `${s.explorerSize},${s.inspectorSize},${s.bottomSize}`;
-  const shape = (s: LayoutFields) => JSON.stringify(layoutOf({ ...s, explorerSize: 0, inspectorSize: 0, bottomSize: 0 }));
+  const sizes = (s: LayoutFields) => `${s.explorerSize},${s.inspectorSize},${s.bottomSize},${s.packFilesSize},${s.templatePreviewSize},${s.unitHelpSize}`;
+  const shape = (s: LayoutFields) =>
+    JSON.stringify(layoutOf({ ...s, explorerSize: 0, inspectorSize: 0, bottomSize: 0, packFilesSize: 0, templatePreviewSize: 0, unitHelpSize: 0 }));
   const unsubscribe = store.subscribe((state, previous) => {
     if (shape(state) !== shape(previous)) {
       if (timer) clearTimeout(timer);

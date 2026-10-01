@@ -16,3 +16,11 @@ CREATE TABLE northwind.advance_ship_notices (
     CONSTRAINT fk_advance_ship_notices_purchase_order_id FOREIGN KEY (purchase_order_id) REFERENCES northwind.purchase_orders (id) ON DELETE SET NULL,
     CONSTRAINT fk_advance_ship_notices_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.advance_ship_notices IS 'An EDI 856 advance ship notice announcing an inbound delivery.';
+COMMENT ON COLUMN northwind.advance_ship_notices.id IS 'Surrogate key of the advance ship notice.';
+COMMENT ON COLUMN northwind.advance_ship_notices.asn_number IS 'Supplier''s ASN number.';
+COMMENT ON COLUMN northwind.advance_ship_notices.shipped_on IS 'Ship date.';
+COMMENT ON COLUMN northwind.advance_ship_notices.expected_arrival_on IS 'Expected arrival.';
+COMMENT ON COLUMN northwind.advance_ship_notices.carrier_name IS 'Carrier.';
+COMMENT ON COLUMN northwind.advance_ship_notices.tracking_number IS 'Tracking number.';
+COMMENT ON COLUMN northwind.advance_ship_notices.raw_document IS 'Original EDI document, as JSON.';

@@ -17,3 +17,15 @@ CREATE TABLE northwind.manufacturers (
     CONSTRAINT pk_manufacturers PRIMARY KEY (id),
     CONSTRAINT uq_manufacturers_name UNIQUE (name)
 );
+COMMENT ON TABLE northwind.manufacturers IS 'A company that produces goods Northwind sells.';
+COMMENT ON COLUMN northwind.manufacturers.id IS 'Surrogate key of the manufacturer.';
+COMMENT ON COLUMN northwind.manufacturers.name IS 'Manufacturer name.';
+COMMENT ON COLUMN northwind.manufacturers.website IS 'Website.';
+COMMENT ON COLUMN northwind.manufacturers.support_email IS 'Technical support mailbox.';
+COMMENT ON COLUMN northwind.manufacturers.support_phone_number IS 'Number in E.164 form, such as +14155550100.';
+COMMENT ON COLUMN northwind.manufacturers.support_phone_extension IS 'Internal extension.';
+COMMENT ON COLUMN northwind.manufacturers.country_code IS 'Country of the head office.';
+COMMENT ON COLUMN northwind.manufacturers.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.manufacturers.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.manufacturers.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.manufacturers.updated_by IS 'User name of the last editor.';

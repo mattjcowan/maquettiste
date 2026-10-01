@@ -14,3 +14,8 @@ CREATE TABLE northwind.shipping_zones (
     CONSTRAINT fk_shipping_zones_country_code FOREIGN KEY (country_code) REFERENCES northwind.countries (code) ON DELETE SET NULL,
     CONSTRAINT fk_shipping_zones_origin_warehouse_id FOREIGN KEY (origin_warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.shipping_zones IS 'A destination zone used to rate freight, such as zone 5 from Denver.';
+COMMENT ON COLUMN northwind.shipping_zones.id IS 'Surrogate key of the shipping zone.';
+COMMENT ON COLUMN northwind.shipping_zones.code IS 'Zone code.';
+COMMENT ON COLUMN northwind.shipping_zones.name IS 'Zone name.';
+COMMENT ON COLUMN northwind.shipping_zones.description IS 'Postal code ranges in the zone.';

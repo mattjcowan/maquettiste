@@ -21,3 +21,15 @@ CREATE TABLE northwind.ledger_accounts (
     CONSTRAINT fk_ledger_accounts_currency_code FOREIGN KEY (currency_code) REFERENCES northwind.currencies (code) ON DELETE SET NULL,
     CONSTRAINT fk_ledger_accounts_parent_id FOREIGN KEY (parent_id) REFERENCES northwind.ledger_accounts (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.ledger_accounts IS 'An account of the chart of accounts, such as 1200 Accounts receivable, nested into summary accounts.';
+COMMENT ON COLUMN northwind.ledger_accounts.id IS 'Surrogate key of the ledger account.';
+COMMENT ON COLUMN northwind.ledger_accounts.account_number IS 'Account number.';
+COMMENT ON COLUMN northwind.ledger_accounts.name IS 'Account name.';
+COMMENT ON COLUMN northwind.ledger_accounts.account_type IS 'Statement classification.';
+COMMENT ON COLUMN northwind.ledger_accounts.normal_balance IS 'debit or credit.';
+COMMENT ON COLUMN northwind.ledger_accounts.is_postable IS 'Whether journal lines may post to it; summary accounts are not postable.';
+COMMENT ON COLUMN northwind.ledger_accounts.is_active IS 'Whether it can be used.';
+COMMENT ON COLUMN northwind.ledger_accounts.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.ledger_accounts.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.ledger_accounts.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.ledger_accounts.updated_by IS 'User name of the last editor.';

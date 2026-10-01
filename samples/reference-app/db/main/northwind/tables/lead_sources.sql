@@ -12,3 +12,10 @@ CREATE TABLE northwind.lead_sources (
     CONSTRAINT pk_lead_sources PRIMARY KEY (id),
     CONSTRAINT uq_lead_sources_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.lead_sources IS 'Origin of a lead, such as Trade show or Website form.';
+COMMENT ON COLUMN northwind.lead_sources.id IS 'Surrogate key of the lead source.';
+COMMENT ON COLUMN northwind.lead_sources.channel IS 'Marketing channel the source rolls up to.';
+COMMENT ON COLUMN northwind.lead_sources.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.lead_sources.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.lead_sources.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.lead_sources.is_active IS 'Whether the value can be chosen for new records.';

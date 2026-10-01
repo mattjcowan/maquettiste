@@ -20,3 +20,13 @@ CREATE TABLE northwind.write_offs (
     CONSTRAINT fk_write_offs_journal_entry_id FOREIGN KEY (journal_entry_id) REFERENCES northwind.journal_entries (id) ON DELETE SET NULL,
     CONSTRAINT fk_write_offs_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.write_offs IS 'A bad debt write-off of an uncollectable invoice balance.';
+COMMENT ON COLUMN northwind.write_offs.id IS 'Surrogate key of the write off.';
+COMMENT ON COLUMN northwind.write_offs.written_off_on IS 'Date written off.';
+COMMENT ON COLUMN northwind.write_offs.amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.write_offs.amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.write_offs.reason IS 'Why it is uncollectable.';
+COMMENT ON COLUMN northwind.write_offs.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.write_offs.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.write_offs.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.write_offs.updated_by IS 'User name of the last editor.';

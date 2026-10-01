@@ -11,3 +11,8 @@ CREATE TABLE northwind.price_tiers (
     CONSTRAINT pk_price_tiers PRIMARY KEY (id),
     CONSTRAINT fk_price_tiers_price_list_entry_id FOREIGN KEY (price_list_entry_id) REFERENCES northwind.price_list_entries (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.price_tiers IS 'A quantity break of a price list entry, such as 5 percent off from 100 cases.';
+COMMENT ON COLUMN northwind.price_tiers.id IS 'Surrogate key of the price tier.';
+COMMENT ON COLUMN northwind.price_tiers.from_quantity IS 'Quantity from which the tier applies.';
+COMMENT ON COLUMN northwind.price_tiers.unit_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.price_tiers.unit_price_currency IS 'The ISO 4217 currency of the amount.';

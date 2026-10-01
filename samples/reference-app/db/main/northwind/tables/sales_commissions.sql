@@ -20,3 +20,15 @@ CREATE TABLE northwind.sales_commissions (
     CONSTRAINT fk_sales_commissions_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE,
     CONSTRAINT fk_sales_commissions_sales_rep_id FOREIGN KEY (sales_rep_id) REFERENCES northwind.employees (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.sales_commissions IS 'Commission earned by a sales rep on an order.';
+COMMENT ON COLUMN northwind.sales_commissions.id IS 'Surrogate key of the sales commission.';
+COMMENT ON COLUMN northwind.sales_commissions.commission_rate IS 'Rate applied.';
+COMMENT ON COLUMN northwind.sales_commissions.commission_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.sales_commissions.commission_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.sales_commissions.earned_on IS 'Date it was earned, usually the invoice date.';
+COMMENT ON COLUMN northwind.sales_commissions.is_paid IS 'Whether payroll paid it.';
+COMMENT ON COLUMN northwind.sales_commissions.paid_on IS 'Payroll date.';
+COMMENT ON COLUMN northwind.sales_commissions.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.sales_commissions.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.sales_commissions.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.sales_commissions.updated_by IS 'User name of the last editor.';

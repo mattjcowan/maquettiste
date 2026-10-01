@@ -13,3 +13,8 @@ CREATE TABLE northwind.product_recommendations (
     CONSTRAINT fk_product_recommendations_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE,
     CONSTRAINT fk_product_recommendations_recommended_id FOREIGN KEY (recommended_id) REFERENCES northwind.products (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.product_recommendations IS 'A cross-sell, up-sell or accessory suggestion from one product to another.';
+COMMENT ON COLUMN northwind.product_recommendations.id IS 'Surrogate key of the product recommendation.';
+COMMENT ON COLUMN northwind.product_recommendations.recommendation_type IS 'Kind of suggestion - cross-sell, up-sell or accessory.';
+COMMENT ON COLUMN northwind.product_recommendations.score IS 'Relevance score from the recommender.';
+COMMENT ON COLUMN northwind.product_recommendations.is_manual IS 'Whether merchandising added it by hand.';

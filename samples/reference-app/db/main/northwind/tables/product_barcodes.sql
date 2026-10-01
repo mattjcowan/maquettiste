@@ -14,3 +14,8 @@ CREATE TABLE northwind.product_barcodes (
     CONSTRAINT fk_product_barcodes_unit_code FOREIGN KEY (unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE SET NULL,
     CONSTRAINT fk_product_barcodes_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.product_barcodes IS 'A barcode that identifies a product at a packaging level.';
+COMMENT ON COLUMN northwind.product_barcodes.id IS 'Surrogate key of the product barcode.';
+COMMENT ON COLUMN northwind.product_barcodes.symbology IS 'Barcode type, such as GTIN-13, UPC-A or GS1-128.';
+COMMENT ON COLUMN northwind.product_barcodes.value IS 'Encoded value.';
+COMMENT ON COLUMN northwind.product_barcodes.is_primary IS 'Barcode printed on labels by default.';

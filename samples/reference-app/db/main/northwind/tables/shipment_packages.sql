@@ -17,3 +17,14 @@ CREATE TABLE northwind.shipment_packages (
     CONSTRAINT pk_shipment_packages PRIMARY KEY (id),
     CONSTRAINT fk_shipment_packages_shipment_id FOREIGN KEY (shipment_id) REFERENCES northwind.shipments (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.shipment_packages IS 'A carton or pallet of a shipment with its own tracking number.';
+COMMENT ON COLUMN northwind.shipment_packages.id IS 'Surrogate key of the shipment package.';
+COMMENT ON COLUMN northwind.shipment_packages.package_number IS 'Package number within the shipment.';
+COMMENT ON COLUMN northwind.shipment_packages.package_type IS 'carton, pallet or envelope.';
+COMMENT ON COLUMN northwind.shipment_packages.tracking_number IS 'Carrier tracking number.';
+COMMENT ON COLUMN northwind.shipment_packages.dimensions_length IS 'Longest side.';
+COMMENT ON COLUMN northwind.shipment_packages.dimensions_width IS 'Second side.';
+COMMENT ON COLUMN northwind.shipment_packages.dimensions_height IS 'Vertical side.';
+COMMENT ON COLUMN northwind.shipment_packages.dimensions_unit IS 'Unit of the three measures.';
+COMMENT ON COLUMN northwind.shipment_packages.weight_value IS 'The weight.';
+COMMENT ON COLUMN northwind.shipment_packages.weight_unit IS 'Unit of the weight.';

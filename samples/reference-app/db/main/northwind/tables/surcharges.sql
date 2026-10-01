@@ -21,3 +21,17 @@ CREATE TABLE northwind.surcharges (
     CONSTRAINT uq_surcharges_code UNIQUE (code),
     CONSTRAINT fk_surcharges_product_category_id FOREIGN KEY (product_category_id) REFERENCES northwind.product_categories (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.surcharges IS 'An extra charge added to orders, such as a fuel surcharge or a small-order fee.';
+COMMENT ON COLUMN northwind.surcharges.id IS 'Surrogate key of the surcharge.';
+COMMENT ON COLUMN northwind.surcharges.code IS 'Surcharge code.';
+COMMENT ON COLUMN northwind.surcharges.name IS 'Name printed on invoices.';
+COMMENT ON COLUMN northwind.surcharges.calculation IS 'percent or flat.';
+COMMENT ON COLUMN northwind.surcharges.rate IS 'Percentage, for percent surcharges.';
+COMMENT ON COLUMN northwind.surcharges.amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.surcharges.amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.surcharges.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.surcharges.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.surcharges.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.surcharges.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.surcharges.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.surcharges.updated_by IS 'User name of the last editor.';

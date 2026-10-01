@@ -15,3 +15,8 @@ CREATE TABLE northwind.campaign_responses (
     CONSTRAINT fk_campaign_responses_campaign_id FOREIGN KEY (campaign_id) REFERENCES northwind.campaigns (id) ON DELETE CASCADE,
     CONSTRAINT fk_campaign_responses_lead_id FOREIGN KEY (lead_id) REFERENCES northwind.leads (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.campaign_responses IS 'A response to a campaign by a contact or a lead, such as a click, a booth visit or a request for quote.';
+COMMENT ON COLUMN northwind.campaign_responses.id IS 'Surrogate key of the campaign response.';
+COMMENT ON COLUMN northwind.campaign_responses.responded_at IS 'When the response happened.';
+COMMENT ON COLUMN northwind.campaign_responses.response_type IS 'Kind of response, such as clicked or visited-booth.';
+COMMENT ON COLUMN northwind.campaign_responses.notes IS 'Details.';

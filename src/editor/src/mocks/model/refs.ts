@@ -80,8 +80,9 @@ export function referencesOf(doc: Json): Ref[] {
       break;
     case "table":
       push("/database", "database", doc.database, true);
-      push("/entity", "entity", doc.entity, false);
-      push("/relation", "relation", doc.relation, false);
+      // An overlay table names its entity or relation (exactly one of them): it cannot lose it.
+      push("/entity", "entity", doc.entity, true);
+      push("/relation", "relation", doc.relation, true);
       push("/schema", "schema", doc.schema, false);
       arr(doc.columns).forEach((c, i) => {
         const to = str(c.attribute);

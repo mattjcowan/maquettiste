@@ -16,3 +16,8 @@ CREATE TABLE northwind.serial_numbers (
     CONSTRAINT fk_serial_numbers_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_serial_numbers_current_bin_id FOREIGN KEY (current_bin_id) REFERENCES northwind.bin_locations (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.serial_numbers IS 'A serialized unit of a product, tracked from receipt to the customer.';
+COMMENT ON COLUMN northwind.serial_numbers.id IS 'Surrogate key of the serial number.';
+COMMENT ON COLUMN northwind.serial_numbers.serial IS 'Serial number.';
+COMMENT ON COLUMN northwind.serial_numbers.status IS 'in-stock, shipped, returned or scrapped.';
+COMMENT ON COLUMN northwind.serial_numbers.received_at IS 'When it was received.';

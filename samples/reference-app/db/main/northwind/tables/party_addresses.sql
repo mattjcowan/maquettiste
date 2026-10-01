@@ -24,3 +24,21 @@ CREATE TABLE northwind.party_addresses (
     CONSTRAINT pk_party_addresses PRIMARY KEY (id),
     CONSTRAINT fk_party_addresses_party_id FOREIGN KEY (party_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.party_addresses IS 'A named address of a party, such as a ship-to location of a customer with several branches.';
+COMMENT ON COLUMN northwind.party_addresses.id IS 'Surrogate key of the party address.';
+COMMENT ON COLUMN northwind.party_addresses.label IS 'Name of the location, such as Denver branch.';
+COMMENT ON COLUMN northwind.party_addresses.address_type IS 'Purpose of the address.';
+COMMENT ON COLUMN northwind.party_addresses.address_line1 IS 'Street and number, or PO box.';
+COMMENT ON COLUMN northwind.party_addresses.address_line2 IS 'Suite, floor or building.';
+COMMENT ON COLUMN northwind.party_addresses.address_city IS 'City or locality.';
+COMMENT ON COLUMN northwind.party_addresses.address_region IS 'State, province or county.';
+COMMENT ON COLUMN northwind.party_addresses.address_postal_code IS 'Postal or ZIP code.';
+COMMENT ON COLUMN northwind.party_addresses.address_country_code IS 'ISO country code.';
+COMMENT ON COLUMN northwind.party_addresses.location_latitude IS 'Degrees north of the equator.';
+COMMENT ON COLUMN northwind.party_addresses.location_longitude IS 'Degrees east of Greenwich.';
+COMMENT ON COLUMN northwind.party_addresses.is_default IS 'Default address of its type.';
+COMMENT ON COLUMN northwind.party_addresses.delivery_instructions IS 'Dock hours, gate codes and the like.';
+COMMENT ON COLUMN northwind.party_addresses.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.party_addresses.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.party_addresses.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.party_addresses.updated_by IS 'User name of the last editor.';

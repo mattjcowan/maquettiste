@@ -14,3 +14,9 @@ CREATE TABLE northwind.landed_costs (
     CONSTRAINT fk_landed_costs_goods_receipt_id FOREIGN KEY (goods_receipt_id) REFERENCES northwind.goods_receipts (id) ON DELETE CASCADE,
     CONSTRAINT fk_landed_costs_supplier_invoice_id FOREIGN KEY (supplier_invoice_id) REFERENCES northwind.supplier_invoices (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.landed_costs IS 'An extra cost of getting goods to the warehouse, such as freight, duty or brokerage, spread over a receipt.';
+COMMENT ON COLUMN northwind.landed_costs.id IS 'Surrogate key of the landed cost.';
+COMMENT ON COLUMN northwind.landed_costs.cost_type IS 'freight, duty, insurance or brokerage.';
+COMMENT ON COLUMN northwind.landed_costs.amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.landed_costs.amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.landed_costs.allocation_method IS 'value, weight or quantity.';

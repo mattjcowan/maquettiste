@@ -32,3 +32,22 @@ CREATE TABLE northwind.leads (
     CONSTRAINT fk_leads_industry_id FOREIGN KEY (industry_id) REFERENCES northwind.industries (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_leads_email ON northwind.leads (email);
+COMMENT ON TABLE northwind.leads IS 'A prospective customer not yet qualified, captured from a trade show, the website or a referral.';
+COMMENT ON COLUMN northwind.leads.id IS 'Surrogate key of the lead.';
+COMMENT ON COLUMN northwind.leads.company_name IS 'Prospect''s company.';
+COMMENT ON COLUMN northwind.leads.contact_name_given_name IS 'First or given name.';
+COMMENT ON COLUMN northwind.leads.contact_name_family_name IS 'Last or family name.';
+COMMENT ON COLUMN northwind.leads.contact_name_title IS 'Salutation, such as Dr. or Ms.';
+COMMENT ON COLUMN northwind.leads.email IS 'Prospect''s email.';
+COMMENT ON COLUMN northwind.leads.phone_number IS 'Number in E.164 form, such as +14155550100.';
+COMMENT ON COLUMN northwind.leads.phone_extension IS 'Internal extension.';
+COMMENT ON COLUMN northwind.leads.status IS 'Qualification state.';
+COMMENT ON COLUMN northwind.leads.estimated_annual_value_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.leads.estimated_annual_value_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.leads.notes IS 'Qualification notes.';
+COMMENT ON COLUMN northwind.leads.converted_on IS 'Date the lead became a customer.';
+COMMENT ON COLUMN northwind.leads.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.leads.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.leads.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.leads.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.leads.deleted_at IS 'When the row was marked deleted; null while it is live.';

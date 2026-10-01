@@ -1,4 +1,5 @@
 using System.Collections.Frozen;
+using System.Collections.Immutable;
 using System.Text;
 using System.Text.RegularExpressions;
 using Maquettiste.Engine.Model;
@@ -7,8 +8,8 @@ namespace Maquettiste.Engine.Validation;
 
 /// <summary>
 /// Dialect facts the validator needs: JSON names, default schemas, identifier limits (MQ4001) and the native type names each
-/// dialect knows (MQ4006). The native type lists are the validator's own; the resolver's dialect maps
-/// (<c>Resolution/Dialects/*.json</c>) and <c>typeMaps</c> overrides extend them.
+/// dialect knows (MQ4006, MQ4016). The native type lists are the validator's own; the values of the resolver's dialect maps
+/// (<c>Resolution/Dialects/*.json</c>) with the project's <c>typeMaps</c> applied extend them.
 /// </summary>
 internal static partial class DialectInfo
 {
@@ -84,9 +85,10 @@ internal static partial class DialectInfo
         : identifier.EnumerateRunes().Count();
 
     /// <summary>
-    /// Whether a native type is known to a dialect: its base name (lower-cased, arguments, array brackets and MySQL
-    /// <c>unsigned</c>/<c>zerofill</c> removed, whitespace collapsed) is a native type of the dialect or the base of a
-    /// <c>typeMaps</c> value. SQLite accepts any type name.
+    /// Whether a native type is known to a dialect: its base name (see <see cref="Parse"/>) is a native type of the dialect, the base
+    /// of a value of the dialect's embedded type map (<c>Resolution/Dialects/*.json</c>) or the base of a <c>typeMaps</c> value.
+    /// SQLite accepts any type name. The model's own reference types and enums are not considered here (see
+    /// <see cref="ValidationContext.ClassifyNativeType"/>).
     /// </summary>
     /// <param name="dialect">The dialect.</param>
     /// <param name="nativeType">The native type as written.</param>
@@ -96,31 +98,99 @@ internal static partial class DialectInfo
     {
         if (dialect == Dialect.Sqlite)
             return true;
-        var name = BaseName(nativeType);
+        var name = Parse(nativeType).BaseName;
         if (name.Length == 0)
             return false;
-        var known = dialect switch
+        if (KnownBaseNames(dialect, Resolution.DialectTypeMaps.Default(dialect)).Contains(name))
+            return true;
+        return typeMap is not null && typeMap.Values.Any(v => Parse(v).BaseName == name);
+    }
+
+    /// <summary>
+    /// The base names a dialect knows: its fixed list and the base names of a type map's values (pass the effective map, which holds
+    /// the embedded defaults with the project's <c>typeMaps</c> applied).
+    /// </summary>
+    /// <param name="dialect">The dialect.</param>
+    /// <param name="typeMap">The type map.</param>
+    /// <returns>The base names.</returns>
+    public static FrozenSet<string> KnownBaseNames(Dialect dialect, IReadOnlyDictionary<string, string> typeMap)
+    {
+        var names = new HashSet<string>(dialect switch
         {
             Dialect.PostgreSql => PostgreSqlTypes,
             Dialect.SqlServer => SqlServerTypes,
             Dialect.MySql => MySqlTypes,
             _ => OracleTypes,
-        };
-        if (known.Contains(name))
-            return true;
-        if (typeMap is not null)
+        }, StringComparer.Ordinal);
+        foreach (var value in typeMap.Values)
         {
-            foreach (var value in typeMap.Values)
-            {
-                if (BaseName(value) == name)
-                    return true;
-            }
+            var name = Parse(value).BaseName;
+            if (name.Length > 0)
+                names.Add(name);
         }
 
-        return false;
+        return names.ToFrozenSet(StringComparer.Ordinal);
     }
 
-    /// <summary>Reduces a native type to its base name.</summary>
+    /// <summary>
+    /// Reads a native type as written: arguments and array brackets are removed, identifier quotes (<c>"..."</c>, <c>[...]</c>,
+    /// <c>`...`</c>) are stripped and dots outside quotes separate a schema (or other) prefix from the type name. The base name is
+    /// the last part reduced by <see cref="BaseName"/>.
+    /// </summary>
+    /// <param name="nativeType">The native type.</param>
+    /// <returns>The parsed name.</returns>
+    public static NativeTypeName Parse(string nativeType)
+    {
+        var text = ArraySuffix().Replace(Arguments().Replace(nativeType, " "), " ");
+        var parts = new List<string>();
+        var current = new StringBuilder();
+        var quoted = false;
+        for (var i = 0; i < text.Length; i++)
+        {
+            var c = text[i];
+            var close = c switch { '"' => '"', '[' => ']', '`' => '`', _ => '\0' };
+            if (close != '\0')
+            {
+                quoted = true;
+                for (i++; i < text.Length; i++)
+                {
+                    if (text[i] == close)
+                    {
+                        if (i + 1 < text.Length && text[i + 1] == close)
+                        {
+                            current.Append(close); // a doubled quote inside a quoted identifier
+                            i++;
+                            continue;
+                        }
+
+                        break;
+                    }
+
+                    current.Append(text[i]);
+                }
+
+                continue;
+            }
+
+            if (c == '.')
+            {
+                parts.Add(current.ToString());
+                current.Clear();
+                continue;
+            }
+
+            current.Append(c);
+        }
+
+        parts.Add(current.ToString());
+        var cleaned = parts.Select(p => Spaces().Replace(p, " ").Trim().ToLowerInvariant()).ToImmutableArray();
+        return new NativeTypeName(BaseName(cleaned[^1]), cleaned, quoted || cleaned.Length > 1);
+    }
+
+    /// <summary>
+    /// Reduces a native type to its base name: lower-cased, arguments, array brackets and MySQL <c>unsigned</c>/<c>zerofill</c>
+    /// removed, whitespace collapsed.
+    /// </summary>
     /// <param name="nativeType">The native type.</param>
     /// <returns>The base name.</returns>
     public static string BaseName(string nativeType)
@@ -136,9 +206,18 @@ internal static partial class DialectInfo
     [GeneratedRegex(@"\([^)]*\)", RegexOptions.CultureInvariant)]
     private static partial Regex Arguments();
 
+    [GeneratedRegex(@"\[\d*\]", RegexOptions.CultureInvariant)]
+    private static partial Regex ArraySuffix();
+
     [GeneratedRegex(@"\b(unsigned|zerofill|signed)\b", RegexOptions.CultureInvariant)]
     private static partial Regex Modifiers();
 
     [GeneratedRegex(@"\s+", RegexOptions.CultureInvariant)]
     private static partial Regex Spaces();
 }
+
+/// <summary>A native type as written, read by <see cref="DialectInfo.Parse"/>.</summary>
+/// <param name="BaseName">The type name's base (lower-cased, arguments, array brackets and modifiers removed), or empty.</param>
+/// <param name="Parts">The dot-separated parts without quotes, lower-cased; the last is the type name.</param>
+/// <param name="IsQuotedOrQualified">Whether the type was written with identifier quotes or a prefix such as a schema.</param>
+internal sealed record NativeTypeName(string BaseName, ImmutableArray<string> Parts, bool IsQuotedOrQualified);

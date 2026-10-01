@@ -1,7 +1,7 @@
-// New pack (generation-ui.md 2.1): a name (`^[a-z][a-z0-9-]*$`, unique) and Start from: Empty (pack.json with one
-// `each entity` unit and its template, as `pack new --from empty` writes) or a pack of this project copied under the
-// new name. It calls
-// POST /api/packs, then opens the new pack's editor on Units. The dialog says what gets written.
+// New pack (generation-ui.md 2.1): a name (`^[a-z][a-z0-9-]*$`, unique) and Start from: Empty pack (pack.json with one
+// `each entity` unit and its template, as `pack new --from empty` writes) or Copy of a pack of this project, under the
+// new name; a line under the choice says what it gives. It calls POST /api/packs, then opens the new pack's editor on
+// Units. The dialog says what gets written.
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import * as endpoints from "@/api/endpoints";
@@ -17,6 +17,12 @@ import { openPackTab } from "./packTabs";
 export const PACK_NAME = /^[a-z][a-z0-9-]*$/;
 /** The files `pack new --from empty` writes (PackAuthoring.NewPack): pack.json and the unit's template. */
 export const EMPTY_PACK_FILES = 2;
+
+/** The line under Start from: what the choice gives. */
+export function startFromText(from: string, count: number, name: string): string {
+  if (from === "empty") return "One each-entity unit and its template, ready to edit.";
+  return `All ${count} ${count === 1 ? "file" : "files"} of ${from}, renamed to ${name || "<name>"}.`;
+}
 
 export function newPackError(name: string, taken: string[]): string | null {
   if (!name) return "Enter a name.";
@@ -85,7 +91,7 @@ export function NewPackDialog() {
           </Field>
           <Field label="Start from" htmlFor="new-pack-from">
             <Select id="new-pack-from" value={from} onChange={(e) => setFrom(e.target.value)}>
-              <option value="empty">Empty: one each-entity unit and its template</option>
+              <option value="empty">Empty pack</option>
               {list.map((p) => (
                 <option key={p.name} value={p.name}>
                   Copy of {p.name}
@@ -93,6 +99,9 @@ export function NewPackDialog() {
               ))}
             </Select>
           </Field>
+          <p className="-mt-1 text-12" data-testid="new-pack-from-text">
+            {startFromText(from, count, name)}
+          </p>
           <p className="text-12 text-secondary" data-testid="new-pack-writes">
             Creates .maquettiste/templates/{name || "<name>"}/ with {count} {count === 1 ? "file" : "files"}.
           </p>

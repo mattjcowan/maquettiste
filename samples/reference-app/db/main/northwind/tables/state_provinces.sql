@@ -12,3 +12,8 @@ CREATE TABLE northwind.state_provinces (
     CONSTRAINT uq_state_provinces_code UNIQUE (code),
     CONSTRAINT fk_state_provinces_country_code FOREIGN KEY (country_code) REFERENCES northwind.countries (code) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.state_provinces IS 'A first-level subdivision of a country (ISO 3166-2), used for sales tax and shipping zones.';
+COMMENT ON COLUMN northwind.state_provinces.id IS 'Surrogate key of the state province.';
+COMMENT ON COLUMN northwind.state_provinces.code IS 'ISO 3166-2 subdivision code without the country prefix, such as CA.';
+COMMENT ON COLUMN northwind.state_provinces.name IS 'Name of the subdivision.';
+COMMENT ON COLUMN northwind.state_provinces.subdivision_type IS 'Kind of subdivision, such as state, province or county.';

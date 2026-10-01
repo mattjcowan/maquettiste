@@ -18,6 +18,7 @@ CREATE TABLE billing.customers (
     CONSTRAINT pk_customers PRIMARY KEY (id),
     CONSTRAINT uq_customers_email UNIQUE (email)
 );
+COMMENT ON TABLE billing.customers IS 'Someone we bill.';
 
 CREATE TABLE billing.invoices (
     id uuid NOT NULL,
@@ -37,6 +38,7 @@ CREATE TABLE billing.invoices (
     CONSTRAINT ck_invoice_status CHECK (status in ('D', 'I', 'P', 'V'))
 );
 CREATE INDEX ix_invoices_issued_on ON billing.invoices (issued_on DESC);
+COMMENT ON TABLE billing.invoices IS 'One row per issued invoice; finance reconciles it monthly.';
 COMMENT ON COLUMN billing.invoices.number IS 'Assigned on issue.';
 
 CREATE TABLE billing.payments (

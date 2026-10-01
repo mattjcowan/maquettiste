@@ -32,3 +32,20 @@ CREATE TABLE northwind.sales_order_lines (
     CONSTRAINT fk_sales_order_lines_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE SET NULL,
     CONSTRAINT ck_sales_order_lines_quantity_positive CHECK (quantity > 0)
 );
+COMMENT ON TABLE northwind.sales_order_lines IS 'Quantity must be positive.';
+COMMENT ON COLUMN northwind.sales_order_lines.id IS 'Surrogate key of the sales order line.';
+COMMENT ON COLUMN northwind.sales_order_lines.line_number IS 'Line number printed on documents.';
+COMMENT ON COLUMN northwind.sales_order_lines.description IS 'Line text, defaulting to the product name.';
+COMMENT ON COLUMN northwind.sales_order_lines.quantity IS 'Quantity ordered, in the line''s unit.';
+COMMENT ON COLUMN northwind.sales_order_lines.unit_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.sales_order_lines.unit_price_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.sales_order_lines.discount IS 'Line discount.';
+COMMENT ON COLUMN northwind.sales_order_lines.tax_rate IS 'Sales tax rate applied.';
+COMMENT ON COLUMN northwind.sales_order_lines.line_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.sales_order_lines.line_total_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.sales_order_lines.status IS 'Fulfillment state.';
+COMMENT ON COLUMN northwind.sales_order_lines.requested_on IS 'Requested delivery date, when it differs from the order''s.';
+COMMENT ON COLUMN northwind.sales_order_lines.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.sales_order_lines.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.sales_order_lines.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.sales_order_lines.updated_by IS 'User name of the last editor.';

@@ -21,3 +21,13 @@ CREATE TABLE northwind.delivery_routes (
     CONSTRAINT fk_delivery_routes_vehicle_id FOREIGN KEY (vehicle_id) REFERENCES northwind.vehicles (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_delivery_routes_route_date ON northwind.delivery_routes (route_date);
+COMMENT ON TABLE northwind.delivery_routes IS 'A day''s delivery run of an own-fleet truck, visiting stops in order.';
+COMMENT ON COLUMN northwind.delivery_routes.id IS 'Surrogate key of the delivery route.';
+COMMENT ON COLUMN northwind.delivery_routes.route_code IS 'Route code, such as DEN-NORTH-2.';
+COMMENT ON COLUMN northwind.delivery_routes.route_date IS 'Delivery date.';
+COMMENT ON COLUMN northwind.delivery_routes.status IS 'planned, loading, on-road or complete.';
+COMMENT ON COLUMN northwind.delivery_routes.planned_distance_km IS 'Planned distance.';
+COMMENT ON COLUMN northwind.delivery_routes.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.delivery_routes.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.delivery_routes.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.delivery_routes.updated_by IS 'User name of the last editor.';

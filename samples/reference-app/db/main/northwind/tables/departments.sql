@@ -18,3 +18,12 @@ CREATE TABLE northwind.departments (
     CONSTRAINT fk_departments_cost_center_id FOREIGN KEY (cost_center_id) REFERENCES northwind.cost_centers (id) ON DELETE SET NULL,
     CONSTRAINT fk_departments_parent_id FOREIGN KEY (parent_id) REFERENCES northwind.departments (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.departments IS 'An organizational unit of Northwind, nested into a hierarchy (Operations > Warehousing > Receiving).';
+COMMENT ON COLUMN northwind.departments.id IS 'Surrogate key of the department.';
+COMMENT ON COLUMN northwind.departments.code IS 'Short department code used in cost reports.';
+COMMENT ON COLUMN northwind.departments.name IS 'Department name.';
+COMMENT ON COLUMN northwind.departments.is_active IS 'Whether employees can be assigned.';
+COMMENT ON COLUMN northwind.departments.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.departments.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.departments.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.departments.updated_by IS 'User name of the last editor.';

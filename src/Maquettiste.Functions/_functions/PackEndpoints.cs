@@ -91,6 +91,30 @@ public static class PackEndpoints
         return Api.Json(result, Api.StatusOf(result.Outcome));
     }));
 
+    /// <summary>
+    /// Removes a pack (<c>If-Match</c>: the <c>pack.json</c> hash): its folder, its <c>packs.&lt;pack&gt;</c> settings entry and its manifests.
+    /// The files it generated stay on disk, untracked.
+    /// </summary>
+    [HttpDelete("/api/packs/{pack}")]
+    public static Task<IResult> Delete(HttpContext context, string pack, GenerationService generation, EditorEvents events, CancellationToken ct) => Api.GuardAsync(context, () => RefusedAsync(async () =>
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(generation);
+        ArgumentNullException.ThrowIfNull(events);
+        if (Api.Require(context, "maintainer") is { } forbidden)
+            return forbidden;
+        if (!Api.TryGetIfMatch(context.Request, out var expected))
+            return Api.PreconditionRequired();
+        var result = await generation.DeletePackAsync(pack, expected, ct).ConfigureAwait(false);
+        if (result.Outcome == SaveOutcome.Saved)
+        {
+            if (result.SettingsHash is { } settingsHash)
+                await events.OnSettingsChangedAsync(settingsHash, ct).ConfigureAwait(false);
+            await events.OnPackFilesChangedAsync([new TemplatesChangedEvent(pack, [])], ct).ConfigureAwait(false);
+        }
+        return Api.Json(result, Api.StatusOf(result.Outcome));
+    }));
+
     /// <summary>One pack file's text with its ETag.</summary>
     [HttpGet("/api/packs/{pack}/file")]
     public static Task<IResult> GetFile(HttpContext context, string pack, string? path, GenerationService generation, CancellationToken ct) => Api.GuardAsync(context, () => RefusedAsync(async () =>

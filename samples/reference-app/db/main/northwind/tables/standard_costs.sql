@@ -17,3 +17,14 @@ CREATE TABLE northwind.standard_costs (
     CONSTRAINT pk_standard_costs PRIMARY KEY (id),
     CONSTRAINT fk_standard_costs_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.standard_costs IS 'The standard cost of a product for a period, used for margin reporting and inventory valuation.';
+COMMENT ON COLUMN northwind.standard_costs.id IS 'Surrogate key of the standard cost.';
+COMMENT ON COLUMN northwind.standard_costs.cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.standard_costs.cost_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.standard_costs.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.standard_costs.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.standard_costs.costing_method IS 'standard, average or last-purchase.';
+COMMENT ON COLUMN northwind.standard_costs.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.standard_costs.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.standard_costs.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.standard_costs.updated_by IS 'User name of the last editor.';

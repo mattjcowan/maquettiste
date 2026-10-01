@@ -40,4 +40,24 @@ CREATE TABLE northwind.purchase_orders (
     CONSTRAINT fk_purchase_orders_payment_term_id FOREIGN KEY (payment_term_id) REFERENCES northwind.payment_terms (id) ON DELETE SET NULL,
     CONSTRAINT fk_purchase_orders_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.purchase_orders IS 'PO number default from purchase_order_number_seq.';
+COMMENT ON COLUMN northwind.purchase_orders.id IS 'Surrogate key of the purchase order.';
 COMMENT ON COLUMN northwind.purchase_orders.po_number IS 'Assigned from purchase_order_number_seq when the application does not supply one.';
+COMMENT ON COLUMN northwind.purchase_orders.ordered_on IS 'Order date.';
+COMMENT ON COLUMN northwind.purchase_orders.status IS 'Lifecycle state.';
+COMMENT ON COLUMN northwind.purchase_orders.expected_on IS 'Expected delivery date.';
+COMMENT ON COLUMN northwind.purchase_orders.freight_terms IS 'Incoterm agreed.';
+COMMENT ON COLUMN northwind.purchase_orders.subtotal_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.purchase_orders.subtotal_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.purchase_orders.tax_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.purchase_orders.tax_total_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.purchase_orders.freight_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.purchase_orders.freight_total_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.purchase_orders.grand_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.purchase_orders.grand_total_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.purchase_orders.notes IS 'Instructions to the supplier.';
+COMMENT ON COLUMN northwind.purchase_orders.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.purchase_orders.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.purchase_orders.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.purchase_orders.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.purchase_orders.deleted_at IS 'When the row was marked deleted; null while it is live.';

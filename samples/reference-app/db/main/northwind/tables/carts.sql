@@ -20,3 +20,12 @@ CREATE TABLE northwind.carts (
     CONSTRAINT fk_carts_converted_order_id FOREIGN KEY (converted_order_id) REFERENCES northwind.sales_orders (id) ON DELETE SET NULL,
     CONSTRAINT fk_carts_user_account_id FOREIGN KEY (user_account_id) REFERENCES northwind.user_accounts (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.carts IS 'A customer portal shopping cart that becomes a sales order at checkout.';
+COMMENT ON COLUMN northwind.carts.id IS 'Surrogate key of the cart.';
+COMMENT ON COLUMN northwind.carts.cart_token IS 'Opaque token held by the browser.';
+COMMENT ON COLUMN northwind.carts.last_activity_at IS 'Last change to the cart.';
+COMMENT ON COLUMN northwind.carts.is_abandoned IS 'Flagged by the abandoned-cart job.';
+COMMENT ON COLUMN northwind.carts.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.carts.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.carts.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.carts.updated_by IS 'User name of the last editor.';

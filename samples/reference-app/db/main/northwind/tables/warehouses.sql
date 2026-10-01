@@ -28,3 +28,22 @@ CREATE TABLE northwind.warehouses (
     CONSTRAINT fk_warehouses_cost_center_id FOREIGN KEY (cost_center_id) REFERENCES northwind.cost_centers (id) ON DELETE SET NULL,
     CONSTRAINT fk_warehouses_manager_id FOREIGN KEY (manager_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.warehouses IS 'A distribution center Northwind ships from, such as Denver DC or Reno DC.';
+COMMENT ON COLUMN northwind.warehouses.id IS 'Surrogate key of the warehouse.';
+COMMENT ON COLUMN northwind.warehouses.code IS 'Warehouse code printed on labels.';
+COMMENT ON COLUMN northwind.warehouses.name IS 'Warehouse name.';
+COMMENT ON COLUMN northwind.warehouses.address_line1 IS 'Street and number, or PO box.';
+COMMENT ON COLUMN northwind.warehouses.address_line2 IS 'Suite, floor or building.';
+COMMENT ON COLUMN northwind.warehouses.address_city IS 'City or locality.';
+COMMENT ON COLUMN northwind.warehouses.address_region IS 'State, province or county.';
+COMMENT ON COLUMN northwind.warehouses.address_postal_code IS 'Postal or ZIP code.';
+COMMENT ON COLUMN northwind.warehouses.address_country_code IS 'ISO country code.';
+COMMENT ON COLUMN northwind.warehouses.location_latitude IS 'Degrees north of the equator.';
+COMMENT ON COLUMN northwind.warehouses.location_longitude IS 'Degrees east of Greenwich.';
+COMMENT ON COLUMN northwind.warehouses.time_zone IS 'IANA time zone, such as America/Denver.';
+COMMENT ON COLUMN northwind.warehouses.floor_area_sqm IS 'Floor area in square meters.';
+COMMENT ON COLUMN northwind.warehouses.is_active IS 'Whether it can receive and ship.';
+COMMENT ON COLUMN northwind.warehouses.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.warehouses.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.warehouses.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.warehouses.updated_by IS 'User name of the last editor.';

@@ -16,3 +16,11 @@ CREATE TABLE northwind.supplier_quotes (
     CONSTRAINT fk_supplier_quotes_request_for_quote_id FOREIGN KEY (request_for_quote_id) REFERENCES northwind.request_for_quotes (id) ON DELETE CASCADE,
     CONSTRAINT fk_supplier_quotes_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.supplier_quotes IS 'A supplier''s answer to a request for quote.';
+COMMENT ON COLUMN northwind.supplier_quotes.id IS 'Surrogate key of the supplier quote.';
+COMMENT ON COLUMN northwind.supplier_quotes.quoted_on IS 'Date quoted.';
+COMMENT ON COLUMN northwind.supplier_quotes.unit_cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.supplier_quotes.unit_cost_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.supplier_quotes.lead_time_days IS 'Quoted lead time.';
+COMMENT ON COLUMN northwind.supplier_quotes.valid_until IS 'Last day the quote holds.';
+COMMENT ON COLUMN northwind.supplier_quotes.is_awarded IS 'Whether the business was awarded.';

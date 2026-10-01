@@ -35,7 +35,13 @@ Database folders are the kebab-case database name; the schema folder is left out
   `RESTRICT`; `NO ACTION` behaves the same there) and `CHECK` with the dialect's expression.
 - **Indexes**: unique, descending columns, `INCLUDE` (PostgreSQL, SQL Server), partial `WHERE`, `USING btree|hash|gin|gist`
   (PostgreSQL) and clustered (SQL Server `CLUSTERED`, with the primary key made `NONCLUSTERED`; PostgreSQL `CLUSTER … USING`).
-- **Comments**: `COMMENT ON` (PostgreSQL), `sp_addextendedproperty` `MS_Description` (SQL Server), trailing `--` comments (SQLite).
+- **Comments**: `COMMENT ON` (PostgreSQL), `sp_addextendedproperty` `MS_Description` (SQL Server), `--` comments (SQLite: a
+  table's after the script header, a column's on its own line above the column, newlines folded into spaces). A table's or
+  column's comment is its explicit `comment`, else, under the project's `comments` convention (`descriptions`, the
+  default), its own description, else the description of what it stores (a column's attribute; a table's entity, a child
+  table's attribute, a junction's relation); with `"comments": "none"` only explicit comments come through. A migration
+  writes `COMMENT ON COLUMN` for a changed column comment on PostgreSQL; a changed table comment is not migrated (a table
+  whose only change it is gets a "review by hand" note).
 - **Schemas, sequences and views** (schema script): `CREATE SCHEMA` for every schema but `public`/`dbo`, `CREATE SEQUENCE` (none
   on SQLite), `CREATE VIEW` with the dialect's body. SQL Server statements are separated by `GO`.
 
@@ -151,7 +157,7 @@ Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
 
 | Parameter | Default | Meaning |
 | --- | --- | --- |
-| `comments` | `true` | Emit table and column comments. |
+| `comments` | `true` | Emit table and column comments: explicit comments, and descriptions under the project's `comments` convention (see Comments above). |
 | `objectScripts` | `false` | Write `<db>/[<schema>/]views/<view>.sql` for every view and `<db>/[<schema>/]sequences/<sequence>.sql` for every sequence (see Object scripts). |
 | `referenceStrategy` | `"lookup-table"` | The strategy key for reference types whose storage the project leaves to the template (see Reference data). |
 | `quoting` | `""` | `always`, `reserved` or `never` to override every database's `quoting` setting; empty keeps the database's. |

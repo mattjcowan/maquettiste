@@ -219,9 +219,10 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     /// The files whose diagnostics can change with a document although they do not reference it: cross-file conflicts are reported
     /// on every file after the ordinally first, so the other participants must be validated with it. They are the files sharing a
     /// scoped name (MQ3001) or a physical name (MQ4002), the other mappings of the same target and database and the other overlays of
-    /// the same synthesized table (MQ4004), the other compositions of the same child (MQ3016), the relations whose navigations land
-    /// in the same inheritance hierarchy (MQ3009), an entity's descendants (MQ3007), and for a mapping the relations and relation
-    /// mappings whose foreign key binding depends on it (MQ4009, MQ4011); for a tag vocabulary or category tree every vocabulary and
+    /// the same synthesized table (MQ4004), for a table the first holder of each user-defined native type it uses and for a reference
+    /// type or enum the tables whose native types carry its name (MQ4006, MQ4016), the other compositions of the same child (MQ3016),
+    /// the relations whose navigations land in the same inheritance hierarchy (MQ3009), an entity's descendants (MQ3007), and for a
+    /// mapping the relations and relation mappings whose foreign key binding depends on it (MQ4009, MQ4011); for a tag vocabulary or category tree every vocabulary and
     /// every element whose chain sees its scope (MQ2005, MQ2006, MQ2008, MQ3021), and for a package, when a domain vocabulary exists,
     /// every element under it (a move changes their chains).
     /// </summary>
@@ -290,6 +291,11 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         {
             yield return mappedDocument;
         }
+
+        // MQ4016 is reported on the first column of a user-defined native type with a count of every use; a reference type or
+        // enum name turns matching native types into known ones (MQ4006, MQ4016).
+        foreach (var peer in context.NativeTypePeers(element))
+            yield return peer;
 
         foreach (var peer in ProcessPeers(model, element))
             yield return peer;

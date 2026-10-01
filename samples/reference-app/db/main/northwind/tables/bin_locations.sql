@@ -18,3 +18,14 @@ CREATE TABLE northwind.bin_locations (
     CONSTRAINT fk_bin_locations_warehouse_zone_id FOREIGN KEY (warehouse_zone_id) REFERENCES northwind.warehouse_zones (id) ON DELETE CASCADE
 );
 CREATE INDEX ix_bin_locations_code ON northwind.bin_locations (code);
+COMMENT ON TABLE northwind.bin_locations IS 'A storage location addressed by aisle, rack, level and position.';
+COMMENT ON COLUMN northwind.bin_locations.id IS 'Surrogate key of the bin location.';
+COMMENT ON COLUMN northwind.bin_locations.code IS 'Location code, such as A-01-02-03.';
+COMMENT ON COLUMN northwind.bin_locations.aisle IS 'Aisle.';
+COMMENT ON COLUMN northwind.bin_locations.rack IS 'Rack or bay.';
+COMMENT ON COLUMN northwind.bin_locations.level IS 'Shelf level.';
+COMMENT ON COLUMN northwind.bin_locations.position IS 'Position on the shelf.';
+COMMENT ON COLUMN northwind.bin_locations.max_weight_value IS 'The weight.';
+COMMENT ON COLUMN northwind.bin_locations.max_weight_unit IS 'Unit of the weight.';
+COMMENT ON COLUMN northwind.bin_locations.is_pick_face IS 'Whether pickers pick from it.';
+COMMENT ON COLUMN northwind.bin_locations.is_active IS 'Whether stock can be put away there.';

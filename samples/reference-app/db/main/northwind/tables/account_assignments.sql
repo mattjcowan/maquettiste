@@ -18,3 +18,13 @@ CREATE TABLE northwind.account_assignments (
     CONSTRAINT fk_account_assignments_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE CASCADE,
     CONSTRAINT fk_account_assignments_employee_id FOREIGN KEY (employee_id) REFERENCES northwind.employees (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.account_assignments IS 'Assignment of an employee to a customer account in a role, such as inside sales or key account manager.';
+COMMENT ON COLUMN northwind.account_assignments.id IS 'Surrogate key of the account assignment.';
+COMMENT ON COLUMN northwind.account_assignments.assignment_role IS 'Role on the account, such as key-account.';
+COMMENT ON COLUMN northwind.account_assignments.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.account_assignments.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.account_assignments.is_primary IS 'Primary owner of the account.';
+COMMENT ON COLUMN northwind.account_assignments.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.account_assignments.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.account_assignments.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.account_assignments.updated_by IS 'User name of the last editor.';

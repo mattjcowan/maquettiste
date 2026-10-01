@@ -19,7 +19,18 @@ namespace Maquettiste.Engine;
 /// <param name="Root">The output root that holds it, or <see langword="null"/> when none does.</param>
 /// <param name="Allowed">Whether the writer would write it.</param>
 /// <param name="Rule">The refusal's rule (MQ6004), or <see langword="null"/>.</param>
-public sealed record UnitPath(string? ElementId, string Path, string Role, string? Root, bool Allowed, string? Rule);
+public sealed record UnitPath(string? ElementId, string Path, string Role, string? Root, bool Allowed, string? Rule)
+{
+    /// <summary>
+    /// The resolved element's name for people: an element's name; a table, view or sequence as <c>name (database)</c>, the name
+    /// qualified by its schema when that is not the database's default (<c>sales.orders (billing)</c>); a column as
+    /// <c>table.column (database)</c>; a locale's tag. <see langword="null"/> for model scope and for an object with no name.
+    /// </summary>
+    public string? ElementName { get; init; }
+
+    /// <summary>The resolved element's kind (<c>entity</c>, <c>table</c>, <c>locale</c>, ...), or <see langword="null"/> for model scope.</summary>
+    public string? ElementKind { get; init; }
+}
 
 /// <summary>A unit's output paths over its scope (generation-ui.md section 5.2).</summary>
 /// <param name="Count">How many elements the unit plans (after the filter and the skip hints), or the listed elements it plans.</param>
@@ -146,7 +157,11 @@ public sealed partial class GenerationService
                 {
                     var check = prepared.Paths.Check(file.Path);
                     paths.Add(new UnitPath(planned.Element?.Id, check.Allowed ? check.NormalizedPath : file.Path,
-                        file.Role == FileRole.Companion ? "companion" : "main", check.Root?.Path, check.Allowed, check.Allowed ? null : check.RuleId ?? "MQ6004"));
+                        file.Role == FileRole.Companion ? "companion" : "main", check.Root?.Path, check.Allowed, check.Allowed ? null : check.RuleId ?? "MQ6004")
+                    {
+                        ElementName = planned.Element is { } named ? NameOf(named) : null,
+                        ElementKind = planned.Element?.Kind,
+                    });
                 }
             }
         }
@@ -173,6 +188,29 @@ public sealed partial class GenerationService
             return c != 0 ? c : string.CompareOrdinal(a.Path, b.Path);
         });
         return new UnitPathsResult(units.Count, rendered, paths, Outcomes.Sort(diagnostics), clock.ElapsedMilliseconds);
+    }
+
+    /// <summary>The name <see cref="UnitPath.ElementName"/> shows for a resolved object, or <see langword="null"/> when it has none.</summary>
+    internal static string? NameOf(IResolvedObject element)
+    {
+        static string Physical(string name, string? schema, RDatabase database) =>
+            (schema is { Length: > 0 } && !string.Equals(schema, database.DefaultSchema, StringComparison.Ordinal) ? schema + "." + name : name)
+            + (database.Name.Length > 0 ? " (" + database.Name + ")" : "");
+
+        return element switch
+        {
+            RElement named => named.Name,
+            RTable table => Physical(table.Name, table.Schema, table.Database),
+            RView view => Physical(view.Name, view.Schema, view.Database),
+            RSequence sequence => Physical(sequence.Name, sequence.Schema, sequence.Database),
+            RColumn column => Physical(column.Table.Name + "." + column.Name, column.Table.Schema, column.Table.Database),
+            RDatabase database => database.Name,
+            RSchema schema => schema.Name,
+            RLocale locale => locale.Tag,
+            RAnnotated { DisplayName.Length: > 0 } annotated => annotated.DisplayName,
+            RProcessNode { DisplayName.Length: > 0 } node => node.DisplayName,
+            _ => null,
+        };
     }
 
     /// <summary>

@@ -21,3 +21,16 @@ CREATE TABLE northwind.route_stops (
     CONSTRAINT fk_route_stops_delivery_route_id FOREIGN KEY (delivery_route_id) REFERENCES northwind.delivery_routes (id) ON DELETE CASCADE,
     CONSTRAINT fk_route_stops_shipment_id FOREIGN KEY (shipment_id) REFERENCES northwind.shipments (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.route_stops IS 'A stop on a delivery route.';
+COMMENT ON COLUMN northwind.route_stops.id IS 'Surrogate key of the route stop.';
+COMMENT ON COLUMN northwind.route_stops.stop_number IS 'Position on the route.';
+COMMENT ON COLUMN northwind.route_stops.address_line1 IS 'Street and number, or PO box.';
+COMMENT ON COLUMN northwind.route_stops.address_line2 IS 'Suite, floor or building.';
+COMMENT ON COLUMN northwind.route_stops.address_city IS 'City or locality.';
+COMMENT ON COLUMN northwind.route_stops.address_region IS 'State, province or county.';
+COMMENT ON COLUMN northwind.route_stops.address_postal_code IS 'Postal or ZIP code.';
+COMMENT ON COLUMN northwind.route_stops.address_country_code IS 'ISO country code.';
+COMMENT ON COLUMN northwind.route_stops.location_latitude IS 'Degrees north of the equator.';
+COMMENT ON COLUMN northwind.route_stops.location_longitude IS 'Degrees east of Greenwich.';
+COMMENT ON COLUMN northwind.route_stops.planned_arrival_at IS 'Planned arrival.';
+COMMENT ON COLUMN northwind.route_stops.actual_arrival_at IS 'Actual arrival.';

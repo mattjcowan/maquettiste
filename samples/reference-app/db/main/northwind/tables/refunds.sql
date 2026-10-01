@@ -24,3 +24,16 @@ CREATE TABLE northwind.refunds (
     CONSTRAINT fk_refunds_payment_id FOREIGN KEY (payment_id) REFERENCES northwind.payments (id) ON DELETE SET NULL,
     CONSTRAINT fk_refunds_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.refunds IS 'Money returned to a customer, from an overpayment or a credit note.';
+COMMENT ON COLUMN northwind.refunds.id IS 'Surrogate key of the refund.';
+COMMENT ON COLUMN northwind.refunds.refund_number IS 'Refund number.';
+COMMENT ON COLUMN northwind.refunds.refunded_at IS 'When it was paid out.';
+COMMENT ON COLUMN northwind.refunds.amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.refunds.amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.refunds.method IS 'card, ach or check.';
+COMMENT ON COLUMN northwind.refunds.status IS 'Processing state.';
+COMMENT ON COLUMN northwind.refunds.reference IS 'Processor or bank reference.';
+COMMENT ON COLUMN northwind.refunds.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.refunds.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.refunds.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.refunds.updated_by IS 'User name of the last editor.';

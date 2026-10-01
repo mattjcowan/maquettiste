@@ -10,7 +10,8 @@ namespace Processes.Data;
 
 /// <summary>
 /// What the generated scenario tests run against: the dispatcher over both processes, with the fixture's stores on an in-memory
-/// SQLite database built from the sql-ddl output (the PostgreSQL schema script; its "public" schema is an attached database), and
+/// SQLite database built from the sql-ddl output (the PostgreSQL schema script without its COMMENT ON statements, which SQLite does
+/// not know; its "public" schema is an attached database), and
 /// the fixture's services. A scenario states how each service task ended; before such a result reaches the process, the host asks
 /// the fixture's service and fails the test when the service would answer otherwise, so a scenario cannot pass against a service
 /// that disagrees with it.
@@ -43,7 +44,10 @@ internal sealed class ScenarioHost : IAsyncDisposable
         await connection.OpenAsync(cancellationToken);
         await using (var command = connection.CreateCommand())
         {
-            command.CommandText = "ATTACH DATABASE ':memory:' AS public;\n" + await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "schema.sql"), cancellationToken);
+            var script = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "schema.sql"), cancellationToken);
+            script = System.Text.RegularExpressions.Regex.Replace(script, @"^COMMENT ON .*? IS '(?:[^']|'')*';", "",
+                System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.Singleline);
+            command.CommandText = "ATTACH DATABASE ':memory:' AS public;\n" + script;
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 

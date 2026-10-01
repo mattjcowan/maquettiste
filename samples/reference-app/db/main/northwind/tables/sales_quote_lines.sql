@@ -18,3 +18,11 @@ CREATE TABLE northwind.sales_quote_lines (
     CONSTRAINT fk_sales_quote_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_sales_quote_lines_unit_code FOREIGN KEY (unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.sales_quote_lines IS 'A quoted product and price.';
+COMMENT ON COLUMN northwind.sales_quote_lines.id IS 'Surrogate key of the sales quote line.';
+COMMENT ON COLUMN northwind.sales_quote_lines.quantity IS 'Quantity quoted.';
+COMMENT ON COLUMN northwind.sales_quote_lines.unit_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.sales_quote_lines.unit_price_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.sales_quote_lines.discount IS 'Quoted discount.';
+COMMENT ON COLUMN northwind.sales_quote_lines.line_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.sales_quote_lines.line_total_currency IS 'The ISO 4217 currency of the amount.';

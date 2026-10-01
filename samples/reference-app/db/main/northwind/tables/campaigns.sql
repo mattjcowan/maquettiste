@@ -20,3 +20,16 @@ CREATE TABLE northwind.campaigns (
     CONSTRAINT uq_campaigns_name UNIQUE (name),
     CONSTRAINT fk_campaigns_owner_id FOREIGN KEY (owner_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.campaigns IS 'A marketing campaign, such as a spring catalog mailing or a trade show.';
+COMMENT ON COLUMN northwind.campaigns.id IS 'Surrogate key of the campaign.';
+COMMENT ON COLUMN northwind.campaigns.name IS 'Campaign name.';
+COMMENT ON COLUMN northwind.campaigns.description IS 'Goals and audience.';
+COMMENT ON COLUMN northwind.campaigns.channel IS 'Channel, such as email, print or event.';
+COMMENT ON COLUMN northwind.campaigns.period_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.campaigns.period_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.campaigns.budget_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.campaigns.budget_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.campaigns.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.campaigns.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.campaigns.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.campaigns.updated_by IS 'User name of the last editor.';

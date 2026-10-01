@@ -23,3 +23,14 @@ CREATE TABLE northwind.sales_activities (
     CONSTRAINT fk_sales_activities_owner_id FOREIGN KEY (owner_id) REFERENCES northwind.employees (id) ON DELETE RESTRICT,
     CONSTRAINT fk_sales_activities_opportunity_id FOREIGN KEY (opportunity_id) REFERENCES northwind.opportunities (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.sales_activities IS 'A call, email, meeting, visit or task logged against a party.';
+COMMENT ON COLUMN northwind.sales_activities.id IS 'Surrogate key of the sales activity.';
+COMMENT ON COLUMN northwind.sales_activities.activity_type IS 'Kind of activity.';
+COMMENT ON COLUMN northwind.sales_activities.subject IS 'One-line summary.';
+COMMENT ON COLUMN northwind.sales_activities.due_at IS 'When the activity is scheduled or due.';
+COMMENT ON COLUMN northwind.sales_activities.completed_at IS 'When it was done.';
+COMMENT ON COLUMN northwind.sales_activities.notes IS 'Outcome and details.';
+COMMENT ON COLUMN northwind.sales_activities.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.sales_activities.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.sales_activities.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.sales_activities.updated_by IS 'User name of the last editor.';

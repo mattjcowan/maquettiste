@@ -26,3 +26,16 @@ CREATE TABLE northwind.warranty_claims (
     CONSTRAINT fk_warranty_claims_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_warranty_claims_serial_number_id FOREIGN KEY (serial_number_id) REFERENCES northwind.serial_numbers (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.warranty_claims IS 'A claim that a product failed within its warranty, passed on to the manufacturer.';
+COMMENT ON COLUMN northwind.warranty_claims.id IS 'Surrogate key of the warranty claim.';
+COMMENT ON COLUMN northwind.warranty_claims.claim_number IS 'Claim number.';
+COMMENT ON COLUMN northwind.warranty_claims.filed_on IS 'Filing date.';
+COMMENT ON COLUMN northwind.warranty_claims.failure_description IS 'What failed.';
+COMMENT ON COLUMN northwind.warranty_claims.status IS 'filed, approved, denied or reimbursed.';
+COMMENT ON COLUMN northwind.warranty_claims.claim_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.warranty_claims.claim_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.warranty_claims.resolution IS 'Outcome.';
+COMMENT ON COLUMN northwind.warranty_claims.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.warranty_claims.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.warranty_claims.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.warranty_claims.updated_by IS 'User name of the last editor.';

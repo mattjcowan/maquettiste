@@ -18,3 +18,15 @@ CREATE TABLE northwind.product_documents (
     CONSTRAINT pk_product_documents PRIMARY KEY (id),
     CONSTRAINT fk_product_documents_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.product_documents IS 'A document attached to a product, such as a safety data sheet or an installation guide.';
+COMMENT ON COLUMN northwind.product_documents.id IS 'Surrogate key of the product document.';
+COMMENT ON COLUMN northwind.product_documents.title IS 'Document title.';
+COMMENT ON COLUMN northwind.product_documents.document_type IS 'Kind, such as sds, datasheet or manual.';
+COMMENT ON COLUMN northwind.product_documents.url IS 'Document URL.';
+COMMENT ON COLUMN northwind.product_documents.language_code IS 'Language of the document.';
+COMMENT ON COLUMN northwind.product_documents.revision IS 'Revision label.';
+COMMENT ON COLUMN northwind.product_documents.published_on IS 'Date the revision was published.';
+COMMENT ON COLUMN northwind.product_documents.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.product_documents.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.product_documents.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.product_documents.updated_by IS 'User name of the last editor.';

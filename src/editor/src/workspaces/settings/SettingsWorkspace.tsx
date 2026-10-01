@@ -31,6 +31,7 @@ import { CategoryTreeEditor, TagVocabularyEditor } from "@/vocabularies/Vocabula
 import { GeneralSettings } from "./GeneralSettings";
 import { StrategiesHint } from "./StrategiesHint";
 import { ValidationSettings } from "./ValidationSettings";
+import { CommentsConvention } from "./CommentsConvention";
 
 const TABS = ["general", "tags", "categories", "stereotypes", "conventions", "locales", "validation", "project", "explorer"] as const;
 
@@ -407,6 +408,7 @@ function ConventionsSettings() {
             </Field>
           );
         })}
+        <CommentsConvention json={json} scope={scope} onChange={(v) => set("comments", v)} />
       </div>
     </section>
   );

@@ -15,3 +15,11 @@ CREATE TABLE northwind.countries (
     CONSTRAINT uq_countries_alpha3_code UNIQUE (alpha3_code),
     CONSTRAINT fk_countries_currency_code FOREIGN KEY (currency_code) REFERENCES northwind.currencies (code) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.countries IS 'A country or territory from ISO 3166-1. Drives address validation, tax jurisdictions and customs paperwork.';
+COMMENT ON COLUMN northwind.countries.code IS 'ISO 3166-1 alpha-2 code; the natural key.';
+COMMENT ON COLUMN northwind.countries.alpha3_code IS 'ISO 3166-1 alpha-3 code.';
+COMMENT ON COLUMN northwind.countries.numeric_code IS 'ISO 3166-1 numeric code.';
+COMMENT ON COLUMN northwind.countries.name IS 'English short name.';
+COMMENT ON COLUMN northwind.countries.calling_code IS 'International dialling prefix, such as +49.';
+COMMENT ON COLUMN northwind.countries.is_eu_member IS 'Whether intra-community VAT rules apply.';
+COMMENT ON COLUMN northwind.countries.is_sanctioned IS 'Whether trade with the country is blocked by export controls.';

@@ -13,3 +13,8 @@ CREATE TABLE northwind.product_translations (
     CONSTRAINT fk_product_translations_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE,
     CONSTRAINT fk_product_translations_language_code FOREIGN KEY (language_code) REFERENCES northwind.languages (code) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.product_translations IS 'The name and descriptions of a product in another language.';
+COMMENT ON COLUMN northwind.product_translations.id IS 'Surrogate key of the product translation.';
+COMMENT ON COLUMN northwind.product_translations.name IS 'Translated name.';
+COMMENT ON COLUMN northwind.product_translations.short_description IS 'Translated short description.';
+COMMENT ON COLUMN northwind.product_translations.long_description IS 'Translated long description.';

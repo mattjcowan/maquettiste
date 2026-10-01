@@ -73,6 +73,11 @@ describe("scopeCandidates and pickElement", () => {
   it("takes planned ids for tables, locales and selectors, and nothing for a model unit", () => {
     expect(scopeCandidates(unitScope("each locale"), index, ["fr", "de", "fr"]).map((c) => c.id)).toEqual(["fr", "de"]);
     expect(scopeCandidates(unitScope("select databases"), index, ["e1"]).map((c) => c.label)).toEqual(["Invoice"]);
+    // A synthesized table's key reads "entity @ database"; a name the server gives wins.
+    expect(scopeCandidates(unitScope("each table"), index, ["e1@db9", "e2@db9"], null, new Map([["e2@db9", "payments"]])).map((c) => c.label)).toEqual([
+      "Invoice @ db9",
+      "payments",
+    ]);
     const model = scopeCandidates(unitScope("model"), index, ["e1"]);
     expect(model).toEqual([]);
     expect(pickElement(model, "e1")).toBeNull();

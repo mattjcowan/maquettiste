@@ -16,3 +16,14 @@ CREATE TABLE northwind.product_collections (
     CONSTRAINT pk_product_collections PRIMARY KEY (id),
     CONSTRAINT uq_product_collections_name UNIQUE (name)
 );
+COMMENT ON TABLE northwind.product_collections IS 'A curated set of products, such as Back to school or Top sellers, used by merchandising.';
+COMMENT ON COLUMN northwind.product_collections.id IS 'Surrogate key of the product collection.';
+COMMENT ON COLUMN northwind.product_collections.name IS 'Collection name.';
+COMMENT ON COLUMN northwind.product_collections.description IS 'Description shown to customers.';
+COMMENT ON COLUMN northwind.product_collections.is_featured IS 'Shown on the portal home page.';
+COMMENT ON COLUMN northwind.product_collections.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.product_collections.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.product_collections.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.product_collections.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.product_collections.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.product_collections.updated_by IS 'User name of the last editor.';

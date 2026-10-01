@@ -12,3 +12,10 @@ CREATE TABLE northwind.industries (
     CONSTRAINT pk_industries PRIMARY KEY (id),
     CONSTRAINT uq_industries_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.industries IS 'Industry classification of a customer or lead, based on NAICS sectors.';
+COMMENT ON COLUMN northwind.industries.id IS 'Surrogate key of the industry.';
+COMMENT ON COLUMN northwind.industries.naics_code IS 'NAICS code of the sector.';
+COMMENT ON COLUMN northwind.industries.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.industries.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.industries.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.industries.is_active IS 'Whether the value can be chosen for new records.';

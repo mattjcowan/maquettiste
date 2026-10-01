@@ -12,3 +12,7 @@ CREATE TABLE northwind.user_account_role (
     CONSTRAINT fk_user_account_role_users_id FOREIGN KEY (users_id) REFERENCES northwind.user_accounts (id) ON DELETE CASCADE,
     CONSTRAINT fk_user_account_role_roles_id FOREIGN KEY (roles_id) REFERENCES northwind.roles (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.user_account_role IS 'Roles granted to a user account; the grant records who granted it and when.';
+COMMENT ON COLUMN northwind.user_account_role.granted_at IS 'When the role was granted.';
+COMMENT ON COLUMN northwind.user_account_role.granted_by IS 'User name of the administrator who granted it.';
+COMMENT ON COLUMN northwind.user_account_role.expires_on IS 'Date the grant lapses; null for permanent grants.';

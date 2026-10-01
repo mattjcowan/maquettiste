@@ -19,3 +19,8 @@ CREATE TABLE northwind.goods_receipt_lines (
     CONSTRAINT fk_goods_receipt_lines_bin_id FOREIGN KEY (bin_id) REFERENCES northwind.bin_locations (id) ON DELETE SET NULL,
     CONSTRAINT fk_goods_receipt_lines_purchase_order_line_id FOREIGN KEY (purchase_order_line_id) REFERENCES northwind.purchase_order_lines (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.goods_receipt_lines IS 'A product and quantity received, with rejects.';
+COMMENT ON COLUMN northwind.goods_receipt_lines.id IS 'Surrogate key of the goods receipt line.';
+COMMENT ON COLUMN northwind.goods_receipt_lines.quantity_received IS 'Quantity accepted.';
+COMMENT ON COLUMN northwind.goods_receipt_lines.quantity_rejected IS 'Quantity refused.';
+COMMENT ON COLUMN northwind.goods_receipt_lines.rejection_reason IS 'Why goods were refused.';

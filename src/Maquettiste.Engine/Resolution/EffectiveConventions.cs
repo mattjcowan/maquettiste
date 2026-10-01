@@ -36,6 +36,7 @@ internal sealed record EffectiveConventions
     public StorageKind ValueObjectCollectionStorage { get; init; } = StorageKind.Table;
     public RelationShape RelationsWithAttributes { get; init; } = RelationShape.Junction;
     public InheritanceStrategy Inheritance { get; init; } = InheritanceStrategy.Tph;
+    public CommentSource Comments { get; init; } = CommentSource.Descriptions;
 
     /// <summary>The effective conventions for a database.</summary>
     public static EffectiveConventions For(ProjectSettings settings, string? databaseName)
@@ -79,6 +80,7 @@ internal sealed record EffectiveConventions
         ValueObjectCollectionStorage = c.ValueObjectCollectionStorage ?? ValueObjectCollectionStorage,
         RelationsWithAttributes = c.RelationsWithAttributes ?? RelationsWithAttributes,
         Inheritance = c.Inheritance ?? Inheritance,
+        Comments = c.Comments ?? Comments,
     };
 }
 

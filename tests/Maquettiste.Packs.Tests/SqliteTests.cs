@@ -47,6 +47,29 @@ public sealed partial class SqliteTests
         Assert.True(each.ExitCode == 0, each.Output);
     }
 
+    [Fact]
+    public async Task Sqlite_column_comments_from_descriptions_sit_on_their_own_line_so_the_comma_survives()
+    {
+        // An attribute's description becomes its column's comment (the comments convention); SQLite keeps it as a line comment,
+        // which must not end the line of a column that a comma and another column follow.
+        using var repo = PackRepo.BillingDialects();
+        repo.EditJson(".maquettiste/model/entities/customer.json", e => e["attributes"]![1]!["description"] = "The name, as printed,\nnever empty.");
+        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+        var table = repo.Read("db/local/tables/customers.sql");
+        Assert.Contains("    id text NOT NULL,\n    -- The name, as printed, never empty.\n    name text NOT NULL,\n", table, StringComparison.Ordinal);
+        Assert.Contains("COMMENT ON COLUMN billing.customers.name IS 'The name, as printed,\nnever empty.';", repo.Read("db/main/billing/tables/customers.sql"),
+            StringComparison.Ordinal);
+        var folder = repo.PathOf("db/local");
+        AssertShape(File.ReadAllText(Path.Combine(folder, "schema.sql")), Directory.GetFiles(Path.Combine(folder, "tables"), "*.sql").Length);
+
+        var sqlite3 = ProcessRunner.FindOnPath("sqlite3");
+        if (sqlite3 is null)
+            return;
+        var run = await ProcessRunner.RunAsync(sqlite3, ["-bail", ":memory:"], folder, TimeSpan.FromMinutes(1), table + "\nSELECT 'columns=' || count(*) FROM pragma_table_info('customers');\n");
+        Assert.True(run.ExitCode == 0, run.Output);
+        Assert.Contains("columns=6", run.Output, StringComparison.Ordinal);
+    }
+
     private static void AssertShape(string script, int tableCount)
     {
         var body = LineComment().Replace(script, "");

@@ -27,3 +27,18 @@ CREATE TABLE northwind.purchase_order_lines (
     CONSTRAINT fk_purchase_order_lines_unit_code FOREIGN KEY (unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE RESTRICT,
     CONSTRAINT fk_purchase_order_lines_supplier_product_id FOREIGN KEY (supplier_product_id) REFERENCES northwind.supplier_products (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.purchase_order_lines IS 'A product and quantity ordered from a supplier.';
+COMMENT ON COLUMN northwind.purchase_order_lines.id IS 'Surrogate key of the purchase order line.';
+COMMENT ON COLUMN northwind.purchase_order_lines.line_number IS 'Line number.';
+COMMENT ON COLUMN northwind.purchase_order_lines.quantity IS 'Quantity ordered.';
+COMMENT ON COLUMN northwind.purchase_order_lines.unit_cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.purchase_order_lines.unit_cost_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.purchase_order_lines.line_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.purchase_order_lines.line_total_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.purchase_order_lines.expected_on IS 'Line delivery date, when split.';
+COMMENT ON COLUMN northwind.purchase_order_lines.received_quantity IS 'Quantity received so far.';
+COMMENT ON COLUMN northwind.purchase_order_lines.is_closed IS 'Whether no more receipts are expected.';
+COMMENT ON COLUMN northwind.purchase_order_lines.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.purchase_order_lines.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.purchase_order_lines.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.purchase_order_lines.updated_by IS 'User name of the last editor.';

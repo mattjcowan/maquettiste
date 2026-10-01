@@ -14,3 +14,9 @@ CREATE TABLE northwind.stock_reservations (
     CONSTRAINT fk_stock_reservations_inventory_item_id FOREIGN KEY (inventory_item_id) REFERENCES northwind.inventory_items (id) ON DELETE CASCADE,
     CONSTRAINT fk_stock_reservations_sales_order_line_id FOREIGN KEY (sales_order_line_id) REFERENCES northwind.sales_order_lines (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.stock_reservations IS 'A quantity of stock reserved for a sales order line.';
+COMMENT ON COLUMN northwind.stock_reservations.id IS 'Surrogate key of the stock reservation.';
+COMMENT ON COLUMN northwind.stock_reservations.quantity IS 'Quantity reserved.';
+COMMENT ON COLUMN northwind.stock_reservations.reserved_at IS 'When it was reserved.';
+COMMENT ON COLUMN northwind.stock_reservations.expires_at IS 'When a soft reservation lapses.';
+COMMENT ON COLUMN northwind.stock_reservations.status IS 'active, picked, released or expired.';

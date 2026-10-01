@@ -58,14 +58,15 @@ controls) and a shortcut:
 | Bottom panel | Alt+Shift+J |
 | Editor tabs | Alt+Shift+O |
 | Top bar controls (git status, content locale, undo and redo, theme, live status, user) | Alt+Shift+H |
+| Pack editor: pack files, template preview, unit help (Generate screen) | Alt+Shift+F, Alt+Shift+V, Alt+Shift+U |
 
 The shortcuts use the physical key (Option+Shift on a Mac) and do nothing while you type in a field; Escape never
 closes a panel. A hidden panel leaves a slim edge where it was (a thin strip beside the rail, at the right edge, or
 along the top of the centre area; the bottom panel keeps its tab row, the top bar its button): click it to bring the
 panel back. Clicking an explorer on the rail also brings the sidebar back.
 
-The layout (which panels are open, the sidebar, inspector and bottom panel sizes, and a second explorer pinned beside
-the first) is kept in this browser and comes back when you open the editor again. **Reset layout** in the command
+The layout (which panels are open, the sidebar, inspector and bottom panel sizes, the pack editor's pane sizes, and a
+second explorer pinned beside the first) is kept in this browser and comes back when you open the editor again. **Reset layout** in the command
 palette opens every panel at its default size and unpins the second explorer; it leaves the page state below as it
 is. **Reset layout and page state** does the same and also forgets this project's page state: the explorer, the
 expanded rows, the selections, the editor tabs, the Generate packs and the Settings tab go back to their defaults. A layout saved by 0.2.0 (panel sizes only) is read and kept.
@@ -93,14 +94,15 @@ selection: after a rail switch the inspector shows that explorer's selection, or
 explorer's name) when it has none, and switching back brings the earlier one back. While an element editor tab shows in
 the centre, the inspector shows that tab's element. On **Generate** it shows the open pack, or the unit a pack tree row
 opened ("Select a pack in Generate" on Plan). **Settings** and **Reference data** have no inspector: those screens are
-their own panel. Going to an element from one of them (a translation queue's "Open element", a where-used row) opens
+their own panel. Going to an element from one of them (a translation queue's "Open element", a row of the References tab) opens
 the Domain model screen with the element selected.
 
 An element's inspector has four tabs, switched with the mouse or the arrow keys: **Properties** (its own fields, such
 as name, domain, stereotypes, tags and custom properties, plus the kind's settings), **Attributes** (only for kinds that
-have attributes: a value object's or stereotype's attribute grid, edited there; an entity's attributes as a read-only
+have attributes: a value object's, stereotype's or relationship's attribute grid, edited there, while a relationship's
+Properties keep its kind, inverse name and ends; an entity's attributes as a read-only
 list of name, type and a `*` for required, with **Open editor** opening the entity editor on its Attributes tab, where
-the entity's grid is edited), **JSON** (the element's document, editable) and **Where used** (the elements that
+the entity's grid is edited), **JSON** (the element's document, editable) and **Used** (the elements that
 reference it; a row goes to the referring element). The inspector remembers the tab you chose for each kind of
 element; a kind without the chosen tab shows Properties.
 
@@ -128,7 +130,7 @@ opened last.
 
 The keyboard walks the tree: the arrows move and expand, Enter opens, F2 renames, Delete deletes, and Shift or Ctrl with a
 click or an arrow selects several rows of one kind. Every row has a right-click menu (also Shift+F10) with the actions
-that fit it, such as **Where used**, **Show on canvas**, **Add to diagram**, **Move to domain…**, **Go to table** or
+that fit it, such as **Used**, **Show on canvas**, **Add to diagram**, **Move to domain…**, **Go to table** or
 **Open mappings**. **Move to domain…** warns before a tag or category declared by a domain would fall out of scope in
 the new place. **Apply stereotype…**, **Tag…** and **Set category…** mark a row, or every selected row at once, in one
 change. **Promote to entity** on a value object or a custom type makes it an entity (an id key plus the value object's
@@ -137,7 +139,7 @@ relationship to the new entity. What pointed at a removed attribute follows: the
 (the relationship's foreign key maps by convention) and the owner's seed drops its column; a diagram that showed the
 promoted element shows the new entity. A use inside a value object, a relationship or a key, a seed left with no column,
 or any other element that refers to it blocks the promotion, and the dialog names each one and lists every rewrite.
-One undo reverses the whole promotion. F12 on a reference goes to its definition and Shift+F12 lists where the element is used.
+One undo reverses the whole promotion. F12 on a reference goes to its definition and Shift+F12 lists where the element is used (the **Used** menu item, shown on the bottom panel's References tab).
 
 ### Element editors and General mode
 
@@ -226,7 +228,7 @@ database shows on the Database screen at once. The explorers remember which rows
   `~` like with `%`, `=` equals); its **…** menu has **Types A to Z (no categories)** for one flat list. Clicking a
   type there opens it here. A type's rows live in a seed named after it, and a type's only seed (whatever its name) is
   not listed under the type: the type row is its rows, and that rows file is renamed with the type. A type with several seeds (demo rows, test rows) lists them under it, each with its row
-  count; a seed there has **Open**, **Where used**, **Add to favorites** and **Delete**, but no **Move to domain…** (a
+  count; a seed there has **Open**, **Used**, **Add to favorites** and **Delete**, but no **Move to domain…** (a
   reference type has no domain) and no **Rename** (it is renamed with its type). Right-click a type (also Shift+F10) for
   **Duplicate**, **Rename** (a dialog with **Name** and **Display name**; the type's only seed, whatever its name, or of
   several the one named after the type, takes the new name), **Move to category…** (when the project has no categories yet, the dialog says
@@ -346,6 +348,17 @@ database shows on the Database screen at once. The explorers remember which rows
   keys connect it to, or under the drawing, without moving the others. The database row's menu opens **Mappings**: an entity and its table side by side, where names mapped automatically are
   muted and customised ones are highlighted.
 
+  **Columns.** Under the diagram, the **Columns** panel lists the selected table's columns in a grid: Name, Type, the
+  dialect's Native type (read only), Null, Default, Comment and Description, with key and foreign key markers. Arrow
+  keys move, Enter or F2 edits (Enter again saves), Escape cancels, Tab moves right, Space toggles Null, and a
+  description edits in a text area where Shift+Enter adds a line. Each saved cell is one change you can undo. The edit
+  goes to the table's file: a designed or imported table's own file, or, for a table made from an entity, the file
+  that customises it, which holds only what differs from the conventions. A table made from an entity that has no such
+  file yet gets one on its first edit, holding just that column's change; Undo removes it again. Clearing a cell of such
+  a column returns it to what the conventions give. The Comment column shows the comment the database gets: an explicit
+  comment, else (with the **comments** convention, on by default) the column's description, else its attribute's. The
+  panel hides from the button in its header ("Hide columns").
+
   **What a database holds.** Entities are not turned into tables on their own: a database holds only what is mapped to
   it, and how an entity becomes a table is yours to say. There is no default database either; every database, the first
   one included, holds what its own mapping says, and an entity may land in several databases or in none.
@@ -368,6 +381,10 @@ database shows on the Database screen at once. The explorers remember which rows
     lists the domains), and **Make explicit** writes that choice into the file; generated output does not change.
   - An entity that lands in no database is reported in Problems as MQ4012 (info, only once the model has a database); a
     domain list that the convention does not use (All or None) is MQ4013 (warning).
+  - A column's native type that the database's dialect does not know is MQ4006 (warning). A native type written with
+    quotes or a schema, such as `"public"."unit_of_measure"`, names a type the database defines, which Maquettiste cannot
+    check: it is MQ4016 (info), reported once per type with the number of columns that use it. A native type named after
+    a reference type or an enum of the model (`unit_of_measure`, `unit_of_measure_t`) is known.
 
   **Schemas.** A PostgreSQL or SQL Server database can hold several schemas (namespaces such as `sales` or `ops`).
 
@@ -426,6 +443,11 @@ database shows on the Database screen at once. The explorers remember which rows
   - **Tags**, **Categories**, **Stereotypes**: the global vocabularies (a domain's own are on its editor's tabs).
   - **Conventions**: the naming conventions, for the project (every database) or for one database picked at the top;
     they name the tables and columns of the entities mapped to a database, and never decide which entities that is.
+    **comments** says where the database comments of tables and columns come from when none is written: with
+    **descriptions** (the default) a column takes its own description, else its attribute's, and a table its own
+    description, else its entity's (a junction table its relationship's); with **none** only explicit comments are
+    written. The sql-ddl pack writes them (`COMMENT ON` for PostgreSQL, a description property for SQL Server, a `--`
+    line for SQLite) while its `comments` parameter is on.
   - **Locales**: the content locales (see "Translating the model in the editor").
   - **Validation**: the severity of each built-in rule (see "Settings › Validation" below).
   - **Type maps, outputs, formatters**: the output allowlist (`outputs.allow`), the type maps, the formatters and the
@@ -478,10 +500,10 @@ state, event or scenario row opens the process editor on that tab with the row s
 kind folder lists the same process rows.
 
 Right-click a process for **Open**, **Open in new tab**, **Simulate** (opens its chart with the simulation panel),
-**Verify scenarios**, **Export XState**, **Where used**, **Move to domain…**, **Rename**, **Add to favorites** and
+**Verify scenarios**, **Export XState**, **Used**, **Move to domain…**, **Rename**, **Add to favorites** and
 **Delete** (its scenarios and its chart's diagram go with it). Right-click a domain group for **New process…** and
 **Import XState…**. The header's **+** offers New process…, New actor… and New scenario…. An actor or a scenario row
-offers **Open**, **Open in new tab**, **Where used**, **Rename**, **Add to favorites** and **Delete**. New scenario… from a
+offers **Open**, **Open in new tab**, **Used**, **Rename**, **Add to favorites** and **Delete**. New scenario… from a
 process's Scenarios folder starts on that process.
 
 A process's chart is a diagram like any other: once you have arranged it, the **Diagrams** explorer lists it under the
@@ -911,7 +933,10 @@ includes the file, and Delete also while a unit names it; the refusal says who u
 A plan is a dry run: it renders what needs rendering and compares it with the disk, and nothing is written until you
 apply it. Above the table, one line per pack says what it will do, for example
 `sql-ddl: 4 units, 12 files to add, 3 to modify, 1 orphan to delete` (an orphan is a file generation wrote earlier that
-no unit produces any more). The table groups the files by unit (`sql-ddl/table`, with its template and its counts);
+no unit produces any more). Files that already hold exactly what the plan renders are counted as unchanged
+(`20 files unchanged`); when no file needs writing the line says so, `atlas-schema: 737 units, nothing to write: all
+737 files already match the disk`, a note says Apply has nothing to do, and **Apply plan** stays disabled. The table
+shows only files that change; choose **Show: unchanged** to list the others. The table groups the files by unit (`sql-ddl/table`, with its template and its counts);
 click a group to fold it. Each file shows its change, its path, its unit, its element and **Why** its unit renders:
 "New: no recorded state from an earlier run" the first time, "Customer (entity) changed" or "Template table.scriban
 changed" after an edit, "… was edited on disk" when a generated file was changed by hand. Filter by change, pack, unit
@@ -931,11 +956,13 @@ does not cover that kind, a filter excludes it, `generation.skip` is set, or it 
 
 ### Make your own pack from a starter
 
-In the editor, **+** in the Generate explorer header (or **New pack…** in the palette): a name, then Empty (one unit
-and its template) or a copy of a pack of this project. From a terminal, `maquettiste pack new <name> --from sql-ddl`
+In the editor, **+** in the Generate explorer header (or **New pack…** in the palette): a name, then **Start from**
+**Empty pack** (one each-entity unit and its template, ready to edit) or **Copy of** a pack of this project. From a terminal, `maquettiste pack new <name> --from sql-ddl`
 (or `csharp-dapper`, or `empty`). Then give it an output base under an allowed root (below) in the pack editor's header
 or in `maquettiste.json`, edit its units and templates, and plan. The copy is yours: change it freely; the example
-packs are not updated under you.
+packs are not updated under you. To remove a pack, use **Remove pack…** in the pack editor's header (or
+`maquettiste pack remove <name> --apply`): it deletes the pack's folder and its `packs.<name>` settings entry, and the
+files it generated stay on disk, no longer tracked.
 
 ### outputs.allow: what generation may touch
 
@@ -986,8 +1013,10 @@ wrote ("off" when disabled, a warning count when it has diagnostics). Expand it 
 - **Outputs**: the files the pack last wrote, from the manifest, grouped by unit, with the ones that are hand-edited,
   missing or orphaned (their unit or element is gone) counted.
 
-The **+** in the explorer header (or **New pack…** in the palette) creates a pack: a name, and Start from Empty (one
-unit and its template) or a copy of a pack of this project. The dialog says what it writes.
+The **+** in the explorer header (or **New pack…** in the palette) creates a pack: a name, and **Start from**
+**Empty pack** or **Copy of sql-ddl** (or another pack of this project). The line under the choice says what it gives
+("One each-entity unit and its template, ready to edit." or "All 9 files of sql-ddl, renamed to my-pack."), and the
+dialog says what it writes.
 
 **The pack editor.** Click a pack (or Enter on any row under it) to open it as a tab beside **Plan** in the centre. The
 header shows the version, engine range and description, the **Enabled** switch and the **Output base** (both saved to
@@ -996,16 +1025,23 @@ Alt+4:
 
 - **Units**: a grid of the units, edited in place: id, scope, filter, template, output path, write mode, formatter.
   Beside each output pattern the grid shows how it reads, the path it gives for an **Example element** (chosen in the
-  toolbar, one of the unit's own elements, the first until you pick another, kept per unit), and how many files the unit plans. When two elements would get the same path the cell says MQ6020; a
-  path outside every allowed root says MQ6019. The side panel explains the focused field and the row's scope in plain
-  words. Ctrl+Enter adds a unit, Ctrl+D duplicates it, Ctrl+Delete removes it, Alt+Up and Alt+Down reorder, Ctrl+S
+  toolbar, one of the unit's own elements, the first until you pick another, kept per unit), and how many files the unit plans.
+  The picker names each element with its kind, "Customer (entity)", or "Customer @ main" for a table a database makes
+  from an entity (hover an entity for its id); past 20 elements it opens a list with a search box (type to narrow,
+  arrows and Enter to pick). When two elements would get the same path the cell says MQ6020; a
+  path outside every allowed root says MQ6019. The **Unit help** panel on the right explains the focused field and the row's
+  scope in plain words; drag its edge to resize it, and its header button (or Alt+Shift+U, or **Toggle unit help** in
+  the palette) hides it, leaving a slim edge that brings it back. Ctrl+Enter adds a unit, Ctrl+D duplicates it, Ctrl+Delete removes it, Alt+Up and Alt+Down reorder, Ctrl+S
   saves `pack.json` (every member the grid does not show is kept). When the file changed on disk since you opened
   it, the grid offers **Keep mine** or **Take theirs**.
 - **Parameters**: one row per parameter with the right control (a switch, a list, a number, text, or JSON), its
   default, and **Reset to default**. Save writes the project's values; a value that breaks the pack's parameter schema
   is refused in the form, and a value for a parameter the pack does not declare (MQ6024) can be removed.
-- **Templates**: three panes. On the left, the pack folder's files (templates, partials, scripts such as
-  `helpers.js`, and any other text file; `pack.json` is edited on Units); a dot marks a file with unsaved changes, and
+- **Templates**: three panes. The left and right ones hide with the button in their header (**Hide pack files**,
+  **Hide template preview**), Alt+Shift+F and Alt+Shift+V, or **Toggle pack files** and **Toggle template preview** in
+  the palette; a hidden pane leaves a slim edge that brings it back, and both resize by dragging their edge. The editor
+  remembers your choice in this browser, and **Reset layout** shows them again. On the left, the pack folder's files
+  (templates, partials, scripts such as `helpers.js`, and any other text file; `pack.json` is edited on Units); a dot marks a file with unsaved changes, and
   the tab's own dot says some file is unsaved. In the middle, the file in a code editor with Scriban colouring (the
   `{{ }}`, `{{- -}}` and `{{~ ~}}` blocks, keywords, strings, comments, pipes and the functions after them; text outside
   the blocks stays plain); the line above it says which units use the file, directly or through includes. On the
@@ -1150,6 +1186,7 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | `maquettiste process sync-enum <process>` | Previews making a lifecycle's bound enum follow its root-level states (members added, removed, reordered, and removals refused because a default, allowed values, a seed cell or a scenario still uses the member); `--apply` writes it; `--check` exits 2 when the enum is out of sync. A refused removal exits 1: change the uses first. |
 | `maquettiste model export` | Writes the model as data for another system: the canonical document of every element, or of the ones `--kind`, `--package` (id or name), `--tag`, `--category`, `--stereotype`, `--query` (name contains) and `--ids a,b,...` select, as one JSON array (`--format json`, the default) or one document per line (`--format ndjson`, for a pipeline); `--fields name,attributes` keeps only those members of each document (`id` and `kind` always), `--out <file>` writes a file. With `--resolved` it writes the resolved model instead, what templates read, as flat records: `--scope entities` (attributes resolved, inherited ones marked, keys, relations and mappings by id), `databases` (each database's tables, views and sequences), `tables`, `processes` and the other kinds, `all` by default; `--database <id or name>` keeps what is mapped to that database. A model with errors cannot be resolved: the errors go to stderr and the command exits 1. |
 | `maquettiste model stats` | The kinds of element the model holds and how many of each; `--by package` adds the counts per package, `--format json` for scripts. |
+| `maquettiste model delete <id or name>` | Deletes an element with `--resolution refuse|remove-references|delete-dependents` (default refuse); `--dry-run` prints the delete plan: what would be deleted, cleared or removed, and what blocks it; `--format json` for scripts. Exit 1 when refused or invalid, 3 on a conflict. |
 | `maquettiste pack new <name>` | Scaffolds a pack under `.maquettiste/templates/<name>/` (`--from empty`, `sql-ddl` or `csharp-dapper`). Give it an `output` under an allowed root in `maquettiste.json` before the next `generate` (packs/README.md). |
 
 Progress (`--progress plain`, the default when stderr is not a terminal) prints each stage once, in order, with a start

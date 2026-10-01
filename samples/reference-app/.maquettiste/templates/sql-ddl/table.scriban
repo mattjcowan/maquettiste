@@ -7,7 +7,7 @@
 -- Junction table of relation "{{ table.relation.name }}".
 {{- end }}
 {{- if pack.params.comments && table.comment && table.database.dialect == "sqlite" }}
--- {{ table.comment }}
+-- {{ table.comment | string.replace "\n" " " }}
 {{- end }}
 
 {{ include "_table.scriban" table }}

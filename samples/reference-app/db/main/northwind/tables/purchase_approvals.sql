@@ -18,3 +18,13 @@ CREATE TABLE northwind.purchase_approvals (
     CONSTRAINT fk_purchase_approvals_approver_id FOREIGN KEY (approver_id) REFERENCES northwind.employees (id) ON DELETE RESTRICT,
     CONSTRAINT fk_purchase_approvals_purchase_order_id FOREIGN KEY (purchase_order_id) REFERENCES northwind.purchase_orders (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.purchase_approvals IS 'One approval step of a purchase order, by amount threshold.';
+COMMENT ON COLUMN northwind.purchase_approvals.id IS 'Surrogate key of the purchase approval.';
+COMMENT ON COLUMN northwind.purchase_approvals.approval_level IS 'Step number.';
+COMMENT ON COLUMN northwind.purchase_approvals.decision IS 'pending, approved or rejected.';
+COMMENT ON COLUMN northwind.purchase_approvals.decided_at IS 'When the approver decided.';
+COMMENT ON COLUMN northwind.purchase_approvals.comment IS 'Approver''s comment.';
+COMMENT ON COLUMN northwind.purchase_approvals.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.purchase_approvals.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.purchase_approvals.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.purchase_approvals.updated_by IS 'User name of the last editor.';

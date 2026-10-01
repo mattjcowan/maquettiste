@@ -28,3 +28,19 @@ CREATE TABLE northwind.user_accounts (
     CONSTRAINT fk_user_accounts_contact_id FOREIGN KEY (contact_id) REFERENCES northwind.contacts (id) ON DELETE SET NULL,
     CONSTRAINT fk_user_accounts_employee_id FOREIGN KEY (employee_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.user_accounts IS 'A person or service that signs in to Northwind systems, either an employee or a customer portal user.';
+COMMENT ON COLUMN northwind.user_accounts.id IS 'Surrogate key of the user account.';
+COMMENT ON COLUMN northwind.user_accounts.user_name IS 'Sign-in name, lower case.';
+COMMENT ON COLUMN northwind.user_accounts.email IS 'Address for sign-in links and notifications.';
+COMMENT ON COLUMN northwind.user_accounts.display_name IS 'Name shown in the user interface.';
+COMMENT ON COLUMN northwind.user_accounts.status IS 'Lifecycle state of the account.';
+COMMENT ON COLUMN northwind.user_accounts.password_hash IS 'Argon2id hash of the password; null for single sign-on users.';
+COMMENT ON COLUMN northwind.user_accounts.mfa_enabled IS 'Whether a second factor is required.';
+COMMENT ON COLUMN northwind.user_accounts.last_sign_in_at IS 'Most recent successful sign-in.';
+COMMENT ON COLUMN northwind.user_accounts.failed_sign_in_count IS 'Consecutive failed attempts since the last success.';
+COMMENT ON COLUMN northwind.user_accounts.preferred_language IS 'BCP 47 tag of the interface language.';
+COMMENT ON COLUMN northwind.user_accounts.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.user_accounts.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.user_accounts.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.user_accounts.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.user_accounts.deleted_at IS 'When the row was marked deleted; null while it is live.';

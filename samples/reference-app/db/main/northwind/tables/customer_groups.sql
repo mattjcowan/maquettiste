@@ -14,3 +14,12 @@ CREATE TABLE northwind.customer_groups (
     CONSTRAINT pk_customer_groups PRIMARY KEY (id),
     CONSTRAINT uq_customer_groups_name UNIQUE (name)
 );
+COMMENT ON TABLE northwind.customer_groups IS 'A group of customers that share price lists and discounts, such as Buying group A.';
+COMMENT ON COLUMN northwind.customer_groups.id IS 'Surrogate key of the customer group.';
+COMMENT ON COLUMN northwind.customer_groups.name IS 'Group name.';
+COMMENT ON COLUMN northwind.customer_groups.description IS 'Who belongs to the group.';
+COMMENT ON COLUMN northwind.customer_groups.default_discount IS 'Discount applied when no better price exists.';
+COMMENT ON COLUMN northwind.customer_groups.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.customer_groups.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.customer_groups.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.customer_groups.updated_by IS 'User name of the last editor.';

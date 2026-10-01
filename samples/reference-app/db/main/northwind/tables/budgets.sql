@@ -16,3 +16,13 @@ CREATE TABLE northwind.budgets (
     CONSTRAINT pk_budgets PRIMARY KEY (id),
     CONSTRAINT fk_budgets_cost_center_id FOREIGN KEY (cost_center_id) REFERENCES northwind.cost_centers (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.budgets IS 'An approved spending budget for a fiscal year and cost center.';
+COMMENT ON COLUMN northwind.budgets.id IS 'Surrogate key of the budget.';
+COMMENT ON COLUMN northwind.budgets.name IS 'Budget name.';
+COMMENT ON COLUMN northwind.budgets.fiscal_year IS 'Fiscal year.';
+COMMENT ON COLUMN northwind.budgets.is_approved IS 'Whether finance approved it.';
+COMMENT ON COLUMN northwind.budgets.notes IS 'Assumptions.';
+COMMENT ON COLUMN northwind.budgets.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.budgets.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.budgets.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.budgets.updated_by IS 'User name of the last editor.';

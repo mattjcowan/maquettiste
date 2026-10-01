@@ -11,3 +11,9 @@ CREATE TABLE northwind.bank_transfers (
     CONSTRAINT pk_bank_transfers PRIMARY KEY (id),
     CONSTRAINT fk_bank_transfers_id FOREIGN KEY (id) REFERENCES northwind.payments (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.bank_transfers IS 'A payment by ACH, wire or SEPA transfer, identified on the bank statement.';
+COMMENT ON COLUMN northwind.bank_transfers.id IS 'Surrogate key of the payment.';
+COMMENT ON COLUMN northwind.bank_transfers.transfer_reference IS 'Reference on the bank statement.';
+COMMENT ON COLUMN northwind.bank_transfers.payer_bank_name IS 'Payer''s bank.';
+COMMENT ON COLUMN northwind.bank_transfers.payer_account_last4 IS 'Last digits of the payer''s account.';
+COMMENT ON COLUMN northwind.bank_transfers.value_date IS 'Date the funds became available.';

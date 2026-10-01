@@ -22,3 +22,14 @@ CREATE TABLE northwind.stock_transfers (
     CONSTRAINT fk_stock_transfers_carrier_id FOREIGN KEY (carrier_id) REFERENCES northwind.parties (id) ON DELETE SET NULL,
     CONSTRAINT fk_stock_transfers_from_warehouse_id FOREIGN KEY (from_warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.stock_transfers IS 'A movement of stock between two Northwind warehouses.';
+COMMENT ON COLUMN northwind.stock_transfers.id IS 'Surrogate key of the stock transfer.';
+COMMENT ON COLUMN northwind.stock_transfers.transfer_number IS 'Transfer number.';
+COMMENT ON COLUMN northwind.stock_transfers.status IS 'Lifecycle state.';
+COMMENT ON COLUMN northwind.stock_transfers.requested_on IS 'Date requested.';
+COMMENT ON COLUMN northwind.stock_transfers.shipped_at IS 'When it left the source.';
+COMMENT ON COLUMN northwind.stock_transfers.received_at IS 'When it arrived.';
+COMMENT ON COLUMN northwind.stock_transfers.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.stock_transfers.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.stock_transfers.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.stock_transfers.updated_by IS 'User name of the last editor.';

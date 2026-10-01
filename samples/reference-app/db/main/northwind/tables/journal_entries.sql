@@ -23,4 +23,15 @@ CREATE TABLE northwind.journal_entries (
     CONSTRAINT fk_journal_entries_reversal_of_id FOREIGN KEY (reversal_of_id) REFERENCES northwind.journal_entries (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_journal_entries_entry_date ON northwind.journal_entries (entry_date);
+COMMENT ON TABLE northwind.journal_entries IS 'Journal entry keys come from the named, uncached journal_entry_seq.';
 COMMENT ON COLUMN northwind.journal_entries.id IS 'Drawn from journal_entry_seq.';
+COMMENT ON COLUMN northwind.journal_entries.entry_date IS 'Accounting date.';
+COMMENT ON COLUMN northwind.journal_entries.reference IS 'Source document number.';
+COMMENT ON COLUMN northwind.journal_entries.description IS 'What the entry records.';
+COMMENT ON COLUMN northwind.journal_entries.status IS 'Posting state.';
+COMMENT ON COLUMN northwind.journal_entries.source_document IS 'Kind of source, such as invoice or goods-receipt.';
+COMMENT ON COLUMN northwind.journal_entries.posted_at IS 'When it was posted.';
+COMMENT ON COLUMN northwind.journal_entries.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.journal_entries.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.journal_entries.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.journal_entries.updated_by IS 'User name of the last editor.';

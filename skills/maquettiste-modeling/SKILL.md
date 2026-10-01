@@ -52,7 +52,8 @@ clobber a concurrent edit or leave a dangling id.
      its `hash`. Never retry blindly with the new hash and your old document.
    - `invalid`: nothing was written; fix what `diagnostics` name (rule id, JSON pointer).
    - `referenced` (delete): the `referrers` list who points at it; fix them first, or pass
-     `resolution: "remove-references"` when the references are optional.
+     `resolution: "remove-references"` when the references are optional, or `resolution: "delete-dependents"` to also delete
+     what cannot exist without the element (call `delete_element` with `dryRun: true` first and read the plan).
    - Renaming an attribute or element is a plain save of the new `name`: references are ids, so nothing else changes
      (an element rename also moves its file).
 4. Check: a successful save already returns `diagnostics`; `validate` (optionally scoped by `elementIds`) checks the model.

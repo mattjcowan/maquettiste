@@ -8,7 +8,7 @@ import { CircleAlert, CircleCheck, Play, Square, Wand2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import * as endpoints from "@/api/endpoints";
 import { keys, useJob, useJobs, usePlan, useProject, useSettings } from "@/api/queries";
-import type { FileChangeKind, JobInfo, RootSelection } from "@/api/types";
+import type { JobInfo, RootSelection } from "@/api/types";
 import { useEditor } from "@/state/store";
 import { useServices } from "@/app/context";
 import { isFinished, jobOutcome } from "@/realtime/jobs";
@@ -21,12 +21,10 @@ import { X } from "lucide-react";
 import { PackEditor } from "./PackEditor";
 import { ExplainForm, PlanChanges, type ExplainAsk, PlanSummary, UnchangedUnits, WhyPanel } from "./PlanExplain";
 import { closePackTab } from "./packTabs";
-import { moreNotesText, orderDiagnostics, type PlanNote } from "./planModel";
+import { moreNotesText, nothingToWrite, orderDiagnostics, type PlanNote } from "./planModel";
 import { discardDrafts, hasUnsaved } from "./drafts";
 
 /** Kinds an apply leaves alone: an unchanged file, and a companion that is kept as it is on disk. */
-const NOTHING_TO_WRITE = new Set<FileChangeKind>(["unchanged", "kept"]);
-
 function Progress({ job }: { job: JobInfo }) {
   const p = job.progress;
   const pct = p && p.total ? Math.round((p.done / p.total) * 100) : 0;
@@ -195,7 +193,8 @@ function PlanScreen() {
           </Button>
           <Button
             size="sm"
-            disabled={busy || !!running || !generation.planId || plan.data?.changes.every((c) => NOTHING_TO_WRITE.has(c.kind))}
+            disabled={busy || !!running || !generation.planId || (plan.data ? nothingToWrite(plan.data) : false)}
+            title={plan.data && nothingToWrite(plan.data) ? "Nothing to apply: every planned file already matches the disk" : "Write the planned files"}
             onClick={() => void startApply()}
             data-testid="apply"
           >

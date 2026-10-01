@@ -12,3 +12,9 @@ CREATE TABLE northwind.dock_doors (
     CONSTRAINT pk_dock_doors PRIMARY KEY (id),
     CONSTRAINT fk_dock_doors_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.dock_doors IS 'A loading dock door of a warehouse, scheduled for inbound and outbound trailers.';
+COMMENT ON COLUMN northwind.dock_doors.id IS 'Surrogate key of the dock door.';
+COMMENT ON COLUMN northwind.dock_doors.door_number IS 'Door number.';
+COMMENT ON COLUMN northwind.dock_doors.door_type IS 'inbound, outbound or both.';
+COMMENT ON COLUMN northwind.dock_doors.has_leveler IS 'Whether it has a dock leveler.';
+COMMENT ON COLUMN northwind.dock_doors.is_active IS 'Whether it can be scheduled.';

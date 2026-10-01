@@ -17,3 +17,14 @@ CREATE TABLE northwind.carrier_services (
     CONSTRAINT pk_carrier_services PRIMARY KEY (id),
     CONSTRAINT fk_carrier_services_carrier_id FOREIGN KEY (carrier_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.carrier_services IS 'A service a carrier offers, such as Ground, 2-day air or LTL standard.';
+COMMENT ON COLUMN northwind.carrier_services.id IS 'Surrogate key of the carrier service.';
+COMMENT ON COLUMN northwind.carrier_services.code IS 'Carrier''s service code.';
+COMMENT ON COLUMN northwind.carrier_services.name IS 'Service name.';
+COMMENT ON COLUMN northwind.carrier_services.service_level IS 'ground, express, overnight, ltl or ftl.';
+COMMENT ON COLUMN northwind.carrier_services.transit_days IS 'Typical business days in transit.';
+COMMENT ON COLUMN northwind.carrier_services.is_active IS 'Whether it can be booked.';
+COMMENT ON COLUMN northwind.carrier_services.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.carrier_services.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.carrier_services.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.carrier_services.updated_by IS 'User name of the last editor.';

@@ -1,5 +1,5 @@
 // The explorer and the canvas in step (explorer-redesign.md 3.5, step 10): membership dots, drag and drop from the tree
-// onto the diagram, Show on canvas. Where used, breadcrumbs, go to definition and history (3.3, step 11).
+// onto the diagram, Show on canvas. Used, breadcrumbs, go to definition and history (3.3, step 11).
 import { expect, openEditor, test } from "./fixtures";
 
 const explorer = (page: import("@playwright/test").Page) => page.getByRole("complementary", { name: "Explorer" });
@@ -33,7 +33,7 @@ test("a relationship dragged from the tree onto the diagram becomes a member, an
   await expect(canvas).toHaveAttribute("data-centered", id!);
 });
 
-test("where used lists the references, goes to one, and history and go to definition move the selection", async ({ page }) => {
+test("Used lists the references, goes to one, and history and go to definition move the selection", async ({ page }) => {
   await openEditor(page);
   const side = explorer(page);
   await side.getByLabel("Search the model").fill("Invoice");

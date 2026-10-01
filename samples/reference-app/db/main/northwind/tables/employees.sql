@@ -30,3 +30,21 @@ CREATE TABLE northwind.employees (
     CONSTRAINT fk_employees_home_warehouse_id FOREIGN KEY (home_warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE SET NULL,
     CONSTRAINT fk_employees_manager_id FOREIGN KEY (manager_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.employees IS 'A person employed by Northwind, from warehouse associates to account managers.';
+COMMENT ON COLUMN northwind.employees.id IS 'Surrogate key of the employee.';
+COMMENT ON COLUMN northwind.employees.employee_number IS 'Payroll number.';
+COMMENT ON COLUMN northwind.employees.name_given_name IS 'First or given name.';
+COMMENT ON COLUMN northwind.employees.name_family_name IS 'Last or family name.';
+COMMENT ON COLUMN northwind.employees.name_title IS 'Salutation, such as Dr. or Ms.';
+COMMENT ON COLUMN northwind.employees.work_email IS 'Company email address.';
+COMMENT ON COLUMN northwind.employees.work_phone_number IS 'Number in E.164 form, such as +14155550100.';
+COMMENT ON COLUMN northwind.employees.work_phone_extension IS 'Internal extension.';
+COMMENT ON COLUMN northwind.employees.job_title IS 'Position title.';
+COMMENT ON COLUMN northwind.employees.hired_on IS 'First day of employment.';
+COMMENT ON COLUMN northwind.employees.terminated_on IS 'Last day of employment; null while employed.';
+COMMENT ON COLUMN northwind.employees.is_sales_rep IS 'Whether the employee can own customer accounts and earn commission.';
+COMMENT ON COLUMN northwind.employees.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.employees.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.employees.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.employees.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.employees.deleted_at IS 'When the row was marked deleted; null while it is live.';

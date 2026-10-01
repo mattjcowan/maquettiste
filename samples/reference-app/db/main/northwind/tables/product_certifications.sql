@@ -17,3 +17,14 @@ CREATE TABLE northwind.product_certifications (
     CONSTRAINT pk_product_certifications PRIMARY KEY (id),
     CONSTRAINT fk_product_certifications_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.product_certifications IS 'A certification a product holds, such as UL, CE or FDA 510(k).';
+COMMENT ON COLUMN northwind.product_certifications.id IS 'Surrogate key of the product certification.';
+COMMENT ON COLUMN northwind.product_certifications.certification_type IS 'Scheme, such as UL or CE.';
+COMMENT ON COLUMN northwind.product_certifications.certificate_number IS 'Certificate number.';
+COMMENT ON COLUMN northwind.product_certifications.issued_by IS 'Certification body.';
+COMMENT ON COLUMN northwind.product_certifications.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.product_certifications.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.product_certifications.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.product_certifications.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.product_certifications.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.product_certifications.updated_by IS 'User name of the last editor.';

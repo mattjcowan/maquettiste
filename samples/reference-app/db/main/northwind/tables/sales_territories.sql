@@ -19,3 +19,13 @@ CREATE TABLE northwind.sales_territories (
     CONSTRAINT fk_sales_territories_parent_id FOREIGN KEY (parent_id) REFERENCES northwind.sales_territories (id) ON DELETE SET NULL,
     CONSTRAINT fk_sales_territories_manager_id FOREIGN KEY (manager_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.sales_territories IS 'A geographic sales territory, nested into regions (US > West > Pacific Northwest).';
+COMMENT ON COLUMN northwind.sales_territories.id IS 'Surrogate key of the sales territory.';
+COMMENT ON COLUMN northwind.sales_territories.code IS 'Territory code.';
+COMMENT ON COLUMN northwind.sales_territories.name IS 'Territory name.';
+COMMENT ON COLUMN northwind.sales_territories.annual_quota_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.sales_territories.annual_quota_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.sales_territories.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.sales_territories.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.sales_territories.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.sales_territories.updated_by IS 'User name of the last editor.';

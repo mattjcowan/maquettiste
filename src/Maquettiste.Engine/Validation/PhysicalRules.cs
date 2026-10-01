@@ -4,7 +4,7 @@ using Maquettiste.Engine.Model;
 namespace Maquettiste.Engine.Validation;
 
 /// <summary>
-/// Physical rules on table, view and sequence files (MQ4001 to MQ4008, MQ4010, and MQ3013, MQ3017, MQ3019 on designed columns).
+/// Physical rules on table, view and sequence files (MQ4001 to MQ4008, MQ4010, MQ4016, and MQ3013, MQ3017, MQ3019 on designed columns).
 /// These rules see only what files state: names produced by conventions for synthesized tables, columns and constraints are not
 /// checked against the identifier limit here (they need the resolver's casing and inflection; see README, open contract gap).
 /// </summary>
@@ -91,11 +91,8 @@ internal static class PhysicalRules
             if (database is not null)
             {
                 CheckIdentifierLength(database, limit, column.Name, "Column", pointer + "/name", column.Id, report);
-                if (column.NativeType is { } native
-                    && !DialectInfo.IsKnownNativeType(database.Dialect, native, model.Settings.TypeMaps.GetValueOrDefault(DialectInfo.Name(database.Dialect))))
-                {
-                    report.Add("MQ4006", $"Native type '{native}' is not known to the {DialectInfo.Name(database.Dialect)} type map.", pointer + "/nativeType", column.Id);
-                }
+                if (column.NativeType is { } native)
+                    CheckNativeType(context, database, table, i, native, pointer, report);
             }
 
             if (column.Attribute is { } key)
@@ -131,6 +128,34 @@ internal static class PhysicalRules
         for (var i = 0; i < table.ForeignKeys.Count; i++)
             CheckForeignKey(context, table, i, Resolves, report);
     }
+
+    /// <summary>
+    /// MQ4006 (warning) for a plain native type name the dialect does not know; MQ4016 (info) for a quoted or qualified name that is
+    /// neither a native type nor a name of the model's reference types and enums, reported once per type and database on its first
+    /// column (in document path order) with the number of columns that use it.
+    /// </summary>
+    private static void CheckNativeType(ValidationContext context, Database database, Table table, int index, string native, string pointer, Report report)
+    {
+        var column = table.Columns[index];
+        var dialect = DialectInfo.Name(database.Dialect);
+        switch (context.ClassifyNativeType(database.Dialect, native, out var parsed))
+        {
+            case NativeTypeStatus.Unknown:
+                report.Add("MQ4006", $"Native type '{native}' is not known to the {dialect} type map.", pointer + "/nativeType", column.Id);
+                break;
+            case NativeTypeStatus.UserDefined:
+                var uses = context.UserDefinedTypeUses(database.Id, ValidationContext.UserDefinedTypeKey(database, parsed));
+                if (uses.Length == 0 || uses[0].Document != report.Document || uses[0].Column != index)
+                    break;
+                var tables = uses.Select(u => u.Document).Distinct().Count();
+                report.Add("MQ4016", string.Create(CultureInfo.InvariantCulture,
+                    $"Native type '{native}' names a type the database defines, which the {dialect} type map cannot check; it is used by {Count(uses.Length, "column")} in {Count(tables, "table")} of database '{database.Name}'."),
+                    pointer + "/nativeType", column.Id);
+                break;
+        }
+    }
+
+    private static string Count(int n, string noun) => string.Create(CultureInfo.InvariantCulture, $"{n} {noun}{(n == 1 ? "" : "s")}");
 
     private static void CheckColumnValues(Column column, string pointer, Report report)
     {

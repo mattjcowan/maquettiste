@@ -28,3 +28,15 @@ CREATE TABLE northwind.return_lines (
     CONSTRAINT fk_return_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_return_lines_serial_number_id FOREIGN KEY (serial_number_id) REFERENCES northwind.serial_numbers (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.return_lines IS 'A product and quantity on a return authorization, with its condition and disposition.';
+COMMENT ON COLUMN northwind.return_lines.id IS 'Surrogate key of the return line.';
+COMMENT ON COLUMN northwind.return_lines.quantity IS 'Quantity authorized.';
+COMMENT ON COLUMN northwind.return_lines.received_quantity IS 'Quantity received.';
+COMMENT ON COLUMN northwind.return_lines.item_condition IS 'new, opened or damaged.';
+COMMENT ON COLUMN northwind.return_lines.disposition IS 'restock, scrap or return-to-vendor.';
+COMMENT ON COLUMN northwind.return_lines.credit_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.return_lines.credit_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.return_lines.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.return_lines.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.return_lines.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.return_lines.updated_by IS 'User name of the last editor.';

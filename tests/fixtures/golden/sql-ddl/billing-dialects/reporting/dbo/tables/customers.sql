@@ -12,3 +12,4 @@ CREATE TABLE dbo.customers (
     CONSTRAINT pk_customers PRIMARY KEY (id),
     CONSTRAINT uq_customers_email UNIQUE (email)
 );
+EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = N'Someone we bill.', @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'customers';

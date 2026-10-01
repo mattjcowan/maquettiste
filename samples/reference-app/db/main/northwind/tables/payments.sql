@@ -27,3 +27,17 @@ CREATE TABLE northwind.payments (
     CONSTRAINT fk_payments_payment_batch_id FOREIGN KEY (payment_batch_id) REFERENCES northwind.payment_batches (id) ON DELETE SET NULL,
     CONSTRAINT fk_payments_journal_entry_id FOREIGN KEY (journal_entry_id) REFERENCES northwind.journal_entries (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.payments IS 'Money received from a customer. Card payments and bank transfers extend it in their own tables (TPT); checks and cash use the base table only.';
+COMMENT ON COLUMN northwind.payments.id IS 'Surrogate key of the payment.';
+COMMENT ON COLUMN northwind.payments.payment_number IS 'Payment number.';
+COMMENT ON COLUMN northwind.payments.received_at IS 'When the payment was received.';
+COMMENT ON COLUMN northwind.payments.amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.payments.amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.payments.unapplied_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.payments.unapplied_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.payments.status IS 'Processing state.';
+COMMENT ON COLUMN northwind.payments.reference IS 'Payer''s reference, such as a check number.';
+COMMENT ON COLUMN northwind.payments.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.payments.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.payments.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.payments.updated_by IS 'User name of the last editor.';

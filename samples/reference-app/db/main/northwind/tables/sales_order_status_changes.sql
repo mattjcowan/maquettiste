@@ -14,3 +14,9 @@ CREATE TABLE northwind.sales_order_status_changes (
     CONSTRAINT fk_sales_order_status_changes_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE,
     CONSTRAINT fk_sales_order_status_changes_changed_by_id FOREIGN KEY (changed_by_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.sales_order_status_changes IS 'A status transition of a sales order, kept as history.';
+COMMENT ON COLUMN northwind.sales_order_status_changes.id IS 'Surrogate key of the sales order status change.';
+COMMENT ON COLUMN northwind.sales_order_status_changes.from_status IS 'Status before.';
+COMMENT ON COLUMN northwind.sales_order_status_changes.to_status IS 'Status after.';
+COMMENT ON COLUMN northwind.sales_order_status_changes.changed_at IS 'When the change happened.';
+COMMENT ON COLUMN northwind.sales_order_status_changes.reason IS 'Why it changed.';

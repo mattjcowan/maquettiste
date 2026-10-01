@@ -13,3 +13,8 @@ CREATE TABLE northwind.promotion_rewards (
     CONSTRAINT fk_promotion_rewards_promotion_id FOREIGN KEY (promotion_id) REFERENCES northwind.promotions (id) ON DELETE CASCADE,
     CONSTRAINT fk_promotion_rewards_free_product_id FOREIGN KEY (free_product_id) REFERENCES northwind.products (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.promotion_rewards IS 'A benefit granted when a promotion''s conditions are met.';
+COMMENT ON COLUMN northwind.promotion_rewards.id IS 'Surrogate key of the promotion reward.';
+COMMENT ON COLUMN northwind.promotion_rewards.reward_type IS 'Kind of benefit.';
+COMMENT ON COLUMN northwind.promotion_rewards.value IS 'Percentage, amount or price, depending on the type.';
+COMMENT ON COLUMN northwind.promotion_rewards.free_quantity IS 'Free units, for free goods.';

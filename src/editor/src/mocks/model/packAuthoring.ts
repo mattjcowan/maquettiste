@@ -180,6 +180,7 @@ export class MockPackAuthoring {
       root: base.split("/")[0],
       allowed: true,
       rule: null,
+      ...this.generation.elementLabel(u.elementId),
     }));
     const diagnostics: Diagnostic[] = [];
     if (constant && paths.length > 1)

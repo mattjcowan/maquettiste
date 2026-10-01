@@ -14,3 +14,10 @@ CREATE TABLE northwind.parties_remit_to_addresses (
     CONSTRAINT pk_parties_remit_to_addresses PRIMARY KEY (party_id, position),
     CONSTRAINT fk_parties_remit_to_addresses_party_id FOREIGN KEY (party_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.parties_remit_to_addresses IS 'Addresses where payments may be sent; kept in a child table.';
+COMMENT ON COLUMN northwind.parties_remit_to_addresses.line1 IS 'Street and number, or PO box.';
+COMMENT ON COLUMN northwind.parties_remit_to_addresses.line2 IS 'Suite, floor or building.';
+COMMENT ON COLUMN northwind.parties_remit_to_addresses.city IS 'City or locality.';
+COMMENT ON COLUMN northwind.parties_remit_to_addresses.region IS 'State, province or county.';
+COMMENT ON COLUMN northwind.parties_remit_to_addresses.postal_code IS 'Postal or ZIP code.';
+COMMENT ON COLUMN northwind.parties_remit_to_addresses.country_code IS 'ISO country code.';

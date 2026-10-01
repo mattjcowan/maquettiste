@@ -20,3 +20,16 @@ CREATE TABLE northwind.vehicles (
     CONSTRAINT uq_vehicles_registration_number UNIQUE (registration_number),
     CONSTRAINT fk_vehicles_home_warehouse_id FOREIGN KEY (home_warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.vehicles IS 'A truck or van of the own delivery fleet.';
+COMMENT ON COLUMN northwind.vehicles.id IS 'Surrogate key of the vehicle.';
+COMMENT ON COLUMN northwind.vehicles.registration_number IS 'License plate.';
+COMMENT ON COLUMN northwind.vehicles.vehicle_type IS 'box-truck, van or tractor.';
+COMMENT ON COLUMN northwind.vehicles.capacity_weight_value IS 'The weight.';
+COMMENT ON COLUMN northwind.vehicles.capacity_weight_unit IS 'Unit of the weight.';
+COMMENT ON COLUMN northwind.vehicles.capacity_volume_m3 IS 'Cargo volume.';
+COMMENT ON COLUMN northwind.vehicles.is_refrigerated IS 'Whether it can carry chilled goods.';
+COMMENT ON COLUMN northwind.vehicles.is_active IS 'Whether it is in service.';
+COMMENT ON COLUMN northwind.vehicles.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.vehicles.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.vehicles.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.vehicles.updated_by IS 'User name of the last editor.';

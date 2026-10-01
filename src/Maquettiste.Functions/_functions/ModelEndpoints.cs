@@ -267,11 +267,12 @@ public static class ModelEndpoints
 
     /// <summary>
     /// Deletes an element with <c>If-Match</c>. <paramref name="resolution"/> is bound as a string and mapped here: absent or <c>refuse</c>
-    /// refuses while others reference it, <c>remove-references</c> clears optional references (the host binds enum parameters by
-    /// member name, not by the engine's JSON names).
+    /// refuses while others reference it, <c>remove-references</c> clears optional references, <c>delete-dependents</c> also removes or
+    /// deletes what cannot exist without the element, in the same change (the host binds enum parameters by member name, not by the
+    /// engine's JSON names).
     /// </summary>
     /// <param name="id">The element id.</param>
-    /// <param name="resolution"><c>refuse</c> or <c>remove-references</c>.</param>
+    /// <param name="resolution"><c>refuse</c>, <c>remove-references</c> or <c>delete-dependents</c>.</param>
     /// <param name="context">The request.</param>
     /// <param name="store">The model store.</param>
     /// <param name="ct">Cancellation.</param>
@@ -283,24 +284,66 @@ public static class ModelEndpoints
         ArgumentNullException.ThrowIfNull(store);
         if (Api.Require(context, "editor") is { } forbidden)
             return forbidden;
-        DeleteResolution mode;
-        switch (resolution)
-        {
-            case null or "" or "refuse":
-                mode = DeleteResolution.Refuse;
-                break;
-            case "remove-references":
-                mode = DeleteResolution.RemoveReferences;
-                break;
-            default:
-                return Api.BadRequest($"resolution must be 'refuse' or 'remove-references', not '{resolution}'.");
-        }
-
+        if (ParseResolution(resolution, DeleteResolution.Refuse) is not { } mode)
+            return Api.BadRequest(ResolutionError(resolution));
         if (!Api.TryGetIfMatch(context.Request, out var expected))
             return Api.PreconditionRequired();
         var result = await store.DeleteAsync(id, expected, mode, ChangeSource.Editor, ct).ConfigureAwait(false);
         return Api.Json(result, Api.StatusOf(result.Outcome));
     });
+
+    /// <summary>
+    /// What deleting the element would do with <paramref name="resolution"/> (default <c>delete-dependents</c>): the elements deleted
+    /// with it, the references cleared, the parts removed, what blocks it, with names from the index. Nothing is written.
+    /// </summary>
+    /// <param name="id">The element id.</param>
+    /// <param name="resolution"><c>refuse</c>, <c>remove-references</c> or <c>delete-dependents</c>.</param>
+    /// <param name="context">The request.</param>
+    /// <param name="store">The model store.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>200 with the plan, 404 or 400.</returns>
+    [HttpGet("/api/model/elements/{id}/delete-plan")]
+    public static Task<IResult> DeletePlan(string id, string? resolution, HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (ParseResolution(resolution, DeleteResolution.DeleteDependents) is not { } mode)
+            return Api.BadRequest(ResolutionError(resolution));
+        if (await store.GetElementAsync(id, ct).ConfigureAwait(false) is not { } document || document.Element.Id != id)
+            return Api.NotFound("element", id);
+        return Api.Json(await store.GetDeletePlanAsync([id], mode, ct).ConfigureAwait(false));
+    });
+
+    /// <summary>The combined plan of deleting several elements in one batch (the explorer's bulk delete).</summary>
+    /// <param name="context">The request: <c>{ "ids": [...], "resolution": "delete-dependents" }</c>.</param>
+    /// <param name="store">The model store.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>200 with the plan (unknown ids are refused in it), or 400.</returns>
+    [HttpPost("/api/model/delete-plan")]
+    public static Task<IResult> BulkDeletePlan(HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(store);
+        var (request, error) = await Api.ReadJsonAsync<DeletePlanRequest>(context.Request, null, ct).ConfigureAwait(false);
+        if (error is not null)
+            return error;
+        if (request?.Ids is not { Count: > 0 } ids || ids.Count > ModelReads.MaxReadIds || ids.Any(id => !Api.IsUlid(id)))
+            return Api.BadRequest($"ids must list 1 to {ModelReads.MaxReadIds} element ids (uppercase ULIDs).");
+        if (ParseResolution(request.Resolution, DeleteResolution.DeleteDependents) is not { } mode)
+            return Api.BadRequest(ResolutionError(request.Resolution));
+        return Api.Json(await store.GetDeletePlanAsync(ids, mode, ct).ConfigureAwait(false));
+    });
+
+    private static DeleteResolution? ParseResolution(string? resolution, DeleteResolution fallback) => resolution switch
+    {
+        null or "" => fallback,
+        "refuse" => DeleteResolution.Refuse,
+        "remove-references" => DeleteResolution.RemoveReferences,
+        "delete-dependents" => DeleteResolution.DeleteDependents,
+        _ => null,
+    };
+
+    private static string ResolutionError(string? resolution) =>
+        $"resolution must be 'refuse', 'remove-references' or 'delete-dependents', not '{resolution}'.";
 
     /// <summary>An atomic multi-element change: parsed against <c>batch.json</c> before any disk access, then applied all or nothing.</summary>
     /// <param name="context">The request.</param>
@@ -362,6 +405,11 @@ public static class ModelEndpoints
         return Api.Json(result, Api.StatusOf(result.Outcome));
     }
 }
+
+/// <summary>The body of <c>POST /api/model/delete-plan</c>.</summary>
+/// <param name="Ids">The elements to delete, at most 200.</param>
+/// <param name="Resolution"><c>refuse</c>, <c>remove-references</c> or <c>delete-dependents</c> (the default).</param>
+public sealed record DeletePlanRequest(IReadOnlyList<string>? Ids, string? Resolution);
 
 /// <summary>The body of <c>POST /api/model/elements/read</c> (E5b).</summary>
 /// <param name="Ids">Element or sub-element ids, at most 200.</param>

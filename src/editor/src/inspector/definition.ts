@@ -4,7 +4,7 @@ import { useCallback, type KeyboardEvent, type MouseEvent } from "react";
 import { useEditorNavigation } from "@/app/navigation";
 import { useServices } from "@/app/context";
 
-export const DEFINITION_HINT = "F12 or Ctrl+click: go to definition. Shift+F12: where used.";
+export const DEFINITION_HINT = "F12 or Ctrl+click: go to definition. Shift+F12: Used (what refers to it).";
 
 export interface DefinitionProps {
   onKeyDown?: (e: KeyboardEvent<HTMLElement>) => void;

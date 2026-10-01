@@ -16,3 +16,9 @@ CREATE TABLE northwind.requisition_lines (
     CONSTRAINT fk_requisition_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE SET NULL,
     CONSTRAINT fk_requisition_lines_suggested_supplier_id FOREIGN KEY (suggested_supplier_id) REFERENCES northwind.parties (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.requisition_lines IS 'An item requested on a requisition.';
+COMMENT ON COLUMN northwind.requisition_lines.id IS 'Surrogate key of the requisition line.';
+COMMENT ON COLUMN northwind.requisition_lines.description IS 'What is needed.';
+COMMENT ON COLUMN northwind.requisition_lines.quantity IS 'Quantity.';
+COMMENT ON COLUMN northwind.requisition_lines.estimated_cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.requisition_lines.estimated_cost_currency IS 'The ISO 4217 currency of the amount.';

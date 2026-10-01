@@ -16,3 +16,11 @@ CREATE TABLE northwind.sales_order_notes (
     CONSTRAINT fk_sales_order_notes_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE,
     CONSTRAINT fk_sales_order_notes_author_id FOREIGN KEY (author_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.sales_order_notes IS 'A note on a sales order, internal or visible to the customer on the portal.';
+COMMENT ON COLUMN northwind.sales_order_notes.id IS 'Surrogate key of the sales order note.';
+COMMENT ON COLUMN northwind.sales_order_notes.body IS 'Note text.';
+COMMENT ON COLUMN northwind.sales_order_notes.is_customer_visible IS 'Shown on the customer portal.';
+COMMENT ON COLUMN northwind.sales_order_notes.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.sales_order_notes.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.sales_order_notes.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.sales_order_notes.updated_by IS 'User name of the last editor.';

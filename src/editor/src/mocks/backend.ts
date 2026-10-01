@@ -3,7 +3,7 @@
 // model.changed, a settings change publishes project.changed, and after a quiet period a
 // whole-model validation.completed follows.
 import { MockPackAuthoring } from "./model/packAuthoring";
-import type { PresenceEntry } from "@/api/types";
+import type { PresenceEntry, components } from "@/api/types";
 import { newId as randomId } from "@/lib/ids";
 import { MockRealtime } from "@/realtime/mock";
 import { MockModel } from "./model/store";
@@ -21,6 +21,8 @@ import { truncateChangeEvent } from "./wire";
  * `?mock=` scenarios. `medium` is the in-browser 200-entity model; `large` is the 5,000-entity model
  * that scripts/gen-scale-model.mjs writes (browser.ts loads it and passes it as `seed`).
  */
+type PackRemoveResult = components["schemas"]["PackRemoveResult"];
+
 export type Scenario =
   "conflict" | "slow" | "empty" | "medium" | "wide" | "large" | "unauthenticated" | "presence" | "invalid" | "locales" | "drift" | "lifecycle" | "chart400";
 
@@ -114,6 +116,40 @@ export class MockBackend {
         updatedUtc: this.clock.now().toISOString(),
       });
     }
+  }
+
+  /**
+   * Removes a pack as GenerationService.DeletePackAsync does (DELETE /api/packs/{pack}): pack.json must still have
+   * `expected`; the packs.<pack> settings entry goes first (a refused save removes nothing), then the folder, then the
+   * manifest entries, whose files stay on disk untracked. Publishes templates.changed and packs.changed as the host does.
+   */
+  removePack(pack: string, expected: string): { status: 200 | 404 | 409 | 422; body: PackRemoveResult } {
+    const result = (outcome: PackRemoveResult["outcome"], extra: Partial<PackRemoveResult> = {}): PackRemoveResult => ({
+      outcome,
+      hash: null,
+      current: null,
+      files: [],
+      untracked: [],
+      settingsHash: null,
+      diagnostics: [],
+      ...extra,
+    });
+    const refused = this.packs.removalRefusal(pack, expected);
+    if (refused?.status === 404) return { status: 404, body: result("not-found") };
+    if (refused) return { status: 409, body: result("conflict", { hash: refused.hash, current: refused.current }) };
+    let settingsHash: string | null = null;
+    const settings = this.model.settingsDocument();
+    if ((settings.json as { packs?: Record<string, unknown> }).packs?.[pack] !== undefined) {
+      const saved = this.packAuthoring.saveSettings(pack, {}, settings.hash);
+      if (saved.body.outcome !== "saved") return { status: 422, body: result("invalid", { diagnostics: saved.body.diagnostics }) };
+      settingsHash = saved.body.hash;
+    }
+    const files = this.packs.drop(pack);
+    const untracked = [...this.generation.manifest].filter(([, entry]) => entry.pack === pack).map(([path]) => path);
+    for (const path of untracked) this.generation.manifest.delete(path);
+    this.realtime.publish("templates.changed", { pack, files: [] });
+    this.realtime.publish("packs.changed", { packs: [pack] });
+    return { status: 200, body: result("saved", { files, untracked: untracked.sort(), settingsHash }) };
   }
 
   /** Publishes model.changed for a translation write: no element changed, the display names of every affected locale. */

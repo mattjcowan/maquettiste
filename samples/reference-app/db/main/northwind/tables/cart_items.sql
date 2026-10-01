@@ -16,3 +16,9 @@ CREATE TABLE northwind.cart_items (
     CONSTRAINT fk_cart_items_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_cart_items_variant_id FOREIGN KEY (variant_id) REFERENCES northwind.product_variants (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.cart_items IS 'A product in a portal cart.';
+COMMENT ON COLUMN northwind.cart_items.id IS 'Surrogate key of the cart item.';
+COMMENT ON COLUMN northwind.cart_items.quantity IS 'Quantity wanted.';
+COMMENT ON COLUMN northwind.cart_items.added_at IS 'When it was added.';
+COMMENT ON COLUMN northwind.cart_items.unit_price_snapshot_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.cart_items.unit_price_snapshot_currency IS 'The ISO 4217 currency of the amount.';

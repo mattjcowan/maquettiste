@@ -25,3 +25,17 @@ CREATE TABLE northwind.sales_quotes (
     CONSTRAINT fk_sales_quotes_currency_code FOREIGN KEY (currency_code) REFERENCES northwind.currencies (code) ON DELETE RESTRICT,
     CONSTRAINT fk_sales_quotes_prepared_by_id FOREIGN KEY (prepared_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.sales_quotes IS 'A priced offer to a customer that can be converted into an order.';
+COMMENT ON COLUMN northwind.sales_quotes.id IS 'Surrogate key of the sales quote.';
+COMMENT ON COLUMN northwind.sales_quotes.quote_number IS 'Quote number.';
+COMMENT ON COLUMN northwind.sales_quotes.issued_on IS 'Date the quote was sent.';
+COMMENT ON COLUMN northwind.sales_quotes.valid_until IS 'Last day the prices hold.';
+COMMENT ON COLUMN northwind.sales_quotes.status IS 'Lifecycle state.';
+COMMENT ON COLUMN northwind.sales_quotes.total_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.sales_quotes.total_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.sales_quotes.notes IS 'Terms and remarks.';
+COMMENT ON COLUMN northwind.sales_quotes.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.sales_quotes.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.sales_quotes.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.sales_quotes.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.sales_quotes.deleted_at IS 'When the row was marked deleted; null while it is live.';

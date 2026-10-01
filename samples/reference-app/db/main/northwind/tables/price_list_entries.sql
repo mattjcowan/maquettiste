@@ -23,3 +23,14 @@ CREATE TABLE northwind.price_list_entries (
     CONSTRAINT fk_price_list_entries_variant_id FOREIGN KEY (variant_id) REFERENCES northwind.product_variants (id) ON DELETE SET NULL,
     CONSTRAINT fk_price_list_entries_unit_code FOREIGN KEY (unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.price_list_entries IS 'The price of a product or variant on a price list.';
+COMMENT ON COLUMN northwind.price_list_entries.id IS 'Surrogate key of the price list entry.';
+COMMENT ON COLUMN northwind.price_list_entries.unit_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.price_list_entries.unit_price_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.price_list_entries.minimum_quantity IS 'Smallest quantity the price applies to.';
+COMMENT ON COLUMN northwind.price_list_entries.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.price_list_entries.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.price_list_entries.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.price_list_entries.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.price_list_entries.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.price_list_entries.updated_by IS 'User name of the last editor.';

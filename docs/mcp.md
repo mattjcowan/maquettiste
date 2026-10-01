@@ -121,7 +121,7 @@ claude mcp add maquettiste -- docker run -i --rm --user 0:0 -v "$PWD:/repo" -w /
 ```
 
 Checked on Linux (Docker Engine, amd64) with a stdio client over `docker run -i --rm --user ... maquettiste mcp`: `initialize`
-in 0.7 s, `tools/list` with 18 tools (image 0.1.0; the published 0.2.0 image lists 24, the current source 49), `validate` in 55 ms, the container removed on exit. The wrapper's shape (arguments, stderr
+in 0.7 s, `tools/list` with 18 tools (image 0.1.0; the published 0.2.0 image lists 24, the current source 50), `validate` in 55 ms, the container removed on exit. The wrapper's shape (arguments, stderr
 to the log, stdout untouched) is covered by the CLI tests.
 
 ### In this repository
@@ -140,7 +140,7 @@ Create the copy first with `docker/dev-billing.sh`, or without Docker, then buil
 ```sh
 mkdir -p tmp/billing && cp -r tests/fixtures/models/billing/.maquettiste tmp/billing/
 dotnet build src/Maquettiste.Cli -c Release
-claude                               # then /mcp shows maquettiste connected with 49 tools
+claude                               # then /mcp shows maquettiste connected with 50 tools
 ```
 
 A headless check that needs no approval prompt (an explicit `--mcp-config` is trusted):
@@ -177,7 +177,7 @@ the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.We
 | `get_resolved_model` | getResolvedModel | `scope` (`all` default, `packages`, `entities`, `relations`, `enums`, `value-objects`, `scalar-types`, `reference-types`, `seeds`, `processes`, `actors`, `scenarios`, `databases`, `tables`), `database` (an id), `cursor`, `limit` | `{ items, next, diagnostics }`: what templates read, as flat records with `id`, `kind` and `name` (other objects by id); a model with errors returns no items and the errors |
 | `save_element` | saveElement | `id`, `element` (whole document), `expectedHash` | the save result (new `hash`, changes) |
 | `create_element` | createElement | `element` (an id is assigned when absent) | the save result with the new `id`; write a database with `byConvention` (`none`, `packages` or `all`): without it a database with no `packages` takes every entity (the rule from before 0.3.0) |
-| `delete_element` | deleteElement | `id`, `expectedHash`, `resolution` (`refuse` default, or `remove-references`) | the save result |
+| `delete_element` | deleteElement, getDeletePlan | `id`, `expectedHash` (not with `dryRun`), `resolution` (`refuse` default, `remove-references` or `delete-dependents`), `dryRun` (`true`: write nothing and return the plan; the resolution then defaults to `delete-dependents`) | the save result; with `dryRun` the delete plan `{ ids, resolution, outcome, deletes: [{ id, kind, name, path, because }], clears: [{ id, kind, name, pointer, field, target, because }], removes: [{ id, kind, name, pointer, what, subId, subKind, because }], refused: [{ id, kind, name, pointer, why, rule }], settings: [{ pointer, what }], warnings: [{ message, pack, unit }] }` |
 | `apply_batch` | applyBatch | `operations` (the batch's `operations` array, or the whole `{ "operations": [...] }` body); besides create, update and delete, the database schema operations `add-schema`, `rename-schema`, `remove-schema` (with `target` to move what lives there, `default` when removing the default) and `set-default-schema`; the process operations `sync-enum` (`id` a lifecycle process: its bound enum's members become the root-level states in order; a removal of a member still used by a default, allowed values, a seed cell or a scenario value is refused with MQ9019; change the uses first), `set-lifecycle` (`id` an entity, `target` a process, both sides in one change; no `target` clears it), `set-initial` (`id` a process or compound state, `target` a direct child) and `refresh-scenario` (`id` a scenario: its steps' `expect` and its `outcome` are rewritten from the engine's replay; refused when the batch also writes the scenario or its process, or when the replay stops early) | the batch result, all or nothing |
 | `simulate_process` | simulateProcess | `process` (id, name or model path), `steps` (scenario steps without `expect`; ids optional), `start` (`{ context, at }`), `scenario` (its start and steps run first), `document` (an unsaved draft; invalid is `invalid` with diagnostics), `from` | `{ processHash, trace, configuration, context, enabled, pending, timers, gates, final, clock, diagnostics }`; nothing is kept between calls: send the whole input list each time |
 | `record_scenario` | recordScenario | `process`, `name`, `steps`, `start`, `outcome` (the replay's when absent), `dryRun` | `{ id, element, hash, applied, diagnostics }`: the scenario with every step's `expect` and the outcome filled from the engine's replay, saved unless `dryRun` |
@@ -212,9 +212,10 @@ the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.We
 | `write_pack_file` | putPackFile | `pack`, `path`, `text`, `expectedHash` (`new` creates) | the write result; a template that does not parse is saved and its MQ6003 diagnostics returned; pack.json is refused (use `save_pack`) |
 | `move_pack_file` | movePackFile | `pack`, `from`, `to`, `expectedHash`, `updateUnits`, `expectedPackHash` | the move result; `updateUnits` rewrites the units and scripts that name the file |
 | `delete_pack_file` | deletePackFile | `pack`, `path`, `expectedHash` | the delete result; refused while a unit names the file or a template includes it |
+| `delete_pack` | deletePack | `pack`, `expectedHash` (the pack.json hash from `get_pack`) | the removal result: `files` deleted from `.maquettiste/templates/<pack>/`, the `packs.<pack>` settings entry removed (`settingsHash`), and `untracked`, the generated files the pack's manifests recorded, which stay on disk and are no longer tracked |
 | `get_template_context` | getTemplateContext | `pack`, `unit` | what the unit's templates can use: the globals, the members of the model and of the scope's records, the helpers |
 | `preview_unit` | previewTemplate | `pack`, `unit`, `elementId`, `overlay` (path to unsaved text), `unitOverride` | each rendered file's output path and text, the diagnostics and the keys the render read; nothing is written; an element outside the unit's scope (none for an `each` unit, another kind, one its selector does not return, any for a `model` unit) renders nothing and returns MQ6026, which names the kind the template expects |
-| `unit_paths` | unitPaths | `pack`, `unit`, `elementIds`, `limit` | how many elements the unit covers and the output paths it renders, with their root and whether the writer allows them |
+| `unit_paths` | unitPaths | `pack`, `unit`, `elementIds`, `limit` | how many elements the unit covers and the output paths it renders, with their root and whether the writer allows them; each path names its element (`elementName`: an element's name, a table as `customers (billing)`, a locale's tag) and `elementKind` |
 | `get_pack_outputs` | getPackOutputs | `pack` | the files the pack's manifests record: path, unit, element, root, mode and state on disk (intact, edited, missing) |
 | `explain_unit` | getPlanUnit, explainUnit | `planId` and `key` (a unit of a stored plan), or `pack`, `unit`, `elementId` (any unit and element) | the reason (`new`, `forced`, `inputs`, `outputs`, `unchanged`, or why it does not run: `pack-disabled`, `not-selected`, `scope`, `filter`, `skip-hint`, `selector`, `root-not-selected`, ...), the causes and a one-sentence summary |
 | `get_schema` | (none) | `kind`: an element kind (`entity`, `value-object`, ...) or a document (`maquettiste`, `batch`, `pack`, `extension`) | `{ name, file, schema, references, extensions? }`: the JSON schema, the schema files it references (`common.json`) and, for an element kind, the project's extension schemas that apply to it (`name`, `description`, `appliesTo`, `properties`, `required`, `schemaPath`; they constrain the element's `properties`) |
@@ -255,7 +256,11 @@ live in locale shards, not in element files: read them with `get_translations`, 
   save writes nothing and fails with `conflict`: `current` and `hash` are the disk version and `submitted` is the document the caller
   sent, so both versions are in hand to merge and retry with the new hash.
 - **Referenced deletes.** `delete_element` refuses while other elements reference the element (`referenced`, with `referrers`),
-  unless `resolution` is `remove-references`, which clears optional references; a required reference then makes the delete `invalid`.
+  unless `resolution` is `remove-references`, which clears optional references (a required reference then makes the delete
+  `invalid`, with a readable MQ2001 first), or `delete-dependents`, which also removes the part of a referrer that needs the
+  element (an attribute whose type is deleted, a diagram member, a key) or deletes the referrer with its own dependents (a
+  database's tables, views, sequences and mappings; an entity's relations, mappings and overlays), in one change. `dryRun: true`
+  returns that plan without writing; a batch delete operation takes the same `resolution`.
   Owning references do not count: deleting an entity, relation or reference type deletes its seeds and every translation of its
   nodes in the same save, and only references from other elements (including cells of other seeds that name its rows) refuse it.
 - **Batches** are all or nothing: when one operation fails nothing is written, and `items` says which failed and why.

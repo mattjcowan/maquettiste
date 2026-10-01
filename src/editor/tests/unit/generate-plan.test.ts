@@ -9,6 +9,8 @@ import {
   groupOf,
   groupPlan,
   moreNotesText,
+  nothingToWrite,
+  nothingToWriteNote,
   orderDiagnostics,
   packSummaryLine,
   planSummary,
@@ -106,7 +108,7 @@ describe("plan explanation model", () => {
 
   it("writes the summary line per pack", () => {
     expect(planSummary(plan)).toEqual([
-      "sql-ddl: 3 units, 1 file to add, 2 to modify, 1 orphan to delete, 1 unit unchanged",
+      "sql-ddl: 3 units, 1 file to add, 2 to modify, 1 orphan to delete, 1 file unchanged, 1 unit unchanged",
       "csharp-dapper: 1 unit, 1 file edited by hand",
     ]);
     const big = {
@@ -119,7 +121,21 @@ describe("plan explanation model", () => {
     };
     expect(packSummaryLine("sql-ddl", big)).toBe("sql-ddl: 4 units, 12 files to add, 3 to modify, 1 orphan to delete");
     const quiet = { units: [unit("sql-ddl/table:t", { skipped: true, reason: "unchanged" })], changes: [change("db/t.sql", "unchanged", "sql-ddl/table:t")] };
-    expect(packSummaryLine("sql-ddl", quiet)).toBe("sql-ddl: 0 units, nothing to write, 1 unit unchanged");
+    expect(packSummaryLine("sql-ddl", quiet)).toBe("sql-ddl: 0 units, nothing to write: 1 file already matches the disk, 1 unit unchanged");
+  });
+
+  it("says why a plan writes nothing: every file it renders already matches the disk", () => {
+    const units = [...Array(737)].map((_, i) => unit(`atlas-schema/table:t${i}`));
+    const same = { units, changes: units.map((u, i) => change(`db/t${i}.sql`, "unchanged", u.key)) };
+    expect(packSummaryLine("atlas-schema", same)).toBe("atlas-schema: 737 units, nothing to write: all 737 files already match the disk");
+    expect(nothingToWrite(same)).toBe(true);
+    expect(nothingToWriteNote(same)).toBe("Every file this plan renders is identical to the file on disk; Apply has nothing to do.");
+    const kept = { units, changes: [...same.changes.slice(1), change("db/t0.sql", "kept", units[0].key)] };
+    expect(packSummaryLine("atlas-schema", kept)).toBe("atlas-schema: 737 units, nothing to write: all 736 files already match the disk, 1 file kept");
+    expect(nothingToWriteNote(kept)).toContain("or kept as it is");
+    expect(nothingToWriteNote({ changes: [] })).toBe("This plan renders no files; Apply has nothing to do.");
+    expect(nothingToWrite(plan)).toBe(false);
+    expect(nothingToWriteNote(plan)).toBeNull();
   });
 });
 

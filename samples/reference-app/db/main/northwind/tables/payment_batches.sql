@@ -20,3 +20,16 @@ CREATE TABLE northwind.payment_batches (
     CONSTRAINT uq_payment_batches_batch_number UNIQUE (batch_number),
     CONSTRAINT fk_payment_batches_bank_account_id FOREIGN KEY (bank_account_id) REFERENCES northwind.bank_accounts (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.payment_batches IS 'A group of payments deposited together, such as a lockbox file or a card settlement.';
+COMMENT ON COLUMN northwind.payment_batches.id IS 'Surrogate key of the payment batch.';
+COMMENT ON COLUMN northwind.payment_batches.batch_number IS 'Batch number.';
+COMMENT ON COLUMN northwind.payment_batches.batch_date IS 'Deposit date.';
+COMMENT ON COLUMN northwind.payment_batches.source IS 'lockbox, ach-file or card-settlement.';
+COMMENT ON COLUMN northwind.payment_batches.item_count IS 'Payments in the batch.';
+COMMENT ON COLUMN northwind.payment_batches.total_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.payment_batches.total_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.payment_batches.is_posted IS 'Whether it was posted to the ledger.';
+COMMENT ON COLUMN northwind.payment_batches.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.payment_batches.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.payment_batches.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.payment_batches.updated_by IS 'User name of the last editor.';

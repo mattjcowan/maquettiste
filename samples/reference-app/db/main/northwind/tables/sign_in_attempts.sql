@@ -14,3 +14,10 @@ CREATE TABLE northwind.sign_in_attempts (
     CONSTRAINT fk_sign_in_attempts_user_account_id FOREIGN KEY (user_account_id) REFERENCES northwind.user_accounts (id) ON DELETE CASCADE
 );
 CREATE INDEX ix_sign_in_attempts_attempted_at ON northwind.sign_in_attempts (attempted_at);
+COMMENT ON TABLE northwind.sign_in_attempts IS 'One sign-in attempt, successful or not, used for lockout and security reviews.';
+COMMENT ON COLUMN northwind.sign_in_attempts.id IS 'Surrogate key of the sign in attempt.';
+COMMENT ON COLUMN northwind.sign_in_attempts.attempted_at IS 'When the attempt happened.';
+COMMENT ON COLUMN northwind.sign_in_attempts.user_name IS 'User name entered.';
+COMMENT ON COLUMN northwind.sign_in_attempts.succeeded IS 'Whether the attempt succeeded.';
+COMMENT ON COLUMN northwind.sign_in_attempts.failure_reason IS 'Why it failed, such as bad-password or locked.';
+COMMENT ON COLUMN northwind.sign_in_attempts.ip_address IS 'Client IP address.';

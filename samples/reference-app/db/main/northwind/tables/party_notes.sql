@@ -16,3 +16,11 @@ CREATE TABLE northwind.party_notes (
     CONSTRAINT fk_party_notes_party_id FOREIGN KEY (party_id) REFERENCES northwind.parties (id) ON DELETE CASCADE,
     CONSTRAINT fk_party_notes_author_id FOREIGN KEY (author_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.party_notes IS 'A free-text note on a party, such as delivery quirks or negotiation history.';
+COMMENT ON COLUMN northwind.party_notes.id IS 'Surrogate key of the party note.';
+COMMENT ON COLUMN northwind.party_notes.body IS 'Note text in Markdown.';
+COMMENT ON COLUMN northwind.party_notes.is_pinned IS 'Shown at the top of the party''s page.';
+COMMENT ON COLUMN northwind.party_notes.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.party_notes.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.party_notes.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.party_notes.updated_by IS 'User name of the last editor.';

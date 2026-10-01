@@ -12,3 +12,10 @@ CREATE TABLE northwind.adjustment_reasons (
     CONSTRAINT pk_adjustment_reasons PRIMARY KEY (id),
     CONSTRAINT uq_adjustment_reasons_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.adjustment_reasons IS 'A reason for a stock adjustment, such as Damaged in warehouse or Count correction.';
+COMMENT ON COLUMN northwind.adjustment_reasons.id IS 'Surrogate key of the adjustment reason.';
+COMMENT ON COLUMN northwind.adjustment_reasons.affects_cost IS 'Whether it posts a write-off to the ledger.';
+COMMENT ON COLUMN northwind.adjustment_reasons.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.adjustment_reasons.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.adjustment_reasons.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.adjustment_reasons.is_active IS 'Whether the value can be chosen for new records.';

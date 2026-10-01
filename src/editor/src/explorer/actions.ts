@@ -3,12 +3,13 @@
 // undo and conflict the same way.
 import { useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { applySaveResult, elementQuery, keys } from "@/api/queries";
+import { applySaveResult, elementQuery } from "@/api/queries";
 import * as endpoints from "@/api/endpoints";
-import type { ElementDocument, ModelJson } from "@/api/types";
+import type { ModelJson } from "@/api/types";
 import { useServices } from "@/app/context";
 import { newId } from "@/lib/ids";
 import { conventionOf, mapDomains, takesPackage } from "@/model/databaseMapping";
+import { requestDelete } from "./deleteRequest";
 
 const clone = <T>(v: T): T => structuredClone(v);
 
@@ -103,40 +104,13 @@ export function useExplorerActions() {
     [edit, qc, store],
   );
 
-  /** Deletes elements, refusing any that is still referenced (the inspector's delete clears references). */
-  const remove = useCallback(
-    async (ids: readonly string[], names: ReadonlyMap<string, string>) => {
-      const deleted: string[] = [];
-      const before: ModelJson[] = [];
-      const refused: string[] = [];
-      for (const id of ids) {
-        await drafts.flush(id);
-        const current = qc.getQueryData<ElementDocument>(keys.element(id)) ?? (await qc.fetchQuery(elementQuery(id)));
-        if (!current) continue;
-        const result = await endpoints.deleteElement(id, current.hash, "refuse");
-        if (result.outcome === "saved") {
-          applySaveResult(qc, result);
-          drafts.discard(id);
-          deleted.push(id);
-          before.push(clone(current.json as ModelJson));
-        } else refused.push(names.get(id) ?? id);
-      }
-      const s = store.getState();
-      if (deleted.length) {
-        s.pushUndo({
-          label: `Delete ${deleted.length === 1 ? (names.get(deleted[0]) ?? "element") : `${deleted.length} elements`}`,
-          ids: deleted,
-          before,
-          after: deleted.map(() => null),
-          afterHashes: deleted.map(() => null),
-        });
-        s.select(s.selection.filter((x) => !deleted.includes(x)));
-      }
-      if (refused.length)
-        s.notify(`Not deleted, still referenced: ${refused.join(", ")}. Open one in the inspector to delete it and clear its references.`, "error");
-    },
-    [qc, drafts, store],
-  );
+  /**
+   * Deletes elements: hands them to the delete dialog (dialogs.tsx DeleteDialog), which reads the combined delete
+   * plan and deletes them in one batch, one undo step, clearing references or deleting the dependents as chosen.
+   */
+  const remove = useCallback(async (ids: readonly string[], names: ReadonlyMap<string, string>) => {
+    if (ids.length) requestDelete({ ids: [...ids], names });
+  }, []);
 
   /** Duplicate (1.8, diagrams): the same members and layout under a new id and "<name> copy"; opened once saved. */
   const duplicate = useCallback(

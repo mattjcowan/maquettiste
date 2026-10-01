@@ -23,3 +23,12 @@ CREATE TABLE northwind.putaway_tasks (
     CONSTRAINT fk_putaway_tasks_from_bin_id FOREIGN KEY (from_bin_id) REFERENCES northwind.bin_locations (id) ON DELETE SET NULL,
     CONSTRAINT fk_putaway_tasks_to_bin_id FOREIGN KEY (to_bin_id) REFERENCES northwind.bin_locations (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.putaway_tasks IS 'A task to move received goods from the dock to a storage bin.';
+COMMENT ON COLUMN northwind.putaway_tasks.id IS 'Surrogate key of the putaway task.';
+COMMENT ON COLUMN northwind.putaway_tasks.status IS 'open, in-progress or done.';
+COMMENT ON COLUMN northwind.putaway_tasks.quantity IS 'Quantity to put away.';
+COMMENT ON COLUMN northwind.putaway_tasks.completed_at IS 'When it was done.';
+COMMENT ON COLUMN northwind.putaway_tasks.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.putaway_tasks.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.putaway_tasks.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.putaway_tasks.updated_by IS 'User name of the last editor.';

@@ -72,4 +72,34 @@ public sealed class McpPackToolTests
         var deleted = await session.OkAsync("delete_pack_file", new { pack = "ddl-starter", path = "README.md", expectedHash = (string)(await session.OkAsync("read_pack_file", new { pack = "ddl-starter", path = "README.md" }))["hash"]! });
         Assert.Equal("saved", (string)deleted["outcome"]!);
     }
+
+    [Fact]
+    public async Task A_client_removes_a_pack_with_its_hash_and_unit_paths_name_their_elements()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var session = await McpSession.StartAsync(ct: ct);
+        await session.OkAsync("new_pack", new { name = "docs", from = "empty" });
+        var paths = await session.OkAsync("unit_paths", new { pack = "docs", unit = "entity" });
+        Assert.All(paths["paths"]!.AsArray(), p =>
+        {
+            Assert.Equal("entity", (string)p!["elementKind"]!);
+            Assert.False(string.IsNullOrEmpty((string?)p["elementName"]));
+        });
+        var settings = await session.OkAsync("get_settings", new { });
+        await session.OkAsync("save_pack_settings", new { pack = "docs", settings = new { enabled = false }, expectedHash = (string)settings["hash"]! });
+        var pack = await session.OkAsync("get_pack", new { pack = "docs" });
+
+        Assert.Equal("precondition-required", (await session.ErrorAsync("delete_pack", new { pack = "docs" })).Code);
+        Assert.Equal("conflict", (await session.ErrorAsync("delete_pack", new { pack = "docs", expectedHash = new string('0', 64) })).Code);
+        Assert.Equal("not-found", (await session.ErrorAsync("delete_pack", new { pack = "ghost", expectedHash = (string)pack["hash"]! })).Code);
+        Assert.Equal("bad-request", (await session.ErrorAsync("delete_pack", new { pack = "Bad Name", expectedHash = (string)pack["hash"]! })).Code);
+
+        var removed = await session.OkAsync("delete_pack", new { pack = "docs", expectedHash = (string)pack["hash"]! });
+        Assert.Equal("saved", (string)removed["outcome"]!);
+        Assert.Contains("pack.json", removed["files"]!.AsArray().Select(f => (string)f!));
+        Assert.NotNull((string?)removed["settingsHash"]);
+        Assert.Equal("not-found", (await session.ErrorAsync("get_pack", new { pack = "docs" })).Code);
+        var after = await session.OkAsync("get_settings", new { });
+        Assert.Null(after["settings"]!["packs"]!["docs"]);
+    }
 }

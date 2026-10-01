@@ -13,3 +13,6 @@ CREATE TABLE northwind.standing_order_lines (
     CONSTRAINT fk_standing_order_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_standing_order_lines_unit_code FOREIGN KEY (unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.standing_order_lines IS 'A product and quantity ordered on every run of a standing order.';
+COMMENT ON COLUMN northwind.standing_order_lines.id IS 'Surrogate key of the standing order line.';
+COMMENT ON COLUMN northwind.standing_order_lines.quantity IS 'Quantity per run.';

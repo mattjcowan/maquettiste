@@ -16,3 +16,12 @@ CREATE TABLE northwind.proofs_of_delivery (
     CONSTRAINT uq_proofs_of_delivery_shipment_id UNIQUE (shipment_id),
     CONSTRAINT fk_proofs_of_delivery_shipment_id FOREIGN KEY (shipment_id) REFERENCES northwind.shipments (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.proofs_of_delivery IS 'Evidence that a shipment was delivered - who signed, where and when.';
+COMMENT ON COLUMN northwind.proofs_of_delivery.id IS 'Surrogate key of the proof of delivery.';
+COMMENT ON COLUMN northwind.proofs_of_delivery.delivered_at IS 'Delivery time.';
+COMMENT ON COLUMN northwind.proofs_of_delivery.received_by_name IS 'Name of the person who signed.';
+COMMENT ON COLUMN northwind.proofs_of_delivery.signature_image_url IS 'Signature capture.';
+COMMENT ON COLUMN northwind.proofs_of_delivery.photo_url IS 'Photo of the delivered goods.';
+COMMENT ON COLUMN northwind.proofs_of_delivery.location_latitude IS 'Degrees north of the equator.';
+COMMENT ON COLUMN northwind.proofs_of_delivery.location_longitude IS 'Degrees east of Greenwich.';
+COMMENT ON COLUMN northwind.proofs_of_delivery.notes IS 'Driver''s remarks.';

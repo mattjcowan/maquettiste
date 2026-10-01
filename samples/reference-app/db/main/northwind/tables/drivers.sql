@@ -19,3 +19,14 @@ CREATE TABLE northwind.drivers (
     CONSTRAINT uq_drivers_employee_id UNIQUE (employee_id),
     CONSTRAINT fk_drivers_employee_id FOREIGN KEY (employee_id) REFERENCES northwind.employees (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.drivers IS 'An employee licensed to drive the own fleet.';
+COMMENT ON COLUMN northwind.drivers.id IS 'Surrogate key of the driver.';
+COMMENT ON COLUMN northwind.drivers.license_number IS 'Driving license number.';
+COMMENT ON COLUMN northwind.drivers.license_class IS 'License class, such as CDL-B.';
+COMMENT ON COLUMN northwind.drivers.license_expires_on IS 'License expiry.';
+COMMENT ON COLUMN northwind.drivers.mobile_phone_number IS 'Number in E.164 form, such as +14155550100.';
+COMMENT ON COLUMN northwind.drivers.mobile_phone_extension IS 'Internal extension.';
+COMMENT ON COLUMN northwind.drivers.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.drivers.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.drivers.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.drivers.updated_by IS 'User name of the last editor.';

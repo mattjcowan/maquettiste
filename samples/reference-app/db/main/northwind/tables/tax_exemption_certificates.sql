@@ -19,3 +19,14 @@ CREATE TABLE northwind.tax_exemption_certificates (
     CONSTRAINT fk_tax_exemption_certificates_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE CASCADE,
     CONSTRAINT fk_tax_exemption_certificates_state_province_id FOREIGN KEY (state_province_id) REFERENCES northwind.state_provinces (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.tax_exemption_certificates IS 'A resale or exemption certificate a customer filed to buy without sales tax in a state.';
+COMMENT ON COLUMN northwind.tax_exemption_certificates.id IS 'Surrogate key of the tax exemption certificate.';
+COMMENT ON COLUMN northwind.tax_exemption_certificates.certificate_number IS 'Number on the certificate.';
+COMMENT ON COLUMN northwind.tax_exemption_certificates.exemption_reason IS 'Reason, such as resale or nonprofit.';
+COMMENT ON COLUMN northwind.tax_exemption_certificates.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.tax_exemption_certificates.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.tax_exemption_certificates.document_url IS 'Link to the scanned certificate.';
+COMMENT ON COLUMN northwind.tax_exemption_certificates.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.tax_exemption_certificates.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.tax_exemption_certificates.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.tax_exemption_certificates.updated_by IS 'User name of the last editor.';

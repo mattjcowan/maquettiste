@@ -28,3 +28,16 @@ CREATE TABLE northwind.return_authorizations (
     CONSTRAINT fk_return_authorizations_receiving_warehouse_id FOREIGN KEY (receiving_warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE SET NULL,
     CONSTRAINT fk_return_authorizations_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.return_authorizations IS 'A return merchandise authorization (RMA) permitting a customer to send goods back.';
+COMMENT ON COLUMN northwind.return_authorizations.id IS 'Surrogate key of the return authorization.';
+COMMENT ON COLUMN northwind.return_authorizations.rma_number IS 'RMA number the customer writes on the parcel.';
+COMMENT ON COLUMN northwind.return_authorizations.requested_on IS 'Request date.';
+COMMENT ON COLUMN northwind.return_authorizations.status IS 'Lifecycle state.';
+COMMENT ON COLUMN northwind.return_authorizations.approved_on IS 'Approval date.';
+COMMENT ON COLUMN northwind.return_authorizations.return_method IS 'carrier-pickup or drop-off.';
+COMMENT ON COLUMN northwind.return_authorizations.restocking_fee_percent IS 'Restocking fee charged.';
+COMMENT ON COLUMN northwind.return_authorizations.customer_comments IS 'What the customer said.';
+COMMENT ON COLUMN northwind.return_authorizations.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.return_authorizations.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.return_authorizations.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.return_authorizations.updated_by IS 'User name of the last editor.';

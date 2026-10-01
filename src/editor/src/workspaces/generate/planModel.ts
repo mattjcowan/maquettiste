@@ -150,9 +150,32 @@ export function countsText(counts: Partial<Record<FileChangeKind, number>>): str
     .join(", ");
 }
 
+/** File change kinds Apply has nothing to do for: the file on disk already holds the rendered bytes, or is kept. */
+export const NOTHING_TO_WRITE: ReadonlySet<FileChangeKind> = new Set<FileChangeKind>(["unchanged", "kept"]);
+
+/** True when Apply would write and delete nothing (every planned file is unchanged or kept, or there is none). */
+export function nothingToWrite(plan: Pick<GenerationPlan, "changes">): boolean {
+  return plan.changes.every((c) => NOTHING_TO_WRITE.has(c.kind));
+}
+
 /**
- * The summary line of one pack: "sql-ddl: 4 units, 12 files to add, 3 to modify, 1 orphan to delete". Units are the
- * unit instances that render; units the plan skips and files that stay as they are come last.
+ * Why Apply has nothing to do, for the note under the summary; null when the plan writes something. A plan whose
+ * files all match the disk is the usual case after an apply: the summary alone ("nothing to write") reads like a
+ * failure without it.
+ */
+export function nothingToWriteNote(plan: Pick<GenerationPlan, "changes">): string | null {
+  if (!nothingToWrite(plan)) return null;
+  if (!plan.changes.length) return "This plan renders no files; Apply has nothing to do.";
+  const kept = plan.changes.some((c) => c.kind === "kept");
+  return kept
+    ? "Every file this plan renders is identical to the file on disk or kept as it is; Apply has nothing to do."
+    : "Every file this plan renders is identical to the file on disk; Apply has nothing to do.";
+}
+
+/**
+ * The summary line of one pack: "sql-ddl: 4 units, 12 files to add, 3 to modify, 1 orphan to delete, 20 files
+ * unchanged". Units are the unit instances that render; files that already match the disk, then units the plan
+ * skips, come last. A pack that writes nothing says why: "nothing to write: all 737 files already match the disk".
  */
 export function packSummaryLine(pack: string, plan: Pick<GenerationPlan, "changes" | "units">): string {
   const units = plan.units.filter((u) => (u.pack ?? groupOf(u.key).split("/")[0]) === pack);
@@ -175,7 +198,16 @@ export function packSummaryLine(pack: string, plan: Pick<GenerationPlan, "change
   if (conflicts) parts.push(plural(conflicts, "conflict", "conflicts"));
   const owned = count("orphaned-owned");
   if (owned) parts.push(`${plural(owned, "owned file", "owned files")} orphaned (kept)`);
-  if (parts.length === 1) parts.push("nothing to write");
+  const unchanged = count("unchanged");
+  const kept = count("kept");
+  if (parts.length === 1) {
+    const same = unchanged === 1 ? "1 file already matches the disk" : unchanged ? `all ${unchanged} files already match the disk` : "";
+    const detail = [same, kept ? `${plural(kept, "file", "files")} kept` : ""].filter(Boolean).join(", ");
+    parts.push(detail ? `nothing to write: ${detail}` : "nothing to write");
+  } else {
+    if (unchanged) parts.push(`${plural(unchanged, "file", "files")} unchanged`);
+    if (kept) parts.push(`${plural(kept, "file", "files")} kept`);
+  }
   if (skipped) parts.push(`${plural(skipped, "unit", "units")} unchanged`);
   return `${pack}: ${parts.join(", ")}`;
 }

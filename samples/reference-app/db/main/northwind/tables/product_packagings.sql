@@ -19,3 +19,14 @@ CREATE TABLE northwind.product_packagings (
     CONSTRAINT fk_product_packagings_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE,
     CONSTRAINT fk_product_packagings_unit_code FOREIGN KEY (unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.product_packagings IS 'A packaging level of a product, such as a case of 12 or a pallet of 60 cases.';
+COMMENT ON COLUMN northwind.product_packagings.id IS 'Surrogate key of the product packaging.';
+COMMENT ON COLUMN northwind.product_packagings.packaging_level IS 'Packaging level - each, inner, case or pallet.';
+COMMENT ON COLUMN northwind.product_packagings.units_per_package IS 'Base units in one package.';
+COMMENT ON COLUMN northwind.product_packagings.dimensions_length IS 'Longest side.';
+COMMENT ON COLUMN northwind.product_packagings.dimensions_width IS 'Second side.';
+COMMENT ON COLUMN northwind.product_packagings.dimensions_height IS 'Vertical side.';
+COMMENT ON COLUMN northwind.product_packagings.dimensions_unit IS 'Unit of the three measures.';
+COMMENT ON COLUMN northwind.product_packagings.gross_weight_value IS 'The weight.';
+COMMENT ON COLUMN northwind.product_packagings.gross_weight_unit IS 'Unit of the weight.';
+COMMENT ON COLUMN northwind.product_packagings.gtin IS 'GTIN of the package.';

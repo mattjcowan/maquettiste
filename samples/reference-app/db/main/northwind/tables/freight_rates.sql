@@ -20,3 +20,15 @@ CREATE TABLE northwind.freight_rates (
     CONSTRAINT fk_freight_rates_carrier_service_id FOREIGN KEY (carrier_service_id) REFERENCES northwind.carrier_services (id) ON DELETE CASCADE,
     CONSTRAINT fk_freight_rates_shipping_zone_id FOREIGN KEY (shipping_zone_id) REFERENCES northwind.shipping_zones (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.freight_rates IS 'A contracted rate of a carrier service for a zone and weight band.';
+COMMENT ON COLUMN northwind.freight_rates.id IS 'Surrogate key of the freight rate.';
+COMMENT ON COLUMN northwind.freight_rates.weight_from_kg IS 'Lower bound of the weight band.';
+COMMENT ON COLUMN northwind.freight_rates.weight_to_kg IS 'Upper bound; null for no limit.';
+COMMENT ON COLUMN northwind.freight_rates.rate_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.freight_rates.rate_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.freight_rates.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.freight_rates.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.freight_rates.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.freight_rates.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.freight_rates.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.freight_rates.updated_by IS 'User name of the last editor.';

@@ -1,5 +1,5 @@
-// The inspector's tabs: Properties, Attributes, JSON, Where used. A value object edits its attribute grid on the
-// Attributes tab (no longer inside Properties); an entity lists its attributes read-only with "Open editor", which
+// The inspector's tabs: Properties, Attributes, JSON, Used. A value object and a relationship edit their attribute
+// grid on the Attributes tab (no longer inside Properties); an entity lists its attributes read-only with "Open editor", which
 // opens the entity editor on its Attributes tab; an enum has no Attributes tab and a remembered one falls back.
 import type { Page } from "@playwright/test";
 import { expect, openEditor, test } from "./fixtures";
@@ -18,7 +18,7 @@ test("the inspector's Attributes tab per kind", async ({ page }) => {
 
   // Value object: the grid lives on the Attributes tab, not in Properties.
   await select(page, "Money");
-  await expect(views.getByRole("tab")).toHaveText(["Properties", "Attributes", "JSON", "Where used"]);
+  await expect(views.getByRole("tab")).toHaveText(["Properties", "Attributes", "JSON", "Used"]);
   await expect(views.getByRole("tab", { name: "Properties" })).toHaveAttribute("aria-selected", "true");
   await expect(inspector.getByTestId("attribute-grid")).toHaveCount(0);
   await views.getByRole("tab", { name: "Attributes" }).click();
@@ -35,8 +35,20 @@ test("the inspector's Attributes tab per kind", async ({ page }) => {
 
   // Enum: no Attributes tab; the remembered Attributes tab falls back to Properties.
   await select(page, "InvoiceStatus");
-  await expect(views.getByRole("tab")).toHaveText(["Properties", "JSON", "Where used"]);
+  await expect(views.getByRole("tab")).toHaveText(["Properties", "JSON", "Used"]);
   await expect(views.getByRole("tab", { name: "Properties" })).toHaveAttribute("aria-selected", "true");
+
+  // Relationship: its attributes are on its own Attributes tab too, edited there; Properties keeps the ends.
+  await select(page, "settles");
+  await expect(views.getByRole("tab")).toHaveText(["Properties", "Attributes", "JSON", "Used"]);
+  await expect(views.getByRole("tab", { name: "Properties" })).toHaveAttribute("aria-selected", "true");
+  await expect(inspector.getByTestId("attribute-grid")).toHaveCount(0);
+  await expect(inspector.getByLabel("Inverse name")).toBeVisible();
+  await views.getByRole("tab", { name: "Attributes" }).click();
+  const relationGrid = inspector.getByRole("grid", { name: "Attributes of settles" });
+  await expect(relationGrid).toBeVisible();
+  await expect(relationGrid.locator('td[data-column="name"]')).toHaveText(["allocated"]);
+  await expect(inspector.getByLabel("Inverse name")).toHaveCount(0);
 
   // Back on the value object, its kind remembers Attributes.
   await select(page, "Money");

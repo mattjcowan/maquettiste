@@ -20,3 +20,18 @@ CREATE TABLE northwind.promotions (
     CONSTRAINT pk_promotions PRIMARY KEY (id),
     CONSTRAINT uq_promotions_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.promotions IS 'A time-boxed marketing promotion with conditions and rewards, such as buy 10 cases get 1 free.';
+COMMENT ON COLUMN northwind.promotions.id IS 'Surrogate key of the promotion.';
+COMMENT ON COLUMN northwind.promotions.code IS 'Promotion code.';
+COMMENT ON COLUMN northwind.promotions.name IS 'Promotion name.';
+COMMENT ON COLUMN northwind.promotions.description IS 'Terms shown to customers.';
+COMMENT ON COLUMN northwind.promotions.status IS 'Lifecycle state.';
+COMMENT ON COLUMN northwind.promotions.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.promotions.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.promotions.budget_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.promotions.budget_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.promotions.max_redemptions IS 'Cap on redemptions across all customers.';
+COMMENT ON COLUMN northwind.promotions.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.promotions.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.promotions.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.promotions.updated_by IS 'User name of the last editor.';

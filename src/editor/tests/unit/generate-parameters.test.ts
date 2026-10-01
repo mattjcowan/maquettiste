@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { displayValue, packSection, parameterControl, parameterRows, parseParameter, undeclared, withParameter } from "@/workspaces/generate/parametersModel";
 import { groupLine, groupOutputs, outputRows } from "@/workspaces/generate/outputsModel";
-import { newPackError } from "@/workspaces/generate/NewPackDialog";
+import { newPackError, startFromText } from "@/workspaces/generate/NewPackDialog";
 
 const params = [
   { name: "comments", default: true, value: null, schema: null, required: false },
@@ -99,5 +99,8 @@ describe("outputs and new pack", () => {
     expect(newPackError("My Pack", [])).toMatch(/Lowercase/);
     expect(newPackError("sql-ddl", ["sql-ddl"])).toMatch(/exists/);
     expect(newPackError("api-docs", ["sql-ddl"])).toBeNull();
+    expect(startFromText("empty", 2, "api-docs")).toBe("One each-entity unit and its template, ready to edit.");
+    expect(startFromText("sql-ddl", 9, "my-pack")).toBe("All 9 files of sql-ddl, renamed to my-pack.");
+    expect(startFromText("sql-ddl", 1, "")).toBe("All 1 file of sql-ddl, renamed to <name>.");
   });
 });

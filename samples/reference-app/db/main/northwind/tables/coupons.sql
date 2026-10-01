@@ -19,3 +19,13 @@ CREATE TABLE northwind.coupons (
     CONSTRAINT fk_coupons_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE SET NULL,
     CONSTRAINT fk_coupons_promotion_id FOREIGN KEY (promotion_id) REFERENCES northwind.promotions (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.coupons IS 'A code customers enter to redeem a promotion.';
+COMMENT ON COLUMN northwind.coupons.id IS 'Surrogate key of the coupon.';
+COMMENT ON COLUMN northwind.coupons.code IS 'Coupon code.';
+COMMENT ON COLUMN northwind.coupons.max_uses IS 'Maximum redemptions of the code.';
+COMMENT ON COLUMN northwind.coupons.used_count IS 'Redemptions so far.';
+COMMENT ON COLUMN northwind.coupons.expires_on IS 'Last day the code works.';
+COMMENT ON COLUMN northwind.coupons.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.coupons.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.coupons.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.coupons.updated_by IS 'User name of the last editor.';

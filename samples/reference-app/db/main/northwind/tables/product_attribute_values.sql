@@ -15,3 +15,8 @@ CREATE TABLE northwind.product_attribute_values (
     CONSTRAINT fk_product_attribute_values_option_id FOREIGN KEY (option_id) REFERENCES northwind.product_attribute_options (id) ON DELETE SET NULL,
     CONSTRAINT fk_product_attribute_values_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.product_attribute_values IS 'The value of one attribute for one product.';
+COMMENT ON COLUMN northwind.product_attribute_values.id IS 'Surrogate key of the product attribute value.';
+COMMENT ON COLUMN northwind.product_attribute_values.text_value IS 'Value of a text attribute.';
+COMMENT ON COLUMN northwind.product_attribute_values.numeric_value IS 'Value of a number attribute.';
+COMMENT ON COLUMN northwind.product_attribute_values.boolean_value IS 'Value of a boolean attribute.';

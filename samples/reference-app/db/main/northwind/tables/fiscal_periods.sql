@@ -18,3 +18,16 @@ CREATE TABLE northwind.fiscal_periods (
     CONSTRAINT pk_fiscal_periods PRIMARY KEY (id),
     CONSTRAINT uq_fiscal_periods_name UNIQUE (name)
 );
+COMMENT ON TABLE northwind.fiscal_periods IS 'A monthly accounting period of a fiscal year.';
+COMMENT ON COLUMN northwind.fiscal_periods.id IS 'Surrogate key of the fiscal period.';
+COMMENT ON COLUMN northwind.fiscal_periods.name IS 'Period name, such as FY2026-09.';
+COMMENT ON COLUMN northwind.fiscal_periods.fiscal_year IS 'Fiscal year.';
+COMMENT ON COLUMN northwind.fiscal_periods.period_number IS 'Period within the year; 13 is the adjustment period.';
+COMMENT ON COLUMN northwind.fiscal_periods.period_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.fiscal_periods.period_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.fiscal_periods.is_closed IS 'Whether posting is closed.';
+COMMENT ON COLUMN northwind.fiscal_periods.closed_at IS 'When it was closed.';
+COMMENT ON COLUMN northwind.fiscal_periods.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.fiscal_periods.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.fiscal_periods.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.fiscal_periods.updated_by IS 'User name of the last editor.';

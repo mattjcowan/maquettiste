@@ -14,3 +14,12 @@ CREATE TABLE northwind.payment_terms (
     CONSTRAINT pk_payment_terms PRIMARY KEY (id),
     CONSTRAINT uq_payment_terms_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.payment_terms IS 'Payment terms, such as Net 30 or 2/10 Net 30.';
+COMMENT ON COLUMN northwind.payment_terms.id IS 'Surrogate key of the payment term.';
+COMMENT ON COLUMN northwind.payment_terms.net_days IS 'Days until the invoice is due.';
+COMMENT ON COLUMN northwind.payment_terms.discount_days IS 'Days within which the early payment discount applies.';
+COMMENT ON COLUMN northwind.payment_terms.discount_percent IS 'Early payment discount.';
+COMMENT ON COLUMN northwind.payment_terms.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.payment_terms.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.payment_terms.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.payment_terms.is_active IS 'Whether the value can be chosen for new records.';

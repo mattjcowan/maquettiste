@@ -48,7 +48,7 @@ export function ReferencesPanel() {
   if (!target)
     return (
       <EmptyState title="No element chosen">
-        Choose Where used on an element (Shift+F12, or the explorer's menu) to list what refers to it.
+        Choose Used on an element (Shift+F12, or the explorer's menu) to list what refers to it.
         {selected ? (
           <Button size="sm" variant="ghost" className="mt-2" onClick={() => store.getState().showReferences(selected)}>
             Where is {byId.get(selected)?.name ?? "the selection"} used?

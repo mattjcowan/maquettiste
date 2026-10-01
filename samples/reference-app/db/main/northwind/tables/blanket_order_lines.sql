@@ -14,3 +14,9 @@ CREATE TABLE northwind.blanket_order_lines (
     CONSTRAINT fk_blanket_order_lines_blanket_order_id FOREIGN KEY (blanket_order_id) REFERENCES northwind.blanket_orders (id) ON DELETE CASCADE,
     CONSTRAINT fk_blanket_order_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.blanket_order_lines IS 'A product and quantity committed on a blanket order.';
+COMMENT ON COLUMN northwind.blanket_order_lines.id IS 'Surrogate key of the blanket order line.';
+COMMENT ON COLUMN northwind.blanket_order_lines.committed_quantity IS 'Quantity committed.';
+COMMENT ON COLUMN northwind.blanket_order_lines.released_quantity IS 'Quantity released so far.';
+COMMENT ON COLUMN northwind.blanket_order_lines.unit_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.blanket_order_lines.unit_price_currency IS 'The ISO 4217 currency of the amount.';

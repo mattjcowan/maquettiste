@@ -11,3 +11,4 @@ CREATE TABLE public.process_instances (
     updated_at timestamptz(6) NOT NULL,
     CONSTRAINT pk_process_instances PRIMARY KEY (id)
 );
+COMMENT ON TABLE public.process_instances IS 'A running orchestration: its active states and context.';

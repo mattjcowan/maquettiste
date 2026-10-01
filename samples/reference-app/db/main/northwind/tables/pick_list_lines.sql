@@ -19,3 +19,8 @@ CREATE TABLE northwind.pick_list_lines (
     CONSTRAINT fk_pick_list_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_pick_list_lines_bin_id FOREIGN KEY (bin_id) REFERENCES northwind.bin_locations (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.pick_list_lines IS 'One pick - a product, a bin and a quantity for an order line.';
+COMMENT ON COLUMN northwind.pick_list_lines.id IS 'Surrogate key of the pick list line.';
+COMMENT ON COLUMN northwind.pick_list_lines.quantity_to_pick IS 'Quantity to pick.';
+COMMENT ON COLUMN northwind.pick_list_lines.quantity_picked IS 'Quantity confirmed.';
+COMMENT ON COLUMN northwind.pick_list_lines.picked_at IS 'When it was confirmed.';

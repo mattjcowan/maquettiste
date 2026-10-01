@@ -17,3 +17,10 @@ CREATE TABLE northwind.journal_lines (
     CONSTRAINT fk_journal_lines_cost_center_id FOREIGN KEY (cost_center_id) REFERENCES northwind.cost_centers (id) ON DELETE SET NULL,
     CONSTRAINT fk_journal_lines_ledger_account_id FOREIGN KEY (ledger_account_id) REFERENCES northwind.ledger_accounts (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.journal_lines IS 'A debit or credit to one ledger account within a journal entry.';
+COMMENT ON COLUMN northwind.journal_lines.id IS 'Surrogate key of the journal line.';
+COMMENT ON COLUMN northwind.journal_lines.debit_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.journal_lines.debit_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.journal_lines.credit_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.journal_lines.credit_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.journal_lines.memo IS 'Line memo.';

@@ -14,3 +14,9 @@ CREATE TABLE northwind.return_inspections (
     CONSTRAINT fk_return_inspections_inspector_id FOREIGN KEY (inspector_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_return_inspections_return_line_id FOREIGN KEY (return_line_id) REFERENCES northwind.return_lines (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.return_inspections IS 'An inspection of returned goods that decides the disposition.';
+COMMENT ON COLUMN northwind.return_inspections.id IS 'Surrogate key of the return inspection.';
+COMMENT ON COLUMN northwind.return_inspections.inspected_at IS 'When it was inspected.';
+COMMENT ON COLUMN northwind.return_inspections.outcome IS 'resaleable, refurbish or scrap.';
+COMMENT ON COLUMN northwind.return_inspections.notes IS 'Findings.';
+COMMENT ON COLUMN northwind.return_inspections.photo_url IS 'Photo of the goods.';

@@ -411,6 +411,38 @@ public sealed partial class GenerationService
     public Task<PackWriteResult> DeletePackFileAsync(string pack, string path, string expectedHash, CancellationToken ct) =>
         PackAuthoring.DeleteFileAsync(_services, pack, path, expectedHash, ct);
 
+    /// <summary>
+    /// Removes a pack when <c>pack.json</c> still has <paramref name="expectedHash"/>: its <c>packs.&lt;pack&gt;</c> settings entry, its folder
+    /// under <c>.maquettiste/templates/</c>, its manifests and its unit states, under the run lock (waiting for a run in progress). The files
+    /// it generated stay on disk and are no longer tracked (engine-design.md, pack removal).
+    /// </summary>
+    /// <param name="pack">The pack name.</param>
+    /// <param name="expectedHash">The <c>pack.json</c> hash the caller read (<c>GET /api/packs/{pack}</c>).</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <param name="source">What caused the settings change.</param>
+    /// <returns>Saved with what was deleted and what is now untracked; conflict, invalid or not-found with nothing removed.</returns>
+    /// <exception cref="PackPathException">The name is not a pack key, or a path of the folder may not be deleted.</exception>
+    public async Task<PackRemoveResult> DeletePackAsync(string pack, string expectedHash, CancellationToken ct, ChangeSource source = ChangeSource.Editor)
+    {
+        ArgumentNullException.ThrowIfNull(expectedHash);
+        if (!File.Exists(Path.Combine(PackAuthoring.PackRoot(_options, pack), "pack.json")))
+            return new PackRemoveResult(SaveOutcome.NotFound, null, null, [], [], null, []);
+        var held = Epoched(await _services.RunLock.AcquireAsync(true, ct).ConfigureAwait(false))
+            ?? throw new InvalidOperationException("The run lock was not acquired.");
+        await using (held.ConfigureAwait(false))
+        {
+            try
+            {
+                return await PackAuthoring.RemoveAsync(_services, _store, pack, expectedHash, source, ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                _sessions.TryRemove(pack, out _);
+                _registrations.TryRemove(pack, out _);
+            }
+        }
+    }
+
     /// <summary>One unit of a stored plan with its reason, causes and grouped read keys; <see langword="null"/> when not found.</summary>
     public async Task<PlanUnitDetail?> GetPlanUnitAsync(string planId, string key, CancellationToken ct)
     {

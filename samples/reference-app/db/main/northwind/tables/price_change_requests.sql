@@ -22,3 +22,15 @@ CREATE TABLE northwind.price_change_requests (
     CONSTRAINT fk_price_change_requests_price_list_entry_id FOREIGN KEY (price_list_entry_id) REFERENCES northwind.price_list_entries (id) ON DELETE CASCADE,
     CONSTRAINT fk_price_change_requests_requested_by_id FOREIGN KEY (requested_by_id) REFERENCES northwind.employees (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.price_change_requests IS 'A requested change to a list price, reviewed by pricing before it takes effect.';
+COMMENT ON COLUMN northwind.price_change_requests.id IS 'Surrogate key of the price change request.';
+COMMENT ON COLUMN northwind.price_change_requests.requested_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.price_change_requests.requested_price_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.price_change_requests.effective_on IS 'Date the new price should apply.';
+COMMENT ON COLUMN northwind.price_change_requests.justification IS 'Reason, such as supplier cost increase.';
+COMMENT ON COLUMN northwind.price_change_requests.decision IS 'pending, approved or rejected.';
+COMMENT ON COLUMN northwind.price_change_requests.decided_at IS 'When the decision was made.';
+COMMENT ON COLUMN northwind.price_change_requests.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.price_change_requests.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.price_change_requests.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.price_change_requests.updated_by IS 'User name of the last editor.';

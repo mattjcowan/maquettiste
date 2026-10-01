@@ -11,3 +11,10 @@ CREATE TABLE northwind.currencies (
     is_active boolean NOT NULL DEFAULT true,
     CONSTRAINT pk_currencies PRIMARY KEY (code)
 );
+COMMENT ON TABLE northwind.currencies IS 'A currency from ISO 4217 that prices, invoices and payments may be expressed in.';
+COMMENT ON COLUMN northwind.currencies.code IS 'ISO 4217 alphabetic code; the natural key.';
+COMMENT ON COLUMN northwind.currencies.numeric_code IS 'ISO 4217 numeric code.';
+COMMENT ON COLUMN northwind.currencies.name IS 'English name, such as Euro.';
+COMMENT ON COLUMN northwind.currencies.symbol IS 'Display symbol, such as the euro sign.';
+COMMENT ON COLUMN northwind.currencies.minor_units IS 'Number of decimals in the minor unit.';
+COMMENT ON COLUMN northwind.currencies.is_active IS 'Whether new documents may use the currency.';

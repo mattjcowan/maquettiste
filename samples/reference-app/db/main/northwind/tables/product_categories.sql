@@ -18,3 +18,14 @@ CREATE TABLE northwind.product_categories (
     CONSTRAINT uq_product_categories_code UNIQUE (code),
     CONSTRAINT fk_product_categories_parent_id FOREIGN KEY (parent_id) REFERENCES northwind.product_categories (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.product_categories IS 'A node of the catalog tree (Janitorial > Gloves > Nitrile gloves).';
+COMMENT ON COLUMN northwind.product_categories.id IS 'Surrogate key of the product category.';
+COMMENT ON COLUMN northwind.product_categories.code IS 'Stable category code used in feeds.';
+COMMENT ON COLUMN northwind.product_categories.name IS 'Category name.';
+COMMENT ON COLUMN northwind.product_categories.description IS 'Category landing page copy.';
+COMMENT ON COLUMN northwind.product_categories.sort_order IS 'Position among its siblings.';
+COMMENT ON COLUMN northwind.product_categories.is_active IS 'Whether the category is shown.';
+COMMENT ON COLUMN northwind.product_categories.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.product_categories.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.product_categories.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.product_categories.updated_by IS 'User name of the last editor.';

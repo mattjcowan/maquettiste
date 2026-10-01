@@ -17,3 +17,13 @@ CREATE TABLE northwind.pick_waves (
     CONSTRAINT uq_pick_waves_wave_number UNIQUE (wave_number),
     CONSTRAINT fk_pick_waves_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.pick_waves IS 'A batch of orders released to the warehouse floor together, such as the 10:00 parcel wave.';
+COMMENT ON COLUMN northwind.pick_waves.id IS 'Surrogate key of the pick wave.';
+COMMENT ON COLUMN northwind.pick_waves.wave_number IS 'Wave number.';
+COMMENT ON COLUMN northwind.pick_waves.status IS 'planned, released or complete.';
+COMMENT ON COLUMN northwind.pick_waves.planned_start_at IS 'Planned release time.';
+COMMENT ON COLUMN northwind.pick_waves.released_at IS 'Actual release time.';
+COMMENT ON COLUMN northwind.pick_waves.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.pick_waves.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.pick_waves.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.pick_waves.updated_by IS 'User name of the last editor.';

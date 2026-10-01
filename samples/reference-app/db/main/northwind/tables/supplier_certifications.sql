@@ -17,3 +17,14 @@ CREATE TABLE northwind.supplier_certifications (
     CONSTRAINT pk_supplier_certifications PRIMARY KEY (id),
     CONSTRAINT fk_supplier_certifications_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.supplier_certifications IS 'A certification held by a supplier, such as ISO 9001 or a food safety audit.';
+COMMENT ON COLUMN northwind.supplier_certifications.id IS 'Surrogate key of the supplier certification.';
+COMMENT ON COLUMN northwind.supplier_certifications.certification_type IS 'Scheme.';
+COMMENT ON COLUMN northwind.supplier_certifications.certificate_number IS 'Certificate number.';
+COMMENT ON COLUMN northwind.supplier_certifications.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.supplier_certifications.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.supplier_certifications.document_url IS 'Scanned certificate.';
+COMMENT ON COLUMN northwind.supplier_certifications.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.supplier_certifications.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.supplier_certifications.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.supplier_certifications.updated_by IS 'User name of the last editor.';

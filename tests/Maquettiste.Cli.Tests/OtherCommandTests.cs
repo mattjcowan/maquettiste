@@ -88,6 +88,56 @@ public sealed class PackNewTests
     }
 }
 
+public sealed class PackRemoveTests
+{
+    [Fact]
+    public async Task Pack_remove_previews_then_removes_the_pack_and_leaves_its_files_untracked()
+    {
+        using var repo = CliRepo.Billing();
+        Assert.Equal(0, (await repo.RunAsync("generate")).ExitCode);
+        var generated = Directory.EnumerateFiles(repo.PathOf("db"), "*", SearchOption.AllDirectories)
+            .Select(f => Path.GetRelativePath(repo.PathOf(""), f).Replace(Path.DirectorySeparatorChar, '/')).Order(StringComparer.Ordinal).ToList();
+        Assert.NotEmpty(generated);
+
+        var preview = await repo.RunAsync("pack", "remove", "ddl");
+        Assert.True(preview.ExitCode == 0, preview.ToString());
+        Assert.Contains("delete .maquettiste/templates/ddl/pack.json", Text.Lines(preview.Out));
+        Assert.Contains("remove packs.ddl from .maquettiste/maquettiste.json", Text.Lines(preview.Out));
+        Assert.Contains("untracked " + generated[0], Text.Lines(preview.Out));
+        Assert.Contains("run with --apply", preview.Error, StringComparison.Ordinal);
+        Assert.True(File.Exists(repo.PathOf(".maquettiste/templates/ddl/pack.json")));
+
+        var applied = await repo.RunAsync("pack", "remove", "ddl", "--apply", "--format", "json");
+        Assert.True(applied.ExitCode == 0, applied.ToString());
+        using (var doc = JsonDocument.Parse(applied.Out))
+        {
+            Assert.True(doc.RootElement.GetProperty("applied").GetBoolean());
+            Assert.True(doc.RootElement.GetProperty("settingsEntry").GetBoolean());
+            Assert.Equal(generated, doc.RootElement.GetProperty("untracked").EnumerateArray().Select(e => e.GetString()!));
+        }
+
+        Assert.False(Directory.Exists(repo.PathOf(".maquettiste/templates/ddl")));
+        Assert.DoesNotContain("\"ddl\"", repo.Read(".maquettiste/maquettiste.json"), StringComparison.Ordinal);
+        Assert.False(File.Exists(repo.PathOf(".maquettiste/manifest/ddl.json")));
+        Assert.All(generated, g => Assert.True(File.Exists(repo.PathOf(g)), g));
+
+        // The next full run has no manifest of the removed pack to orphan.
+        Assert.Equal(0, (await repo.RunAsync("generate")).ExitCode);
+        Assert.All(generated, g => Assert.True(File.Exists(repo.PathOf(g)), g));
+    }
+
+    [Fact]
+    public async Task Pack_remove_refuses_an_unknown_pack_and_a_missing_name()
+    {
+        using var repo = CliRepo.Billing();
+        var ghost = await repo.RunAsync("pack", "remove", "ghost", "--apply");
+        Assert.Equal(1, ghost.ExitCode);
+        Assert.Contains("no pack named 'ghost'", ghost.Error, StringComparison.Ordinal);
+        Assert.Equal(4, (await repo.RunAsync("pack", "remove")).ExitCode);
+        Assert.Equal(4, (await repo.RunAsync("pack", "remove", "Bad_Name")).ExitCode);
+    }
+}
+
 public sealed class BenchTests
 {
     [Fact]

@@ -23,3 +23,17 @@ CREATE TABLE northwind.disputes (
     CONSTRAINT fk_disputes_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE SET NULL,
     CONSTRAINT fk_disputes_card_payment_id FOREIGN KEY (card_payment_id) REFERENCES northwind.card_payments (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.disputes IS 'A chargeback or dispute raised by a cardholder''s bank against a card payment.';
+COMMENT ON COLUMN northwind.disputes.id IS 'Surrogate key of the dispute.';
+COMMENT ON COLUMN northwind.disputes.dispute_number IS 'Dispute number from the processor.';
+COMMENT ON COLUMN northwind.disputes.opened_on IS 'Date opened.';
+COMMENT ON COLUMN northwind.disputes.reason_code IS 'Network reason code.';
+COMMENT ON COLUMN northwind.disputes.amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.disputes.amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.disputes.status IS 'open, evidence-submitted, won or lost.';
+COMMENT ON COLUMN northwind.disputes.resolved_on IS 'Date resolved.';
+COMMENT ON COLUMN northwind.disputes.resolution IS 'Outcome notes.';
+COMMENT ON COLUMN northwind.disputes.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.disputes.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.disputes.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.disputes.updated_by IS 'User name of the last editor.';

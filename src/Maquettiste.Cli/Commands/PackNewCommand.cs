@@ -21,8 +21,10 @@ internal static partial class PackNewCommand
     /// <returns>The exit code.</returns>
     public static async Task<int> RunAsync(GlobalContext context, CancellationToken ct)
     {
+        if (context.Line.Positionals.Count >= 2 && context.Line.Positionals[1] == "remove")
+            return await PackRemoveCommand.RunAsync(context, ct).ConfigureAwait(false);
         if (context.Line.Positionals.Count < 2 || context.Line.Positionals[1] != "new")
-            throw new UsageException("Usage: maquettiste pack new <name> [--from empty|sql-ddl|csharp-dapper].");
+            throw new UsageException("Usage: maquettiste pack new <name> [--from empty|sql-ddl|csharp-dapper], or maquettiste pack remove <name> [--apply] [--format text|json].");
         context.Line.Expect("pack new", 3, "--from");
         var name = context.Line.Positionals[2];
         if (!KeyPattern().IsMatch(name))

@@ -204,6 +204,11 @@ export const EDITOR_TAB_LABELS = {
   references: "References",
 } as const;
 
+/** What lists the elements that refer to one (explorer-redesign.md 3.3): the inspector tab, the explorer's menu item
+ * and the References tab's tooltip. One short word so the inspector's tabs never wrap. */
+export const USED_LABEL = "Used";
+export const USED_TOOLTIP = "Used: what refers to this element (Shift+F12)";
+
 /** One element of a kind, capitalised (inspector header, empty states, fallback names). */
 export const KIND_LABELS: Record<ElementKind, string> = {
   package: "Domain",

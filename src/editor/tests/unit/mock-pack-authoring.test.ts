@@ -34,6 +34,35 @@ describe("mock pack authoring", () => {
     expect((await call("POST", "/api/templates/paths", undefined, { pack: "sql-ddl" })).status).toBe(400);
   });
 
+  it("names each path's element: a table with its database, an entity by name", async () => {
+    const tables = await call("POST", "/api/templates/paths", "/api/templates/paths", { pack: "sql-ddl", unit: "table" });
+    const table = (tables.json.paths as Json[]).find((p) => String(p.elementId).includes("@"))!;
+    expect(table.elementKind).toBe("table");
+    expect(table.elementName as string).toMatch(/^[^@]+ \(main\)$/);
+    const entities = await call("POST", "/api/templates/paths", "/api/templates/paths", { pack: "csharp-dapper", unit: "entity" });
+    expect((entities.json.paths as Json[]).map((p) => [p.elementName, p.elementKind])).toContainEqual(["Customer", "entity"]);
+  });
+
+  it("removes a pack with the pack.json hash and leaves its generated files untracked", async () => {
+    const pack = await call("GET", "/api/packs/sql-ddl");
+    expect((await call("DELETE", "/api/packs/sql-ddl")).status).toBe(428);
+    const stale = await call("DELETE", "/api/packs/sql-ddl", "/api/packs/{pack}", undefined, { "If-Match": `"${"0".repeat(64)}"` });
+    expect(stale.status).toBe(409);
+    expect(stale.json.hash).toBe(pack.json.hash);
+    expect((await call("DELETE", "/api/packs/ghost", "/api/packs/{pack}", undefined, { "If-Match": `"${String(pack.json.hash)}"` })).status).toBe(404);
+    expect((await call("DELETE", "/api/packs/Bad%20Name", undefined, undefined, { "If-Match": `"${String(pack.json.hash)}"` })).status).toBe(400);
+
+    const removed = await call("DELETE", "/api/packs/sql-ddl", "/api/packs/{pack}", undefined, { "If-Match": `"${String(pack.json.hash)}"` });
+    expect(removed.status).toBe(200);
+    expect(removed.json.files as string[]).toContain("pack.json");
+    expect(removed.json.settingsHash).not.toBeNull();
+    expect((await call("GET", "/api/packs/sql-ddl")).status).toBe(404);
+    const list = await call("GET", "/api/packs");
+    expect((list.json.packs as Json[]).map((p) => p.name)).not.toContain("sql-ddl");
+    const settings = await call("GET", "/api/project/settings");
+    expect((settings.json.json as { packs?: Json }).packs?.["sql-ddl"]).toBeUndefined();
+  });
+
   it("serves the template context of a unit", async () => {
     const context = await call("GET", "/api/templates/context?pack=sql-ddl&unit=table", "/api/templates/context");
     expect((context.json.variables as Json[]).map((v) => v.name)).toContain("table");

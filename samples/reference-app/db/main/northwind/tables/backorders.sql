@@ -18,3 +18,13 @@ CREATE TABLE northwind.backorders (
     CONSTRAINT fk_backorders_sales_order_line_id FOREIGN KEY (sales_order_line_id) REFERENCES northwind.sales_order_lines (id) ON DELETE CASCADE,
     CONSTRAINT fk_backorders_purchase_order_line_id FOREIGN KEY (purchase_order_line_id) REFERENCES northwind.purchase_order_lines (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.backorders IS 'A quantity of an order line that could not be allocated and waits for replenishment.';
+COMMENT ON COLUMN northwind.backorders.id IS 'Surrogate key of the backorder.';
+COMMENT ON COLUMN northwind.backorders.quantity IS 'Quantity waiting.';
+COMMENT ON COLUMN northwind.backorders.expected_on IS 'Expected availability date.';
+COMMENT ON COLUMN northwind.backorders.customer_notified_at IS 'When the customer was told.';
+COMMENT ON COLUMN northwind.backorders.is_fulfilled IS 'Whether it has been allocated since.';
+COMMENT ON COLUMN northwind.backorders.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.backorders.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.backorders.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.backorders.updated_by IS 'User name of the last editor.';

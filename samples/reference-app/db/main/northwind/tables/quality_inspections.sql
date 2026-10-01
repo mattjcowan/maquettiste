@@ -22,3 +22,13 @@ CREATE TABLE northwind.quality_inspections (
     CONSTRAINT fk_quality_inspections_inspector_id FOREIGN KEY (inspector_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_quality_inspections_goods_receipt_line_id FOREIGN KEY (goods_receipt_line_id) REFERENCES northwind.goods_receipt_lines (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.quality_inspections IS 'An inspection of received or stored goods, which may put them on hold.';
+COMMENT ON COLUMN northwind.quality_inspections.id IS 'Surrogate key of the quality inspection.';
+COMMENT ON COLUMN northwind.quality_inspections.inspected_at IS 'When it was inspected.';
+COMMENT ON COLUMN northwind.quality_inspections.result IS 'passed, failed or conditional.';
+COMMENT ON COLUMN northwind.quality_inspections.sample_size IS 'Units inspected.';
+COMMENT ON COLUMN northwind.quality_inspections.notes IS 'Findings.';
+COMMENT ON COLUMN northwind.quality_inspections.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.quality_inspections.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.quality_inspections.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.quality_inspections.updated_by IS 'User name of the last editor.';

@@ -497,7 +497,8 @@
         "valueObjectCollectionStorage",
         "relationsWithAttributes",
         "inheritance",
-        "referenceStorage"
+        "referenceStorage",
+        "comments"
       ],
       "properties": {
         "tableCase": {
@@ -599,6 +600,10 @@
         "referenceStorage": {
           "description": "The storage choice for reference types: the project default under conventions, a per-database override under databases.",
           "$ref": "common.json#/$defs/storageChoice"
+        },
+        "comments": {
+          "description": "Where a table's or column's comment comes from when its file sets none: descriptions (the default) takes the table's own description, else its entity's, and the column's own description, else its attribute's; none keeps only explicit comments.",
+          "enum": ["none", "descriptions"]
         }
       },
       "additionalProperties": false

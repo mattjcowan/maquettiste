@@ -9,3 +9,4 @@ CREATE TABLE northwind.team_employee (
     CONSTRAINT fk_team_employee_teams_id FOREIGN KEY (teams_id) REFERENCES northwind.teams (id) ON DELETE CASCADE,
     CONSTRAINT fk_team_employee_members_id FOREIGN KEY (members_id) REFERENCES northwind.employees (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.team_employee IS 'Employees who belong to a team; an employee may belong to several teams.';

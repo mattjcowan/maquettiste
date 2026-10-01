@@ -185,6 +185,44 @@ public sealed class ModelWriteTests
     }
 
     [Fact]
+    public async Task The_delete_plan_names_the_dependents_and_delete_dependents_removes_them_in_one_change()
+    {
+        await using var host = EditorHost.Create();
+        var (_, hash) = await LoadAsync(host, EditorHost.InvoiceId);
+
+        var plan = await host.GetAsync("/api/model/elements/" + EditorHost.InvoiceId + "/delete-plan");
+        var clearing = await host.GetAsync("/api/model/elements/" + EditorHost.InvoiceId + "/delete-plan?resolution=remove-references");
+        var badResolution = await host.GetAsync("/api/model/elements/" + EditorHost.InvoiceId + "/delete-plan?resolution=cascade");
+        var unknown = await host.GetAsync("/api/model/elements/01J92P0V0FJ23CGSNKM7P1W5V9/delete-plan");
+        var bulk = await host.SendJsonAsync("POST", "/api/model/delete-plan", new JsonObject
+        {
+            ["ids"] = new JsonArray(EditorHost.InvoiceId, "01J92P0V0FJ23CGSNKM7P1W5V9"),
+            ["resolution"] = "delete-dependents",
+        });
+        var badBulk = await host.SendJsonAsync("POST", "/api/model/delete-plan", new JsonObject { ["ids"] = new JsonArray() });
+        var deleted = await host.SendAsync(TestRequest.Local("DELETE", "/api/model/elements/" + EditorHost.InvoiceId + "?resolution=delete-dependents").IfMatch(hash));
+
+        Assert.Equal(200, plan.Status);
+        Contract.AssertResponse(plan, "/api/model/elements/{id}/delete-plan");
+        Assert.Equal("saved", plan.Json["outcome"]!.GetValue<string>());
+        var deletes = plan.Json["deletes"]!.AsArray();
+        Assert.Contains(deletes, d => d!["kind"]!.GetValue<string>() == "relation" && d["name"]!.GetValue<string>() == "places" && d["because"]!.GetValue<string>() == "needs entity Invoice");
+        Assert.Equal(200, clearing.Status);
+        Contract.AssertResponse(clearing, "/api/model/elements/{id}/delete-plan");
+        Assert.Equal("invalid", clearing.Json["outcome"]!.GetValue<string>());
+        Assert.All(clearing.Json["refused"]!.AsArray(), r => Assert.Equal("MQ2001", r!["rule"]!.GetValue<string>()));
+        Assert.Equal(400, badResolution.Status);
+        Assert.Equal(404, unknown.Status);
+        Assert.Equal(200, bulk.Status);
+        Contract.AssertResponse(bulk, "/api/model/delete-plan");
+        Assert.Equal("not-found", bulk.Json["outcome"]!.GetValue<string>());
+        Assert.Equal(400, badBulk.Status);
+        Assert.Equal(200, deleted.Status);
+        Contract.AssertResponse(deleted, "/api/model/elements/{id}");
+        Assert.Equal(deletes.Count + 1, deleted.Json["changes"]!["deleted"]!.AsArray().Count);
+    }
+
+    [Fact]
     public async Task A_new_element_with_no_referrers_deletes_with_200()
     {
         await using var host = EditorHost.Create();

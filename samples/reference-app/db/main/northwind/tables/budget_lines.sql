@@ -14,3 +14,7 @@ CREATE TABLE northwind.budget_lines (
     CONSTRAINT fk_budget_lines_fiscal_period_id FOREIGN KEY (fiscal_period_id) REFERENCES northwind.fiscal_periods (id) ON DELETE RESTRICT,
     CONSTRAINT fk_budget_lines_ledger_account_id FOREIGN KEY (ledger_account_id) REFERENCES northwind.ledger_accounts (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.budget_lines IS 'A budgeted amount for one ledger account and period.';
+COMMENT ON COLUMN northwind.budget_lines.id IS 'Surrogate key of the budget line.';
+COMMENT ON COLUMN northwind.budget_lines.amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.budget_lines.amount_currency IS 'The ISO 4217 currency of the amount.';

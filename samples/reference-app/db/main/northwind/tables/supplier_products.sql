@@ -24,3 +24,17 @@ CREATE TABLE northwind.supplier_products (
     CONSTRAINT fk_supplier_products_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_supplier_products_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.supplier_products IS 'A product as offered in a supplier''s catalog, with the supplier''s SKU, cost and lead time.';
+COMMENT ON COLUMN northwind.supplier_products.id IS 'Surrogate key of the supplier product.';
+COMMENT ON COLUMN northwind.supplier_products.supplier_sku IS 'Supplier''s item number.';
+COMMENT ON COLUMN northwind.supplier_products.supplier_description IS 'Supplier''s item description.';
+COMMENT ON COLUMN northwind.supplier_products.unit_cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.supplier_products.unit_cost_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.supplier_products.minimum_order_quantity IS 'Minimum order quantity.';
+COMMENT ON COLUMN northwind.supplier_products.pack_size IS 'Base units per purchase unit.';
+COMMENT ON COLUMN northwind.supplier_products.lead_time_days IS 'Lead time for the item.';
+COMMENT ON COLUMN northwind.supplier_products.is_preferred IS 'Preferred source for the product.';
+COMMENT ON COLUMN northwind.supplier_products.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.supplier_products.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.supplier_products.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.supplier_products.updated_by IS 'User name of the last editor.';

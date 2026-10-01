@@ -4,6 +4,7 @@
 // "Create only if missing" so "once" never means two things on one screen (GU3).
 import type { components } from "@/api/schema";
 import { pathSummary } from "./pathSummary";
+import { tableKeyLabel } from "./previewScope";
 
 type S = components["schemas"];
 export type PackJson = Record<string, unknown>;
@@ -241,3 +242,58 @@ function normalize(value: unknown, inUnit = false): unknown {
 
 /** Whether two documents hold the same content, ignoring key order and defaults (the Units tab's unsaved state). */
 export const sameDocument = (a: PackJson | null, b: PackJson | null): boolean => JSON.stringify(normalize(a)) === JSON.stringify(normalize(b));
+
+/**
+ * A planned path as the Units tab reads it: the server is adding `elementName` and `elementKind` (the element's or the
+ * synthesized table's name and kind) to each path; until the generated schema carries them they are optional here.
+ */
+export type NamedUnitPath = S["UnitPath"] & { elementName?: string | null; elementKind?: string | null };
+
+/** One choice of the Example element picker. */
+export interface ExampleOption {
+  id: string;
+  name: string;
+  kind: string | null;
+  /** "Customer (entity)", or the name alone when the kind is not known. */
+  label: string;
+}
+
+/**
+ * The Example element choices of a unit: its planned elements, each once, in plan order, named by the path's own
+ * `elementName` and `elementKind`, else by the index, else (a synthesized table key `<entityId>@<databaseId>`)
+ * "entity name @ database name", else the id itself.
+ */
+export function exampleOptions(
+  paths: readonly NamedUnitPath[],
+  lookup: (id: string) => { name: string; kind: string } | undefined,
+  kindWord: (kind: string) => string = (k) => k,
+): ExampleOption[] {
+  const out: ExampleOption[] = [];
+  const seen = new Set<string>();
+  for (const p of paths) {
+    const id = p.elementId;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const known = lookup(id);
+    let name = p.elementName || known?.name || "";
+    let kind = p.elementKind || known?.kind || null;
+    if (!name) {
+      const table = id.indexOf("@") > 0;
+      name = (table && tableKeyLabel(id, { get: (x: string) => lookup(x)?.name })) || id;
+      if (table) kind ??= "table";
+    }
+    const word = kind ? kindWord(kind) : null;
+    out.push({ id, name, kind, label: word ? `${name} (${word})` : name });
+  }
+  return out;
+}
+
+/** The options whose label or id holds every typed word (case-insensitive). */
+export function filterExamples(options: readonly ExampleOption[], text: string): ExampleOption[] {
+  const words = text.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return [...options];
+  return options.filter((o) => {
+    const hay = `${o.label} ${o.id}`.toLowerCase();
+    return words.every((w) => hay.includes(w));
+  });
+}

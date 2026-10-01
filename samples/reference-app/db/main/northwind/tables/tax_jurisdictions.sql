@@ -20,3 +20,12 @@ CREATE TABLE northwind.tax_jurisdictions (
     CONSTRAINT fk_tax_jurisdictions_state_province_id FOREIGN KEY (state_province_id) REFERENCES northwind.state_provinces (id) ON DELETE SET NULL,
     CONSTRAINT fk_tax_jurisdictions_parent_id FOREIGN KEY (parent_id) REFERENCES northwind.tax_jurisdictions (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.tax_jurisdictions IS 'An authority that levies sales tax - a country, state, county or city.';
+COMMENT ON COLUMN northwind.tax_jurisdictions.id IS 'Surrogate key of the tax jurisdiction.';
+COMMENT ON COLUMN northwind.tax_jurisdictions.code IS 'Jurisdiction code.';
+COMMENT ON COLUMN northwind.tax_jurisdictions.name IS 'Name.';
+COMMENT ON COLUMN northwind.tax_jurisdictions.level IS 'country, state, county, city or district.';
+COMMENT ON COLUMN northwind.tax_jurisdictions.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.tax_jurisdictions.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.tax_jurisdictions.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.tax_jurisdictions.updated_by IS 'User name of the last editor.';

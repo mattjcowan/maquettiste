@@ -15,3 +15,8 @@ CREATE TABLE northwind.applied_promotions (
     CONSTRAINT fk_applied_promotions_promotion_id FOREIGN KEY (promotion_id) REFERENCES northwind.promotions (id) ON DELETE RESTRICT,
     CONSTRAINT fk_applied_promotions_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.applied_promotions IS 'A promotion applied to a sales order or one of its lines, with the discount it granted.';
+COMMENT ON COLUMN northwind.applied_promotions.id IS 'Surrogate key of the applied promotion.';
+COMMENT ON COLUMN northwind.applied_promotions.discount_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.applied_promotions.discount_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.applied_promotions.applied_at IS 'When it was applied.';

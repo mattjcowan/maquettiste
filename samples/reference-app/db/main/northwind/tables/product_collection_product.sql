@@ -9,3 +9,4 @@ CREATE TABLE northwind.product_collection_product (
     CONSTRAINT fk_product_collection_product_collections_id FOREIGN KEY (collections_id) REFERENCES northwind.product_collections (id) ON DELETE CASCADE,
     CONSTRAINT fk_product_collection_product_products_id FOREIGN KEY (products_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.product_collection_product IS 'Products in a merchandising collection; a product may appear in many collections.';

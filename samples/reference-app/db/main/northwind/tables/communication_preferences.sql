@@ -13,3 +13,10 @@ CREATE TABLE northwind.communication_preferences (
     CONSTRAINT pk_communication_preferences PRIMARY KEY (id),
     CONSTRAINT fk_communication_preferences_contact_id FOREIGN KEY (contact_id) REFERENCES northwind.contacts (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.communication_preferences IS 'A contact''s opt-in or opt-out for a channel and topic, kept for anti-spam compliance.';
+COMMENT ON COLUMN northwind.communication_preferences.id IS 'Surrogate key of the communication preference.';
+COMMENT ON COLUMN northwind.communication_preferences.channel IS 'Channel, such as email or sms.';
+COMMENT ON COLUMN northwind.communication_preferences.topic IS 'Topic, such as promotions or order-updates.';
+COMMENT ON COLUMN northwind.communication_preferences.opted_in IS 'Whether the contact agreed to receive it.';
+COMMENT ON COLUMN northwind.communication_preferences.changed_at IS 'When the preference was last set.';
+COMMENT ON COLUMN northwind.communication_preferences.source IS 'Where it was set, such as portal or phone.';

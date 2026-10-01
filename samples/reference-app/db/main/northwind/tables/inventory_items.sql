@@ -22,3 +22,14 @@ CREATE TABLE northwind.inventory_items (
     CONSTRAINT fk_inventory_items_default_bin_id FOREIGN KEY (default_bin_id) REFERENCES northwind.bin_locations (id) ON DELETE SET NULL,
     CONSTRAINT ck_inventory_items_allocation CHECK (quantity_allocated <= quantity_on_hand + quantity_on_order)
 );
+COMMENT ON TABLE northwind.inventory_items IS 'Allocation can never exceed what is on hand plus what is inbound.';
+COMMENT ON COLUMN northwind.inventory_items.id IS 'Surrogate key of the inventory item.';
+COMMENT ON COLUMN northwind.inventory_items.quantity_on_hand IS 'Physical quantity in the warehouse.';
+COMMENT ON COLUMN northwind.inventory_items.quantity_allocated IS 'Quantity reserved for open orders.';
+COMMENT ON COLUMN northwind.inventory_items.quantity_on_order IS 'Quantity on open purchase orders.';
+COMMENT ON COLUMN northwind.inventory_items.reorder_point IS 'Quantity that triggers replenishment.';
+COMMENT ON COLUMN northwind.inventory_items.last_counted_on IS 'Date of the last cycle count.';
+COMMENT ON COLUMN northwind.inventory_items.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.inventory_items.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.inventory_items.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.inventory_items.updated_by IS 'User name of the last editor.';

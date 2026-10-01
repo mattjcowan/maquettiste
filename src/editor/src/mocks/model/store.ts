@@ -9,6 +9,8 @@ import type {
   BatchResult,
   BatchParseResult,
   ChangeSet,
+  DeletePlan,
+  DeleteResolution,
   Diagnostic,
   ElementDocument,
   ElementKind,
@@ -29,6 +31,7 @@ import { sha256Hex } from "@/lib/sha256";
 import { clone, jsonEqual } from "@/lib/json";
 import { schemaValidator, describeErrors } from "../contract";
 import { referencesOf, subElementIds, type Ref } from "./refs";
+import { planDelete } from "./cascade";
 import { typedElement } from "./typed";
 import { applyRules, diagnosticKey, validateModel, type ModelEntry } from "./validate";
 import { ModelIndex } from "./modelIndex";
@@ -514,11 +517,39 @@ export class MockModel {
     return out;
   }
 
-  delete(id: string, expectedHash: string, resolution: "refuse" | "remove-references" = "refuse"): SaveResult {
+  /** What deleting `ids` with `resolution` would do (GET /api/model/elements/{id}/delete-plan, POST /api/model/delete-plan). */
+  deletePlan(ids: string[], resolution: DeleteResolution): DeletePlan {
+    return planDelete(this.entries, ids, resolution).plan;
+  }
+
+  /** The MQ2001 diagnostics of a plan's refusals, readable first (as the engine sorts them). */
+  private refusals(plan: DeletePlan): Diagnostic[] {
+    return plan.refused.map((r) => ({
+      rule: "MQ2001",
+      severity: "error" as const,
+      message: `${r.kind ?? "element"} '${r.name ?? r.id}' cannot lose ${r.why} Change or delete it first, or delete with its dependents (resolution delete-dependents).`,
+      elementId: r.id,
+      filePath: r.id ? (this.entries.get(r.id)?.path ?? null) : null,
+      jsonPointer: r.pointer,
+      line: null,
+      column: null,
+    }));
+  }
+
+  delete(id: string, expectedHash: string, resolution: DeleteResolution = "refuse"): SaveResult {
     const existing = this.entries.get(id);
     if (!existing) return this.notFound(id);
     if (normalizeHash(expectedHash) !== existing.hash)
       return { outcome: "conflict", id, hash: existing.hash, current: this.document(existing), diagnostics: [], referrers: [], changes: null };
+    if (resolution !== "refuse") {
+      const { plan, deleted, edited } = planDelete(this.entries, [id], resolution);
+      if (plan.refused.length) return this.invalid(id, this.refusals(plan));
+      const candidate = new Map(this.entries);
+      for (const gone of deleted) candidate.delete(gone);
+      for (const [refId, json] of edited) candidate.set(refId, this.entryFor(json, this.entries.get(refId)));
+      const changes = this.commit(candidate);
+      return { outcome: "saved", id, hash: null, current: null, diagnostics: [], referrers: [], changes };
+    }
     const found = this.referrers(existing, this.sortedEntries(), new Set());
     const infos = found.map(({ entry, ref }) => ({
       fromElementId: entry.id,
@@ -583,7 +614,7 @@ export class MockModel {
         },
       };
     }
-    const operations = (body as { operations: { op: string; id?: string; expectedHash?: string; element?: Json }[] }).operations;
+    const operations = (body as { operations: { op: string; id?: string; expectedHash?: string; element?: Json; resolution?: DeleteResolution }[] }).operations;
     const candidate = new Map(this.entries);
     const items: SaveResult[] = [];
     const deleting = new Set(operations.filter((o) => o.op === "delete" && o.id).map((o) => o.id!));
@@ -710,6 +741,19 @@ export class MockModel {
         }
         if (normalizeHash(op.expectedHash!) !== existing.hash) {
           fail({ outcome: "conflict", id, hash: existing.hash, current: this.document(existing), diagnostics: [], referrers: [], changes: null });
+          continue;
+        }
+        if (op.resolution && op.resolution !== "refuse") {
+          // A delete that resolves references: its cascade runs on the batch's candidate so far, all or nothing with the rest.
+          if (!candidate.has(id)) continue;
+          const { plan, deleted, edited } = planDelete(candidate, [id], op.resolution, deleting);
+          if (plan.refused.length) {
+            fail(this.invalid(id, this.refusals(plan)));
+            continue;
+          }
+          for (const gone of deleted) candidate.delete(gone);
+          for (const [refId, json] of edited) candidate.set(refId, this.entryFor(json, candidate.get(refId)));
+          items.push({ outcome: "saved", id, hash: null, current: null, diagnostics: [], referrers: [], changes: null });
           continue;
         }
         const found = this.referrers(existing, candidate.values(), deleting);
@@ -975,6 +1019,7 @@ const CONVENTION_KEYS = [
   "valueObjectCollectionStorage",
   "relationsWithAttributes",
   "inheritance",
+  "comments",
 ] as const;
 
 export function conventionsRecord(json: Json | undefined): ProjectSettings["conventions"] {

@@ -21,3 +21,13 @@ CREATE TABLE northwind.pick_lists (
     CONSTRAINT fk_pick_lists_picker_id FOREIGN KEY (picker_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_pick_lists_wave_id FOREIGN KEY (wave_id) REFERENCES northwind.pick_waves (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.pick_lists IS 'A list of picks assigned to one picker, generated when a wave is released.';
+COMMENT ON COLUMN northwind.pick_lists.id IS 'Surrogate key of the pick list.';
+COMMENT ON COLUMN northwind.pick_lists.pick_list_number IS 'Pick list number.';
+COMMENT ON COLUMN northwind.pick_lists.status IS 'open, picking, done or short.';
+COMMENT ON COLUMN northwind.pick_lists.released_at IS 'When it was released to the floor.';
+COMMENT ON COLUMN northwind.pick_lists.completed_at IS 'When the last pick was confirmed.';
+COMMENT ON COLUMN northwind.pick_lists.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.pick_lists.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.pick_lists.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.pick_lists.updated_by IS 'User name of the last editor.';

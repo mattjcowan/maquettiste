@@ -18,3 +18,9 @@ CREATE TABLE northwind.cycle_count_lines (
     CONSTRAINT fk_cycle_count_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_cycle_count_lines_bin_id FOREIGN KEY (bin_id) REFERENCES northwind.bin_locations (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.cycle_count_lines IS 'One product in one bin to count, with the expected and counted quantities.';
+COMMENT ON COLUMN northwind.cycle_count_lines.id IS 'Surrogate key of the cycle count line.';
+COMMENT ON COLUMN northwind.cycle_count_lines.expected_quantity IS 'Quantity on record.';
+COMMENT ON COLUMN northwind.cycle_count_lines.counted_quantity IS 'Quantity found.';
+COMMENT ON COLUMN northwind.cycle_count_lines.counted_at IS 'When it was counted.';
+COMMENT ON COLUMN northwind.cycle_count_lines.variance_approved IS 'Whether a variance was approved.';

@@ -18,3 +18,12 @@ CREATE TABLE northwind.cost_centers (
     CONSTRAINT fk_cost_centers_parent_id FOREIGN KEY (parent_id) REFERENCES northwind.cost_centers (id) ON DELETE SET NULL,
     CONSTRAINT fk_cost_centers_manager_id FOREIGN KEY (manager_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.cost_centers IS 'A unit that collects costs for management reporting, such as Denver warehouse or Inside sales.';
+COMMENT ON COLUMN northwind.cost_centers.id IS 'Surrogate key of the cost center.';
+COMMENT ON COLUMN northwind.cost_centers.code IS 'Cost center code.';
+COMMENT ON COLUMN northwind.cost_centers.name IS 'Cost center name.';
+COMMENT ON COLUMN northwind.cost_centers.is_active IS 'Whether it can be charged.';
+COMMENT ON COLUMN northwind.cost_centers.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.cost_centers.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.cost_centers.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.cost_centers.updated_by IS 'User name of the last editor.';

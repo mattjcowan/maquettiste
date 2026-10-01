@@ -9,3 +9,4 @@ CREATE TABLE northwind.promotion_customer_segment (
     CONSTRAINT fk_promotion_customer_segment_promotions_id FOREIGN KEY (promotions_id) REFERENCES northwind.promotions (id) ON DELETE CASCADE,
     CONSTRAINT fk_promotion_customer_segment_segments_id FOREIGN KEY (segments_id) REFERENCES northwind.customer_segments (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.promotion_customer_segment IS 'Customer segments a promotion is offered to; none means everyone.';

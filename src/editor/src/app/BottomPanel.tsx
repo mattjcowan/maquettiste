@@ -12,6 +12,7 @@ import { useEditor, type BottomTab } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { useServices } from "./context";
 import { PANEL_KEYS } from "@/state/layout";
+import { USED_TOOLTIP } from "@/model/labels";
 
 function OutputPanel() {
   const { store } = useServices();
@@ -68,7 +69,7 @@ export function BottomPanel() {
             <TabsTrigger value="diff" data-testid="tab-diff">
               Diff
             </TabsTrigger>
-            <TabsTrigger value="references" data-testid="tab-references" title="Where used (Shift+F12)">
+            <TabsTrigger value="references" data-testid="tab-references" title={USED_TOOLTIP}>
               References
             </TabsTrigger>
           </TabsList>

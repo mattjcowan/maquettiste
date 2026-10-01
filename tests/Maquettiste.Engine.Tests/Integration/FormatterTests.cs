@@ -49,7 +49,8 @@ public sealed class FormatterTests
 
             var sql = repo.Outputs().Where(f => f.Key.EndsWith(".sql", StringComparison.Ordinal)).ToList();
             Assert.Equal(12, sql.Count); // 6 e2e tables (committed) and 6 billing-demo tables (built)
-            Assert.All(sql, f => Assert.EndsWith(");\n-- formatted\n", f.Value, StringComparison.Ordinal));
+            // A table whose entity has a description ends with its COMMENT ON statement (the comments convention), the others with ");".
+            Assert.All(sql, f => Assert.EndsWith(";\n-- formatted\n", f.Value, StringComparison.Ordinal));
             Assert.All(sql, f => Assert.Contains("create table", f.Value, StringComparison.Ordinal));
             Assert.DoesNotContain("-- formatted", repo.Repo.ReadFile("db/e2e/entities/customer.txt"), StringComparison.Ordinal);
             Assert.Equal(sql.Select(f => f.Key).Order(StringComparer.Ordinal), Calls(log).Order(StringComparer.Ordinal));

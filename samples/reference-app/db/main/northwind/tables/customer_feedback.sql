@@ -19,3 +19,10 @@ CREATE TABLE northwind.customer_feedback (
     CONSTRAINT fk_customer_feedback_contact_id FOREIGN KEY (contact_id) REFERENCES northwind.contacts (id) ON DELETE SET NULL,
     CONSTRAINT fk_customer_feedback_service_case_id FOREIGN KEY (service_case_id) REFERENCES northwind.service_cases (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.customer_feedback IS 'A rating and comment from a customer after a delivery or a service case.';
+COMMENT ON COLUMN northwind.customer_feedback.id IS 'Surrogate key of the customer feedback.';
+COMMENT ON COLUMN northwind.customer_feedback.submitted_at IS 'When it was submitted.';
+COMMENT ON COLUMN northwind.customer_feedback.rating IS 'Rating from 1 to 5.';
+COMMENT ON COLUMN northwind.customer_feedback.channel IS 'survey, portal or phone.';
+COMMENT ON COLUMN northwind.customer_feedback.comments IS 'Free text.';
+COMMENT ON COLUMN northwind.customer_feedback.follow_up_required IS 'Whether someone should call back.';

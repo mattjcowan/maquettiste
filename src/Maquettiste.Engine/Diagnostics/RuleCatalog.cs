@@ -94,6 +94,7 @@ public static class RuleCatalog
         new("MQ4013", W, "A database lists convention packages that its byConvention setting does not use."),
         new("MQ4014", E, "A convention package entry or an entity mapping names a schema that its database does not declare."),
         new("MQ4015", E, "A schema operation was refused: the schema is unknown or its name is taken, it still holds tables, views, sequences, convention entries or mappings and no target was given, or it is the default and no other schema becomes the default."),
+        new("MQ4016", I, "A native type written with quotes or a schema names a type the database defines, which the dialect map cannot check; reported once per type and database with the number of columns that use it."),
 
         new("MQ5001", E, "Property fails its extension schema."),
         new("MQ5002", E, "Validation rule script error."),

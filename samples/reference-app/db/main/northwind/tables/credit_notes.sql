@@ -23,3 +23,15 @@ CREATE TABLE northwind.credit_notes (
     CONSTRAINT fk_credit_notes_return_authorization_id FOREIGN KEY (return_authorization_id) REFERENCES northwind.return_authorizations (id) ON DELETE SET NULL,
     CONSTRAINT fk_credit_notes_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.credit_notes IS 'A document reducing what a customer owes, after a return, a price correction or a goodwill gesture.';
+COMMENT ON COLUMN northwind.credit_notes.id IS 'Surrogate key of the credit note.';
+COMMENT ON COLUMN northwind.credit_notes.credit_note_number IS 'Credit note number.';
+COMMENT ON COLUMN northwind.credit_notes.issued_on IS 'Issue date.';
+COMMENT ON COLUMN northwind.credit_notes.reason IS 'Why the credit was given.';
+COMMENT ON COLUMN northwind.credit_notes.total_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.credit_notes.total_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.credit_notes.status IS 'open, applied or refunded.';
+COMMENT ON COLUMN northwind.credit_notes.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.credit_notes.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.credit_notes.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.credit_notes.updated_by IS 'User name of the last editor.';

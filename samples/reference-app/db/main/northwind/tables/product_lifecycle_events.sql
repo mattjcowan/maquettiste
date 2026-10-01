@@ -14,3 +14,9 @@ CREATE TABLE northwind.product_lifecycle_events (
     CONSTRAINT fk_product_lifecycle_events_changed_by_id FOREIGN KEY (changed_by_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL,
     CONSTRAINT fk_product_lifecycle_events_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.product_lifecycle_events IS 'A change of a product''s lifecycle status, kept as history.';
+COMMENT ON COLUMN northwind.product_lifecycle_events.id IS 'Surrogate key of the product lifecycle event.';
+COMMENT ON COLUMN northwind.product_lifecycle_events.from_status IS 'Status before the change.';
+COMMENT ON COLUMN northwind.product_lifecycle_events.to_status IS 'Status after the change.';
+COMMENT ON COLUMN northwind.product_lifecycle_events.occurred_at IS 'When the change happened.';
+COMMENT ON COLUMN northwind.product_lifecycle_events.reason IS 'Why the status changed.';

@@ -14,3 +14,12 @@ CREATE TABLE northwind.roles (
     CONSTRAINT pk_roles PRIMARY KEY (id),
     CONSTRAINT uq_roles_name UNIQUE (name)
 );
+COMMENT ON TABLE northwind.roles IS 'A named set of permissions granted to user accounts, such as Order desk or Warehouse lead.';
+COMMENT ON COLUMN northwind.roles.id IS 'Surrogate key of the role.';
+COMMENT ON COLUMN northwind.roles.name IS 'Role name.';
+COMMENT ON COLUMN northwind.roles.description IS 'What the role is for.';
+COMMENT ON COLUMN northwind.roles.is_system IS 'Built-in role that cannot be deleted.';
+COMMENT ON COLUMN northwind.roles.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.roles.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.roles.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.roles.updated_by IS 'User name of the last editor.';

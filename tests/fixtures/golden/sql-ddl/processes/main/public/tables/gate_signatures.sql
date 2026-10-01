@@ -15,3 +15,4 @@ CREATE TABLE public.gate_signatures (
     at timestamptz(6) NOT NULL,
     CONSTRAINT pk_gate_signatures PRIMARY KEY (id)
 );
+COMMENT ON TABLE public.gate_signatures IS 'The audit record of a gate: one row per signature attempt and outcome.';

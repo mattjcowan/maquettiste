@@ -21,3 +21,13 @@ CREATE TABLE northwind.cycle_counts (
     CONSTRAINT fk_cycle_counts_assigned_to_id FOREIGN KEY (assigned_to_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_cycle_counts_zone_id FOREIGN KEY (zone_id) REFERENCES northwind.warehouse_zones (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.cycle_counts IS 'A scheduled count of part of a warehouse to verify stock accuracy.';
+COMMENT ON COLUMN northwind.cycle_counts.id IS 'Surrogate key of the cycle count.';
+COMMENT ON COLUMN northwind.cycle_counts.count_number IS 'Count number.';
+COMMENT ON COLUMN northwind.cycle_counts.scheduled_on IS 'Planned date.';
+COMMENT ON COLUMN northwind.cycle_counts.status IS 'planned, counting, review or closed.';
+COMMENT ON COLUMN northwind.cycle_counts.completed_at IS 'When counting finished.';
+COMMENT ON COLUMN northwind.cycle_counts.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.cycle_counts.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.cycle_counts.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.cycle_counts.updated_by IS 'User name of the last editor.';

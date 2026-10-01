@@ -432,6 +432,14 @@
     "canBeOff": true
   },
   {
+    "id": "MQ4016",
+    "defaultSeverity": "info",
+    "description": "A native type written with quotes or a schema names a type the database defines, which the dialect map cannot check; reported once per type and database with the number of columns that use it.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
     "id": "MQ5001",
     "defaultSeverity": "error",
     "description": "Property fails its extension schema.",

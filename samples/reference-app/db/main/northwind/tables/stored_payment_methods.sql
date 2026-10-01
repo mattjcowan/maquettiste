@@ -19,3 +19,16 @@ CREATE TABLE northwind.stored_payment_methods (
     CONSTRAINT pk_stored_payment_methods PRIMARY KEY (id),
     CONSTRAINT fk_stored_payment_methods_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.stored_payment_methods IS 'A tokenized card or bank account a customer saved on the portal; the details stay with the processor.';
+COMMENT ON COLUMN northwind.stored_payment_methods.id IS 'Surrogate key of the stored payment method.';
+COMMENT ON COLUMN northwind.stored_payment_methods.method_type IS 'card or bank-account.';
+COMMENT ON COLUMN northwind.stored_payment_methods.card_brand IS 'Card network, for cards.';
+COMMENT ON COLUMN northwind.stored_payment_methods.last4 IS 'Last four digits.';
+COMMENT ON COLUMN northwind.stored_payment_methods.expires_on IS 'Expiry, for cards.';
+COMMENT ON COLUMN northwind.stored_payment_methods.processor_token IS 'Token issued by the processor.';
+COMMENT ON COLUMN northwind.stored_payment_methods.is_default IS 'Used for automatic payments.';
+COMMENT ON COLUMN northwind.stored_payment_methods.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.stored_payment_methods.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.stored_payment_methods.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.stored_payment_methods.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.stored_payment_methods.deleted_at IS 'When the row was marked deleted; null while it is live.';

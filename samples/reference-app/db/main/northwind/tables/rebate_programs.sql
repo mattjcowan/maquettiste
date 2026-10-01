@@ -19,3 +19,16 @@ CREATE TABLE northwind.rebate_programs (
     CONSTRAINT pk_rebate_programs PRIMARY KEY (id),
     CONSTRAINT fk_rebate_programs_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.rebate_programs IS 'A volume rebate agreement that pays a customer back a percentage of purchases over a period.';
+COMMENT ON COLUMN northwind.rebate_programs.id IS 'Surrogate key of the rebate program.';
+COMMENT ON COLUMN northwind.rebate_programs.name IS 'Program name.';
+COMMENT ON COLUMN northwind.rebate_programs.description IS 'Program terms.';
+COMMENT ON COLUMN northwind.rebate_programs.period_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.rebate_programs.period_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.rebate_programs.rebate_rate IS 'Rebate percentage of eligible sales.';
+COMMENT ON COLUMN northwind.rebate_programs.threshold_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.rebate_programs.threshold_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.rebate_programs.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.rebate_programs.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.rebate_programs.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.rebate_programs.updated_by IS 'User name of the last editor.';

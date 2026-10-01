@@ -24,3 +24,16 @@ CREATE TABLE northwind.opportunities (
     CONSTRAINT fk_opportunities_owner_id FOREIGN KEY (owner_id) REFERENCES northwind.employees (id) ON DELETE RESTRICT
 );
 CREATE INDEX ix_opportunities_expected_close_on ON northwind.opportunities (expected_close_on);
+COMMENT ON TABLE northwind.opportunities IS 'A potential deal with a customer, tracked through pipeline stages to won or lost.';
+COMMENT ON COLUMN northwind.opportunities.id IS 'Surrogate key of the opportunity.';
+COMMENT ON COLUMN northwind.opportunities.name IS 'Short description of the deal.';
+COMMENT ON COLUMN northwind.opportunities.amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.opportunities.amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.opportunities.probability IS 'Win probability; defaults from the stage.';
+COMMENT ON COLUMN northwind.opportunities.expected_close_on IS 'Expected decision date.';
+COMMENT ON COLUMN northwind.opportunities.closed_on IS 'Date the deal was won or lost.';
+COMMENT ON COLUMN northwind.opportunities.loss_reason IS 'Why the deal was lost.';
+COMMENT ON COLUMN northwind.opportunities.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.opportunities.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.opportunities.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.opportunities.updated_by IS 'User name of the last editor.';

@@ -18,3 +18,16 @@ CREATE TABLE northwind.api_clients (
     CONSTRAINT pk_api_clients PRIMARY KEY (id),
     CONSTRAINT uq_api_clients_name UNIQUE (name)
 );
+COMMENT ON TABLE northwind.api_clients IS 'A machine client (EDI gateway, marketplace connector, carrier webhook) that calls Northwind APIs.';
+COMMENT ON COLUMN northwind.api_clients.id IS 'Surrogate key of the api client.';
+COMMENT ON COLUMN northwind.api_clients.name IS 'Client name.';
+COMMENT ON COLUMN northwind.api_clients.description IS 'What the integration does.';
+COMMENT ON COLUMN northwind.api_clients.owner_email IS 'Contact for the integration.';
+COMMENT ON COLUMN northwind.api_clients.allowed_scopes IS 'Space-separated OAuth scopes.';
+COMMENT ON COLUMN northwind.api_clients.rate_limit_per_minute IS 'Request budget per minute.';
+COMMENT ON COLUMN northwind.api_clients.is_enabled IS 'Whether the client can obtain tokens.';
+COMMENT ON COLUMN northwind.api_clients.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.api_clients.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.api_clients.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.api_clients.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.api_clients.deleted_at IS 'When the row was marked deleted; null while it is live.';

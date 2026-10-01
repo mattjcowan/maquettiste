@@ -18,3 +18,9 @@ CREATE TABLE northwind.reorder_suggestions (
     CONSTRAINT fk_reorder_suggestions_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT,
     CONSTRAINT fk_reorder_suggestions_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.reorder_suggestions IS 'A replenishment proposal computed nightly for a buyer to accept or dismiss.';
+COMMENT ON COLUMN northwind.reorder_suggestions.id IS 'Surrogate key of the reorder suggestion.';
+COMMENT ON COLUMN northwind.reorder_suggestions.suggested_quantity IS 'Quantity to order.';
+COMMENT ON COLUMN northwind.reorder_suggestions.suggested_on IS 'Date computed.';
+COMMENT ON COLUMN northwind.reorder_suggestions.is_accepted IS 'Whether the buyer accepted it; null while undecided.';
+COMMENT ON COLUMN northwind.reorder_suggestions.dismissed_reason IS 'Why it was dismissed.';

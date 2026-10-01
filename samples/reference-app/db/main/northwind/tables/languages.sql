@@ -9,3 +9,8 @@ CREATE TABLE northwind.languages (
     is_right_to_left boolean NOT NULL DEFAULT false,
     CONSTRAINT pk_languages PRIMARY KEY (code)
 );
+COMMENT ON TABLE northwind.languages IS 'A language (ISO 639-1) used for product translations, documents and customer communication.';
+COMMENT ON COLUMN northwind.languages.code IS 'BCP 47 language tag, such as en or fr-CA; the natural key.';
+COMMENT ON COLUMN northwind.languages.name IS 'English name.';
+COMMENT ON COLUMN northwind.languages.native_name IS 'Name in the language itself.';
+COMMENT ON COLUMN northwind.languages.is_right_to_left IS 'Whether text is written right to left.';

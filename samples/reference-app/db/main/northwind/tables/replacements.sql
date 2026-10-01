@@ -20,3 +20,13 @@ CREATE TABLE northwind.replacements (
     CONSTRAINT fk_replacements_return_line_id FOREIGN KEY (return_line_id) REFERENCES northwind.return_lines (id) ON DELETE RESTRICT,
     CONSTRAINT fk_replacements_shipment_id FOREIGN KEY (shipment_id) REFERENCES northwind.shipments (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.replacements IS 'A replacement sent for a returned or failed product before or instead of a credit.';
+COMMENT ON COLUMN northwind.replacements.id IS 'Surrogate key of the replacement.';
+COMMENT ON COLUMN northwind.replacements.quantity IS 'Quantity sent.';
+COMMENT ON COLUMN northwind.replacements.shipped_on IS 'Ship date.';
+COMMENT ON COLUMN northwind.replacements.is_charged IS 'Whether the customer pays for it.';
+COMMENT ON COLUMN northwind.replacements.notes IS 'Remarks.';
+COMMENT ON COLUMN northwind.replacements.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.replacements.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.replacements.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.replacements.updated_by IS 'User name of the last editor.';

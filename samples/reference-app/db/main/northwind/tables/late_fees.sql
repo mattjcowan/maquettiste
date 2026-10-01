@@ -14,3 +14,11 @@ CREATE TABLE northwind.late_fees (
     CONSTRAINT pk_late_fees PRIMARY KEY (id),
     CONSTRAINT fk_late_fees_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.late_fees IS 'A finance charge assessed on an overdue invoice.';
+COMMENT ON COLUMN northwind.late_fees.id IS 'Surrogate key of the late fee.';
+COMMENT ON COLUMN northwind.late_fees.assessed_on IS 'Date assessed.';
+COMMENT ON COLUMN northwind.late_fees.amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.late_fees.amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.late_fees.rate IS 'Monthly rate applied.';
+COMMENT ON COLUMN northwind.late_fees.is_waived IS 'Whether it was waived.';
+COMMENT ON COLUMN northwind.late_fees.waived_reason IS 'Why it was waived.';

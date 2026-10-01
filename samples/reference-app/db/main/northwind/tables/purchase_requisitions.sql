@@ -22,3 +22,14 @@ CREATE TABLE northwind.purchase_requisitions (
     CONSTRAINT fk_purchase_requisitions_requested_by_id FOREIGN KEY (requested_by_id) REFERENCES northwind.employees (id) ON DELETE RESTRICT,
     CONSTRAINT fk_purchase_requisitions_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.purchase_requisitions IS 'An internal request to buy goods, turned into purchase orders by a buyer.';
+COMMENT ON COLUMN northwind.purchase_requisitions.id IS 'Surrogate key of the purchase requisition.';
+COMMENT ON COLUMN northwind.purchase_requisitions.requisition_number IS 'Requisition number.';
+COMMENT ON COLUMN northwind.purchase_requisitions.requested_on IS 'Request date.';
+COMMENT ON COLUMN northwind.purchase_requisitions.needed_by IS 'Date the goods are needed.';
+COMMENT ON COLUMN northwind.purchase_requisitions.status IS 'open, approved, ordered or rejected.';
+COMMENT ON COLUMN northwind.purchase_requisitions.justification IS 'Business reason.';
+COMMENT ON COLUMN northwind.purchase_requisitions.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.purchase_requisitions.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.purchase_requisitions.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.purchase_requisitions.updated_by IS 'User name of the last editor.';

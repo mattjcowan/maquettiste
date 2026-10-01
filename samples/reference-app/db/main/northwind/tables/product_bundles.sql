@@ -17,3 +17,15 @@ CREATE TABLE northwind.product_bundles (
     CONSTRAINT pk_product_bundles PRIMARY KEY (id),
     CONSTRAINT uq_product_bundles_sku UNIQUE (sku)
 );
+COMMENT ON TABLE northwind.product_bundles IS 'A kit sold under one SKU and assembled from component products at picking time, such as a janitorial starter kit.';
+COMMENT ON COLUMN northwind.product_bundles.id IS 'Surrogate key of the product bundle.';
+COMMENT ON COLUMN northwind.product_bundles.sku IS 'SKU of the bundle.';
+COMMENT ON COLUMN northwind.product_bundles.name IS 'Bundle name.';
+COMMENT ON COLUMN northwind.product_bundles.price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.product_bundles.price_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.product_bundles.is_active IS 'Whether the bundle can be ordered.';
+COMMENT ON COLUMN northwind.product_bundles.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.product_bundles.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.product_bundles.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.product_bundles.updated_by IS 'User name of the last editor.';
+COMMENT ON COLUMN northwind.product_bundles.deleted_at IS 'When the row was marked deleted; null while it is live.';

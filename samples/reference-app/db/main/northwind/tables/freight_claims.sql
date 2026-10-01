@@ -24,3 +24,18 @@ CREATE TABLE northwind.freight_claims (
     CONSTRAINT fk_freight_claims_carrier_id FOREIGN KEY (carrier_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
     CONSTRAINT fk_freight_claims_shipment_id FOREIGN KEY (shipment_id) REFERENCES northwind.shipments (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.freight_claims IS 'A claim against a carrier for lost, damaged or delayed freight.';
+COMMENT ON COLUMN northwind.freight_claims.id IS 'Surrogate key of the freight claim.';
+COMMENT ON COLUMN northwind.freight_claims.claim_number IS 'Claim number.';
+COMMENT ON COLUMN northwind.freight_claims.filed_on IS 'Filing date.';
+COMMENT ON COLUMN northwind.freight_claims.claim_type IS 'loss, damage or delay.';
+COMMENT ON COLUMN northwind.freight_claims.claimed_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.freight_claims.claimed_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.freight_claims.settled_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.freight_claims.settled_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.freight_claims.status IS 'filed, under-review, settled or denied.';
+COMMENT ON COLUMN northwind.freight_claims.notes IS 'Claim narrative.';
+COMMENT ON COLUMN northwind.freight_claims.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.freight_claims.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.freight_claims.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.freight_claims.updated_by IS 'User name of the last editor.';

@@ -16,3 +16,11 @@ CREATE TABLE northwind.rebate_accruals (
     CONSTRAINT fk_rebate_accruals_rebate_program_id FOREIGN KEY (rebate_program_id) REFERENCES northwind.rebate_programs (id) ON DELETE CASCADE,
     CONSTRAINT fk_rebate_accruals_invoice_id FOREIGN KEY (invoice_id) REFERENCES northwind.invoices (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.rebate_accruals IS 'A rebate accrued on an invoice under a rebate program.';
+COMMENT ON COLUMN northwind.rebate_accruals.id IS 'Surrogate key of the rebate accrual.';
+COMMENT ON COLUMN northwind.rebate_accruals.accrued_on IS 'Date of accrual.';
+COMMENT ON COLUMN northwind.rebate_accruals.base_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.rebate_accruals.base_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.rebate_accruals.rebate_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.rebate_accruals.rebate_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.rebate_accruals.is_settled IS 'Whether it was paid out or credited.';

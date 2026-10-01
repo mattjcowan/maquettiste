@@ -623,10 +623,11 @@ public sealed class TableBuilder : ElementBuilder<TableBuilder>
     /// <param name="type">The built-in keyword.</param>
     /// <param name="nullable">Nullability.</param>
     /// <param name="length">The length facet.</param>
+    /// <param name="nativeType">A native type that replaces the dialect map's.</param>
     /// <returns>This builder.</returns>
-    public TableBuilder Column(string name, string type, bool? nullable = null, int? length = null)
+    public TableBuilder Column(string name, string type, bool? nullable = null, int? length = null, string? nativeType = null)
     {
-        _columns.Add(new Column { Id = Model.NewId(), Name = name, Type = type, Nullable = nullable, Length = length });
+        _columns.Add(new Column { Id = Model.NewId(), Name = name, Type = type, Nullable = nullable, Length = length, NativeType = nativeType });
         return this;
     }
 

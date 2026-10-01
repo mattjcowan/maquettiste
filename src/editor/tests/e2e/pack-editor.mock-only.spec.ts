@@ -74,6 +74,8 @@ test("create a pack from the explorer and from the palette", async ({ page }) =>
   await expect(page.getByTestId("new-pack-create")).toBeDisabled();
   await dialog.getByLabel("Name").fill("api-docs");
   await expect(page.getByTestId("new-pack-writes")).toHaveText("Creates .maquettiste/templates/api-docs/ with 2 files.");
+  await expect(dialog.getByLabel("Start from").locator("option:checked")).toHaveText("Empty pack");
+  await expect(page.getByTestId("new-pack-from-text")).toHaveText("One each-entity unit and its template, ready to edit.");
   await page.getByTestId("new-pack-create").click();
   await expect(page.getByTestId("pack-tab-api-docs")).toHaveAttribute("aria-selected", "true");
   await expect(page.getByTestId("pack-editor-title")).toContainText("api-docs");
@@ -86,6 +88,8 @@ test("create a pack from the explorer and from the palette", async ({ page }) =>
   await expect(dialog).toBeVisible();
   await dialog.getByLabel("Name").fill("ddl-copy");
   await dialog.getByLabel("Start from").selectOption("sql-ddl");
+  await expect(dialog.getByLabel("Start from").locator("option:checked")).toHaveText("Copy of sql-ddl");
+  await expect(page.getByTestId("new-pack-from-text")).toHaveText(/^All \d+ files of sql-ddl, renamed to ddl-copy\.$/);
   await page.getByTestId("new-pack-create").click();
   await expect(page.getByTestId("pack-tab-ddl-copy")).toHaveAttribute("aria-selected", "true");
   await expect(page.getByTestId("unit-row-table")).toBeVisible();

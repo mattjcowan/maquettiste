@@ -25,3 +25,13 @@ CREATE TABLE northwind.goods_receipts (
     CONSTRAINT fk_goods_receipts_received_by_id FOREIGN KEY (received_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_goods_receipts_dock_door_id FOREIGN KEY (dock_door_id) REFERENCES northwind.dock_doors (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.goods_receipts IS 'The receipt of goods at a warehouse dock, against a purchase order or an advance ship notice.';
+COMMENT ON COLUMN northwind.goods_receipts.id IS 'Surrogate key of the goods receipt.';
+COMMENT ON COLUMN northwind.goods_receipts.receipt_number IS 'Receipt number.';
+COMMENT ON COLUMN northwind.goods_receipts.received_at IS 'When the goods were received.';
+COMMENT ON COLUMN northwind.goods_receipts.delivery_note IS 'Supplier''s delivery note number.';
+COMMENT ON COLUMN northwind.goods_receipts.notes IS 'Damage or discrepancies noted.';
+COMMENT ON COLUMN northwind.goods_receipts.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.goods_receipts.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.goods_receipts.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.goods_receipts.updated_by IS 'User name of the last editor.';

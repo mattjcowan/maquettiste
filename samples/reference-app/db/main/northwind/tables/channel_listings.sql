@@ -19,3 +19,14 @@ CREATE TABLE northwind.channel_listings (
     CONSTRAINT fk_channel_listings_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE,
     CONSTRAINT fk_channel_listings_sales_channel_id FOREIGN KEY (sales_channel_id) REFERENCES northwind.sales_channels (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.channel_listings IS 'A product offered on a sales channel, with the channel''s identifier and price.';
+COMMENT ON COLUMN northwind.channel_listings.id IS 'Surrogate key of the channel listing.';
+COMMENT ON COLUMN northwind.channel_listings.external_id IS 'Channel''s identifier for the listing.';
+COMMENT ON COLUMN northwind.channel_listings.listed_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.channel_listings.listed_price_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.channel_listings.is_published IS 'Whether the listing is live.';
+COMMENT ON COLUMN northwind.channel_listings.published_at IS 'When it went live.';
+COMMENT ON COLUMN northwind.channel_listings.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.channel_listings.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.channel_listings.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.channel_listings.updated_by IS 'User name of the last editor.';

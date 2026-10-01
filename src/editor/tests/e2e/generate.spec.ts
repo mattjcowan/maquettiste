@@ -45,8 +45,9 @@ test("plan, read a diff, apply, output and history", async ({ page }) => {
   // A second plan after the apply has nothing left to write.
   await page.getByTestId("plan").click();
   await expect(page.getByTestId("plan-summary")).toContainText("nothing to write");
-  await expect(page.getByTestId("plan-summary")).toContainText("unchanged");
+  await expect(page.getByTestId("plan-summary")).toContainText(/files? already match/);
   await expect(page.getByTestId("plan-summary")).not.toContainText("to add");
   await expect(page.getByTestId("plan-summary")).not.toContainText("to modify");
   await expect(page.getByTestId("apply")).toBeDisabled();
+  await expect(page.getByTestId("plan-nothing-to-write")).toContainText("Apply has nothing to do");
 });

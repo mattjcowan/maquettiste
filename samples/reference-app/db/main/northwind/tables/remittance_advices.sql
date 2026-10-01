@@ -16,3 +16,11 @@ CREATE TABLE northwind.remittance_advices (
     CONSTRAINT fk_remittance_advices_payment_id FOREIGN KEY (payment_id) REFERENCES northwind.payments (id) ON DELETE SET NULL,
     CONSTRAINT fk_remittance_advices_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.remittance_advices IS 'A customer''s remittance advice explaining which invoices a payment covers, from EDI 820 or email.';
+COMMENT ON COLUMN northwind.remittance_advices.id IS 'Surrogate key of the remittance advice.';
+COMMENT ON COLUMN northwind.remittance_advices.received_on IS 'Date received.';
+COMMENT ON COLUMN northwind.remittance_advices.payer_reference IS 'Payer''s reference.';
+COMMENT ON COLUMN northwind.remittance_advices.total_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.remittance_advices.total_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.remittance_advices.raw_document IS 'Original document, as JSON.';
+COMMENT ON COLUMN northwind.remittance_advices.is_matched IS 'Whether it was matched to a payment.';

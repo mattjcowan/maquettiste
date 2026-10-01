@@ -65,7 +65,7 @@ The Generate explorer replaces today's pack list with a tree, built with the exp
 - **Templates**: the pack folder as a file tree; each file carries its derived role (unit template, companion, partial, script, type map, other; derived as P2 says) and the units that use it. Enter opens it in the Templates tab.
 - **Parameters**: one row per parameter, `name = value` with "default" or "set" beside it. Enter opens the Parameters tab on it.
 - **Outputs**: the pack's manifest entries (committed and built manifests, §12.2) grouped by unit, then by file; a unit group shows its file count and the counts of states other than clean. File states: **clean**, **hand-edited** (disk bytes differ from the manifest hash, skeleton for regions), **missing**, **owned** (`o:` entries, never checked), **orphan** (its unit id is no longer in `pack.json`, or its element id is no longer in the index; a plan's Deleted changes remain the complete answer). Enter on a file opens its diff (§3.5); the context menu has Reveal in explorer (the element), Open template, Explain.
-- **New pack…** in the explorer header menu and the palette: a dialog with name (`^[a-z][a-z0-9-]*$`, unique) and **Start from**: Empty (one `each entity` unit, its template and a script file, as `pack new --from empty`) or a starter (`sql-ddl`, `csharp-dapper`, copied under the new name). It calls `POST /api/packs` (§5.1), then opens the new pack's editor on Units. The dialog says what gets written: "Creates .maquettiste/templates/<name>/ with 3 files".
+- **New pack…** in the explorer header menu and the palette: a dialog with name (`^[a-z][a-z0-9-]*$`, unique) and **Start from**: **Empty pack** (one `each entity` unit, its template and a script file, as `pack new --from empty`) or **Copy of** a starter (`sql-ddl`, `csharp-dapper`, copied under the new name), with a line under the choice saying what it gives ("One each-entity unit and its template, ready to edit." or "All 9 files of sql-ddl, renamed to <name>."). It calls `POST /api/packs` (§5.1), then opens the new pack's editor on Units. The dialog says what gets written: "Creates .maquettiste/templates/<name>/ with 3 files".
 
 ### 2.2 The path summary
 
@@ -292,3 +292,20 @@ Total: about 22.5 working days. Steps 0, 1 and 8 are independent; 2 and 3 need 1
 - Templates tab preview (after the live test): the element picker lists only the unit's scope kind (`previewScope.ts`); with no
   element of that kind it says "The model has no <kind> to preview this template with.", and a render outside the unit's scope
   reads "This template renders one <kind>; pick a <kind> to preview it." instead of the template engine's error.
+
+## Status note (2026-10-01, the owner's day of use)
+
+- **Plan summary.** Files that already match the disk are counted: a pack that writes something ends with "N files
+  unchanged"; one that writes nothing says "nothing to write: all 737 files already match the disk" (and "N files kept"
+  when the hand-edit policy keeps some). Under the summary a note says "Every file this plan renders is identical to the
+  file on disk; Apply has nothing to do.", Apply says why it is disabled, and the change table's **Show** filter always
+  offers `unchanged` (`packSummaryLine`, `nothingToWriteNote` in `planModel.ts`).
+- **Pack editor panes.** The Templates tab's pack files and preview and the Units tab's help hide from a header button,
+  the palette (Toggle pack files, Toggle template preview, Toggle unit help) or Alt+Shift+F, V and U on the Generate
+  screen, leave a slim edge, resize by their edge, and are kept in the layout (`state/layout.ts`; Reset layout restores
+  them). The template text keeps at least 240 px; the preview gives way first.
+- **Example element names.** The Units tab's picker and the Templates preview's element picker name each planned element:
+  the path's `elementName` and `elementKind` (read through `NamedUnitPath` until the schema carries them), else the index,
+  else "entity @ database" for a synthesized table key, else the id (the option's tooltip). The Units picker reads up to
+  the server's 2000 paths and turns into a searchable list past 20 elements (`exampleOptions`, `filterExamples`).
+- **New pack.** The choices read **Empty pack** and **Copy of <pack>**, with the line under them described in §2.1.

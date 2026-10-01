@@ -12,3 +12,8 @@ CREATE TABLE northwind.shipping_labels (
     CONSTRAINT uq_shipping_labels_shipment_package_id UNIQUE (shipment_package_id),
     CONSTRAINT fk_shipping_labels_shipment_package_id FOREIGN KEY (shipment_package_id) REFERENCES northwind.shipment_packages (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.shipping_labels IS 'A carrier label generated for a package.';
+COMMENT ON COLUMN northwind.shipping_labels.id IS 'Surrogate key of the shipping label.';
+COMMENT ON COLUMN northwind.shipping_labels.format IS 'ZPL or PDF.';
+COMMENT ON COLUMN northwind.shipping_labels.storage_key IS 'Object storage key of the label file.';
+COMMENT ON COLUMN northwind.shipping_labels.generated_at IS 'When the label was generated.';

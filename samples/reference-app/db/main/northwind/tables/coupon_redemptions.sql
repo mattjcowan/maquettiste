@@ -13,3 +13,8 @@ CREATE TABLE northwind.coupon_redemptions (
     CONSTRAINT fk_coupon_redemptions_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE,
     CONSTRAINT fk_coupon_redemptions_coupon_id FOREIGN KEY (coupon_id) REFERENCES northwind.coupons (id) ON DELETE RESTRICT
 );
+COMMENT ON TABLE northwind.coupon_redemptions IS 'One use of a coupon on a sales order.';
+COMMENT ON COLUMN northwind.coupon_redemptions.id IS 'Surrogate key of the coupon redemption.';
+COMMENT ON COLUMN northwind.coupon_redemptions.redeemed_at IS 'When the coupon was applied.';
+COMMENT ON COLUMN northwind.coupon_redemptions.discount_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.coupon_redemptions.discount_amount_currency IS 'The ISO 4217 currency of the amount.';

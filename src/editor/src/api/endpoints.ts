@@ -23,6 +23,8 @@ import type {
   ProjectInfo,
   ReferenceInfo,
   SaveResult,
+  DeletePlan,
+  DeleteResolution,
   SessionInfo,
   LocalizationStatus,
   SettingsDocument,
@@ -145,11 +147,23 @@ export async function saveElement(id: string, json: ModelJson, hash: string): Pr
   return record<SaveResult>(data, error, response);
 }
 
-export async function deleteElement(id: string, hash: string, resolution: "refuse" | "remove-references" = "refuse"): Promise<SaveResult> {
+export async function deleteElement(id: string, hash: string, resolution: DeleteResolution = "refuse"): Promise<SaveResult> {
   const { data, error, response } = await api().DELETE("/api/model/elements/{id}", {
     params: { path: { id }, header: { "If-Match": `"${hash}"` }, query: { resolution } },
   });
   return record<SaveResult>(data, error, response);
+}
+
+/** What deleting `id` with `resolution` would do; nothing is written. */
+export async function getDeletePlan(id: string, resolution: DeleteResolution = "delete-dependents"): Promise<DeletePlan> {
+  const { data, response } = await api().GET("/api/model/elements/{id}/delete-plan", { params: { path: { id }, query: { resolution } } });
+  return must(data, response);
+}
+
+/** The combined plan of deleting `ids` in one batch (the explorer's bulk delete). */
+export async function getBulkDeletePlan(ids: string[], resolution: DeleteResolution = "delete-dependents"): Promise<DeletePlan> {
+  const { data, response } = await api().POST("/api/model/delete-plan", { body: { ids, resolution } });
+  return must(data, response);
 }
 
 export async function applyBatch(batch: BatchRequest): Promise<BatchResult | BatchParseResult> {
@@ -300,6 +314,19 @@ export async function savePack(pack: string, document: Record<string, unknown>, 
     body: document as never,
   });
   return record<PackWriteResult>(data, error, response);
+}
+
+export type PackRemoveResult = Schemas["PackRemoveResult"];
+
+/**
+ * Removes a pack with the pack.json hash read: its folder, its `packs.<pack>` settings entry and its manifests. The files
+ * it generated stay on disk, untracked (`untracked` lists them); 409 `conflict` when pack.json changed.
+ */
+export async function deletePack(pack: string, hash: string): Promise<PackRemoveResult> {
+  const { data, error, response } = await api().DELETE("/api/packs/{pack}", {
+    params: { path: { pack }, header: { "If-Match": `"${hash}"` } },
+  });
+  return record<PackRemoveResult>(data as PackRemoveResult | undefined, error, response);
 }
 
 export type PackFileContent = Schemas["PackFileContent"];

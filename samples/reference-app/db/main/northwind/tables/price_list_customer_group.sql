@@ -9,3 +9,4 @@ CREATE TABLE northwind.price_list_customer_group (
     CONSTRAINT fk_price_list_customer_group_price_lists_id FOREIGN KEY (price_lists_id) REFERENCES northwind.price_lists (id) ON DELETE CASCADE,
     CONSTRAINT fk_price_list_customer_group_customer_groups_id FOREIGN KEY (customer_groups_id) REFERENCES northwind.customer_groups (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.price_list_customer_group IS 'Customer groups that buy from a price list.';

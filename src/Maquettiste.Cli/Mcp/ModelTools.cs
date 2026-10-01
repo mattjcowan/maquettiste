@@ -153,18 +153,20 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
         return FromOutcome(result.Outcome, result, null);
     }, ct);
 
-    /// <summary>Deletes an element (deleteElement).</summary>
+    /// <summary>Deletes an element (deleteElement), or with <paramref name="dryRun"/> says what the delete would do (getDeletePlan).</summary>
     /// <param name="id">The element id.</param>
     /// <param name="expectedHash">The hash the caller read.</param>
     /// <param name="resolution">What to do with references.</param>
+    /// <param name="dryRun">Return the delete plan and write nothing.</param>
     /// <param name="ct">Cancellation.</param>
-    /// <returns>The delete result.</returns>
+    /// <returns>The delete result, or the plan.</returns>
     [McpServerTool(Name = "delete_element", Title = "Delete element", Destructive = true, OpenWorld = false)]
-    [Description("Deletes an element if its file still has expectedHash. While other elements reference it, the delete is refused (code referenced, with the referrers) unless resolution is remove-references, which clears optional references (a required one makes the delete invalid).")]
+    [Description("Deletes an element if its file still has expectedHash. While other elements reference it, the delete is refused (code referenced, with the referrers) unless resolution says otherwise: remove-references clears optional references (a required one makes the delete invalid, with an MQ2001 diagnostic naming it); delete-dependents also resolves required references in the same change, removing the part of the referrer that needs the element (an attribute whose type is deleted, a diagram member, a key) or deleting the referrer with its own dependents (the tables, views, sequences and mappings of a database; the relations, mappings and overlays of an entity), and removes a deleted database's databases.<name> conventions. With dryRun true nothing is written and no expectedHash is needed: the result is the plan, {ids, resolution, outcome, deletes:[{id,kind,name,path,because}], clears:[{id,kind,name,pointer,field,target,because}], removes:[{id,kind,name,pointer,what,subId,subKind,because}], refused:[{id,kind,name,pointer,why,rule}], settings:[{pointer,what}], warnings:[{message,pack,unit}]}; read it before deleting with delete-dependents.")]
     public Task<CallToolResult> DeleteElement(
         [Description("The element id; required.")] string? id = null,
-        [Description("The hash returned by get_element; required.")] string? expectedHash = null,
-        [Description("refuse (default) or remove-references.")] string? resolution = null,
+        [Description("The hash returned by get_element; required unless dryRun.")] string? expectedHash = null,
+        [Description("refuse (default), remove-references or delete-dependents.")] string? resolution = null,
+        [Description("true: return what the delete would do (with resolution, default delete-dependents) and write nothing.")] bool? dryRun = null,
         CancellationToken ct = default) => GuardAsync(async () =>
     {
         if (string.IsNullOrEmpty(id))
@@ -172,19 +174,32 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
         DeleteResolution mode;
         switch (resolution)
         {
-            case null or "" or "refuse":
+            case null or "":
+                mode = dryRun == true ? DeleteResolution.DeleteDependents : DeleteResolution.Refuse;
+                break;
+            case "refuse":
                 mode = DeleteResolution.Refuse;
                 break;
             case "remove-references":
                 mode = DeleteResolution.RemoveReferences;
                 break;
+            case "delete-dependents":
+                mode = DeleteResolution.DeleteDependents;
+                break;
             default:
-                return BadRequest($"resolution must be 'refuse' or 'remove-references', not '{resolution}'.");
+                return BadRequest($"resolution must be 'refuse', 'remove-references' or 'delete-dependents', not '{resolution}'.");
+        }
+
+        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        if (dryRun == true)
+        {
+            if (await _store.GetElementAsync(id, ct).ConfigureAwait(false) is not { } document || document.Element.Id != id)
+                return NotFound("element", id);
+            return Ok(await _store.GetDeletePlanAsync([id], mode, ct).ConfigureAwait(false));
         }
 
         if (string.IsNullOrEmpty(expectedHash))
             return Problem("precondition-required", 428, "expectedHash is required: read the element with get_element first.");
-        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
         var result = await _store.DeleteAsync(id, expectedHash, mode, ChangeSource.Cli, ct).ConfigureAwait(false);
         return FromOutcome(result.Outcome, result, null);
     }, ct);
@@ -194,7 +209,7 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     /// <param name="ct">Cancellation.</param>
     /// <returns>The batch result.</returns>
     [McpServerTool(Name = "apply_batch", Title = "Apply batch", Destructive = true, OpenWorld = false)]
-    [Description("Applies several operations all or nothing. Each operation is {\"op\":\"create\",\"element\":{...}}, {\"op\":\"update\",\"id\":...,\"expectedHash\":...,\"element\":{...}} or {\"op\":\"delete\",\"id\":...,\"expectedHash\":...}. Database schemas: {\"op\":\"add-schema\",\"id\":<database>,\"name\":...}, {\"op\":\"rename-schema\",\"id\":<database>,\"schema\":<schema id>,\"name\":...}, {\"op\":\"set-default-schema\",\"id\":<database>,\"schema\":...} and {\"op\":\"remove-schema\",\"id\":<database>,\"schema\":...,\"target\":<schema id to move its tables to>,\"default\":<new default when removing the default>}; a remove that would strand tables is refused with MQ4015 listing them. Processes: {\"op\":\"sync-enum\",\"id\":<lifecycle process>} makes the bound enum's members the process's root-level states in order (kept members keep their ids, codes and descriptions; removing a member a default, allowed values, a seed cell or a scenario value still uses is refused with MQ9019: change those uses first), {\"op\":\"set-lifecycle\",\"id\":<entity>,\"target\":<process>} binds the entity and the process to each other (omit target to clear the lifecycle), {\"op\":\"set-initial\",\"id\":<process or compound state>,\"target\":<direct child state>}, {\"op\":\"refresh-scenario\",\"id\":<scenario>} (rewrites its expectations and outcome from the engine's replay). An element may appear in one operation only. When one fails nothing is written and the result says which and why.")]
+    [Description("Applies several operations all or nothing. Each operation is {\"op\":\"create\",\"element\":{...}}, {\"op\":\"update\",\"id\":...,\"expectedHash\":...,\"element\":{...}} or {\"op\":\"delete\",\"id\":...,\"expectedHash\":...,\"resolution\":\"refuse|remove-references|delete-dependents\"} (resolution as in delete_element; default refuse). Database schemas: {\"op\":\"add-schema\",\"id\":<database>,\"name\":...}, {\"op\":\"rename-schema\",\"id\":<database>,\"schema\":<schema id>,\"name\":...}, {\"op\":\"set-default-schema\",\"id\":<database>,\"schema\":...} and {\"op\":\"remove-schema\",\"id\":<database>,\"schema\":...,\"target\":<schema id to move its tables to>,\"default\":<new default when removing the default>}; a remove that would strand tables is refused with MQ4015 listing them. Processes: {\"op\":\"sync-enum\",\"id\":<lifecycle process>} makes the bound enum's members the process's root-level states in order (kept members keep their ids, codes and descriptions; removing a member a default, allowed values, a seed cell or a scenario value still uses is refused with MQ9019: change those uses first), {\"op\":\"set-lifecycle\",\"id\":<entity>,\"target\":<process>} binds the entity and the process to each other (omit target to clear the lifecycle), {\"op\":\"set-initial\",\"id\":<process or compound state>,\"target\":<direct child state>}, {\"op\":\"refresh-scenario\",\"id\":<scenario>} (rewrites its expectations and outcome from the engine's replay). An element may appear in one operation only. When one fails nothing is written and the result says which and why.")]
     public Task<CallToolResult> ApplyBatch(
         [Description("The operations, applied in order; required.")] JsonElement? operations = null,
         CancellationToken ct = default) => GuardAsync(async () =>
@@ -724,7 +739,7 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
             SaveOutcome.Conflict => Problem("conflict", 409, "The file changed on disk since it was read; nothing was written. current and hash are the disk version; submitted is yours.", body: body),
             SaveOutcome.Invalid => Problem("invalid", 422, "The change is not valid; nothing was written. See diagnostics.", body: body),
             SaveOutcome.NotFound => Problem("not-found", 404, "No such element.", body: body),
-            SaveOutcome.Referenced => Problem("referenced", 409, "Other elements reference this element; nothing was deleted. See referrers, or pass resolution remove-references.", body: body),
+            SaveOutcome.Referenced => Problem("referenced", 409, "Other elements reference this element; nothing was deleted. See referrers, or pass resolution remove-references or delete-dependents (delete_element with dryRun shows what each does).", body: body),
             _ => Problem("internal", 500, "Unexpected outcome.", body: body),
         };
     }

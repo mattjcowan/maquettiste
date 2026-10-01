@@ -14,3 +14,12 @@ CREATE TABLE northwind.storage_conditions (
     CONSTRAINT pk_storage_conditions PRIMARY KEY (id),
     CONSTRAINT uq_storage_conditions_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.storage_conditions IS 'A storage requirement, such as Ambient, Chilled 2-8 C or Frozen.';
+COMMENT ON COLUMN northwind.storage_conditions.id IS 'Surrogate key of the storage condition.';
+COMMENT ON COLUMN northwind.storage_conditions.min_temperature_c IS 'Lowest allowed temperature.';
+COMMENT ON COLUMN northwind.storage_conditions.max_temperature_c IS 'Highest allowed temperature.';
+COMMENT ON COLUMN northwind.storage_conditions.requires_humidity_control IS 'Whether humidity is controlled.';
+COMMENT ON COLUMN northwind.storage_conditions.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.storage_conditions.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.storage_conditions.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.storage_conditions.is_active IS 'Whether the value can be chosen for new records.';

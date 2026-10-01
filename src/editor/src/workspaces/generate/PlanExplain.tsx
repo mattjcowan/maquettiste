@@ -24,6 +24,7 @@ import {
   filterGroups,
   flattenGroups,
   groupPlan,
+  nothingToWriteNote,
   planSummary,
   rootGroups,
   type CauseLink,
@@ -55,6 +56,7 @@ const COLS = "grid grid-cols-[88px_minmax(0,1.3fr)_minmax(0,128px)_minmax(0,120p
 /** The summary lines: "sql-ddl: 4 units, 12 files to add, 3 to modify, 1 orphan to delete". */
 export function PlanSummary({ plan }: { plan: GenerationPlan }) {
   const lines = useMemo(() => planSummary(plan), [plan]);
+  const note = useMemo(() => nothingToWriteNote(plan), [plan]);
   const packs = usePacks();
   const causes = useMemo(() => causeGroups(plan), [plan]);
   const roots = useMemo(
@@ -86,6 +88,12 @@ export function PlanSummary({ plan }: { plan: GenerationPlan }) {
           </li>
         ))}
       </ul>
+      {note ? (
+        <p className="rounded-control bg-accent-subtle px-2 py-1 text-12" role="note" data-testid="plan-nothing-to-write">
+          {note}
+          {plan.changes.length ? <span className="text-secondary"> Choose Show: unchanged below to list the files.</span> : null}
+        </p>
+      ) : null}
       {causes.length ? (
         <section aria-label="Files by cause" data-testid="plan-causes">
           <h4 className="text-11 font-semibold text-secondary">By cause</h4>
@@ -208,7 +216,8 @@ export function PlanChanges({ planId, plan, onExplain }: { planId: string; plan:
       onExplain({ pack: item.row.unit.pack ?? "", unit: item.row.unit.unit ?? "", elementId: item.row.unit.elementId ?? null });
     }
   };
-  const kinds = [...new Set(plan.changes.map((c) => c.kind))].sort();
+  // "unchanged" is always offered: a plan that writes nothing lists its files only through it.
+  const kinds = [...new Set([...plan.changes.map((c) => c.kind), "unchanged" as FileChangeKind])].sort();
   const packs = [...new Set(groups.map((g) => g.pack))].sort();
   const unitIds = groups.filter((g) => !filter.pack || g.pack === filter.pack).map((g) => g.id);
   const set = (patch: Partial<PlanFilter>) => setFilter((f) => ({ ...f, ...patch }));

@@ -9,7 +9,7 @@ public sealed class McpSurfaceTests
 {
     private static readonly string[] Tools =
     [
-        "apply_batch", "apply_plan", "create_element", "create_seed", "delete_element", "delete_pack_file", "explain_unit",
+        "apply_batch", "apply_plan", "create_element", "create_seed", "delete_element", "delete_pack", "delete_pack_file", "explain_unit",
         "export_process", "export_seed_csv", "get_database_view", "get_element", "get_elements", "get_model_index", "get_model_kinds", "get_pack",
         "get_pack_outputs", "get_plan", "get_plan_diff", "get_project", "get_references", "get_resolved_model", "get_schema", "get_settings", "get_template_context",
         "get_translations", "import_process", "import_seed_csv", "list_pack_files", "list_packs", "list_validation_rules",
@@ -359,6 +359,29 @@ public sealed class McpWriteTests
         Assert.Equal("saved", (string)deleted["outcome"]!);
         Assert.False(File.Exists(session.Repo.PathOf((string)coupon["path"]!)));
         Assert.Equal("not-found", (await session.ErrorAsync("get_element", new { id })).Code);
+    }
+
+    [Fact]
+    public async Task Delete_element_dry_run_returns_the_plan_and_delete_dependents_takes_the_dependents()
+    {
+        await using var session = await McpSession.StartAsync(ct: TestContext.Current.CancellationToken);
+        var customer = await session.OkAsync("get_element", new { id = McpSession.Customer });
+
+        var plan = await session.OkAsync("delete_element", new { id = McpSession.Customer, dryRun = true });
+        var clearing = await session.OkAsync("delete_element", new { id = McpSession.Customer, dryRun = true, resolution = "remove-references" });
+        var bad = await session.ErrorAsync("delete_element", new { id = McpSession.Customer, dryRun = true, resolution = "cascade" });
+        Assert.Equal("delete-dependents", (string)plan["resolution"]!);
+        Assert.Equal("saved", (string)plan["outcome"]!);
+        var deletes = plan["deletes"]!.AsArray();
+        Assert.Contains(deletes, d => (string)d!["kind"]! == "relation" && ((string)d["because"]!).Contains("Customer", StringComparison.Ordinal));
+        Assert.Equal("invalid", (string)clearing["outcome"]!);
+        Assert.Equal("bad-request", bad.Code);
+        Assert.True(File.Exists(session.Repo.PathOf(McpSession.CustomerPath)));
+
+        var deleted = await session.OkAsync("delete_element", new { id = McpSession.Customer, expectedHash = (string)customer["hash"]!, resolution = "delete-dependents" });
+        Assert.Equal("saved", (string)deleted["outcome"]!);
+        Assert.Equal(deletes.Count + 1, deleted["changes"]!["deleted"]!.AsArray().Count);
+        Assert.False(File.Exists(session.Repo.PathOf(McpSession.CustomerPath)));
     }
 
     [Fact]

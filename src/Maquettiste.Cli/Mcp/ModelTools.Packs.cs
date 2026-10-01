@@ -69,6 +69,22 @@ internal sealed partial class ModelTools
         return FromOutcome(result.Outcome, result, null);
     }), ct);
 
+    /// <summary>Removes a pack (deletePack).</summary>
+    [McpServerTool(Name = "delete_pack", Title = "Delete pack", Destructive = true, OpenWorld = false)]
+    [Description("Removes a template pack if pack.json still has expectedHash (the hash from get_pack): its packs.<pack> entry in maquettiste.json, the folder .maquettiste/templates/<pack>/, and its manifests and unit states. The files it generated stay on disk and are no longer tracked; untracked lists them. Waits for a generation run in progress. A refused settings save is invalid and removes nothing.")]
+    public Task<CallToolResult> DeletePack(
+        [Description("The pack name; required.")] string? pack = null,
+        [Description("The pack.json hash returned by get_pack; required.")] string? expectedHash = null,
+        CancellationToken ct = default) => GuardAsync(() => PackAsync(async () =>
+    {
+        if (string.IsNullOrEmpty(pack))
+            return BadRequest("pack is required.");
+        if (string.IsNullOrEmpty(expectedHash))
+            return Problem("precondition-required", 428, "expectedHash is required: read the pack with get_pack first.");
+        var result = await _generation.DeletePackAsync(pack, expectedHash, ct, ChangeSource.Cli).ConfigureAwait(false);
+        return result.Outcome == SaveOutcome.NotFound ? NotFound("pack", pack) : FromOutcome(result.Outcome, result, null);
+    }), ct);
+
     /// <summary>Reads one pack file (getPackFile).</summary>
     [McpServerTool(Name = "read_pack_file", Title = "Read pack file", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("The text and hash of one pack file (a template, partial, script or other file) by its pack-relative path.")]
@@ -178,7 +194,7 @@ internal sealed partial class ModelTools
 
     /// <summary>A unit's output paths (unitPaths).</summary>
     [McpServerTool(Name = "unit_paths", Title = "Unit output paths", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("The output paths a unit renders over its scope (after its filter and generation.skip hints, as the planner counts them) or over the listed elements: count, the paths rendered (up to limit, default 200) with their root and whether the writer allows them, and MQ6019 (outside every root), MQ6020 (two elements on one path), MQ6005 and MQ6007. overlay, unitOverride and parameters use unsaved text. Nothing is written.")]
+    [Description("The output paths a unit renders over its scope (after its filter and generation.skip hints, as the planner counts them) or over the listed elements: count, the paths rendered (up to limit, default 200) with their element's id, name (elementName: a table as 'customers (billing)', a locale as its tag) and kind, their root and whether the writer allows them, and MQ6019 (outside every root), MQ6020 (two elements on one path), MQ6005 and MQ6007. overlay, unitOverride and parameters use unsaved text. Nothing is written.")]
     public Task<CallToolResult> UnitPaths(
         [Description("The pack name; required.")] string? pack = null,
         [Description("The unit id; required.")] string? unit = null,

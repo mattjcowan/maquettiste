@@ -22,3 +22,13 @@ CREATE TABLE northwind.inventory_holds (
     CONSTRAINT fk_inventory_holds_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT,
     CONSTRAINT fk_inventory_holds_placed_by_id FOREIGN KEY (placed_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.inventory_holds IS 'A hold that blocks stock from being picked, such as a recall or a failed inspection.';
+COMMENT ON COLUMN northwind.inventory_holds.id IS 'Surrogate key of the inventory hold.';
+COMMENT ON COLUMN northwind.inventory_holds.reason IS 'Why the stock is held.';
+COMMENT ON COLUMN northwind.inventory_holds.placed_at IS 'When the hold was placed.';
+COMMENT ON COLUMN northwind.inventory_holds.released_at IS 'When it was released.';
+COMMENT ON COLUMN northwind.inventory_holds.quantity IS 'Quantity held; null for everything in scope.';
+COMMENT ON COLUMN northwind.inventory_holds.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.inventory_holds.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.inventory_holds.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.inventory_holds.updated_by IS 'User name of the last editor.';

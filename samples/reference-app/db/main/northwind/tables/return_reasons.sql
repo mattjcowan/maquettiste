@@ -13,3 +13,11 @@ CREATE TABLE northwind.return_reasons (
     CONSTRAINT pk_return_reasons PRIMARY KEY (id),
     CONSTRAINT uq_return_reasons_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.return_reasons IS 'A reason for a return, such as Damaged in transit or Ordered in error.';
+COMMENT ON COLUMN northwind.return_reasons.id IS 'Surrogate key of the return reason.';
+COMMENT ON COLUMN northwind.return_reasons.is_customer_fault IS 'Whether a restocking fee applies.';
+COMMENT ON COLUMN northwind.return_reasons.requires_inspection IS 'Whether goods must be inspected before credit.';
+COMMENT ON COLUMN northwind.return_reasons.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.return_reasons.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.return_reasons.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.return_reasons.is_active IS 'Whether the value can be chosen for new records.';

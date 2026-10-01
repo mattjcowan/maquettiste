@@ -51,7 +51,15 @@ test("the plan explains itself: groups, why this file, why not, explain", async 
   await expect(page.getByTestId("apply-result")).toContainText("succeeded");
   await page.getByTestId("plan").click();
   await expect(summary).toContainText("nothing to write");
+  await expect(summary).toContainText(/all \d+ files already match the disk/);
   await expect(summary).toContainText(/\d+ units unchanged/);
+  await expect(page.getByTestId("plan-nothing-to-write")).toContainText("Every file this plan renders is identical to the file on disk");
+  // The table shows what changes (kept files here); Show: unchanged lists the files that already match the disk.
+  const changeRows = page.getByTestId("changes").locator('[data-testid^="change-"]');
+  await expect(changeRows.filter({ hasText: /^unchanged/ })).toHaveCount(0);
+  await page.locator("#filter-kind").selectOption("unchanged");
+  await expect(changeRows.first()).toContainText("unchanged");
+  await page.locator("#filter-kind").selectOption("changed");
   const unchanged = page.getByTestId("unchanged-units");
   await unchanged.getByRole("button", { name: /Unchanged units/ }).click();
   const entity = unchanged.locator('[data-testid^="unchanged-csharp-dapper/entity:"]').first();

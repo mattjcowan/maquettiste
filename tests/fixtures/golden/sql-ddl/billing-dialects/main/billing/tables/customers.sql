@@ -12,3 +12,4 @@ CREATE TABLE billing.customers (
     CONSTRAINT pk_customers PRIMARY KEY (id),
     CONSTRAINT uq_customers_email UNIQUE (email)
 );
+COMMENT ON TABLE billing.customers IS 'Someone we bill.';

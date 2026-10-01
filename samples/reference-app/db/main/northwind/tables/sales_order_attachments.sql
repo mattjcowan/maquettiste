@@ -19,3 +19,14 @@ CREATE TABLE northwind.sales_order_attachments (
     CONSTRAINT fk_sales_order_attachments_uploaded_by_id FOREIGN KEY (uploaded_by_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL,
     CONSTRAINT fk_sales_order_attachments_sales_order_id FOREIGN KEY (sales_order_id) REFERENCES northwind.sales_orders (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.sales_order_attachments IS 'A file attached to a sales order, such as the customer''s PO PDF.';
+COMMENT ON COLUMN northwind.sales_order_attachments.id IS 'Surrogate key of the sales order attachment.';
+COMMENT ON COLUMN northwind.sales_order_attachments.file_name IS 'Original file name.';
+COMMENT ON COLUMN northwind.sales_order_attachments.content_type IS 'MIME type.';
+COMMENT ON COLUMN northwind.sales_order_attachments.size_bytes IS 'File size.';
+COMMENT ON COLUMN northwind.sales_order_attachments.storage_key IS 'Object storage key.';
+COMMENT ON COLUMN northwind.sales_order_attachments.uploaded_at IS 'When it was uploaded.';
+COMMENT ON COLUMN northwind.sales_order_attachments.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.sales_order_attachments.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.sales_order_attachments.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.sales_order_attachments.updated_by IS 'User name of the last editor.';

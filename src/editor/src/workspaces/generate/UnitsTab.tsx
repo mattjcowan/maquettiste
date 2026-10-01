@@ -3,7 +3,7 @@
 // output path computed for an example element from POST /api/templates/paths (debounced 250 ms, against the
 // unsaved row). The side panel explains the focused field and the row's scope in plain language. Save sends the
 // whole pack.json document with If-Match; the grid never drops a member it does not show.
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Copy, Filter, Plus, Save, Trash2, Undo2 } from "lucide-react";
 import * as endpoints from "@/api/endpoints";
@@ -15,7 +15,13 @@ import { Input, Select } from "@/components/ui/input";
 import { Badge, Toolbar } from "@/components/ui/misc";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/cn";
+import { KIND_LABELS } from "@/model/labels";
+import type { ElementKind } from "@/api/types";
 import { markUnsaved, useDraftState } from "./drafts";
+import { EdgeToggle, PanelToggle } from "@/app/panels";
+import { Splitter } from "@/components/ui/splitter";
+import { LIMITS } from "@/state/layout";
+import { useEditor } from "@/state/store";
 import { pathSummary } from "./pathSummary";
 import {
   EACH_KINDS,
@@ -23,7 +29,9 @@ import {
   WRITE_MODES,
   duplicateUnit,
   examplePath,
+  exampleOptions,
   filesLabel,
+  filterExamples,
   filterWords,
   insertUnit,
   moveUnit,
@@ -34,6 +42,8 @@ import {
   toPackUnit,
   unitIdError,
   unitsOf,
+  type ExampleOption,
+  type NamedUnitPath,
   type PackJson,
   type RawUnit,
   type UnitField,
@@ -51,15 +61,20 @@ function useDebounced<T>(value: T, ms: number): T {
   return out;
 }
 
-/** The unit's planned paths, against the unsaved row when it differs from the saved one. */
-function useUnitPaths(pack: string, raw: RawUnit, saved: RawUnit | undefined) {
+/** The server's default and largest `limit` of POST /api/templates/paths. */
+const PATHS_LIMIT = 200;
+const PATHS_MAX = 2000;
+
+/** The unit's planned paths, against the unsaved row when it differs from the saved one. The default limit shares its
+ * cache entry with the Templates tab's preview; the Example element picker asks for up to the server's 2000. */
+function useUnitPaths(pack: string, raw: RawUnit, saved: RawUnit | undefined, limit = PATHS_LIMIT) {
   const text = useDebounced(JSON.stringify(raw), 250);
   const changed = !saved || JSON.stringify(saved) !== text;
   const unit = JSON.parse(text) as RawUnit;
   const id = str(unit.id);
   return useQuery({
-    queryKey: [...keys.pack(pack), "paths", id, changed ? text : "saved"],
-    queryFn: ({ signal }) => endpoints.unitPaths({ pack, unit: id, limit: 200, unitOverride: changed ? toPackUnit(unit) : null }, signal),
+    queryKey: [...keys.pack(pack), "paths", id, changed ? text : "saved", ...(limit === PATHS_LIMIT ? [] : [limit])],
+    queryFn: ({ signal }) => endpoints.unitPaths({ pack, unit: id, limit, unitOverride: changed ? toPackUnit(unit) : null }, signal),
     enabled: /^[a-z][a-z0-9-]*$/.test(id) && !!str(unit.for),
     retry: false,
   });
@@ -90,6 +105,9 @@ export function UnitsTab({ pack, document, hash, files, focusUnit, onDirty }: Pr
   );
   const [field, setField] = useState<UnitField>("output");
   const [examples, setExamples] = useState<Record<string, string>>({});
+  // The help pane hides and resizes like the shell's panels (layout.ts; Alt+Shift+U, the palette, a slim edge).
+  const helpHidden = useEditor(store, (s) => s.unitHelpCollapsed);
+  const helpSize = useEditor(store, (s) => s.unitHelpSize);
   const [conflict, setConflict] = useState(false);
   const [busy, setBusy] = useState(false);
   const dirty = !sameDocument(draft, loaded.doc);
@@ -339,58 +357,189 @@ export function UnitsTab({ pack, document, hash, files, focusUnit, onDirty }: Pr
           </table>
           {!units.length ? <p className="px-2 py-1 text-12 text-secondary">No units. Add one with + Unit (Ctrl+Enter).</p> : null}
         </div>
-        <aside aria-label="Unit help" className="w-64 shrink-0 overflow-auto border-l border-default bg-surface px-2 py-1 text-12" data-testid="unit-help">
-          {current ? (
-            <>
-              <h3 className="text-11 font-semibold uppercase tracking-wide text-secondary">{str(current.id) || "(new unit)"}</h3>
-              <p className="mt-1">{FIELD_HELP[field]}</p>
-              <h4 className="mt-2 text-11 font-semibold text-secondary">Scope: {scope || "(none)"}</h4>
-              <p data-testid="scope-help">{scopeHelp(scope)}</p>
-              <h4 className="mt-2 text-11 font-semibold text-secondary">Write: {WRITE_MODES.find((m) => m.value === (current.mode ?? "overwrite"))?.label}</h4>
-              <p>{WRITE_MODES.find((m) => m.value === (current.mode ?? "overwrite"))?.help}</p>
-              <h4 className="mt-2 text-11 font-semibold text-secondary">Delimiters</h4>
-              <p className="font-mono text-11">
-                {current.delimiters
-                  ? `${str((current.delimiters as { open: string }).open)} … ${str((current.delimiters as { close: string }).close)}`
-                  : "{{ … }} (default)"}
-              </p>
-              <h4 className="mt-2 text-11 font-semibold text-secondary">Transforms</h4>
-              <p className="font-mono text-11">
-                {Array.isArray(current.transforms) && current.transforms.length ? (current.transforms as string[]).join(" → ") : "none"}
-              </p>
-              <p className="mt-2 text-11 text-secondary">
-                Ctrl+Enter adds a unit, Ctrl+D duplicates, Ctrl+Delete removes, Alt+Up and Alt+Down reorder, Ctrl+S saves.
-              </p>
-            </>
-          ) : null}
+        {helpHidden ? (
+          <EdgeToggle panel="unitHelp" side="right" />
+        ) : (
+          <Splitter
+            orientation="vertical"
+            value={helpSize}
+            {...LIMITS.unitHelp}
+            direction={-1}
+            label="Resize the unit help"
+            controls="mq-unit-help"
+            onChange={(v) => store.setState({ unitHelpSize: v })}
+          />
+        )}
+        <aside
+          id="mq-unit-help"
+          aria-label="Unit help"
+          className={cn("flex shrink-0 flex-col bg-surface text-12", helpHidden && "hidden")}
+          style={{ width: helpSize }}
+          data-testid="unit-help"
+        >
+          <div className="flex h-6 shrink-0 items-center gap-2 border-b border-default px-2" data-testid="unit-help-header">
+            <span className="min-w-0 flex-1 truncate text-11 font-semibold uppercase tracking-wide text-secondary">Unit help</span>
+            {helpHidden ? null : <PanelToggle panel="unitHelp" />}
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto px-2 py-1">
+            {current ? (
+              <>
+                <h3 className="text-11 font-semibold uppercase tracking-wide text-secondary">{str(current.id) || "(new unit)"}</h3>
+                <p className="mt-1">{FIELD_HELP[field]}</p>
+                <h4 className="mt-2 text-11 font-semibold text-secondary">Scope: {scope || "(none)"}</h4>
+                <p data-testid="scope-help">{scopeHelp(scope)}</p>
+                <h4 className="mt-2 text-11 font-semibold text-secondary">
+                  Write: {WRITE_MODES.find((m) => m.value === (current.mode ?? "overwrite"))?.label}
+                </h4>
+                <p>{WRITE_MODES.find((m) => m.value === (current.mode ?? "overwrite"))?.help}</p>
+                <h4 className="mt-2 text-11 font-semibold text-secondary">Delimiters</h4>
+                <p className="font-mono text-11">
+                  {current.delimiters
+                    ? `${str((current.delimiters as { open: string }).open)} … ${str((current.delimiters as { close: string }).close)}`
+                    : "{{ … }} (default)"}
+                </p>
+                <h4 className="mt-2 text-11 font-semibold text-secondary">Transforms</h4>
+                <p className="font-mono text-11">
+                  {Array.isArray(current.transforms) && current.transforms.length ? (current.transforms as string[]).join(" → ") : "none"}
+                </p>
+                <p className="mt-2 text-11 text-secondary">
+                  Ctrl+Enter adds a unit, Ctrl+D duplicates, Ctrl+Delete removes, Alt+Up and Alt+Down reorder, Ctrl+S saves.
+                </p>
+              </>
+            ) : null}
+          </div>
         </aside>
       </div>
     </div>
   );
 }
 
+/** Above this many planned elements the picker is a searchable list instead of a drop-down. */
+const EXAMPLE_SELECT_MAX = 20;
+/** The searchable list shows this many matches; typing narrows the rest. */
+const EXAMPLE_LIST_MAX = 200;
+
+const kindWord = (kind: string) => KIND_LABELS[kind as ElementKind]?.toLowerCase() ?? kind;
+
 function ExamplePicker({ pack, unit, saved, value, onChange }: { pack: string; unit?: RawUnit; saved?: RawUnit; value: string; onChange(id: string): void }) {
-  const paths = useUnitPaths(pack, unit ?? {}, saved);
+  const paths = useUnitPaths(pack, unit ?? {}, saved, PATHS_MAX);
   const index = useIndex();
-  const names = useMemo(() => new Map((index.data ?? []).map((e) => [e.id, e.displayName ?? e.name])), [index.data]);
-  // The unit's own planned elements: always of its scope; the first until one is picked (kept per unit).
-  const ids = [...new Set((paths.data?.paths ?? []).map((p) => p.elementId).filter((x): x is string => !!x))];
+  const known = useMemo(() => new Map((index.data ?? []).map((e) => [e.id, { name: e.displayName ?? e.name, kind: e.kind as string }])), [index.data]);
+  // The unit's own planned elements: always of its scope; the first until one is picked (kept per unit). Each is named
+  // by the server, else the index, else "entity @ database" for a synthesized table, else its id (the option's title).
+  const options = useMemo(() => exampleOptions((paths.data?.paths ?? []) as NamedUnitPath[], (id) => known.get(id), kindWord), [paths.data, known]);
+  const chosen = options.find((o) => o.id === value) ?? options[0] ?? null;
+  if (options.length > EXAMPLE_SELECT_MAX) return <ExampleSearch options={options} chosen={chosen} onChange={onChange} />;
   return (
     <Select
       id="example-element"
       className="h-6 w-56 text-12"
-      value={value && ids.includes(value) ? value : (ids[0] ?? "")}
+      value={chosen?.id ?? ""}
       onChange={(e) => onChange(e.target.value)}
-      disabled={!ids.length}
+      disabled={!options.length}
+      title={chosen?.id}
       data-testid="example-element"
     >
-      {ids.length ? null : <option value="">No element (runs once)</option>}
-      {ids.map((id) => (
-        <option key={id} value={id}>
-          {names.get(id) ?? id}
+      {options.length ? null : <option value="">No element (runs once)</option>}
+      {options.map((o) => (
+        <option key={o.id} value={o.id} title={o.id}>
+          {o.label}
         </option>
       ))}
     </Select>
+  );
+}
+
+/** The Example element picker for many elements: a button that opens a search box over the list (arrows, Enter). */
+function ExampleSearch({ options, chosen, onChange }: { options: ExampleOption[]; chosen: ExampleOption | null; onChange(id: string): void }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [active, setActive] = useState(0);
+  const listId = useId();
+  const matches = useMemo(() => filterExamples(options, text), [options, text]);
+  const shown = matches.slice(0, EXAMPLE_LIST_MAX);
+  const at = Math.min(active, Math.max(0, shown.length - 1));
+  const pick = (o: ExampleOption | undefined) => {
+    if (!o) return;
+    onChange(o.id);
+    setOpen(false);
+  };
+  useEffect(() => {
+    if (open) document.getElementById(`${listId}-${at}`)?.scrollIntoView?.({ block: "nearest" });
+  }, [open, at, listId]);
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const n = shown.length;
+      if (n) setActive((a) => (e.key === "ArrowDown" ? (Math.min(a, n - 1) + 1) % n : (Math.min(a, n - 1) - 1 + n) % n));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      pick(shown[at]);
+    }
+    e.stopPropagation();
+  };
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (o) {
+          setText("");
+          setActive(Math.max(0, options.indexOf(chosen!)));
+        }
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          id="example-element"
+          className="flex h-6 w-56 items-center rounded-control border border-input bg-surface px-2 text-left text-12"
+          title={chosen ? `${chosen.label} · ${chosen.id}` : undefined}
+          data-testid="example-element"
+        >
+          <span className="min-w-0 flex-1 truncate">{chosen?.label ?? "No element"}</span>
+          <span className="shrink-0 text-11 text-secondary">{options.length}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="flex w-80 flex-col gap-1 p-1" align="start" data-testid="example-element-list">
+        <Input
+          role="combobox"
+          aria-label="Search the example elements"
+          aria-expanded
+          aria-controls={listId}
+          aria-activedescendant={shown[at] ? `${listId}-${at}` : undefined}
+          aria-autocomplete="list"
+          placeholder={`Search ${options.length} elements…`}
+          className="h-6 text-12"
+          value={text}
+          autoFocus
+          onChange={(e) => {
+            setText(e.target.value);
+            setActive(0);
+          }}
+          onKeyDown={onKeyDown}
+          data-testid="example-element-search"
+        />
+        <div id={listId} role="listbox" aria-label="Example elements" className="mq-scroll max-h-72 overflow-auto">
+          {shown.map((o, i) => (
+            <div
+              key={o.id}
+              id={`${listId}-${i}`}
+              role="option"
+              aria-selected={o.id === chosen?.id}
+              title={o.id}
+              className={cn("flex h-6 cursor-default items-center px-2", i === at && "bg-accent-subtle text-accent")}
+              onMouseEnter={() => setActive(i)}
+              onClick={() => pick(o)}
+            >
+              <span className="truncate">{o.label}</span>
+            </div>
+          ))}
+          {!shown.length ? <p className="px-2 py-1 text-secondary">No element matches.</p> : null}
+          {matches.length > shown.length ? <p className="px-2 py-1 text-11 text-secondary">{matches.length - shown.length} more: type to narrow.</p> : null}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -410,7 +559,8 @@ function UnitRow(props: {
   onWhere(where: Record<string, unknown> | null): void;
 }) {
   const { unit, index } = props;
-  const paths = useUnitPaths(props.pack, unit, props.saved);
+  // The selected row (and a row whose example was picked) reads as many paths as the picker, so its example is listed.
+  const paths = useUnitPaths(props.pack, unit, props.saved, props.selected || props.example ? PATHS_MAX : PATHS_LIMIT);
   const summary = pathSummary(typeof unit.output === "string" ? unit.output : null, unit.delimiters as { open: string; close: string } | null);
   const ex = examplePath(paths.data, props.example);
   const templateOptions = [...new Set([...props.files, str(unit.template)].filter(Boolean))].sort();

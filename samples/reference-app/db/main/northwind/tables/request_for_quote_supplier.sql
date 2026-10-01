@@ -11,3 +11,6 @@ CREATE TABLE northwind.request_for_quote_supplier (
     CONSTRAINT fk_request_for_quote_supplier_requests_for_quote_id FOREIGN KEY (requests_for_quote_id) REFERENCES northwind.request_for_quotes (id) ON DELETE CASCADE,
     CONSTRAINT fk_request_for_quote_supplier_invited_suppliers_id FOREIGN KEY (invited_suppliers_id) REFERENCES northwind.parties (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.request_for_quote_supplier IS 'Suppliers invited to quote on a request for quote, with the invitation date.';
+COMMENT ON COLUMN northwind.request_for_quote_supplier.invited_at IS 'When the invitation was sent.';
+COMMENT ON COLUMN northwind.request_for_quote_supplier.declined IS 'Whether the supplier declined to quote.';

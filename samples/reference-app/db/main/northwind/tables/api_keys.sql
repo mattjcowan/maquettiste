@@ -18,3 +18,14 @@ CREATE TABLE northwind.api_keys (
     CONSTRAINT uq_api_keys_prefix UNIQUE (prefix),
     CONSTRAINT fk_api_keys_api_client_id FOREIGN KEY (api_client_id) REFERENCES northwind.api_clients (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.api_keys IS 'A secret credential of an API client; only a hash is stored.';
+COMMENT ON COLUMN northwind.api_keys.id IS 'Surrogate key of the api key.';
+COMMENT ON COLUMN northwind.api_keys.prefix IS 'Public prefix shown in the console to identify the key.';
+COMMENT ON COLUMN northwind.api_keys.key_hash IS 'SHA-256 hash of the secret.';
+COMMENT ON COLUMN northwind.api_keys.expires_on IS 'Expiry date; null for no expiry.';
+COMMENT ON COLUMN northwind.api_keys.last_used_at IS 'Most recent use.';
+COMMENT ON COLUMN northwind.api_keys.revoked_at IS 'When the key was revoked.';
+COMMENT ON COLUMN northwind.api_keys.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.api_keys.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.api_keys.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.api_keys.updated_by IS 'User name of the last editor.';

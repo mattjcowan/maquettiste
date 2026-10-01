@@ -13,3 +13,8 @@ CREATE TABLE northwind.product_substitutes (
     CONSTRAINT fk_product_substitutes_substitute_id FOREIGN KEY (substitute_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_product_substitutes_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.product_substitutes IS 'A product that can replace another when it is out of stock, ranked by preference.';
+COMMENT ON COLUMN northwind.product_substitutes.id IS 'Surrogate key of the product substitute.';
+COMMENT ON COLUMN northwind.product_substitutes.reason IS 'Why the substitute fits.';
+COMMENT ON COLUMN northwind.product_substitutes.priority IS 'Rank among substitutes; 1 is preferred.';
+COMMENT ON COLUMN northwind.product_substitutes.requires_approval IS 'Whether the customer must approve the substitution.';

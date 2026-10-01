@@ -26,6 +26,11 @@ export function problem(status: number, code: Problem["code"], title: string, de
   return HttpResponse.json(body, { status, headers: { "Content-Type": "application/problem+json" } });
 }
 
+const RESOLUTIONS = ["refuse", "remove-references", "delete-dependents"] as const;
+function isResolution(value: unknown): value is (typeof RESOLUTIONS)[number] {
+  return (RESOLUTIONS as readonly unknown[]).includes(value);
+}
+
 function etag(hash: string): Record<string, string> {
   return { ETag: `"${hash}"` };
 }
@@ -451,11 +456,29 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
       const hash = ifMatch(request);
       if (!hash) return problem(428, "precondition-required", "Send the hash you loaded in If-Match.");
       const resolution = new URL(request.url).searchParams.get("resolution") ?? "refuse";
-      if (resolution !== "refuse" && resolution !== "remove-references")
-        return problem(400, "bad-request", `resolution must be refuse or remove-references, not '${resolution}'.`);
+      if (!isResolution(resolution))
+        return problem(400, "bad-request", `resolution must be refuse, remove-references or delete-dependents, not '${resolution}'.`);
       const result = model.delete(params.id, hash, resolution);
       const status = { saved: 200, conflict: 409, invalid: 422, "not-found": 404, referenced: 409 }[result.outcome];
       return HttpResponse.json(result, { status });
+    }),
+    http.get("/api/model/elements/{id}/delete-plan", ({ params, request }) => {
+      const resolution = new URL(request.url).searchParams.get("resolution") ?? "delete-dependents";
+      if (!isResolution(resolution))
+        return problem(400, "bad-request", `resolution must be refuse, remove-references or delete-dependents, not '${resolution}'.`);
+      if (!model.entries.has(params.id)) return problem(404, "not-found", `No element has the id ${params.id}.`);
+      return HttpResponse.json(model.deletePlan([params.id], resolution));
+    }),
+    http.post("/api/model/delete-plan", async ({ request }) => {
+      const body = await jsonBody(request);
+      if (!body.ok) return body.response;
+      const ids = body.value.ids;
+      const resolution = body.value.resolution ?? "delete-dependents";
+      if (!Array.isArray(ids) || ids.length === 0 || ids.length > 200 || !ids.every(isUlid))
+        return problem(400, "bad-request", "ids must list 1 to 200 element ids (uppercase ULIDs).");
+      if (!isResolution(resolution))
+        return problem(400, "bad-request", `resolution must be refuse, remove-references or delete-dependents, not '${String(resolution)}'.`);
+      return HttpResponse.json(model.deletePlan(ids as string[], resolution));
     }),
     http.post("/api/model/batch", async ({ request }) => {
       const body = await jsonBody(request);
@@ -622,6 +645,13 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
       // As the host does: every connection hears that the pack's files changed.
       if (saved.status === 200) backend.realtime.publish("packs.changed", { packs: [params.pack] });
       return HttpResponse.json(saved.body, { status: saved.status, headers: saved.status === 200 && saved.body.hash ? etag(saved.body.hash) : {} }) as never;
+    }),
+    http.delete("/api/packs/{pack}", ({ params, request }) => {
+      if (!/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(params.pack)) return problem(400, "bad-request", `'${params.pack}' is not a pack name.`);
+      const hash = ifMatch(request);
+      if (!hash) return problem(428, "precondition-required", "Send the pack.json hash you loaded in If-Match.");
+      const removed = backend.removePack(params.pack, hash);
+      return HttpResponse.json(removed.body, { status: removed.status }) as never;
     }),
     http.get("/api/packs/{pack}/file", ({ params, request }) => {
       const path = new URL(request.url).searchParams.get("path") ?? "";

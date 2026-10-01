@@ -10,3 +10,7 @@ CREATE TABLE northwind.product_attribute_options (
     CONSTRAINT pk_product_attribute_options PRIMARY KEY (id),
     CONSTRAINT fk_product_attribute_options_product_attribute_id FOREIGN KEY (product_attribute_id) REFERENCES northwind.product_attributes (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.product_attribute_options IS 'An allowed value of an option attribute, such as Large for Glove size.';
+COMMENT ON COLUMN northwind.product_attribute_options.id IS 'Surrogate key of the product attribute option.';
+COMMENT ON COLUMN northwind.product_attribute_options.value IS 'Option value.';
+COMMENT ON COLUMN northwind.product_attribute_options.label IS 'Display label when it differs from the value.';

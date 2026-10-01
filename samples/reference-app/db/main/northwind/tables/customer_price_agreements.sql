@@ -21,3 +21,15 @@ CREATE TABLE northwind.customer_price_agreements (
     CONSTRAINT fk_customer_price_agreements_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
     CONSTRAINT fk_customer_price_agreements_approved_by_id FOREIGN KEY (approved_by_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.customer_price_agreements IS 'A negotiated contract price agreement with one customer, overriding the price lists for the products it covers.';
+COMMENT ON COLUMN northwind.customer_price_agreements.id IS 'Surrogate key of the customer price agreement.';
+COMMENT ON COLUMN northwind.customer_price_agreements.agreement_number IS 'Contract number.';
+COMMENT ON COLUMN northwind.customer_price_agreements.validity_starts_on IS 'First day of the range.';
+COMMENT ON COLUMN northwind.customer_price_agreements.validity_ends_on IS 'Last day of the range; null when open-ended.';
+COMMENT ON COLUMN northwind.customer_price_agreements.is_approved IS 'Whether pricing approved the agreement.';
+COMMENT ON COLUMN northwind.customer_price_agreements.approved_on IS 'Approval date.';
+COMMENT ON COLUMN northwind.customer_price_agreements.notes IS 'Negotiation notes.';
+COMMENT ON COLUMN northwind.customer_price_agreements.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.customer_price_agreements.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.customer_price_agreements.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.customer_price_agreements.updated_by IS 'User name of the last editor.';

@@ -12,3 +12,10 @@ CREATE TABLE northwind.hold_reasons (
     CONSTRAINT pk_hold_reasons PRIMARY KEY (id),
     CONSTRAINT uq_hold_reasons_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.hold_reasons IS 'A reason for holding an order, such as Credit limit exceeded or Price below cost.';
+COMMENT ON COLUMN northwind.hold_reasons.id IS 'Surrogate key of the hold reason.';
+COMMENT ON COLUMN northwind.hold_reasons.requires_credit_approval IS 'Whether only the credit department can release it.';
+COMMENT ON COLUMN northwind.hold_reasons.code IS 'Short stable code used in integrations and imports.';
+COMMENT ON COLUMN northwind.hold_reasons.name IS 'Display name shown in pick lists.';
+COMMENT ON COLUMN northwind.hold_reasons.sort_order IS 'Position in pick lists.';
+COMMENT ON COLUMN northwind.hold_reasons.is_active IS 'Whether the value can be chosen for new records.';

@@ -1,5 +1,5 @@
 // The actor editor (phase-3-design.md 2.5 and 6.2): a small form tab (name, type, the stereotype, tag and category
-// chips, the processes and gates that use it), Code generation and Where used. Actors are not in a domain.
+// chips, the processes and gates that use it), Code generation and References. Actors are not in a domain.
 import { useIndex, useElements } from "@/api/queries";
 import { Field, Select } from "@/components/ui/input";
 import { SectionTitle } from "@/components/ui/misc";

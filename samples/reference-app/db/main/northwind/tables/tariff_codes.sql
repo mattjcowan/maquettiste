@@ -12,3 +12,8 @@ CREATE TABLE northwind.tariff_codes (
     CONSTRAINT uq_tariff_codes_code UNIQUE (code),
     CONSTRAINT fk_tariff_codes_country_code FOREIGN KEY (country_code) REFERENCES northwind.countries (code) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.tariff_codes IS 'A Harmonized System tariff code with the default import duty rate.';
+COMMENT ON COLUMN northwind.tariff_codes.id IS 'Surrogate key of the tariff code.';
+COMMENT ON COLUMN northwind.tariff_codes.code IS 'HS or HTS code, such as 4015.19.1010.';
+COMMENT ON COLUMN northwind.tariff_codes.description IS 'Official description.';
+COMMENT ON COLUMN northwind.tariff_codes.duty_rate IS 'General duty rate.';

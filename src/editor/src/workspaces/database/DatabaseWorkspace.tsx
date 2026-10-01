@@ -27,6 +27,7 @@ import { placeNodes, roundViewport } from "@/canvas/placement";
 import { useDraftDocument } from "@/inspector/useDraft";
 import { DIALECTS } from "@/inspector/fields";
 import { EdgeToggle, PanelToggle } from "@/app/panels";
+import { ColumnPanel } from "./ColumnGrid";
 
 const nodeTypes = { table: TableNode };
 const edgeTypes = { foreignKey: ForeignKeyEdge };
@@ -356,42 +357,46 @@ function DatabaseCanvas() {
             </p>
           </section>
         )}
-        <div className="relative min-w-0 flex-1" role="region" aria-label="Table diagram">
-          <MarkerDefs />
-          {view.isPending ? <Spinner label="Resolving tables" /> : null}
-          {scope.mode === "list" ? (
-            <div data-testid="database-list-form" className="h-full">
-              <EmptyState title={`${scope.total} tables are too many to draw at once`}>
-                Pick a table in the list to draw it with the tables its foreign keys connect it to (at most {CANVAS_CAP}). The DDL preview shows the whole
-                database.
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="relative min-h-0 flex-1" role="region" aria-label="Table diagram">
+            <MarkerDefs />
+            {view.isPending ? <Spinner label="Resolving tables" /> : null}
+            {scope.mode === "list" ? (
+              <div data-testid="database-list-form" className="h-full">
+                <EmptyState title={`${scope.total} tables are too many to draw at once`}>
+                  Pick a table in the list to draw it with the tables its foreign keys connect it to (at most {CANVAS_CAP}). The DDL preview shows the whole
+                  database.
+                </EmptyState>
+              </div>
+            ) : view.data && !view.data.view ? (
+              <EmptyState title="The model has errors, so its tables cannot be resolved">
+                {view.data.diagnostics
+                  .slice(0, 3)
+                  .map((d) => `${d.rule} ${d.message}`)
+                  .join(" · ")}
               </EmptyState>
-            </div>
-          ) : view.data && !view.data.view ? (
-            <EmptyState title="The model has errors, so its tables cannot be resolved">
-              {view.data.diagnostics
-                .slice(0, 3)
-                .map((d) => `${d.rule} ${d.message}`)
-                .join(" · ")}
-            </EmptyState>
-          ) : (
-            <ReactFlow<TableFlowNode, ForeignKeyFlowEdge>
-              nodes={nodes}
-              edges={edges}
-              nodeTypes={nodeTypes}
-              edgeTypes={edgeTypes}
-              onNodesChange={onNodesChange}
-              onPaneClick={() => scope.mode === "all" && setSelectedTable(null)}
-              onMoveEnd={onMoveEnd}
-              minZoom={0.1}
-              nodesConnectable={false}
-              deleteKeyCode={null}
-              proOptions={{ hideAttribution: false }}
-            >
-              <Background gap={16} />
-              <Controls showInteractive={false} />
-              <MiniMap pannable zoomable ariaLabel="Minimap" />
-            </ReactFlow>
-          )}
+            ) : (
+              <ReactFlow<TableFlowNode, ForeignKeyFlowEdge>
+                nodes={nodes}
+                edges={edges}
+                nodeTypes={nodeTypes}
+                edgeTypes={edgeTypes}
+                onNodesChange={onNodesChange}
+                onPaneClick={() => scope.mode === "all" && setSelectedTable(null)}
+                onMoveEnd={onMoveEnd}
+                minZoom={0.1}
+                nodesConnectable={false}
+                deleteKeyCode={null}
+                proOptions={{ hideAttribution: false }}
+              >
+                <Background gap={16} />
+                <Controls showInteractive={false} />
+                <MiniMap pannable zoomable ariaLabel="Minimap" />
+              </ReactFlow>
+            )}
+          </div>
+          {/* The selected table's columns, editable (a synthesized table's edits go to its overlay). */}
+          <ColumnPanel table={allTables.find((t) => t.key === selectedTable) ?? null} databaseId={activeDatabase} />
         </div>
         {ddlCollapsed ? <EdgeToggle panel="ddl" side="right" /> : null}
         {!ddlCollapsed && (

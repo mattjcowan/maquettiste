@@ -13,3 +13,6 @@ CREATE TABLE northwind.package_contents (
     CONSTRAINT fk_package_contents_serial_number_id FOREIGN KEY (serial_number_id) REFERENCES northwind.serial_numbers (id) ON DELETE SET NULL,
     CONSTRAINT fk_package_contents_shipment_package_id FOREIGN KEY (shipment_package_id) REFERENCES northwind.shipment_packages (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.package_contents IS 'A quantity of a shipment line packed in a package.';
+COMMENT ON COLUMN northwind.package_contents.id IS 'Surrogate key of the package content.';
+COMMENT ON COLUMN northwind.package_contents.quantity IS 'Quantity packed.';

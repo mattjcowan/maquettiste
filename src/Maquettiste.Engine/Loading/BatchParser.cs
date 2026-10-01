@@ -67,7 +67,14 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                     Schema: Text(item, "schema"),
                     Name: Text(item, "name"),
                     Target: Text(item, "target"),
-                    Default: Text(item, "default")));
+                    Default: Text(item, "default"),
+                    Resolution: Text(item, "resolution") switch
+                    {
+                        "remove-references" => DeleteResolution.RemoveReferences,
+                        "delete-dependents" => DeleteResolution.DeleteDependents,
+                        "refuse" => DeleteResolution.Refuse,
+                        _ => null,
+                    }));
             }
 
             return new BatchParseResult(new ModelBatch(operations), []);

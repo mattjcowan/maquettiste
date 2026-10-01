@@ -17,3 +17,12 @@ CREATE TABLE northwind.warehouse_zones (
     CONSTRAINT fk_warehouse_zones_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE CASCADE,
     CONSTRAINT fk_warehouse_zones_storage_condition_id FOREIGN KEY (storage_condition_id) REFERENCES northwind.storage_conditions (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.warehouse_zones IS 'An area of a warehouse with one purpose, such as receiving, bulk storage, pick faces or a freezer.';
+COMMENT ON COLUMN northwind.warehouse_zones.id IS 'Surrogate key of the warehouse zone.';
+COMMENT ON COLUMN northwind.warehouse_zones.code IS 'Zone code within the warehouse.';
+COMMENT ON COLUMN northwind.warehouse_zones.name IS 'Zone name.';
+COMMENT ON COLUMN northwind.warehouse_zones.zone_type IS 'receiving, bulk, pick, staging, quarantine or shipping.';
+COMMENT ON COLUMN northwind.warehouse_zones.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.warehouse_zones.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.warehouse_zones.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.warehouse_zones.updated_by IS 'User name of the last editor.';

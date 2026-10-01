@@ -10,3 +10,4 @@ CREATE TABLE public.sales_order_histories (
     at timestamptz(6) NOT NULL,
     CONSTRAINT pk_sales_order_histories PRIMARY KEY (id)
 );
+COMMENT ON TABLE public.sales_order_histories IS 'One row per status change of a sales order.';

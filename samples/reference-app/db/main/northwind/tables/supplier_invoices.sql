@@ -26,3 +26,18 @@ CREATE TABLE northwind.supplier_invoices (
     CONSTRAINT fk_supplier_invoices_supplier_id FOREIGN KEY (supplier_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT
 );
 CREATE INDEX ix_supplier_invoices_due_date ON northwind.supplier_invoices (due_date);
+COMMENT ON TABLE northwind.supplier_invoices IS 'An invoice received from a supplier, matched to the order and the receipt before payment.';
+COMMENT ON COLUMN northwind.supplier_invoices.id IS 'Surrogate key of the supplier invoice.';
+COMMENT ON COLUMN northwind.supplier_invoices.invoice_number IS 'Supplier''s invoice number.';
+COMMENT ON COLUMN northwind.supplier_invoices.invoice_date IS 'Invoice date.';
+COMMENT ON COLUMN northwind.supplier_invoices.due_date IS 'Payment due date.';
+COMMENT ON COLUMN northwind.supplier_invoices.total_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.supplier_invoices.total_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.supplier_invoices.tax_amount_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.supplier_invoices.tax_amount_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.supplier_invoices.status IS 'received, matched, approved, paid or disputed.';
+COMMENT ON COLUMN northwind.supplier_invoices.matched_at IS 'When the three-way match succeeded.';
+COMMENT ON COLUMN northwind.supplier_invoices.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.supplier_invoices.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.supplier_invoices.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.supplier_invoices.updated_by IS 'User name of the last editor.';

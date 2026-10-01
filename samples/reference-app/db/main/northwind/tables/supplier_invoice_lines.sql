@@ -18,3 +18,11 @@ CREATE TABLE northwind.supplier_invoice_lines (
     CONSTRAINT fk_supplier_invoice_lines_ledger_account_id FOREIGN KEY (ledger_account_id) REFERENCES northwind.ledger_accounts (id) ON DELETE SET NULL,
     CONSTRAINT fk_supplier_invoice_lines_purchase_order_line_id FOREIGN KEY (purchase_order_line_id) REFERENCES northwind.purchase_order_lines (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.supplier_invoice_lines IS 'An invoiced item of a supplier invoice.';
+COMMENT ON COLUMN northwind.supplier_invoice_lines.id IS 'Surrogate key of the supplier invoice line.';
+COMMENT ON COLUMN northwind.supplier_invoice_lines.description IS 'Line text.';
+COMMENT ON COLUMN northwind.supplier_invoice_lines.quantity IS 'Quantity invoiced.';
+COMMENT ON COLUMN northwind.supplier_invoice_lines.unit_cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.supplier_invoice_lines.unit_cost_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.supplier_invoice_lines.line_total_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.supplier_invoice_lines.line_total_currency IS 'The ISO 4217 currency of the amount.';

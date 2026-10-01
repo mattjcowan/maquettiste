@@ -23,3 +23,11 @@ CREATE TABLE northwind.stock_movements (
     CONSTRAINT fk_stock_movements_to_bin_id FOREIGN KEY (to_bin_id) REFERENCES northwind.bin_locations (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_stock_movements_occurred_at ON northwind.stock_movements (occurred_at DESC);
+COMMENT ON TABLE northwind.stock_movements IS 'Movements are read newest first.';
+COMMENT ON COLUMN northwind.stock_movements.id IS 'Surrogate key of the stock movement.';
+COMMENT ON COLUMN northwind.stock_movements.movement_type IS 'Kind of movement.';
+COMMENT ON COLUMN northwind.stock_movements.quantity IS 'Quantity moved, in the base unit; negative for issues.';
+COMMENT ON COLUMN northwind.stock_movements.occurred_at IS 'When the movement happened.';
+COMMENT ON COLUMN northwind.stock_movements.reference_document IS 'Source document number.';
+COMMENT ON COLUMN northwind.stock_movements.unit_cost_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.stock_movements.unit_cost_currency IS 'The ISO 4217 currency of the amount.';

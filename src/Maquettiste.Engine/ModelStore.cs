@@ -216,7 +216,7 @@ public sealed partial class ModelStore : IAsyncDisposable
             // A hand-built operation may carry an element ParseBatch never saw: parse it as strictly as a request body.
             if (o.Element is { } e && !TryParseRequest(JsonMarshal.GetRawUtf8Value(e).ToArray(), o.Id, out node, out var failure))
                 invalid[i] = failure with { Diagnostics = [.. failure.Diagnostics.Select(d => d with { JsonPointer = "/operations/" + i.ToString(CultureInfo.InvariantCulture) + "/element", Line = null, Column = null })] };
-            changes.Add(new PlannedChange(o.Op, o.Id, o.ExpectedHash, node, DeleteResolution.Refuse));
+            changes.Add(new PlannedChange(o.Op, o.Id, o.ExpectedHash, node, o.Op == BatchOp.Delete ? o.Resolution ?? DeleteResolution.Refuse : DeleteResolution.Refuse));
         }
 
         if (invalid.Any(r => r is not null))
@@ -797,7 +797,17 @@ public sealed partial class ModelStore : IAsyncDisposable
         return new BatchResult(first, items, null);
     }
 
-    private static IReadOnlyList<Diagnostic> Sorted(List<Diagnostic> diagnostics) => [.. diagnostics.Distinct().Order(Diagnostic.Order)];
+    /// <summary>
+    /// Diagnostics in <see cref="Diagnostic.Order"/>, except that a readable refusal (MQ2001, a reference a delete cannot resolve) comes
+    /// before the raw schema failures (MQ1002) the same change produced, so the first diagnostic a caller shows says what to do.
+    /// </summary>
+    private static IReadOnlyList<Diagnostic> Sorted(List<Diagnostic> diagnostics)
+    {
+        var sorted = diagnostics.Distinct().Order(Diagnostic.Order).ToList();
+        if (!sorted.Any(d => d.Rule == "MQ2001") || !sorted.Any(d => d.Rule == "MQ1002"))
+            return sorted;
+        return [.. sorted.Where(d => d.Rule != "MQ1002"), .. sorted.Where(d => d.Rule == "MQ1002")];
+    }
 
     private static bool TryParseRequest(ReadOnlyMemory<byte> json, string? id, out JsonNode? node, out SaveResult invalid)
     {
@@ -906,6 +916,13 @@ public enum DeleteResolution
 
     /// <summary>Clear optional references; a required reference makes the delete invalid: <c>remove-references</c>.</summary>
     [JsonStringEnumMemberName("remove-references")] RemoveReferences,
+
+    /// <summary>
+    /// Clear optional references, and delete what cannot exist without the element: <c>delete-dependents</c>. A referrer whose
+    /// reference is required loses the smallest part of it that is valid without the reference (an attribute, an end, a key, a
+    /// foreign key), or, when nothing smaller will do, is deleted with its own dependents, recursively (engine-design.md section 15.1).
+    /// </summary>
+    [JsonStringEnumMemberName("delete-dependents")] DeleteDependents,
 }
 
 /// <summary>A batch operation kind.</summary>
@@ -977,9 +994,10 @@ public enum BatchOp
 /// <param name="Target">The schema id that what lives in the removed schema moves to (remove-schema); the process (set-lifecycle); the
 /// child state (set-initial).</param>
 /// <param name="Default">The schema id that becomes the default when the removed schema is the default (remove-schema).</param>
+/// <param name="Resolution">What a delete does with references to the element (delete); absent means <see cref="DeleteResolution.Refuse"/>.</param>
 public sealed record BatchOperation(
     BatchOp Op, string? Id, string? ExpectedHash, JsonElement? Element, string? Locale = null, string? Field = null, JsonElement? Value = null,
-    string? Schema = null, string? Name = null, string? Target = null, string? Default = null);
+    string? Schema = null, string? Name = null, string? Target = null, string? Default = null, DeleteResolution? Resolution = null);
 
 /// <summary>An atomic batch of operations.</summary>
 /// <param name="Operations">The operations, applied in order.</param>

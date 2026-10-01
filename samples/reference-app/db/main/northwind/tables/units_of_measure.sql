@@ -10,3 +10,9 @@ CREATE TABLE northwind.units_of_measure (
     decimals_allowed smallint NOT NULL DEFAULT 0,
     CONSTRAINT pk_units_of_measure PRIMARY KEY (code)
 );
+COMMENT ON TABLE northwind.units_of_measure IS 'A unit in which goods are counted, weighed or sold, from UN/CEFACT Recommendation 20.';
+COMMENT ON COLUMN northwind.units_of_measure.code IS 'UN/CEFACT common code, such as EA, KGM or CS; the natural key.';
+COMMENT ON COLUMN northwind.units_of_measure.name IS 'Display name, such as each, kilogram or case.';
+COMMENT ON COLUMN northwind.units_of_measure.dimension IS 'What the unit measures - count, mass, length, volume or area.';
+COMMENT ON COLUMN northwind.units_of_measure.is_base_unit IS 'Whether the unit is the base of its dimension.';
+COMMENT ON COLUMN northwind.units_of_measure.decimals_allowed IS 'Decimals allowed on quantities in the unit.';

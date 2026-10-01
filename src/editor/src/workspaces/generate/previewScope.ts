@@ -75,7 +75,7 @@ export interface Candidate {
 
 /**
  * The picker's elements: the index's elements of an `each` kind (A to Z), else the unit's planned element ids in plan
- * order. `inScope`, when known (the unit's complete plan), narrows an `each` kind to the elements the unit renders: its
+ * order, named by the server, the index, or (a synthesized table) "entity @ database". `inScope`, when known (the unit's complete plan), narrows an `each` kind to the elements the unit renders: its
  * `where` filter and `generation.skip` hints leave the others out.
  */
 export function scopeCandidates(
@@ -83,6 +83,8 @@ export function scopeCandidates(
   index: readonly { id: string; kind: string; name: string; displayName?: string | null }[],
   plannedIds: readonly string[],
   inScope: ReadonlySet<string> | null = null,
+  /** The names the server gives the planned elements (`elementName` on a planned path), when it does. */
+  plannedNames?: ReadonlyMap<string, string>,
 ): Candidate[] {
   if (scope.once) return [];
   const names = new Map(index.map((e) => [e.id, e.displayName || e.name]));
@@ -91,7 +93,16 @@ export function scopeCandidates(
       .filter((e) => e.kind === scope.indexKind && (!inScope || inScope.has(e.id)))
       .map((e) => ({ id: e.id, label: e.displayName || e.name }))
       .sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  return [...new Set(plannedIds)].map((id) => ({ id, label: names.get(id) ?? id }));
+  return [...new Set(plannedIds)].map((id) => ({ id, label: plannedNames?.get(id) || names.get(id) || tableKeyLabel(id, names) || id }));
+}
+
+/** A synthesized table's key, `<entityId>@<databaseId>`, in words: "Customer @ main"; null for any other id. */
+export function tableKeyLabel(id: string, names: Pick<ReadonlyMap<string, string>, "get">): string | null {
+  const at = id.indexOf("@");
+  if (at <= 0) return null;
+  const entity = id.slice(0, at);
+  const database = id.slice(at + 1);
+  return `${names.get(entity) ?? entity} @ ${names.get(database) ?? database}`;
 }
 
 /** The element to render: the remembered choice while it is still a candidate, else the first candidate (null for a model unit). */

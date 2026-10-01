@@ -11,3 +11,9 @@ CREATE TABLE northwind.permissions (
     CONSTRAINT pk_permissions PRIMARY KEY (id),
     CONSTRAINT uq_permissions_code UNIQUE (code)
 );
+COMMENT ON TABLE northwind.permissions IS 'A single grantable right on a resource, such as sales-order:approve.';
+COMMENT ON COLUMN northwind.permissions.id IS 'Surrogate key of the permission.';
+COMMENT ON COLUMN northwind.permissions.code IS 'Resource and action, such as sales-order:approve.';
+COMMENT ON COLUMN northwind.permissions.resource IS 'Protected resource.';
+COMMENT ON COLUMN northwind.permissions.action IS 'Action on the resource.';
+COMMENT ON COLUMN northwind.permissions.description IS 'What the permission allows.';

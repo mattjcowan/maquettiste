@@ -11,3 +11,6 @@ CREATE TABLE northwind.bundle_components (
     CONSTRAINT fk_bundle_components_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE RESTRICT,
     CONSTRAINT fk_bundle_components_product_bundle_id FOREIGN KEY (product_bundle_id) REFERENCES northwind.product_bundles (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.bundle_components IS 'A product and quantity included in a bundle.';
+COMMENT ON COLUMN northwind.bundle_components.id IS 'Surrogate key of the bundle component.';
+COMMENT ON COLUMN northwind.bundle_components.quantity IS 'Quantity per bundle, in the product''s base unit.';

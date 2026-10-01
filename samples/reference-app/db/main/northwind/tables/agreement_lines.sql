@@ -16,3 +16,9 @@ CREATE TABLE northwind.agreement_lines (
     CONSTRAINT fk_agreement_lines_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE SET NULL,
     CONSTRAINT fk_agreement_lines_customer_price_agreement_id FOREIGN KEY (customer_price_agreement_id) REFERENCES northwind.customer_price_agreements (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.agreement_lines IS 'A price or discount for a product or a whole category within a customer agreement.';
+COMMENT ON COLUMN northwind.agreement_lines.id IS 'Surrogate key of the agreement line.';
+COMMENT ON COLUMN northwind.agreement_lines.agreed_price_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.agreement_lines.agreed_price_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.agreement_lines.discount IS 'Discount off list price, when no fixed price is agreed.';
+COMMENT ON COLUMN northwind.agreement_lines.minimum_quantity IS 'Minimum order quantity for the price.';

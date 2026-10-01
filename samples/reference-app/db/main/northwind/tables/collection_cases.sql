@@ -23,3 +23,17 @@ CREATE TABLE northwind.collection_cases (
     CONSTRAINT fk_collection_cases_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
     CONSTRAINT fk_collection_cases_assigned_to_id FOREIGN KEY (assigned_to_id) REFERENCES northwind.employees (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.collection_cases IS 'A collection effort on a customer''s overdue balance, possibly handed to an agency.';
+COMMENT ON COLUMN northwind.collection_cases.id IS 'Surrogate key of the collection case.';
+COMMENT ON COLUMN northwind.collection_cases.case_number IS 'Case number.';
+COMMENT ON COLUMN northwind.collection_cases.opened_on IS 'Date opened.';
+COMMENT ON COLUMN northwind.collection_cases.status IS 'open, promise-to-pay, agency or closed.';
+COMMENT ON COLUMN northwind.collection_cases.total_overdue_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.collection_cases.total_overdue_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.collection_cases.agency_name IS 'Collection agency, when outsourced.';
+COMMENT ON COLUMN northwind.collection_cases.closed_on IS 'Date closed.';
+COMMENT ON COLUMN northwind.collection_cases.notes IS 'Case notes.';
+COMMENT ON COLUMN northwind.collection_cases.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.collection_cases.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.collection_cases.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.collection_cases.updated_by IS 'User name of the last editor.';

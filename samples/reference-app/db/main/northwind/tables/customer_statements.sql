@@ -17,3 +17,12 @@ CREATE TABLE northwind.customer_statements (
     CONSTRAINT fk_customer_statements_customer_id FOREIGN KEY (customer_id) REFERENCES northwind.parties (id) ON DELETE RESTRICT,
     CONSTRAINT fk_customer_statements_billing_account_id FOREIGN KEY (billing_account_id) REFERENCES northwind.billing_accounts (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.customer_statements IS 'A periodic statement of a customer''s open items and balance.';
+COMMENT ON COLUMN northwind.customer_statements.id IS 'Surrogate key of the customer statement.';
+COMMENT ON COLUMN northwind.customer_statements.statement_date IS 'Statement date.';
+COMMENT ON COLUMN northwind.customer_statements.opening_balance_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.customer_statements.opening_balance_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.customer_statements.closing_balance_amount IS 'The amount in the currency''s major unit.';
+COMMENT ON COLUMN northwind.customer_statements.closing_balance_currency IS 'The ISO 4217 currency of the amount.';
+COMMENT ON COLUMN northwind.customer_statements.sent_at IS 'When it was sent.';
+COMMENT ON COLUMN northwind.customer_statements.document_url IS 'Rendered PDF.';

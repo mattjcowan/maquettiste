@@ -9,3 +9,4 @@ CREATE TABLE northwind.role_permission (
     CONSTRAINT fk_role_permission_roles_id FOREIGN KEY (roles_id) REFERENCES northwind.roles (id) ON DELETE CASCADE,
     CONSTRAINT fk_role_permission_permissions_id FOREIGN KEY (permissions_id) REFERENCES northwind.permissions (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.role_permission IS 'Permissions included in a role.';

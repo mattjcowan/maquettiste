@@ -30,3 +30,17 @@ CREATE TABLE northwind.service_cases (
     CONSTRAINT fk_service_cases_contact_id FOREIGN KEY (contact_id) REFERENCES northwind.contacts (id) ON DELETE SET NULL
 );
 CREATE INDEX ix_service_cases_sla_due_at ON northwind.service_cases (sla_due_at);
+COMMENT ON TABLE northwind.service_cases IS 'A customer service request, such as a missing delivery, a billing question or a product problem.';
+COMMENT ON COLUMN northwind.service_cases.id IS 'Surrogate key of the service case.';
+COMMENT ON COLUMN northwind.service_cases.case_number IS 'Case number.';
+COMMENT ON COLUMN northwind.service_cases.subject IS 'One-line summary.';
+COMMENT ON COLUMN northwind.service_cases.description IS 'Customer''s description.';
+COMMENT ON COLUMN northwind.service_cases.priority IS 'Urgency.';
+COMMENT ON COLUMN northwind.service_cases.status IS 'Lifecycle state.';
+COMMENT ON COLUMN northwind.service_cases.opened_at IS 'When the case was opened.';
+COMMENT ON COLUMN northwind.service_cases.sla_due_at IS 'When the first answer is due.';
+COMMENT ON COLUMN northwind.service_cases.resolved_at IS 'When it was resolved.';
+COMMENT ON COLUMN northwind.service_cases.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.service_cases.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.service_cases.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.service_cases.updated_by IS 'User name of the last editor.';

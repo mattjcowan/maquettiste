@@ -13,3 +13,10 @@ CREATE TABLE northwind.tracking_events (
     CONSTRAINT pk_tracking_events PRIMARY KEY (id),
     CONSTRAINT fk_tracking_events_shipment_id FOREIGN KEY (shipment_id) REFERENCES northwind.shipments (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.tracking_events IS 'A scan event reported by a carrier for a shipment.';
+COMMENT ON COLUMN northwind.tracking_events.id IS 'Surrogate key of the tracking event.';
+COMMENT ON COLUMN northwind.tracking_events.occurred_at IS 'When the scan happened.';
+COMMENT ON COLUMN northwind.tracking_events.event_code IS 'Carrier event code.';
+COMMENT ON COLUMN northwind.tracking_events.description IS 'Event text.';
+COMMENT ON COLUMN northwind.tracking_events.city IS 'Scan location.';
+COMMENT ON COLUMN northwind.tracking_events.country_code IS 'Scan country.';

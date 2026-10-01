@@ -1,7 +1,7 @@
 // The explorer's context menus (explorer-redesign.md 1.8), as data: which actions a row, or a multi-selection of
 // rows of one kind, offers. RowMenu.tsx renders them; Explorer.tsx runs them. Only actions this editor can run are
 // listed; the rest of section 1.8's table arrives with the features they need.
-import { placementOf, PROCESS_LABELS } from "@/model/labels";
+import { placementOf, PROCESS_LABELS, USED_LABEL } from "@/model/labels";
 import type { ExplorerId, NodeType } from "./tree";
 import { CREATE_LABELS, DOMAIN_CREATE, EXPLORER_CREATE, folderCreate, type CreateKind } from "./create";
 import { PROMOTABLE_KINDS } from "./promote";
@@ -86,7 +86,7 @@ function processMenu(t: MenuTarget): MenuItem[] {
   const out: MenuItem[] = [item("open", "Open"), item("open-new-tab", "Open in new tab")];
   if (t.kind === "process")
     out.push(item("simulate", PROCESS_LABELS.simulate), item("verify-scenarios", PROCESS_LABELS.verify), item("export-xstate", PROCESS_LABELS.exportXState));
-  out.push(item("where-used", "Where used"));
+  out.push(item("where-used", USED_LABEL));
   if (t.kind === "process") out.push(item("move", "Move to domain…", true));
   out.push(item("rename", "Rename"), item("favorite", t.favorite ? "Remove from favorites" : "Add to favorites"), item("delete", "Delete", true, true));
   return out;
@@ -164,14 +164,13 @@ function single(t: MenuTarget): MenuItem[] {
     ].sort((a, b) => Number(!!a.danger) - Number(!!b.danger));
   if (t.kind === "entity") {
     out.push(item("add-to-diagram", "Add to diagram", true), item("add-with-related", "Add with related…", true), item("show-on-canvas", "Show on canvas"));
-    out.push(item("where-used", "Where used"), item("map-to-database", "Map to database…", true));
+    out.push(item("where-used", USED_LABEL), item("map-to-database", "Map to database…", true));
     out.push(item("edit-seed-data", "Edit seed data"), item("import-seed-csv", "Import seed CSV…"));
     if (t.linked) out.push(item("go-to-table", "Go to table"));
-  } else if (t.kind === "relation")
-    out.push(item("add-to-diagram", "Add to diagram", true), item("go-to-ends", "Go to ends"), item("where-used", "Where used"));
+  } else if (t.kind === "relation") out.push(item("add-to-diagram", "Add to diagram", true), item("go-to-ends", "Go to ends"), item("where-used", USED_LABEL));
   else if (t.kind === "diagram") {
     if (!t.processDiagram) out.push(item("duplicate", "Duplicate"));
-  } else out.push(item("where-used", "Where used"));
+  } else out.push(item("where-used", USED_LABEL));
   if (t.kind && MARKABLE.has(t.kind))
     out.push(item("apply-stereotype", "Apply stereotype…", true), item("tag", "Tag…", true), item("set-category", "Set category…", true));
   if (t.kind && PROMOTABLE_KINDS.has(t.kind)) out.push(item("promote", "Promote to entity"));

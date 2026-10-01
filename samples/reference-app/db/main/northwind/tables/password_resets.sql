@@ -13,3 +13,9 @@ CREATE TABLE northwind.password_resets (
     CONSTRAINT uq_password_resets_token_hash UNIQUE (token_hash),
     CONSTRAINT fk_password_resets_user_account_id FOREIGN KEY (user_account_id) REFERENCES northwind.user_accounts (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.password_resets IS 'A single-use password reset request sent by email.';
+COMMENT ON COLUMN northwind.password_resets.id IS 'Surrogate key of the password reset.';
+COMMENT ON COLUMN northwind.password_resets.token_hash IS 'Hash of the emailed token.';
+COMMENT ON COLUMN northwind.password_resets.requested_at IS 'When the reset was requested.';
+COMMENT ON COLUMN northwind.password_resets.expires_at IS 'When the token stops working.';
+COMMENT ON COLUMN northwind.password_resets.used_at IS 'When the token was used.';

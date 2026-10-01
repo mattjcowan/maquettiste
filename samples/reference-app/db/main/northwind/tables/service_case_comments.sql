@@ -13,3 +13,8 @@ CREATE TABLE northwind.service_case_comments (
     CONSTRAINT fk_service_case_comments_author_id FOREIGN KEY (author_id) REFERENCES northwind.user_accounts (id) ON DELETE SET NULL,
     CONSTRAINT fk_service_case_comments_service_case_id FOREIGN KEY (service_case_id) REFERENCES northwind.service_cases (id) ON DELETE CASCADE
 );
+COMMENT ON TABLE northwind.service_case_comments IS 'A message on a service case, from the customer or an agent.';
+COMMENT ON COLUMN northwind.service_case_comments.id IS 'Surrogate key of the service case comment.';
+COMMENT ON COLUMN northwind.service_case_comments.body IS 'Message.';
+COMMENT ON COLUMN northwind.service_case_comments.is_internal IS 'Hidden from the customer.';
+COMMENT ON COLUMN northwind.service_case_comments.posted_at IS 'When it was posted.';

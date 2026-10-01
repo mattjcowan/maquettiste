@@ -41,6 +41,9 @@ internal sealed class ValidationContext
     private readonly Lazy<FrozenDictionary<string, ImmutableArray<Seed>>> _seeds;
     private readonly Lazy<FrozenDictionary<string, Seed>> _rowSeeds;
     private readonly Lazy<FrozenSet<string>> _cyclicRows;
+    private readonly ConcurrentDictionary<Dialect, FrozenSet<string>> _knownNativeTypes;
+    private readonly Lazy<FrozenSet<string>> _modelTypeNames;
+    private readonly Lazy<FrozenDictionary<string, ImmutableArray<NativeTypeUse>>> _userDefinedTypes;
 
     /// <summary>Creates a context.</summary>
     /// <param name="model">The snapshot.</param>
@@ -64,6 +67,9 @@ internal sealed class ValidationContext
         _seeds = new(BuildSeeds);
         _rowSeeds = new(BuildRowSeeds);
         _cyclicRows = new(() => ReferenceDataRules.CyclicRows(this));
+        _knownNativeTypes = new();
+        _modelTypeNames = new(BuildModelTypeNames);
+        _userDefinedTypes = new(BuildUserDefinedTypes);
     }
 
     /// <summary>A context over the same model and documents, sharing every index already built, with other rule names.</summary>
@@ -86,6 +92,9 @@ internal sealed class ValidationContext
         _seeds = other._seeds;
         _rowSeeds = other._rowSeeds;
         _cyclicRows = other._cyclicRows;
+        _knownNativeTypes = other._knownNativeTypes;
+        _modelTypeNames = other._modelTypeNames;
+        _userDefinedTypes = other._userDefinedTypes;
     }
 
     /// <summary>The reference-data facts: reference-typed attributes, ends and each type's codes.</summary>
@@ -543,4 +552,141 @@ internal sealed class ValidationContext
 
         return Freeze(map);
     }
+
+    /// <summary>
+    /// Classifies a column's native type for MQ4006 and MQ4016: known when its base name is a native type of the dialect, the base of
+    /// a value of the dialect's effective type map, or the snake or kebab name (with or without a <c>_t</c> suffix) of one of the
+    /// model's reference types or enums; user-defined when it is otherwise written with identifier quotes or a prefix such as a
+    /// schema; else unknown. SQLite accepts any type name.
+    /// </summary>
+    /// <param name="dialect">The database's dialect.</param>
+    /// <param name="nativeType">The native type as written.</param>
+    /// <param name="parsed">The parsed native type.</param>
+    /// <returns>The classification.</returns>
+    public NativeTypeStatus ClassifyNativeType(Dialect dialect, string nativeType, out NativeTypeName parsed)
+    {
+        parsed = DialectInfo.Parse(nativeType);
+        if (dialect == Dialect.Sqlite)
+            return NativeTypeStatus.Known;
+        var name = parsed.BaseName;
+        if (name.Length > 0)
+        {
+            var known = _knownNativeTypes.GetOrAdd(dialect, d => DialectInfo.KnownBaseNames(d, Resolution.DialectTypeMaps.Effective(d, Model.Settings)));
+            if (known.Contains(name) || _modelTypeNames.Value.Contains(name))
+                return NativeTypeStatus.Known;
+        }
+
+        return parsed.IsQuotedOrQualified ? NativeTypeStatus.UserDefined : NativeTypeStatus.Unknown;
+    }
+
+    /// <summary>
+    /// The columns of file-backed tables in a database whose native type names one user-defined type (MQ4016), in document path and
+    /// column order.
+    /// </summary>
+    /// <param name="databaseId">The database id.</param>
+    /// <param name="typeKey">The type's key (see <see cref="UserDefinedTypeKey"/>).</param>
+    /// <returns>The uses.</returns>
+    public ImmutableArray<NativeTypeUse> UserDefinedTypeUses(string databaseId, string typeKey) =>
+        _userDefinedTypes.Value.TryGetValue(databaseId + "|" + typeKey, out var list) ? list : [];
+
+    /// <summary>
+    /// The MQ4016 key of a user-defined native type: its unquoted lower-cased parts joined with dots, without a leading schema equal
+    /// to the database's default schema, so <c>"public"."unit_of_measure"</c> and <c>"unit_of_measure"</c> are one type on a
+    /// PostgreSQL database whose default schema is <c>public</c>.
+    /// </summary>
+    /// <param name="database">The database.</param>
+    /// <param name="parsed">The parsed native type.</param>
+    /// <returns>The key.</returns>
+    public static string UserDefinedTypeKey(Database database, NativeTypeName parsed)
+    {
+        var parts = parsed.Parts;
+        var defaultSchema = (database.DefaultSchema ?? DialectInfo.DefaultSchema(database.Dialect)).ToLowerInvariant();
+        if (parts.Length == 2 && defaultSchema.Length > 0 && parts[0] == defaultSchema)
+            return parts[1];
+        return string.Join('.', parts);
+    }
+
+    /// <summary>
+    /// The tables whose MQ4006 or MQ4016 findings can change with a document they do not reference: for a table, the first holder of
+    /// each user-defined native type it uses (that holder reports the column count); for a reference type or an enum, the tables with
+    /// a column whose native type carries one of its names.
+    /// </summary>
+    /// <param name="element">The changed element.</param>
+    /// <returns>The documents (duplicates are possible).</returns>
+    public IEnumerable<ElementDocument> NativeTypePeers(Element element)
+    {
+        if (element is Table table && Model.Get<Database>(table.Database) is { } database)
+        {
+            foreach (var column in table.Columns)
+            {
+                if (column.NativeType is { } native && ClassifyNativeType(database.Dialect, native, out var parsed) == NativeTypeStatus.UserDefined
+                    && UserDefinedTypeUses(database.Id, UserDefinedTypeKey(database, parsed)) is { Length: > 0 } uses)
+                {
+                    yield return uses[0].Document;
+                }
+            }
+        }
+        else if (element is ReferenceType or EnumType)
+        {
+            var names = ModelTypeNames(element.Name);
+            foreach (var doc in Documents)
+            {
+                if (doc.Element is Table other && other.Columns.Any(c => c.NativeType is { } n && names.Contains(DialectInfo.Parse(n).BaseName)))
+                    yield return doc;
+            }
+        }
+    }
+
+    /// <summary>The native type names that stand for a reference type or enum: lower-cased, snake and kebab, each with and without <c>_t</c>.</summary>
+    /// <param name="name">The element's name.</param>
+    /// <returns>The names.</returns>
+    public static IEnumerable<string> ModelTypeNames(string name)
+    {
+        if (name.Length == 0)
+            yield break;
+        foreach (var form in new[] { name.ToLowerInvariant(), Text.Casing.Snake(name), Text.Casing.Kebab(name) })
+        {
+            yield return form;
+            yield return form + "_t";
+        }
+    }
+
+    private FrozenSet<string> BuildModelTypeNames() =>
+        Documents.Select(d => d.Element).Where(e => e is ReferenceType or EnumType)
+            .SelectMany(e => ModelTypeNames(e.Name)).ToFrozenSet(StringComparer.Ordinal);
+
+    private FrozenDictionary<string, ImmutableArray<NativeTypeUse>> BuildUserDefinedTypes()
+    {
+        var map = new Dictionary<string, ImmutableArray<NativeTypeUse>.Builder>(StringComparer.Ordinal);
+        foreach (var doc in Documents)
+        {
+            if (doc.Element is not Table table || Model.Get<Database>(table.Database) is not { } database)
+                continue;
+            for (var i = 0; i < table.Columns.Count; i++)
+            {
+                if (table.Columns[i].NativeType is { } native && ClassifyNativeType(database.Dialect, native, out var parsed) == NativeTypeStatus.UserDefined)
+                    Append(map, database.Id + "|" + UserDefinedTypeKey(database, parsed), new NativeTypeUse(doc, i));
+            }
+        }
+
+        return Freeze(map);
+    }
 }
+
+/// <summary>How the validator reads a column's native type (MQ4006, MQ4016).</summary>
+internal enum NativeTypeStatus
+{
+    /// <summary>A native type of the dialect, of its type map, or a name of the model's reference types and enums.</summary>
+    Known,
+
+    /// <summary>A quoted or qualified name the validator cannot check: a type the database defines (MQ4016).</summary>
+    UserDefined,
+
+    /// <summary>A plain name the dialect does not know (MQ4006).</summary>
+    Unknown,
+}
+
+/// <summary>A table column whose native type is a user-defined type (MQ4016).</summary>
+/// <param name="Document">The table's document.</param>
+/// <param name="Column">The column's index.</param>
+internal sealed record NativeTypeUse(ElementDocument Document, int Column);

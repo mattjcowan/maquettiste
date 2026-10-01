@@ -20,3 +20,14 @@ CREATE TABLE northwind.request_for_quotes (
     CONSTRAINT fk_request_for_quotes_buyer_id FOREIGN KEY (buyer_id) REFERENCES northwind.employees (id) ON DELETE SET NULL,
     CONSTRAINT fk_request_for_quotes_product_id FOREIGN KEY (product_id) REFERENCES northwind.products (id) ON DELETE SET NULL
 );
+COMMENT ON TABLE northwind.request_for_quotes IS 'A request asking several suppliers to quote for a product.';
+COMMENT ON COLUMN northwind.request_for_quotes.id IS 'Surrogate key of the request for quote.';
+COMMENT ON COLUMN northwind.request_for_quotes.rfq_number IS 'RFQ number.';
+COMMENT ON COLUMN northwind.request_for_quotes.issued_on IS 'Date sent.';
+COMMENT ON COLUMN northwind.request_for_quotes.response_due_on IS 'Deadline for quotes.';
+COMMENT ON COLUMN northwind.request_for_quotes.status IS 'open, evaluating, awarded or cancelled.';
+COMMENT ON COLUMN northwind.request_for_quotes.description IS 'Requirements.';
+COMMENT ON COLUMN northwind.request_for_quotes.created_at IS 'When the row was created.';
+COMMENT ON COLUMN northwind.request_for_quotes.created_by IS 'User name of the creator.';
+COMMENT ON COLUMN northwind.request_for_quotes.updated_at IS 'When the row was last changed.';
+COMMENT ON COLUMN northwind.request_for_quotes.updated_by IS 'User name of the last editor.';

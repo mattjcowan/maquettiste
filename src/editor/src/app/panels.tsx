@@ -28,9 +28,12 @@ const ICONS: Record<Panel, { hide: LucideIcon; show: LucideIcon }> = {
   topbar: { hide: ChevronsRight, show: ChevronsLeft },
   tables: { hide: PanelLeftClose, show: PanelLeftOpen },
   ddl: { hide: PanelRightClose, show: PanelRightOpen },
+  packFiles: { hide: PanelLeftClose, show: PanelLeftOpen },
+  templatePreview: { hide: PanelRightClose, show: PanelRightOpen },
+  unitHelp: { hide: PanelRightClose, show: PanelRightOpen },
 };
 
-/** The screen panels (the Database screen's) are named without an article: "Hide tables list". */
+/** The screen panels (the Database screen's and the pack editor's) are named without an article: "Hide tables list". */
 export const panelLabel = (panel: Panel, collapsed: boolean): string =>
   `${collapsed ? "Show" : "Hide"} ${SCREEN_PANELS[panel] ? "" : "the "}${PANEL_NAMES[panel]}`;
 
