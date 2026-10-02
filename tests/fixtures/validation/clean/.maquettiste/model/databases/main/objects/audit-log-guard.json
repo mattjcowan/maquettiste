@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../../.schema/v1/sql-object.json",
+  "kind": "sql-object",
+  "id": "01JSQX00000000000000000001",
+  "name": "audit_log_guard",
+  "database": "01JDBS00000000000000000001",
+  "objectKind": "grant",
+  "dependsOn": [
+    "01JTAB00000000000000000001",
+    "01JRTN00000000000000000001"
+  ],
+  "body": {
+    "*": "grant select on billing.audit_log to public;"
+  }
+}

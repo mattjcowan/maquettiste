@@ -47,7 +47,7 @@ public sealed class InitTests
             $"wrote .maquettiste/templates/sql-ddl/ ({StarterPacks.Files("sql-ddl", out var embedded).Count} files{(embedded ? "" : ", built-in starter")})",
             $"Initialized maquettiste in {repo.RepoRoot}.",
             "Built output root (commit: false): src/Generated. maquettiste generate regenerates it; ignore or commit it as your team prefers "
-                + "(init --gitignore adds the built roots and .maquettiste/.cache/ to .gitignore).",
+                + "(init --gitignore adds the built roots and .maquettiste/.cache/ to .gitignore). Keep formatters and linters off .maquettiste/ (see the guide).",
         ], lines);
         Assert.DoesNotContain(".gitignore (", result.Error, StringComparison.Ordinal);
 
@@ -399,7 +399,7 @@ public sealed class InitTests
     {
         Assert.Null(InitCommand.BuiltRootsNote([]));
         Assert.Equal("Built output roots (commit: false): a, b/c. maquettiste generate regenerates them; ignore or commit them as your team prefers "
-            + "(init --gitignore adds the built roots and .maquettiste/.cache/ to .gitignore).", InitCommand.BuiltRootsNote(["a", "/b/c/", "a/"]));
+            + "(init --gitignore adds the built roots and .maquettiste/.cache/ to .gitignore). Keep formatters and linters off .maquettiste/ (see the guide).", InitCommand.BuiltRootsNote(["a", "/b/c/", "a/"]));
     }
 
     [Fact]

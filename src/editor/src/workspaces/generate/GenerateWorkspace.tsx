@@ -20,7 +20,8 @@ import { cn } from "@/lib/cn";
 import { X } from "lucide-react";
 import { PackEditor } from "./PackEditor";
 import { ExplainForm, PlanChanges, type ExplainAsk, PlanSummary, UnchangedUnits, WhyPanel } from "./PlanExplain";
-import { closePackTab } from "./packTabs";
+import { closePackTab, EXTENSIONS_TAB } from "./packTabs";
+import { ExtensionsScreen } from "./ExtensionsScreen";
 import { moreNotesText, nothingToWrite, orderDiagnostics, type PlanNote } from "./planModel";
 import { discardDrafts, hasUnsaved } from "./drafts";
 
@@ -291,7 +292,7 @@ function PlanScreen() {
   );
 }
 
-/** The Generate screen: the Plan tab and one centre tab per open pack (generation-ui.md 3). */
+/** The Generate screen: the Plan tab, one centre tab per open pack (generation-ui.md 3) and the Extensions tab. */
 export function GenerateWorkspace() {
   const { store } = useServices();
   const tabs = useEditor(store, (s) => s.generation.packTabs);
@@ -306,8 +307,9 @@ export function GenerateWorkspace() {
     window.addEventListener("beforeunload", onUnload);
     return () => window.removeEventListener("beforeunload", onUnload);
   }, []);
+  const label = (pack: string) => (pack === EXTENSIONS_TAB ? "Extensions" : pack);
   const close = (pack: string) => {
-    if (hasUnsaved(pack) && !window.confirm(`Discard the unsaved changes in ${pack}?`)) return;
+    if (hasUnsaved(pack) && !window.confirm(`Discard the unsaved changes in ${label(pack)}?`)) return;
     discardDrafts(pack);
     store.getState().setGeneration(closePackTab(store.getState().generation, pack));
   };
@@ -369,14 +371,14 @@ export function GenerateWorkspace() {
               className={tab(active === pack)}
               onClick={() => show(pack)}
               onKeyDown={(e) => onTabKey(e, i + 1)}
-              data-testid={`pack-tab-${pack}`}
+              data-testid={pack === EXTENSIONS_TAB ? "extensions-tab" : `pack-tab-${pack}`}
             >
-              {pack}
+              {label(pack)}
             </button>
             <button
               type="button"
               tabIndex={-1}
-              {...iconLabel(`Close ${pack}`, "Delete")}
+              {...iconLabel(`Close ${label(pack)}`, "Delete")}
               className="grid size-6 place-items-center self-center rounded-[4px] text-secondary hover:bg-accent-subtle"
               onClick={() => close(pack)}
             >
@@ -385,7 +387,9 @@ export function GenerateWorkspace() {
           </div>
         ))}
       </div>
-      <div className="min-h-0 flex-1">{active ? <PackEditor key={active} pack={active} /> : <PlanScreen />}</div>
+      <div className="min-h-0 flex-1">
+        {active === EXTENSIONS_TAB ? <ExtensionsScreen /> : active ? <PackEditor key={active} pack={active} /> : <PlanScreen />}
+      </div>
     </div>
   );
 }

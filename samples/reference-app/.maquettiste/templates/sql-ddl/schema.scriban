@@ -1,5 +1,6 @@
 {{-
-# One schema script per database: schemas, sequences, every table in foreign-key dependency order, then views. The
+# One schema script per database: schemas, SQL objects run before the tables, database types, sequences, every table in
+# foreign-key dependency order, then routines and views (see the DDL order in _objects.scriban) and the other SQL objects. The
 # "schemaScript" parameter chooses between the table DDL inline ("inline", runs anywhere) and client include directives pointing
 # at the table scripts ("include": psql \ir, sqlcmd :r, sqlite3 .read).
 # Foreign keys that close a cycle cannot be created inline on PostgreSQL or SQL Server; they are left out of their CREATE TABLE
@@ -19,9 +20,13 @@ skip = cycle_skip(tables, breaks, db)
 deferred = []
 cycle_fk_statements(tables, breaks, db, deferred)
 go = db.dialect == "sqlserver" ? "\nGO" : ""
+before_objects = objects_in_phase(db, "before")
+after_objects = objects_in_phase(db, "after")
+types_in_order = in_dependency_order(db.types)
+programmables = routines_and_views(db)
 -}}
 {{ banner "--" }}
--- Schema of database {{ db.name }} ({{ dialect_title(db) }}): tables {{ tables.size }}, views {{ db.views.size }}, sequences {{ db.sequences.size }}.
+-- Schema of database {{ db.name }} ({{ dialect_title(db) }}): tables {{ tables.size }}, views {{ db.views.size }}, sequences {{ db.sequences.size }}{{ object_counts(db) }}.
 -- Tables are in foreign-key dependency order: every table follows the tables it references.
 {{- if breaks.size > 0 }}
 -- Foreign-key cycle: these constraints reference a table created later{{ if deferred.size > 0 }}, so they are added after the last table{{ end }}:
@@ -37,6 +42,14 @@ PRAGMA foreign_keys = ON;
 {{- for s in schemas_to_create(db) }}
 
 {{ schema_sql(s, db) }}{{ go }}
+{{- end }}
+{{- for o in before_objects }}
+
+{{ object_sql(o, db) }}{{ go }}
+{{- end }}
+{{- for t in types_in_order }}
+
+{{ type_sql(t, db) }}{{ go }}
 {{- end }}
 {{- for s in db.sequences }}
 
@@ -60,7 +73,11 @@ PRAGMA foreign_keys = ON;
 
 {{ s }}{{ go }}
 {{- end }}
-{{- for v in db.views }}
+{{- for v in programmables }}
 
-{{ view_sql(v, db) }}{{ go }}
+{{ v.kind == "view" ? view_sql(v, db) : routine_sql(v, db) }}{{ go }}
+{{- end }}
+{{- for o in after_objects }}
+
+{{ object_sql(o, db) }}{{ go }}
 {{- end }}

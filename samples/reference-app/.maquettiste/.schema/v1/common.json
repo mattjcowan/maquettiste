@@ -172,6 +172,17 @@
         }
       ]
     },
+    "dbTypeRef": {
+      "description": "A built-in type keyword, or the id of a database type of the same database (routine parameters and results, composite type fields).",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/builtinType"
+        },
+        {
+          "$ref": "#/$defs/id"
+        }
+      ]
+    },
     "length": {
       "type": "integer",
       "minimum": 1

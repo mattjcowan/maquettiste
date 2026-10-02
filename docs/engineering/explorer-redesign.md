@@ -159,7 +159,7 @@ The counts on collapsed Databases rows come from the index (databases, views, se
 | Entity ✱ | Open, Open in new tab, Add to diagram ✱, Add with related… ✱, Show on canvas, Used, Go to table, Apply stereotype… ✱, Tag… ✱, Set category… ✱, Move to domain… ✱, Edit seed data, Rename, Delete ✱ |
 | Relationship ✱ | Open, Add to diagram ✱, Go to ends, Used, Promote to entity, Move to domain… ✱, Delete ✱ |
 | Enum, value object, custom type ✱ | Open, Used, Move to domain… ✱, Delete ✱ |
-| Database | New schema, New table, New view, New sequence, Open Database screen, Coverage report, Generate DDL |
+| Database | New schema, New table, New view, New sequence, New routine, New database type, New SQL object, Open Database screen, Coverage report, Generate DDL |
 | Table ✱ | Open, Go to entity, Create entity from table ✱, Copy SELECT, Copy DDL, Used |
 | Diagram ✱ | Open, Duplicate, Move to domain… ✱, Delete ✱ |
 
@@ -178,8 +178,20 @@ the palette. `table` (with a file of its own), `view` and `sequence` are editor 
 Columns and Keys for a table, Body and Columns for a view, Definition for a sequence, each with Code generation and
 References); a table overlay's row (an index row with `entity`) has no editor. Tests: `tests/unit/database-create.test.ts`,
 `tests/unit/database-docs.test.ts`, Playwright `database-new-table`, `database-new-view` and `database-new-sequence`
-(mock-only). Routines (functions and procedures), database types and SQL objects join `DATABASE_CREATE` once the engine
-has their kinds.
+(mock-only).
+
+**As built (routines, database types and SQL objects, 2026-10-01).** `DATABASE_CREATE` gains `routine`, `database-type` and
+`sql-object` (New routine…, New database type…, New SQL object…): the dialogs add a routine's kind and a function's result
+type, a database type's kind with a domain's base, a range's subtype or an enum's labels (a composite starts with one
+field), and a SQL object's kind (free text) and phase, with a body per dialect for routines and SQL objects as for a view.
+Names are checked within their group: tables, views, sequences and database types share one; routines and SQL objects
+have their own. `model/labels.ts` adds the Routines, Types and Objects folders after Sequences (a schema's buckets in
+`explorer/tree.ts`, which counts them on the schema and database rows). The editors (`editors/database/RoutineEditor.tsx`,
+`DatabaseTypeEditor.tsx`, `SqlObjectEditor.tsx`) share `DialectBodies.tsx` (the per-dialect SQL editors, also the view's
+Body tab), `TypedRowsGrid.tsx` (parameters, a table result's columns, a composite's fields) and `DependsOn.tsx`. The
+Database screen's chips list them from the resolved view (`routines`, `types`, `objects`) and the DDL preview renders the
+pack's each-routine, each-database-type and each-sql-object units. Tests: `tests/unit/database-objects.test.ts`, Playwright
+`database-new-routine`, `database-new-database-type` and `database-new-sql-object` (mock-only).
 
 ### 1.9 Related-element highlighting
 

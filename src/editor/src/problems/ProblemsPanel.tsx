@@ -15,7 +15,9 @@ import { Button } from "@/components/ui/button";
 import { hasEditor, setView } from "@/editors/tabs";
 import { vocabularyProblemTarget, type VocabularyProblemTarget } from "@/model/vocabularies";
 import { displayName } from "@/model/model";
-import type { ElementSummary } from "@/api/types";
+import type { Diagnostic, ElementSummary } from "@/api/types";
+import { extensionPathOf } from "@/workspaces/generate/extensionsModel";
+import { openExtensionsTab } from "@/workspaces/generate/packTabs";
 
 function goToLabel(target: VocabularyProblemTarget, byId: ReadonlyMap<string, ElementSummary>): string {
   if (target.type === "settings") return `the global ${target.tab}`;
@@ -95,7 +97,7 @@ export function ProblemsPanel() {
   const { groups, hidden, counts, filter, validation } = useVisibleProblemGroups();
   const index = useIndex();
   const lookup = indexLookup(index.data);
-  const { reveal, select, openEditor, openSettings } = useEditorNavigation();
+  const { reveal, select, openEditor, openSettings, openWorkspace } = useEditorNavigation();
   const { store } = useServices();
   const rules = useValidationRules();
   const fixes = useMemo(() => new Map((rules.data ?? []).map((r) => [r.id, r.quickFix ?? null])), [rules.data]);
@@ -108,6 +110,14 @@ export function ProblemsPanel() {
     if (target.type === "domain") store.getState().updateEditors((e) => setView(e, "package", target.tab));
     if (hasEditor(summary.kind, summary)) openEditor(summary, true);
     else reveal(summary);
+  };
+  /** A finding located in an extension file (a rule that does not load, an invalid schema) opens that file on the Extensions tab. */
+  const openExtension = (d: Diagnostic): boolean => {
+    const path = extensionPathOf(d);
+    if (!path) return false;
+    store.getState().setGeneration(openExtensionsTab(store.getState().generation, path));
+    openWorkspace("generate");
+    return true;
   };
   if (validation.isPending) return <Spinner label="Validating" />;
   const total = counts.errors + counts.warnings + counts.infos;
@@ -138,6 +148,7 @@ export function ProblemsPanel() {
                         className="flex min-w-0 flex-1 items-start gap-2 px-2 py-1 text-left text-12 hover:bg-accent-subtle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
                         onClick={() => {
                           const summary = group.elementId ? lookup.byId.get(group.elementId) : undefined;
+                          if (openExtension(d)) return;
                           if (summary) reveal(summary, d.jsonPointer);
                           else if (group.elementId) select([group.elementId], d.jsonPointer);
                         }}

@@ -98,20 +98,42 @@ describe("the documents they create", () => {
 describe("the menus that offer them", () => {
   const menu = (t: MenuTarget) => menuFor([t]).map((i) => `${i.id} ${i.label}`);
 
-  it("a database row offers New schema…, New table…, New view… and New sequence…", () => {
-    expect(DATABASE_CREATE.map((k) => DATABASE_CREATE_LABELS[k])).toEqual(["New schema…", "New table…", "New view…", "New sequence…"]);
+  it("a database row offers New schema…, New table…, New view…, New sequence…, New routine…, New database type… and New SQL object…", () => {
+    expect(DATABASE_CREATE.map((k) => DATABASE_CREATE_LABELS[k])).toEqual([
+      "New schema…",
+      "New table…",
+      "New view…",
+      "New sequence…",
+      "New routine…",
+      "New database type…",
+      "New SQL object…",
+    ]);
     expect(menu({ type: "database", kind: "database", element: true })).toEqual(
-      expect.arrayContaining(["new-db:schema New schema…", "new-db:table New table…", "new-db:view New view…", "new-db:sequence New sequence…"]),
+      expect.arrayContaining([
+        "new-db:schema New schema…",
+        "new-db:table New table…",
+        "new-db:view New view…",
+        "new-db:sequence New sequence…",
+        "new-db:routine New routine…",
+        "new-db:database-type New database type…",
+        "new-db:sql-object New SQL object…",
+      ]),
     );
   });
 
-  it("a schema row and a Tables, Views or Sequences folder offer the kind they hold", () => {
+  it("a schema row and a kind folder of a database offer the kind they hold", () => {
     expect(menu({ type: "schema", element: false })).toEqual([
       "new-db:table New table…",
       "new-db:view New view…",
       "new-db:sequence New sequence…",
+      "new-db:routine New routine…",
+      "new-db:database-type New database type…",
+      "new-db:sql-object New SQL object…",
       "expand-all Expand all",
     ]);
+    expect(databaseFolderCreate("routine")).toBe("routine");
+    expect(databaseFolderCreate("database-type")).toBe("database-type");
+    expect(menu({ type: "folder", kind: "sql-object", element: false, home: "databases" })[0]).toBe("new-db:sql-object New SQL object…");
     expect(databaseFolderCreate("view")).toBe("view");
     expect(databaseFolderCreate("mapping")).toBeNull();
     expect(menu({ type: "folder", kind: "sequence", element: false, home: "databases" })[0]).toBe("new-db:sequence New sequence…");

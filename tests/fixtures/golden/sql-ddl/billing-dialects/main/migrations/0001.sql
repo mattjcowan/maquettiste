@@ -6,12 +6,14 @@ BEGIN;
 
 CREATE SCHEMA IF NOT EXISTS billing;
 
+CREATE DOMAIN billing.email_address AS varchar(254) CHECK (VALUE LIKE '%_@_%');
+
 CREATE SEQUENCE billing.invoice_number_seq AS bigint START WITH 1000 INCREMENT BY 1;
 
 CREATE TABLE billing.customers (
     id uuid NOT NULL,
     name varchar(120) NOT NULL,
-    email varchar(254) NOT NULL,
+    email billing.email_address NOT NULL,
     customer_since date NULL,
     created_at timestamptz(6) NOT NULL,
     updated_at timestamptz(6) NULL,
@@ -90,7 +92,22 @@ CREATE TABLE billing.payment_invoice (
     CONSTRAINT fk_payment_invoice_invoices_id FOREIGN KEY (invoices_id) REFERENCES billing.invoices (id) ON DELETE CASCADE
 );
 
+CREATE FUNCTION billing.keep_invoice_number()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.number <> OLD.number THEN
+        RAISE EXCEPTION 'invoice % keeps its number', OLD.number;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+COMMENT ON FUNCTION billing.keep_invoice_number IS 'Trigger function of invoices_keep_number.';
+
 CREATE VIEW billing.outstanding_invoices AS
 select id, number, issued_on from billing.invoices where status = 'I';
+
+CREATE TRIGGER invoices_keep_number BEFORE UPDATE OF number ON billing.invoices FOR EACH ROW EXECUTE FUNCTION billing.keep_invoice_number();
 
 COMMIT;

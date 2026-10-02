@@ -218,6 +218,9 @@ internal sealed class UnitRun
     {
         RTable table => table.Database,
         RView view => view.Database,
+        RRoutine routine => routine.Database,
+        RDatabaseType type => type.Database,
+        RSqlObject obj => obj.Database,
         RColumn column => column.Table?.Database,
         RDatabase database => database,
         _ => null,
@@ -399,7 +402,7 @@ internal sealed class UnitRun
         if (element is not null)
         {
             var alias = element.Kind.Replace('-', '_');
-            if (!BuiltinHelpers.Variables.Contains(alias) || alias is "package" or "entity" or "relation" or "enum" or "value_object" or "table" or "view" or "sequence" or "reference_type" or "seed" or "locale"
+            if (!BuiltinHelpers.Variables.Contains(alias) || alias is "package" or "entity" or "relation" or "enum" or "value_object" or "table" or "view" or "sequence" or "routine" or "database_type" or "sql_object" or "reference_type" or "seed" or "locale"
                 or "process" or "actor" or "scenario")
                 globals.SetValue(alias, element, true);
         }

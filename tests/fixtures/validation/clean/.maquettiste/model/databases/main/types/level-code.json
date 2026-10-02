@@ -1,0 +1,12 @@
+{
+  "$schema": "../../../../.schema/v1/database-type.json",
+  "kind": "database-type",
+  "id": "01JDTP00000000000000000001",
+  "name": "level_code",
+  "database": "01JDBS00000000000000000001",
+  "schema": "01JSCH00000000000000000001",
+  "typeKind": "domain",
+  "base": "string",
+  "length": 16,
+  "check": "VALUE IN ('info', 'warn', 'error')"
+}

@@ -66,6 +66,9 @@ internal static class SnapshotCapture
             Views = [.. database.Views.Select(v => new SnapshotView { Key = v.Id, Name = v.Name, Schema = v.Schema, Body = v.Body })
                 .OrderBy(v => v.Key, StringComparer.Ordinal)],
             Sequences = [.. database.Sequences.Select(CaptureSequence).OrderBy(s => s.Key, StringComparer.Ordinal)],
+            Types = [.. database.Types.Select(CaptureType).OrderBy(s => s.Key, StringComparer.Ordinal)],
+            Routines = [.. database.Routines.Select(CaptureRoutine).OrderBy(s => s.Key, StringComparer.Ordinal)],
+            Objects = [.. database.Objects.Select(CaptureObject).OrderBy(s => s.Key, StringComparer.Ordinal)],
         };
     }
 
@@ -86,6 +89,9 @@ internal static class SnapshotCapture
             }).OrderBy(t => t.Key, StringComparer.Ordinal)],
             Views = [.. snapshot.Views.OrderBy(v => v.Key, StringComparer.Ordinal)],
             Sequences = [.. snapshot.Sequences.OrderBy(s => s.Key, StringComparer.Ordinal)],
+            Types = [.. snapshot.Types.OrderBy(s => s.Key, StringComparer.Ordinal)],
+            Routines = [.. snapshot.Routines.OrderBy(s => s.Key, StringComparer.Ordinal)],
+            Objects = [.. snapshot.Objects.OrderBy(s => s.Key, StringComparer.Ordinal)],
         };
     }
 
@@ -184,6 +190,69 @@ internal static class SnapshotCapture
         Max = sequence.Max,
         Cycle = sequence.Cycle,
         Cache = sequence.Cache,
+    };
+
+    /// <summary>
+    /// A database type's definition text: its definition for the dialect, or its structured form (base and facets, check, members,
+    /// fields, subtype). The name is not part of it, so a rename is a rename and not a change of definition; what columns write for the
+    /// type reaches the diff through their native types.
+    /// </summary>
+    private static SnapshotDefinition CaptureType(RDatabaseType type)
+    {
+        var text = new System.Text.StringBuilder();
+        if (type.Definition is { } definition)
+            text.Append("definition: ").Append(definition).Append('\n');
+        else
+        {
+            if (type.BaseNativeType is { } baseNative)
+                text.Append("base: ").Append(baseNative).Append('\n');
+            if (type.Check is { } check)
+                text.Append("check: ").Append(check).Append('\n');
+            foreach (var member in type.Members)
+                text.Append("member: ").Append(member).Append('\n');
+            foreach (var field in type.Fields)
+                text.Append("field: ").Append(field.Name).Append(' ').Append(field.NativeType).Append('\n');
+            if (type.SubtypeNativeType is { } subtype)
+                text.Append("subtype: ").Append(subtype).Append('\n');
+        }
+
+        return new SnapshotDefinition { Key = type.Id, Name = type.Name, Schema = type.Schema, Kind = type.TypeKind, Definition = text.ToString() };
+    }
+
+    /// <summary>A routine's definition text: its signature (parameters, result, language, attributes) and its body for the dialect.</summary>
+    private static SnapshotDefinition CaptureRoutine(RRoutine routine)
+    {
+        var text = new System.Text.StringBuilder();
+        foreach (var p in routine.Parameters)
+            text.Append("parameter: ").Append(p.Mode).Append(' ').Append(p.Name).Append(' ').Append(p.NativeType).Append(p.Default is null ? "" : " = " + p.Default).Append('\n');
+        if (routine.Returns is { } returns)
+        {
+            if (returns.Table is { } table)
+            {
+                foreach (var c in table)
+                    text.Append("returns column: ").Append(c.Name).Append(' ').Append(c.NativeType).Append(c.Nullable ? "" : " not null").Append('\n');
+            }
+            else
+            {
+                text.Append("returns: ").Append(returns.NativeType).Append('\n');
+            }
+        }
+
+        text.Append("language: ").Append(routine.Language).Append('\n');
+        text.Append("deterministic: ").Append(routine.Deterministic ? "true" : "false").Append('\n');
+        text.Append("security: ").Append(routine.Security).Append('\n');
+        text.Append("body: ").Append(routine.Body);
+        return new SnapshotDefinition { Key = routine.Id, Name = routine.Name, Schema = routine.Schema, Kind = routine.RoutineKind, Definition = text.ToString() };
+    }
+
+    /// <summary>A SQL object's definition text: its phase and its statements for the dialect.</summary>
+    private static SnapshotDefinition CaptureObject(RSqlObject obj) => new()
+    {
+        Key = obj.Id,
+        Name = obj.Name,
+        Schema = obj.Schema,
+        Kind = obj.ObjectKind,
+        Definition = "phase: " + obj.Phase + "\nbody: " + obj.Body,
     };
 
     private static IReadOnlyList<string> Keys(IEnumerable<RColumn> columns) => [.. columns.Select(c => c.Key)];

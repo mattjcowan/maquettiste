@@ -129,6 +129,10 @@ internal sealed partial class ScriptSandbox : IScriptSandbox, IDisposable
     /// <summary>What this engine's scripts registered, in registration order.</summary>
     public IReadOnlyList<ScriptRegistration> Registrations => _registrations;
 
+    /// <summary>The rules the scripts registered, with the severity each one declared (the Extensions screen and Settings › Validation).</summary>
+    internal IReadOnlyList<(string Id, DiagnosticSeverity Severity)> Rules =>
+        [.. _rules.Values.OrderBy(r => r.Id, StringComparer.Ordinal).Select(r => (r.Id, r.Severity))];
+
     /// <summary>Whether a limit breach, cancellation or host failure left the engine in a state the pool should not reuse.</summary>
     public bool Faulted { get; private set; }
 

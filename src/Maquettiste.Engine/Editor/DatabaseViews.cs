@@ -19,7 +19,11 @@ public sealed record DatabaseViewResult(DatabaseView? View, IReadOnlyList<Diagno
 /// <param name="Views">Every view, in the resolver's (schema, name) order.</param>
 /// <param name="Sequences">Every sequence (the sequence files and the sequences the resolver creates for entity keys), in the resolver's
 /// (schema, name) order.</param>
-/// <param name="Schemas">Every schema, by name: the ones the database file declares and the ones its tables, views and sequences use.</param>
+/// <param name="Routines">Every routine (function or procedure), in the resolver's (schema, name) order.</param>
+/// <param name="Types">Every database type (domain, composite, enumeration or range), in the resolver's (schema, name) order.</param>
+/// <param name="Objects">Every SQL object (a trigger, grant, extension or other object the model does not type), in the resolver's (schema, name) order.</param>
+/// <param name="Schemas">Every schema, by name: the ones the database file declares and the ones its tables, views, sequences,
+/// routines, database types and SQL objects use.</param>
 /// <param name="Quoting"><c>always</c>, <c>reserved</c> or <c>never</c>.</param>
 /// <param name="MaxIdentifierLength">The effective identifier length limit, or <see langword="null"/> for none.</param>
 /// <param name="ByConvention">Which entities map here by convention: <c>all</c>, <c>packages</c> or <c>none</c> (the effective value).</param>
@@ -33,7 +37,8 @@ public sealed record DatabaseViewResult(DatabaseView? View, IReadOnlyList<Diagno
 /// <param name="Properties">As <see cref="TableView.Properties"/>.</param>
 /// <param name="Generation">As <see cref="TableView.Generation"/>.</param>
 public sealed record DatabaseView(string Id, string Name, string Dialect, string? Version, string? DefaultSchema, IReadOnlyList<TableView> Tables,
-    IReadOnlyList<ViewView> Views, IReadOnlyList<SequenceView> Sequences, IReadOnlyList<SchemaView> Schemas, string Quoting, int? MaxIdentifierLength,
+    IReadOnlyList<ViewView> Views, IReadOnlyList<SequenceView> Sequences, IReadOnlyList<RoutineView> Routines, IReadOnlyList<DatabaseTypeView> Types,
+    IReadOnlyList<SqlObjectView> Objects, IReadOnlyList<SchemaView> Schemas, string Quoting, int? MaxIdentifierLength,
     string ByConvention, IReadOnlyList<ConventionPackageView> Packages, string? DisplayName, string? PluralName, string? Description,
     IReadOnlyList<string> Stereotypes, IReadOnlyList<string> Tags, string? Category, IReadOnlyDictionary<string, object?> Properties,
     IReadOnlyDictionary<string, GenerationHints> Generation);
@@ -198,6 +203,186 @@ public sealed record SequenceView(
     IReadOnlyDictionary<string, object?> Properties,
     IReadOnlyDictionary<string, GenerationHints> Generation);
 
+/// <summary>One resolved routine, projected from <see cref="RRoutine"/>.</summary>
+/// <param name="Id">The routine file's id.</param>
+/// <param name="Name">The physical name.</param>
+/// <param name="Schema">The schema name, or <see langword="null"/>.</param>
+/// <param name="RoutineKind"><c>function</c> or <c>procedure</c>.</param>
+/// <param name="Parameters">The parameters, in order.</param>
+/// <param name="Returns">The result, or <see langword="null"/> when the routine returns nothing.</param>
+/// <param name="Language">The body's language: the file's, else the dialect's own.</param>
+/// <param name="Body">The body for the database's dialect, or the empty string when the file has none for it.</param>
+/// <param name="HasBody">Whether the file has a body for the database's dialect (or for every dialect).</param>
+/// <param name="Deterministic">Whether the routine returns the same result for the same arguments.</param>
+/// <param name="Security"><c>invoker</c> or <c>definer</c>.</param>
+/// <param name="DependsOn">The ids (or keys, for a synthesized table) of the objects of the database it names in <c>dependsOn</c>.</param>
+/// <param name="Comment">The comment, or <see langword="null"/>.</param>
+/// <param name="DisplayName">As <see cref="TableView.DisplayName"/>.</param>
+/// <param name="PluralName">As <see cref="TableView.PluralName"/>.</param>
+/// <param name="Description">As <see cref="TableView.Description"/>.</param>
+/// <param name="Stereotypes">As <see cref="TableView.Stereotypes"/>.</param>
+/// <param name="Tags">As <see cref="TableView.Tags"/>.</param>
+/// <param name="Category">As <see cref="TableView.Category"/>.</param>
+/// <param name="Properties">As <see cref="TableView.Properties"/>.</param>
+/// <param name="Generation">As <see cref="TableView.Generation"/>.</param>
+public sealed record RoutineView(
+    string Id,
+    string Name,
+    string? Schema,
+    string RoutineKind,
+    IReadOnlyList<RoutineParameterView> Parameters,
+    RoutineReturnsView? Returns,
+    string Language,
+    string Body,
+    bool HasBody,
+    bool Deterministic,
+    string Security,
+    IReadOnlyList<string> DependsOn,
+    string? Comment,
+    string? DisplayName,
+    string? PluralName,
+    string? Description,
+    IReadOnlyList<string> Stereotypes,
+    IReadOnlyList<string> Tags,
+    string? Category,
+    IReadOnlyDictionary<string, object?> Properties,
+    IReadOnlyDictionary<string, GenerationHints> Generation);
+
+/// <summary>A parameter of a routine.</summary>
+/// <param name="Name">The name.</param>
+/// <param name="Type">The built-in type keyword, or <see langword="null"/> when a database type or a native type gives the type.</param>
+/// <param name="DbTypeId">The id of the database type, or <see langword="null"/>.</param>
+/// <param name="Length">The length facet.</param>
+/// <param name="Precision">The precision facet.</param>
+/// <param name="Scale">The scale facet.</param>
+/// <param name="NativeType">The native type for the database's dialect.</param>
+/// <param name="Mode"><c>in</c>, <c>out</c> or <c>inout</c>.</param>
+/// <param name="Default">The default value as SQL text, or <see langword="null"/>.</param>
+public sealed record RoutineParameterView(string Name, string? Type, string? DbTypeId, int? Length, int? Precision, int? Scale, string NativeType, string Mode, string? Default);
+
+/// <summary>The result of a routine: a single value, or a table when <paramref name="Table"/> is set.</summary>
+/// <param name="Type">The built-in type keyword of a single value, or <see langword="null"/>.</param>
+/// <param name="DbTypeId">The id of the database type of a single value, or <see langword="null"/>.</param>
+/// <param name="Length">The length facet.</param>
+/// <param name="Precision">The precision facet.</param>
+/// <param name="Scale">The scale facet.</param>
+/// <param name="NativeType">The native type of a single value; empty for a table result.</param>
+/// <param name="Table">The columns of a table result, or <see langword="null"/>.</param>
+public sealed record RoutineReturnsView(string? Type, string? DbTypeId, int? Length, int? Precision, int? Scale, string NativeType, IReadOnlyList<RoutineColumnView>? Table);
+
+/// <summary>A column of a routine's table result.</summary>
+/// <param name="Name">The name.</param>
+/// <param name="Type">The built-in type keyword, or <see langword="null"/>.</param>
+/// <param name="DbTypeId">The id of the database type, or <see langword="null"/>.</param>
+/// <param name="Length">The length facet.</param>
+/// <param name="Precision">The precision facet.</param>
+/// <param name="Scale">The scale facet.</param>
+/// <param name="NativeType">The native type for the database's dialect.</param>
+/// <param name="Nullable">Whether the column is nullable.</param>
+public sealed record RoutineColumnView(string Name, string? Type, string? DbTypeId, int? Length, int? Precision, int? Scale, string NativeType, bool Nullable);
+
+/// <summary>One resolved database type, projected from <see cref="RDatabaseType"/>.</summary>
+/// <param name="Id">The type file's id.</param>
+/// <param name="Name">The physical name.</param>
+/// <param name="Schema">The schema name, or <see langword="null"/>.</param>
+/// <param name="TypeKind"><c>domain</c>, <c>composite</c>, <c>enum</c> or <c>range</c>.</param>
+/// <param name="Base">For a domain: the built-in type it restricts.</param>
+/// <param name="BaseNativeType">For a domain: the native type of its base.</param>
+/// <param name="Length">The length facet of the base.</param>
+/// <param name="Precision">The precision facet of the base.</param>
+/// <param name="Scale">The scale facet of the base.</param>
+/// <param name="Check">For a domain: the CHECK expression over <c>VALUE</c>.</param>
+/// <param name="Members">For an enum: the labels.</param>
+/// <param name="Fields">For a composite: the fields.</param>
+/// <param name="Subtype">For a range: the built-in type of its bounds.</param>
+/// <param name="SubtypeNativeType">For a range: the native type of its subtype.</param>
+/// <param name="Definition">The definition for the database's dialect, or <see langword="null"/> (built from the structured form).</param>
+/// <param name="IsCreated">Whether the database creates the type (see <see cref="RDatabaseType.IsCreated"/>).</param>
+/// <param name="NativeName">What a column or parameter typed by it writes (see <see cref="RDatabaseType.NativeName"/>).</param>
+/// <param name="DependsOn">The ids of the database types its fields use.</param>
+/// <param name="Comment">The comment, or <see langword="null"/>.</param>
+/// <param name="DisplayName">As <see cref="TableView.DisplayName"/>.</param>
+/// <param name="PluralName">As <see cref="TableView.PluralName"/>.</param>
+/// <param name="Description">As <see cref="TableView.Description"/>.</param>
+/// <param name="Stereotypes">As <see cref="TableView.Stereotypes"/>.</param>
+/// <param name="Tags">As <see cref="TableView.Tags"/>.</param>
+/// <param name="Category">As <see cref="TableView.Category"/>.</param>
+/// <param name="Properties">As <see cref="TableView.Properties"/>.</param>
+/// <param name="Generation">As <see cref="TableView.Generation"/>.</param>
+public sealed record DatabaseTypeView(
+    string Id,
+    string Name,
+    string? Schema,
+    string TypeKind,
+    string? Base,
+    string? BaseNativeType,
+    int? Length,
+    int? Precision,
+    int? Scale,
+    string? Check,
+    IReadOnlyList<string> Members,
+    IReadOnlyList<DatabaseTypeFieldView> Fields,
+    string? Subtype,
+    string? SubtypeNativeType,
+    string? Definition,
+    bool IsCreated,
+    string NativeName,
+    IReadOnlyList<string> DependsOn,
+    string? Comment,
+    string? DisplayName,
+    string? PluralName,
+    string? Description,
+    IReadOnlyList<string> Stereotypes,
+    IReadOnlyList<string> Tags,
+    string? Category,
+    IReadOnlyDictionary<string, object?> Properties,
+    IReadOnlyDictionary<string, GenerationHints> Generation);
+
+/// <summary>A field of a composite database type.</summary>
+/// <param name="Name">The name.</param>
+/// <param name="Type">The built-in type keyword, or <see langword="null"/>.</param>
+/// <param name="DbTypeId">The id of the database type, or <see langword="null"/>.</param>
+/// <param name="Length">The length facet.</param>
+/// <param name="Precision">The precision facet.</param>
+/// <param name="Scale">The scale facet.</param>
+/// <param name="NativeType">The native type for the database's dialect.</param>
+public sealed record DatabaseTypeFieldView(string Name, string? Type, string? DbTypeId, int? Length, int? Precision, int? Scale, string NativeType);
+
+/// <summary>One resolved SQL object, projected from <see cref="RSqlObject"/>.</summary>
+/// <param name="Id">The object file's id.</param>
+/// <param name="Name">The name.</param>
+/// <param name="Schema">The schema name, or <see langword="null"/>.</param>
+/// <param name="ObjectKind">What the object is, as the file says (trigger, grant, extension...).</param>
+/// <param name="Phase"><c>before</c> or <c>after</c> the tables.</param>
+/// <param name="DependsOn">The ids (or keys, for a synthesized table) of the objects of the database it names in <c>dependsOn</c>.</param>
+/// <param name="Body">The statements for the database's dialect, or the empty string when the file has none for it.</param>
+/// <param name="HasBody">Whether the file has statements for the database's dialect (or for every dialect).</param>
+/// <param name="DisplayName">As <see cref="TableView.DisplayName"/>.</param>
+/// <param name="PluralName">As <see cref="TableView.PluralName"/>.</param>
+/// <param name="Description">As <see cref="TableView.Description"/>.</param>
+/// <param name="Stereotypes">As <see cref="TableView.Stereotypes"/>.</param>
+/// <param name="Tags">As <see cref="TableView.Tags"/>.</param>
+/// <param name="Category">As <see cref="TableView.Category"/>.</param>
+/// <param name="Properties">As <see cref="TableView.Properties"/>.</param>
+/// <param name="Generation">As <see cref="TableView.Generation"/>.</param>
+public sealed record SqlObjectView(
+    string Id,
+    string Name,
+    string? Schema,
+    string ObjectKind,
+    string Phase,
+    IReadOnlyList<string> DependsOn,
+    string Body,
+    bool HasBody,
+    string? DisplayName,
+    string? PluralName,
+    string? Description,
+    IReadOnlyList<string> Stereotypes,
+    IReadOnlyList<string> Tags,
+    string? Category,
+    IReadOnlyDictionary<string, object?> Properties,
+    IReadOnlyDictionary<string, GenerationHints> Generation);
+
 /// <summary>One resolved column, projected from <see cref="RColumn"/>.</summary>
 /// <param name="Key">The column key: an attribute path, <c>discriminator</c>, <c>position</c>, <c>id</c>, or a column id.</param>
 /// <param name="Name">The physical name.</param>
@@ -219,6 +404,7 @@ public sealed record SequenceView(
 /// <param name="Default">The literal default, as a plain value, or <see langword="null"/>.</param>
 /// <param name="ComputedStored">Whether a computed value is stored.</param>
 /// <param name="SequenceId">The id (or synthesized key) of the sequence that supplies values, or <see langword="null"/>.</param>
+/// <param name="DbTypeId">The id of the database type the column uses (its file's <c>nativeType</c> names it), or <see langword="null"/>.</param>
 /// <param name="Collation">The collation, or <see langword="null"/>.</param>
 /// <param name="Comment">The comment, or <see langword="null"/>.</param>
 /// <param name="DisplayName">The display name the column's own entry sets (a designed or extra column, or a synthesized column's overlay
@@ -251,6 +437,7 @@ public sealed record ColumnView(
     object? Default,
     bool ComputedStored,
     string? SequenceId,
+    string? DbTypeId,
     string? Collation,
     string? Comment,
     string? DisplayName,
@@ -309,6 +496,7 @@ internal static class DatabaseViews
         ArgumentNullException.ThrowIfNull(database);
         return new DatabaseView(database.Id, database.Name, database.Dialect, database.Version, database.DefaultSchema,
             [.. database.Tables.Select(Table)], [.. database.Views.Select(View)], [.. database.Sequences.Select(Sequence)],
+            [.. database.Routines.Select(ProjectRoutine)], [.. database.Types.Select(ProjectType)], [.. database.Objects.Select(ProjectObject)],
             [.. database.Schemas.Select(Schema)], database.Quoting, database.MaxIdentifierLength, database.ByConvention,
             [.. database.Packages.Select(p => new ConventionPackageView(p.PackageId, p.Schema))],
             OrNull(database.DisplayName), OrNull(database.PluralName), database.Description, [.. database.Stereotypes.Select(s => s.Key)],
@@ -390,6 +578,82 @@ internal static class DatabaseViews
         sequence.Properties,
         sequence.Generation);
 
+    /// <summary>The id an object of <c>dependsOn</c> shows: a table's key, any other object's id.</summary>
+    private static string DependencyId(IResolvedObject value) => value is RTable table ? table.Key : value.Id;
+
+    internal static RoutineView ProjectRoutine(RRoutine routine) => new(
+        routine.Id,
+        routine.Name,
+        routine.Schema,
+        routine.RoutineKind,
+        [.. routine.Parameters.Select(p => new RoutineParameterView(p.Name, p.Type, p.DbType?.Id, p.Length, p.Precision, p.Scale, p.NativeType, p.Mode, p.Default))],
+        routine.Returns is { } r
+            ? new RoutineReturnsView(r.Type, r.DbType?.Id, r.Length, r.Precision, r.Scale, r.NativeType,
+                r.Table is { } table ? [.. table.Select(c => new RoutineColumnView(c.Name, c.Type, c.DbType?.Id, c.Length, c.Precision, c.Scale, c.NativeType, c.Nullable))] : null)
+            : null,
+        routine.Language,
+        routine.Body,
+        routine.HasBody,
+        routine.Deterministic,
+        routine.Security,
+        [.. routine.DependsOn.Select(DependencyId)],
+        routine.Comment,
+        OrNull(routine.DisplayName),
+        OrNull(routine.PluralName),
+        routine.Description,
+        [.. routine.Stereotypes.Select(s => s.Key)],
+        routine.Tags,
+        routine.Category?.Id,
+        routine.Properties,
+        routine.Generation);
+
+    internal static DatabaseTypeView ProjectType(RDatabaseType type) => new(
+        type.Id,
+        type.Name,
+        type.Schema,
+        type.TypeKind,
+        type.Base,
+        type.BaseNativeType,
+        type.Length,
+        type.Precision,
+        type.Scale,
+        type.Check,
+        type.Members,
+        [.. type.Fields.Select(f => new DatabaseTypeFieldView(f.Name, f.Type, f.DbType?.Id, f.Length, f.Precision, f.Scale, f.NativeType))],
+        type.Subtype,
+        type.SubtypeNativeType,
+        type.Definition,
+        type.IsCreated,
+        type.NativeName,
+        [.. type.DependsOn.Select(DependencyId)],
+        type.Comment,
+        OrNull(type.DisplayName),
+        OrNull(type.PluralName),
+        type.Description,
+        [.. type.Stereotypes.Select(s => s.Key)],
+        type.Tags,
+        type.Category?.Id,
+        type.Properties,
+        type.Generation);
+
+    internal static SqlObjectView ProjectObject(RSqlObject obj) => new(
+        obj.Id,
+        obj.Name,
+        obj.Schema,
+        obj.ObjectKind,
+        obj.Phase,
+        [.. obj.DependsOn.Select(DependencyId)],
+        obj.Body,
+        obj.HasBody,
+        OrNull(obj.DisplayName),
+        OrNull(obj.PluralName),
+        obj.Description,
+        [.. obj.Stereotypes.Select(s => s.Key)],
+        obj.Tags,
+        obj.Category?.Id,
+        obj.Properties,
+        obj.Generation);
+
     private static string? OrNull(string value) => value.Length == 0 ? null : value;
 
     private static ColumnView Column(RColumn column) => new(
@@ -413,6 +677,7 @@ internal static class DatabaseViews
         column.Default,
         column.ComputedStored,
         column.Sequence?.Id,
+        column.DbType?.Id,
         column.Collation,
         column.Comment,
         OrNull(column.DisplayName),

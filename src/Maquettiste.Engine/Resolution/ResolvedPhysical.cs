@@ -30,6 +30,15 @@ public sealed class RDatabase : RAnnotated
     /// <summary>Every sequence, by (schema, name).</summary>
     public RList<RSequence> Sequences { get; internal set; } = RList<RSequence>.Empty;
 
+    /// <summary>Every routine (function or procedure), by (schema, name).</summary>
+    public RList<RRoutine> Routines { get; internal set; } = RList<RRoutine>.Empty;
+
+    /// <summary>Every database type, by (schema, name).</summary>
+    public RList<RDatabaseType> Types { get; internal set; } = RList<RDatabaseType>.Empty;
+
+    /// <summary>Every SQL object, by (schema, name).</summary>
+    public RList<RSqlObject> Objects { get; internal set; } = RList<RSqlObject>.Empty;
+
     /// <summary><c>always</c>, <c>reserved</c> or <c>never</c>.</summary>
     public string Quoting { get; internal set; } = "reserved";
 
@@ -83,6 +92,15 @@ public sealed class RSchema : RAnnotated
 
     /// <summary>Sequences in the schema, by name.</summary>
     public RList<RSequence> Sequences { get; internal set; } = RList<RSequence>.Empty;
+
+    /// <summary>Routines in the schema, by name.</summary>
+    public RList<RRoutine> Routines { get; internal set; } = RList<RRoutine>.Empty;
+
+    /// <summary>Database types in the schema, by name.</summary>
+    public RList<RDatabaseType> Types { get; internal set; } = RList<RDatabaseType>.Empty;
+
+    /// <summary>SQL objects in the schema, by name.</summary>
+    public RList<RSqlObject> Objects { get; internal set; } = RList<RSqlObject>.Empty;
 }
 
 /// <summary>A resolved table. Its annotations (<see cref="RAnnotated"/>) come from its own file: the designed or imported table, or a
@@ -281,6 +299,12 @@ public sealed class RColumn : RAnnotated
     /// <summary>The effective native type for the database's dialect.</summary>
     public string NativeType { get; internal set; } = "";
 
+    /// <summary>
+    /// The database type the column uses, when its file's <c>nativeType</c> names one of the database (by id or name); its native name
+    /// for the dialect is then <see cref="NativeType"/>.
+    /// </summary>
+    public RDatabaseType? DbType { get; internal set; }
+
     /// <summary>Whether the column is nullable.</summary>
     public bool Nullable { get; internal set; }
 
@@ -419,4 +443,267 @@ public sealed class RSequence : RAnnotated
 
     /// <summary>How many values the server caches.</summary>
     public int? Cache { get; internal set; }
+}
+
+/// <summary>
+/// A resolved routine: a stored function or procedure, with the annotations (<see cref="RAnnotated"/>) of its file. Its parameter and
+/// result types are resolved to native types for the database's dialect, a database type of the same database included.
+/// </summary>
+public sealed class RRoutine : RAnnotated
+{
+    /// <inheritdoc/>
+    public override string Kind => "routine";
+
+    /// <summary>The physical name.</summary>
+    public string Name { get; internal set; } = "";
+
+    /// <summary>The schema name, or <see langword="null"/>.</summary>
+    public string? Schema { get; internal set; }
+
+    /// <summary>The database.</summary>
+    public RDatabase Database { get; internal set; } = null!;
+
+    /// <summary><c>function</c> or <c>procedure</c>.</summary>
+    public string RoutineKind { get; internal set; } = "function";
+
+    /// <summary>The parameters, in order.</summary>
+    public IReadOnlyList<RRoutineParameter> Parameters { get; internal set; } = [];
+
+    /// <summary>The result, or <see langword="null"/> when the routine returns nothing.</summary>
+    public RRoutineReturns? Returns { get; internal set; }
+
+    /// <summary>The body's language: the file's, else the dialect's own (<c>plpgsql</c>, <c>tsql</c>, <c>sql</c>).</summary>
+    public string Language { get; internal set; } = "";
+
+    /// <summary>The body for the database's dialect (or the <c>"*"</c> body); empty when the file has none for it.</summary>
+    public string Body { get; internal set; } = "";
+
+    /// <summary>Whether the file has a body for the database's dialect or for every dialect.</summary>
+    public bool HasBody { get; internal set; }
+
+    /// <summary>Whether the routine returns the same result for the same arguments.</summary>
+    public bool Deterministic { get; internal set; }
+
+    /// <summary><c>invoker</c> or <c>definer</c>.</summary>
+    public string Security { get; internal set; } = "invoker";
+
+    /// <summary>The tables, views, sequences, routines, database types and SQL objects of the database it names in <c>dependsOn</c>, in file order.</summary>
+    public IReadOnlyList<IResolvedObject> DependsOn { get; internal set; } = [];
+
+    /// <summary>The comment.</summary>
+    public string? Comment { get; internal set; }
+}
+
+/// <summary>A parameter of a resolved routine.</summary>
+public sealed class RRoutineParameter
+{
+    /// <summary>The name.</summary>
+    public string Name { get; internal set; } = "";
+
+    /// <summary>The built-in type keyword, or <see langword="null"/> when the parameter is typed by a database type or a native type only.</summary>
+    public string? Type { get; internal set; }
+
+    /// <summary>The database type, when the file names one.</summary>
+    public RDatabaseType? DbType { get; internal set; }
+
+    /// <summary>The length facet.</summary>
+    public int? Length { get; internal set; }
+
+    /// <summary>The precision facet.</summary>
+    public int? Precision { get; internal set; }
+
+    /// <summary>The scale facet.</summary>
+    public int? Scale { get; internal set; }
+
+    /// <summary>The native type for the database's dialect: the file's, else the database type's native name, else the type map's.</summary>
+    public string NativeType { get; internal set; } = "";
+
+    /// <summary><c>in</c>, <c>out</c> or <c>inout</c>.</summary>
+    public string Mode { get; internal set; } = "in";
+
+    /// <summary>The default value as SQL text, or <see langword="null"/>.</summary>
+    public string? Default { get; internal set; }
+}
+
+/// <summary>The result of a resolved routine: a single value, or a table when <see cref="Table"/> is set.</summary>
+public sealed class RRoutineReturns
+{
+    /// <summary>The built-in type keyword of a single value, or <see langword="null"/>.</summary>
+    public string? Type { get; internal set; }
+
+    /// <summary>The database type of a single value, when the file names one.</summary>
+    public RDatabaseType? DbType { get; internal set; }
+
+    /// <summary>The length facet.</summary>
+    public int? Length { get; internal set; }
+
+    /// <summary>The precision facet.</summary>
+    public int? Precision { get; internal set; }
+
+    /// <summary>The scale facet.</summary>
+    public int? Scale { get; internal set; }
+
+    /// <summary>The native type of a single value for the database's dialect; empty for a table result.</summary>
+    public string NativeType { get; internal set; } = "";
+
+    /// <summary>The columns of a table result, or <see langword="null"/> for a single value.</summary>
+    public IReadOnlyList<RRoutineColumn>? Table { get; internal set; }
+}
+
+/// <summary>A column of a resolved routine's table result.</summary>
+public sealed class RRoutineColumn
+{
+    /// <summary>The name.</summary>
+    public string Name { get; internal set; } = "";
+
+    /// <summary>The built-in type keyword, or <see langword="null"/>.</summary>
+    public string? Type { get; internal set; }
+
+    /// <summary>The database type, when the file names one.</summary>
+    public RDatabaseType? DbType { get; internal set; }
+
+    /// <summary>The length facet.</summary>
+    public int? Length { get; internal set; }
+
+    /// <summary>The precision facet.</summary>
+    public int? Precision { get; internal set; }
+
+    /// <summary>The scale facet.</summary>
+    public int? Scale { get; internal set; }
+
+    /// <summary>The native type for the database's dialect.</summary>
+    public string NativeType { get; internal set; } = "";
+
+    /// <summary>Whether the column is nullable.</summary>
+    public bool Nullable { get; internal set; } = true;
+}
+
+/// <summary>
+/// A resolved database type (a domain, composite, enumeration or range), with the annotations (<see cref="RAnnotated"/>) of its file.
+/// <see cref="NativeName"/> is what a column or parameter typed by it writes.
+/// </summary>
+public sealed class RDatabaseType : RAnnotated
+{
+    /// <inheritdoc/>
+    public override string Kind => "database-type";
+
+    /// <summary>The physical name.</summary>
+    public string Name { get; internal set; } = "";
+
+    /// <summary>The schema name, or <see langword="null"/>.</summary>
+    public string? Schema { get; internal set; }
+
+    /// <summary>The database.</summary>
+    public RDatabase Database { get; internal set; } = null!;
+
+    /// <summary><c>domain</c>, <c>composite</c>, <c>enum</c> or <c>range</c>.</summary>
+    public string TypeKind { get; internal set; } = "domain";
+
+    /// <summary>For a domain: the built-in type it restricts.</summary>
+    public string? Base { get; internal set; }
+
+    /// <summary>For a domain: the native type of its base with the facets, for the database's dialect.</summary>
+    public string? BaseNativeType { get; internal set; }
+
+    /// <summary>The length facet of the base.</summary>
+    public int? Length { get; internal set; }
+
+    /// <summary>The precision facet of the base.</summary>
+    public int? Precision { get; internal set; }
+
+    /// <summary>The scale facet of the base.</summary>
+    public int? Scale { get; internal set; }
+
+    /// <summary>For a domain: the CHECK expression over <c>VALUE</c>.</summary>
+    public string? Check { get; internal set; }
+
+    /// <summary>For an enum: the labels, in order.</summary>
+    public IReadOnlyList<string> Members { get; internal set; } = [];
+
+    /// <summary>For a composite: the fields, in order.</summary>
+    public IReadOnlyList<RDatabaseTypeField> Fields { get; internal set; } = [];
+
+    /// <summary>For a range: the built-in type of its bounds.</summary>
+    public string? Subtype { get; internal set; }
+
+    /// <summary>For a range: the native type of its subtype for the database's dialect.</summary>
+    public string? SubtypeNativeType { get; internal set; }
+
+    /// <summary>The definition for the database's dialect (the text after the type's name), or <see langword="null"/> to build it from the structured form.</summary>
+    public string? Definition { get; internal set; }
+
+    /// <summary>
+    /// Whether the database creates the type: it has a definition for the dialect, or the dialect has the kind (PostgreSQL every kind,
+    /// SQL Server a domain as an alias type).
+    /// </summary>
+    public bool IsCreated { get; internal set; }
+
+    /// <summary>
+    /// What a column or parameter typed by it writes: the file's <c>nativeName</c>; else, when the database creates the type, its name
+    /// (schema-qualified outside the default schema); else the native type a dialect without the kind stores it as (a domain's base,
+    /// an enum's string as long as its longest label), or the empty string (a composite or range there).
+    /// </summary>
+    public string NativeName { get; internal set; } = "";
+
+    /// <summary>The database types its fields use, in field order (a type is created after them).</summary>
+    public IReadOnlyList<IResolvedObject> DependsOn { get; internal set; } = [];
+
+    /// <summary>The comment.</summary>
+    public string? Comment { get; internal set; }
+}
+
+/// <summary>A field of a resolved composite database type.</summary>
+public sealed class RDatabaseTypeField
+{
+    /// <summary>The name.</summary>
+    public string Name { get; internal set; } = "";
+
+    /// <summary>The built-in type keyword, or <see langword="null"/>.</summary>
+    public string? Type { get; internal set; }
+
+    /// <summary>The database type, when the file names one.</summary>
+    public RDatabaseType? DbType { get; internal set; }
+
+    /// <summary>The length facet.</summary>
+    public int? Length { get; internal set; }
+
+    /// <summary>The precision facet.</summary>
+    public int? Precision { get; internal set; }
+
+    /// <summary>The scale facet.</summary>
+    public int? Scale { get; internal set; }
+
+    /// <summary>The native type for the database's dialect.</summary>
+    public string NativeType { get; internal set; } = "";
+}
+
+/// <summary>A resolved SQL object: statements the model does not type (a trigger, a grant, an extension), with the annotations of its file.</summary>
+public sealed class RSqlObject : RAnnotated
+{
+    /// <inheritdoc/>
+    public override string Kind => "sql-object";
+
+    /// <summary>The name.</summary>
+    public string Name { get; internal set; } = "";
+
+    /// <summary>The schema name, or <see langword="null"/>.</summary>
+    public string? Schema { get; internal set; }
+
+    /// <summary>The database.</summary>
+    public RDatabase Database { get; internal set; } = null!;
+
+    /// <summary>What the object is, as the file says (trigger, grant, extension...).</summary>
+    public string ObjectKind { get; internal set; } = "";
+
+    /// <summary><c>before</c> (ahead of the database types and tables) or <c>after</c> (behind the routines and views).</summary>
+    public string Phase { get; internal set; } = "after";
+
+    /// <summary>The tables, views, sequences, routines, database types and SQL objects of the database it names in <c>dependsOn</c>, in file order.</summary>
+    public IReadOnlyList<IResolvedObject> DependsOn { get; internal set; } = [];
+
+    /// <summary>The statements for the database's dialect (or the <c>"*"</c> ones); empty when the file has none for it.</summary>
+    public string Body { get; internal set; } = "";
+
+    /// <summary>Whether the file has statements for the database's dialect or for every dialect.</summary>
+    public bool HasBody { get; internal set; }
 }

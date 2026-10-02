@@ -5,10 +5,13 @@
 SET XACT_ABORT ON;
 BEGIN TRANSACTION;
 
+-- SQL Server alias types have no CHECK; email_address does not enforce: VALUE LIKE '%_@_%'
+CREATE TYPE dbo.email_address FROM nvarchar(254);
+
 CREATE TABLE dbo.customers (
     id uniqueidentifier NOT NULL,
     name nvarchar(120) NOT NULL,
-    email nvarchar(254) NOT NULL,
+    email dbo.email_address NOT NULL,
     customer_since date NULL,
     created_at datetimeoffset(6) NOT NULL,
     updated_at datetimeoffset(6) NULL,
@@ -86,5 +89,22 @@ CREATE TABLE dbo.payment_invoice (
     CONSTRAINT fk_payment_invoice_payments_id FOREIGN KEY (payments_id) REFERENCES dbo.payments (id) ON DELETE CASCADE,
     CONSTRAINT fk_payment_invoice_invoices_id FOREIGN KEY (invoices_id) REFERENCES dbo.invoices (id) ON DELETE CASCADE
 );
+
+GO
+CREATE FUNCTION dbo.invoice_total(@invoice_id uniqueidentifier)
+RETURNS decimal(18,2)
+AS
+BEGIN
+    RETURN (SELECT COALESCE(SUM(quantity * unit_price_amount), 0) FROM dbo.invoice_lines WHERE invoice_id = @invoice_id);
+END
+GO
+
+GO
+CREATE TRIGGER dbo.invoices_keep_number ON dbo.invoices AFTER UPDATE AS
+BEGIN
+    IF EXISTS (SELECT 1 FROM inserted i JOIN deleted d ON d.id = i.id WHERE i.number <> d.number)
+        THROW 50001, 'An invoice keeps its number.', 1;
+END
+GO
 
 COMMIT TRANSACTION;

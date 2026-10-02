@@ -256,8 +256,10 @@ export interface paths {
          *     - `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards,
          *       actions, gates and invokes, actors by id.
          *     - `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and
-         *       indexes, views, sequences); `tables`: one `TableRecord` per table, for databases too large for one record.
-         *     - `all` (the default): every scope but `tables`.
+         *       indexes, views, sequences, routines, database types and SQL objects); `tables`: one `TableRecord` per table, for
+         *       databases too large for one record; `routines`, `database-types`, `sql-objects`: one `RoutineRecord`,
+         *       `DatabaseTypeRecord` or `SqlObjectRecord` per object.
+         *     - `all` (the default): every scope but `tables`, `routines`, `database-types` and `sql-objects`, which `databases` holds.
          *
          *     `database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases and tables to
          *     it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it
@@ -535,8 +537,8 @@ export interface paths {
          * The resolved tables of one database
          * @description The physical model after conventions, mappings and table overlays are applied: every table (synthesized,
          *     designed or imported), its columns with the attribute each one stores, keys, foreign keys and indexes, and
-         *     every view, sequence and schema. The database, each schema, table, column, view and sequence carries the
-         *     annotations of its own file or entry (display and plural names, description, stereotypes, tags, category,
+         *     every view, sequence, routine, database type, SQL object and schema. The database, each schema, table, column,
+         *     view, sequence, routine, database type and SQL object carries the annotations of its own file or entry (display and plural names, description, stereotypes, tags, category,
          *     properties, generation hints); a synthesized table without an overlay, or a synthesized column without an
          *     overlay entry, has none. The Database workspace draws table diagrams from it and the Mappings workspace
          *     sets it beside the entity. A model with errors returns `view: null` and the diagnostics.
@@ -1333,6 +1335,81 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/extensions/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The custom property schemas and script rules of the model
+         * @description The files of `.maquettiste/extensions/`: the extension schemas (`<name>.json`, custom properties) first, then the script rules
+         *     (`rules/<name>.js`), each ordinal by path, with size, hash and what is wrong with the file on its own: an invalid schema
+         *     (MQ5004) or a rule script that does not load alone in the sandbox (MQ5002 for a syntax error or a registration without an
+         *     id, MQ5003 for a limit), with line and column. Rule findings (`x/<id>`) come from `POST /api/validate`.
+         */
+        get: operations["listExtensionFiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/file": {
+        parameters: {
+            query: {
+                /** @description A path under the model's `extensions/` folder, `<name>.json` or `rules/<name>.js`. */
+                path: components["parameters"]["ExtensionFilePath"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One extension file's text with its ETag */
+        get: operations["getExtensionFile"];
+        /**
+         * Write one extension file
+         * @description `If-Match` with the hash read, or `If-None-Match: *` to create. The text must be UTF-8 with no NUL, at most 1 MB, and the
+         *     write goes through the engine's model write guard. A schema must be JSON that passes `extension.json`, else 422 with its
+         *     MQ5004 diagnostics and nothing written; it is written in canonical form and `text` returns what was written. A rule script is
+         *     written as sent, then loaded alone in the sandbox: a syntax error or a registration without an id comes back at once in
+         *     `diagnostics` (MQ5002 with line and column). The model is refreshed before the answer, `project.changed` is published and a
+         *     validation follows, so the rule's `x/<id>` findings reach the Problems panel. A path other than `<name>.json` or
+         *     `rules/<name>.js`, or one through a link, is 400.
+         */
+        put: operations["putExtensionFile"];
+        post?: never;
+        /** Delete one extension file */
+        delete: operations["deleteExtensionFile"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/file/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rename one extension file within its kind
+         * @description `If-Match` carries the source file's hash. The target must not exist and must be of the same kind (a schema stays a
+         *     `<name>.json`, a rule a `rules/<name>.js`), else 422. Nothing refers to an extension file by its path, so nothing else changes.
+         */
+        post: operations["moveExtensionFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/packs/{pack}/outputs": {
         parameters: {
             query?: never;
@@ -2071,7 +2148,7 @@ export interface components {
             }[];
         };
         /** @enum {string} */
-        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "process" | "actor" | "scenario";
+        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "process" | "actor" | "scenario";
         /** @enum {string} */
         ChangeSource: "editor" | "disk" | "cli" | "engine";
         /**
@@ -2094,7 +2171,7 @@ export interface components {
             path: components["schemas"]["RepoPath"];
             /** @description The element's display name, when it has one (E5). Search matches it and the explorer shows it as the label. */
             displayName?: string;
-            /** @description The owning database's id, on table, view, sequence and mapping rows (E5). */
+            /** @description The owning database's id, on table, view, sequence, routine, database-type, sql-object and mapping rows (E5). */
             database?: components["schemas"]["Ulid"];
             /** @description The entity a mapping maps or a table overlay applies to, on mapping and table rows that have one (E5). */
             entity?: components["schemas"]["Ulid"];
@@ -2144,7 +2221,7 @@ export interface components {
             missing: string[];
         };
         /** @description A canonical model file (`schemas/v1/<kind>.json`), chosen by `kind`. */
-        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"] | components["schemas"]["process"] | components["schemas"]["actor"] | components["schemas"]["scenario"];
+        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["routine"] | components["schemas"]["database-type"] | components["schemas"]["sql-object"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"] | components["schemas"]["process"] | components["schemas"]["actor"] | components["schemas"]["scenario"];
         /** @description A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required. Reference types and seeds (`reference-type`, `seed`) are documents like any other. */
         NewModelDocument: {
             kind: components["schemas"]["ElementKind"];
@@ -2457,7 +2534,7 @@ export interface components {
         /** @description One page of the resolved model (`getResolvedModel`). */
         ResolvedPage: {
             /** @description The records, by kind, name and id (ordinal). */
-            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"])[];
+            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"])[];
             /** @description The cursor of the next page; null on the last one. */
             next: string | null;
             /** @description When the model has errors, the errors that prevented resolution (and `items` is empty); otherwise empty. */
@@ -3018,6 +3095,33 @@ export interface components {
             database: string;
             table: components["schemas"]["TableView"];
         };
+        /** @description One routine of a database on its own (scope `routines`). */
+        RoutineRecord: {
+            id: components["schemas"]["Ulid"];
+            /** @constant */
+            kind: "routine";
+            name: string;
+            database: components["schemas"]["Ulid"];
+            routine: components["schemas"]["RoutineView"];
+        };
+        /** @description One database type of a database on its own (scope `database-types`). */
+        DatabaseTypeRecord: {
+            id: components["schemas"]["Ulid"];
+            /** @constant */
+            kind: "database-type";
+            name: string;
+            database: components["schemas"]["Ulid"];
+            databaseType: components["schemas"]["DatabaseTypeView"];
+        };
+        /** @description One SQL object of a database on its own (scope `sql-objects`). */
+        SqlObjectRecord: {
+            id: components["schemas"]["Ulid"];
+            /** @constant */
+            kind: "sql-object";
+            name: string;
+            database: components["schemas"]["Ulid"];
+            sqlObject: components["schemas"]["SqlObjectView"];
+        };
         DatabaseViewResult: {
             view: components["schemas"]["DatabaseView"] | null;
             diagnostics: components["schemas"]["Diagnostic"][];
@@ -3074,7 +3178,13 @@ export interface components {
             views: components["schemas"]["ViewView"][];
             /** @description Every sequence, by schema then name, the ones the resolver creates for entity keys included. */
             sequences: components["schemas"]["SequenceView"][];
-            /** @description Every schema, by name; the ones the file declares and the ones a table, view or sequence uses. */
+            /** @description Every routine (function or procedure), by schema then name. Always sent by this engine; optional for older servers. */
+            routines?: components["schemas"]["RoutineView"][];
+            /** @description Every database type (domain, composite, enumeration or range), by schema then name. Always sent by this engine; optional for older servers. */
+            types?: components["schemas"]["DatabaseTypeView"][];
+            /** @description Every SQL object (a trigger, grant, extension or other object the model does not type), by schema then name. Always sent by this engine; optional for older servers. */
+            objects?: components["schemas"]["SqlObjectView"][];
+            /** @description Every schema, by name; the ones the file declares and the ones a table, view, sequence, routine, database type or SQL object uses. */
             schemas: components["schemas"]["SchemaView"][];
             /** @enum {string} */
             quoting: "always" | "reserved" | "never";
@@ -3242,6 +3352,265 @@ export interface components {
                 [key: string]: components["schemas"]["GenerationHintsView"];
             };
         };
+        /**
+         * @description One resolved routine (a stored function or procedure), with the annotations of its file (as `TableView`). Parameter and
+         *     result types are resolved to native types for the database's dialect, a database type of the same database included.
+         * @example {
+         *       "id": "01J92P0V2M0000000000000002",
+         *       "name": "invoice_total",
+         *       "schema": "dbo",
+         *       "routineKind": "function",
+         *       "parameters": [
+         *         {
+         *           "name": "invoice_id",
+         *           "type": "uuid",
+         *           "dbTypeId": null,
+         *           "length": null,
+         *           "precision": null,
+         *           "scale": null,
+         *           "nativeType": "uniqueidentifier",
+         *           "mode": "in",
+         *           "default": null
+         *         }
+         *       ],
+         *       "returns": {
+         *         "type": "decimal",
+         *         "dbTypeId": null,
+         *         "length": null,
+         *         "precision": 18,
+         *         "scale": 2,
+         *         "nativeType": "decimal(18,2)",
+         *         "table": null
+         *       },
+         *       "language": "tsql",
+         *       "body": "BEGIN\n    RETURN (SELECT COALESCE(SUM(quantity * unit_price_amount), 0) FROM dbo.invoice_lines WHERE invoice_id = @invoice_id);\nEND",
+         *       "hasBody": true,
+         *       "deterministic": false,
+         *       "security": "invoker",
+         *       "dependsOn": [],
+         *       "comment": null,
+         *       "displayName": null,
+         *       "pluralName": null,
+         *       "description": "The sum of an invoice's lines.",
+         *       "stereotypes": [],
+         *       "tags": [],
+         *       "category": null,
+         *       "properties": {},
+         *       "generation": {}
+         *     }
+         */
+        RoutineView: {
+            id: components["schemas"]["Ulid"];
+            name: string;
+            schema: string | null;
+            /** @enum {string} */
+            routineKind: "function" | "procedure";
+            parameters: components["schemas"]["RoutineParameterView"][];
+            /** @description The result, or null when the routine returns nothing (a procedure). */
+            returns: components["schemas"]["RoutineReturnsView"] | null;
+            /** @description The file's language, else the dialect's own (plpgsql on PostgreSQL, tsql on SQL Server, sql elsewhere). */
+            language: string;
+            /** @description The body for the database's dialect (or the `*` body); empty when the file has none for it. */
+            body: string;
+            hasBody: boolean;
+            deterministic: boolean;
+            /** @enum {string} */
+            security: "invoker" | "definer";
+            /** @description The ids (a synthesized table's key) of the tables, views, sequences, routines, database types and SQL objects its `dependsOn` names. */
+            dependsOn: string[];
+            comment: string | null;
+            displayName: string | null;
+            pluralName: string | null;
+            description: string | null;
+            stereotypes: string[];
+            tags: string[];
+            category: components["schemas"]["Ulid"] | null;
+            properties: {
+                [key: string]: unknown;
+            };
+            generation: {
+                [key: string]: components["schemas"]["GenerationHintsView"];
+            };
+        };
+        /** @description A parameter of a routine. */
+        RoutineParameterView: {
+            name: string;
+            /** @description The built-in type keyword, or null when a database type or a native type alone gives the type. */
+            type: string | null;
+            /** @description The id of the database type that types the parameter, or null. */
+            dbTypeId: components["schemas"]["Ulid"] | null;
+            length: number | null;
+            precision: number | null;
+            scale: number | null;
+            /** @description The file's native type, else the database type's native name, else the type map's. */
+            nativeType: string;
+            /** @enum {string} */
+            mode: "in" | "out" | "inout";
+            /** @description The default value as SQL text. */
+            default: string | null;
+        };
+        /** @description The result of a routine, a single value or a table (`table` set). */
+        RoutineReturnsView: {
+            /** @description The built-in type keyword, or null when a database type or a native type alone gives the type. */
+            type: string | null;
+            /** @description The id of the database type of a single value, or null. */
+            dbTypeId: components["schemas"]["Ulid"] | null;
+            length: number | null;
+            precision: number | null;
+            scale: number | null;
+            /** @description The native type of a single value; empty for a table result. */
+            nativeType: string;
+            /** @description The columns of a table result, or null for a single value. */
+            table: components["schemas"]["RoutineColumnView"][] | null;
+        };
+        /** @description A column of a routine's table result. */
+        RoutineColumnView: {
+            name: string;
+            /** @description The built-in type keyword, or null when a database type or a native type alone gives the type. */
+            type: string | null;
+            /** @description The id of the database type, or null. */
+            dbTypeId: components["schemas"]["Ulid"] | null;
+            length: number | null;
+            precision: number | null;
+            scale: number | null;
+            nativeType: string;
+            nullable: boolean;
+        };
+        /**
+         * @description One resolved database type (domain, composite, enumeration or range), with the annotations of its file (as `TableView`).
+         *     `nativeName` is what a column or parameter typed by it writes: the file's `nativeName`; else, when the database creates the
+         *     type (`isCreated`: a definition for the dialect, any kind on PostgreSQL, a domain on SQL Server), its schema-qualified name;
+         *     else a domain's base or an enum's string (SQLite), or the empty string.
+         * @example {
+         *       "id": "01J92P0V2H0000000000000001",
+         *       "name": "email_address",
+         *       "schema": "billing",
+         *       "typeKind": "domain",
+         *       "base": "string",
+         *       "baseNativeType": "varchar(254)",
+         *       "length": 254,
+         *       "precision": null,
+         *       "scale": null,
+         *       "check": "VALUE LIKE '%_@_%'",
+         *       "members": [],
+         *       "fields": [],
+         *       "subtype": null,
+         *       "subtypeNativeType": null,
+         *       "definition": null,
+         *       "isCreated": true,
+         *       "nativeName": "billing.email_address",
+         *       "dependsOn": [],
+         *       "comment": null,
+         *       "displayName": null,
+         *       "pluralName": null,
+         *       "description": "An email address, checked where the dialect can.",
+         *       "stereotypes": [],
+         *       "tags": [],
+         *       "category": null,
+         *       "properties": {},
+         *       "generation": {}
+         *     }
+         */
+        DatabaseTypeView: {
+            id: components["schemas"]["Ulid"];
+            name: string;
+            schema: string | null;
+            /** @enum {string} */
+            typeKind: "domain" | "composite" | "enum" | "range";
+            base: string | null;
+            baseNativeType: string | null;
+            length: number | null;
+            precision: number | null;
+            scale: number | null;
+            check: string | null;
+            members: string[];
+            fields: components["schemas"]["DatabaseTypeFieldView"][];
+            subtype: string | null;
+            subtypeNativeType: string | null;
+            /** @description The definition for the dialect (the text after the type's name), or null to build it from the structured form. */
+            definition: string | null;
+            isCreated: boolean;
+            nativeName: string;
+            /** @description The ids of the database types its fields use. */
+            dependsOn: string[];
+            comment: string | null;
+            displayName: string | null;
+            pluralName: string | null;
+            description: string | null;
+            stereotypes: string[];
+            tags: string[];
+            category: components["schemas"]["Ulid"] | null;
+            properties: {
+                [key: string]: unknown;
+            };
+            generation: {
+                [key: string]: components["schemas"]["GenerationHintsView"];
+            };
+        };
+        /** @description A field of a composite database type. */
+        DatabaseTypeFieldView: {
+            name: string;
+            /** @description The built-in type keyword, or null when a database type or a native type alone gives the type. */
+            type: string | null;
+            /** @description The id of the database type, or null. */
+            dbTypeId: components["schemas"]["Ulid"] | null;
+            length: number | null;
+            precision: number | null;
+            scale: number | null;
+            nativeType: string;
+        };
+        /**
+         * @description One resolved SQL object (a trigger, grant, extension or other object the model does not type), with the annotations of its file (as `TableView`).
+         * @example {
+         *       "id": "01J92P0V2N0000000000000001",
+         *       "name": "invoices_keep_number",
+         *       "schema": "billing",
+         *       "objectKind": "trigger",
+         *       "phase": "after",
+         *       "dependsOn": [
+         *         "01J92P0V2M0000000000000001",
+         *         "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4"
+         *       ],
+         *       "body": "CREATE TRIGGER invoices_keep_number BEFORE UPDATE OF number ON billing.invoices FOR EACH ROW EXECUTE FUNCTION billing.keep_invoice_number();",
+         *       "hasBody": true,
+         *       "displayName": null,
+         *       "pluralName": null,
+         *       "description": null,
+         *       "stereotypes": [],
+         *       "tags": [],
+         *       "category": null,
+         *       "properties": {},
+         *       "generation": {}
+         *     }
+         */
+        SqlObjectView: {
+            id: components["schemas"]["Ulid"];
+            name: string;
+            schema: string | null;
+            /** @description What the object is, as the file says (trigger, grant, extension...). */
+            objectKind: string;
+            /**
+             * @description Run before the database types and tables, or after the routines and views.
+             * @enum {string}
+             */
+            phase: "before" | "after";
+            dependsOn: string[];
+            /** @description The statements for the database's dialect (or the `*` ones); empty when the file has none for it. */
+            body: string;
+            hasBody: boolean;
+            displayName: string | null;
+            pluralName: string | null;
+            description: string | null;
+            stereotypes: string[];
+            tags: string[];
+            category: components["schemas"]["Ulid"] | null;
+            properties: {
+                [key: string]: unknown;
+            };
+            generation: {
+                [key: string]: components["schemas"]["GenerationHintsView"];
+            };
+        };
         /** @description One pack's generation hints on a resolved object (every member written). */
         GenerationHintsView: {
             skip: boolean;
@@ -3281,6 +3650,8 @@ export interface components {
             computedStored: boolean;
             /** @description The id of the sequence that supplies values (a sequence file's id, or a synthesized key such as `<entityId>.sequence@<databaseId>`). */
             sequenceId: string | null;
+            /** @description The id of the database type the column uses (its file's `nativeType` names the type by id or name), or null. Always sent by this engine; optional for older servers. */
+            dbTypeId?: components["schemas"]["Ulid"] | null;
             collation: string | null;
             comment: string | null;
             /** @description The display name the column's own entry sets, or null; there is no fallback. */
@@ -3570,6 +3941,52 @@ export interface components {
             name: string;
             /** @description The script path. */
             declaredIn: string;
+        };
+        ExtensionFileList: {
+            /** @description The repo-relative folder the paths are under. */
+            folder: string;
+            files: components["schemas"]["ExtensionFileInfo"][];
+        };
+        ExtensionFileInfo: {
+            /** @description The path under `extensions/`. */
+            path: string;
+            /** @description For a rule script that loads, the rules it registers (`x/<id>` and the severity it declares); empty for a schema. */
+            rules: components["schemas"]["ExtensionRuleInfo"][];
+            /** @enum {string} */
+            kind: "schema" | "rule";
+            size: number;
+            hash: components["schemas"]["Hash"];
+            diagnostics: components["schemas"]["Diagnostic"][];
+        };
+        ExtensionRuleInfo: {
+            id: string;
+            severity: components["schemas"]["DiagnosticSeverity"];
+        };
+        ExtensionFileContent: {
+            path: string;
+            /** @enum {string} */
+            kind: "schema" | "rule";
+            hash: components["schemas"]["Hash"];
+            text: string;
+        };
+        ExtensionFileWrite: {
+            text: string;
+        };
+        ExtensionFileMove: {
+            from: string;
+            to: string;
+        };
+        ExtensionWriteResult: {
+            outcome: components["schemas"]["SaveOutcome"];
+            /** @description The new hash when saved (null after a delete); the disk hash on conflict (null when the file is gone). */
+            hash: components["schemas"]["Hash"] | null;
+            /** @description The disk text on conflict, else null. */
+            current: string | null;
+            /** @description The text written by a write (a schema in canonical form), else null. */
+            text: string | null;
+            diagnostics: components["schemas"]["Diagnostic"][];
+            /** @description Paths under `extensions/` written or deleted. */
+            files: string[];
         };
         PackFileContent: {
             path: string;
@@ -5124,6 +5541,207 @@ export interface components {
             generation?: components["schemas"]["generation"];
             source?: components["schemas"]["source"];
         };
+        /** @description A built-in type keyword, or the id of a database type of the same database (routine parameters and results, composite type fields). */
+        dbTypeRef: components["schemas"]["builtinType"] | components["schemas"]["id"];
+        /**
+         * Routine
+         * @description A stored function or procedure of a database, with typed parameters, a result and a body per dialect (model/databases/<db>/routines/).
+         */
+        routine: {
+            $schema?: components["schemas"]["schemaPath"];
+            /** @constant */
+            kind: "routine";
+            id: components["schemas"]["id"];
+            /** @default  */
+            name: components["schemas"]["label"];
+            displayName?: string;
+            pluralName?: string;
+            database: components["schemas"]["id"];
+            schema?: components["schemas"]["id"];
+            description?: components["schemas"]["description"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /**
+             * @description A function returns a value or a table; a procedure is called for its effects and may return result sets.
+             * @default function
+             * @enum {unknown}
+             */
+            routineKind?: "function" | "procedure";
+            /** @default [] */
+            parameters?: ({
+                name: components["schemas"]["label"];
+                type?: components["schemas"]["dbTypeRef"];
+                length?: components["schemas"]["length"];
+                precision?: components["schemas"]["precision"];
+                scale?: components["schemas"]["scale"];
+                /** @description A native type that replaces the one the type gives. */
+                nativeType?: string;
+                /**
+                 * @default in
+                 * @enum {unknown}
+                 */
+                mode?: "in" | "out" | "inout";
+                /** @description A default value as SQL text. */
+                default?: string;
+            } | unknown | unknown)[];
+            /** @description The result: a single value (type or nativeType) or a table (columns); absent for a procedure or a function that returns nothing. */
+            returns?: {
+                type?: components["schemas"]["dbTypeRef"];
+                length?: components["schemas"]["length"];
+                precision?: components["schemas"]["precision"];
+                scale?: components["schemas"]["scale"];
+                /** @description A native type that replaces the one the type gives, or a result the built-in types do not name (trigger, setof record). */
+                nativeType?: string;
+                /** @description The columns of a table result. */
+                table?: ({
+                    name: components["schemas"]["label"];
+                    type?: components["schemas"]["dbTypeRef"];
+                    length?: components["schemas"]["length"];
+                    precision?: components["schemas"]["precision"];
+                    scale?: components["schemas"]["scale"];
+                    nativeType?: string;
+                    /** @default true */
+                    nullable?: boolean;
+                } | unknown | unknown)[];
+            } | unknown | unknown | unknown;
+            /** @description The body's language; absent means the dialect's own (plpgsql on PostgreSQL, tsql on SQL Server, sql elsewhere). */
+            language?: string;
+            /** @description Per dialect, the routine's body: what follows the signature (on PostgreSQL the text inside the dollar quotes, on SQL Server what follows AS). */
+            body: components["schemas"]["dialectMap"];
+            /**
+             * @description Whether the routine returns the same result for the same arguments (IMMUTABLE on PostgreSQL).
+             * @default false
+             */
+            deterministic?: boolean;
+            /**
+             * @description Whose rights the routine runs with: the caller's (invoker) or its owner's (definer).
+             * @default invoker
+             * @enum {unknown}
+             */
+            security?: "invoker" | "definer";
+            /**
+             * @description Tables, views, sequences, routines, database types and SQL objects of the same database that must exist first.
+             * @default []
+             */
+            dependsOn?: components["schemas"]["idList"];
+            comment?: string;
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+        };
+        /**
+         * Database type
+         * @description A type a database owns: a domain, a composite, an enumeration or a range (model/databases/<db>/types/). Columns use it through their nativeType (its id or name).
+         */
+        "database-type": {
+            $schema?: components["schemas"]["schemaPath"];
+            /** @constant */
+            kind: "database-type";
+            id: components["schemas"]["id"];
+            /** @default  */
+            name: components["schemas"]["label"];
+            displayName?: string;
+            pluralName?: string;
+            database: components["schemas"]["id"];
+            schema?: components["schemas"]["id"];
+            description?: components["schemas"]["description"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /**
+             * @description domain: a built-in type with a constraint; composite: named fields; enum: a list of labels; range: a range over a subtype.
+             * @enum {unknown}
+             */
+            typeKind: "domain" | "composite" | "enum" | "range";
+            /** @description For a domain: the built-in type it restricts. */
+            base?: components["schemas"]["builtinType"];
+            length?: components["schemas"]["length"];
+            precision?: components["schemas"]["precision"];
+            scale?: components["schemas"]["scale"];
+            /** @description For a domain: a CHECK expression over VALUE. */
+            check?: string;
+            /**
+             * @description For an enum: the labels, in order.
+             * @default []
+             */
+            members?: string[];
+            /**
+             * @description For a composite: the fields, in order.
+             * @default []
+             */
+            fields?: ({
+                name: components["schemas"]["label"];
+                type?: components["schemas"]["dbTypeRef"];
+                length?: components["schemas"]["length"];
+                precision?: components["schemas"]["precision"];
+                scale?: components["schemas"]["scale"];
+                nativeType?: string;
+            } | unknown | unknown)[];
+            /** @description For a range: the built-in type of its bounds. */
+            subtype?: components["schemas"]["builtinType"];
+            /**
+             * @description Per dialect, the definition as SQL text after the type's name (AS ENUM (...), FROM nvarchar(320)); it replaces the structured form.
+             * @default {}
+             */
+            definition?: components["schemas"]["dialectMap"];
+            /** @description The name columns and parameters write for the type, when it is not the type's own (schema-qualified) name. */
+            nativeName?: string;
+            comment?: string;
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+        };
+        /**
+         * SQL object
+         * @description A named database object the model does not type (a trigger, a grant, an extension, a policy): SQL statements per dialect, run before or after the tables (model/databases/<db>/objects/).
+         */
+        "sql-object": {
+            $schema?: components["schemas"]["schemaPath"];
+            /** @constant */
+            kind: "sql-object";
+            id: components["schemas"]["id"];
+            /** @default  */
+            name: components["schemas"]["label"];
+            displayName?: string;
+            pluralName?: string;
+            database: components["schemas"]["id"];
+            schema?: components["schemas"]["id"];
+            description?: components["schemas"]["description"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /** @description What the object is, in free text: trigger, grant, extension, index, policy... */
+            objectKind: string;
+            /**
+             * @description Whether the statements run before the database types and tables (an extension) or after the routines and views (a trigger, a grant).
+             * @default after
+             * @enum {unknown}
+             */
+            phase?: "before" | "after";
+            /**
+             * @description Tables, views, sequences, routines, database types and SQL objects of the same database that must exist first.
+             * @default []
+             */
+            dependsOn?: components["schemas"]["idList"];
+            /** @description Per dialect, the SQL statements that create the object, run as written. */
+            body: components["schemas"]["dialectMap"];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+        };
         /**
          * Mapping
          * @description Binds one entity or relation to one database.
@@ -5344,7 +5962,7 @@ export interface components {
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
             /** @default [] */
-            appliesTo?: ("package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "attribute" | "enum-member" | "column" | "process" | "actor" | "scenario" | "state" | "transition" | "event")[];
+            appliesTo?: ("package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "attribute" | "enum-member" | "column" | "process" | "actor" | "scenario" | "state" | "transition" | "event")[];
             /** @default [] */
             attributes?: components["schemas"]["attribute"][];
             /** @default {} */
@@ -6347,6 +6965,8 @@ export interface components {
     };
     parameters: {
         PackName: string;
+        /** @description A path under the model's `extensions/` folder, `<name>.json` or `rules/<name>.js`. */
+        ExtensionFilePath: string;
         /** @description A pack-relative path with `/` separators (never a path segment). */
         PackFilePath: string;
         /** @description A declared BCP 47 locale other than the default. */
@@ -6902,7 +7522,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description What to read. */
-                scope?: "all" | "packages" | "entities" | "relations" | "enums" | "value-objects" | "scalar-types" | "reference-types" | "seeds" | "processes" | "actors" | "scenarios" | "databases" | "tables";
+                scope?: "all" | "packages" | "entities" | "relations" | "enums" | "value-objects" | "scalar-types" | "reference-types" | "seeds" | "processes" | "actors" | "scenarios" | "databases" | "tables" | "routines" | "database-types" | "sql-objects";
                 /** @description A database id; only what is mapped to it. */
                 database?: components["schemas"]["Ulid"];
                 /** @description The `next` of the previous page, as it was returned (opaque; it encodes the last position read). */
@@ -9390,6 +10010,228 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PackWriteResult"];
+                };
+            };
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    listExtensionFiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The files. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionFileList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    getExtensionFile: {
+        parameters: {
+            query: {
+                /** @description A path under the model's `extensions/` folder, `<name>.json` or `rules/<name>.js`. */
+                path: components["parameters"]["ExtensionFilePath"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionFileContent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    putExtensionFile: {
+        parameters: {
+            query: {
+                /** @description A path under the model's `extensions/` folder, `<name>.json` or `rules/<name>.js`. */
+                path: components["parameters"]["ExtensionFilePath"];
+            };
+            header?: {
+                /** @description The hash read; required unless `If-None-Match` is `*`. */
+                "If-Match"?: string;
+                "If-None-Match"?: components["parameters"]["IfNoneMatch"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtensionFileWrite"];
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWriteResult"];
+                };
+            };
+            /** @description Created. */
+            201: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWriteResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description The file changed since it was read (or exists, on create); `hash` and `current` are the disk version. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWriteResult"];
+                };
+            };
+            /** @description Not text, larger than 1 MB, or a schema that is not valid; nothing was written. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWriteResult"];
+                };
+            };
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    deleteExtensionFile: {
+        parameters: {
+            query: {
+                /** @description A path under the model's `extensions/` folder, `<name>.json` or `rules/<name>.js`. */
+                path: components["parameters"]["ExtensionFilePath"];
+            };
+            header: {
+                /**
+                 * @description The hash the caller loaded, quoted as an ETag or bare. Missing is 428.
+                 * @example "4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWriteResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description No such file. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWriteResult"];
+                };
+            };
+            /** @description The file changed since it was read. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWriteResult"];
+                };
+            };
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    moveExtensionFile: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description The hash the caller loaded, quoted as an ETag or bare. Missing is 428.
+                 * @example "4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtensionFileMove"];
+            };
+        };
+        responses: {
+            /** @description Moved; the ETag is the moved file's hash. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWriteResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description No such source file. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWriteResult"];
+                };
+            };
+            /** @description The source changed since it was read. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWriteResult"];
+                };
+            };
+            /** @description The target exists or is of another kind. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWriteResult"];
                 };
             };
             428: components["responses"]["PreconditionRequired"];

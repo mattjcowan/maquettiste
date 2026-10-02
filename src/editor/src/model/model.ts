@@ -52,6 +52,9 @@ export const KIND_ORDER: ElementKind[] = [
   "table",
   "view",
   "sequence",
+  "routine",
+  "database-type",
+  "sql-object",
   "mapping",
   "package",
   "tag-vocabulary",
@@ -107,6 +110,9 @@ export function relationKind(relation: RelationDoc): NonNullable<RelationDoc["re
   return relation.relationKind ?? "association";
 }
 
+/** The kinds whose index rows carry their database (E5). */
+export const DATABASE_MEMBER_KINDS: ReadonlySet<string> = new Set(["table", "view", "sequence", "routine", "database-type", "sql-object", "mapping"]);
+
 /** An index row built from a document the SPA just saved (phase2-design.md 4.3). */
 export function summaryFromDocument(doc: ElementDocument): ElementSummary {
   const json = doc.json as ModelJson & {
@@ -141,7 +147,7 @@ function indexMembers(json: Record<string, unknown>): Partial<ElementSummary> {
   const out: Partial<ElementSummary> = {};
   const kind = json.kind;
   if (typeof json.displayName === "string") out.displayName = json.displayName;
-  if ((kind === "table" || kind === "view" || kind === "sequence" || kind === "mapping") && typeof json.database === "string") out.database = json.database;
+  if (DATABASE_MEMBER_KINDS.has(String(kind)) && typeof json.database === "string") out.database = json.database;
   if ((kind === "table" || kind === "mapping") && typeof json.entity === "string") out.entity = json.entity;
   if (kind === "entity" && typeof json.base === "string") out.base = json.base;
   if (kind === "seed") {

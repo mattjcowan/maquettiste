@@ -79,6 +79,7 @@ Public surface: the root facade, `Model`, `Diagnostics`, `Pipeline` (interfaces 
 | `relation` | `Relation` | `model/relations/` | `relation.json` |
 | `database` | `Database` | `model/databases/<db>/database.json` | `database.json` |
 | `table` / `view` / `sequence` | `Table` / `View` / `Sequence` | `model/databases/<db>/tables/` `views/` `sequences/` | `table.json` `view.json` `sequence.json` |
+| `routine` / `database-type` / `sql-object` | `Routine` / `DatabaseType` / `SqlObject` | `model/databases/<db>/routines/` `types/` `objects/` | `routine.json` `database-type.json` `sql-object.json` |
 | `mapping` | `Mapping` | `model/mappings/` | `mapping.json` |
 | `diagram` | `Diagram` | `model/diagrams/` | `diagram.json` |
 | `tag-vocabulary` | `TagVocabulary` | `model/vocabularies/tags.json` | `tag-vocabulary.json` |
@@ -582,6 +583,8 @@ Diagnostics sort by `(FilePath, Line, Column, Rule, Message)` ordinal. `Line` an
 
 **JavaScript rules** live in `extensions/rules/*.js` and register with `maquettiste.rule({ id, severity, kinds, check(element, model, report) })`. `element` is a frozen copy of the element's canonical JSON; `model` offers `get(id)`, `all(kind)` and `referencesTo(id)`, also frozen; `report(message, { pointer, severity })`. Rules run through a validation pool (§10) in parallel over elements.
 
+**Extension files (status: built 2026-10-01).** As built on 2026-10-01, a rule file that does not load (a syntax error, a `maquettiste.rule` call the sandbox refuses, a limit while loading) is MQ5002 (MQ5003 for a limit) on that file with the sandbox's line and column, and the validator creates the pool again without it, so the other rule files still run; while one is broken the rule ids are unknown and MQ2007 is not reported. `ModelStore` edits the folder for the editor's Extensions tab and the MCP extension file tools: `ListExtensionFilesAsync` (each file with its hash, its own diagnostics and, for a rule file, the rules it registers with their severity), `ReadExtensionFileAsync`, `WriteExtensionFileAsync` (a schema must pass `extension.json` and is written canonical; a rule file is written as sent and loaded alone in the sandbox, its MQ5002 returned), `DeleteExtensionFileAsync` and `MoveExtensionFileAsync` (within its kind). Paths are `<name>.json` and `rules/<name>.js` under `extensions/`, never through a link; every write takes the hash read, goes through `CheckEngineWrite(WriteTarget.Model, …)` under the store's gate, and reloads the snapshot before it returns.
+
 **SARIF**: `SarifWriter.WriteAsync(Stream, IReadOnlyList<Diagnostic>, string toolVersion, CancellationToken)` writes SARIF 2.1.0 asynchronously (`Utf8JsonWriter` and `FlushAsync`, so it can stream to a response body that refuses synchronous I/O) with tool `maquettiste`, rules from the catalog plus seen `x/` ids, results in diagnostic order, `artifactLocation { uri, uriBaseId: "%SRCROOT%" }`, a region when line is known, and `properties { elementId, jsonPointer }`. `validate --format json` writes `{ "errors", "warnings", "infos", "diagnostics": [...] }`, described by `diagnostics.json`.
 
 ## 7. Resolver (W3)
@@ -725,10 +728,88 @@ As built on 2026-10-01, the physical side of a synthesized column is free: an ov
 
 **Custom type native types (status: built 2026-10-01).** As built on 2026-10-01, a custom type may declare `nativeTypes` (dialect name → pattern with the same placeholders). The resolver applies it in one place, `DatabaseRun.AddColumn`: a synthesized column that stores a custom type (an attribute's or value object member's column, a child table's value column, and a key column copied from one into a child table, a foreign key or a junction table) renders the custom type's pattern for the database's dialect instead of the type map entry of its base, unless an overlay sets the column's native type (which wins) or changes its type away from the base. The order is therefore: `Column.NativeType`, then the custom type's native type, then `typeMaps.<dialect>`, then the embedded map. The column's `Type` stays the base keyword, so code type maps (`type_of` with a pack target) keep the base; `type_of` with a dialect target renders the custom type's pattern for an attribute, type or custom type of it. The validator counts the base names of every active custom type's native types for a dialect as known (MQ4006, MQ4016), and a custom type revisits the tables whose native types carry one of them. The fixed dialect lists were completed the same day with each dialect's documented built-in types (PostgreSQL's `pg_lsn`, `pg_snapshot`, `txid_snapshot`, `xid`, `xid8`, `cid`, `tid`, the `reg` object identifier types, `jsonpath` and the multiranges, plus the extension types `ltree`, `lquery`, `ltxtquery`, `cube`, `earth`, `geometry`, `geography`; the ISO synonyms, `vector` and `sysname` on SQL Server; the national character and compatibility names, `geomcollection`, `vector`, `uuid`, `inet4` and `inet6` on MySQL; the ANSI names, `vector`, the spatial, any and URI types on Oracle).
 
+**Routines, database types and SQL objects (status: built 2026-10-01, erratum E40).** As built on 2026-10-01, a database holds
+three more element kinds beside tables, views and sequences, each a file under its database's folder and each carrying the
+annotations, `database`, `schema` and `source` a view has:
+
+- `routine` (`routines/`, `Routine`, `routine.json`): `routineKind` (`function`, the default, or `procedure`); `parameters`
+  (`name`, `type`, `length`, `precision`, `scale`, `nativeType`, `mode` `in|out|inout`, `default` as SQL text; `type` or
+  `nativeType` required); `returns` (a single value through `type` or `nativeType` with facets, or `table`, a list of columns
+  with `nullable`; absent means no result); `language`; `body` (a dialect map, required); `deterministic`; `security`
+  (`invoker|definer`); `dependsOn`; `comment`.
+- `database-type` (`types/`, `DatabaseType`, `database-type.json`): `typeKind` (`domain|composite|enum|range`, required);
+  `base` with `length`, `precision`, `scale` and `check` for a domain; `members` for an enum; `fields` (typed like
+  parameters) for a composite; `subtype` for a range; `definition`, a dialect map of the SQL text after the type's name, which
+  replaces the structured form for its dialect; `nativeName`; `comment`.
+- `sql-object` (`objects/`, `SqlObject`, `sql-object.json`): `objectKind` (free text: trigger, grant, extension...);
+  `phase` (`before|after`, default `after`); `dependsOn`; `body` (a dialect map, required), run as written.
+
+A typed slot (parameter, result, result column, field) takes the shared definition `common.json#/$defs/dbTypeRef`: a built-in
+keyword or the id of a database type of the same database. `dependsOn` is an `[ElementRef]` to tables, views, sequences,
+routines, database types and SQL objects; the slot types and `Column.NativeType` are keyed references (`[ElementRef(Keyed =
+true)]`, D43), so a database type id there is a reference the reverse index and deletes see, and any other text is not.
+
+*Names.* `database-type` reads beside `scalar-type` and `reference-type` and keeps the kebab case of every multi-word kind; it
+is a type the database owns, where a scalar type is a conceptual restriction that every database renders through its map.
+`sql-object` says plainly that its content is SQL text the model does not type; "database object" would cover tables too. The
+field that says which variety an element is cannot be `kind`, which every element file uses for its own kind, so it is
+`routineKind`, `typeKind` and `objectKind`. The scopes and template variables follow the existing rule (spaces in the scope,
+the kind with `-` as `_` as the variable): `each routine`, `each database type`, `each sql object`; `routine`,
+`database_type`, `sql_object`.
+
+*Resolution* (`DatabaseRun.Objects.cs`). Before the tables, each database resolves its database types, then its routines and
+SQL objects, by id: `RDatabaseType`, `RRoutine` and `RSqlObject` (all `RAnnotated`, annotations from their own file), listed
+on `RDatabase.Types`, `.Routines` and `.Objects` and on each `RSchema`, by (schema, name, id); a file without a schema takes
+the database's default schema. A database type `IsCreated` when it has a definition for the dialect (or `"*"`), on
+PostgreSQL for every kind, and on SQL Server for a domain with a base (an alias type); its `NativeName`, what a column or
+parameter typed by it writes, is the file's `nativeName`, else its schema-qualified name when it is created, else the native
+type of its base for a domain or of a string as long as the longest member for an enum, else empty (a composite or range on
+SQLite). `BaseNativeType` and `SubtypeNativeType` render through the dialect map. A slot resolves to a built-in keyword
+(facet defaults from the conventions, then the map), to a database type of the same database (`DbType` set, the native type
+its `NativeName`) or to its own text, and an explicit `nativeType` wins. A routine's `Language` defaults to `plpgsql`,
+`tsql`, `plsql` or `sql` by dialect; `Body` is the dialect's (or `"*"`) text with `HasBody` saying whether there was one. A
+column whose file's `nativeType` names a database type of its database by id, by name or by schema-qualified name gets
+`RColumn.DbType` and that type's `NativeName` (designed, overlay and extra columns alike; a type with no native name leaves the
+column's computed type); a foreign key column that copies the key does not follow it. `DependsOn` holds the resolved objects
+(a table named by its overlay file's id resolves to the synthesized table); a composite's `DependsOn` is the database types
+its fields use. Dependency keys: each object's file, referrers, database, the type maps and conventions (types and
+routines), the database types its slots use, and each `dependsOn` id; a column using a type adds the type to its table's keys;
+the database lists add `k:routine`, `k:database-type` and `k:sql-object`.
+
+*Validation* (`DatabaseObjectRules.cs`, `DatabaseObjectIndex`). MQ4017 (warning): a routine or SQL object without a body for
+the database's dialect and no `"*"` one, or a database type with neither its structured form (a domain's base, an enum's
+members, a composite's fields, a range's subtype) nor a definition for the dialect. MQ4018 (error): a slot type that is neither
+built-in nor a database type of the same database. MQ4019 (error): a column's `nativeType` or a `dependsOn` entry naming an
+object of another database (a missing id or a wrong kind stays MQ2001 or MQ2002). MQ4020 (error): every element of a cycle
+over `dependsOn` and composite fields (Tarjan's components over the active documents), with the cycle's names. MQ3001 keys
+names per kind, database and schema, case-insensitively, so routines are not overloaded and each object has one script. A
+column whose native type names a database type skips MQ4006 and MQ4016. Changing one of the three kinds revisits the others of
+its database and, for a database type, the tables whose columns write its id or name.
+
+*Generation.* The planner scopes `each routine`, `each database type` and `each sql object` take the same `where` as `each
+view` (tags, stereotypes, categories, the database, a script; packages and `abstract` refused at pack load) and the element's
+own `generation.skip`; `get_template_context` lists their members. `sql_quote` takes a routine or database type. The snapshot
+(`snapshot.json`) gains `types`, `routines` and `objects`, each a `SnapshotDefinition` (`key`, `name`, `schema`, `kind`,
+`definition`: a canonical text of the definition for the dialect, without the name, so a rename is not a change); empty
+lists are omitted, so existing snapshots are unchanged. `SchemaDiffResult.Types`, `.Routines` and `.Objects` list
+`DefinitionChange`s (kind, key, old and new name, old and new kind, old schema, property changes `schema`, `kind`,
+`definition`); the diff hash takes them only when one changed, so every existing hash is the same. sql-ddl writes them in this
+order: SQL objects of phase `before`, database types, sequences, tables, routines and views (routines first, a routine after
+a view its `dependsOn` names), SQL objects of phase `after`, each group in `dependsOn` order through `ddl_order`; migrations
+drop and recreate changed routines, rename renamed types, flag changed types and SQL objects with a TODO, and drop removed
+types last (packs/sql-ddl/README.md).
+
+*API.* `DatabaseView` and `DatabaseRecord` gain `routines`, `types` and `objects` (`RoutineView` with `RoutineParameterView`,
+`RoutineReturnsView` and `RoutineColumnView`, `DatabaseTypeView` with `DatabaseTypeFieldView`, `SqlObjectView`), `ColumnView`
+gains `dbTypeId`, and the resolved model gains the scopes `routines`, `database-types` and `sql-objects` (one record each,
+outside `all`, as `tables`). The OpenAPI contract declares the new members without making them required, so older clients and
+the editor's recorded mocks stay valid; the server always sends them. The MCP tools that take a kind (`create_element`,
+`get_schema`, `get_elements`) and the CLI's `model export` and `validate` take the kinds through the kind table.
+
 ## 8. Template packs (W6 loads and plans; W5 renders)
 
 - **Discovery.** Every `templates/<name>/pack.json` whose `name` equals its folder is a pack; `packs.<name>.enabled: false` turns it off. Packs run in ordinal name order. `types/<target>.json` files are type maps for `type_of` (keyword → language type, plus `"nullable": "{type}?"` and `"collection": "IReadOnlyList<{type}>"` patterns). Built-in dialect targets need no file.
-- **`for`**: `model` (one unit, no element), `each package|entity|relation|enum|value object|table|view|sequence|reference type|seed|locale|process|actor|scenario` (one unit per resolved element; `table`, `view` and `sequence` cover every database (§7.0a); the unit key of `each reference type`, `each seed`, `each process`, `each actor` and `each scenario` is the element id, and the scope alias is `reference_type`, `seed`, `process`, `actor` or `scenario`; `where` on the three phase 3 scopes takes tags, stereotypes, categories and packages (a scenario's package is its process's, an actor has none, so a package filter matches no actor) and refuses `database` and `abstract` at pack load (MQ6001); `each locale` plans one unit per declared locale, the default first then ordinal, with the `RLocale` as `element` and `locale`, unit key `locale:<tag>`, and rejects `where` at pack load), or `select <name>` (a JavaScript selector that returns elements or ids; unknown ids fail with MQ6017). `generation["*"|pack].skip` on an element drops its units. `where` filters as in §2.5; `where.database` also picks `mapping` for entity and relation units.
+- **`for`**: `model` (one unit, no element), `each package|entity|relation|enum|value object|table|view|sequence|routine|database type|sql object|reference type|seed|locale|process|actor|scenario` (one unit per resolved element; `table`, `view`, `sequence`, `routine`, `database type` and `sql object` cover every database (§7.0a and "Routines, database types and SQL objects" in §7); the unit key of `each reference type`, `each seed`, `each process`, `each actor` and `each scenario` is the element id, and the scope alias is `reference_type`, `seed`, `process`, `actor` or `scenario`; `where` on the three phase 3 scopes takes tags, stereotypes, categories and packages (a scenario's package is its process's, an actor has none, so a package filter matches no actor) and refuses `database` and `abstract` at pack load (MQ6001); `each locale` plans one unit per declared locale, the default first then ordinal, with the `RLocale` as `element` and `locale`, unit key `locale:<tag>`, and rejects `where` at pack load), or `select <name>` (a JavaScript selector that returns elements or ids; unknown ids fail with MQ6017). `generation["*"|pack].skip` on an element drops its units. `where` filters as in §2.5; `where.database` also picks `mapping` for entity and relation units.
 - **Template context.** Variables: `model`, `element`, a scope alias (`package`, `entity`, `relation`, `enum`, `value_object`, `table`, `view`, `sequence`, `reference_type`, `seed`, `locale`, `process`, `actor`, `scenario`), `pack` (`name`, `version`, `params`), `mapping` (`REntityMapping`/`RRelationMapping` for `where.database`, else the only one, else null), `mappings` (by database name), `schema_diff` (database name → `SchemaDiffResult`), `hints` (merged `generation["*"]` and `generation[pack]`), `data` (transform results), `unit` (`id`, `key`).
 - **Output.** `Output` is rendered with the same context (tracked like the body) and prefixed with `PackSettings.Output`. A template emits more files with `{{ file "path" content }}`, usually after `{{ capture content }}…{{ end }}` (D10). With `Output` null, only file blocks are written. Block paths take the same prefix and the unit's mode, except `pair`, whose blocks are `overwrite`.
 - **Modes.** `overwrite`, `once` (written only when missing; recorded as owned), `regions` (committed roots only; MQ6015), `pair` (`Output` rendered every time with `Template`; `Companion.Template` rendered to `Companion.Output` only when that file is missing, as owned).
@@ -953,7 +1034,9 @@ public sealed record JobInfo(string Id, JobKind Kind, JobState State, int? Queue
 // Phase 2 editor additions E1–E4 (phase2-design.md §3.8); records in Editor/, public, Web-default JSON without converters
 public sealed record DatabaseViewResult(DatabaseView? View, IReadOnlyList<Diagnostic> Diagnostics);   // View null on model errors or an unknown id (MQ6017)
 public sealed record DatabaseView(string Id, string Name, string Dialect, string? Version, string? DefaultSchema, IReadOnlyList<TableView> Tables,
-    IReadOnlyList<ViewView> Views, IReadOnlyList<SequenceView> Sequences, IReadOnlyList<SchemaView> Schemas, string Quoting, int? MaxIdentifierLength,
+    IReadOnlyList<ViewView> Views, IReadOnlyList<SequenceView> Sequences,
+    IReadOnlyList<RoutineView> Routines, IReadOnlyList<DatabaseTypeView> Types, IReadOnlyList<SqlObjectView> Objects, // 2026-10-01
+    IReadOnlyList<SchemaView> Schemas, string Quoting, int? MaxIdentifierLength,
     string ByConvention, IReadOnlyList<ConventionPackageView> Packages, /* annotations (§7.0a): */ string? DisplayName, string? PluralName,
     string? Description, IReadOnlyList<string> Stereotypes, IReadOnlyList<string> Tags, string? Category, IReadOnlyDictionary<string, object?> Properties,
     IReadOnlyDictionary<string, GenerationHints> Generation);

@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Database type",
+  "description": "A type a database owns: a domain, a composite, an enumeration or a range (model/databases/<db>/types/). Columns use it through their nativeType (its id or name).",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "kind",
+    "id",
+    "name",
+    "displayName",
+    "pluralName",
+    "database",
+    "schema",
+    "description",
+    "stereotypes",
+    "tags",
+    "category",
+    "typeKind",
+    "base",
+    "length",
+    "precision",
+    "scale",
+    "check",
+    "members",
+    "fields",
+    "subtype",
+    "definition",
+    "nativeName",
+    "comment",
+    "properties",
+    "generation",
+    "source"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "kind": {
+      "const": "database-type"
+    },
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "name": {
+      "$ref": "common.json#/$defs/label",
+      "default": ""
+    },
+    "displayName": {
+      "type": "string"
+    },
+    "pluralName": {
+      "type": "string"
+    },
+    "database": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "schema": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "description": {
+      "$ref": "common.json#/$defs/description"
+    },
+    "stereotypes": {
+      "$ref": "common.json#/$defs/keyList",
+      "default": []
+    },
+    "tags": {
+      "$ref": "common.json#/$defs/tagList",
+      "default": []
+    },
+    "category": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "typeKind": {
+      "description": "domain: a built-in type with a constraint; composite: named fields; enum: a list of labels; range: a range over a subtype.",
+      "enum": ["domain", "composite", "enum", "range"]
+    },
+    "base": {
+      "description": "For a domain: the built-in type it restricts.",
+      "$ref": "common.json#/$defs/builtinType"
+    },
+    "length": {
+      "$ref": "common.json#/$defs/length"
+    },
+    "precision": {
+      "$ref": "common.json#/$defs/precision"
+    },
+    "scale": {
+      "$ref": "common.json#/$defs/scale"
+    },
+    "check": {
+      "description": "For a domain: a CHECK expression over VALUE.",
+      "type": "string",
+      "minLength": 1
+    },
+    "members": {
+      "description": "For an enum: the labels, in order.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "fields": {
+      "description": "For a composite: the fields, in order.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "x-order": ["name", "type", "length", "precision", "scale", "nativeType"],
+        "properties": {
+          "name": {
+            "$ref": "common.json#/$defs/label"
+          },
+          "type": {
+            "$ref": "common.json#/$defs/dbTypeRef"
+          },
+          "length": {
+            "$ref": "common.json#/$defs/length"
+          },
+          "precision": {
+            "$ref": "common.json#/$defs/precision"
+          },
+          "scale": {
+            "$ref": "common.json#/$defs/scale"
+          },
+          "nativeType": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["name"],
+        "anyOf": [
+          {
+            "required": ["type"]
+          },
+          {
+            "required": ["nativeType"]
+          }
+        ],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "subtype": {
+      "description": "For a range: the built-in type of its bounds.",
+      "$ref": "common.json#/$defs/builtinType"
+    },
+    "definition": {
+      "description": "Per dialect, the definition as SQL text after the type's name (AS ENUM (...), FROM nvarchar(320)); it replaces the structured form.",
+      "$ref": "common.json#/$defs/dialectMap",
+      "default": {}
+    },
+    "nativeName": {
+      "description": "The name columns and parameters write for the type, when it is not the type's own (schema-qualified) name.",
+      "type": "string",
+      "minLength": 1
+    },
+    "comment": {
+      "type": "string"
+    },
+    "properties": {
+      "$ref": "common.json#/$defs/properties",
+      "default": {}
+    },
+    "generation": {
+      "$ref": "common.json#/$defs/generation",
+      "default": {}
+    },
+    "source": {
+      "$ref": "common.json#/$defs/source"
+    }
+  },
+  "required": ["kind", "id", "name", "database", "typeKind"],
+  "additionalProperties": false
+}

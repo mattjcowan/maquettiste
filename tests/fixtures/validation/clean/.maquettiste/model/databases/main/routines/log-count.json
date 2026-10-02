@@ -1,0 +1,24 @@
+{
+  "$schema": "../../../../.schema/v1/routine.json",
+  "kind": "routine",
+  "id": "01JRTN00000000000000000001",
+  "name": "log_count",
+  "database": "01JDBS00000000000000000001",
+  "schema": "01JSCH00000000000000000001",
+  "parameters": [
+    {
+      "name": "min_level",
+      "type": "01JDTP00000000000000000001"
+    }
+  ],
+  "returns": {
+    "type": "int64"
+  },
+  "language": "sql",
+  "body": {
+    "*": "select count(*) from billing.audit_log where level = min_level"
+  },
+  "dependsOn": [
+    "01JTAB00000000000000000001"
+  ]
+}

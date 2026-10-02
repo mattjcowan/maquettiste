@@ -116,11 +116,20 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         // (the committed snapshot is stale) and reaches the hash.
         var databaseChanged = before is not null
             && (before.Dialect != after.Dialect || !string.Equals(before.Name, after.Name, StringComparison.Ordinal));
-        var isEmpty = !databaseChanged && tables.Count == 0 && views.Count == 0 && sequences.Count == 0;
+        var types = CompareDefinitions(before?.Types ?? [], after.Types);
+        var routines = CompareDefinitions(before?.Routines ?? [], after.Routines);
+        var objects = CompareDefinitions(before?.Objects ?? [], after.Objects);
+        var isEmpty = !databaseChanged && tables.Count == 0 && views.Count == 0 && sequences.Count == 0 && types.Count == 0 && routines.Count == 0
+            && objects.Count == 0;
         var from = before?.Revision ?? 0;
         var to = isEmpty ? from : from + 1;
-        var hash = Hash(before, after, from, to, tables, oldTables, newTables, views, sequences);
-        return new SchemaDiffResult(current?.Name ?? after.Name, from, to, isEmpty, hash, tables, views, sequences);
+        var hash = Hash(before, after, from, to, tables, oldTables, newTables, views, sequences, types, routines, objects);
+        return new SchemaDiffResult(current?.Name ?? after.Name, from, to, isEmpty, hash, tables, views, sequences)
+        {
+            Types = types,
+            Routines = routines,
+            Objects = objects,
+        };
     }
 
     private static TableChange? CompareTable(SnapshotTable old, SnapshotTable table, RTable? rTable)
@@ -258,6 +267,42 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         {
             if (!newByKey.ContainsKey(k))
                 dropped.Add(new ObjectChange(ChangeKind.Dropped, k, name(item), null, []));
+        }
+
+        return [.. added, .. renamed, .. altered, .. dropped];
+    }
+
+    /// <summary>Routine, database type or SQL object changes: added, renamed, altered, then dropped, each by key.</summary>
+    private static List<DefinitionChange> CompareDefinitions(IReadOnlyList<SnapshotDefinition> oldItems, IReadOnlyList<SnapshotDefinition> newItems)
+    {
+        var oldByKey = ByKey(oldItems, d => d.Key);
+        var newByKey = ByKey(newItems, d => d.Key);
+        var added = new List<DefinitionChange>();
+        var renamed = new List<DefinitionChange>();
+        var altered = new List<DefinitionChange>();
+        var dropped = new List<DefinitionChange>();
+        foreach (var (k, item) in newByKey)
+        {
+            if (!oldByKey.TryGetValue(k, out var old))
+            {
+                added.Add(new DefinitionChange(ChangeKind.Added, k, null, item.Name, null, item.Kind, null, []));
+                continue;
+            }
+
+            var changes = new List<PropertyChange>();
+            Property(changes, "schema", old.Schema, item.Schema);
+            Property(changes, "kind", old.Kind, item.Kind);
+            Property(changes, "definition", old.Definition, item.Definition);
+            if (!string.Equals(old.Name, item.Name, StringComparison.Ordinal))
+                renamed.Add(new DefinitionChange(ChangeKind.Renamed, k, old.Name, item.Name, old.Kind, item.Kind, old.Schema, changes));
+            else if (changes.Count > 0)
+                altered.Add(new DefinitionChange(ChangeKind.Altered, k, old.Name, item.Name, old.Kind, item.Kind, old.Schema, changes));
+        }
+
+        foreach (var (k, item) in oldByKey)
+        {
+            if (!newByKey.ContainsKey(k))
+                dropped.Add(new DefinitionChange(ChangeKind.Dropped, k, item.Name, null, item.Kind, null, item.Schema, []));
         }
 
         return [.. added, .. renamed, .. altered, .. dropped];
@@ -431,7 +476,7 @@ internal sealed class SchemaDiffer : ISchemaDiffer
     /// </summary>
     private static string Hash(PhysicalSnapshot? before, PhysicalSnapshot after, int from, int to, List<TableChange> tables,
         SortedDictionary<string, SnapshotTable> oldTables, SortedDictionary<string, SnapshotTable> newTables, List<ObjectChange> views,
-        List<ObjectChange> sequences)
+        List<ObjectChange> sequences, List<DefinitionChange> types, List<DefinitionChange> routines, List<DefinitionChange> objects)
     {
         using var h = new HashBuilder();
         h.Add("mq-schema-diff-2").Add(after.Database).Add(after.Name).Add(PlainValues.Kebab(after.Dialect)).Add(from).Add(to);
@@ -460,6 +505,22 @@ internal sealed class SchemaDiffer : ISchemaDiffer
 
         AddObjects(h, views);
         AddObjects(h, sequences);
+        // Routines, database types and SQL objects reach the hash only when one changed, so the hash of every diff without them
+        // stays what it was before they existed.
+        if (types.Count + routines.Count + objects.Count > 0)
+        {
+            foreach (var list in new[] { types, routines, objects })
+            {
+                h.Add(list.Count);
+                foreach (var change in list)
+                {
+                    AddHead(h, change.Kind, change.Key, change.OldName, change.NewName);
+                    h.Add(change.OldKind).Add(change.NewKind).Add(change.OldSchema);
+                    AddProperties(h, change.Changes);
+                }
+            }
+        }
+
         return h.Finish();
     }
 

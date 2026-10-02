@@ -90,6 +90,10 @@ export interface GenerationState {
   renamePack: { pack: string; hash: string } | null;
   /** The packs ticked for the next plan; null: the enabled packs. Kept in the page state. */
   chosenPacks: string[] | null;
+  /** The extension file the Extensions tab shows (an explorer row or a Problems finding picked it). */
+  extensionFile: string | null;
+  /** A New property schema… or New script rule… asked from the explorer, for the Extensions tab to start. */
+  extensionNew: "schema" | "rule" | null;
 }
 
 /** What the sidebar shows: one explorer (explorer-redesign.md 1.0), or Generate's packs and targets. */
@@ -191,7 +195,8 @@ export interface EditorState {
    * relationship…). */
   /** The New dialog's request; `source` presets a relationship's first end (the entity editor's New relationship…). */
   newElement: { kind: CreateKind; domain: string | null; source?: string } | null;
-  /** The open New dialog of something in a database (New schema…, New table…, New view…, New sequence…): the database and,
+  /** The open New dialog of something in a database (New schema…, New table…, New view…, New sequence…, New routine…, New
+   * database type…, New SQL object…): the database and,
    * from a schema row, the schema's name the dialog starts on. */
   newDatabaseObject: NewDatabaseObjectRequest | null;
   /** A reference type action the explorer's menu asked the Reference data screen to run (RT 4.2's type menu). */
@@ -261,7 +266,7 @@ export interface EditorActions {
   requestCommand(name: PaletteCommand | null): void;
   /** Opens the New element dialog for a kind, its domain picker on `domain`; null closes it. */
   requestNew(request: { kind: CreateKind; domain: string | null; source?: string } | null): void;
-  /** Opens the New dialog of a schema, table, view or sequence in a database; null closes it. */
+  /** Opens the New dialog of a schema, table, view, sequence, routine, database type or SQL object in a database; null closes it. */
   requestNewDatabaseObject(request: NewDatabaseObjectRequest | null): void;
   requestTypeAction(request: { action: string; ids: string[] } | null): void;
   /** Moves back or forward through the selection history; returns the selection it moved to, or null. */
@@ -417,6 +422,8 @@ export function createEditorStore(): EditorStore {
       newPack: false,
       renamePack: null,
       chosenPacks: null,
+      extensionFile: null,
+      extensionNew: null,
     },
 
     // Another screen shows in the centre area: the editor tabs stay open behind it.

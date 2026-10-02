@@ -303,7 +303,7 @@ export class MockPacks {
     const scope = units.findIndex(
       (u) =>
         typeof u.for !== "string" ||
-        !/^(model|each (package|entity|relation|enum|value object|table|view|sequence|reference type|seed|locale|process|actor|scenario)|select [A-Za-z_]\w*)$/.test(
+        !/^(model|each (package|entity|relation|enum|value object|table|view|sequence|routine|database type|sql object|reference type|seed|locale|process|actor|scenario)|select [A-Za-z_]\w*)$/.test(
           u.for,
         ),
     );

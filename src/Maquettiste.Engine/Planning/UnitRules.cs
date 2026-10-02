@@ -19,7 +19,7 @@ internal static class UnitRules
     public static readonly IReadOnlyList<string> Scopes =
     [
         "model", "each package", "each entity", "each relation", "each enum", "each value object", "each table", "each view", "each sequence",
-        "each reference type", "each seed", "each locale", "each process", "each actor", "each scenario",
+        "each routine", "each database type", "each sql object", "each reference type", "each seed", "each locale", "each process", "each actor", "each scenario",
     ];
 
     /// <summary>The MQ6021 message for an unknown scope, with the nearest valid one.</summary>

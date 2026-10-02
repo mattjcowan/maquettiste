@@ -95,6 +95,10 @@ public static class RuleCatalog
         new("MQ4014", E, "A convention package entry or an entity mapping names a schema that its database does not declare."),
         new("MQ4015", E, "A schema operation was refused: the schema is unknown or its name is taken, it still holds tables, views, sequences, convention entries or mappings and no target was given, or it is the default and no other schema becomes the default."),
         new("MQ4016", I, "A native type written with quotes or a schema names a type the database defines, which the dialect map cannot check; reported once per type and database with the number of columns that use it."),
+        new("MQ4017", W, "A routine or SQL object has no body for its database's dialect (and no \"*\" body), or a database type has neither its structured form nor a definition for the dialect: nothing is created there."),
+        new("MQ4018", E, "A routine parameter or result, or a composite type's field, names a type that is neither a built-in type nor a database type of the same database."),
+        new("MQ4019", E, "A column's native type or a dependsOn entry names a database type or object of another database."),
+        new("MQ4020", E, "Routines, database types and SQL objects depend on each other in a cycle (dependsOn, or a composite type's fields), so no creation order exists."),
 
         new("MQ5001", E, "Property fails its extension schema."),
         new("MQ5002", E, "Validation rule script error."),

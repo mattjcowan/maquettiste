@@ -126,17 +126,29 @@ describe("tree over the billing fixture", () => {
     });
     const f = buildForest({ rows: old });
     expectReachable(f, old);
-    expect(labels(f, find(f, "databases", "Not in a database").key)).toEqual(["Tables", "Views", "Sequences", "Customised mappings"]);
+    expect(labels(f, find(f, "databases", "Not in a database").key)).toEqual([
+      "Tables",
+      "Views",
+      "Sequences",
+      "Routines",
+      "Types",
+      "Objects",
+      "Customised mappings",
+    ]);
   });
 
-  it("shapes Databases: main › billing (by name) › Tables, Views, Sequences, then Customised mappings", () => {
+  it("shapes Databases: main › billing (by name) › Tables, Views, Sequences, Routines, Types, Objects, then Customised mappings", () => {
     const main = find(forest, "databases", "main");
     expect(main.pending).toBeUndefined();
     expect(labels(forest, main.key)).toEqual(["billing", "Customised mappings"]);
-    expect(labels(forest, find(forest, "databases", "main", "billing").key)).toEqual(["Tables", "Views", "Sequences"]);
+    expect(labels(forest, find(forest, "databases", "main", "billing").key)).toEqual(["Tables", "Views", "Sequences", "Routines", "Types", "Objects"]);
+    expect(labels(forest, find(forest, "databases", "main", "billing", "Routines").key)).toEqual(["close_period", "invoice_total"]);
+    expect(labels(forest, find(forest, "databases", "main", "billing", "Types").key)).toEqual(["email_address", "invoice_state"]);
+    expect(labels(forest, find(forest, "databases", "main", "billing", "Objects").key)).toEqual(["reporting_read"]);
+    expect(find(forest, "databases", "main", "billing").secondary).toBe("6 tables · 1 view · 1 sequence · 2 routines · 2 database types · 1 SQL object");
     const tableNames = labels(forest, find(forest, "databases", "main", "billing", "Tables").key);
     expect(tableNames).toContain("invoices");
-    expect(main.secondary).toBe("6 tables · 1 view · 1 sequence · 2 customised mappings · 5 entities mapped");
+    expect(main.secondary).toBe("6 tables · 1 view · 1 sequence · 2 routines · 2 database types · 1 SQL object · 2 customised mappings · 5 entities mapped");
     expect(forest.headers.databases).toBe("1 database · 6 tables");
     // The table overlay file is the invoices row; the junction carries its marker.
     expect(forest.place.get(rows.find((r) => r.kind === "table")!.id)).toBe(find(forest, "databases", "main", "billing", "Tables", "invoices").key);

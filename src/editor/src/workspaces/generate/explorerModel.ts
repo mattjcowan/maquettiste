@@ -7,7 +7,8 @@ import { groupLine, groupOutputs, outputRows, type OutputState } from "./outputs
 
 type S = components["schemas"];
 
-export type RowKind = "pack" | "units" | "unit" | "templates" | "file" | "parameters" | "parameter" | "outputs" | "output-group" | "output";
+export type RowKind =
+  "pack" | "units" | "unit" | "templates" | "file" | "parameters" | "parameter" | "outputs" | "output-group" | "output" | "extensions" | "extension-file";
 
 export interface PackRow {
   key: string;

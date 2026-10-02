@@ -79,24 +79,40 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         IReadOnlyList<string> rules = [];
         if (needScripts)
         {
-            try
+            // A rule file that does not load (a syntax error, a registration without an id, a limit) is reported on that file with its
+            // line and column, and the other rule files still run without it. While one is broken the set of rule ids is unknown, so
+            // MQ2007 (an unknown rule) is not reported against the ids it would have registered.
+            var loadable = model.RuleScripts.ToList();
+            var failed = false;
+            while (loadable.Count > 0)
             {
-                pool = scripts.CreatePool(model.RuleScripts, model.Settings.Limits, Math.Max(1, Math.Min(parallelism, targets.Count)), ct);
-                rules = [.. pool.Registrations.Where(r => r.Kind == ScriptRegistrationKind.Rule).Select(r => Bare(r.Name))
-                    .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
-                ruleNames = rules.ToFrozenSet(StringComparer.Ordinal);
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (ScriptLimitException e)
-            {
-                diagnostics.Add(PoolFailure(model, "MQ5003", "Loading the validation rule scripts exceeded a sandbox limit: " + e.Diagnostic.Message, e.Diagnostic.FilePath));
-            }
-            catch (Exception e) when (e is not OutOfMemoryException)
-            {
-                diagnostics.Add(PoolFailure(model, "MQ5002", "Loading the validation rule scripts failed: " + e.Message, null));
+                try
+                {
+                    pool = scripts.CreatePool(loadable, model.Settings.Limits, Math.Max(1, Math.Min(parallelism, targets.Count)), ct);
+                    rules = [.. pool.Registrations.Where(r => r.Kind == ScriptRegistrationKind.Rule).Select(r => Bare(r.Name))
+                        .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+                    ruleNames = failed ? null : rules.ToFrozenSet(StringComparer.Ordinal);
+                    break;
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception e) when (e is ScriptErrorException or ScriptLimitException)
+                {
+                    var (rule, located) = e is ScriptLimitException limit ? ("MQ5003", limit.Diagnostic) : ("MQ5002", ((ScriptErrorException)e).Diagnostic);
+                    var broken = loadable.FindIndex(s => string.Equals(s.Path, located.FilePath, StringComparison.Ordinal));
+                    diagnostics.Add(LoadFailure(model, rule, located, broken >= 0 ? loadable[broken].Path : null));
+                    failed = true;
+                    if (broken < 0)
+                        break;
+                    loadable.RemoveAt(broken);
+                }
+                catch (Exception e) when (e is not OutOfMemoryException)
+                {
+                    diagnostics.Add(PoolFailure(model, "MQ5002", "Loading the validation rule scripts failed: " + e.Message, null));
+                    break;
+                }
             }
         }
 
@@ -143,6 +159,11 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
 
     private static Diagnostic PoolFailure(ModelSnapshot model, string rule, string message, string? path) =>
         RuleCatalog.Create(rule, message, null, path ?? (model.RuleScripts.Count == 1 ? model.RuleScripts[0].Path : null));
+
+    /// <summary>A rule script that failed to load, on its own file with the sandbox's line and column.</summary>
+    private static Diagnostic LoadFailure(ModelSnapshot model, string rule, Diagnostic located, string? path) =>
+        RuleCatalog.Create(rule, located.Message, null, path ?? located.FilePath ?? (model.RuleScripts.Count == 1 ? model.RuleScripts[0].Path : null))
+            with { Line = located.Line, Column = located.Column };
 
     /// <summary>The documents validation looks at: the first document of each id, and the tag vocabulary and category tree in use.</summary>
     internal static List<ElementDocument> ActiveDocuments(ModelSnapshot model)
@@ -211,6 +232,15 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 yield return doc;
         }
     }
+
+    /// <summary>The database of a routine, database type or SQL object; <see langword="null"/> for any other element.</summary>
+    private static string? DatabaseOfObject(Element element) => element switch
+    {
+        Routine r => r.Database,
+        DatabaseType t => t.Database,
+        SqlObject o => o.Database,
+        _ => null,
+    };
 
     private static bool HasDomainVocabularies(ModelSnapshot model) =>
         model.TagVocabularies.Any(v => v.Package is not null) || model.CategoryTrees.Any(t => t.Package is not null);
@@ -296,6 +326,20 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         // enum name turns matching native types into known ones (MQ4006, MQ4016).
         foreach (var peer in context.NativeTypePeers(element))
             yield return peer;
+
+        // MQ4020 on routines, database types and SQL objects depends on the others of the database (a cycle); a database type's name
+        // decides MQ4006 and MQ4019 on the columns whose native type writes it.
+        if (DatabaseOfObject(element) is { } objectDatabase)
+        {
+            foreach (var doc in context.Documents)
+            {
+                if (DatabaseOfObject(doc.Element) == objectDatabase)
+                    yield return doc;
+                else if (element is DatabaseType type && doc.Element is Table table
+                    && table.Columns.Any(c => c.NativeType is { } n && (n == type.Id || n == type.Name || n.EndsWith("." + type.Name, StringComparison.Ordinal))))
+                    yield return doc;
+            }
+        }
 
         foreach (var peer in ProcessPeers(model, element))
             yield return peer;

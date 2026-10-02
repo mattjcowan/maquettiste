@@ -12,6 +12,7 @@ import type { MockBackend } from "./backend";
 import { baselineHandlers } from "./baseline";
 import { mentions, recordings, replayable, type Recording } from "./recorded";
 import { validPackPath } from "./model/packs";
+import { validExtensionPath } from "./model/extensions";
 import { BAD_CURSOR, filterOf, filterRows, isEmptyFilter, kinds, MAX_LIMIT, page, parseLimit, trim } from "./model/bulk";
 import type { ResolvedRecord } from "@/api/types";
 import { isUlid, readTag } from "./wire";
@@ -68,6 +69,12 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
     /json/.test(r.contentType)
       ? HttpResponse.json(r.body as never, { status: r.status, headers: { "Content-Type": r.contentType } })
       : new HttpResponse(String(r.body ?? ""), { status: r.status, headers: { "Content-Type": r.contentType } });
+
+  // An extension file changed: project.changed (the extension schemas are part of the project), then a validation, as the host does.
+  const extensionsChanged = () => {
+    backend.realtime.publish("project.changed", { settingsHash: model.settingsHash });
+    backend.scheduleValidation();
+  };
 
   const gate: HttpHandler = rawHttp.all(`${baseUrl}/api/*`, async ({ request }) => {
     if (backend.latencyMs) await delay(backend.latencyMs);
@@ -744,6 +751,52 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
       if (!validPackPath(move.from ?? "") || !validPackPath(move.to ?? "") || move.from === "pack.json" || move.to === "pack.json")
         return problem(400, "bad-request", "from and to must be pack-relative paths other than pack.json.");
       const moved = backend.packs.moveFile(params.pack, move, hash);
+      return HttpResponse.json(moved.body, { status: moved.status, headers: moved.status === 200 && moved.body.hash ? etag(moved.body.hash) : {} }) as never;
+    }),
+    http.get("/api/extensions/files", () => HttpResponse.json(backend.extensions.list())),
+    http.get("/api/extensions/file", ({ request }) => {
+      const path = new URL(request.url).searchParams.get("path") ?? "";
+      if (!validExtensionPath(path)) return problem(400, "bad-request", `'${path}' is not an extension file path: <name>.json or rules/<name>.js.`);
+      const file = backend.extensions.read(path);
+      if (!file) return problem(404, "not-found", `No extension file ${path}.`);
+      return HttpResponse.json(file, { headers: etag(file.hash) });
+    }),
+    http.put("/api/extensions/file", async ({ request }) => {
+      const path = new URL(request.url).searchParams.get("path") ?? "";
+      if (!validExtensionPath(path)) return problem(400, "bad-request", `'${path}' is not an extension file path: <name>.json or rules/<name>.js.`);
+      const create = (request.headers.get("If-None-Match") ?? "").trim() === "*";
+      const hash = create ? null : ifMatch(request);
+      if (!create && !hash) return problem(428, "precondition-required", "Send the hash you loaded in If-Match, or If-None-Match: * to create.");
+      const body = await jsonBody(request);
+      if (!body.ok) return body.response;
+      const { text } = body.value as { text?: string };
+      if (typeof text !== "string") return problem(400, "bad-request", "text is required.");
+      const written = backend.extensions.write(path, text, hash);
+      if (written.body.outcome === "saved") extensionsChanged();
+      return HttpResponse.json(written.body, {
+        status: written.status,
+        headers: written.body.outcome === "saved" && written.body.hash ? etag(written.body.hash) : {},
+      }) as never;
+    }),
+    http.delete("/api/extensions/file", ({ request }) => {
+      const path = new URL(request.url).searchParams.get("path") ?? "";
+      if (!validExtensionPath(path)) return problem(400, "bad-request", `'${path}' is not an extension file path.`);
+      const hash = ifMatch(request);
+      if (!hash) return problem(428, "precondition-required", "Send the hash you loaded in If-Match.");
+      const deleted = backend.extensions.delete(path, hash);
+      if (deleted.body.outcome === "saved") extensionsChanged();
+      return HttpResponse.json(deleted.body, { status: deleted.status }) as never;
+    }),
+    http.post("/api/extensions/file/move", async ({ request }) => {
+      const hash = ifMatch(request);
+      if (!hash) return problem(428, "precondition-required", "Send the source file's hash in If-Match.");
+      const body = await jsonBody(request);
+      if (!body.ok) return body.response;
+      const move = body.value as components["schemas"]["ExtensionFileMove"];
+      if (!validExtensionPath(move.from ?? "") || !validExtensionPath(move.to ?? ""))
+        return problem(400, "bad-request", "from and to must be extension file paths.");
+      const moved = backend.extensions.move(move.from, move.to, hash);
+      if (moved.body.outcome === "saved") extensionsChanged();
       return HttpResponse.json(moved.body, { status: moved.status, headers: moved.status === 200 && moved.body.hash ? etag(moved.body.hash) : {} }) as never;
     }),
     http.get("/api/packs/{pack}/outputs", ({ params }) => {

@@ -121,8 +121,8 @@ internal static class BuiltinHelpers
 
     /// <summary>The unit variables (engine-design.md section 8); pack helpers may not use these names either.</summary>
     public static readonly FrozenSet<string> Variables = FrozenSet.Create(StringComparer.Ordinal,
-        "model", "element", "package", "entity", "relation", "enum", "value_object", "table", "view", "sequence", "reference_type", "seed", "locale",
-        "process", "actor", "scenario", "pack", "mapping", "mappings", "schema_diff", "hints", "data", "unit");
+        "model", "element", "package", "entity", "relation", "enum", "value_object", "table", "view", "sequence", "routine", "database_type", "sql_object", "reference_type",
+        "seed", "locale", "process", "actor", "scenario", "pack", "mapping", "mappings", "schema_diff", "hints", "data", "unit");
 
     private static readonly JavaScriptEncoder JsonEncoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
 
@@ -453,6 +453,16 @@ internal static class BuiltinHelpers
             case RSequence sequence:
                 context.Recorder.RecordObject(sequence);
                 text = sequence.Name;
+                break;
+            case RRoutine routine:
+                context.Recorder.RecordObject(routine);
+                text = routine.Name;
+                database = routine.Database;
+                break;
+            case RDatabaseType type:
+                context.Recorder.RecordObject(type);
+                text = type.Name;
+                database = type.Database;
                 break;
             case RSchema schema:
                 context.Recorder.RecordObject(schema);

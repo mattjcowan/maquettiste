@@ -168,7 +168,7 @@ claude mcp add maquettiste -- docker run -i --rm --user 0:0 -v "$PWD:/repo" -w /
 ```
 
 Checked on Linux (Docker Engine, amd64) with a stdio client over `docker run -i --rm --user ... maquettiste mcp`: `initialize`
-in 0.7 s, `tools/list` with 18 tools (image 0.1.0; the published 0.2.0 image lists 24, the current source 51), `validate` in 55 ms,
+in 0.7 s, `tools/list` with 18 tools (image 0.1.0; the published 0.2.0 image lists 24, the current source 56), `validate` in 55 ms,
 the container removed on exit. The registration (the arguments exactly, both forms and both runtimes, the merge, the replacement and the
 removal of an earlier `mcp.sh`) is covered by the CLI tests; the `/bin/sh` line was run with a stand-in `docker` reachable only
 through `$HOME/.docker/bin` from a folder behind a symbolic link (the real path mounted, stderr in the log). A Mac client started
@@ -190,7 +190,7 @@ Create the copy first with `docker/dev-billing.sh`, or without Docker, then buil
 ```sh
 mkdir -p tmp/billing && cp -r tests/fixtures/models/billing/.maquettiste tmp/billing/
 dotnet build src/Maquettiste.Cli -c Release
-claude                               # then /mcp shows maquettiste connected with 51 tools
+claude                               # then /mcp shows maquettiste connected with 56 tools
 ```
 
 A headless check that needs no approval prompt (an explicit `--mcp-config` is trusted):
@@ -224,7 +224,7 @@ the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.We
 | `get_model_kinds` | getModelKinds | `by` (`kind` default, or `package`) | `{ total, kinds: [{ kind, count }], packages }`; with `package`, per package `{ package, name, count, kinds }`, the elements in no package first |
 | `get_element` | getElement | `id` | the document: `json` (canonical), `hash`, `path`, the typed element, the sidecar text |
 | `get_elements` | getElements | `ids` (element or sub-element ids, at most 1000), the index filters, `fields` (top-level members to keep), `cursor`, `limit` (default 100, at most 1000) | `{ items: [{ id, kind, path, hash, json }], next, missing }`: the canonical documents in pages, ordered by kind, name and id |
-| `get_resolved_model` | getResolvedModel | `scope` (`all` default, `packages`, `entities`, `relations`, `enums`, `value-objects`, `scalar-types`, `reference-types`, `seeds`, `processes`, `actors`, `scenarios`, `databases`, `tables`), `database` (an id), `cursor`, `limit` | `{ items, next, diagnostics }`: what templates read, as flat records with `id`, `kind` and `name` (other objects by id); a model with errors returns no items and the errors |
+| `get_resolved_model` | getResolvedModel | `scope` (`all` default, `packages`, `entities`, `relations`, `enums`, `value-objects`, `scalar-types`, `reference-types`, `seeds`, `processes`, `actors`, `scenarios`, `databases`, `tables`, `routines`, `database-types`, `sql-objects`), `database` (an id), `cursor`, `limit` | `{ items, next, diagnostics }`: what templates read, as flat records with `id`, `kind` and `name` (other objects by id); a model with errors returns no items and the errors |
 | `save_element` | saveElement | `id`, `element` (whole document), `expectedHash` | the save result (new `hash`, changes) |
 | `create_element` | createElement | `element` (an id is assigned when absent) | the save result with the new `id`; write a database with `byConvention` (`none`, `packages` or `all`): without it a database with no `packages` takes every entity (the rule from before 0.3.0) |
 | `delete_element` | deleteElement, getDeletePlan | `id`, `expectedHash` (not with `dryRun`), `resolution` (`refuse` default, `remove-references` or `delete-dependents`), `dryRun` (`true`: write nothing and return the plan; the resolution then defaults to `delete-dependents`) | the save result; with `dryRun` the delete plan `{ ids, resolution, outcome, deletes: [{ id, kind, name, path, because }], clears: [{ id, kind, name, pointer, field, target, because }], removes: [{ id, kind, name, pointer, what, subId, subKind, because }], refused: [{ id, kind, name, pointer, why, rule }], settings: [{ pointer, what }], warnings: [{ message, pack, unit }] }` |
@@ -243,9 +243,9 @@ the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.We
 | `export_seed_csv` | exportSeedCsv | `id` of a seed, `bom` (byte order mark and CRLF), `locales` (adds `@label:<locale>` and `@description:<locale>`) | the CSV text: `@id`, then `@code`, `@label`, `@description` for a reference type, then attribute names and end roles |
 | `import_seed_csv` | importSeedCsv | `id`, `csv`, `mode` (`merge` default, or `replace`), `apply` (false: a dry run), `expectedHash` | the preview: `added`, `changed` (before and after), `removed`, `blocked` (rows other seeds reference, kept), `ignoredHeaders`, `applied`, `hash` |
 | `reference_type_usage` | getReferenceTypeUsage | `id` of a reference type | `usages`: attribute, owner, domain, collection, required and the effective storage per database |
-| `validate` | validate | `elementIds` (optional scope), `includeReferrers`, `includeScriptRules` | the report: diagnostics with rule ids, file, JSON pointer, line and column; counts |
+| `validate` | validate | `elementIds` (optional scope), `includeReferrers`, `includeScriptRules` (default `true`: the script rules of `extensions/rules/` run, their findings are `x/<id>`) | the report: diagnostics with rule ids, file, JSON pointer, line and column; counts |
 | `list_validation_rules` | listValidationRules | | the built-in rules, ordered by id: `id`, `defaultSeverity`, `description`, `family` (the hundreds group, such as `MQ72xx`) and `familyLabel`, `canBeOff` (false for MQ1xxx), `quickFix` (the batch operation that fixes a finding, when the rule has one); override a severity with `validation.rules` through `save_settings` |
-| `get_database_view` | getDatabaseView | `id` of a database | the resolved physical view: the tables of the entities mapped to it (by its `byConvention` setting and its `packages`, or one by one by mapping elements, less the ignored ones), with columns, keys, indexes and foreign keys, views, sequences and `schemas` (`name`, `isDefault`, `isDeclared`). The database, each schema, table, column, view and sequence carries the annotations of its own file or entry: `displayName`, `pluralName`, `description`, `stereotypes` (keys), `tags`, `category` (id), `properties` (merged with the stereotypes' defaults) and `generation`; a synthesized table without an overlay, or a synthesized column without an overlay entry, has none, whatever its entity or attribute carries. The database also gives `quoting`, `maxIdentifierLength`, `byConvention` and `packages`; a column its `default`, `sequenceId`, `collation`, `comment` and `computedStored`. A new database with nothing mapped has no tables |
+| `get_database_view` | getDatabaseView | `id` of a database | the resolved physical view: the tables of the entities mapped to it (by its `byConvention` setting and its `packages`, or one by one by mapping elements, less the ignored ones), with columns, keys, indexes and foreign keys, views, sequences, `routines` (parameters and result with native types, language, body, `dependsOn`), `types` (database types with `isCreated` and `nativeName`), `objects` (SQL objects with `objectKind`, `phase`, `dependsOn` and body) and `schemas` (`name`, `isDefault`, `isDeclared`). The database, each schema, table, column, view, sequence, routine, database type and SQL object carries the annotations of its own file or entry: `displayName`, `pluralName`, `description`, `stereotypes` (keys), `tags`, `category` (id), `properties` (merged with the stereotypes' defaults) and `generation`; a synthesized table without an overlay, or a synthesized column without an overlay entry, has none, whatever its entity or attribute carries. The database also gives `quoting`, `maxIdentifierLength`, `byConvention` and `packages`; a column its `default`, `sequenceId`, `dbTypeId` (the database type its native type names), `collation`, `comment` and `computedStored`. A new database with nothing mapped has no tables |
 | `list_packs` | (part of getProject) | | pack manifests and their diagnostics |
 | `get_settings` | getSettings | | `maquettiste.json`: typed settings, canonical `json`, `hash` |
 | `save_settings` | saveSettings | `settings` (whole document), `expectedHash` | the save result |
@@ -264,6 +264,11 @@ the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.We
 | `delete_pack_file` | deletePackFile | `pack`, `path`, `expectedHash` | the delete result; refused while a unit names the file or a template includes it |
 | `delete_pack` | deletePack | `pack`, `expectedHash` (the pack.json hash from `get_pack`) | the removal result: `files` deleted from `.maquettiste/templates/<pack>/`, the `packs.<pack>` settings entry removed (`settingsHash`), and `untracked`, the generated files the pack's manifests recorded, which stay on disk and are no longer tracked |
 | `rename_pack` | renamePack | `pack`, `name` (the new name: lowercase letters and digits separated by single hyphens), `expectedHash` (the pack.json hash from `get_pack`), `updateHints` (default `true`) | the rename result: `from`, `to`, the new pack.json `hash`, `files` moved from `.maquettiste/templates/<pack>/` to `.maquettiste/templates/<name>/`, the `packs.<pack>` settings entry moved to `packs.<name>` with its values (`settingsHash`), `tracked`, the generated files whose manifest entries moved so they stay tracked, `hints`, the elements whose generation hints name the old pack, and `hintsUpdated`, the ones moved to the new name in one model batch after the rename (`updateHints`, default `true`; a refused batch leaves the rename in place and adds a warning); a name that is taken or not a pack name is `invalid` and changes nothing |
+| `list_extension_files` | listExtensionFiles | | the files of `.maquettiste/extensions/`: custom property schemas (`<name>.json`, kind `schema`) and script rules (`rules/<name>.js`, kind `rule`), each with size, hash and what is wrong with it on its own (MQ5004 for an invalid schema, MQ5002 or MQ5003 for a rule script that does not load, with line and column) |
+| `read_extension_file` | getExtensionFile | `path` (under `extensions/`) | the text and hash of one schema or rule script |
+| `write_extension_file` | putExtensionFile | `path`, `text`, `expectedHash` (`new` creates) | the write result; a schema that is not JSON or fails `extension.json` is `invalid` (MQ5004) and nothing is written, a valid one is written in canonical form (`text` is what was written); a rule script is written as sent and loaded alone in the sandbox, its syntax error or registration without an id returned in `diagnostics` (MQ5002 with line and column) |
+| `move_extension_file` | moveExtensionFile | `from`, `to`, `expectedHash` | the move result; the target must not exist and keeps the kind (`<name>.json` or `rules/<name>.js`) |
+| `delete_extension_file` | deleteExtensionFile | `path`, `expectedHash` | the delete result |
 | `get_template_context` | getTemplateContext | `pack`, `unit` | what the unit's templates can use: the globals, the members of the model and of the scope's records, the helpers |
 | `preview_unit` | previewTemplate | `pack`, `unit`, `elementId`, `overlay` (path to unsaved text), `unitOverride` | each rendered file's output path and text, the diagnostics and the keys the render read; nothing is written; an element outside the unit's scope (none for an `each` unit, another kind, one its selector does not return, any for a `model` unit) renders nothing and returns MQ6026, which names the kind the template expects |
 | `unit_paths` | unitPaths | `pack`, `unit`, `elementIds`, `limit` | how many elements the unit covers and the output paths it renders, with their root and whether the writer allows them; each path names its element (`elementName`: an element's name, a table as `customers (billing)`, a locale's tag) and `elementKind` |
@@ -279,6 +284,13 @@ as `overlay` to try it before saving), fix the diagnostics, check where the file
 `get_plan` with `units` true, and `explain_unit` for the reason each unit renders or does not. The files are the ones under
 `.maquettiste/templates/<pack>/` that the command line, the editor and git all see.
 
+The extension file tools edit the model's own extension points the way the editor's Extensions screen does: custom property
+schemas (`extensions/<name>.json`, the properties the inspector shows for a kind or a stereotype) and script rules
+(`extensions/rules/<name>.js`, each registering `maquettiste.rule({ id, severity, kinds, check(element, model, report) })`). Write a
+rule with `write_extension_file`, read its syntax check in the answer, then run `validate`: script rules run by default
+(`includeScriptRules`), their findings are `x/<id>`, and a rule file that does not load is MQ5002 on that file with line and
+column while the other rule files keep running. docs/user-guide.md, "Extending the model and the generation", has the contract.
+
 The process tools mirror the process operations of the editor API (phase-3-design.md section 4.4) and the `maquettiste process`
 verbs. A process argument is an id, a name or a model path. Simulation keeps no state on the server: an agent holds the input list,
 calls `simulate_process` with all of it, reads `enabled` for what can happen next, and turns a run it likes into a scenario with
@@ -290,6 +302,15 @@ rules with their `quickFix` operation where one exists.
 The reference data and localization tools are `localization_status`, `get_translations`, `set_translations`,
 `create_seed`, `export_seed_csv`, `import_seed_csv` and `reference_type_usage`; the kinds `reference-type` and `seed` work with every
 element tool, `get_model_index` (`kind`) and `get_schema`.
+
+Routines, database types and SQL objects (added 2026-10-01) are the kinds `routine`, `database-type` and `sql-object`, each
+belonging to a database (`database`, and a `schema` id), in `model/databases/<db>/routines/`, `types/` and `objects/`. They work
+with every element tool, `get_model_index` and `get_elements` (`kind`, and index rows carry `database` as views do),
+`get_schema` and `apply_batch`; `get_database_view` lists them, and `get_resolved_model` reads them in the database records or
+one at a time with the scopes `routines`, `database-types` and `sql-objects` (records `{ id, kind, name, database, routine }`,
+`databaseType` or `sqlObject`). A routine's parameter and result types and a composite's field types are a built-in keyword or
+the id of a database type of the same database; a column uses a database type by naming its id or name in `nativeType`.
+`validate` reports MQ4017 to MQ4020 for them.
 
 Reference types and seeds are elements: `get_element`, `create_element`, `save_element` and `apply_batch` handle them. Translations
 live in locale shards, not in element files: read them with `get_translations`, then pass the `shardHash` values you read as
@@ -421,7 +442,8 @@ get_resolved_model { "scope": "databases" }
         ... "invoice_lines", "invoices", "payment_invoice", "payments", "products" ...
       ],
       "views": [ { "name": "outstanding_invoices", ... } ],
-      "sequences": [ { "name": "invoice_number_seq", ... } ] }
+      "sequences": [ { "name": "invoice_number_seq", ... } ],
+      "routines": [], "types": [], "objects": [] }
   ],
   "next": null,
   "diagnostics": []

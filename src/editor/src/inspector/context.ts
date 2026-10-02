@@ -5,6 +5,7 @@
 // active explorer's own selection, or an empty state naming that explorer when it has none (after a rail switch).
 import { activeTab, type EditorTabsState } from "@/editors/tabs";
 import { RAIL_LABELS } from "@/model/labels";
+import { EXTENSIONS_TAB } from "@/workspaces/generate/packTabs";
 import type { EditorState, InspectedTable, SidebarView } from "@/state/store";
 
 export type InspectorContext =
@@ -31,6 +32,7 @@ export function inspectorContext(s: ContextInput): InspectorContext {
   if (s.workspace === "generate") {
     const pack = s.generation.packTab;
     if (!pack) return { mode: "empty", place: RAIL_LABELS.generate.label, noun: "a pack" };
+    if (pack === EXTENSIONS_TAB) return { mode: "none" };
     const focus = s.generation.packFocus;
     return { mode: "pack", pack, unit: focus && focus.pack === pack ? (focus.unit ?? null) : null };
   }

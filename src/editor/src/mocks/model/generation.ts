@@ -24,7 +24,19 @@ import { sha256Hex } from "@/lib/sha256";
 import { clone } from "@/lib/json";
 import type { MockModel } from "./store";
 import { resolveDatabase } from "./physical";
-import { renderCSharp, renderSchema, renderSeed, renderSequence, renderTable, renderView, type RenderUnit, type SeedRows } from "./render";
+import {
+  renderCSharp,
+  renderDatabaseType,
+  renderRoutine,
+  renderSchema,
+  renderSeed,
+  renderSequence,
+  renderSqlObject,
+  renderTable,
+  renderView,
+  type RenderUnit,
+  type SeedRows,
+} from "./render";
 import { unifiedDiff } from "./diff";
 
 type Json = Record<string, unknown>;
@@ -283,12 +295,25 @@ export class MockGeneration {
           });
         }
         units.push({ pack: ddl, unit: "schema", elementId: view.id, unitKey: `${ddl}/schema:${view.id}`, files: [renderSchema(view, root)] });
-        // The view and sequence scripts, as the pack writes them: only with its objectScripts parameter on.
+        // The view, sequence, routine, database type and SQL object scripts, as the pack writes them: only with its objectScripts
+        // parameter on.
         if (this.packParameter(ddl, "objectScripts") === true) {
           for (const v of view.views)
             units.push({ pack: ddl, unit: "view", elementId: v.id, unitKey: `${ddl}/view:${v.id}`, files: [renderView(view, v, root)] });
           for (const q of view.sequences)
             units.push({ pack: ddl, unit: "sequence", elementId: q.id, unitKey: `${ddl}/sequence:${q.id}`, files: [renderSequence(view, q, root)] });
+          for (const r of view.routines ?? [])
+            units.push({ pack: ddl, unit: "routine", elementId: r.id, unitKey: `${ddl}/routine:${r.id}`, files: [renderRoutine(view, r, root)] });
+          for (const t of view.types ?? [])
+            units.push({
+              pack: ddl,
+              unit: "database-type",
+              elementId: t.id,
+              unitKey: `${ddl}/database-type:${t.id}`,
+              files: [renderDatabaseType(view, t, root)],
+            });
+          for (const o of view.objects ?? [])
+            units.push({ pack: ddl, unit: "sql-object", elementId: o.id, unitKey: `${ddl}/sql-object:${o.id}`, files: [renderSqlObject(view, o, root)] });
         }
         // The seed script of every database (the unit is "select databases"), with the rows of the types stored as
         // lookup tables there.
@@ -337,10 +362,11 @@ export class MockGeneration {
     const errors = this.model.validate().diagnostics.filter((d) => d.severity === "error");
     if (errors.length) return { files: [], diagnostics: errors, readKeys: [], elapsedMs: 0 };
     const found = this.renderUnits([pack]).find((u) => u.unit === unit && u.elementId === elementId);
-    // An each-view or each-sequence unit whose template writes nothing for the element (sql-ddl with objectScripts off).
+    // An object's each-<kind> unit whose template writes nothing for the element (sql-ddl with objectScripts off).
     const scope = manifest.units.find((u) => u.id === unit)?.for ?? "";
     const kindOf = elementId ? this.model.docs().get(elementId)?.kind : undefined;
-    if (!found && (scope === "each view" || scope === "each sequence") && kindOf === scope.slice(5))
+    const objectScopes = ["each view", "each sequence", "each routine", "each database type", "each sql object"];
+    if (!found && objectScopes.includes(scope) && String(kindOf ?? "").replace(/-/g, " ") === scope.slice(5))
       return { files: [], diagnostics: [], readKeys: [`e:${elementId}`], elapsedMs: 1 };
     if (!found) {
       const diagnostic: Diagnostic = {

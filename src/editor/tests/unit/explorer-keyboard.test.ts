@@ -112,6 +112,9 @@ describe("context menus (1.8)", () => {
       "new-db:table",
       "new-db:view",
       "new-db:sequence",
+      "new-db:routine",
+      "new-db:database-type",
+      "new-db:sql-object",
       "expand-all",
     ]);
     expect(ids([{ type: "table", kind: "table", element: false, linked: true }])).toEqual(["open", "go-to-entity"]);

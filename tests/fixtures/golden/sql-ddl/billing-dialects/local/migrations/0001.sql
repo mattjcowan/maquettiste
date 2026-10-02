@@ -4,6 +4,8 @@
 
 BEGIN;
 
+-- SQLite has no domain types; email_address is not created (columns of this type are text).
+
 CREATE TABLE customers (
     id text NOT NULL,
     name text NOT NULL,
@@ -80,5 +82,12 @@ CREATE TABLE payment_invoice (
     CONSTRAINT fk_payment_invoice_payments_id FOREIGN KEY (payments_id) REFERENCES payments (id) ON DELETE CASCADE,
     CONSTRAINT fk_payment_invoice_invoices_id FOREIGN KEY (invoices_id) REFERENCES invoices (id) ON DELETE CASCADE
 );
+
+-- SQLite has no stored routines; function invoice_total is not created.
+
+CREATE TRIGGER invoices_keep_number BEFORE UPDATE OF number ON invoices FOR EACH ROW WHEN NEW.number <> OLD.number
+BEGIN
+    SELECT RAISE(ABORT, 'an invoice keeps its number');
+END;
 
 COMMIT;

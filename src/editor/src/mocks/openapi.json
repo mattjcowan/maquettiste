@@ -78,6 +78,10 @@
       "description": "Read and write template packs in place (generation-ui.md section 5.1)."
     },
     {
+      "name": "extensions",
+      "description": "Read and write the model's extensions folder in place, the custom property schemas and the script rules."
+    },
+    {
       "name": "presence",
       "description": "Which element each open editor window has selected."
     },
@@ -1170,7 +1174,7 @@
         ],
         "operationId": "getResolvedModel",
         "summary": "The resolved model as flat records, in pages",
-        "description": "What templates read (the resolved model of SPEC Section 10), as data for external systems. Resolved objects reference each\nother, so they are projected into flat records (`x-engine-record`) where other objects appear by id; each record has `id`,\n`kind` and `name`. Choose what to read with `scope`, which follows the template scopes (`get_template_context`):\n\n- `entities`: `EntityRecord`, each attribute resolved (`type` with the enum, value object, scalar or reference type it\n  names, `default`, `length`, `precision`, `scale`, `isKey`; the base entity's attributes come first, marked `isInherited`),\n  the key, alternate keys, `base` and `derived`, navigations, `relations`, one mapping per database (table key and the\n  column of each attribute path) and the annotations.\n- `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,\n  `scenarios`: the matching record.\n- `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards,\n  actions, gates and invokes, actors by id.\n- `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and\n  indexes, views, sequences); `tables`: one `TableRecord` per table, for databases too large for one record.\n- `all` (the default): every scope but `tables`.\n\n`database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases and tables to\nit; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it\nis null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change\nbetween pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors\nreturns no records and the errors in `diagnostics`. The MCP tool `get_resolved_model` and `maquettiste model export\n--resolved` answer the same.\n",
+        "description": "What templates read (the resolved model of SPEC Section 10), as data for external systems. Resolved objects reference each\nother, so they are projected into flat records (`x-engine-record`) where other objects appear by id; each record has `id`,\n`kind` and `name`. Choose what to read with `scope`, which follows the template scopes (`get_template_context`):\n\n- `entities`: `EntityRecord`, each attribute resolved (`type` with the enum, value object, scalar or reference type it\n  names, `default`, `length`, `precision`, `scale`, `isKey`; the base entity's attributes come first, marked `isInherited`),\n  the key, alternate keys, `base` and `derived`, navigations, `relations`, one mapping per database (table key and the\n  column of each attribute path) and the annotations.\n- `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,\n  `scenarios`: the matching record.\n- `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards,\n  actions, gates and invokes, actors by id.\n- `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and\n  indexes, views, sequences, routines, database types and SQL objects); `tables`: one `TableRecord` per table, for\n  databases too large for one record; `routines`, `database-types`, `sql-objects`: one `RoutineRecord`,\n  `DatabaseTypeRecord` or `SqlObjectRecord` per object.\n- `all` (the default): every scope but `tables`, `routines`, `database-types` and `sql-objects`, which `databases` holds.\n\n`database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases and tables to\nit; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it\nis null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change\nbetween pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors\nreturns no records and the errors in `diagnostics`. The MCP tool `get_resolved_model` and `maquettiste model export\n--resolved` answer the same.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "GenerationService.GetResolvedAsync(query)",
         "parameters": [
@@ -1194,7 +1198,10 @@
                 "actors",
                 "scenarios",
                 "databases",
-                "tables"
+                "tables",
+                "routines",
+                "database-types",
+                "sql-objects"
               ],
               "default": "all"
             }
@@ -3817,7 +3824,7 @@
         ],
         "operationId": "getDatabaseView",
         "summary": "The resolved tables of one database",
-        "description": "The physical model after conventions, mappings and table overlays are applied: every table (synthesized,\ndesigned or imported), its columns with the attribute each one stores, keys, foreign keys and indexes, and\nevery view, sequence and schema. The database, each schema, table, column, view and sequence carries the\nannotations of its own file or entry (display and plural names, description, stereotypes, tags, category,\nproperties, generation hints); a synthesized table without an overlay, or a synthesized column without an\noverlay entry, has none. The Database workspace draws table diagrams from it and the Mappings workspace\nsets it beside the entity. A model with errors returns `view: null` and the diagnostics.\n",
+        "description": "The physical model after conventions, mappings and table overlays are applied: every table (synthesized,\ndesigned or imported), its columns with the attribute each one stores, keys, foreign keys and indexes, and\nevery view, sequence, routine, database type, SQL object and schema. The database, each schema, table, column,\nview, sequence, routine, database type and SQL object carries the annotations of its own file or entry (display and plural names, description, stereotypes, tags, category,\nproperties, generation hints); a synthesized table without an overlay, or a synthesized column without an\noverlay entry, has none. The Database workspace draws table diagrams from it and the Mappings workspace\nsets it beside the entity. A model with errors returns `view: null` and the diagnostics.\n",
         "x-maquettiste-role": "viewer",
         "x-engine-addition": "E1 GenerationService.GetDatabaseViewAsync(databaseId)",
         "responses": {
@@ -6744,6 +6751,308 @@
         }
       }
     },
+    "/api/extensions/files": {
+      "get": {
+        "tags": [
+          "extensions"
+        ],
+        "operationId": "listExtensionFiles",
+        "summary": "The custom property schemas and script rules of the model",
+        "description": "The files of `.maquettiste/extensions/`: the extension schemas (`<name>.json`, custom properties) first, then the script rules\n(`rules/<name>.js`), each ordinal by path, with size, hash and what is wrong with the file on its own: an invalid schema\n(MQ5004) or a rule script that does not load alone in the sandbox (MQ5002 for a syntax error or a registration without an\nid, MQ5003 for a limit), with line and column. Rule findings (`x/<id>`) come from `POST /api/validate`.\n",
+        "x-maquettiste-role": "viewer",
+        "x-maquettiste-engine": "ModelStore.ListExtensionFilesAsync()",
+        "responses": {
+          "200": {
+            "description": "The files.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionFileList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          }
+        }
+      }
+    },
+    "/api/extensions/file": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ExtensionFilePath"
+        }
+      ],
+      "get": {
+        "tags": [
+          "extensions"
+        ],
+        "operationId": "getExtensionFile",
+        "summary": "One extension file's text with its ETag",
+        "x-maquettiste-role": "viewer",
+        "x-maquettiste-engine": "ModelStore.ReadExtensionFileAsync(path)",
+        "responses": {
+          "200": {
+            "description": "The file.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionFileContent"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "extensions"
+        ],
+        "operationId": "putExtensionFile",
+        "summary": "Write one extension file",
+        "description": "`If-Match` with the hash read, or `If-None-Match: *` to create. The text must be UTF-8 with no NUL, at most 1 MB, and the\nwrite goes through the engine's model write guard. A schema must be JSON that passes `extension.json`, else 422 with its\nMQ5004 diagnostics and nothing written; it is written in canonical form and `text` returns what was written. A rule script is\nwritten as sent, then loaded alone in the sandbox: a syntax error or a registration without an id comes back at once in\n`diagnostics` (MQ5002 with line and column). The model is refreshed before the answer, `project.changed` is published and a\nvalidation follows, so the rule's `x/<id>` findings reach the Problems panel. A path other than `<name>.json` or\n`rules/<name>.js`, or one through a link, is 400.\n",
+        "x-maquettiste-role": "maintainer",
+        "x-maquettiste-engine": "ModelStore.WriteExtensionFileAsync(path, text, expectedHash)",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "description": "The hash read; required unless `If-None-Match` is `*`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtensionFileWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWriteResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWriteResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "409": {
+            "description": "The file changed since it was read (or exists, on create); `hash` and `current` are the disk version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWriteResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Not text, larger than 1 MB, or a schema that is not valid; nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWriteResult"
+                }
+              }
+            }
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "extensions"
+        ],
+        "operationId": "deleteExtensionFile",
+        "summary": "Delete one extension file",
+        "x-maquettiste-role": "maintainer",
+        "x-maquettiste-engine": "ModelStore.DeleteExtensionFileAsync(path, expectedHash)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWriteResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "description": "No such file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWriteResult"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The file changed since it was read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWriteResult"
+                }
+              }
+            }
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          }
+        }
+      }
+    },
+    "/api/extensions/file/move": {
+      "post": {
+        "tags": [
+          "extensions"
+        ],
+        "operationId": "moveExtensionFile",
+        "summary": "Rename one extension file within its kind",
+        "description": "`If-Match` carries the source file's hash. The target must not exist and must be of the same kind (a schema stays a\n`<name>.json`, a rule a `rules/<name>.js`), else 422. Nothing refers to an extension file by its path, so nothing else changes.\n",
+        "x-maquettiste-role": "maintainer",
+        "x-maquettiste-engine": "ModelStore.MoveExtensionFileAsync(move, expectedHash)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtensionFileMove"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Moved; the ETag is the moved file's hash.",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWriteResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "description": "No such source file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWriteResult"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The source changed since it was read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWriteResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The target exists or is of another kind.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWriteResult"
+                }
+              }
+            }
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          }
+        }
+      }
+    },
     "/api/packs/{pack}/outputs": {
       "parameters": [
         {
@@ -7176,6 +7485,15 @@
         "schema": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+        }
+      },
+      "ExtensionFilePath": {
+        "name": "path",
+        "in": "query",
+        "required": true,
+        "description": "A path under the model's `extensions/` folder, `<name>.json` or `rules/<name>.js`.",
+        "schema": {
+          "type": "string"
         }
       },
       "PackFilePath": {
@@ -9330,6 +9648,9 @@
           "table",
           "view",
           "sequence",
+          "routine",
+          "database-type",
+          "sql-object",
           "mapping",
           "diagram",
           "tag-vocabulary",
@@ -9423,7 +9744,7 @@
             "description": "The element's display name, when it has one (E5). Search matches it and the explorer shows it as the label."
           },
           "database": {
-            "description": "The owning database's id, on table, view, sequence and mapping rows (E5).",
+            "description": "The owning database's id, on table, view, sequence, routine, database-type, sql-object and mapping rows (E5).",
             "$ref": "#/components/schemas/Ulid"
           },
           "entity": {
@@ -9589,6 +9910,15 @@
           },
           {
             "$ref": "#/components/schemas/sequence"
+          },
+          {
+            "$ref": "#/components/schemas/routine"
+          },
+          {
+            "$ref": "#/components/schemas/database-type"
+          },
+          {
+            "$ref": "#/components/schemas/sql-object"
           },
           {
             "$ref": "#/components/schemas/mapping"
@@ -10825,6 +11155,15 @@
                 },
                 {
                   "$ref": "#/components/schemas/TableRecord"
+                },
+                {
+                  "$ref": "#/components/schemas/RoutineRecord"
+                },
+                {
+                  "$ref": "#/components/schemas/DatabaseTypeRecord"
+                },
+                {
+                  "$ref": "#/components/schemas/SqlObjectRecord"
                 }
               ]
             }
@@ -13361,6 +13700,96 @@
           }
         }
       },
+      "RoutineRecord": {
+        "x-engine-record": "Maquettiste.Engine.RoutineRecord",
+        "description": "One routine of a database on its own (scope `routines`).",
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "database",
+          "routine"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "kind": {
+            "type": "string",
+            "const": "routine"
+          },
+          "name": {
+            "type": "string"
+          },
+          "database": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "routine": {
+            "$ref": "#/components/schemas/RoutineView"
+          }
+        }
+      },
+      "DatabaseTypeRecord": {
+        "x-engine-record": "Maquettiste.Engine.DatabaseTypeRecord",
+        "description": "One database type of a database on its own (scope `database-types`).",
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "database",
+          "databaseType"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "kind": {
+            "type": "string",
+            "const": "database-type"
+          },
+          "name": {
+            "type": "string"
+          },
+          "database": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "databaseType": {
+            "$ref": "#/components/schemas/DatabaseTypeView"
+          }
+        }
+      },
+      "SqlObjectRecord": {
+        "x-engine-record": "Maquettiste.Engine.SqlObjectRecord",
+        "description": "One SQL object of a database on its own (scope `sql-objects`).",
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "database",
+          "sqlObject"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "kind": {
+            "type": "string",
+            "const": "sql-object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "database": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "sqlObject": {
+            "$ref": "#/components/schemas/SqlObjectView"
+          }
+        }
+      },
       "DatabaseViewResult": {
         "x-engine-addition": "E1",
         "x-engine-record": "Maquettiste.Engine.DatabaseViewResult",
@@ -13593,9 +14022,30 @@
               "$ref": "#/components/schemas/SequenceView"
             }
           },
+          "routines": {
+            "type": "array",
+            "description": "Every routine (function or procedure), by schema then name. Always sent by this engine; optional for older servers.",
+            "items": {
+              "$ref": "#/components/schemas/RoutineView"
+            }
+          },
+          "types": {
+            "type": "array",
+            "description": "Every database type (domain, composite, enumeration or range), by schema then name. Always sent by this engine; optional for older servers.",
+            "items": {
+              "$ref": "#/components/schemas/DatabaseTypeView"
+            }
+          },
+          "objects": {
+            "type": "array",
+            "description": "Every SQL object (a trigger, grant, extension or other object the model does not type), by schema then name. Always sent by this engine; optional for older servers.",
+            "items": {
+              "$ref": "#/components/schemas/SqlObjectView"
+            }
+          },
           "schemas": {
             "type": "array",
-            "description": "Every schema, by name; the ones the file declares and the ones a table, view or sequence uses.",
+            "description": "Every schema, by name; the ones the file declares and the ones a table, view, sequence, routine, database type or SQL object uses.",
             "items": {
               "$ref": "#/components/schemas/SchemaView"
             }
@@ -14228,6 +14678,820 @@
           }
         }
       },
+      "RoutineView": {
+        "x-engine-record": "Maquettiste.Engine.RoutineView",
+        "description": "One resolved routine (a stored function or procedure), with the annotations of its file (as `TableView`). Parameter and\nresult types are resolved to native types for the database's dialect, a database type of the same database included.\n",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "schema",
+          "routineKind",
+          "parameters",
+          "returns",
+          "language",
+          "body",
+          "hasBody",
+          "deterministic",
+          "security",
+          "dependsOn",
+          "comment",
+          "displayName",
+          "pluralName",
+          "description",
+          "stereotypes",
+          "tags",
+          "category",
+          "properties",
+          "generation"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "schema": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "routineKind": {
+            "type": "string",
+            "enum": [
+              "function",
+              "procedure"
+            ]
+          },
+          "parameters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoutineParameterView"
+            }
+          },
+          "returns": {
+            "description": "The result, or null when the routine returns nothing (a procedure).",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RoutineReturnsView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "language": {
+            "type": "string",
+            "description": "The file's language, else the dialect's own (plpgsql on PostgreSQL, tsql on SQL Server, sql elsewhere)."
+          },
+          "body": {
+            "type": "string",
+            "description": "The body for the database's dialect (or the `*` body); empty when the file has none for it."
+          },
+          "hasBody": {
+            "type": "boolean"
+          },
+          "deterministic": {
+            "type": "boolean"
+          },
+          "security": {
+            "type": "string",
+            "enum": [
+              "invoker",
+              "definer"
+            ]
+          },
+          "dependsOn": {
+            "type": "array",
+            "description": "The ids (a synthesized table's key) of the tables, views, sequences, routines, database types and SQL objects its `dependsOn` names.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pluralName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stereotypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "category": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "properties": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "generation": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/GenerationHintsView"
+            }
+          }
+        },
+        "example": {
+          "id": "01J92P0V2M0000000000000002",
+          "name": "invoice_total",
+          "schema": "dbo",
+          "routineKind": "function",
+          "parameters": [
+            {
+              "name": "invoice_id",
+              "type": "uuid",
+              "dbTypeId": null,
+              "length": null,
+              "precision": null,
+              "scale": null,
+              "nativeType": "uniqueidentifier",
+              "mode": "in",
+              "default": null
+            }
+          ],
+          "returns": {
+            "type": "decimal",
+            "dbTypeId": null,
+            "length": null,
+            "precision": 18,
+            "scale": 2,
+            "nativeType": "decimal(18,2)",
+            "table": null
+          },
+          "language": "tsql",
+          "body": "BEGIN\n    RETURN (SELECT COALESCE(SUM(quantity * unit_price_amount), 0) FROM dbo.invoice_lines WHERE invoice_id = @invoice_id);\nEND",
+          "hasBody": true,
+          "deterministic": false,
+          "security": "invoker",
+          "dependsOn": [],
+          "comment": null,
+          "displayName": null,
+          "pluralName": null,
+          "description": "The sum of an invoice's lines.",
+          "stereotypes": [],
+          "tags": [],
+          "category": null,
+          "properties": {},
+          "generation": {}
+        }
+      },
+      "RoutineParameterView": {
+        "x-engine-record": "Maquettiste.Engine.RoutineParameterView",
+        "description": "A parameter of a routine.",
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "dbTypeId",
+          "length",
+          "precision",
+          "scale",
+          "nativeType",
+          "mode",
+          "default"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The built-in type keyword, or null when a database type or a native type alone gives the type."
+          },
+          "dbTypeId": {
+            "description": "The id of the database type that types the parameter, or null.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "length": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "precision": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "scale": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "nativeType": {
+            "type": "string",
+            "description": "The file's native type, else the database type's native name, else the type map's."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "in",
+              "out",
+              "inout"
+            ]
+          },
+          "default": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The default value as SQL text."
+          }
+        }
+      },
+      "RoutineReturnsView": {
+        "x-engine-record": "Maquettiste.Engine.RoutineReturnsView",
+        "description": "The result of a routine, a single value or a table (`table` set).",
+        "type": "object",
+        "required": [
+          "type",
+          "dbTypeId",
+          "length",
+          "precision",
+          "scale",
+          "nativeType",
+          "table"
+        ],
+        "properties": {
+          "type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The built-in type keyword, or null when a database type or a native type alone gives the type."
+          },
+          "dbTypeId": {
+            "description": "The id of the database type of a single value, or null.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "length": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "precision": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "scale": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "nativeType": {
+            "type": "string",
+            "description": "The native type of a single value; empty for a table result."
+          },
+          "table": {
+            "description": "The columns of a table result, or null for a single value.",
+            "oneOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RoutineColumnView"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RoutineColumnView": {
+        "x-engine-record": "Maquettiste.Engine.RoutineColumnView",
+        "description": "A column of a routine's table result.",
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "dbTypeId",
+          "length",
+          "precision",
+          "scale",
+          "nativeType",
+          "nullable"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The built-in type keyword, or null when a database type or a native type alone gives the type."
+          },
+          "dbTypeId": {
+            "description": "The id of the database type, or null.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "length": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "precision": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "scale": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "nativeType": {
+            "type": "string"
+          },
+          "nullable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "DatabaseTypeView": {
+        "x-engine-record": "Maquettiste.Engine.DatabaseTypeView",
+        "description": "One resolved database type (domain, composite, enumeration or range), with the annotations of its file (as `TableView`).\n`nativeName` is what a column or parameter typed by it writes: the file's `nativeName`; else, when the database creates the\ntype (`isCreated`: a definition for the dialect, any kind on PostgreSQL, a domain on SQL Server), its schema-qualified name;\nelse a domain's base or an enum's string (SQLite), or the empty string.\n",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "schema",
+          "typeKind",
+          "base",
+          "baseNativeType",
+          "length",
+          "precision",
+          "scale",
+          "check",
+          "members",
+          "fields",
+          "subtype",
+          "subtypeNativeType",
+          "definition",
+          "isCreated",
+          "nativeName",
+          "dependsOn",
+          "comment",
+          "displayName",
+          "pluralName",
+          "description",
+          "stereotypes",
+          "tags",
+          "category",
+          "properties",
+          "generation"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "schema": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "typeKind": {
+            "type": "string",
+            "enum": [
+              "domain",
+              "composite",
+              "enum",
+              "range"
+            ]
+          },
+          "base": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "baseNativeType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "length": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "precision": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "scale": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "check": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatabaseTypeFieldView"
+            }
+          },
+          "subtype": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subtypeNativeType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "definition": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The definition for the dialect (the text after the type's name), or null to build it from the structured form."
+          },
+          "isCreated": {
+            "type": "boolean"
+          },
+          "nativeName": {
+            "type": "string"
+          },
+          "dependsOn": {
+            "type": "array",
+            "description": "The ids of the database types its fields use.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pluralName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stereotypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "category": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "properties": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "generation": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/GenerationHintsView"
+            }
+          }
+        },
+        "example": {
+          "id": "01J92P0V2H0000000000000001",
+          "name": "email_address",
+          "schema": "billing",
+          "typeKind": "domain",
+          "base": "string",
+          "baseNativeType": "varchar(254)",
+          "length": 254,
+          "precision": null,
+          "scale": null,
+          "check": "VALUE LIKE '%_@_%'",
+          "members": [],
+          "fields": [],
+          "subtype": null,
+          "subtypeNativeType": null,
+          "definition": null,
+          "isCreated": true,
+          "nativeName": "billing.email_address",
+          "dependsOn": [],
+          "comment": null,
+          "displayName": null,
+          "pluralName": null,
+          "description": "An email address, checked where the dialect can.",
+          "stereotypes": [],
+          "tags": [],
+          "category": null,
+          "properties": {},
+          "generation": {}
+        }
+      },
+      "DatabaseTypeFieldView": {
+        "x-engine-record": "Maquettiste.Engine.DatabaseTypeFieldView",
+        "description": "A field of a composite database type.",
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "dbTypeId",
+          "length",
+          "precision",
+          "scale",
+          "nativeType"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The built-in type keyword, or null when a database type or a native type alone gives the type."
+          },
+          "dbTypeId": {
+            "description": "The id of the database type, or null.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "length": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "precision": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "scale": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "nativeType": {
+            "type": "string"
+          }
+        }
+      },
+      "SqlObjectView": {
+        "x-engine-record": "Maquettiste.Engine.SqlObjectView",
+        "description": "One resolved SQL object (a trigger, grant, extension or other object the model does not type), with the annotations of its file (as `TableView`).",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "schema",
+          "objectKind",
+          "phase",
+          "dependsOn",
+          "body",
+          "hasBody",
+          "displayName",
+          "pluralName",
+          "description",
+          "stereotypes",
+          "tags",
+          "category",
+          "properties",
+          "generation"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "schema": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "objectKind": {
+            "type": "string",
+            "description": "What the object is, as the file says (trigger, grant, extension...)."
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "before",
+              "after"
+            ],
+            "description": "Run before the database types and tables, or after the routines and views."
+          },
+          "dependsOn": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "body": {
+            "type": "string",
+            "description": "The statements for the database's dialect (or the `*` ones); empty when the file has none for it."
+          },
+          "hasBody": {
+            "type": "boolean"
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pluralName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stereotypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "category": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "properties": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "generation": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/GenerationHintsView"
+            }
+          }
+        },
+        "example": {
+          "id": "01J92P0V2N0000000000000001",
+          "name": "invoices_keep_number",
+          "schema": "billing",
+          "objectKind": "trigger",
+          "phase": "after",
+          "dependsOn": [
+            "01J92P0V2M0000000000000001",
+            "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4"
+          ],
+          "body": "CREATE TRIGGER invoices_keep_number BEFORE UPDATE OF number ON billing.invoices FOR EACH ROW EXECUTE FUNCTION billing.keep_invoice_number();",
+          "hasBody": true,
+          "displayName": null,
+          "pluralName": null,
+          "description": null,
+          "stereotypes": [],
+          "tags": [],
+          "category": null,
+          "properties": {},
+          "generation": {}
+        }
+      },
       "GenerationHintsView": {
         "x-engine-record": "Maquettiste.Engine.Model.GenerationHints",
         "description": "One pack's generation hints on a resolved object (every member written).",
@@ -14378,6 +15642,17 @@
               "null"
             ],
             "description": "The id of the sequence that supplies values (a sequence file's id, or a synthesized key such as `<entityId>.sequence@<databaseId>`)."
+          },
+          "dbTypeId": {
+            "description": "The id of the database type the column uses (its file's `nativeType` names the type by id or name), or null. Always sent by this engine; optional for older servers.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "collation": {
             "type": [
@@ -15603,6 +16878,197 @@
           "declaredIn": {
             "description": "The script path.",
             "type": "string"
+          }
+        }
+      },
+      "ExtensionFileList": {
+        "x-engine-record": "Maquettiste.Engine.ExtensionFileList",
+        "type": "object",
+        "required": [
+          "folder",
+          "files"
+        ],
+        "properties": {
+          "folder": {
+            "description": "The repo-relative folder the paths are under.",
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExtensionFileInfo"
+            }
+          }
+        }
+      },
+      "ExtensionFileInfo": {
+        "x-engine-record": "Maquettiste.Engine.ExtensionFileInfo",
+        "type": "object",
+        "required": [
+          "path",
+          "kind",
+          "size",
+          "hash",
+          "diagnostics",
+          "rules"
+        ],
+        "properties": {
+          "path": {
+            "description": "The path under `extensions/`.",
+            "type": "string"
+          },
+          "rules": {
+            "description": "For a rule script that loads, the rules it registers (`x/<id>` and the severity it declares); empty for a schema.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExtensionRuleInfo"
+            }
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "schema",
+              "rule"
+            ]
+          },
+          "size": {
+            "type": "integer"
+          },
+          "hash": {
+            "$ref": "#/components/schemas/Hash"
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
+          }
+        }
+      },
+      "ExtensionRuleInfo": {
+        "x-engine-record": "Maquettiste.Engine.ExtensionRuleInfo",
+        "type": "object",
+        "required": [
+          "id",
+          "severity"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^x/"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/DiagnosticSeverity"
+          }
+        }
+      },
+      "ExtensionFileContent": {
+        "x-engine-record": "Maquettiste.Engine.ExtensionFileContent",
+        "type": "object",
+        "required": [
+          "path",
+          "kind",
+          "hash",
+          "text"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "schema",
+              "rule"
+            ]
+          },
+          "hash": {
+            "$ref": "#/components/schemas/Hash"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "ExtensionFileWrite": {
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "ExtensionFileMove": {
+        "x-engine-record": "Maquettiste.Engine.ExtensionFileMove",
+        "type": "object",
+        "required": [
+          "from",
+          "to"
+        ],
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        }
+      },
+      "ExtensionWriteResult": {
+        "x-engine-record": "Maquettiste.Engine.ExtensionWriteResult",
+        "type": "object",
+        "required": [
+          "outcome",
+          "hash",
+          "current",
+          "text",
+          "diagnostics",
+          "files"
+        ],
+        "properties": {
+          "outcome": {
+            "$ref": "#/components/schemas/SaveOutcome"
+          },
+          "hash": {
+            "description": "The new hash when saved (null after a delete); the disk hash on conflict (null when the file is gone).",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Hash"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current": {
+            "description": "The disk text on conflict, else null.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "description": "The text written by a write (a schema in canonical form), else null.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
+          },
+          "files": {
+            "type": "array",
+            "description": "Paths under `extensions/` written or deleted.",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -21176,6 +22642,637 @@
         ],
         "additionalProperties": false
       },
+      "dbTypeRef": {
+        "description": "A built-in type keyword, or the id of a database type of the same database (routine parameters and results, composite type fields).",
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/builtinType"
+          },
+          {
+            "$ref": "#/components/schemas/id"
+          }
+        ]
+      },
+      "routine": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Routine",
+        "description": "A stored function or procedure of a database, with typed parameters, a result and a body per dialect (model/databases/<db>/routines/).",
+        "type": "object",
+        "x-order": [
+          "$schema",
+          "kind",
+          "id",
+          "name",
+          "displayName",
+          "pluralName",
+          "database",
+          "schema",
+          "description",
+          "stereotypes",
+          "tags",
+          "category",
+          "routineKind",
+          "parameters",
+          "returns",
+          "language",
+          "body",
+          "deterministic",
+          "security",
+          "dependsOn",
+          "comment",
+          "properties",
+          "generation",
+          "source"
+        ],
+        "properties": {
+          "$schema": {
+            "$ref": "#/components/schemas/schemaPath"
+          },
+          "kind": {
+            "const": "routine"
+          },
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/label",
+            "default": ""
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluralName": {
+            "type": "string"
+          },
+          "database": {
+            "$ref": "#/components/schemas/id"
+          },
+          "schema": {
+            "$ref": "#/components/schemas/id"
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "tags": {
+            "$ref": "#/components/schemas/tagList",
+            "default": []
+          },
+          "category": {
+            "$ref": "#/components/schemas/id"
+          },
+          "routineKind": {
+            "description": "A function returns a value or a table; a procedure is called for its effects and may return result sets.",
+            "enum": [
+              "function",
+              "procedure"
+            ],
+            "default": "function"
+          },
+          "parameters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "x-order": [
+                "name",
+                "type",
+                "length",
+                "precision",
+                "scale",
+                "nativeType",
+                "mode",
+                "default"
+              ],
+              "properties": {
+                "name": {
+                  "$ref": "#/components/schemas/label"
+                },
+                "type": {
+                  "$ref": "#/components/schemas/dbTypeRef"
+                },
+                "length": {
+                  "$ref": "#/components/schemas/length"
+                },
+                "precision": {
+                  "$ref": "#/components/schemas/precision"
+                },
+                "scale": {
+                  "$ref": "#/components/schemas/scale"
+                },
+                "nativeType": {
+                  "description": "A native type that replaces the one the type gives.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mode": {
+                  "enum": [
+                    "in",
+                    "out",
+                    "inout"
+                  ],
+                  "default": "in"
+                },
+                "default": {
+                  "description": "A default value as SQL text.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "anyOf": [
+                {
+                  "required": [
+                    "type"
+                  ]
+                },
+                {
+                  "required": [
+                    "nativeType"
+                  ]
+                }
+              ],
+              "additionalProperties": false
+            },
+            "default": []
+          },
+          "returns": {
+            "description": "The result: a single value (type or nativeType) or a table (columns); absent for a procedure or a function that returns nothing.",
+            "type": "object",
+            "x-order": [
+              "type",
+              "length",
+              "precision",
+              "scale",
+              "nativeType",
+              "table"
+            ],
+            "properties": {
+              "type": {
+                "$ref": "#/components/schemas/dbTypeRef"
+              },
+              "length": {
+                "$ref": "#/components/schemas/length"
+              },
+              "precision": {
+                "$ref": "#/components/schemas/precision"
+              },
+              "scale": {
+                "$ref": "#/components/schemas/scale"
+              },
+              "nativeType": {
+                "description": "A native type that replaces the one the type gives, or a result the built-in types do not name (trigger, setof record).",
+                "type": "string",
+                "minLength": 1
+              },
+              "table": {
+                "description": "The columns of a table result.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "x-order": [
+                    "name",
+                    "type",
+                    "length",
+                    "precision",
+                    "scale",
+                    "nativeType",
+                    "nullable"
+                  ],
+                  "properties": {
+                    "name": {
+                      "$ref": "#/components/schemas/label"
+                    },
+                    "type": {
+                      "$ref": "#/components/schemas/dbTypeRef"
+                    },
+                    "length": {
+                      "$ref": "#/components/schemas/length"
+                    },
+                    "precision": {
+                      "$ref": "#/components/schemas/precision"
+                    },
+                    "scale": {
+                      "$ref": "#/components/schemas/scale"
+                    },
+                    "nativeType": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "nullable": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "anyOf": [
+                    {
+                      "required": [
+                        "type"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "nativeType"
+                      ]
+                    }
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 1
+              }
+            },
+            "anyOf": [
+              {
+                "required": [
+                  "type"
+                ]
+              },
+              {
+                "required": [
+                  "nativeType"
+                ]
+              },
+              {
+                "required": [
+                  "table"
+                ]
+              }
+            ],
+            "additionalProperties": false
+          },
+          "language": {
+            "description": "The body's language; absent means the dialect's own (plpgsql on PostgreSQL, tsql on SQL Server, sql elsewhere).",
+            "type": "string",
+            "minLength": 1
+          },
+          "body": {
+            "description": "Per dialect, the routine's body: what follows the signature (on PostgreSQL the text inside the dollar quotes, on SQL Server what follows AS).",
+            "$ref": "#/components/schemas/dialectMap",
+            "minProperties": 1
+          },
+          "deterministic": {
+            "description": "Whether the routine returns the same result for the same arguments (IMMUTABLE on PostgreSQL).",
+            "type": "boolean",
+            "default": false
+          },
+          "security": {
+            "description": "Whose rights the routine runs with: the caller's (invoker) or its owner's (definer).",
+            "enum": [
+              "invoker",
+              "definer"
+            ],
+            "default": "invoker"
+          },
+          "dependsOn": {
+            "description": "Tables, views, sequences, routines, database types and SQL objects of the same database that must exist first.",
+            "$ref": "#/components/schemas/idList",
+            "uniqueItems": true,
+            "default": []
+          },
+          "comment": {
+            "type": "string"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
+          },
+          "generation": {
+            "$ref": "#/components/schemas/generation",
+            "default": {}
+          },
+          "source": {
+            "$ref": "#/components/schemas/source"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "database",
+          "body"
+        ],
+        "additionalProperties": false
+      },
+      "database-type": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Database type",
+        "description": "A type a database owns: a domain, a composite, an enumeration or a range (model/databases/<db>/types/). Columns use it through their nativeType (its id or name).",
+        "type": "object",
+        "x-order": [
+          "$schema",
+          "kind",
+          "id",
+          "name",
+          "displayName",
+          "pluralName",
+          "database",
+          "schema",
+          "description",
+          "stereotypes",
+          "tags",
+          "category",
+          "typeKind",
+          "base",
+          "length",
+          "precision",
+          "scale",
+          "check",
+          "members",
+          "fields",
+          "subtype",
+          "definition",
+          "nativeName",
+          "comment",
+          "properties",
+          "generation",
+          "source"
+        ],
+        "properties": {
+          "$schema": {
+            "$ref": "#/components/schemas/schemaPath"
+          },
+          "kind": {
+            "const": "database-type"
+          },
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/label",
+            "default": ""
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluralName": {
+            "type": "string"
+          },
+          "database": {
+            "$ref": "#/components/schemas/id"
+          },
+          "schema": {
+            "$ref": "#/components/schemas/id"
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "tags": {
+            "$ref": "#/components/schemas/tagList",
+            "default": []
+          },
+          "category": {
+            "$ref": "#/components/schemas/id"
+          },
+          "typeKind": {
+            "description": "domain: a built-in type with a constraint; composite: named fields; enum: a list of labels; range: a range over a subtype.",
+            "enum": [
+              "domain",
+              "composite",
+              "enum",
+              "range"
+            ]
+          },
+          "base": {
+            "description": "For a domain: the built-in type it restricts.",
+            "$ref": "#/components/schemas/builtinType"
+          },
+          "length": {
+            "$ref": "#/components/schemas/length"
+          },
+          "precision": {
+            "$ref": "#/components/schemas/precision"
+          },
+          "scale": {
+            "$ref": "#/components/schemas/scale"
+          },
+          "check": {
+            "description": "For a domain: a CHECK expression over VALUE.",
+            "type": "string",
+            "minLength": 1
+          },
+          "members": {
+            "description": "For an enum: the labels, in order.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true,
+            "default": []
+          },
+          "fields": {
+            "description": "For a composite: the fields, in order.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "x-order": [
+                "name",
+                "type",
+                "length",
+                "precision",
+                "scale",
+                "nativeType"
+              ],
+              "properties": {
+                "name": {
+                  "$ref": "#/components/schemas/label"
+                },
+                "type": {
+                  "$ref": "#/components/schemas/dbTypeRef"
+                },
+                "length": {
+                  "$ref": "#/components/schemas/length"
+                },
+                "precision": {
+                  "$ref": "#/components/schemas/precision"
+                },
+                "scale": {
+                  "$ref": "#/components/schemas/scale"
+                },
+                "nativeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "anyOf": [
+                {
+                  "required": [
+                    "type"
+                  ]
+                },
+                {
+                  "required": [
+                    "nativeType"
+                  ]
+                }
+              ],
+              "additionalProperties": false
+            },
+            "default": []
+          },
+          "subtype": {
+            "description": "For a range: the built-in type of its bounds.",
+            "$ref": "#/components/schemas/builtinType"
+          },
+          "definition": {
+            "description": "Per dialect, the definition as SQL text after the type's name (AS ENUM (...), FROM nvarchar(320)); it replaces the structured form.",
+            "$ref": "#/components/schemas/dialectMap",
+            "default": {}
+          },
+          "nativeName": {
+            "description": "The name columns and parameters write for the type, when it is not the type's own (schema-qualified) name.",
+            "type": "string",
+            "minLength": 1
+          },
+          "comment": {
+            "type": "string"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
+          },
+          "generation": {
+            "$ref": "#/components/schemas/generation",
+            "default": {}
+          },
+          "source": {
+            "$ref": "#/components/schemas/source"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "database",
+          "typeKind"
+        ],
+        "additionalProperties": false
+      },
+      "sql-object": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "SQL object",
+        "description": "A named database object the model does not type (a trigger, a grant, an extension, a policy): SQL statements per dialect, run before or after the tables (model/databases/<db>/objects/).",
+        "type": "object",
+        "x-order": [
+          "$schema",
+          "kind",
+          "id",
+          "name",
+          "displayName",
+          "pluralName",
+          "database",
+          "schema",
+          "description",
+          "stereotypes",
+          "tags",
+          "category",
+          "objectKind",
+          "phase",
+          "dependsOn",
+          "body",
+          "properties",
+          "generation",
+          "source"
+        ],
+        "properties": {
+          "$schema": {
+            "$ref": "#/components/schemas/schemaPath"
+          },
+          "kind": {
+            "const": "sql-object"
+          },
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/label",
+            "default": ""
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluralName": {
+            "type": "string"
+          },
+          "database": {
+            "$ref": "#/components/schemas/id"
+          },
+          "schema": {
+            "$ref": "#/components/schemas/id"
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "tags": {
+            "$ref": "#/components/schemas/tagList",
+            "default": []
+          },
+          "category": {
+            "$ref": "#/components/schemas/id"
+          },
+          "objectKind": {
+            "description": "What the object is, in free text: trigger, grant, extension, index, policy...",
+            "type": "string",
+            "minLength": 1
+          },
+          "phase": {
+            "description": "Whether the statements run before the database types and tables (an extension) or after the routines and views (a trigger, a grant).",
+            "enum": [
+              "before",
+              "after"
+            ],
+            "default": "after"
+          },
+          "dependsOn": {
+            "description": "Tables, views, sequences, routines, database types and SQL objects of the same database that must exist first.",
+            "$ref": "#/components/schemas/idList",
+            "uniqueItems": true,
+            "default": []
+          },
+          "body": {
+            "description": "Per dialect, the SQL statements that create the object, run as written.",
+            "$ref": "#/components/schemas/dialectMap",
+            "minProperties": 1
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
+          },
+          "generation": {
+            "$ref": "#/components/schemas/generation",
+            "default": {}
+          },
+          "source": {
+            "$ref": "#/components/schemas/source"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "database",
+          "objectKind",
+          "body"
+        ],
+        "additionalProperties": false
+      },
       "mapping": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Mapping",
@@ -21903,6 +24000,9 @@
                 "table",
                 "view",
                 "sequence",
+                "routine",
+                "database-type",
+                "sql-object",
                 "mapping",
                 "diagram",
                 "tag-vocabulary",
@@ -24200,7 +26300,7 @@
                 },
                 "for": {
                   "type": "string",
-                  "pattern": "^(model|each (package|entity|relation|enum|value object|table|view|sequence|reference type|seed|locale|process|actor|scenario)|select [A-Za-z_][A-Za-z0-9_]*)$"
+                  "pattern": "^(model|each (package|entity|relation|enum|value object|table|view|sequence|routine|database type|sql object|reference type|seed|locale|process|actor|scenario)|select [A-Za-z_][A-Za-z0-9_]*)$"
                 },
                 "where": {
                   "title": "Unit filters",

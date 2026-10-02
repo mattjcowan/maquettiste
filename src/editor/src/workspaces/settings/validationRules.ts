@@ -1,6 +1,7 @@
 // Settings › Validation as data: the rule catalog (GET /api/validation/rules) and the overrides of maquettiste.json
 // `validation.rules` (rule id → error | warning | info | off). "Default" is no key; MQ1xxx rules cannot be off. Pure, so
 // the tab and the tests share it.
+import type { components } from "@/api/schema";
 import type { RuleCatalogEntry, SettingsJson } from "@/api/types";
 import { clone } from "@/lib/json";
 
@@ -66,4 +67,23 @@ export function groupRules(rules: readonly RuleCatalogEntry[], filter: string): 
     else out.push({ family: rule.family, label: rule.familyLabel, rules: [rule] });
   }
   return out;
+}
+
+/**
+ * The project's script rules as catalog rows, after the built-in families: one per rule a file of extensions/rules/ registers,
+ * with the severity it declares as the default, so `validation.rules` can override them (or turn them off) here too.
+ */
+export function scriptRuleEntries(files: readonly components["schemas"]["ExtensionFileInfo"][] | undefined): RuleCatalogEntry[] {
+  return (files ?? [])
+    .flatMap((f) =>
+      f.rules.map((r) => ({
+        id: r.id,
+        defaultSeverity: r.severity,
+        description: `Script rule in extensions/${f.path}.`,
+        family: "x/",
+        familyLabel: "Script rules",
+        canBeOff: true,
+      })),
+    )
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }

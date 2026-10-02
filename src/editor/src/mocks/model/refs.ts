@@ -1,6 +1,8 @@
 // Where a model document references other elements, as the engine's ReferenceWalker reports it:
 // the holder (element or sub-element id), the JSON pointer, the field and the referenced id.
 // `required` marks references that `remove-references` cannot clear (a delete becomes invalid).
+import { BUILTIN_TYPES } from "@/model/model";
+
 type Json = Record<string, unknown>;
 
 export interface Ref {
@@ -14,6 +16,8 @@ export interface Ref {
 }
 
 const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
+/** The built-in type keywords (schemas/v1/common.json builtinType): a type slot holding one names no element. */
+const BUILTIN: ReadonlySet<string> = new Set(BUILTIN_TYPES);
 const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
 
 function attributeRefs(owner: string, base: string, attributes: unknown, out: Ref[]): void {
@@ -130,6 +134,23 @@ export function referencesOf(doc: Json): Ref[] {
       push("/database", "database", doc.database, true);
       push("/schema", "schema", doc.schema, false);
       break;
+    case "routine":
+    case "database-type":
+    case "sql-object": {
+      push("/database", "database", doc.database, true);
+      push("/schema", "schema", doc.schema, false);
+      arr(doc.dependsOn).forEach((_, i) => push(`/dependsOn/${i}`, "dependsOn", (doc.dependsOn as unknown[])[i], false, `/dependsOn/${i}`));
+      // A type slot naming a database type (not a built-in keyword): the routine or type cannot do without it.
+      const typeRef = (pointer: string, row: unknown) => {
+        const type = (row as Json | undefined)?.type;
+        if (typeof type === "string" && !BUILTIN.has(type)) push(pointer, "type", type, true);
+      };
+      arr(doc.parameters).forEach((p, i) => typeRef(`/parameters/${i}/type`, p));
+      typeRef("/returns/type", doc.returns);
+      arr((doc.returns as Json | undefined)?.table).forEach((c, i) => typeRef(`/returns/table/${i}/type`, c));
+      arr(doc.fields).forEach((f, i) => typeRef(`/fields/${i}/type`, f));
+      break;
+    }
   }
   return out;
 }

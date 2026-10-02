@@ -6,8 +6,9 @@ using Maquettiste.Engine.Resolution;
 namespace Maquettiste.Engine;
 
 /// <summary>What <see cref="GenerationService.GetResolvedAsync"/> reads.</summary>
-/// <param name="Scope">One of <see cref="ResolvedRecords.Scopes"/>: <c>all</c> (every kind but <c>tables</c>, which <c>databases</c>
-/// already holds), or one kind's plural, such as <c>entities</c> or <c>databases</c>.</param>
+/// <param name="Scope">One of <see cref="ResolvedRecords.Scopes"/>: <c>all</c> (every kind but <c>tables</c>, <c>routines</c>,
+/// <c>database-types</c> and <c>sql-objects</c>, which <c>databases</c> already holds), or one kind's plural, such as <c>entities</c> or
+/// <c>databases</c>.</param>
 /// <param name="Database">A database id: entities and relations mapped (not ignored) in it, that database, and its tables only; the
 /// other kinds are not narrowed.</param>
 /// <param name="Cursor">The previous page's <see cref="ResolvedPage.Next"/>, or <see langword="null"/> for the first page.</param>
@@ -18,7 +19,8 @@ public sealed record ResolvedQuery(string Scope = "all", string? Database = null
 /// <param name="Items">The records, by (kind, name, id): <see cref="PackageRecord"/>, <see cref="EntityRecord"/>, <see cref="RelationRecord"/>,
 /// <see cref="EnumRecord"/>, <see cref="ValueObjectRecord"/>, <see cref="ScalarTypeRecord"/>, <see cref="ReferenceTypeRecord"/>,
 /// <see cref="SeedRecord"/>, <see cref="ProcessRecord"/>, <see cref="ActorRecord"/>, <see cref="ScenarioRecord"/>,
-/// <see cref="DatabaseRecord"/> or <see cref="TableRecord"/>; each has <c>id</c>, <c>kind</c> and <c>name</c>.</param>
+/// <see cref="DatabaseRecord"/>, <see cref="TableRecord"/>, <see cref="RoutineRecord"/>, <see cref="DatabaseTypeRecord"/> or
+/// <see cref="SqlObjectRecord"/>; each has <c>id</c>, <c>kind</c> and <c>name</c>.</param>
 /// <param name="Next">The cursor of the next page, or <see langword="null"/> on the last one.</param>
 /// <param name="Diagnostics">When the model has errors, the errors that prevented resolution (and <paramref name="Items"/> is empty);
 /// otherwise empty (validate reports the warnings).</param>
@@ -661,6 +663,9 @@ public sealed record ExpectationRecord(bool Accepted, IReadOnlyList<string> Stat
 /// <param name="Tables">Every table, as <see cref="DatabaseView.Tables"/>.</param>
 /// <param name="Views">Every view.</param>
 /// <param name="Sequences">Every sequence.</param>
+/// <param name="Routines">Every routine, as <see cref="DatabaseView.Routines"/>.</param>
+/// <param name="Types">Every database type, as <see cref="DatabaseView.Types"/>.</param>
+/// <param name="Objects">Every SQL object, as <see cref="DatabaseView.Objects"/>.</param>
 /// <param name="Schemas">Every schema, as <see cref="DatabaseView.Schemas"/>.</param>
 /// <param name="Quoting">As <see cref="DatabaseView.Quoting"/>.</param>
 /// <param name="MaxIdentifierLength">As <see cref="DatabaseView.MaxIdentifierLength"/>.</param>
@@ -675,7 +680,8 @@ public sealed record ExpectationRecord(bool Accepted, IReadOnlyList<string> Stat
 /// <param name="Properties">As <see cref="DatabaseView.Properties"/>.</param>
 /// <param name="Generation">As <see cref="DatabaseView.Generation"/>.</param>
 public sealed record DatabaseRecord(string Id, string Kind, string Name, string Dialect, string? Version, string? DefaultSchema, IReadOnlyList<TableView> Tables,
-    IReadOnlyList<ViewView> Views, IReadOnlyList<SequenceView> Sequences, IReadOnlyList<SchemaView> Schemas, string Quoting, int? MaxIdentifierLength,
+    IReadOnlyList<ViewView> Views, IReadOnlyList<SequenceView> Sequences, IReadOnlyList<RoutineView> Routines, IReadOnlyList<DatabaseTypeView> Types,
+    IReadOnlyList<SqlObjectView> Objects, IReadOnlyList<SchemaView> Schemas, string Quoting, int? MaxIdentifierLength,
     string ByConvention, IReadOnlyList<ConventionPackageView> Packages, string? DisplayName, string? PluralName, string? Description,
     IReadOnlyList<string> Stereotypes, IReadOnlyList<string> Tags, string? Category, IReadOnlyDictionary<string, object?> Properties,
     IReadOnlyDictionary<string, GenerationHints> Generation);
@@ -687,6 +693,30 @@ public sealed record DatabaseRecord(string Id, string Kind, string Name, string 
 /// <param name="Database">The database's id.</param>
 /// <param name="Table">The table.</param>
 public sealed record TableRecord(string Id, string Kind, string Name, string Database, TableView Table);
+
+/// <summary>One routine of a database, on its own (scope <c>routines</c>).</summary>
+/// <param name="Id">The routine's id.</param>
+/// <param name="Kind"><c>routine</c>.</param>
+/// <param name="Name">The physical name.</param>
+/// <param name="Database">The database's id.</param>
+/// <param name="Routine">The routine.</param>
+public sealed record RoutineRecord(string Id, string Kind, string Name, string Database, RoutineView Routine);
+
+/// <summary>One database type of a database, on its own (scope <c>database-types</c>).</summary>
+/// <param name="Id">The type's id.</param>
+/// <param name="Kind"><c>database-type</c>.</param>
+/// <param name="Name">The physical name.</param>
+/// <param name="Database">The database's id.</param>
+/// <param name="DatabaseType">The type.</param>
+public sealed record DatabaseTypeRecord(string Id, string Kind, string Name, string Database, DatabaseTypeView DatabaseType);
+
+/// <summary>One SQL object of a database, on its own (scope <c>sql-objects</c>).</summary>
+/// <param name="Id">The object's id.</param>
+/// <param name="Kind"><c>sql-object</c>.</param>
+/// <param name="Name">The name.</param>
+/// <param name="Database">The database's id.</param>
+/// <param name="SqlObject">The object.</param>
+public sealed record SqlObjectRecord(string Id, string Kind, string Name, string Database, SqlObjectView SqlObject);
 
 /// <summary>Projects the resolved model into flat records (resolved objects reference each other, so R-types are never serialized).</summary>
 public static class ResolvedRecords
@@ -707,6 +737,9 @@ public static class ResolvedRecords
         ["scenarios"] = "scenario",
         ["databases"] = "database",
         ["tables"] = "table",
+        ["routines"] = "routine",
+        ["database-types"] = "database-type",
+        ["sql-objects"] = "sql-object",
     };
 
     /// <summary>Every scope name, <c>all</c> first, then the others in <see cref="Scopes"/> order.</summary>
@@ -805,13 +838,35 @@ public static class ResolvedRecords
                     yield return new Entry("table", t.Name, t.Key, () => new TableRecord(t.Key, "table", t.Name, d.Id, DatabaseViews.Table(t)));
             }
         }
+
+        if (scope is "routines" or "database-types" or "sql-objects")
+        {
+            foreach (var d in model.Databases.Where(d => database is null || d.Id == database))
+            {
+                if (scope == "routines")
+                {
+                    foreach (var r in d.Routines)
+                        yield return new Entry("routine", r.Name, r.Id, () => new RoutineRecord(r.Id, "routine", r.Name, d.Id, DatabaseViews.ProjectRoutine(r)));
+                }
+                else if (scope == "database-types")
+                {
+                    foreach (var t in d.Types)
+                        yield return new Entry("database-type", t.Name, t.Id, () => new DatabaseTypeRecord(t.Id, "database-type", t.Name, d.Id, DatabaseViews.ProjectType(t)));
+                }
+                else
+                {
+                    foreach (var o in d.Objects)
+                        yield return new Entry("sql-object", o.Name, o.Id, () => new SqlObjectRecord(o.Id, "sql-object", o.Name, d.Id, DatabaseViews.ProjectObject(o)));
+                }
+            }
+        }
     }
 
     private static DatabaseRecord Database(RDatabase database)
     {
         var view = DatabaseViews.From(database);
         return new DatabaseRecord(view.Id, "database", view.Name, view.Dialect, view.Version, view.DefaultSchema, view.Tables, view.Views, view.Sequences,
-            view.Schemas, view.Quoting, view.MaxIdentifierLength, view.ByConvention, view.Packages, view.DisplayName, view.PluralName, view.Description,
+            view.Routines, view.Types, view.Objects, view.Schemas, view.Quoting, view.MaxIdentifierLength, view.ByConvention, view.Packages, view.DisplayName, view.PluralName, view.Description,
             view.Stereotypes, view.Tags, view.Category, view.Properties, view.Generation);
     }
 

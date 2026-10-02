@@ -1,9 +1,10 @@
 // What the Database screen's DDL preview renders, pure: no pack is assumed by name. The pack is the enabled pack with a
 // unit rendered per database (the Storage tab's rule, `databaseUnits`), preferring a unit whose name mentions schema
 // or table; with a table selected, that pack's `each table` unit (preferring one whose name mentions table) renders
-// the table; with a view or a sequence selected, its `each view` or `each sequence` unit renders it; else the database
-// unit renders the whole database. A unit may write nothing for an element (the sql-ddl pack writes a view's own script
-// only when its objectScripts parameter is on): the screen then shows the whole database, which creates it too.
+// the table; with a view, sequence, routine, database type or SQL object selected, its `each view`, `each sequence`, `each
+// routine`, `each database type` or `each sql object` unit renders it; else the database unit renders the whole database. A
+// unit may write nothing for an element (the sql-ddl pack writes a view's own script only when its objectScripts parameter is
+// on): the screen then shows the whole database, which creates it too.
 import { databaseUnits } from "@/workspaces/reference-data/storageChoices";
 
 export interface DdlPreviewTarget {
@@ -11,13 +12,16 @@ export interface DdlPreviewTarget {
   unit: string;
   /** The element rendered: the table key, or the database id. */
   elementId: string;
-  /** Whether it renders the selected table, view or sequence, or the whole database. */
-  scope: "table" | "view" | "sequence" | "database";
+  /** Whether it renders the selected table, view, sequence, routine, database type or SQL object, or the whole database. */
+  scope: "table" | DdlObjectKind | "database";
 }
 
-/** A view or a sequence picked on the Database screen. */
+/** The kinds the Database screen picks besides tables. */
+export type DdlObjectKind = "view" | "sequence" | "routine" | "database-type" | "sql-object";
+
+/** A view, sequence, routine, database type or SQL object picked on the Database screen. */
 export interface DdlObject {
-  kind: "view" | "sequence";
+  kind: DdlObjectKind;
   id: string;
 }
 
@@ -36,9 +40,11 @@ export function ddlPreviewTarget(
   const units = databaseUnits(packs);
   const chosen = units.find((u) => PREFERRED.test(u.unit)) ?? units[0];
   if (!chosen) return null;
-  const eachOf = (noun: string) => {
+  // A kind's scope noun: `database-type` is `each database type`; a unit whose id names the kind is preferred.
+  const eachOf = (kind: string) => {
+    const noun = kind.replace(/-/g, " ");
     const each = (packs.find((p) => p.name === chosen.pack)?.units ?? []).filter((u) => u.for.trim().replace(/\s+/g, " ") === `each ${noun}`);
-    return each.find((u) => new RegExp(noun, "i").test(u.id)) ?? each[0];
+    return each.find((u) => new RegExp(noun.replace(/ /g, "[- _]?"), "i").test(u.id)) ?? each[0];
   };
   if (object) {
     const unit = eachOf(object.kind);
@@ -50,7 +56,7 @@ export function ddlPreviewTarget(
   return { pack: chosen.pack, unit: chosen.unit, elementId: database, scope: "database" };
 }
 
-/** The whole database's target, the fallback of a view or sequence unit that writes nothing. */
+/** The whole database's target, the fallback of an object's unit that writes nothing. */
 export function databaseTargetOf(packs: readonly PackLike[], database: string | null): DdlPreviewTarget | null {
   return ddlPreviewTarget(packs, database, null, null);
 }
@@ -60,7 +66,7 @@ export function ddlPreviewCaption(target: DdlPreviewTarget, name: string | null)
   return `${target.pack}/${target.unit} · ${target.scope !== "database" && name ? name : "whole database"}`;
 }
 
-/** The line shown above the whole database when the picked view's or sequence's unit wrote nothing. */
+/** The line shown above the whole database when the picked object's unit wrote nothing. */
 export function emptyObjectUnitNote(target: DdlPreviewTarget, name: string): string {
   return `${target.pack}/${target.unit} writes no file for ${name} with this project's parameters; the whole database below creates it.`;
 }

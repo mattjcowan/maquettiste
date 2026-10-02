@@ -71,7 +71,8 @@ function useCommands(close: () => void): LocalItem[] {
   const { store } = useServices();
   const theme = useEditor(store, (s) => s.theme);
   const canApply = useEditor(store, (s) => s.generation.planId !== null && s.generation.applyJob === null);
-  // New table…, New view… and New sequence… add to the database the Database screen shows.
+  // New table…, New view…, New sequence…, New routine…, New database type… and New SQL object… add to the database the
+  // Database screen shows.
   const database = useEditor(store, (s) => (s.workspace === "database" ? s.activeDatabase : null));
   const { openWorkspace } = useEditorNavigation();
   const { undo, redo } = useUndoRedo();
@@ -133,7 +134,7 @@ function useCommands(close: () => void): LocalItem[] {
         ? DATABASE_ELEMENT_KINDS.map((kind) => ({
             value: `cmd:new-db-${kind}`,
             label: DATABASE_CREATE_LABELS[kind],
-            alias: `create ${kind} in this database`,
+            alias: `create ${kind.replace(/-/g, " ")} in this database`,
             run: run(() => s().requestNewDatabaseObject({ kind, database })),
           }))
         : []),

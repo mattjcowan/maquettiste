@@ -44,6 +44,7 @@ internal sealed class ValidationContext
     private readonly ConcurrentDictionary<Dialect, FrozenSet<string>> _knownNativeTypes;
     private readonly Lazy<FrozenSet<string>> _modelTypeNames;
     private readonly Lazy<FrozenDictionary<string, ImmutableArray<NativeTypeUse>>> _userDefinedTypes;
+    private readonly Lazy<DatabaseObjectIndex> _databaseObjects;
 
     /// <summary>Creates a context.</summary>
     /// <param name="model">The snapshot.</param>
@@ -70,6 +71,7 @@ internal sealed class ValidationContext
         _knownNativeTypes = new();
         _modelTypeNames = new(BuildModelTypeNames);
         _userDefinedTypes = new(BuildUserDefinedTypes);
+        _databaseObjects = new(() => DatabaseObjectIndex.Build(this));
     }
 
     /// <summary>A context over the same model and documents, sharing every index already built, with other rule names.</summary>
@@ -95,7 +97,11 @@ internal sealed class ValidationContext
         _knownNativeTypes = other._knownNativeTypes;
         _modelTypeNames = other._modelTypeNames;
         _userDefinedTypes = other._userDefinedTypes;
+        _databaseObjects = other._databaseObjects;
     }
+
+    /// <summary>The database types by name and the dependency cycles among routines, database types and SQL objects (MQ4018 to MQ4020).</summary>
+    public DatabaseObjectIndex DatabaseObjects => _databaseObjects.Value;
 
     /// <summary>The reference-data facts: reference-typed attributes, ends and each type's codes.</summary>
     public ReferenceDataIndex ReferenceData => _referenceData.Value;
@@ -293,6 +299,18 @@ internal sealed class ValidationContext
                 break;
             case Scenario scenario when scenario.Name.Length > 0:
                 yield return ("scenario|" + scenario.Process + "|" + scenario.Name, "scenarios of the same process");
+                break;
+            // Routines, database types and SQL objects: one name per kind and schema of a database (a routine is not overloaded,
+            // and each becomes one script); names compare case-insensitively, as the dialects compare unquoted identifiers.
+            case Routine routine when routine.Name.Length > 0:
+                yield return ("routine|" + routine.Database + "|" + routine.Schema + "|" + routine.Name.ToUpperInvariant(), "routines of the same database schema");
+                break;
+            case DatabaseType databaseType when databaseType.Name.Length > 0:
+                yield return ("database-type|" + databaseType.Database + "|" + databaseType.Schema + "|" + databaseType.Name.ToUpperInvariant(),
+                    "database types of the same database schema");
+                break;
+            case SqlObject sqlObject when sqlObject.Name.Length > 0:
+                yield return ("sql-object|" + sqlObject.Database + "|" + sqlObject.Schema + "|" + sqlObject.Name.ToUpperInvariant(), "SQL objects of the same database schema");
                 break;
         }
     }

@@ -1,5 +1,5 @@
 // Database schemas (erratum E26): a database declares its schemas ({ id, name }) and names its default by name
-// (`defaultSchema`); tables, views, sequences, convention entries and entity mappings name a schema by id. The four
+// (`defaultSchema`); tables, views, sequences, routines, database types, SQL objects, convention entries and entity mappings name a schema by id. The four
 // schema operations of a batch (add-schema, rename-schema, remove-schema, set-default-schema) run on the server; the
 // mock server runs `applySchemaOperation` here. Free of React.
 
@@ -84,12 +84,15 @@ export function schemaNameOf(db: Json, schemaId: string | null | undefined): str
   return (schemaId && schemasOf(db).find((s) => s.id === schemaId)?.name) || defaultSchemaName(db);
 }
 
-/** What lives in a schema: tables, views, sequences and mappings of the database, and convention entries. */
+const SCHEMA_KINDS: ReadonlySet<string> = new Set(["table", "view", "sequence", "routine", "database-type", "sql-object", "mapping"]);
+
+/** What lives in a schema: tables, views, sequences, routines, database types, SQL objects and mappings of the database, and
+ * convention entries. */
 export function occupantsOf(docs: Iterable<Json>, db: Json, schemaId: string): { id: string; label: string }[] {
   const out: { id: string; label: string }[] = [];
   const dbId = String(db.id);
   for (const d of docs) {
-    if (!["table", "view", "sequence", "mapping"].includes(String(d.kind))) continue;
+    if (!SCHEMA_KINDS.has(String(d.kind))) continue;
     if (d.database === dbId && d.schema === schemaId) out.push({ id: String(d.id), label: `${String(d.kind)} ${String(d.name ?? d.id)}` });
   }
   for (const e of (Array.isArray(db.packages) ? db.packages : []) as ConventionEntry[])

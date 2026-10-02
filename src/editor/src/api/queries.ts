@@ -44,6 +44,8 @@ export const keys = {
   packs: ["packs"] as const,
   pack: (name: string) => ["packs", name] as const,
   packOutputs: (name: string) => ["packs", name, "outputs"] as const,
+  extensions: ["extensions"] as const,
+  extensionFile: (path: string) => ["extensions", "file", path] as const,
 };
 
 export function createQueryClient(): QueryClient {
@@ -70,6 +72,8 @@ export const useProject = () => useQuery({ queryKey: keys.project, queryFn: endp
 export const useSettings = () => useQuery({ queryKey: keys.settings, queryFn: endpoints.getSettings });
 export const usePacks = () => useQuery({ queryKey: keys.packs, queryFn: endpoints.listPacks });
 export const usePack = (name: string | null) => useQuery({ queryKey: keys.pack(name ?? ""), queryFn: () => endpoints.getPack(name!), enabled: !!name });
+/** The model's extension files (custom property schemas and script rules), with what is wrong with each one alone. */
+export const useExtensionFiles = () => useQuery({ queryKey: keys.extensions, queryFn: endpoints.listExtensionFiles });
 export const usePackOutputs = (name: string | null, enabled = true) =>
   useQuery({ queryKey: keys.packOutputs(name ?? ""), queryFn: () => endpoints.getPackOutputs(name!), enabled: !!name && enabled });
 
@@ -249,6 +253,9 @@ export const TABLE_SHAPING_KINDS: ReadonlySet<ElementKind> = new Set<ElementKind
   "table",
   "view",
   "sequence",
+  "routine",
+  "database-type",
+  "sql-object",
   "mapping",
 ]);
 

@@ -39,6 +39,13 @@ public sealed class ResolvedCoverageTests
         new("view", "view.json", "", typeof(RView)),
         new("view column", "view.json", "columns/[]", typeof(RViewColumn)),
         new("sequence", "sequence.json", "", typeof(RSequence)),
+        new("routine", "routine.json", "", typeof(RRoutine)),
+        new("routine parameter", "routine.json", "parameters/[]", typeof(RRoutineParameter)),
+        new("routine result", "routine.json", "returns", typeof(RRoutineReturns)),
+        new("routine result column", "routine.json", "returns/table/[]", typeof(RRoutineColumn)),
+        new("database type", "database-type.json", "", typeof(RDatabaseType)),
+        new("database type field", "database-type.json", "fields/[]", typeof(RDatabaseTypeField)),
+        new("sql object", "sql-object.json", "", typeof(RSqlObject)),
 
         // Conceptual kinds and their parts.
         new("package", "package.json", "", typeof(RPackage)),
@@ -110,7 +117,7 @@ public sealed class ResolvedCoverageTests
 
     /// <summary>
     /// Gaps this test found outside the physical model on 2026-10-01, left for a later round: each is a property of the file that no
-    /// resolved member carries yet. The physical kinds (database, schema, table, column, constraints, view, sequence) have none.
+    /// resolved member carries yet. The physical kinds (database, schema, table, column, constraints, view, sequence, routine, database type, SQL object) have none.
     /// </summary>
     private static readonly HashSet<(string Target, string Property)> Pending =
     [

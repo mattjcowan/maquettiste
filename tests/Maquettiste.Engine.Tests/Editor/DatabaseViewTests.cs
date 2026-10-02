@@ -134,7 +134,7 @@ public sealed class DatabaseViewTests
         var column = node["view"]!["tables"]![0]!["columns"]![0]!.AsObject();
         Assert.Equal(
             ["key", "name", "type", "nativeType", "length", "precision", "scale", "nullable", "defaultSql", "identity", "computed", "attributeId",
-                "attributePath", "isPrimaryKey", "isForeignKey", "isDiscriminator", "position", "default", "computedStored", "sequenceId", "collation",
+                "attributePath", "isPrimaryKey", "isForeignKey", "isDiscriminator", "position", "default", "computedStored", "sequenceId", "dbTypeId", "collation",
                 "comment", "displayName", "pluralName", "description", "stereotypes", "tags", "category", "properties", "generation"],
             column.Select(p => p.Key));
     }

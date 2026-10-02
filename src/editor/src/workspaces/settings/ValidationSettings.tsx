@@ -1,9 +1,9 @@
-// Settings › Validation: every built-in rule (GET /api/validation/rules) grouped by family, with a severity picker per
-// rule. Save writes only the overrides to maquettiste.json `validation.rules` through PUT /api/project/settings ("Default"
+// Settings › Validation: every built-in rule (GET /api/validation/rules) grouped by family, then the project's script
+// rules (the rules extensions/rules/*.js register, GET /api/extensions/files), with a severity picker per rule. Save writes only the overrides to maquettiste.json `validation.rules` through PUT /api/project/settings ("Default"
 // removes the key; MQ1xxx rules cannot be off), then revalidates so the Problems panel follows.
 import { useState, type KeyboardEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { keys, useSettings, useValidationRules } from "@/api/queries";
+import { keys, useExtensionFiles, useSettings, useValidationRules } from "@/api/queries";
 import * as endpoints from "@/api/endpoints";
 import type { RuleCatalogEntry, SettingsJson } from "@/api/types";
 import { useServices } from "@/app/context";
@@ -11,13 +11,24 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { EmptyState, Spinner } from "@/components/ui/misc";
 import { cn } from "@/lib/cn";
-import { choicesOf, groupRules, overridesOf, sameOverrides, setOverride, withOverrides, type RuleChoice, type RuleOverrides } from "./validationRules";
+import {
+  choicesOf,
+  groupRules,
+  overridesOf,
+  sameOverrides,
+  scriptRuleEntries,
+  setOverride,
+  withOverrides,
+  type RuleChoice,
+  type RuleOverrides,
+} from "./validationRules";
 
 const CHOICE_LABEL: Record<RuleChoice, string> = { default: "Default", error: "error", warning: "warning", info: "info", off: "off" };
 
 export function ValidationSettings() {
   const settings = useSettings();
   const catalog = useValidationRules();
+  const extensions = useExtensionFiles();
   const qc = useQueryClient();
   const { store } = useServices();
   const [draft, setDraft] = useState<RuleOverrides | null>(null);
@@ -32,7 +43,7 @@ export function ValidationSettings() {
   const value = draft ?? saved;
   const dirty = draft !== null && !sameOverrides(draft, saved);
   const count = Object.keys(value).length;
-  const families = groupRules(catalog.data, filter);
+  const families = groupRules([...catalog.data, ...scriptRuleEntries(extensions.data?.files)], filter);
 
   const save = async () => {
     if (!settings.data) return;
@@ -77,8 +88,8 @@ export function ValidationSettings() {
     <section className="flex max-w-5xl flex-col gap-2" aria-label="Validation" data-testid="validation-settings">
       <div className="flex items-center gap-2">
         <p className="text-12 text-secondary">
-          The severity of each built-in rule, saved in maquettiste.json validation.rules. Default keeps the engine&apos;s severity; model file rules (MQ1xxx)
-          cannot be turned off.
+          The severity of each built-in rule and of the project&apos;s script rules, saved in maquettiste.json validation.rules. Default keeps the engine&apos;s
+          severity (a script rule&apos;s own); model file rules (MQ1xxx) cannot be turned off.
         </p>
         <span className="ml-auto flex shrink-0 items-center gap-2">
           {dirty ? <span className="text-12 text-secondary">Unsaved changes</span> : null}

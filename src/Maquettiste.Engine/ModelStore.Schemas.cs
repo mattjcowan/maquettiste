@@ -139,9 +139,10 @@ public sealed partial class ModelStore
             if (o.Target is not null && ((target = find(o.Target)) is null || ReferenceEquals(target, schema)))
                 return $"The target schema '{o.Target}' is not another schema of database '{dbName}'.";
 
-            // What lives in the schema: tables, views and sequences of the database, convention entries and entity mappings.
+            // What lives in the schema: tables, views, sequences, routines, database types and SQL objects of the database, convention entries and entity mappings.
             var occupants = new List<(string Label, Action<string> Move)>();
-            foreach (var element in snapshot.All<Table>().Cast<Element>().Concat(snapshot.All<View>()).Concat(snapshot.All<Sequence>()).Concat(snapshot.All<Mapping>()))
+            foreach (var element in snapshot.All<Table>().Cast<Element>().Concat(snapshot.All<View>()).Concat(snapshot.All<Sequence>()).Concat(snapshot.All<Routine>())
+                .Concat(snapshot.All<DatabaseType>()).Concat(snapshot.All<SqlObject>()).Concat(snapshot.All<Mapping>()))
             {
                 var (database, schemaId) = _nodes.TryGetValue(element.Id, out var working)
                     ? (working.Node["database"]?.GetValue<string>(), working.Node["schema"]?.GetValue<string>())
@@ -150,13 +151,16 @@ public sealed partial class ModelStore
                         Table t => (t.Database, t.Schema),
                         View v => (v.Database, v.Schema),
                         Sequence q => (q.Database, q.Schema),
+                        Routine r => (r.Database, r.Schema),
+                        DatabaseType t => (t.Database, t.Schema),
+                        SqlObject x => (x.Database, x.Schema),
                         Mapping m => (m.Database, m.Schema),
                         _ => (null, null),
                     };
                 if (database != o.Id || schemaId != o.Schema)
                     continue;
                 var id = element.Id;
-                var kind = element.Kind.ToString().ToLowerInvariant();
+                var kind = element.KindName;
                 occupants.Add(($"{kind} '{element.Name}'", to => Node(id, snapshot.GetDocument(id)!.Hash)["schema"] = to));
             }
 

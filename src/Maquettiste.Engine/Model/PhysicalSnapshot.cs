@@ -33,6 +33,15 @@ public sealed record PhysicalSnapshot
 
     /// <summary>Sequences, sorted by key.</summary>
     public IReadOnlyList<SnapshotSequence> Sequences { get; init; } = [];
+
+    /// <summary>Database types, sorted by key.</summary>
+    public IReadOnlyList<SnapshotDefinition> Types { get; init; } = [];
+
+    /// <summary>Routines, sorted by key.</summary>
+    public IReadOnlyList<SnapshotDefinition> Routines { get; init; } = [];
+
+    /// <summary>SQL objects, sorted by key.</summary>
+    public IReadOnlyList<SnapshotDefinition> Objects { get; init; } = [];
 }
 
 /// <summary>A table in a <see cref="PhysicalSnapshot"/>.</summary>
@@ -254,4 +263,26 @@ public sealed record SnapshotSequence
 
     /// <summary>How many values the server caches.</summary>
     public int? Cache { get; init; }
+}
+
+/// <summary>
+/// A routine, database type or SQL object in a snapshot: what it is and a text that changes whenever its definition for the dialect
+/// does (the schema diff compares the text; the template reads the current object for the statements).
+/// </summary>
+public sealed record SnapshotDefinition
+{
+    /// <summary>The object's key (its id).</summary>
+    public required string Key { get; init; }
+
+    /// <summary>The name.</summary>
+    public required string Name { get; init; }
+
+    /// <summary>The schema name, or <see langword="null"/>.</summary>
+    public string? Schema { get; init; }
+
+    /// <summary><c>function</c> or <c>procedure</c>; <c>domain</c>, <c>composite</c>, <c>enum</c> or <c>range</c>; or the SQL object's <c>objectKind</c>.</summary>
+    public required string Kind { get; init; }
+
+    /// <summary>The definition text.</summary>
+    public required string Definition { get; init; }
 }

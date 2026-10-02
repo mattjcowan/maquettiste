@@ -95,6 +95,18 @@ Templates are [Scriban](https://github.com/scriban/scriban). The context has `mo
   `database.sequences` (with `database`) carry the same annotations from their files; `each view` and `each sequence` run a unit
   once per view or sequence of every database (alias `view` or `sequence`), filtered by tags, stereotypes, categories and the
   database.
+- `database.routines`, `database.types` and `database.objects` (also on each schema; added 2026-10-01) carry the annotations of
+  their files too. A routine has `routine_kind` (`function` or `procedure`), `parameters` (`name`, `type`, `db_type`, `length`,
+  `precision`, `scale`, `native_type`, `mode`, `default`), `returns` (null, a single value with the same type members, or `table`
+  with columns), `language` (the dialect's own when the file names none), `body` and `has_body` for the database's dialect,
+  `deterministic`, `security`, `depends_on` (the resolved objects) and `comment`. A database type has `type_kind` (`domain`,
+  `composite`, `enum`, `range`), `base` and `base_native_type`, the facets, `check`, `members`, `fields`, `subtype` and
+  `subtype_native_type`, `definition` (for the dialect, or null), `is_created`, `native_name` (what a column typed by it writes),
+  `depends_on` and `comment`. A SQL object has `object_kind`, `phase` (`before` or `after`), `depends_on`, `body` and
+  `has_body`. A column whose `nativeType` names a database type has `db_type`. `each routine`, `each database type` and `each sql
+  object` run a unit once per object (alias `routine`, `database_type`, `sql_object`), filtered like views; `schema_diff` lists
+  their changes in `routines`, `types` and `objects` (`kind`, `key`, `old_name`, `new_name`, `old_kind`, `new_kind`,
+  `old_schema`, `changes`).
 - `process` (`each process`, or `model.processes`): `use`, `subject`, `bound_attribute`, `bound_enum`, `context`, `events`,
   `guards`, `actions`, `states` (the tree), `all_states` (document order), `atomic_states`, `bound_states`, `transitions` (priority
   order), `gates`, `invokes`, `actors`, `scenarios`, `initial`. A state has `name`, `path` (`Fulfilment.Shipping.Packed`), `type`,

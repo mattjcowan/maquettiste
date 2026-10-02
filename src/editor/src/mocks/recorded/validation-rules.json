@@ -440,6 +440,38 @@
     "canBeOff": true
   },
   {
+    "id": "MQ4017",
+    "defaultSeverity": "warning",
+    "description": "A routine or SQL object has no body for its database's dialect (and no \"*\" body), or a database type has neither its structured form nor a definition for the dialect: nothing is created there.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4018",
+    "defaultSeverity": "error",
+    "description": "A routine parameter or result, or a composite type's field, names a type that is neither a built-in type nor a database type of the same database.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4019",
+    "defaultSeverity": "error",
+    "description": "A column's native type or a dependsOn entry names a database type or object of another database.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4020",
+    "defaultSeverity": "error",
+    "description": "Routines, database types and SQL objects depend on each other in a cycle (dependsOn, or a composite type's fields), so no creation order exists.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
     "id": "MQ5001",
     "defaultSeverity": "error",
     "description": "Property fails its extension schema.",

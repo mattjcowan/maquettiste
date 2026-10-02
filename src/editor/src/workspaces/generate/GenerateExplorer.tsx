@@ -2,13 +2,28 @@
 // (`id · scope → template → path summary`), Templates (with roles and the units that use them), Parameters
 // (`name = value`, default or set) and Outputs (the manifest grouped by unit, with hand-edited, missing and orphan
 // states). Enter or a click on a pack opens its editor as a centre tab; a unit, parameter or output opens the
-// matching tab. New pack sits in the header; the palette has it too.
+// matching tab. New pack sits in the header; the palette has it too. Below the packs, Extensions lists the model's
+// custom property schemas and script rules, with New property schema… and New script rule… on its row; a click opens the
+// Extensions tab on that file.
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronDown, ChevronRight, FileCode2, Filter, Package, Plus, SlidersHorizontal, TriangleAlert } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  FileCode2,
+  FileJson,
+  FilePlus,
+  Filter,
+  Package,
+  Plus,
+  Puzzle,
+  ScrollText,
+  SlidersHorizontal,
+  TriangleAlert,
+} from "lucide-react";
 import * as endpoints from "@/api/endpoints";
-import { keys, useIndex, usePacks } from "@/api/queries";
+import { keys, useExtensionFiles, useIndex, usePacks } from "@/api/queries";
 import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
@@ -17,7 +32,8 @@ import { rowHeight } from "@/design/density";
 import { cn } from "@/lib/cn";
 import type { PackPane } from "@/state/store";
 import { packRows, packTotals, type PackDetails, type PackRow } from "./explorerModel";
-import { openPackTab, renameExpandedKeys } from "./packTabs";
+import { openExtensionsTab, openPackTab, renameExpandedKeys } from "./packTabs";
+import { extensionRows, kindOfPath } from "./extensionsModel";
 import { NewPackDialog } from "./NewPackDialog";
 import { RenamePackDialog } from "./RenamePackDialog";
 import { PanelToggle } from "@/app/panels";
@@ -54,7 +70,13 @@ export function GenerateExplorer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the query results are new arrays each render; their update times are what counts
   }, [list, dataKey]);
   const ids = useMemo(() => new Set((index.data ?? []).map((e) => e.id)), [index.data]);
-  const rows = useMemo(() => packRows(list, expanded, details, index.data ? (id) => ids.has(id) : undefined), [list, expanded, details, ids, index.data]);
+  const extensions = useExtensionFiles();
+  const rows = useMemo<PackRow[]>(() => {
+    const packs = packRows(list, expanded, details, index.data ? (id) => ids.has(id) : undefined).map((r) =>
+      r.level === 1 ? { ...r, setsize: list.length + 1 } : r,
+    );
+    return [...packs, ...extensionRows(extensions.data?.files, expanded, list.length + 1, list.length + 1).map((r) => ({ ...r, pack: "" }))];
+  }, [list, expanded, details, ids, index.data, extensions.data]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const size = useMemo(() => rowHeight(), []);
   const virtualizer = useVirtualizer({ count: rows.length, getScrollElement: () => scrollRef.current, estimateSize: () => size, overscan: 12 });
@@ -70,6 +92,11 @@ export function GenerateExplorer() {
 
   const openRow = (row: PackRow) => {
     const g = store.getState().generation;
+    if (row.kind === "extensions" || row.kind === "extension-file") {
+      store.getState().setGeneration(openExtensionsTab(g, row.path));
+      if (store.getState().workspace !== "generate") openWorkspace("generate");
+      return;
+    }
     store.getState().setGeneration(
       openPackTab(g, row.pack, PANE[row.kind] ?? (g.packPane[row.pack] ? undefined : "units"), {
         unit: row.unit,
@@ -77,6 +104,11 @@ export function GenerateExplorer() {
         file: row.kind === "file" ? row.path : undefined,
       }),
     );
+    if (store.getState().workspace !== "generate") openWorkspace("generate");
+  };
+
+  const newExtension = (kind: "schema" | "rule") => {
+    store.getState().setGeneration({ ...openExtensionsTab(store.getState().generation), extensionNew: kind });
     if (store.getState().workspace !== "generate") openWorkspace("generate");
   };
 
@@ -148,7 +180,7 @@ export function GenerateExplorer() {
                 tabIndex={v.index === at ? 0 : -1}
                 onClick={() => {
                   setActive(v.index);
-                  if (row.kind === "pack" || !row.expandable) openRow(row);
+                  if (row.kind === "pack" || row.kind === "extensions" || !row.expandable) openRow(row);
                   else toggle(row.key);
                 }}
                 className={cn(
@@ -183,9 +215,10 @@ export function GenerateExplorer() {
                     {row.warnings}
                   </span>
                 ) : null}
-                <span className={cn("shrink-0 text-11 text-secondary", row.state && row.state !== "clean" && "text-warning")}>
+                <span className={cn("shrink-0 truncate text-11 text-secondary", row.state && row.state !== "clean" && "text-warning")}>
                   {row.off ? "off" : row.detail}
                 </span>
+                {row.kind === "extensions" ? <NewExtensionButtons onNew={(kind) => newExtension(kind)} /> : null}
               </div>
             );
           })}
@@ -198,9 +231,27 @@ export function GenerateExplorer() {
   );
 }
 
+/** New property schema… and New script rule… on the Extensions row: each opens the Extensions tab with its New form. */
+function NewExtensionButtons({ onNew }: { onNew: (kind: "schema" | "rule") => void }) {
+  const stop = (e: { stopPropagation(): void }) => e.stopPropagation();
+  return (
+    <span className="flex shrink-0 items-center" onClick={stop} onKeyDown={stop}>
+      <Button variant="ghost" size="icon-row" tabIndex={-1} label="New property schema…" data-testid="new-extension-schema" onClick={() => onNew("schema")}>
+        <FilePlus />
+      </Button>
+      <Button variant="ghost" size="icon-row" tabIndex={-1} label="New script rule…" data-testid="new-extension-rule" onClick={() => onNew("rule")}>
+        <ScrollText />
+      </Button>
+    </span>
+  );
+}
+
 function RowIcon({ row }: { row: PackRow }) {
   const cls = "size-3.5 shrink-0 text-secondary";
   if (row.kind === "pack") return <Package className={cls} aria-hidden />;
+  if (row.kind === "extensions") return <Puzzle className={cls} aria-hidden />;
+  if (row.kind === "extension-file")
+    return kindOfPath(row.path ?? "") === "rule" ? <ScrollText className={cls} aria-hidden /> : <FileJson className={cls} aria-hidden />;
   if (row.kind === "file" || row.kind === "templates") return <FileCode2 className={cls} aria-hidden />;
   if (row.kind === "parameters" || row.kind === "parameter") return <SlidersHorizontal className={cls} aria-hidden />;
   return null;

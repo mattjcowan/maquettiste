@@ -3,7 +3,7 @@
   "title": "Physical snapshot",
   "description": "snapshots/<db>.json: the schema diff baseline.",
   "type": "object",
-  "x-order": ["$schema", "database", "name", "dialect", "revision", "tables", "views", "sequences"],
+  "x-order": ["$schema", "database", "name", "dialect", "revision", "tables", "views", "sequences", "types", "routines", "objects"],
   "properties": {
     "$schema": {
       "$ref": "common.json#/$defs/schemaPath"
@@ -404,8 +404,61 @@
         "additionalProperties": false
       },
       "default": []
+    },
+    "types": {
+      "description": "Database types, sorted by key.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/definition"
+      },
+      "default": []
+    },
+    "routines": {
+      "description": "Routines, sorted by key.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/definition"
+      },
+      "default": []
+    },
+    "objects": {
+      "description": "SQL objects, sorted by key.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/definition"
+      },
+      "default": []
     }
   },
   "required": ["database", "name", "dialect"],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "definition": {
+      "description": "A routine, database type or SQL object: what it is and a text that changes whenever its definition for the dialect does.",
+      "type": "object",
+      "x-order": ["key", "name", "schema", "kind", "definition"],
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schema": {
+          "type": "string"
+        },
+        "kind": {
+          "description": "function or procedure; domain, composite, enum or range; the SQL object's objectKind.",
+          "type": "string"
+        },
+        "definition": {
+          "type": "string"
+        }
+      },
+      "required": ["key", "name", "kind", "definition"],
+      "additionalProperties": false
+    }
+  }
 }

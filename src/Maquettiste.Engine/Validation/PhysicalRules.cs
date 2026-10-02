@@ -91,7 +91,7 @@ internal static class PhysicalRules
             if (database is not null)
             {
                 CheckIdentifierLength(database, limit, column.Name, "Column", pointer + "/name", column.Id, report);
-                if (column.NativeType is { } native)
+                if (column.NativeType is { } native && !DatabaseObjectRules.CheckColumnType(context, table, column, pointer, report))
                     CheckNativeType(context, database, table, i, native, pointer, report);
             }
 
@@ -398,7 +398,7 @@ internal static class PhysicalRules
     }
 
     /// <summary>A physical element's schema, and a column's sequence, must belong to its database (MQ2002).</summary>
-    private static void CheckSameDatabase(ValidationContext context, string databaseId, string? schemaId, Report report)
+    internal static void CheckSameDatabase(ValidationContext context, string databaseId, string? schemaId, Report report)
     {
         if (schemaId is not null && context.Model.TryGetEntry(schemaId, out var entry) && entry.Kind == "schema" && entry.OwnerId != databaseId)
             report.Add("MQ2002", $"Schema '{schemaId}' belongs to another database.", "/schema");

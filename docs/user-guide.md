@@ -204,8 +204,9 @@ An **explorer** is the sidebar tree a rail icon selects; a **screen** is what th
 type, New sub-domain and New diagram; right-click a kind folder for New of that kind. The **+** button in each
 explorer's header offers that explorer's kinds (New domain and the element kinds in Domain model, New reference type,
 New database, New diagram), and so does an empty explorer. In the Databases explorer, while a database or anything inside
-it is selected, the **+** button also offers **New schema…**, **New table…**, **New view…** and **New sequence…** for that
-database (see "Creating a table, a view or a sequence" below). Every New dialog starts its domain picker on the current
+it is selected, the **+** button also offers **New schema…**, **New table…**, **New view…**, **New sequence…**, **New
+routine…**, **New database type…** and **New SQL object…** for that database (see "Creating a table, a view, a sequence
+or another database object" below). Every New dialog starts its domain picker on the current
 domain: the row you right-clicked, else the selected element's domain, else the open diagram's home. The new element
 opens in its editor (a diagram on the canvas, a database on the Database screen, a reference type on the Reference
 data screen), and Undo removes it. An empty model shows a first-run panel with the same actions. Right-click a diagram
@@ -369,13 +370,14 @@ database shows on the Database screen at once. The explorers remember which rows
   on a table made from an entity opens the Database screen with that table focused and the same table in the inspector;
   such a table has no editor of its own, so **Open** never opens the entity's. A table with columns of its own (designed
   or imported) opens in its table editor, in front of the Database screen focused on it; its row menu also has **Show in
-  Database screen**. A view or a sequence row opens its editor the same way. The screen shows table diagrams per
-  database, a list with a filter (the first 300 matches) whose chips **Tables**, **Views** and **Sequences** pick what it
-  lists, a dialect selector, a **New** menu, and a live DDL preview for the selected table, view or sequence. The preview
-  renders the enabled pack that has a unit rendered per database (a unit named schema or table first; with a table
-  selected, that pack's unit for each table; with a view or a sequence picked, its unit for each view or each sequence),
-  names the pack and unit in its header, and says so when no enabled pack has such a unit. A pack's view or sequence unit
-  may write nothing for it (the sql-ddl pack writes a view's or a sequence's own script only when its **objectScripts**
+  Database screen**. A view, sequence, routine, database type or SQL object row opens its editor the same way. The screen
+  shows table diagrams per database, a list with a filter (the first 300 matches) whose chips **Tables**, **Views**,
+  **Sequences**, **Routines**, **Types** and **Objects** pick what it lists (each with its count), a dialect selector, a
+  **New** menu, and a live DDL preview for the selected table or the picked object. The preview renders the enabled pack
+  that has a unit rendered per database (a unit named schema or table first; with a table selected, that pack's unit for
+  each table; with another object picked, its unit for each view, each sequence, each routine, each database type or
+  each sql object), names the pack and unit in its header, and says so when no enabled pack has such a unit. A pack's unit
+  for an object may write nothing for it (the sql-ddl pack writes an object's own script only when its **objectScripts**
   parameter is on): the preview then says so in a line above and shows the whole database's script, which creates it. The Tables list and the DDL preview each hide from the button in their header ("Hide tables list",
   "Hide DDL preview") or with Alt+Shift+L and Alt+Shift+D on this screen, and come back from the slim strip they leave
   at the edge or the same shortcut; the palette has "Toggle tables list" and "Toggle DDL preview". Like the other
@@ -431,15 +433,16 @@ database shows on the Database screen at once. The explorers remember which rows
   only, with a note that a column edit creates its file. **JSON** shows the table's file when it has one, and **Used**
   lists what references it.
 
-  **Creating a table, a view or a sequence.** A database's New actions are **New schema…**, **New table…**, **New view…**
-  and **New sequence…**. They are on the database row's menu, on the **+** button of the Databases explorer while the
-  database or anything inside it is selected, and on the Database screen's **New** menu (for the database it shows). A
-  schema row's menu offers New table…, New view… and New sequence… in that schema, and the Tables, Views and Sequences
-  folders offer the one they hold. The palette has New table…, New view… and New sequence… while the Database screen is
-  showing. Each dialog asks for:
+  **Creating a table, a view, a sequence or another database object.** A database's New actions are **New schema…**,
+  **New table…**, **New view…**, **New sequence…**, **New routine…**, **New database type…** and **New SQL object…**. They
+  are on the database row's menu, on the **+** button of the Databases explorer while the database or anything inside it
+  is selected, and on the Database screen's **New** menu (for the database it shows). A schema row's menu offers every one
+  but New schema… in that schema, and the Tables, Views, Sequences, Routines, Types and Objects folders offer the one they
+  hold. The palette has the same actions while the Database screen is showing. Each dialog asks for:
 
-  - **Name**: letters, digits and underscores, not starting with a digit, and not already the name of a table, view or
-    sequence in the same schema.
+  - **Name**: letters, digits and underscores, not starting with a digit, and not already used in the same schema:
+    tables, views, sequences and database types share one set of names, while routines and SQL objects each have their
+    own.
   - **Schema**: one of the database's schemas; the default schema is picked first.
   - For a table, **Kind**: **Designed table (its own columns)**. A projected table is not made here: it comes from mapping
     an entity to the database, and the dialog's **Open the Mappings tab** link goes there. **Start with an id column
@@ -448,6 +451,15 @@ database shows on the Database screen at once. The explorers remember which rows
     **Body**, the SELECT the view runs, prefilled with `select 1 as id` for the dialect.
   - For a sequence, **Type** (int16, int32 or int64; int64 by default), **Start** and **Increment** (both 1 by default;
     the increment cannot be 0).
+  - For a routine, **Routine kind** (**Function**, the default, or **Procedure**), for a function what it **Returns** (a
+    built-in type, int32 to start, or nothing), then **Dialect** and **Body** as for a view, the body prefilled with a
+    small block for the dialect (a function returns 0, a procedure does nothing).
+  - For a database type, **Type kind**: **Domain** with its **Base type** (string to start), **Enum** with its
+    **Members** (the labels, separated by commas, each once), **Composite** (it starts with one string field, `value`)
+    or **Range** with its **Subtype**.
+  - For a SQL object, **Object kind** (what it is, in your words: trigger to start, with suggestions such as grant or
+    extension), **Runs** (**After the routines and views**, the default, or **Before the types and tables**), then
+    **Dialect** and **Body**, the statements, run as written.
 
   **Create** saves the new file in one step (Undo removes it), shows the Databases explorer and opens the element's editor.
   The editors have text tabs:
@@ -468,10 +480,33 @@ database shows on the Database screen at once. The explorers remember which rows
   - **Sequence**: **General** (name, marks and schema), **Definition** (Type, Start, Increment, Minimum, Maximum, Cache and
     **Cycle**; each number is saved on Enter or when you leave it, and an empty one is left out: Start and Increment then
     count from 1, Minimum and Maximum are the type's, Cache is the database's), **Code generation** and **References**.
+  - **Routine**: **General** (name, marks, schema and comment), **Definition** (Routine kind, **Language**, empty for the
+    dialect's own, **Security**, the caller's or its owner's rights, **Deterministic**, what it returns under **Returns**:
+    **Nothing**, **A single value** with its type, length, precision, scale and native type, or **A table** with a grid of
+    its columns, and **Depends on**), **Parameters** (a grid of name, type, length, precision, scale, native type, mode and
+    default, with **Add parameter** and, per row, move up, move down and delete; the type is a built-in type or one of the
+    database's types, and a native type replaces what the type gives), **Body** (one SQL editor per dialect, as a view's),
+    **Code generation** and **References**.
+  - **Database type**: **General** (name, marks, schema and comment), **Definition** (the **Type kind**, then only what that
+    kind uses: a domain's **Base type**, length, precision, scale and **Check**; a composite's grid of fields, typed like
+    parameters; an enum's labels, renamed in place, moved, added with **Add label** and deleted; a range's **Subtype**; and
+    the **Native name** columns write, empty for the type's own name), **Dialects** (optional: a definition per dialect,
+    the text written after the type's name, which replaces the structured form for that dialect; **Add dialect** adds one
+    and the bin removes it), **Code generation** and **References**. Switching the kind drops what the old kind used and
+    starts the new one with something to create (a string base, one label, one field or an int32 subtype); Undo brings
+    the old one back.
+  - **SQL object**: **General** (name, marks and schema), **Definition** (**Object kind**, **Runs** and **Depends on**),
+    **Body** (the statements, one SQL editor per dialect, as a view's body), **Code generation** and **References**.
 
-  Every change in these editors is one save of the file and one step Undo takes back. The inspector shows a table of
-  its own as the table inspector below, a view's schema, comment and the dialects its body has, and a sequence's schema
-  and definition.
+  **Depends on** lists what must exist before a routine or a SQL object, each with a button that removes it, and its
+  picker adds any other table, view, sequence, routine, database type or SQL object of the same database. Every change in
+  these editors is one save of the file and one step Undo takes back. The inspector shows a table of its own as the table
+  inspector below, a view's schema, comment and the dialects its body has, a sequence's schema and definition, a
+  routine's schema, kind and comment with a line on its parameters, result and body, a database type's schema, kind and
+  comment with what it is ("Enum: draft, issued, paid"), and a SQL object's schema, kind and phase with the dialects of its
+  statements and how many objects it depends on. Deleting one of them goes through the delete plan like any element: a
+  routine another object depends on is taken out of that object's Depends on, and a database type that types a
+  parameter, a result or a field takes the routine or type that needs it along when deleted with its dependents.
 
   **What a database holds.** Entities are not turned into tables on their own: a database holds only what is mapped to
   it, and how an entity becomes a table is yours to say. There is no default database either; every database, the first
@@ -503,8 +538,10 @@ database shows on the Database screen at once. The explorers remember which rows
     `reg` types such as `regclass`, the multiranges and `jsonpath`) and the common extension types `citext`, `hstore`,
     `ltree`, `cube`, `earth`, `geometry` and `geography`. To use a type the list lacks, give a custom type a native type
     for the dialect (on its Definition tab): every column of that type takes it, and the name counts as known. For a
-    single column, set its native type in the table's overlay. A type the database itself defines (a domain, an enum
-    made by hand) can be written quoted or with its schema, `"public"."ledger_position"`, which MQ4016 covers.
+    single column, set its native type in the table's overlay. A type the database itself defines (a domain, an enum)
+    is best modeled as a database type (see Routines, database types and other objects below), which a column names by
+    id or name; one made by hand outside the model can be written quoted or with its schema,
+    `"public"."ledger_position"`, which MQ4016 covers.
   - A foreign key column whose type, length, precision, scale or native type differs from the column it references is
     MQ4005 (error), reported on the file that sets the differing value (a table's column, or a column entry of a mapped
     table's overrides) and naming both columns and both types. A foreign key column follows the referenced column on its
@@ -530,6 +567,56 @@ database shows on the Database screen at once. The explorers remember which rows
     mapping but not declared in the database is MQ4014; a refused schema change is MQ4015.
   - Moving a table to another schema is, for sql-ddl's migrations, a drop and a create of the table (not a move that
     keeps its rows): move data yourself when that matters.
+
+  **Routines, database types and other objects.** Besides tables, views and sequences, a database holds three more kinds
+  of file, each in its own folder of the database: routines in `model/databases/<db>/routines/`, database types in
+  `types/` and SQL objects in `objects/`. The editor's New menu on a database creates them, and each has its editor
+  (see "Creating a table, a view, a sequence or another database object" above). Each has a name, a schema (the
+  default schema when it names none), a description, stereotypes, tags, a category, custom properties and generation
+  hints, like a view.
+
+  - **A routine** is a stored function or procedure (`routineKind`: `function`, the default, or `procedure`). Its
+    `parameters` each have a name, a type (a built-in type such as `uuid` or `decimal`, or the id of a database type of
+    the same database), optional length, precision and scale, a `nativeType` that replaces what the type gives, a
+    `mode` (`in`, the default, `out` or `inout`) and an optional `default` written as SQL. Its `returns` is a single value
+    (a `type` or a `nativeType`, such as `trigger`), a table (`table`, its columns), or absent when it returns nothing.
+    `language` defaults to the dialect's own (`plpgsql` on PostgreSQL, `tsql` on SQL Server, `sql` elsewhere); `body`
+    holds the text per dialect (or `*` for every dialect): on PostgreSQL what goes between the dollar quotes, on SQL
+    Server what follows `AS`. `deterministic` (IMMUTABLE on PostgreSQL), `security` (`invoker` or `definer`) and
+    `dependsOn` (the tables, views, sequences, routines, database types and SQL objects of the same database that must
+    exist first) complete it. Routines are not overloaded: one name per schema.
+  - **A database type** is a type the database owns (`typeKind`): a `domain` (a built-in `base` with its length,
+    precision and scale, and a `check` over `VALUE`), an `enum` (its `members`, in order), a `composite` (its `fields`,
+    typed like routine parameters) or a `range` (its `subtype`). A `definition` per dialect, the SQL text after the
+    type's name (`AS ENUM ('a', 'b')`, `FROM nvarchar(320)`), replaces that structured form for its dialect.
+    `nativeName` sets what columns write for the type when it is not the type's own name.
+  - **A SQL object** is anything the model does not type yet: a trigger, a grant, an extension, a policy. `objectKind`
+    says what it is in your words, `body` holds its statements per dialect, run as written, `phase` says whether they
+    run `before` the database types and tables (an extension) or `after` the routines and views (the default: a
+    trigger, a grant), and `dependsOn` orders it among the others.
+  - **A column typed by a database type.** A column's native type (the Columns panel, or the `nativeType` of the table
+    file) may name a database type of the same database, by its id or by its name. The column then writes the type's
+    native name: the type's schema-qualified name where the dialect creates the type (PostgreSQL, and SQL Server for a
+    domain, which becomes an alias type), else what it stands for (a domain's base, an enum as a string as long as its
+    longest member, on SQLite). A foreign key column that copies such a key column follows it: it takes the database type
+    and its native name too, unless the foreign key column's own entry pins a type, length, precision, scale or native
+    type (MQ4005 then compares the two sides).
+  - **The order of the DDL.** The schema script and a first migration create, in order: SQL objects of phase `before`,
+    database types, sequences, tables, routines and views, then SQL objects of phase `after`. Routines come before
+    views, so a view may call a function; a routine whose `dependsOn` names a view comes after it. Inside each group an
+    object follows what its `dependsOn` names (a composite follows the types of its fields).
+  - **Migrations.** A changed or removed routine is dropped before the table changes and created again after them; a
+    new database type is created before the tables and a renamed one renamed; a changed one gets a TODO line with its new
+    definition, since a type in use cannot simply be replaced; a removed one is dropped last. A SQL object's statements
+    are opaque: a new or changed one runs again, and a changed or removed one gets a TODO asking you to drop the old one
+    by hand.
+  - **Problems.** A routine or SQL object without a body for the database's dialect (and no `*` one), or a database type
+    with neither its structured form nor a definition for the dialect, is MQ4017 (warning): nothing is created there.
+    A parameter, result column or composite field whose type is neither a built-in type nor a database type of the same
+    database is MQ4018 (error). A column's native type or a `dependsOn` entry that names an object of another database is
+    MQ4019 (error). Routines, database types and SQL objects that depend on each other in a circle are MQ4020 (error):
+    there is no order to create them in. Two routines, two database types or two SQL objects with one name in a schema
+    are MQ3001.
 - **Diagrams**: the saved diagrams outside the domains.
 - **Seed data**: an entity's or a relationship's initial rows, in its editor's **Seed data** tab and in the domain's
   Seed data folder; a reference type's rows are its Rows tab. A seed lists its columns once and holds one row per line,
@@ -994,7 +1081,9 @@ are at `table.entity`. The rest of the database side works the same way, each fr
 `max_identifier_length`; each of `database.schemas` from its entry in that file, with `is_default` (a schema the file
 does not declare has no annotations); each column of `table.columns` from its own entry in the table file, a designed
 or extra column or the overlay entry of a synthesized one, never from its attribute, which stays at `column.attribute`;
-and views and sequences (`database.views`, `database.sequences`) from their files. `has_stereotype`, `has_tag` and
+and views and sequences (`database.views`, `database.sequences`) from their files, as are routines, database types and
+SQL objects (`database.routines`, `database.types`, `database.objects`, each also on its schema); a column typed by a
+database type names it at `column.db_type`. `has_stereotype`, `has_tag` and
 `in_category` take any of these as well as an element. A child table (a value object or collection stored as a table)
 names its attribute at `table.attribute`, and the constraints of a table file keep their ids (`table.indexes[0].id`).
 
@@ -1005,7 +1094,7 @@ the same way. A pack also has an **output base** (`packs.<pack>.output` in `maqu
 the folder its paths start from, and can be switched off there (`enabled: false`).
 
 **A unit** is one line of a pack's work list. It names a template, which elements the template runs for (the scope),
-and where the result goes (the output pattern). `sql-ddl` has seven units: `table`, `schema`, `migration`, `seed`, `process-tables` (off unless its `processTables` parameter is set), and `view` and `sequence` (one script per view and per sequence, off unless its `objectScripts` parameter is set).
+and where the result goes (the output pattern). `sql-ddl` has ten units: `table`, `schema`, `migration`, `seed`, `process-tables` (off unless its `processTables` parameter is set), and `view`, `sequence`, `routine`, `database-type` and `sql-object` (one script per object, off unless its `objectScripts` parameter is set).
 
 **The scope** (`for` in `pack.json`) decides how many times a unit runs:
 
@@ -1013,6 +1102,7 @@ and where the result goes (the output pattern). `sql-ddl` has seven units: `tabl
 | --- | --- | --- |
 | `each table`, `each entity`, `each enum`, … | once per element of that kind | one file per element: 40 tables give 40 scripts |
 | `each view`, `each sequence` | once per view or sequence of every database (the key sequences the engine creates included) | one file each; a filter takes tags, stereotypes, categories and the database, read from the view's or sequence's own file |
+| `each routine`, `each database type`, `each sql object` | once per routine, database type or SQL object of every database | one file each, the template variable being `routine`, `database_type` or `sql_object`; a filter works as for views |
 | `model` | once, with the whole model | one file for many: a template that loops over every entity writes them all into one file |
 | `each locale` | once per declared language | one file per language (a resource file, a dictionary) |
 | `each process`, `each actor`, `each scenario` | once per process, actor or scenario | one file each: a page per process, a test per scenario (see "Generating code from processes") |
@@ -1330,7 +1420,7 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | `maquettiste process export <process>` | The process as an XState machine config (`--format xstate`, the only format), on stdout or into `--out <file>`. What has no XState home travels under `meta.maquettiste`, so importing the file back over the process gives the same file. |
 | `maquettiste process import <file>` | Previews importing an XState config: `--domain <package>` (with `--name`, `--use lifecycle\|orchestration`, `--subject <entity>`) for a new process, or `--into <process>` to re-import over one, keeping the ids of what matches. Prints the diagnostics and how many ids are created and removed; `--apply` writes it as one change, refused (exit 3) when the process changed while the command ran and exit 1 when the import has errors. `--format json` prints the document. |
 | `maquettiste process sync-enum <process>` | Previews making a lifecycle's bound enum follow its root-level states (members added, removed, reordered, and removals refused because a default, allowed values, a seed cell or a scenario still uses the member); `--apply` writes it; `--check` exits 2 when the enum is out of sync. A refused removal exits 1: change the uses first. |
-| `maquettiste model export` | Writes the model as data for another system: the canonical document of every element, or of the ones `--kind`, `--package` (id or name), `--tag`, `--category`, `--stereotype`, `--query` (name contains) and `--ids a,b,...` select, as one JSON array (`--format json`, the default) or one document per line (`--format ndjson`, for a pipeline); `--fields name,attributes` keeps only those members of each document (`id` and `kind` always), `--out <file>` writes a file. With `--resolved` it writes the resolved model instead, what templates read, as flat records: `--scope entities` (attributes resolved, inherited ones marked, keys, relations and mappings by id), `databases` (each database's tables, views and sequences), `tables`, `processes` and the other kinds, `all` by default; `--database <id or name>` keeps what is mapped to that database. A model with errors cannot be resolved: the errors go to stderr and the command exits 1. |
+| `maquettiste model export` | Writes the model as data for another system: the canonical document of every element, or of the ones `--kind`, `--package` (id or name), `--tag`, `--category`, `--stereotype`, `--query` (name contains) and `--ids a,b,...` select, as one JSON array (`--format json`, the default) or one document per line (`--format ndjson`, for a pipeline); `--fields name,attributes` keeps only those members of each document (`id` and `kind` always), `--out <file>` writes a file. With `--resolved` it writes the resolved model instead, what templates read, as flat records: `--scope entities` (attributes resolved, inherited ones marked, keys, relations and mappings by id), `databases` (each database's tables, views, sequences, routines, database types and SQL objects), `tables`, `routines`, `database-types`, `sql-objects`, `processes` and the other kinds, `all` by default; `--database <id or name>` keeps what is mapped to that database. A model with errors cannot be resolved: the errors go to stderr and the command exits 1. |
 | `maquettiste model stats` | The kinds of element the model holds and how many of each; `--by package` adds the counts per package, `--format json` for scripts. |
 | `maquettiste model delete <id or name>` | Deletes an element with `--resolution refuse|remove-references|delete-dependents` (default refuse); `--dry-run` prints the delete plan: what would be deleted, cleared or removed, and what blocks it; `--format json` for scripts. Exit 1 when refused or invalid, 3 on a conflict. |
 | `maquettiste pack new <name>` | Scaffolds a pack under `.maquettiste/templates/<name>/` (`--from empty`, `sql-ddl` or `csharp-dapper`). Give it an `output` under an allowed root in `maquettiste.json` before the next `generate` (packs/README.md). |
@@ -1467,12 +1557,207 @@ or category tree with a `package` belongs to that domain and the domains nested 
 of every enclosing domain and the global ones; one declared only in another domain is error MQ2008, and a domain vocabulary may
 not redeclare a key or category name of the global vocabulary or of an enclosing domain (MQ3021).
 
+## Extending the model and the generation
+
+Three kinds of files let a project add to what Maquettiste knows, without changing Maquettiste itself. All three are plain
+files under `.maquettiste/`, so the editor, the command line, an agent and git see the same thing:
+
+| What | Where | What it adds |
+| --- | --- | --- |
+| Custom properties | `.maquettiste/extensions/<name>.json` | Fields of your own on elements, shown in the inspector, checked by validation, read by templates |
+| Script rules | `.maquettiste/extensions/rules/<name>.js` | Checks of your own, reported like the built-in rules |
+| Pack scripts | `.maquettiste/templates/<pack>/*.js` | Helpers, selectors, filters and transforms for one template pack |
+
+In the editor, the **Extensions** node of the Generate explorer lists the custom property schemas and the script rules.
+Its row has **New property schema…** and **New script rule…**; a click on the node or on a file opens the **Extensions**
+tab beside the pack tabs. The tab lists the files (Custom properties, then Script rules) with **New property schema…**,
+**New script rule…**, **Rename…** and **Delete…** above them, shows the chosen file in the code editor, and lists below it
+the **Problems** of that file. Save (or Ctrl+S) writes the file on disk with the hash it was read with: when the file changed
+on disk meanwhile, a bar offers Keep mine, Take theirs and Compare, as on a pack's Templates tab. A file save is not an undo
+step: Undo and Redo cover model edits only, so rename or edit the file back to go back. An agent does the same with the MCP
+tools `list_extension_files`, `read_extension_file`, `write_extension_file`, `move_extension_file` and
+`delete_extension_file` (docs/mcp.md), and the editor API with `/api/extensions/files` and `/api/extensions/file`.
+
+### Custom properties (`extensions/*.json`)
+
+An extension schema declares properties that elements may carry in their `properties` object. The file holds:
+
+| Member | Meaning |
+| --- | --- |
+| `name` | Required. A name for the set, shown nowhere else but in messages. |
+| `description` | Optional. Shown as the hint of the inspector's fields. |
+| `appliesTo.kinds` | The element kinds that get the properties: `entity`, `relation`, `enum`, `attribute`, `enum-member`, `column`, `table`, `process`, `actor` and the other kinds of the model. Empty or absent: every kind. |
+| `appliesTo.stereotypes` | Optional. Stereotype keys: when set, only elements that carry one of them get the properties. |
+| `properties` | Required. A JSON Schema `properties` object: one schema per property name (`type`, `enum`, `minimum`, `maximum`, `pattern`, `items` and the rest of JSON Schema). |
+| `required` | Optional. The property names an applicable element must set. |
+
+The file's own schema is `.maquettiste/.schema/v1/extension.json`. On the Extensions tab the file is checked against it as
+you type: a member it does not know, a kind that does not exist or a missing `properties` shows at once under Problems
+(marked `schema`) and in the editor. A save that does not pass is refused with MQ5004 and writes nothing; one that passes is
+written in the canonical form (the editor then shows the file as written). A file written by hand that is not valid is left
+out of the model with MQ5004, and its properties go unchecked until it is fixed.
+
+For example, `.maquettiste/extensions/retention.json` gives every entity with the `audited` stereotype a retention period:
+
+```json
+{
+  "name": "retention",
+  "description": "How long audited records are kept.",
+  "appliesTo": {
+    "kinds": ["entity"],
+    "stereotypes": ["audited"]
+  },
+  "properties": {
+    "retentionDays": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}
+```
+
+The inspector of an audited entity then shows a **Custom properties** section with a **retentionDays** field. The section
+has one field per property: a text box, a number box, a checkbox for a boolean, a picker for an `enum`, and comma-separated
+values for an array. A value saves into the element's `properties` (`"properties": { "retentionDays": 365 }`); a stereotype's
+`defaultProperties` show as the field's placeholder and apply when the element sets no value of its own. For attributes,
+enum members and columns the properties are validated and reach the templates the same way; edit them in the element's
+JSON. Validation reports a value that does not match as MQ5001 on `/properties/<name>`, and templates read the merged value
+as `entity.properties.retentionDays`.
+
+### Script rules (`extensions/rules/*.js`)
+
+A script rule is a check of your own, written in JavaScript. Each file directly in `extensions/rules/` registers one or more
+rules with `maquettiste.rule`:
+
+```js
+maquettiste.rule({
+  id: "money-columns",
+  severity: "warning",
+  kinds: ["entity"],
+  check(element, model, report) {
+    (element.attributes || []).forEach((attribute, i) => {
+      if (/(amount|price|total)$/i.test(attribute.name) && attribute.type !== "decimal") {
+        report(`${attribute.name} holds money and should be a decimal.`, { pointer: `/attributes/${i}/type` });
+      }
+    });
+    const referrers = model.referencesTo(element.id);
+    if (element.tags && element.tags.includes("deprecated") && referrers.length > 0) {
+      report(`${element.name} is deprecated but still used ${referrers.length} times.`, { severity: "info" });
+    }
+  },
+});
+```
+
+| Part | Meaning |
+| --- | --- |
+| `id` | The rule's id, without spaces. Its findings are `x/<id>` (here `x/money-columns`). Two rules may not share an id. |
+| `severity` | `error` (the default), `warning` or `info`. An error stops generation, and a save in the editor or by an agent that would introduce one is refused. |
+| `kinds` | The element kinds the rule checks. Empty or absent: every kind. |
+| `check(element, model, report)` | Called once for each element of those kinds. |
+| `element` | The element's JSON as saved (the canonical document), read-only. |
+| `model.get(id)` | An element, or a part of one such as an attribute, by id; `null` when there is none. Read-only. |
+| `model.all(kind)` | Every element of a kind, ordered by name, then id. Read-only. |
+| `model.referencesTo(id)` | Where an element or part is referenced: `{ fromElementId, fromId, jsonPointer, field, toId }` for each reference. |
+| `report(message, { pointer, severity })` | One finding on the element. `pointer` is a JSON pointer into the element (`/name`, `/attributes/0/type`), so the finding points at the right line; `severity` overrides the rule's for this finding. |
+
+**New script rule…** writes a rule that reports nothing until you edit it, with this contract in its comments. In the code
+editor, completion offers `maquettiste.rule` (a whole rule), `report`, `element.` and `model.` members, the severities and
+the kinds; typing `report(` or `model.all(` shows the arguments.
+
+**Where the findings show.** A rule's findings are `x/<id>` everywhere: in the Problems panel (grouped by element, a click
+opens the element at the pointer), under the rule file's Problems on the Extensions tab ("this file's rules report n
+findings", each opening its element), in `maquettiste validate` (text, `--format json`, and `--format sarif`, whose rules
+list carries every `x/` id seen), in the MCP tool `validate` and in generation, where an error stops the run. Script rules run
+by default everywhere: the editor's validation, `maquettiste validate`, `generate`, and the MCP `validate` tool, whose
+`includeScriptRules` is true unless you pass false.
+
+**Severities in Settings › Validation.** The family **Extensions and script rules** holds the built-in rules about these
+files: MQ5001 (a custom property value that fails its schema), MQ5002 (a rule script error), MQ5003 (a rule that broke a
+sandbox limit) and MQ5004 (an invalid extension file). Below the built-in families, **Script rules** lists every `x/<id>`
+the project's rule files register, with the severity the rule declares as its Default. Each row's picker sets `error`,
+`warning`, `info` or `off` in `validation.rules` of `maquettiste.json`, as for the built-in rules; `off` stops the rule from
+running, and the severity you set also applies to the rule's own failures (MQ5002 and MQ5003 on that rule).
+
+**The sandbox.** Rules run in the same sandbox as pack scripts: no files, no network, no access to the .NET runtime, a
+fixed clock in UTC, a `Math.random` seeded per file, and the globals frozen once the scripts have loaded. Each call runs
+under the limits of `limits` in `maquettiste.json`: `scriptTimeoutMs` (2000 ms by default), `scriptStatements` (5,000,000),
+`scriptRecursion` (256) and `scriptMemoryBytes` (64 MB). A rule that breaks one is reported as MQ5003 on that element, and the
+other elements and rules still run. Rules run in parallel over the elements, so a rule must not rely on the order of the
+calls or keep state between them.
+
+**When a rule file is broken.**
+
+- A syntax error, or a `maquettiste.rule` call without an `id`, with a bad `severity` or an unknown kind, is MQ5002 on that
+  file, with its line and column. The Extensions tab shows it as soon as the file is saved (the save still writes the file,
+  so work in progress is kept), and `validate` reports it too. The other rule files keep running without it.
+- A `check` that throws is MQ5002 on the line of the rule file that threw, with the element it was checking; the findings the
+  rule reported before it threw are kept, and the other elements are still checked.
+- A rule id registered twice is MQ5002 on the second file.
+
+Clicking such a finding in the Problems panel opens the rule file on the Extensions tab.
+
+### Pack scripts (helpers, selectors and transforms)
+
+A template pack may carry JavaScript of its own: every `*.js` in the pack folder (or the files its `pack.json` lists in
+`scripts`) runs in the same sandbox and registers functions for that pack's templates. packs/README.md, section 6, has the
+details; in short:
+
+- `maquettiste.helper(name, fn)`: a function templates call like a built-in (`{{ join_path a b }}`), also in `output` paths.
+  A name taken by a built-in helper is MQ6013.
+- `maquettiste.selector(name, fn)`: `fn(model)` returns the elements (or their ids) a unit with `for: "select <name>"` runs
+  for. An id the model does not know is MQ6017.
+- `maquettiste.filter(name, fn)`: `fn(element, model)` decides whether a unit's `where.script` keeps an element.
+- `maquettiste.transform(name, fn)`: `fn(element, model)` returns an object merged into the template's `data` for the units
+  that list it in `transforms`.
+- `maquettiste.params`: the pack's parameters, read-only.
+
+Model objects reach pack scripts as read-only views of the resolved model that record what was read, so a unit re-renders
+when what its scripts read changes. A script error is MQ6016 and a broken limit MQ6007. Pack scripts are edited on the pack's
+Templates tab (helpers.js and the other files of the pack), and agents use the pack file tools.
+
+### Formatters and linters
+
+The model folder is written by Maquettiste in its own canonical form: JSON with the keys in a fixed order, two-space
+indentation, LF line endings and a final newline, so that every save, whoever makes it, gives the same bytes and a diff shows
+only what changed. Its JavaScript files run in the sandbox above, not as modules of a JavaScript project. A repository's formatter or linter
+therefore has nothing to fix there, and its rules (module syntax, globals it does not know such as `maquettiste`, quote and
+comma styles) do not apply. Leave `.maquettiste/` out of them. Maquettiste writes none of these files for you; they are your
+repository's, so add the lines yourself:
+
+- `.prettierignore`: a line `.maquettiste/`.
+- The linter's ignore list: in `eslint.config.js`, an entry `{ ignores: [".maquettiste/"] }` (or a `.maquettiste/` line in an
+  older `.eslintignore`).
+- `.editorconfig`: a section that keeps an editor from reformatting the files on save:
+
+  ```ini
+  [.maquettiste/**]
+  indent_style = space
+  indent_size = 2
+  end_of_line = lf
+  insert_final_newline = true
+  trim_trailing_whitespace = false
+  ```
+
+- `.gitattributes`: a line `.maquettiste/** text eol=lf`, so a checkout on Windows keeps LF line endings.
+
+Other formatters and linters have the same kind of ignore file or setting; give it `.maquettiste/`. `maquettiste init`
+reminds you of this in the line it prints after its report.
+
+If a formatter rewrites a model file anyway, nothing breaks: the file still loads, as long as it is still valid JSON with the
+same content. An element file, `maquettiste.json` or a locale file that is no longer in canonical form gets the warning
+MQ1003 ("not in canonical form"); `maquettiste format` rewrites every such file in canonical form (`--check` lists them
+without writing), and the next save of the element from the editor or an agent rewrites it too. An extension schema
+reformatted by hand gets no warning; its next save on the Extensions tab writes it in canonical form again. A rule script
+that a formatter only re-indents still runs as before; one that a linter's automatic fixes turn into a module (`import`,
+`export`, `require`) no longer loads and reports MQ5002 on its file.
+
 ## Where the details are
 
 - SPEC.md: the specification, Sections 5 to 12 for the model and generation, 14 for the editor.
 - docs/engineering/phase2-design.md: how the editor and its API are built.
 - docs/api/openapi.yaml: the editor's API.
 - packs/README.md: how to write a template pack.
+- schemas/v1/extension.json: the schema of a custom property file.
 - docs/engineering/explorer-redesign.md: the rail, the explorers, search and the element editors.
 - docs/engineering/reference-types-seeds-localization.md: reference types, seeds and localization.
 - docs/engineering/phase-3-design.md: processes, actors and scenarios, the interpreter, import and export, and the

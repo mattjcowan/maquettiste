@@ -155,8 +155,15 @@ internal static class InitCommand
     }
 
     /// <summary>
+    /// The sentence that closes the built roots line: the model folder holds canonical JSON and sandboxed JavaScript, so a repository's
+    /// formatter or linter should leave it alone (docs/user-guide.md, "Formatters and linters"). <c>init</c> writes no ignore file.
+    /// </summary>
+    internal const string FormattersNote = "Keep formatters and linters off .maquettiste/ (see the guide).";
+
+    /// <summary>
     /// The line a plain <c>init</c> prints about the built roots (<c>commit</c> false): whether git ignores them is the team's choice,
-    /// and <c>init</c> leaves <c>.gitignore</c> alone unless asked. <see langword="null"/> without built roots.
+    /// and <c>init</c> leaves <c>.gitignore</c> alone unless asked; it ends with <see cref="FormattersNote"/>. <see langword="null"/>
+    /// without built roots.
     /// </summary>
     /// <param name="builtRoots">The built roots, repo-relative.</param>
     /// <returns>The line.</returns>
@@ -167,7 +174,7 @@ internal static class InitCommand
             return null;
         return $"Built output {(roots.Count == 1 ? "root" : "roots")} (commit: false): {string.Join(", ", roots)}. maquettiste generate "
             + $"regenerates {(roots.Count == 1 ? "it" : "them")}; ignore or commit {(roots.Count == 1 ? "it" : "them")} as your team prefers "
-            + "(init --gitignore adds the built roots and .maquettiste/.cache/ to .gitignore).";
+            + "(init --gitignore adds the built roots and .maquettiste/.cache/ to .gitignore). " + FormattersNote;
     }
 
     /// <summary>Replaces (or appends) the maquettiste block of a <c>.gitignore</c>, keeping every other line.</summary>

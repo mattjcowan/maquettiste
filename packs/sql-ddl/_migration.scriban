@@ -357,4 +357,84 @@ func sequence_statements(db, oc, out)
     emit(out, "-- TODO: sequence " + $name + " " + change_list(oc.changes))
   end
 end
+
+# The change of a routine, database type or SQL object with the given id, or null.
+func find_change(changes, id)
+  for ch in changes
+    if ch.key == id
+      ret ch
+    end
+  end
+  ret null
+end
+
+# A statement that must run in a batch of its own on SQL Server (CREATE FUNCTION, PROCEDURE, VIEW or TRIGGER): wrapped in GO there.
+func own_batch(text, db)
+  ret db.dialect == "sqlserver" ? "GO\n" + text + "\nGO" : text
+end
+
+# DROP FUNCTION or DROP PROCEDURE for a routine that changed or left the model (it is created again later when it changed);
+# nothing on SQLite, which never had it.
+func routine_drop(db, rc, out)
+  if db.dialect != "postgresql" && db.dialect != "sqlserver"
+    ret
+  end
+  emit(out, "DROP " + (rc.old_kind == "procedure" ? "PROCEDURE" : "FUNCTION") + " IF EXISTS " + qn(rc.old_schema, rc.old_name, db) + ";")
+end
+
+# A database type that changed: a rename where the dialect has one, and a TODO for a changed definition, which a type in use
+# cannot simply take (PostgreSQL ALTER TYPE ... ADD VALUE, a new domain constraint, a column conversion).
+func type_change_statements(db, t, tc, out)
+  $d = db.dialect
+  if tc.kind == "added"
+    emit(out, type_sql(t, db))
+    ret
+  end
+  if !t.is_created
+    ret
+  end
+  if tc.old_name != tc.new_name
+    if $d == "postgresql"
+      emit(out, "ALTER " + (tc.old_kind == "domain" ? "DOMAIN " : "TYPE ") + qn(tc.old_schema, tc.old_name, db) + " RENAME TO " + q(tc.new_name, db) + ";")
+    else if $d == "sqlserver"
+      emit(out, rename_object(db, schema_prefix(tc.old_schema) + tc.old_name, tc.new_name, "USERDATATYPE"))
+    end
+  end
+  if has_change(tc.changes, ["kind", "definition", "schema"])
+    emit(out, "-- TODO: database type " + t.name + " changed; change it in place or recreate it and the columns that use it. Now: " + (type_sql(t, db) | string.replace "\n" " "))
+  end
+end
+
+# DROP DOMAIN or DROP TYPE for a database type that left the model, after the tables stopped using it; nothing where the dialect
+# never created it.
+func type_drop(db, tc, out)
+  $d = db.dialect
+  if $d == "postgresql"
+    emit(out, "DROP " + (tc.old_kind == "domain" ? "DOMAIN" : "TYPE") + " IF EXISTS " + qn(tc.old_schema, tc.old_name, db) + ";")
+  else if $d == "sqlserver" && tc.old_kind == "domain"
+    emit(out, "DROP TYPE IF EXISTS " + qn(tc.old_schema, tc.old_name, db) + ";")
+  end
+end
+
+# The statements of the SQL objects of one phase that were added or changed, in dependency order (a changed one was flagged for the
+# reviewer to drop first, see object_drop_notes).
+func object_change_statements(db, diff, phase, out)
+  for o in objects_in_phase(db, phase)
+    if find_change(diff.objects, o.id)
+      emit(out, own_batch(object_sql(o, db), db))
+    end
+  end
+end
+
+# A TODO for every SQL object that changed or left the model: its statements are opaque, so only the reviewer knows how to undo
+# them (DROP TRIGGER, REVOKE...).
+func object_drop_notes(diff, out)
+  for oc in diff.objects
+    if oc.kind == "dropped"
+      emit(out, "-- TODO: " + oc.old_kind + " " + oc.old_name + " left the model; drop it by hand.")
+    else if oc.kind != "added"
+      emit(out, "-- TODO: " + oc.old_kind + " " + oc.old_name + " changed; drop it by hand before its new statements below run.")
+    end
+  end
+end
 -}}

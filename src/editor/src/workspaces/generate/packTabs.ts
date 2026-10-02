@@ -1,7 +1,21 @@
-// The Generate screen's centre tabs, pure: Plan (always there) and one tab per open pack (generation-ui.md 3).
+// The Generate screen's centre tabs, pure: Plan (always there), one tab per open pack (generation-ui.md 3) and the
+// Extensions tab (the model's custom property schemas and script rules), which sits among the pack tabs under a key no
+// pack name can take.
 import type { GenerationState, PackPane } from "@/state/store";
 
 type Tabs = Pick<GenerationState, "packTabs" | "packTab" | "packPane" | "packFocus">;
+
+/** The Extensions tab's key in `packTabs`: a pack name is lowercase letters, digits and hyphens, so it never collides. */
+export const EXTENSIONS_TAB = "+extensions";
+
+/** Opens (or shows) the Extensions tab, on a file when one is given. */
+export function openExtensionsTab<T extends Tabs & Pick<GenerationState, "extensionFile">>(
+  state: T,
+  file?: string | null,
+): Pick<T, "packTabs" | "packTab" | "extensionFile"> {
+  const packTabs = state.packTabs.includes(EXTENSIONS_TAB) ? state.packTabs : [...state.packTabs, EXTENSIONS_TAB];
+  return { packTabs, packTab: EXTENSIONS_TAB, extensionFile: file === undefined ? state.extensionFile : file };
+}
 
 /** Opens (or shows) a pack's editor, on a tab and optionally focused on a unit or a parameter. */
 export function openPackTab(state: Tabs, pack: string, pane?: PackPane, focus?: { unit?: string; parameter?: string; file?: string }): Tabs {

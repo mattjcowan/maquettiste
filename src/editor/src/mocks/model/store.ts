@@ -5,6 +5,7 @@
 // SHA-256 of the mock's own JSON text, not the engine's canonical bytes; nothing may compare them
 // with real hashes.
 import { applySchemaOperation, SCHEMA_OPS, type SchemaOp } from "@/model/databaseSchemas";
+import { DATABASE_MEMBER_KINDS } from "@/model/model";
 import type {
   BatchResult,
   BatchParseResult,
@@ -87,6 +88,15 @@ const FOLDERS: Partial<Record<ElementKind, string>> = {
   scenario: "model/scenarios",
 };
 
+/** The folders of a database's element files other than tables (KindInfo: model/databases/{db}/<folder>). */
+const DATABASE_OBJECT_FOLDERS: Partial<Record<string, string>> = {
+  view: "views",
+  sequence: "sequences",
+  routine: "routines",
+  "database-type": "types",
+  "sql-object": "objects",
+};
+
 function emptyChangeSet(source: ChangeSet["source"] = "editor"): ChangeSet {
   return { changed: [], deleted: [], source, truncated: false, isEmpty: true };
 }
@@ -108,6 +118,7 @@ export class MockModel {
     private readonly options: MockModelOptions,
   ) {
     for (const file of seed.files) {
+      if (file.path.endsWith(".js")) continue; // script rules: MockExtensions holds them
       if (file.path.endsWith(".md")) {
         this.sidecars.set(PREFIX + file.path, file.text);
         continue;
@@ -127,6 +138,13 @@ export class MockModel {
     this.settingsHash = sha256Hex(serialize(this.settingsJson));
     for (const pack of seed.packs) this.packs.push(packRecord(pack));
     this.packs.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /** The extension schemas changed (the Extensions tab): custom properties are checked again against the new set. */
+  replaceExtensions(schemas: ExtensionSchema[]): void {
+    this.extensions.splice(0, this.extensions.length, ...schemas);
+    this.derivedState = null;
+    this.version++;
   }
 
   private put(path: string, json: Json): Entry {
@@ -328,7 +346,7 @@ export class MockModel {
     } else if (kind === "table") {
       folder = `model/databases/${dbFolder}/tables`;
       file = `${String(json.id).toLowerCase()}.json`;
-    } else if (kind === "view" || kind === "sequence") folder = `model/databases/${dbFolder}/${kind}s`;
+    } else if (DATABASE_OBJECT_FOLDERS[kind]) folder = `model/databases/${dbFolder}/${DATABASE_OBJECT_FOLDERS[kind]}`;
     else if (kind === "tag-vocabulary" || kind === "category-tree") {
       // The global vocabularies are tags.json and categories.json; a domain's is <domain>-tags.json (section 1.11).
       folder = "model/vocabularies";
@@ -974,7 +992,7 @@ function e5(json: Json): Partial<ElementSummary> {
   const out: Partial<ElementSummary> = {};
   if (typeof json.displayName === "string") out.displayName = json.displayName;
   const kind = json.kind;
-  if ((kind === "table" || kind === "view" || kind === "sequence" || kind === "mapping") && typeof json.database === "string") out.database = json.database;
+  if (DATABASE_MEMBER_KINDS.has(String(kind)) && typeof json.database === "string") out.database = json.database;
   if ((kind === "table" || kind === "mapping") && typeof json.entity === "string") out.entity = json.entity;
   if (kind === "entity" && typeof json.base === "string") out.base = json.base;
   if (kind === "seed") {

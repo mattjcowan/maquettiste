@@ -1,7 +1,7 @@
 // The mock's renderers for the two example packs: sql-ddl (table, schema and, once the model has reference rows, seed units) and
 // csharp-dapper (entity pairs, enums, value objects). Output paths follow the packs' pack.json;
 // the text is plausible generated code, not the packs' templates.
-import type { DatabaseView, RenderedFile, SequenceView, TableView, ViewView } from "@/api/types";
+import type { DatabaseTypeView, DatabaseView, RenderedFile, RoutineView, SequenceView, SqlObjectView, TableView, ViewView } from "@/api/types";
 import { applyCase } from "./physical";
 
 type Json = Record<string, unknown>;
@@ -79,10 +79,16 @@ export function renderSchema(view: DatabaseView, root: string): RenderedFile {
     "",
   ];
   if (view.defaultSchema) lines.push(`CREATE SCHEMA IF NOT EXISTS ${view.defaultSchema};`, "");
+  // The schema script creates every object (sql-ddl's _objects.scriban), whatever objectScripts says, in the pack's DDL order:
+  // SQL objects that run before, database types, sequences, tables, routines and views, then the other SQL objects.
+  const objects = view.objects ?? [];
+  for (const o of objects.filter((x) => x.phase === "before")) lines.push(objectSql(o), "");
+  for (const t of view.types ?? []) lines.push(typeSql(t, view.dialect), "");
   for (const table of view.tables) lines.push(`\\i tables/${table.name}.sql`);
-  // The schema script creates every view and sequence (sql-ddl's _objects.scriban), whatever objectScripts says.
   for (const s of view.sequences) lines.push("", sequenceSql(s));
+  for (const r of view.routines ?? []) lines.push("", routineSql(r, view.dialect));
   for (const v of view.views) lines.push("", viewSql(v));
+  for (const o of objects.filter((x) => x.phase === "after")) lines.push("", objectSql(o));
   const fks = view.tables.flatMap((t) => t.foreignKeys.map((fk) => ({ t, fk })));
   if (fks.length) lines.push("");
   for (const { t, fk } of fks) {
@@ -248,4 +254,82 @@ export function renderSequence(view: DatabaseView, s: SequenceView, root: string
     sequenceSql(s),
   ].join("\n");
   return { path: `${root}/${applyCase(view.name, "kebab")}/${s.schema ? `${s.schema}/` : ""}sequences/${s.name}.sql`, text: text + "\n", role: "main" };
+}
+
+/** A routine's CREATE FUNCTION or CREATE PROCEDURE, much simplified from the pack's: parameters, result, language, body. */
+export function routineSql(r: RoutineView, dialect: string): string {
+  const what = r.routineKind === "procedure" ? "PROCEDURE" : "FUNCTION";
+  if (!r.hasBody) return `-- ${what} ${qualifiedObject(r)} has no body for ${dialect}.`;
+  const sqlserver = dialect === "sqlserver";
+  const parameters = r.parameters.map((p) => {
+    const mode = p.mode === "in" ? "" : sqlserver ? "" : `${p.mode.toUpperCase()} `;
+    const out = sqlserver && p.mode !== "in" ? " OUTPUT" : "";
+    return `${mode}${sqlserver ? "@" : ""}${p.name} ${p.nativeType}${p.default !== null ? ` ${sqlserver ? "=" : "DEFAULT"} ${p.default}` : ""}${out}`;
+  });
+  const returns = !r.returns
+    ? r.routineKind === "function" && !sqlserver
+      ? " RETURNS void"
+      : ""
+    : r.returns.table
+      ? ` RETURNS TABLE (${r.returns.table.map((c) => `${c.name} ${c.nativeType}`).join(", ")})`
+      : ` RETURNS ${r.returns.nativeType}`;
+  if (sqlserver) return `CREATE ${what} ${qualifiedObject(r)}(${parameters.join(", ")})${returns}\nAS\n${r.body.trim()};`;
+  const marks = [`LANGUAGE ${r.language}`, ...(r.deterministic ? ["IMMUTABLE"] : []), ...(r.security === "definer" ? ["SECURITY DEFINER"] : [])];
+  return `CREATE ${what} ${qualifiedObject(r)}(${parameters.join(", ")})${returns}\n${marks.join(" ")}\nAS $$\n${r.body.trim()}\n$$;`;
+}
+
+/** A database type's CREATE DOMAIN or CREATE TYPE (its definition for the dialect, else built from the structured form). */
+export function typeSql(t: DatabaseTypeView, dialect: string): string {
+  if (!t.isCreated && t.definition === null)
+    return `-- Database type ${qualifiedObject(t)} (${t.typeKind}) is not created on ${dialect}; columns use what the type resolves to.`;
+  const domain = t.typeKind === "domain" && dialect === "postgresql";
+  if (t.definition !== null) return `CREATE ${domain ? "DOMAIN" : "TYPE"} ${qualifiedObject(t)} ${t.definition.trim()};`;
+  switch (t.typeKind) {
+    case "domain":
+      return dialect === "sqlserver"
+        ? `CREATE TYPE ${qualifiedObject(t)} FROM ${t.baseNativeType ?? "?"};${t.check ? ` -- CHECK (${t.check}): an alias type has no check.` : ""}`
+        : `CREATE DOMAIN ${qualifiedObject(t)} AS ${t.baseNativeType ?? "?"}${t.check ? ` CHECK (${t.check})` : ""};`;
+    case "enum":
+      return `CREATE TYPE ${qualifiedObject(t)} AS ENUM (${t.members.map((m) => `'${m.replace(/'/g, "''")}'`).join(", ")});`;
+    case "composite":
+      return `CREATE TYPE ${qualifiedObject(t)} AS (${t.fields.map((f) => `${f.name} ${f.nativeType}`).join(", ")});`;
+    case "range":
+      return `CREATE TYPE ${qualifiedObject(t)} AS RANGE (SUBTYPE = ${t.subtypeNativeType ?? "?"});`;
+  }
+}
+
+/** A SQL object's statements as written, or a comment when it has none for the dialect. */
+export function objectSql(o: SqlObjectView): string {
+  return o.hasBody ? o.body.trim() : `-- SQL object ${o.name} (${o.objectKind}) has no statements for this dialect.`;
+}
+
+/** One of the sql-ddl pack's per-object scripts (its `routine`, `database-type` and `sql-object` units, written when the
+ * objectScripts parameter is on). */
+function objectScript(
+  view: DatabaseView,
+  unit: string,
+  header: string,
+  o: { schema: string | null; name: string },
+  folder: string,
+  sql: string,
+  root: string,
+): RenderedFile {
+  const text = [`-- Generated by Maquettiste (sql-ddl/${unit}). Do not edit; changes are overwritten.`, header, "", sql].join("\n");
+  return { path: `${root}/${applyCase(view.name, "kebab")}/${o.schema ? `${o.schema}/` : ""}${folder}/${o.name}.sql`, text: text + "\n", role: "main" };
+}
+
+export function renderRoutine(view: DatabaseView, r: RoutineView, root: string): RenderedFile {
+  const header = `-- ${r.routineKind === "procedure" ? "Procedure" : "Function"} ${qualifiedObject(r)} of database ${view.name} (${DIALECT_LABEL[view.dialect] ?? view.dialect}).`;
+  return objectScript(view, "routine", header, r, "routines", routineSql(r, view.dialect), root);
+}
+
+export function renderDatabaseType(view: DatabaseView, t: DatabaseTypeView, root: string): RenderedFile {
+  const header = `-- Database type ${qualifiedObject(t)} (${t.typeKind}) of database ${view.name} (${DIALECT_LABEL[view.dialect] ?? view.dialect}).`;
+  return objectScript(view, "database-type", header, t, "types", typeSql(t, view.dialect), root);
+}
+
+export function renderSqlObject(view: DatabaseView, o: SqlObjectView, root: string): RenderedFile {
+  const kind = o.objectKind ? `${o.objectKind[0].toUpperCase()}${o.objectKind.slice(1)}` : "Object";
+  const header = `-- ${kind} ${o.name} of database ${view.name} (${DIALECT_LABEL[view.dialect] ?? view.dialect}), run ${o.phase} the tables.`;
+  return objectScript(view, "sql-object", header, o, "objects", objectSql(o), root);
 }

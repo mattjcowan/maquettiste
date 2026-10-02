@@ -81,7 +81,7 @@ public sealed partial class SqliteTests
         Assert.DoesNotContain("IDENTITY", body, StringComparison.Ordinal);
         Assert.EndsWith(";", body.TrimEnd(), StringComparison.Ordinal);
         foreach (var statement in body.Split(';').Select(s => s.Trim()).Where(s => s.Length > 0))
-            Assert.Matches("^(CREATE TABLE|CREATE INDEX|CREATE UNIQUE INDEX|PRAGMA|BEGIN|COMMIT|INSERT INTO)", statement);
+            Assert.Matches("^(CREATE TABLE|CREATE INDEX|CREATE UNIQUE INDEX|CREATE TRIGGER|END|PRAGMA|BEGIN|COMMIT|INSERT INTO)", statement);
     }
 
     [GeneratedRegex(@"--[^\n]*")]

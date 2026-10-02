@@ -155,7 +155,11 @@ describe("editor tab state", () => {
   });
 
   it("knows which kinds have an editor", () => {
-    expect(["entity", "relation", "enum", "value-object", "scalar-type", "table", "view", "sequence"].every((k) => hasEditor(k))).toBe(true);
+    expect(
+      ["entity", "relation", "enum", "value-object", "scalar-type", "table", "view", "sequence", "routine", "database-type", "sql-object"].every((k) =>
+        hasEditor(k),
+      ),
+    ).toBe(true);
     expect(hasEditor("diagram")).toBe(false);
     // A table file that overlays an entity's projected table is edited in the Database screen, not an editor.
     expect(hasEditor("table", { entity: "E1" })).toBe(false);

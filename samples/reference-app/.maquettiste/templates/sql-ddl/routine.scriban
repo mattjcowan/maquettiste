@@ -1,0 +1,20 @@
+{{-
+# One script per routine, <db>/[<schema>/]routines/<routine>.sql: its CREATE FUNCTION or CREATE PROCEDURE, as the schema script
+# writes it (SQLite has none: the script says so). Off unless the parameter objectScripts is true; schema.sql and the migrations
+# create every routine either way.
+include "_sql.scriban"
+include "_objects.scriban"
+if pack.params.objectScripts
+  db = routine.database
+-}}
+{{- capture content -}}
+{{ banner "--" }}
+-- {{ routine.routine_kind == "procedure" ? "Procedure" : "Function" }} {{ routine.schema ? routine.schema + "." : "" }}{{ routine.name }} of database {{ db.name }} ({{ dialect_title(db) }}).
+{{- if pack.params.comments && routine.comment && db.dialect != "postgresql" }}
+-- {{ routine.comment | string.replace "\n" " " }}
+{{- end }}
+
+{{ routine_sql(routine, db) }}
+{{ end -}}
+{{- file ((kebab db.name) + "/" + (routine.schema ? routine.schema + "/" : "") + "routines/" + routine.name + ".sql") content -}}
+{{- end -}}

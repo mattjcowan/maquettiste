@@ -1,0 +1,20 @@
+{{-
+# One script per database type, <db>/[<schema>/]types/<type>.sql: its CREATE DOMAIN or CREATE TYPE, as the schema script writes it
+# (a dialect without the type's kind gets a comment saying how columns store it). Off unless the parameter objectScripts is true;
+# schema.sql and the migrations create every database type either way.
+include "_sql.scriban"
+include "_objects.scriban"
+if pack.params.objectScripts
+  db = database_type.database
+-}}
+{{- capture content -}}
+{{ banner "--" }}
+-- Database type {{ database_type.schema ? database_type.schema + "." : "" }}{{ database_type.name }} ({{ database_type.type_kind }}) of database {{ db.name }} ({{ dialect_title(db) }}).
+{{- if pack.params.comments && database_type.comment && db.dialect != "postgresql" }}
+-- {{ database_type.comment | string.replace "\n" " " }}
+{{- end }}
+
+{{ type_sql(database_type, db) }}
+{{ end -}}
+{{- file ((kebab db.name) + "/" + (database_type.schema ? database_type.schema + "/" : "") + "types/" + database_type.name + ".sql") content -}}
+{{- end -}}

@@ -9,7 +9,9 @@ type Schema = { type?: string | string[]; enum?: unknown[]; items?: Schema; mini
 
 export function applicableExtensions(extensions: ExtensionSchema[], kind: string, stereotypes: string[]): ExtensionSchema[] {
   return extensions.filter(
-    (e) => e.appliesTo.kinds.includes(kind) && (e.appliesTo.stereotypes.length === 0 || e.appliesTo.stereotypes.some((s) => stereotypes.includes(s))),
+    (e) =>
+      (e.appliesTo.kinds.length === 0 || e.appliesTo.kinds.includes(kind)) &&
+      (e.appliesTo.stereotypes.length === 0 || e.appliesTo.stereotypes.some((s) => stereotypes.includes(s))),
   );
 }
 

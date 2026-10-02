@@ -25,6 +25,9 @@ import { ScenarioEditor } from "./scenario/ScenarioEditor";
 import { TableEditor } from "./database/TableEditor";
 import { ViewEditor } from "./database/ViewEditor";
 import { SequenceEditor } from "./database/SequenceEditor";
+import { RoutineEditor } from "./database/RoutineEditor";
+import { DatabaseTypeEditor } from "./database/DatabaseTypeEditor";
+import { SqlObjectEditor } from "./database/SqlObjectEditor";
 
 /** A draft that is not yet saved as it shows: the tab's dirty marker. */
 const UNSAVED = new Set(["dirty", "saving", "invalid", "conflict"]);
@@ -175,6 +178,12 @@ export function EditorArea() {
         <ViewEditor key={tab.id} id={tab.id} />
       ) : tab.kind === "sequence" ? (
         <SequenceEditor key={tab.id} id={tab.id} />
+      ) : tab.kind === "routine" ? (
+        <RoutineEditor key={tab.id} id={tab.id} />
+      ) : tab.kind === "database-type" ? (
+        <DatabaseTypeEditor key={tab.id} id={tab.id} />
+      ) : tab.kind === "sql-object" ? (
+        <SqlObjectEditor key={tab.id} id={tab.id} />
       ) : (
         <TypeEditor key={tab.id} id={tab.id} kind={tab.kind} />
       )}

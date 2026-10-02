@@ -69,7 +69,7 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     [McpServerTool(Name = "get_model_index", Title = "Model index", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("Summaries of the top-level elements (id, kind, name, package, tags, category, stereotypes, hash, path). Every filter is optional and they combine with AND. Without cursor or limit the answer is the whole list; with either it is one page, {items, next}, ordered by kind, name and id: pass next as cursor until it is null. Use the index to find elements, get_elements to read their documents in bulk, get_resolved_model for what generation sees (resolved types, inherited attributes, tables), get_model_kinds for the counts.")]
     public Task<CallToolResult> GetModelIndex(
-        [Description("Only this kind, for example entity, relation, enum, value-object, scalar-type, package, database, table, view, sequence, mapping, diagram.")] string? kind = null,
+        [Description("Only this kind, for example entity, relation, enum, value-object, scalar-type, package, database, table, view, sequence, routine, database-type, sql-object, mapping, diagram.")] string? kind = null,
         [Description("Only elements directly in this package, by package id or package name.")] string? package = null,
         [Description("Only elements with this tag.")] string? tag = null,
         [Description("Only elements in this category.")] string? category = null,
@@ -143,7 +143,7 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     [McpServerTool(Name = "create_element", Title = "Create element", Destructive = false, OpenWorld = false)]
     [Description("Creates an element from a whole document; an id is assigned when the document has none. Returns the id, the hash and what changed, or the diagnostics.")]
     public Task<CallToolResult> CreateElement(
-        [Description("The element document, for example {\"kind\":\"entity\",\"name\":\"Coupon\",\"package\":\"<package id>\",\"attributes\":[...]}. Use get_schema for the fields of a kind; required.")] JsonElement? element = null,
+        [Description("The element document, for example {\"kind\":\"entity\",\"name\":\"Coupon\",\"package\":\"<package id>\",\"attributes\":[...]}. Routines, database types and SQL objects belong to a database: {\"kind\":\"routine\",\"name\":\"invoice_total\",\"database\":\"<database id>\",\"body\":{\"postgresql\":\"...\"}}. Use get_schema for the fields of a kind; required.")] JsonElement? element = null,
         CancellationToken ct = default) => GuardAsync(async () =>
     {
         if (DocumentBytes(element) is not { } body)
@@ -161,7 +161,7 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     /// <param name="ct">Cancellation.</param>
     /// <returns>The delete result, or the plan.</returns>
     [McpServerTool(Name = "delete_element", Title = "Delete element", Destructive = true, OpenWorld = false)]
-    [Description("Deletes an element if its file still has expectedHash. While other elements reference it, the delete is refused (code referenced, with the referrers) unless resolution says otherwise: remove-references clears optional references (a required one makes the delete invalid, with an MQ2001 diagnostic naming it); delete-dependents also resolves required references in the same change, removing the part of the referrer that needs the element (an attribute whose type is deleted, a diagram member, a key) or deleting the referrer with its own dependents (the tables, views, sequences and mappings of a database; the relations, mappings and overlays of an entity), and removes a deleted database's databases.<name> conventions. With dryRun true nothing is written and no expectedHash is needed: the result is the plan, {ids, resolution, outcome, deletes:[{id,kind,name,path,because}], clears:[{id,kind,name,pointer,field,target,because}], removes:[{id,kind,name,pointer,what,subId,subKind,because}], refused:[{id,kind,name,pointer,why,rule}], settings:[{pointer,what}], warnings:[{message,pack,unit}]}; read it before deleting with delete-dependents.")]
+    [Description("Deletes an element if its file still has expectedHash. While other elements reference it, the delete is refused (code referenced, with the referrers) unless resolution says otherwise: remove-references clears optional references (a required one makes the delete invalid, with an MQ2001 diagnostic naming it); delete-dependents also resolves required references in the same change, removing the part of the referrer that needs the element (an attribute whose type is deleted, a diagram member, a key) or deleting the referrer with its own dependents (the tables, views, sequences, routines, database types, SQL objects and mappings of a database; the relations, mappings and overlays of an entity), and removes a deleted database's databases.<name> conventions. With dryRun true nothing is written and no expectedHash is needed: the result is the plan, {ids, resolution, outcome, deletes:[{id,kind,name,path,because}], clears:[{id,kind,name,pointer,field,target,because}], removes:[{id,kind,name,pointer,what,subId,subKind,because}], refused:[{id,kind,name,pointer,why,rule}], settings:[{pointer,what}], warnings:[{message,pack,unit}]}; read it before deleting with delete-dependents.")]
     public Task<CallToolResult> DeleteElement(
         [Description("The element id; required.")] string? id = null,
         [Description("The hash returned by get_element; required unless dryRun.")] string? expectedHash = null,
@@ -425,7 +425,7 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     /// <param name="ct">Cancellation.</param>
     /// <returns>The report.</returns>
     [McpServerTool(Name = "validate", Title = "Validate", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Validates the whole model, or only some elements. Returns the diagnostics (rule id such as MQ3001, severity, message, element id, file path, JSON pointer, line and column) and the error, warning and info counts.")]
+    [Description("Validates the whole model, or only some elements, with the built-in rules and, by default, the project's script rules (extensions/rules/*.js, findings x/<id>; a rule file that does not load is MQ5002 on that file). Returns the diagnostics (rule id such as MQ3001, severity, message, element id, file path, JSON pointer, line and column) and the error, warning and info counts.")]
     public Task<CallToolResult> Validate(
         [Description("Only these element ids (and, by default, the elements that reference them); omit for the whole model.")] string[]? elementIds = null,
         [Description("Whether to include the elements that reference the scope (default true).")] bool includeReferrers = true,
@@ -444,7 +444,7 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     /// <param name="ct">Cancellation.</param>
     /// <returns>The view.</returns>
     [McpServerTool(Name = "get_database_view", Title = "Database view", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("The resolved physical view of one database: tables (from the entities mapped to it, by its byConvention setting or by mapping elements, their relations and overlays) with columns, keys, indexes and foreign keys, views and sequences, as generation sees them. Each table, view and sequence carries its own file's annotations (displayName, pluralName, description, stereotypes, tags, category, properties, generation); a synthesized table without an overlay has none.")]
+    [Description("The resolved physical view of one database: tables (from the entities mapped to it, by its byConvention setting or by mapping elements, their relations and overlays) with columns (dbTypeId when a column uses a database type), keys, indexes and foreign keys, views, sequences, routines (parameters and result with native types), database types (nativeName, isCreated) and SQL objects (phase, dependsOn), as generation sees them. Each table, view, sequence, routine, database type and SQL object carries its own file's annotations (displayName, pluralName, description, stereotypes, tags, category, properties, generation); a synthesized table without an overlay has none.")]
     public Task<CallToolResult> GetDatabaseView([Description("The database element id; required.")] string? id = null, CancellationToken ct = default) => GuardAsync(async () =>
     {
         if (string.IsNullOrEmpty(id))
@@ -633,7 +633,7 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     [McpServerTool(Name = "get_schema", Title = "JSON schema", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("The JSON schema (draft 2020-12) of an element kind or document, with the schema files it references (common.json) and, for an element kind, the project's extension schemas that apply to it (extensions: each constrains the element's properties object), so documents built for create_element, save_element, apply_batch or save_settings are valid.")]
     public Task<CallToolResult> GetSchema(
-        [Description("An element kind (entity, relation, enum, value-object, scalar-type, package, database, table, view, sequence, mapping, diagram, stereotype, tag-vocabulary, category-tree) or a document (maquettiste for the settings, batch, pack, extension); required.")] string? kind = null,
+        [Description("An element kind (entity, relation, enum, value-object, scalar-type, package, database, table, view, sequence, routine, database-type, sql-object, mapping, diagram, stereotype, tag-vocabulary, category-tree) or a document (maquettiste for the settings, batch, pack, extension); required.")] string? kind = null,
         CancellationToken ct = default) => GuardAsync(async () =>
     {
         if (string.IsNullOrEmpty(kind))

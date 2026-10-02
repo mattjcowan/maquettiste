@@ -36,6 +36,15 @@ public enum ElementKind
     /// <summary>A physical sequence (<c>sequence</c>).</summary>
     [JsonStringEnumMemberName("sequence")] Sequence,
 
+    /// <summary>A stored function or procedure (<c>routine</c>).</summary>
+    [JsonStringEnumMemberName("routine")] Routine,
+
+    /// <summary>A type a database owns: domain, composite, enumeration or range (<c>database-type</c>).</summary>
+    [JsonStringEnumMemberName("database-type")] DatabaseType,
+
+    /// <summary>A database object the model does not type, as SQL statements per dialect (<c>sql-object</c>).</summary>
+    [JsonStringEnumMemberName("sql-object")] SqlObject,
+
     /// <summary>A binding of an entity or relation to a database (<c>mapping</c>).</summary>
     [JsonStringEnumMemberName("mapping")] Mapping,
 

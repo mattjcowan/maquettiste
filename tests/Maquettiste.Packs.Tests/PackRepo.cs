@@ -13,7 +13,8 @@ namespace Maquettiste.Packs.Tests;
 /// a <c>PaymentMethod</c> reference type used by <c>Payment.method</c> (a CHECK, and a lookup table in <c>local</c>), and a
 /// <c>CreditNote</c> entity derived from <c>Invoice</c> (table per hierarchy, so a
 /// discriminator column), and a custom type <c>Lsn</c> (binary, length 8) with its own native types, <c>pg_lsn</c> on PostgreSQL and
-/// <c>binary(8)</c> on SQL Server, used by <c>Payment.ledgerPosition</c>.
+/// <c>binary(8)</c> on SQL Server, used by <c>Payment.ledgerPosition</c>; and in each database a routine, a domain type that
+/// <c>customers.email</c> uses and a trigger (see <see cref="AddDatabaseObjects"/>).
 /// </summary>
 internal sealed class PackRepo : IDisposable
 {
@@ -180,7 +181,182 @@ internal sealed class PackRepo : IDisposable
                 ["name"] = "ledgerPosition",
                 ["type"] = new JsonObject { ["ref"] = "01J92P0V2G0000000000000001" },
             }));
+            AddDatabaseObjects();
         }
+    }
+
+    /// <summary>The PostgreSQL database <c>main</c>.</summary>
+    private const string MainId = "01J92P0V1QRN2181XM2ZWE02W4";
+
+    /// <summary>The SQL Server database <c>reporting</c>.</summary>
+    private const string ReportingId = "01J92P0V2A0000000000000001";
+
+    /// <summary>The SQLite database <c>local</c>.</summary>
+    private const string LocalId = "01J92P0V2A0000000000000002";
+
+    /// <summary>
+    /// One routine, one domain type used by a column and one trigger in each database of the dialects variant: on PostgreSQL the
+    /// domain <c>email_address</c> (named by id from the customers overlay), the trigger function <c>keep_invoice_number</c> and the
+    /// trigger <c>invoices_keep_number</c> that depends on it; on SQL Server the alias type <c>email_address</c> (named by name), the
+    /// scalar function <c>invoice_total</c> and an <c>AFTER UPDATE</c> trigger; on SQLite the same type stored as its base, a function
+    /// SQLite cannot create, and a <c>BEFORE UPDATE</c> trigger. The triggers refuse a change of an invoice's number, which no test makes.
+    /// </summary>
+    private void AddDatabaseObjects()
+    {
+        const string customer = "01J92P0V0ETQKXXP951CMMNHH3";
+        const string email = "01J92P0V0NRX99014KNVAZGPEW";
+        foreach (var (db, folder, n) in new[] { (MainId, "main", 1), (ReportingId, "reporting", 2), (LocalId, "local", 3) })
+        {
+            var type = $"01J92P0V2H000000000000000{n}";
+            Repo.WriteFile($".maquettiste/model/databases/{folder}/types/email-address.json", $$"""
+                {
+                  "$schema": "../../../../.schema/v1/database-type.json",
+                  "kind": "database-type",
+                  "id": "{{type}}",
+                  "name": "email_address",
+                  "database": "{{db}}",
+                  "description": "An email address, checked where the dialect can.",
+                  "typeKind": "domain",
+                  "base": "string",
+                  "length": 254,
+                  "check": "VALUE LIKE '%_@_%'"
+                }
+
+                """);
+            var overlay = $"01J92P0V2J000000000000000{n}";
+            Repo.WriteFile($".maquettiste/model/databases/{folder}/tables/{overlay.ToLowerInvariant()}.json", $$"""
+                {
+                  "$schema": "../../../../.schema/v1/table.json",
+                  "kind": "table",
+                  "id": "{{overlay}}",
+                  "database": "{{db}}",
+                  "origin": "synthesized",
+                  "entity": "{{customer}}",
+                  "columns": [
+                    {
+                      "id": "01J92P0V2K000000000000000{{n}}",
+                      "attribute": "{{email}}",
+                      "nativeType": "{{(folder == "main" ? type : "email_address")}}"
+                    }
+                  ]
+                }
+
+                """);
+        }
+
+        Repo.WriteFile(".maquettiste/model/databases/main/routines/keep-invoice-number.json", """
+            {
+              "$schema": "../../../../.schema/v1/routine.json",
+              "kind": "routine",
+              "id": "01J92P0V2M0000000000000001",
+              "name": "keep_invoice_number",
+              "database": "01J92P0V1QRN2181XM2ZWE02W4",
+              "description": "Refuses to change an invoice's number.",
+              "returns": {
+                "nativeType": "trigger"
+              },
+              "body": {
+                "postgresql": "BEGIN\n    IF NEW.number <> OLD.number THEN\n        RAISE EXCEPTION 'invoice % keeps its number', OLD.number;\n    END IF;\n    RETURN NEW;\nEND;"
+              },
+              "comment": "Trigger function of invoices_keep_number."
+            }
+
+            """);
+        Repo.WriteFile(".maquettiste/model/databases/main/objects/invoices-keep-number.json", """
+            {
+              "$schema": "../../../../.schema/v1/sql-object.json",
+              "kind": "sql-object",
+              "id": "01J92P0V2N0000000000000001",
+              "name": "invoices_keep_number",
+              "database": "01J92P0V1QRN2181XM2ZWE02W4",
+              "objectKind": "trigger",
+              "dependsOn": [
+                "01J92P0V2M0000000000000001",
+                "01J92P0V1T0J6RH4MY9H81NYB4"
+              ],
+              "body": {
+                "postgresql": "CREATE TRIGGER invoices_keep_number BEFORE UPDATE OF number ON billing.invoices FOR EACH ROW EXECUTE FUNCTION billing.keep_invoice_number();"
+              }
+            }
+
+            """);
+        Repo.WriteFile(".maquettiste/model/databases/reporting/routines/invoice-total.json", """
+            {
+              "$schema": "../../../../.schema/v1/routine.json",
+              "kind": "routine",
+              "id": "01J92P0V2M0000000000000002",
+              "name": "invoice_total",
+              "database": "01J92P0V2A0000000000000001",
+              "description": "The sum of an invoice's lines.",
+              "parameters": [
+                {
+                  "name": "invoice_id",
+                  "type": "uuid"
+                }
+              ],
+              "returns": {
+                "type": "decimal",
+                "precision": 18,
+                "scale": 2
+              },
+              "body": {
+                "sqlserver": "BEGIN\n    RETURN (SELECT COALESCE(SUM(quantity * unit_price_amount), 0) FROM dbo.invoice_lines WHERE invoice_id = @invoice_id);\nEND"
+              }
+            }
+
+            """);
+        Repo.WriteFile(".maquettiste/model/databases/reporting/objects/invoices-keep-number.json", """
+            {
+              "$schema": "../../../../.schema/v1/sql-object.json",
+              "kind": "sql-object",
+              "id": "01J92P0V2N0000000000000002",
+              "name": "invoices_keep_number",
+              "database": "01J92P0V2A0000000000000001",
+              "objectKind": "trigger",
+              "body": {
+                "sqlserver": "CREATE TRIGGER dbo.invoices_keep_number ON dbo.invoices AFTER UPDATE AS\nBEGIN\n    IF EXISTS (SELECT 1 FROM inserted i JOIN deleted d ON d.id = i.id WHERE i.number <> d.number)\n        THROW 50001, 'An invoice keeps its number.', 1;\nEND"
+              }
+            }
+
+            """);
+        Repo.WriteFile(".maquettiste/model/databases/local/routines/invoice-total.json", """
+            {
+              "$schema": "../../../../.schema/v1/routine.json",
+              "kind": "routine",
+              "id": "01J92P0V2M0000000000000003",
+              "name": "invoice_total",
+              "database": "01J92P0V2A0000000000000002",
+              "parameters": [
+                {
+                  "name": "invoice_id",
+                  "type": "uuid"
+                }
+              ],
+              "returns": {
+                "type": "decimal",
+                "precision": 18,
+                "scale": 2
+              },
+              "body": {
+                "*": "select coalesce(sum(quantity * unit_price_amount), 0) from invoice_lines where invoice_id = :invoice_id"
+              }
+            }
+
+            """);
+        Repo.WriteFile(".maquettiste/model/databases/local/objects/invoices-keep-number.json", """
+            {
+              "$schema": "../../../../.schema/v1/sql-object.json",
+              "kind": "sql-object",
+              "id": "01J92P0V2N0000000000000003",
+              "name": "invoices_keep_number",
+              "database": "01J92P0V2A0000000000000002",
+              "objectKind": "trigger",
+              "body": {
+                "sqlite": "CREATE TRIGGER invoices_keep_number BEFORE UPDATE OF number ON invoices FOR EACH ROW WHEN NEW.number <> OLD.number\nBEGIN\n    SELECT RAISE(ABORT, 'an invoice keeps its number');\nEND;"
+              }
+            }
+
+            """);
     }
 
     private PackRepo(string strategy)

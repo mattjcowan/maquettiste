@@ -1,7 +1,7 @@
 # sql-ddl
 
 SQL DDL for **PostgreSQL**, **SQL Server** and **SQLite** from the resolved physical model: one script per table (and, when
-you ask for them, one per view and per sequence), one schema script per database, migrations written once from the schema diff,
+you ask for them, one per view, sequence, routine, database type and SQL object), one schema script per database, migrations written once from the schema diff,
 and a seed script with a protected region. MySQL and Oracle databases get portable SQL without dialect-specific clauses.
 
 The pack writes to a **committed** output root. `maquettiste init --pack sql-ddl` sets `packs.sql-ddl.output` to `db` and
@@ -14,12 +14,15 @@ For a database `main` (PostgreSQL, schema `billing`) with a table `invoices`:
 | Unit | Mode | For | Writes |
 | --- | --- | --- | --- |
 | `table` | `overwrite` | `each table` | `main/billing/tables/invoices.sql`: `CREATE TABLE` with columns, primary key, unique constraints, foreign keys and checks, then its indexes and comments |
-| `schema` | `overwrite` | `select databases` | `main/schema.sql`: schemas, sequences, every table in foreign-key dependency order, then views |
+| `schema` | `overwrite` | `select databases` | `main/schema.sql`: schemas, SQL objects that run before the tables, database types, sequences, every table in foreign-key dependency order, then routines and views, then the other SQL objects (see DDL order) |
 | `migration` | `once` | `select databases` | `main/migrations/0001.sql`, `0002.sql`, …: one script per schema revision, from `schema_diff` |
 | `seed` | `regions` | `select databases` | `main/seed.sql`: the reference data of reference types reconciled on every run, the rows of entity and relation seeds, plus a `seed-data` region the team fills in |
 | `process-tables` | file blocks | `each process` | `main/processes/purchase-approval.sql`: instance, history and gate audit tables of a process, one script per database; only when `processTables` is `true` (see Process tables) |
 | `view` | file blocks | `each view` | `main/billing/views/outstanding_invoices.sql`: the view's `CREATE VIEW`; only when `objectScripts` is `true` (see Object scripts) |
 | `sequence` | file blocks | `each sequence` | `main/billing/sequences/invoice_number_seq.sql`: the sequence's `CREATE SEQUENCE`; only when `objectScripts` is `true` |
+| `routine` | file blocks | `each routine` | `main/billing/routines/invoice_total.sql`: the routine's `CREATE FUNCTION` or `CREATE PROCEDURE`; only when `objectScripts` is `true` |
+| `database-type` | file blocks | `each database type` | `main/billing/types/email_address.sql`: the type's `CREATE DOMAIN` or `CREATE TYPE`; only when `objectScripts` is `true` |
+| `sql-object` | file blocks | `each sql object` | `main/billing/objects/invoices_keep_number.sql`: the object's statements as written; only when `objectScripts` is `true` |
 
 Database folders are the kebab-case database name; the schema folder is left out when the table has no schema (SQLite).
 
@@ -44,6 +47,19 @@ Database folders are the kebab-case database name; the schema folder is left out
   whose only change it is gets a "review by hand" note).
 - **Schemas, sequences and views** (schema script): `CREATE SCHEMA` for every schema but `public`/`dbo`, `CREATE SEQUENCE` (none
   on SQLite), `CREATE VIEW` with the dialect's body. SQL Server statements are separated by `GO`.
+- **Routines**: PostgreSQL `CREATE FUNCTION` or `CREATE PROCEDURE` with the parameters (`OUT`, `INOUT`, `DEFAULT`), `RETURNS` the
+  result's native type, `RETURNS TABLE (...)` or `RETURNS void`, `LANGUAGE` (the file's, else `plpgsql`), `IMMUTABLE` for a
+  deterministic function, `SECURITY DEFINER`, and the body between dollar quotes (`$body$` when the body holds `$$`); SQL Server
+  `CREATE FUNCTION` or `CREATE PROCEDURE` with `@` parameters (`OUTPUT`, `= default`), `RETURNS` (a table result is an inline
+  table-valued function, `RETURNS TABLE`, whose body is its `RETURN`), `WITH EXECUTE AS OWNER` for definer rights, then `AS` and
+  the body as written. SQLite has no stored routines: the script says so. A routine without a body for the dialect gets a comment.
+- **Database types**: a definition for the dialect is written after the name as it is (`CREATE DOMAIN` for a domain on
+  PostgreSQL, `CREATE TYPE` otherwise); without one, PostgreSQL gets `CREATE DOMAIN ... AS <base> CHECK (...)`, `CREATE TYPE ...
+  AS ENUM (...)`, `AS (fields)` or `AS RANGE (SUBTYPE = ...)`, and SQL Server an alias type `CREATE TYPE ... FROM <base>` (a
+  domain's `CHECK` becomes a comment: alias types have none). Where the dialect cannot create the type (SQLite; SQL Server for an
+  enum, composite or range) the script says so and columns of the type use what the resolver gives them (a domain's base, an
+  enum's string).
+- **SQL objects**: the statements of the dialect as written (a trigger, a grant, an extension), or a comment when there are none.
 
 Identifiers are quoted with `sql_quote` according to the database's `quoting` setting (or the `quoting` parameter).
 
@@ -67,6 +83,22 @@ written if you delete a migration, and it keeps the committed migrations owned b
 them as orphaned after the snapshot has moved on.
 
 A dropped table, view or sequence is named with the database's default schema (the diff records only the old name).
+
+Routines, database types and SQL objects are part of the diff too (`schema_diff.<database>.routines`, `.types`, `.objects`, each
+change with its old and new kind). A changed or dropped routine is dropped (`DROP FUNCTION` or `DROP PROCEDURE IF EXISTS`) before
+the table changes and created again after them; a new database type is created before the tables, a renamed one is renamed
+(PostgreSQL `ALTER DOMAIN|TYPE ... RENAME TO`, SQL Server `sp_rename ... 'USERDATATYPE'`), a changed one gets a `-- TODO` with its
+new definition (a type in use cannot simply be replaced), and a dropped one is dropped last, once no table uses it. A SQL object's
+statements are opaque: a new or changed one runs again in its phase, and a changed or dropped one gets a `-- TODO` asking the
+reviewer to drop the old object by hand.
+
+## DDL order
+
+`schema.sql` and a first migration create, in this order: schemas; SQL objects with `phase: before` (an extension); database
+types; sequences; tables in foreign-key order; routines and views; SQL objects with `phase: after` (a trigger, a grant). Routines
+come before the views, so a view may call a function; a routine whose `dependsOn` names a view comes after that view. Inside each
+group an object follows what its `dependsOn` names in the same group (a composite type follows the types of its fields), through
+the same `ddl_order` helper as the tables; anything else it names (a table, say) is already there because of the group order.
 
 ## Reference data
 
@@ -127,12 +159,13 @@ committed root.
 
 ## Object scripts
 
-`schema.sql` and the migrations create every view and sequence. With `"objectScripts": true` the pack also writes one script
-per view (`<db>/[<schema>/]views/<view>.sql`) and one per sequence (`<db>/[<schema>/]sequences/<sequence>.sql`, the sequences the
-resolver creates for keys included), each holding the statement the schema script writes for it, so a review or a deployment tool
-can take them one at a time. The units run once per view (`each view`) and once per sequence (`each sequence`); a copy of the unit
-in your own pack can filter them with `where` on tags, stereotypes, categories and the database, read from the view's or
-sequence's own file. They are off by default so that turning the pack on adds no files a project did not ask for. A view's
+`schema.sql` and the migrations create every view, sequence, routine, database type and SQL object. With `"objectScripts": true`
+the pack also writes one script per view (`<db>/[<schema>/]views/<view>.sql`), per sequence (`<db>/[<schema>/]sequences/<sequence>.sql`,
+the sequences the resolver creates for keys included), per routine (`routines/<routine>.sql`), per database type
+(`types/<type>.sql`) and per SQL object (`objects/<object>.sql`), each holding the statement the schema script writes for it, so a
+review or a deployment tool can take them one at a time. The units run once per object (`each view`, `each sequence`, `each
+routine`, `each database type`, `each sql object`); a copy of the unit in your own pack can filter them with `where` on tags,
+stereotypes, categories and the database, read from the object's own file. They are off by default so that turning the pack on adds no files a project did not ask for. A view's
 `comment` follows its header when `comments` is on; a sequence on SQLite, which has none, gets a script that says so.
 
 ## Process tables
@@ -158,7 +191,7 @@ Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
 | Parameter | Default | Meaning |
 | --- | --- | --- |
 | `comments` | `true` | Emit table and column comments: explicit comments, and descriptions under the project's `comments` convention (see Comments above). |
-| `objectScripts` | `false` | Write `<db>/[<schema>/]views/<view>.sql` for every view and `<db>/[<schema>/]sequences/<sequence>.sql` for every sequence (see Object scripts). |
+| `objectScripts` | `false` | Write one script per view, sequence, routine, database type and SQL object under `<db>/[<schema>/]views/`, `sequences/`, `routines/`, `types/` and `objects/` (see Object scripts). |
 | `referenceStrategy` | `"lookup-table"` | The strategy key for reference types whose storage the project leaves to the template (see Reference data). |
 | `quoting` | `""` | `always`, `reserved` or `never` to override every database's `quoting` setting; empty keeps the database's. |
 | `strategyMap` | each key to itself | From the project's reference storage strategy keys to `lookup-table`, `check` or `native` (see Reference data). |
@@ -173,10 +206,10 @@ Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
 | `helpers.js` | The `databases` selector, the `ddl_order` / `ddl_cycle_breaks` helpers (foreign-key dependency order) and `reference_realization` (the `strategyMap` lookup). |
 | `_sql.scriban` | Shared functions: quoting, qualified names, column definitions, foreign keys, indexes, comments. |
 | `_table.scriban` | The `CREATE TABLE` block of one table, used by `table`, `schema` and `migration`. |
-| `_objects.scriban` | Sequences, views, schemas, include directives and the dependency spec for `ddl_order`. |
+| `_objects.scriban` | Sequences, views, routines, database types, SQL objects, schemas, include directives and the dependency specs for `ddl_order` (foreign keys, and `dependsOn` for the DDL order). |
 | `_migration.scriban` | Statement builders over the schema diff. |
 | `_reference.scriban` | Reference data: the realizations, their reconciliation and the seed-row inserts, used by `schema`, `migration` and `seed`. |
-| `table.scriban`, `view.scriban`, `sequence.scriban`, `schema.scriban`, `migration.scriban`, `seed.scriban`, `process-tables.scriban` | The unit templates. |
+| `table.scriban`, `view.scriban`, `sequence.scriban`, `routine.scriban`, `database-type.scriban`, `sql-object.scriban`, `schema.scriban`, `migration.scriban`, `seed.scriban`, `process-tables.scriban` | The unit templates. |
 
 ## Notes
 

@@ -1,0 +1,17 @@
+{{-
+# One script per SQL object, <db>/[<schema>/]objects/<object>.sql: its statements as written. Off unless the parameter objectScripts
+# is true; schema.sql and the migrations run every SQL object either way, before the database types and tables (phase "before") or
+# after the routines and views (phase "after").
+include "_sql.scriban"
+include "_objects.scriban"
+if pack.params.objectScripts
+  db = sql_object.database
+-}}
+{{- capture content -}}
+{{ banner "--" }}
+-- {{ sql_object.object_kind | string.capitalize }} {{ sql_object.name }} of database {{ db.name }} ({{ dialect_title(db) }}), run {{ sql_object.phase }} the tables.
+
+{{ object_sql(sql_object, db) }}
+{{ end -}}
+{{- file ((kebab db.name) + "/" + (sql_object.schema ? sql_object.schema + "/" : "") + "objects/" + sql_object.name + ".sql") content -}}
+{{- end -}}

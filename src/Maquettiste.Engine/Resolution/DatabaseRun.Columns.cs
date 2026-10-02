@@ -224,7 +224,7 @@ internal sealed partial class DatabaseRun
             var columnName = Render(_conv.ForeignKeyColumn, ("role", ownerName), ("key", ownerColumn.Attribute?.Name ?? ownerColumn.Name),
                 ("entity", ownerName), ("table", r.Name));
             AddColumn(t, ownerColumn.Key, columnName, ownerColumn.Type, ownerColumn.Length, ownerColumn.Precision, ownerColumn.Scale, false, null, null, null,
-                scalar: ScalarOf(ownerColumn), follows: ownerColumn.NativeType);
+                scalar: ScalarOf(ownerColumn), follows: ownerColumn);
             ownerKeys.Add(ownerColumn.Key);
         }
 
@@ -275,12 +275,12 @@ internal sealed partial class DatabaseRun
     /// type (<paramref name="scalar"/>: an attribute's value, a child table's value, or a key column copied from one) takes the
     /// custom type's native type for the dialect, unless an overlay sets the native type or changes the type away from the custom
     /// type's base; this is the one place the custom type's native types apply, so entity, child and junction tables agree. A
-    /// foreign key column passes the referenced column's native type as <paramref name="follows"/>: it takes that native type too,
-    /// unless its own overlay entry pins its type, length, precision, scale or native type (the physical side is free; MQ4005 then
-    /// compares it with the referenced column).
+    /// foreign key column passes the referenced column as <paramref name="follows"/>: it takes that column's native type, and the
+    /// database type behind it when the referenced column is typed by one, unless its own overlay entry pins its type, length,
+    /// precision, scale or native type (the physical side is free; MQ4005 then compares it with the referenced column).
     /// </summary>
     private RColumn AddColumn(TableBuild t, string key, string name, string type, int? length, int? precision, int? scale, bool nullable,
-        object? defaultValue, RAttribute? attribute, string? path, RReferenceType? reference = null, RScalarType? scalar = null, string? follows = null)
+        object? defaultValue, RAttribute? attribute, string? path, RReferenceType? reference = null, RScalarType? scalar = null, RColumn? follows = null)
     {
         if (t.ByKey.TryGetValue(key, out var existing))
             return existing;
@@ -325,8 +325,22 @@ internal sealed partial class DatabaseRun
                 scalar = null;
         }
 
-        c.NativeType = overlay?.NativeType
-            ?? (follows is not null && !PinsType(overlay) ? follows : NativeType(PhysicalType(c), c.Length, c.Precision, c.Scale, scalar));
+        if (follows is not null && !PinsType(overlay))
+        {
+            // A foreign key column copies the referenced column's native type, and the database type behind it when there is one.
+            if (follows.DbType is { } followed)
+            {
+                c.DbType = followed;
+                t.Deps.Element(followed.Id);
+            }
+
+            c.NativeType = follows.NativeType;
+        }
+        else
+        {
+            ApplyNativeType(t, c, overlay?.NativeType, () => NativeType(PhysicalType(c), c.Length, c.Precision, c.Scale, scalar));
+        }
+
         t.Columns.Add(c);
         t.ByKey[key] = c;
         _run.Register(c);
@@ -360,7 +374,7 @@ internal sealed partial class DatabaseRun
             };
             ApplyColumnFile(t, c, column);
             ApplyFacetDefaults(c);
-            c.NativeType = column.NativeType ?? NativeType(c.Type, c.Length, c.Precision, c.Scale);
+            ApplyNativeType(t, c, column.NativeType, () => NativeType(c.Type, c.Length, c.Precision, c.Scale));
             t.Columns.Add(c);
             t.ByKey[column.Id] = c;
             _run.Register(c);

@@ -1,5 +1,6 @@
 {{-
-# CREATE statements for sequences and views, and the foreign-key graph for ddl_order. Needs _sql.scriban.
+# CREATE statements for sequences, views, routines, database types and SQL objects, the foreign-key graph for ddl_order, and the
+# dependency order of routines, database types and SQL objects (their dependsOn). Needs _sql.scriban.
 
 # The foreign-key graph of a table list as text for the ddl_order and ddl_cycle_breaks helpers (see helpers.js).
 func dependency_spec(tables)
@@ -98,6 +99,242 @@ func view_sql(v, db)
     $body = $body | string.slice 0 ($body.size - 1)
   end
   ret "CREATE VIEW " + qn(v.schema, v.name, db) + " AS\n" + $body + ";"
+end
+
+# ---- routines, database types and SQL objects -------------------------------------------------------------------------------
+#
+# DDL order in schema.sql and in a first migration: SQL objects with phase "before" (an extension), database types, sequences,
+# tables, then routines and views together (every routine before the views unless its dependsOn names a view, which then comes
+# first), then SQL objects with phase "after" (a trigger, a grant). Within each group an object follows what its dependsOn names
+# (a composite type follows the types of its fields); ddl_order walks the list in the resolver's (schema, name) order.
+
+# The dependency graph of a list of routines, views, database types or SQL objects as text for ddl_order: one entry per item,
+# each the list indexes of what its depends_on names inside the list ("x" for anything outside it, such as a table).
+func object_dependency_spec(items)
+  $index = {}
+  for o in items
+    $index[o.id] = for.index
+  end
+  capture $spec
+    for o in items
+      if !for.first
+        ";"
+      end
+      if o.kind != "view"
+        for dep in o.depends_on
+          if !for.first
+            ","
+          end
+          $target = $index[dep.id]
+          ($target == null || dep.id == o.id) ? "x" : $target
+        end
+      end
+    end
+  end
+  ret "" + $spec
+end
+
+# A list in dependency order (see object_dependency_spec). A single item needs no walk: its spec is the empty string, which
+# ddl_order reads as no items at all.
+func in_dependency_order(items)
+  $result = []
+  if items.size < 2
+    for o in items
+      $result[$result.size] = o
+    end
+    ret $result
+  end
+  for i in (ddl_order object_dependency_spec(items))
+    $result[$result.size] = items[i]
+  end
+  ret $result
+end
+
+# The routines of a database followed by its views, in creation order: a routine whose dependsOn names a view comes after it.
+func routines_and_views(db)
+  if db.routines.size == 0
+    ret db.views
+  end
+  $items = []
+  for r in db.routines
+    $items[$items.size] = r
+  end
+  for v in db.views
+    $items[$items.size] = v
+  end
+  ret in_dependency_order($items)
+end
+
+# The SQL objects of a database with the given phase ("before" or "after"), in dependency order.
+func objects_in_phase(db, phase)
+  $items = []
+  for o in db.objects
+    if o.phase == phase
+      $items[$items.size] = o
+    end
+  end
+  ret in_dependency_order($items)
+end
+
+# ", routines N, database types N, SQL objects N" for the schema script's header, or "" when the database has none of them.
+func object_counts(db)
+  if db.routines.size + db.types.size + db.objects.size == 0
+    ret ""
+  end
+  ret ", routines " + db.routines.size + ", database types " + db.types.size + ", SQL objects " + db.objects.size
+end
+
+# Text without trailing whitespace and without a trailing semicolon.
+func trim_statement(text)
+  $t = text | string.rstrip
+  if $t | string.ends_with ";"
+    $t = $t | string.slice 0 ($t.size - 1) | string.rstrip
+  end
+  ret $t
+end
+
+# One parameter of a routine for the dialect: PostgreSQL "[OUT |INOUT ]name type [DEFAULT x]", SQL Server "@name type [= x][ OUTPUT]".
+func routine_parameter_sql(p, db)
+  if db.dialect == "sqlserver"
+    $name = (p.name | string.starts_with "@") ? p.name : "@" + p.name
+    $s = $name + " " + p.native_type
+    if p.default != null
+      $s = $s + " = " + p.default
+    end
+    if p.mode != "in"
+      $s = $s + " OUTPUT"
+    end
+    ret $s
+  end
+  $s = (p.mode == "out" ? "OUT " : (p.mode == "inout" ? "INOUT " : "")) + q(p.name, db) + " " + p.native_type
+  if p.default != null
+    $s = $s + " DEFAULT " + p.default
+  end
+  ret $s
+end
+
+# The CREATE FUNCTION or CREATE PROCEDURE of a routine, or a comment where the dialect has none (SQLite) or the routine has no
+# body for the dialect. PostgreSQL: the body between dollar quotes, with LANGUAGE, IMMUTABLE for a deterministic function and
+# SECURITY DEFINER. SQL Server: the body after AS as written; a table result is an inline table-valued function (RETURNS TABLE,
+# the body is its RETURN), and definer rights are WITH EXECUTE AS OWNER.
+func routine_sql(r, db)
+  $d = db.dialect
+  $what = r.routine_kind
+  if $d == "sqlite"
+    ret "-- SQLite has no stored routines; " + $what + " " + r.name + " is not created."
+  end
+  if $d != "postgresql" && $d != "sqlserver"
+    ret "-- The sql-ddl pack writes routines for PostgreSQL and SQL Server only; " + $what + " " + r.name + " is not created."
+  end
+  if !r.has_body
+    ret "-- " + $what + " " + r.name + " has no body for " + $d + "; it is not created."
+  end
+  $params = ""
+  for p in r.parameters
+    $params = $params + (for.first ? "" : ", ") + routine_parameter_sql(p, db)
+  end
+  $body = r.body | string.rstrip
+  if $d == "sqlserver"
+    $s = "CREATE " + ($what == "procedure" ? "PROCEDURE " : "FUNCTION ") + qn(r.schema, r.name, db)
+    if $what == "procedure"
+      $s = $s + ($params == "" ? "" : " " + $params)
+    else
+      $s = $s + "(" + $params + ")"
+      if r.returns && r.returns.table
+        $s = $s + "\nRETURNS TABLE"
+      else if r.returns
+        $s = $s + "\nRETURNS " + r.returns.native_type
+      end
+    end
+    if r.security == "definer"
+      $s = $s + "\nWITH EXECUTE AS OWNER"
+    end
+    ret $s + "\nAS\n" + $body
+  end
+  $s = "CREATE " + ($what == "procedure" ? "PROCEDURE " : "FUNCTION ") + qn(r.schema, r.name, db) + "(" + $params + ")"
+  if $what != "procedure"
+    if r.returns && r.returns.table
+      $cols = ""
+      for c in r.returns.table
+        $cols = $cols + (for.first ? "" : ", ") + q(c.name, db) + " " + c.native_type
+      end
+      $s = $s + "\nRETURNS TABLE (" + $cols + ")"
+    else if r.returns
+      $s = $s + "\nRETURNS " + r.returns.native_type
+    else
+      $s = $s + "\nRETURNS void"
+    end
+  end
+  $s = $s + "\nLANGUAGE " + r.language
+  if r.deterministic && $what != "procedure"
+    $s = $s + "\nIMMUTABLE"
+  end
+  if r.security == "definer"
+    $s = $s + "\nSECURITY DEFINER"
+  end
+  $tag = ($body | string.contains "$$") ? "$body$" : "$$"
+  $s = $s + "\nAS " + $tag + "\n" + $body + "\n" + $tag + ";"
+  if pack.params.comments && r.comment
+    $s = $s + "\nCOMMENT ON " + ($what == "procedure" ? "PROCEDURE " : "FUNCTION ") + qn(r.schema, r.name, db) + " IS " + lit(r.comment, db) + ";"
+  end
+  ret $s
+end
+
+# The CREATE DOMAIN or CREATE TYPE of a database type, or a comment where the dialect cannot create it. A definition for the dialect
+# is written after the name as it is; otherwise the structured form gives PostgreSQL's DOMAIN, ENUM, composite and RANGE and SQL
+# Server's alias type (CREATE TYPE ... FROM, without the domain's CHECK).
+func type_sql(t, db)
+  $d = db.dialect
+  if !t.is_created || ($d != "postgresql" && $d != "sqlserver")
+    $s = "-- " + dialect_title(db) + " has no " + t.type_kind + " types; " + t.name + " is not created"
+    ret $s + (t.native_name != "" ? " (columns of this type are " + t.native_name + ")." : ".")
+  end
+  $name = qn(t.schema, t.name, db)
+  if t.definition
+    $keyword = ($d == "postgresql" && t.type_kind == "domain") ? "CREATE DOMAIN " : "CREATE TYPE "
+    ret $keyword + $name + " " + trim_statement(t.definition) + ";"
+  end
+  if $d == "sqlserver"
+    $s = ""
+    if t.check
+      $s = "-- SQL Server alias types have no CHECK; " + t.name + " does not enforce: " + t.check + "\n"
+    end
+    ret $s + "CREATE TYPE " + $name + " FROM " + t.base_native_type + ";"
+  end
+  case t.type_kind
+    when "domain"
+      $s = "CREATE DOMAIN " + $name + " AS " + t.base_native_type
+      if t.check
+        $s = $s + " CHECK (" + t.check + ")"
+      end
+      $s = $s + ";"
+    when "enum"
+      $labels = ""
+      for m in t.members
+        $labels = $labels + (for.first ? "" : ", ") + lit(m, db)
+      end
+      $s = "CREATE TYPE " + $name + " AS ENUM (" + $labels + ");"
+    when "composite"
+      $fields = ""
+      for f in t.fields
+        $fields = $fields + (for.first ? "" : ", ") + q(f.name, db) + " " + f.native_type
+      end
+      $s = "CREATE TYPE " + $name + " AS (" + $fields + ");"
+    else
+      $s = "CREATE TYPE " + $name + " AS RANGE (SUBTYPE = " + t.subtype_native_type + ");"
+  end
+  if pack.params.comments && t.comment
+    $s = $s + "\nCOMMENT ON " + (t.type_kind == "domain" ? "DOMAIN " : "TYPE ") + $name + " IS " + lit(t.comment, db) + ";"
+  end
+  ret $s
+end
+
+# The statements of a SQL object as written, or a comment when it has none for the dialect.
+func object_sql(o, db)
+  if !o.has_body
+    ret "-- " + o.object_kind + " " + o.name + " has no statements for " + db.dialect + "; it is not created."
+  end
+  ret o.body | string.rstrip
 end
 
 # Schemas the script must create: every named schema of the database except the dialect's built-in one.

@@ -5,7 +5,7 @@
 CREATE TABLE dbo.customers (
     id uniqueidentifier NOT NULL,
     name nvarchar(120) NOT NULL,
-    email nvarchar(254) NOT NULL,
+    email dbo.email_address NOT NULL,
     customer_since date NULL,
     created_at datetimeoffset(6) NOT NULL,
     updated_at datetimeoffset(6) NULL,

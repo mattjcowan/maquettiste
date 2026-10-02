@@ -5,7 +5,7 @@
 CREATE TABLE billing.customers (
     id uuid NOT NULL,
     name varchar(120) NOT NULL,
-    email varchar(254) NOT NULL,
+    email billing.email_address NOT NULL,
     customer_since date NULL,
     created_at timestamptz(6) NOT NULL,
     updated_at timestamptz(6) NULL,

@@ -134,6 +134,8 @@ export function connectRealtime(deps: SyncDeps): () => void {
       refetchTablesSoon();
       // packs.<name> (enabled, output, parameters) lives in maquettiste.json.
       void qc.invalidateQueries({ queryKey: keys.packs });
+      // An extension file changed (the Extensions screen, an agent, git): the list and the open file are read again.
+      void qc.invalidateQueries({ queryKey: keys.extensions });
     }),
     // A pack's files changed (the editor, the CLI, git): its units, files and outputs are read again.
     realtime.on("packs.changed", () => void qc.invalidateQueries({ queryKey: keys.packs })),

@@ -13,7 +13,7 @@ test("a second database starts empty and holds only the domain mapped to it", as
   // New database: "Map domains by convention" starts on None.
   await workspace(page, "Databases");
   await side.getByTestId("explorer-new").click();
-  await page.getByRole("menuitem", { name: "New database" }).click();
+  await page.getByRole("menuitem", { name: "New database", exact: true }).click();
   await expect(page.locator("#new-element-convention")).toHaveValue("none");
   await page.locator("#new-element-name").fill("archive");
   await page.getByTestId("new-element-create").click();

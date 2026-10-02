@@ -6,7 +6,20 @@
 // with real ones.
 import { conventionOf, placesEntity } from "@/model/databaseMapping";
 import { schemaForEntity, schemasOf } from "@/model/databaseSchemas";
-import type { ColumnView, DatabaseView, Diagnostic, ForeignKeyView, SchemaView, SequenceView, TableView, ViewView } from "@/api/types";
+import type {
+  ColumnView,
+  DatabaseTypeView,
+  DatabaseView,
+  Diagnostic,
+  ForeignKeyView,
+  RoutineView,
+  SchemaView,
+  SequenceView,
+  SqlObjectView,
+  TableView,
+  ViewView,
+} from "@/api/types";
+import { BUILTIN_TYPES } from "@/model/model";
 
 type Json = Record<string, unknown>;
 const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
@@ -780,10 +793,123 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
       };
     })
     .sort(byName);
-  // Every schema the file declares or a table, view or sequence uses, by name; a declared one carries its entry's annotations.
+  // Routines, database types and SQL objects (schemas/v1/routine.json, database-type.json, sql-object.json), as the engine's
+  // DatabaseViews projects them: the dialect's body (or the "*" one), a type slot as a built-in keyword or a database type's id.
+  const own = (kind: string) => all.filter((d) => d.kind === kind && d.database === databaseId);
+  const typeDocs = new Map(own("database-type").map((d) => [String(d.id), d]));
+  const typeNativeName = (d: Json) => (typeof d.nativeName === "string" ? d.nativeName : qualifiedName(schemaOf(d), String(d.name ?? "")));
+  const slot = (row: Json) => {
+    const type = typeof row.type === "string" ? row.type : null;
+    const builtin = type && (BUILTIN_TYPES as readonly string[]).includes(type) ? type : null;
+    const dbType = type && !builtin ? typeDocs.get(type) : undefined;
+    const facets = { length: num(row.length), precision: num(row.precision), scale: num(row.scale) };
+    const native =
+      typeof row.nativeType === "string"
+        ? row.nativeType
+        : builtin
+          ? nativeType(dialect, builtin, { length: facets.length ?? undefined, precision: facets.precision ?? undefined, scale: facets.scale ?? undefined })
+          : dbType
+            ? typeNativeName(dbType)
+            : "";
+    return { type: builtin, dbTypeId: dbType ? String(dbType.id) : null, ...facets, nativeType: native };
+  };
+  const forDialect = (map: unknown): string | null => {
+    const texts = (map as Record<string, string> | undefined) ?? {};
+    return texts[dialect] ?? texts["*"] ?? null;
+  };
+  const routines: RoutineView[] = own("routine")
+    .map((d) => {
+      const returns = d.returns as Json | undefined;
+      const body = forDialect(d.body);
+      return {
+        id: String(d.id),
+        name: String(d.name ?? ""),
+        schema: schemaOf(d),
+        routineKind: d.routineKind === "procedure" ? ("procedure" as const) : ("function" as const),
+        parameters: arr(d.parameters).map((p) => ({
+          name: String(p.name ?? ""),
+          ...slot(p),
+          mode: (p.mode === "out" || p.mode === "inout" ? p.mode : "in") as RoutineView["parameters"][number]["mode"],
+          default: typeof p.default === "string" ? p.default : null,
+        })),
+        returns: returns
+          ? Array.isArray(returns.table)
+            ? {
+                type: null,
+                dbTypeId: null,
+                length: null,
+                precision: null,
+                scale: null,
+                nativeType: "",
+                table: arr(returns.table).map((c) => ({ name: String(c.name ?? ""), ...slot(c), nullable: c.nullable !== false })),
+              }
+            : { ...slot(returns), table: null }
+          : null,
+        language: typeof d.language === "string" ? d.language : dialect === "postgresql" ? "plpgsql" : dialect === "sqlserver" ? "tsql" : "sql",
+        body: body ?? "",
+        hasBody: body !== null,
+        deterministic: d.deterministic === true,
+        security: (d.security === "definer" ? "definer" : "invoker") as RoutineView["security"],
+        dependsOn: ((d.dependsOn as string[] | undefined) ?? []).filter((x) => typeof x === "string"),
+        comment: typeof d.comment === "string" ? d.comment : null,
+        ...annotationsOf(d, stereotypes),
+      };
+    })
+    .sort(byName);
+  const types: DatabaseTypeView[] = [...typeDocs.values()]
+    .map((d) => {
+      const typeKind = (["domain", "composite", "enum", "range"].includes(String(d.typeKind)) ? d.typeKind : "domain") as DatabaseTypeView["typeKind"];
+      const base = typeof d.base === "string" ? d.base : null;
+      const subtype = typeof d.subtype === "string" ? d.subtype : null;
+      const fields = arr(d.fields).map((f) => ({ name: String(f.name ?? ""), ...slot(f) }));
+      // A dialect creates what it has: every kind on postgresql, an alias type (a domain) on sqlserver, nothing elsewhere.
+      const isCreated = dialect === "postgresql" || (dialect === "sqlserver" && typeKind === "domain");
+      return {
+        id: String(d.id),
+        name: String(d.name ?? ""),
+        schema: schemaOf(d),
+        typeKind,
+        base,
+        baseNativeType: base
+          ? nativeType(dialect, base, { length: num(d.length) ?? undefined, precision: num(d.precision) ?? undefined, scale: num(d.scale) ?? undefined })
+          : null,
+        length: num(d.length),
+        precision: num(d.precision),
+        scale: num(d.scale),
+        check: typeof d.check === "string" ? d.check : null,
+        members: ((d.members as string[] | undefined) ?? []).map(String),
+        fields,
+        subtype,
+        subtypeNativeType: subtype ? nativeType(dialect, subtype, {}) : null,
+        definition: forDialect(d.definition),
+        isCreated,
+        nativeName: typeNativeName(d),
+        dependsOn: [...new Set(fields.map((f) => f.dbTypeId).filter((x): x is string => !!x))],
+        comment: typeof d.comment === "string" ? d.comment : null,
+        ...annotationsOf(d, stereotypes),
+      };
+    })
+    .sort(byName);
+  const objects: SqlObjectView[] = own("sql-object")
+    .map((d) => {
+      const body = forDialect(d.body);
+      return {
+        id: String(d.id),
+        name: String(d.name ?? ""),
+        schema: schemaOf(d),
+        objectKind: String(d.objectKind ?? ""),
+        phase: (d.phase === "before" ? "before" : "after") as SqlObjectView["phase"],
+        dependsOn: ((d.dependsOn as string[] | undefined) ?? []).filter((x) => typeof x === "string"),
+        body: body ?? "",
+        hasBody: body !== null,
+        ...annotationsOf(d, stereotypes),
+      };
+    })
+    .sort(byName);
+  // Every schema the file declares or an object uses, by name; a declared one carries its entry's annotations.
   const entries = arr(db.schemas).filter((x) => typeof x.id === "string");
   const schemaNames = new Set<string>(entries.map((x) => String(x.name ?? "")));
-  for (const o of [...tables, ...views, ...sequences]) if (o.schema) schemaNames.add(o.schema);
+  for (const o of [...tables, ...views, ...sequences, ...routines, ...types, ...objects]) if (o.schema) schemaNames.add(o.schema);
   const schemas: SchemaView[] = [...schemaNames]
     .sort((x, y) => (x < y ? -1 : x > y ? 1 : 0))
     .map((name) => {
@@ -807,6 +933,9 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
     tables,
     views,
     sequences,
+    routines,
+    types,
+    objects,
     schemas,
     quoting: (typeof db.quoting === "string" ? db.quoting : "reserved") as DatabaseView["quoting"],
     maxIdentifierLength: typeof db.maxIdentifierLength === "number" ? db.maxIdentifierLength : (limits[dialect] ?? null),
@@ -819,6 +948,8 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
     ...annotationsOf(db, stereotypes),
   };
 }
+
+const qualifiedName = (schema: string | null, name: string) => (schema ? `${schema}.${name}` : name);
 
 function stripNull(o: Json): Json {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null && v !== undefined));

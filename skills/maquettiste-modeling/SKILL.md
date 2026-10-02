@@ -22,6 +22,9 @@ an id, never a name. The schemas are in `.maquettiste/.schema/v1/` and each file
 | seeds/<target>/ | rows of an entity, relation or reference type | one row per line with its own id; owned by its target and deleted with it |
 | locales/<locale>/ | translation shards (`kind: "locale-shard"`) keyed by id | only display name, plural name, description, and a row's label and description |
 | databases/<db>/ | database, tables (overlays), views, sequences | tables from entities store only overrides |
+| databases/<db>/routines/ | routine (`kind: "routine"`): a function or procedure, `parameters` typed by a built-in type or a database type id, `returns`, a `body` per dialect | `dependsOn` orders it; routines are not overloaded |
+| databases/<db>/types/ | database type (`kind: "database-type"`): a domain, composite, enum or range the database owns | a column uses it by naming its id or name in `nativeType` |
+| databases/<db>/objects/ | SQL object (`kind: "sql-object"`): a trigger, grant, extension or anything else, statements per dialect | `phase` before or after the tables; `dependsOn` orders it |
 | mappings/ | entity-to-table bindings that conventions cannot express | |
 | processes/ | process: a statechart (states, transitions, events, guards, actions, invokes, gates, context) | `use` is `lifecycle` (a `subject` entity, optionally a bound enum attribute) or `orchestration` |
 | actors/ | actor: `type` person, role or external system | raises events, signs gates, completes human tasks; not in a domain |
@@ -57,6 +60,7 @@ clobber a concurrent edit or leave a dangling id.
    - Renaming an attribute or element is a plain save of the new `name`: references are ids, so nothing else changes
      (an element rename also moves its file).
 4. Check: a successful save already returns `diagnostics`; `validate` (optionally scoped by `elementIds`) checks the model.
+   Custom property schemas (`extensions/<name>.json`) and script rules (`extensions/rules/<name>.js`, findings `x/<id>`, run by `validate`) are files: `list_extension_files`, `read_extension_file`, `write_extension_file` (with `expectedHash`, `new` to create; a rule's syntax error comes back at once), `move_extension_file`, `delete_extension_file`.
 5. Reference data and translations: `reference_type_usage` lists the attributes that use a reference type and its storage
    per database; `create_seed` gives a reference type that has none its empty seed; `export_seed_csv` / `import_seed_csv` (a dry run unless `apply` is true, then `expectedHash`) move rows as
    CSV; `localization_status`, `get_translations` and `set_translations` (with the `shardHash` values you read as

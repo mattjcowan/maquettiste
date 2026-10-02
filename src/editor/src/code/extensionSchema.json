@@ -1,0 +1,108 @@
+{
+  "title": "Extension schema",
+  "description": "extensions/*.json: custom properties for element kinds or stereotypes.",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "name",
+    "description",
+    "appliesTo",
+    "properties",
+    "required"
+  ],
+  "properties": {
+    "$schema": {
+      "description": "Relative path to this file's schema; rewritten by the canonical writer.",
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "appliesTo": {
+      "type": "object",
+      "x-order": [
+        "kinds",
+        "stereotypes"
+      ],
+      "properties": {
+        "kinds": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "package",
+              "entity",
+              "value-object",
+              "scalar-type",
+              "enum",
+              "relation",
+              "database",
+              "table",
+              "view",
+              "sequence",
+              "routine",
+              "database-type",
+              "sql-object",
+              "mapping",
+              "diagram",
+              "tag-vocabulary",
+              "category-tree",
+              "stereotype",
+              "reference-type",
+              "seed",
+              "attribute",
+              "enum-member",
+              "column",
+              "process",
+              "actor",
+              "scenario",
+              "state",
+              "transition",
+              "event"
+            ]
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "stereotypes": {
+          "type": "array",
+          "items": {
+            "description": "A kebab-case key (stereotype keys).",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+          },
+          "uniqueItems": true,
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
+    "properties": {
+      "description": "A JSON Schema properties object.",
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "object",
+          "boolean"
+        ]
+      }
+    },
+    "required": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": []
+    }
+  },
+  "required": [
+    "name",
+    "appliesTo",
+    "properties"
+  ],
+  "additionalProperties": false
+}

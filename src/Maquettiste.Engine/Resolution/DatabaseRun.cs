@@ -110,6 +110,7 @@ internal sealed partial class DatabaseRun
 
     private void CollectPhysicalFiles()
     {
+        CollectDatabaseObjects();
         foreach (var sequence in _run.Model.All<Sequence>().Where(s => s.Database == _db.Id).OrderBy(s => s.Id, StringComparer.Ordinal))
         {
             var r = new RSequence
@@ -207,7 +208,7 @@ internal sealed partial class DatabaseRun
             };
             ApplyColumnFile(t, c, column);
             ApplyFacetDefaults(c);
-            c.NativeType = column.NativeType ?? NativeType(c.Type, c.Length, c.Precision, c.Scale);
+            ApplyNativeType(t, c, column.NativeType, () => NativeType(c.Type, c.Length, c.Precision, c.Scale));
             t.Columns.Add(c);
             t.ByKey.TryAdd(column.Id, c);
             _run.Register(c);

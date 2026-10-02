@@ -3,26 +3,30 @@
 // labels, the checks the New dialogs run and the documents they create. Pure: NewDatabaseObjectDialog.tsx renders the dialogs
 // and saves the result through the create endpoint as one undo step.
 //
-// A schema is a database operation (add-schema, DatabaseSchemas.tsx); a table, a view and a sequence are element files of the
-// database (schemas/v1/table.json, view.json, sequence.json). Routines, database types and SQL objects join this list when
-// the engine has their kinds: each needs a kind here, a label, a check and a document builder, and the menus follow.
-import { IDENTIFIER } from "@/model/model";
+// A schema is a database operation (add-schema, DatabaseSchemas.tsx); a table, a view, a sequence, a routine, a database type
+// and a SQL object are element files of the database (schemas/v1/table.json, view.json, sequence.json, routine.json,
+// database-type.json, sql-object.json). Each has a kind here, a label, a check and a document builder, and the menus follow.
+import { BUILTIN_TYPES, IDENTIFIER } from "@/model/model";
+import type { BuiltinType } from "@/api/types";
 
 /** What a database's New menu creates, in menu order. */
-export type DatabaseObjectKind = "schema" | "table" | "view" | "sequence";
+export type DatabaseObjectKind = "schema" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object";
 
 /** The New actions of a database, in menu order. */
-export const DATABASE_CREATE: readonly DatabaseObjectKind[] = ["schema", "table", "view", "sequence"];
+export const DATABASE_CREATE: readonly DatabaseObjectKind[] = ["schema", "table", "view", "sequence", "routine", "database-type", "sql-object"];
 
 /** The element kinds among them (a schema is an entry of the database file). */
 export type DatabaseElementKind = Exclude<DatabaseObjectKind, "schema">;
-export const DATABASE_ELEMENT_KINDS: readonly DatabaseElementKind[] = ["table", "view", "sequence"];
+export const DATABASE_ELEMENT_KINDS: readonly DatabaseElementKind[] = ["table", "view", "sequence", "routine", "database-type", "sql-object"];
 
 export const DATABASE_CREATE_LABELS: Record<DatabaseObjectKind, string> = {
   schema: "New schema…",
   table: "New table…",
   view: "New view…",
   sequence: "New sequence…",
+  routine: "New routine…",
+  "database-type": "New database type…",
+  "sql-object": "New SQL object…",
 };
 
 /** The dialog titles (the labels without the ellipsis). */
@@ -31,11 +35,14 @@ export const DATABASE_CREATE_TITLES: Record<DatabaseObjectKind, string> = {
   table: "New table",
   view: "New view",
   sequence: "New sequence",
+  routine: "New routine",
+  "database-type": "New database type",
+  "sql-object": "New SQL object",
 };
 
 /** The kind folders of the Databases explorer whose rows offer a New action, by the kind they list. */
 export function databaseFolderCreate(kind: string | undefined): DatabaseElementKind | null {
-  return kind === "table" || kind === "view" || kind === "sequence" ? kind : null;
+  return kind && (DATABASE_ELEMENT_KINDS as readonly string[]).includes(kind) ? (kind as DatabaseElementKind) : null;
 }
 
 /** The dialect key a view body may use for every dialect. */
@@ -48,6 +55,49 @@ export type SequenceType = (typeof SEQUENCE_TYPES)[number];
 export function viewBodyTemplate(dialect: string): string {
   return dialect === "oracle" ? "select 1 as id from dual" : "select 1 as id";
 }
+
+export const ROUTINE_KINDS = ["function", "procedure"] as const;
+export type RoutineKind = (typeof ROUTINE_KINDS)[number];
+
+/** A starting body for a new routine: what follows its signature (a function returns 0, a procedure does nothing). */
+export function routineBodyTemplate(dialect: string, routineKind: RoutineKind): string {
+  if (dialect === "sqlserver") return routineKind === "function" ? "begin\n  return 0;\nend" : "begin\n  set nocount on;\nend";
+  return routineKind === "function" ? "begin\n  return 0;\nend" : "begin\n  null;\nend";
+}
+
+export const TYPE_KINDS = ["domain", "composite", "enum", "range"] as const;
+export type TypeKind = (typeof TYPE_KINDS)[number];
+
+/** What each kind of database type is, as the pickers explain it. */
+export const TYPE_KIND_LABELS: Record<TypeKind, string> = {
+  domain: "Domain (a built-in type with a constraint)",
+  composite: "Composite (named fields)",
+  enum: "Enum (a list of labels)",
+  range: "Range (over a subtype)",
+};
+
+/** The kinds of SQL object the object kind field suggests; any text is allowed. */
+export const OBJECT_KIND_SUGGESTIONS = ["trigger", "grant", "extension", "index", "policy", "function", "statement"] as const;
+
+export const OBJECT_PHASES = ["before", "after"] as const;
+export type ObjectPhase = (typeof OBJECT_PHASES)[number];
+export const OBJECT_PHASE_LABELS: Record<ObjectPhase, string> = {
+  before: "Before the types and tables",
+  after: "After the routines and views",
+};
+
+/** A starting body for a new SQL object: a comment the user replaces with the statements. */
+export const SQL_OBJECT_BODY_TEMPLATE = "-- The statements that create the object, run as written.";
+
+/** The members of an enum database type typed as one line: comma-separated labels, trimmed, empty ones left out. */
+export function parseMembers(text: string): string[] {
+  return text
+    .split(",")
+    .map((m) => m.trim())
+    .filter(Boolean);
+}
+
+export const isBuiltinType = (value: unknown): value is BuiltinType => typeof value === "string" && (BUILTIN_TYPES as readonly string[]).includes(value);
 
 /** What a New dialog collects. Text fields stay text until the document is built. */
 export interface DatabaseObjectInput {
@@ -65,22 +115,45 @@ export interface DatabaseObjectInput {
   type?: SequenceType;
   start?: string;
   increment?: string;
+  /** Routine: function or procedure, and a function's result type ("" returns nothing). The body is `dialect` and `body`. */
+  routineKind?: RoutineKind;
+  returns?: BuiltinType | "";
+  /** Database type: its kind, a domain's base, a range's subtype, an enum's members (comma-separated). */
+  typeKind?: TypeKind;
+  base?: BuiltinType;
+  subtype?: BuiltinType;
+  members?: string;
+  /** SQL object: what it is (free text) and when it runs. The statements are `dialect` and `body`. */
+  objectKind?: string;
+  phase?: ObjectPhase;
 }
 
-/** A name already used in the database: a table, a view or a sequence, by schema name (null: the default schema). */
+/** A name already used in the database, by schema name (null: the default schema) and, when known, the element's kind. */
 export interface TakenName {
   schema: string | null;
   name: string;
+  kind?: string;
 }
 
-export type InputProblems = Partial<Record<"name" | "body" | "start" | "increment", string>>;
+export type InputProblems = Partial<Record<"name" | "body" | "start" | "increment" | "members" | "objectKind", string>>;
+
+/** Which names a new element must not repeat: tables, views, sequences and database types share one set of names (relations
+ * and types are named alike in a schema); routines and SQL objects each have their own. */
+const nameGroup = (kind: string | undefined): string => (kind === "routine" ? "routine" : kind === "sql-object" ? "sql-object" : "relation");
+
+const CLASH_WORDS: Record<string, string> = {
+  relation: "a table, view or sequence",
+  "database-type": "a database type",
+  routine: "a routine",
+  "sql-object": "a SQL object",
+};
 
 const WHOLE = /^-?\d+$/;
 
 /**
  * Why the dialog cannot create the element yet, per field (empty when it can). The name follows the identifier rule and is
- * not already a table, view or sequence of the same schema (case-insensitively, as the databases compare names); `schemaName`
- * is the chosen schema's name, null for the default schema, and `defaultSchema` the default's name.
+ * not already used in the same schema by an element of the same name group (case-insensitively, as the databases compare
+ * names); `schemaName` is the chosen schema's name, null for the default schema, and `defaultSchema` the default's name.
  */
 export function databaseObjectProblems(
   input: DatabaseObjectInput,
@@ -94,10 +167,25 @@ export function databaseObjectProblems(
   else if (!IDENTIFIER.test(name)) out.name = "Use letters, digits and underscores, not starting with a digit.";
   else {
     const schema = (schemaName ?? defaultSchema ?? "").toLowerCase();
-    const clash = taken.find((t) => t.name.toLowerCase() === name.toLowerCase() && (t.schema ?? defaultSchema ?? "").toLowerCase() === schema);
-    if (clash) out.name = `${clash.name} is already a table, view or sequence in ${schemaName ?? defaultSchema ?? "this database"}.`;
+    const group = nameGroup(input.kind);
+    const clash = taken.find(
+      (t) => nameGroup(t.kind) === group && t.name.toLowerCase() === name.toLowerCase() && (t.schema ?? defaultSchema ?? "").toLowerCase() === schema,
+    );
+    if (clash)
+      out.name = `${clash.name} is already ${CLASH_WORDS[clash.kind === "database-type" ? "database-type" : group]} in ${schemaName ?? defaultSchema ?? "this database"}.`;
   }
   if (input.kind === "view" && !(input.body ?? "").trim()) out.body = "Enter the view's SQL body.";
+  if (input.kind === "routine" && !(input.body ?? "").trim()) out.body = "Enter the routine's body.";
+  if (input.kind === "sql-object") {
+    if (!(input.body ?? "").trim()) out.body = "Enter the object's SQL statements.";
+    if (!(input.objectKind ?? "").trim()) out.objectKind = "Say what the object is (trigger, grant, extension…).";
+  }
+  if (input.kind === "database-type" && (input.typeKind ?? "domain") === "enum" && !parseMembers(input.members ?? "").length)
+    out.members = "Enter at least one label.";
+  else if (input.kind === "database-type" && (input.typeKind ?? "domain") === "enum") {
+    const members = parseMembers(input.members ?? "");
+    if (new Set(members).size !== members.length) out.members = "Each label appears once.";
+  }
   if (input.kind === "sequence") {
     const start = (input.start ?? "").trim();
     const increment = (input.increment ?? "").trim();
@@ -137,5 +225,42 @@ export function buildDatabaseObject(input: DatabaseObjectInput, newId: () => str
         ...(increment !== "" && Number(increment) !== 1 ? { increment: Number(increment) } : {}),
       };
     }
+    case "routine": {
+      const routineKind = input.routineKind ?? "function";
+      return {
+        ...head,
+        ...(routineKind === "procedure" ? { routineKind } : {}),
+        ...(routineKind === "function" && input.returns ? { returns: { type: input.returns } } : {}),
+        body: { [input.dialect || ANY_DIALECT]: input.body ?? "" },
+      };
+    }
+    case "database-type": {
+      const typeKind = input.typeKind ?? "domain";
+      return { ...head, typeKind, ...typeKindDefaults(typeKind, input) };
+    }
+    case "sql-object":
+      return {
+        ...head,
+        objectKind: (input.objectKind ?? "").trim(),
+        ...(input.phase === "before" ? { phase: "before" } : {}),
+        body: { [input.dialect || ANY_DIALECT]: input.body ?? "" },
+      };
+  }
+}
+
+/** The members a database type of a kind starts with, so there is something to create: a domain's base (string), a range's
+ * subtype (int32), an enum's members, a composite's first field. */
+export function typeKindDefaults(typeKind: TypeKind, input: Pick<DatabaseObjectInput, "base" | "subtype" | "members"> = {}): Json {
+  switch (typeKind) {
+    case "domain":
+      return { base: input.base ?? "string" };
+    case "range":
+      return { subtype: input.subtype ?? "int32" };
+    case "enum": {
+      const members = parseMembers(input.members ?? "");
+      return { members: members.length ? members : ["value_1"] };
+    }
+    case "composite":
+      return { fields: [{ name: "value", type: "string" }] };
   }
 }

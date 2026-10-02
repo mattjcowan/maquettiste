@@ -33,6 +33,13 @@ if diff && diff.to_revision >= 1
         emit(statements, view_drop(db, oc))
       end
     end
+    # Routines that changed or left the model go too (one may read a column that changes); changed SQL objects are flagged.
+    for rc in diff.routines
+      if rc.kind != "added"
+        routine_drop(db, rc, statements)
+      end
+    end
+    object_drop_notes(diff, statements)
     creates = false
     for tc in diff.tables
       if tc.kind == "added"
@@ -45,9 +52,38 @@ if diff && diff.to_revision >= 1
         creates = true
       end
     end
-    if creates
+    object_creates = false
+    for c in diff.types
+      if c.kind == "added"
+        object_creates = true
+      end
+    end
+    for c in diff.routines
+      if c.kind == "added"
+        object_creates = true
+      end
+    end
+    for c in diff.objects
+      if c.kind == "added"
+        object_creates = true
+      end
+    end
+    if creates || object_creates
       for s in schemas_to_create(db)
         emit(statements, schema_sql(s, db))
+      end
+    end
+    # SQL objects run before the tables (an extension), then database types in dependency order, before any column uses them. The
+    # database's lists are read only when the diff names one of their objects, so a migration without them reads what it read before.
+    if diff.objects.size > 0
+      object_change_statements(db, diff, "before", statements)
+    end
+    if diff.types.size > 0
+      for t in in_dependency_order(db.types)
+        tc = find_change(diff.types, t.id)
+        if tc
+          type_change_statements(db, t, tc, statements)
+        end
       end
     end
     for oc in diff.sequences
@@ -127,8 +163,28 @@ if diff && diff.to_revision >= 1
         end
       end
     end
+    # New and changed routines with the new and changed views, in dependency order (see routines_and_views in _objects.scriban).
+    created = []
+    if diff.routines.size > 0
+      for r in db.routines
+        rc = find_change(diff.routines, r.id)
+        if rc
+          created[created.size] = r
+        end
+      end
+    end
+    if created.size > 0
+      for oc in diff.views
+        if oc.kind == "added" || oc.kind == "altered"
+          created[created.size] = find_named(db.views, oc.new_name ?? oc.old_name)
+        end
+      end
+      for x in in_dependency_order(created)
+        emit(statements, own_batch(x.kind == "view" ? view_sql(x, db) : routine_sql(x, db), db))
+      end
+    end
     for oc in diff.views
-      if oc.kind == "added" || oc.kind == "altered"
+      if (oc.kind == "added" || oc.kind == "altered") && created.size == 0
         v = find_named(db.views, oc.new_name ?? oc.old_name)
         emit(statements, go != "" ? go + "\n" + view_sql(v, db) + "\n" + go : view_sql(v, db))
       else if oc.kind == "renamed"
@@ -141,9 +197,18 @@ if diff && diff.to_revision >= 1
         end
       end
     end
+    if diff.objects.size > 0
+      object_change_statements(db, diff, "after", statements)
+    end
     for oc in diff.sequences
       if oc.kind != "added"
         sequence_statements(db, oc, statements)
+      end
+    end
+    # Database types that left the model, once no table uses them.
+    for tc in diff.types
+      if tc.kind == "dropped"
+        type_drop(db, tc, statements)
       end
     end
 -}}

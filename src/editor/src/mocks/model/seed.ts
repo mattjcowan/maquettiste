@@ -5,6 +5,8 @@
 import type { Seed, SeedFile } from "./store";
 import { bindLifecycles, processFiles } from "./processSeed";
 import { processDiagramFiles } from "./processDiagramSeed";
+import { MOCK_RULE } from "./extensions";
+import { databaseObjectFiles } from "./databaseObjectSeed";
 
 const fixture = import.meta.glob("../fixture/billing/**/*.{json,md}", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 const packFiles = import.meta.glob("../fixture/packs/*/pack.json", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
@@ -23,6 +25,10 @@ export function billingSeed(): Seed {
   if (files.length === 0) throw new Error("The billing fixture is missing from src/mocks/fixture; run `npm run copy-fixture`.");
   // The processes, actors and scenarios of the mock (processSeed.ts), which the shared billing fixture does not hold.
   files.push(...processFiles(), ...processDiagramFiles());
+  // Routines, database types and a SQL object of database main (databaseObjectSeed.ts), which the shared fixture does not hold.
+  files.push(...databaseObjectFiles());
+  // One script rule beside the fixture's custom property schema (the Extensions tab), which the shared fixture does not hold.
+  files.push({ path: "extensions/rules/naming.js", text: MOCK_RULE });
   return { files: bindLifecycles(files), packs: packs() };
 }
 

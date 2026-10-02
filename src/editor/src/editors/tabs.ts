@@ -19,6 +19,9 @@ export const EDITOR_KINDS = [
   "table",
   "view",
   "sequence",
+  "routine",
+  "database-type",
+  "sql-object",
 ] as const;
 export type EditorKind = (typeof EDITOR_KINDS)[number];
 

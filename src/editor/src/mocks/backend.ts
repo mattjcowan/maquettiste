@@ -12,6 +12,7 @@ import { MockGeneration } from "./model/generation";
 import { MockPacks } from "./model/packs";
 import { MockJobQueue, type JobClock } from "./model/jobs";
 import { MockLocalization } from "./model/localization";
+import { MockExtensions } from "./model/extensions";
 import type { Seed } from "./model/store";
 import { billingSeed, emptySeed, mediumSeed } from "./model/seed";
 import { withDrift, withLifecycleProblems } from "./model/processSeed";
@@ -51,6 +52,8 @@ export class MockBackend {
   readonly jobs: MockJobQueue;
   /** Translations, seed CSV and reference type usage; locales are declared with the `locales` scenario. */
   readonly localization: MockLocalization;
+  /** The extensions folder: custom property schemas and script rules, whose findings join validation. */
+  readonly extensions: MockExtensions;
   readonly scenarios: Set<Scenario>;
   /** Whether the model came from `options.seed` (the large mock), so no engine recording applies. */
   readonly seeded: boolean;
@@ -97,7 +100,8 @@ export class MockBackend {
     this.packs = new MockPacks(this.model);
     this.packAuthoring = new MockPackAuthoring(this.model, this.generation, (pack) => this.packs.registrations(pack));
     this.localization = new MockLocalization(this.model, this.scenarios.has("locales"), newId);
-    this.model.modelDiagnostics = (rules) => this.localization.diagnostics(rules);
+    this.extensions = new MockExtensions(this.model, seed.files);
+    this.model.modelDiagnostics = (rules) => [...this.localization.diagnostics(rules), ...this.extensions.diagnostics()];
     this.jobs = new MockJobQueue(
       this.generation,
       this.clock,

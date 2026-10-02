@@ -136,6 +136,17 @@ export type ScenarioStatus = { passed: true } | { passed: false; step: number };
 /** The E5c addendum `enumId`, read when present. */
 type Summary = TableSummary & { enumId?: string | null };
 
+/** What a schema of the Databases explorer holds, in folder order: tables, then the database objects with files of their own. */
+const OBJECT_KINDS = ["view", "sequence", "routine", "database-type", "sql-object"] as const;
+const BUCKET_KINDS = ["table", ...OBJECT_KINDS] as const;
+type BucketKind = (typeof BUCKET_KINDS)[number];
+type Bucket = Record<BucketKind, TreeNode[]>;
+const emptyBucket = (): Bucket => ({ table: [], view: [], sequence: [], routine: [], "database-type": [], "sql-object": [] });
+const emptyCounts = (): Record<BucketKind, number> => ({ table: 0, view: 0, sequence: 0, routine: 0, "database-type": 0, "sql-object": 0 });
+/** The list of a schema a physical row goes in, or undefined for a kind a schema does not hold (a mapping). */
+const bucketList = (b: Bucket, kind: string): TreeNode[] | undefined =>
+  (BUCKET_KINDS as readonly string[]).includes(kind) ? b[kind as BucketKind] : undefined;
+
 export interface DatabaseInfo {
   dialect?: string | null;
   version?: string | null;
@@ -1160,11 +1171,10 @@ export function buildForest(input: TreeInput): Forest {
       groupNodes,
     );
   };
-  const schemaFolders = (key: string, s: { tables: TreeNode[]; views: TreeNode[]; sequences: TreeNode[] }) => {
+  const schemaFolders = (key: string, s: Bucket) => {
     const out: TreeNode[] = [];
-    if (s.tables.length) out.push(tableFolder(`${key}/table`, s.tables, kindFolder("table")!));
-    if (s.views.length) out.push(folderNode(`${key}/view`, "databases", kindFolder("view")!, s.views));
-    if (s.sequences.length) out.push(folderNode(`${key}/sequence`, "databases", kindFolder("sequence")!, s.sequences));
+    if (s.table.length) out.push(tableFolder(`${key}/table`, s.table, kindFolder("table")!));
+    for (const kind of OBJECT_KINDS) if (s[kind].length) out.push(folderNode(`${key}/${kind}`, "databases", kindFolder(kind)!, s[kind]));
     return out;
   };
   let tableTotal = 0;
@@ -1172,11 +1182,10 @@ export function buildForest(input: TreeInput): Forest {
     const info = input.databases?.get(db.id);
     const loaded = input.tables?.get(db.id);
     const own = physicalOf.get(db.id) ?? [];
-    type Bucket = { tables: TreeNode[]; views: TreeNode[]; sequences: TreeNode[] };
     const schemas = new Map<string, Bucket>();
     const bucket = (name: string) => {
       let b = schemas.get(name);
-      if (!b) schemas.set(name, (b = { tables: [], views: [], sequences: [] }));
+      if (!b) schemas.set(name, (b = emptyBucket()));
       return b;
     };
     // Declared schemas show even while empty, so a new schema appears at once (erratum E26).
@@ -1213,7 +1222,7 @@ export function buildForest(input: TreeInput): Forest {
         }
         if (t.isJunction && t.relationId) related.junctionOf.set(t.relationId, key);
         if (t.enumId) push(related.lookupOf, t.enumId, key);
-        bucket(t.schema ?? "").tables.push(node);
+        bucket(t.schema ?? "").table.push(node);
       }
     }
     const fallbackSchema = () => info?.defaultSchema ?? (schemas.size === 1 ? [...schemas.keys()][0] : "");
@@ -1237,8 +1246,7 @@ export function buildForest(input: TreeInput): Forest {
         continue;
       }
       const node = elementNode(r, "databases");
-      const b = bucket(fallbackSchema());
-      (r.kind === "table" ? b.tables : r.kind === "view" ? b.views : b.sequences).push(node);
+      bucketList(bucket(fallbackSchema()), r.kind)?.push(node);
     }
     const schemaNodes = [...schemas.entries()]
       .sort(([a], [b]) => (a === b ? 0 : a === "" ? -1 : b === "" ? 1 : a < b ? -1 : 1))
@@ -1246,12 +1254,7 @@ export function buildForest(input: TreeInput): Forest {
         const key = `${db.id}/s:${name}`;
         // With several schemas the default one says so (its unqualified tables land there).
         const isDefault = schemas.size > 1 && !!name && name === info?.defaultSchema;
-        const phrase = [
-          isDefault ? "default" : "",
-          s.tables.length ? countOf(s.tables.length, "table") : "",
-          s.views.length ? countOf(s.views.length, "view") : "",
-          s.sequences.length ? countOf(s.sequences.length, "sequence") : "",
-        ]
+        const phrase = [isDefault ? "default" : "", ...BUCKET_KINDS.map((kind) => (s[kind].length ? countOf(s[kind].length, kind) : ""))]
           .filter(Boolean)
           .join(" · ");
         return attach(
@@ -1272,21 +1275,15 @@ export function buildForest(input: TreeInput): Forest {
       });
     const children: TreeNode[] = [...schemaNodes];
     if (mappings.length) children.push(folderNode(`${db.id}/mapping`, "databases", kindFolder("mapping")!, mappings));
-    let tables = 0;
-    let views = 0;
-    let sequences = 0;
-    for (const s of schemas.values()) {
-      tables += s.tables.length;
-      views += s.views.length;
-      sequences += s.sequences.length;
-    }
+    const totals = emptyCounts();
+    for (const s of schemas.values()) for (const kind of BUCKET_KINDS) totals[kind] += s[kind].length;
+    const tables = totals.table;
     tableTotal += tables;
     const label = labelOf(db);
     const dialect = [info?.dialect, info?.version].filter(Boolean).join(" ");
     const phrase = [
       countOf(tables, "table"),
-      views ? countOf(views, "view") : "",
-      sequences ? countOf(sequences, "sequence") : "",
+      ...OBJECT_KINDS.map((kind) => (totals[kind] ? countOf(totals[kind], kind) : "")),
       mappings.length ? countOf(mappings.length, "mapping") : "",
       loaded ? plural(new Set([...ownerTable.keys()]).size, "entity mapped", "entities mapped") : "",
     ]
@@ -1309,7 +1306,7 @@ export function buildForest(input: TreeInput): Forest {
     });
     if (!loaded) node.pending = true;
     if (loaded?.stale) node.stale = true;
-    if (loaded && !tables && !views && !sequences && !mappings.length) {
+    if (loaded && BUCKET_KINDS.every((kind) => !totals[kind]) && !mappings.length) {
       const hint: TreeNode = {
         key: `${db.id}/empty`,
         type: "item",
@@ -1328,15 +1325,15 @@ export function buildForest(input: TreeInput): Forest {
   });
   databaseNodes.sort(byLabel);
   if (loose.length) {
-    const s = { tables: [] as TreeNode[], views: [] as TreeNode[], sequences: [] as TreeNode[] };
+    const s = emptyBucket();
     const mappings: TreeNode[] = [];
     for (const r of loose) {
       const node = elementNode(r, "databases");
-      (r.kind === "table" ? s.tables : r.kind === "view" ? s.views : r.kind === "sequence" ? s.sequences : mappings).push(node);
+      (bucketList(s, r.kind) ?? mappings).push(node);
     }
     const children = schemaFolders(NOT_IN_DATABASE, s);
     if (mappings.length) children.push(folderNode(`${NOT_IN_DATABASE}/mapping`, "databases", kindFolder("mapping")!, mappings));
-    tableTotal += s.tables.length;
+    tableTotal += s.table.length;
     databaseNodes.push(
       attach(
         add({

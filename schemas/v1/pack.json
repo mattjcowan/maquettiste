@@ -100,7 +100,7 @@
           },
           "for": {
             "type": "string",
-            "pattern": "^(model|each (package|entity|relation|enum|value object|table|view|sequence|reference type|seed|locale|process|actor|scenario)|select [A-Za-z_][A-Za-z0-9_]*)$"
+            "pattern": "^(model|each (package|entity|relation|enum|value object|table|view|sequence|routine|database type|sql object|reference type|seed|locale|process|actor|scenario)|select [A-Za-z_][A-Za-z0-9_]*)$"
           },
           "where": {
             "title": "Unit filters",

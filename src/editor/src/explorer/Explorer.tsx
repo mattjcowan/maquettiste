@@ -1632,8 +1632,8 @@ function ExplorerHeader(props: {
   referenceFlat: boolean;
   onCollapseAll: () => void;
   onNew: (kind: CreateKind) => void;
-  /** The database the New menu's New schema…, New table…, New view… and New sequence… add to (a database row or a row inside
-   * one), if any. */
+  /** The database the New menu's database actions (New schema…, New table…, … New SQL object…) add to (a database row or a
+   * row inside one), if any. */
   database?: string | null;
   onNewInDatabase?: (kind: DatabaseObjectKind, database: string) => void;
   onExportSeeds: () => void;

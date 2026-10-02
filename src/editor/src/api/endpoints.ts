@@ -379,6 +379,52 @@ export async function movePackFile(pack: string, from: string, to: string, hash:
   return record<PackWriteResult>(data as PackWriteResult | undefined, error, response);
 }
 
+export type ExtensionFileList = Schemas["ExtensionFileList"];
+export type ExtensionFileInfo = Schemas["ExtensionFileInfo"];
+export type ExtensionFileContent = Schemas["ExtensionFileContent"];
+export type ExtensionWriteResult = Schemas["ExtensionWriteResult"];
+
+/** The model's extension files: custom property schemas (`<name>.json`) and script rules (`rules/<name>.js`). */
+export async function listExtensionFiles(): Promise<ExtensionFileList> {
+  const { data, response } = await api().GET("/api/extensions/files");
+  return must(data, response);
+}
+
+/** One extension file's text and hash (the If-Match of its next save). */
+export async function getExtensionFile(path: string): Promise<ExtensionFileContent> {
+  const { data, response } = await api().GET("/api/extensions/file", { params: { query: { path } } });
+  return must(data, response);
+}
+
+/**
+ * Writes one extension file with the hash read, or creates it (`hash` null). A schema that is not valid is 422 `invalid` with
+ * nothing written; a valid one comes back in canonical form (`text`). A rule script is saved and its syntax check returned.
+ */
+export async function saveExtensionFile(path: string, text: string, hash: string | null): Promise<ExtensionWriteResult> {
+  const { data, error, response } = await api().PUT("/api/extensions/file", {
+    params: { query: { path }, header: hash ? { "If-Match": `"${hash}"` } : { "If-None-Match": "*" } },
+    body: { text },
+  });
+  return record<ExtensionWriteResult>(data, error, response);
+}
+
+/** Deletes one extension file with the hash read. */
+export async function deleteExtensionFile(path: string, hash: string): Promise<ExtensionWriteResult> {
+  const { data, error, response } = await api().DELETE("/api/extensions/file", {
+    params: { query: { path }, header: { "If-Match": `"${hash}"` } },
+  });
+  return record<ExtensionWriteResult>(data as ExtensionWriteResult | undefined, error, response);
+}
+
+/** Renames one extension file within its kind. */
+export async function moveExtensionFile(from: string, to: string, hash: string): Promise<ExtensionWriteResult> {
+  const { data, error, response } = await api().POST("/api/extensions/file/move", {
+    params: { header: { "If-Match": `"${hash}"` } },
+    body: { from, to },
+  });
+  return record<ExtensionWriteResult>(data as ExtensionWriteResult | undefined, error, response);
+}
+
 export type TemplateContextResult = Schemas["TemplateContextResult"];
 
 /** Completion data for a unit's templates: variables, member lists, helpers and the pack's registrations. */

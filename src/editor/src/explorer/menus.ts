@@ -118,7 +118,7 @@ export function isRenamable(kind: string | undefined, home?: string): boolean {
 }
 
 function single(t: MenuTarget): MenuItem[] {
-  // A Tables, Views or Sequences folder of a database (or a table group in it): New table…, New view…, New sequence….
+  // A kind folder of a database (Tables, Views, Sequences, Routines, Types, Objects, or a table group in it): its New action.
   const inDatabase = t.home === "databases" && (t.type === "folder" || t.type === "group") ? databaseFolderCreate(t.kind) : null;
   if (inDatabase)
     return t.type === "folder"

@@ -207,6 +207,29 @@ public sealed class LifecycleTests
         Assert.True(File.Exists(repo.PathOf("src/Generated/Model/DapperTypeHandlers.g.cs")));
     }
 
+    [Fact]
+    public async Task Routines_database_types_and_sql_objects_migrate_by_drop_rename_and_todo()
+    {
+        using var repo = PackRepo.BillingDialects();
+        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+
+        // A new body for the SQL Server function, a new name for the PostgreSQL domain, and the SQLite trigger removed.
+        EditJson(repo, ".maquettiste/model/databases/reporting/routines/invoice-total.json", routine =>
+            routine["body"]!["sqlserver"] = "BEGIN\n    RETURN 0;\nEND");
+        EditJson(repo, ".maquettiste/model/databases/main/types/email-address.json", type => type["name"] = "contact_email");
+        File.Delete(repo.PathOf(".maquettiste/model/databases/local/objects/invoices-keep-number.json"));
+        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+
+        var sqlServer = repo.Read("db/reporting/migrations/0002.sql");
+        AssertBefore(sqlServer, "DROP FUNCTION IF EXISTS dbo.invoice_total;", "CREATE FUNCTION dbo.invoice_total(@invoice_id uniqueidentifier)");
+        Assert.Contains("    RETURN 0;", sqlServer, StringComparison.Ordinal);
+        var pg = repo.Read("db/main/migrations/0002.sql");
+        Assert.Contains("ALTER DOMAIN billing.email_address RENAME TO contact_email;", pg, StringComparison.Ordinal);
+        Assert.DoesNotContain("TODO: database type", pg, StringComparison.Ordinal); // a rename is not a change of definition
+        Assert.Contains("billing.contact_email", repo.Read("db/main/schema.sql"), StringComparison.Ordinal);
+        Assert.Contains("-- TODO: trigger invoices_keep_number left the model; drop it by hand.", repo.Read("db/local/migrations/0002.sql"), StringComparison.Ordinal);
+    }
+
     private static void EditJson(PackRepo repo, string path, Action<JsonNode> edit) => repo.EditJson(path, edit);
 
     private static void AssertBefore(string text, string first, string second)

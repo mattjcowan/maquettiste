@@ -36,12 +36,24 @@ describe("mock delete plan", () => {
     expect(deleted.changes!.changed.map((c) => c.kind)).toEqual(["diagram"]);
   });
 
-  it("deletes a database with its tables, views, sequences and mappings, and removes attributes a deleted type typed", () => {
+  it("deletes a database with its tables, views, sequences, routines, database types, SQL objects and mappings, and removes attributes a deleted type typed", () => {
     const model = new MockBackend().model;
     const plan = model.deletePlan([MAIN], "delete-dependents");
-    expect(plan.deletes.map((d) => d.kind).sort()).toEqual(["mapping", "mapping", "sequence", "table", "view"]);
+    expect(plan.deletes.map((d) => d.kind).sort()).toEqual([
+      "database-type",
+      "database-type",
+      "mapping",
+      "mapping",
+      "routine",
+      "routine",
+      "sequence",
+      "sql-object",
+      "table",
+      "view",
+    ]);
     expect(model.delete(MAIN, hash(model, MAIN), "delete-dependents").outcome).toBe("saved");
-    expect([...model.entries.values()].filter((e) => ["table", "view", "sequence", "mapping"].includes(String(e.json.kind)))).toEqual([]);
+    const physical = ["table", "view", "sequence", "routine", "database-type", "sql-object", "mapping"];
+    expect([...model.entries.values()].filter((e) => physical.includes(String(e.json.kind)))).toEqual([]);
 
     const money = model.deletePlan([MONEY], "delete-dependents");
     expect(money.deletes).toEqual([]);

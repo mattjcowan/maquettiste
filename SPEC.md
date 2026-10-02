@@ -440,7 +440,7 @@ The physical model is computed from the entity model by mapping conventions, the
 - Columns: name, logical type, optional native type override, nullable, default (literal or per-dialect SQL expression), identity or sequence, computed column expression, collation, comment.
 - Keys and constraints: primary key, unique constraints, foreign keys with on-delete and on-update actions, check constraints.
 - Indexes: columns with sort order, included columns, filtered or partial predicate, unique flag, method (btree, hash, gin, gist, clustered).
-- Views with per-dialect SQL bodies, and sequences. Stored routines and partitioning come later.
+- Views with per-dialect SQL bodies, and sequences. Stored routines and partitioning come later. *(Errata E40, docs/engineering/spec-errata.md.)* Routines (functions and procedures with typed parameters, a result and a body per dialect), database types (domains, composites, enumerations and ranges a database owns, which columns use as their native type) and SQL objects (named statements per dialect for triggers, grants, extensions and anything the model does not type yet, ordered by `dependsOn`) arrive with 0.5.3; partitioning still comes later.
 
 **Dialect maps**
 

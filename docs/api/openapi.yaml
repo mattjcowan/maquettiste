@@ -87,6 +87,8 @@ tags:
     description: Render one unit against one element with no writes (DDL preview).
   - name: packs
     description: Read and write template packs in place (generation-ui.md section 5.1).
+  - name: extensions
+    description: Read and write the model's extensions folder in place, the custom property schemas and the script rules.
   - name: presence
     description: Which element each open editor window has selected.
   - name: localization
@@ -832,8 +834,10 @@ paths:
         - `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards,
           actions, gates and invokes, actors by id.
         - `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and
-          indexes, views, sequences); `tables`: one `TableRecord` per table, for databases too large for one record.
-        - `all` (the default): every scope but `tables`.
+          indexes, views, sequences, routines, database types and SQL objects); `tables`: one `TableRecord` per table, for
+          databases too large for one record; `routines`, `database-types`, `sql-objects`: one `RoutineRecord`,
+          `DatabaseTypeRecord` or `SqlObjectRecord` per object.
+        - `all` (the default): every scope but `tables`, `routines`, `database-types` and `sql-objects`, which `databases` holds.
 
         `database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases and tables to
         it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it
@@ -849,7 +853,7 @@ paths:
           description: What to read.
           schema:
             type: string
-            enum: [all, packages, entities, relations, enums, value-objects, scalar-types, reference-types, seeds, processes, actors, scenarios, databases, tables]
+            enum: [all, packages, entities, relations, enums, value-objects, scalar-types, reference-types, seeds, processes, actors, scenarios, databases, tables, routines, database-types, sql-objects]
             default: all
         - name: database
           in: query
@@ -2741,8 +2745,8 @@ paths:
       description: |
         The physical model after conventions, mappings and table overlays are applied: every table (synthesized,
         designed or imported), its columns with the attribute each one stores, keys, foreign keys and indexes, and
-        every view, sequence and schema. The database, each schema, table, column, view and sequence carries the
-        annotations of its own file or entry (display and plural names, description, stereotypes, tags, category,
+        every view, sequence, routine, database type, SQL object and schema. The database, each schema, table, column,
+        view, sequence, routine, database type and SQL object carries the annotations of its own file or entry (display and plural names, description, stereotypes, tags, category,
         properties, generation hints); a synthesized table without an overlay, or a synthesized column without an
         overlay entry, has none. The Database workspace draws table diagrams from it and the Mappings workspace
         sets it beside the entity. A model with errors returns `view: null` and the diagnostics.
@@ -4747,6 +4751,205 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
 
+  /api/extensions/files:
+    get:
+      tags: [extensions]
+      operationId: listExtensionFiles
+      summary: The custom property schemas and script rules of the model
+      description: |
+        The files of `.maquettiste/extensions/`: the extension schemas (`<name>.json`, custom properties) first, then the script rules
+        (`rules/<name>.js`), each ordinal by path, with size, hash and what is wrong with the file on its own: an invalid schema
+        (MQ5004) or a rule script that does not load alone in the sandbox (MQ5002 for a syntax error or a registration without an
+        id, MQ5003 for a limit), with line and column. Rule findings (`x/<id>`) come from `POST /api/validate`.
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: ModelStore.ListExtensionFilesAsync()
+      responses:
+        '200':
+          description: The files.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionFileList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /api/extensions/file:
+    parameters:
+      - $ref: '#/components/parameters/ExtensionFilePath'
+    get:
+      tags: [extensions]
+      operationId: getExtensionFile
+      summary: One extension file's text with its ETag
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: ModelStore.ReadExtensionFileAsync(path)
+      responses:
+        '200':
+          description: The file.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionFileContent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+    put:
+      tags: [extensions]
+      operationId: putExtensionFile
+      summary: Write one extension file
+      description: |
+        `If-Match` with the hash read, or `If-None-Match: *` to create. The text must be UTF-8 with no NUL, at most 1 MB, and the
+        write goes through the engine's model write guard. A schema must be JSON that passes `extension.json`, else 422 with its
+        MQ5004 diagnostics and nothing written; it is written in canonical form and `text` returns what was written. A rule script is
+        written as sent, then loaded alone in the sandbox: a syntax error or a registration without an id comes back at once in
+        `diagnostics` (MQ5002 with line and column). The model is refreshed before the answer, `project.changed` is published and a
+        validation follows, so the rule's `x/<id>` findings reach the Problems panel. A path other than `<name>.json` or
+        `rules/<name>.js`, or one through a link, is 400.
+      x-maquettiste-role: maintainer
+      x-maquettiste-engine: ModelStore.WriteExtensionFileAsync(path, text, expectedHash)
+      parameters:
+        - name: If-Match
+          in: header
+          required: false
+          description: The hash read; required unless `If-None-Match` is `*`.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/IfNoneMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExtensionFileWrite'
+      responses:
+        '200':
+          description: Saved.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionWriteResult'
+        '201':
+          description: Created.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionWriteResult'
+        '409':
+          description: The file changed since it was read (or exists, on create); `hash` and `current` are the disk version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionWriteResult'
+        '422':
+          description: Not text, larger than 1 MB, or a schema that is not valid; nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionWriteResult'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+    delete:
+      tags: [extensions]
+      operationId: deleteExtensionFile
+      summary: Delete one extension file
+      x-maquettiste-role: maintainer
+      x-maquettiste-engine: ModelStore.DeleteExtensionFileAsync(path, expectedHash)
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionWriteResult'
+        '409':
+          description: The file changed since it was read.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionWriteResult'
+        '404':
+          description: No such file.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionWriteResult'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /api/extensions/file/move:
+    post:
+      tags: [extensions]
+      operationId: moveExtensionFile
+      summary: Rename one extension file within its kind
+      description: |
+        `If-Match` carries the source file's hash. The target must not exist and must be of the same kind (a schema stays a
+        `<name>.json`, a rule a `rules/<name>.js`), else 422. Nothing refers to an extension file by its path, so nothing else changes.
+      x-maquettiste-role: maintainer
+      x-maquettiste-engine: ModelStore.MoveExtensionFileAsync(move, expectedHash)
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExtensionFileMove'
+      responses:
+        '200':
+          description: Moved; the ETag is the moved file's hash.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionWriteResult'
+        '409':
+          description: The source changed since it was read.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionWriteResult'
+        '422':
+          description: The target exists or is of another kind.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionWriteResult'
+        '404':
+          description: No such source file.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionWriteResult'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
   /api/packs/{pack}/outputs:
     parameters:
       - $ref: '#/components/parameters/PackName'
@@ -5033,6 +5236,13 @@ components:
       schema:
         type: string
         pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
+    ExtensionFilePath:
+      name: path
+      in: query
+      required: true
+      description: A path under the model's `extensions/` folder, `<name>.json` or `rules/<name>.js`.
+      schema:
+        type: string
     PackFilePath:
       name: path
       in: query
@@ -6187,7 +6397,7 @@ components:
                   $ref: '#/components/schemas/StorageChoice'
     ElementKind:
       type: string
-      enum: [package, entity, value-object, scalar-type, enum, relation, database, table, view, sequence, mapping, diagram, tag-vocabulary, category-tree, stereotype, reference-type, seed, process, actor, scenario]
+      enum: [package, entity, value-object, scalar-type, enum, relation, database, table, view, sequence, routine, database-type, sql-object, mapping, diagram, tag-vocabulary, category-tree, stereotype, reference-type, seed, process, actor, scenario]
     ChangeSource:
       type: string
       enum: [editor, disk, cli, engine]
@@ -6234,7 +6444,7 @@ components:
           type: string
           description: The element's display name, when it has one (E5). Search matches it and the explorer shows it as the label.
         database:
-          description: The owning database's id, on table, view, sequence and mapping rows (E5).
+          description: The owning database's id, on table, view, sequence, routine, database-type, sql-object and mapping rows (E5).
           $ref: '#/components/schemas/Ulid'
         entity:
           description: The entity a mapping maps or a table overlay applies to, on mapping and table rows that have one (E5).
@@ -6335,6 +6545,9 @@ components:
         - $ref: '../../schemas/v1/table.json'
         - $ref: '../../schemas/v1/view.json'
         - $ref: '../../schemas/v1/sequence.json'
+        - $ref: '../../schemas/v1/routine.json'
+        - $ref: '../../schemas/v1/database-type.json'
+        - $ref: '../../schemas/v1/sql-object.json'
         - $ref: '../../schemas/v1/mapping.json'
         - $ref: '../../schemas/v1/diagram.json'
         - $ref: '../../schemas/v1/tag-vocabulary.json'
@@ -6994,6 +7207,9 @@ components:
             - $ref: '#/components/schemas/ScenarioRecord'
             - $ref: '#/components/schemas/DatabaseRecord'
             - $ref: '#/components/schemas/TableRecord'
+            - $ref: '#/components/schemas/RoutineRecord'
+            - $ref: '#/components/schemas/DatabaseTypeRecord'
+            - $ref: '#/components/schemas/SqlObjectRecord'
         next:
           type: [string, 'null']
           description: The cursor of the next page; null on the last one.
@@ -8218,6 +8434,57 @@ components:
           type: string
         table:
           $ref: '#/components/schemas/TableView'
+    RoutineRecord:
+      x-engine-record: Maquettiste.Engine.RoutineRecord
+      description: One routine of a database on its own (scope `routines`).
+      type: object
+      required: [id, kind, name, database, routine]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        kind:
+          type: string
+          const: routine
+        name:
+          type: string
+        database:
+          $ref: '#/components/schemas/Ulid'
+        routine:
+          $ref: '#/components/schemas/RoutineView'
+    DatabaseTypeRecord:
+      x-engine-record: Maquettiste.Engine.DatabaseTypeRecord
+      description: One database type of a database on its own (scope `database-types`).
+      type: object
+      required: [id, kind, name, database, databaseType]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        kind:
+          type: string
+          const: database-type
+        name:
+          type: string
+        database:
+          $ref: '#/components/schemas/Ulid'
+        databaseType:
+          $ref: '#/components/schemas/DatabaseTypeView'
+    SqlObjectRecord:
+      x-engine-record: Maquettiste.Engine.SqlObjectRecord
+      description: One SQL object of a database on its own (scope `sql-objects`).
+      type: object
+      required: [id, kind, name, database, sqlObject]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        kind:
+          type: string
+          const: sql-object
+        name:
+          type: string
+        database:
+          $ref: '#/components/schemas/Ulid'
+        sqlObject:
+          $ref: '#/components/schemas/SqlObjectView'
     # ---------------------------------------------------------------- databases (E1)
     DatabaseViewResult:
       x-engine-addition: E1
@@ -8341,9 +8608,24 @@ components:
           description: Every sequence, by schema then name, the ones the resolver creates for entity keys included.
           items:
             $ref: '#/components/schemas/SequenceView'
+        routines:
+          type: array
+          description: Every routine (function or procedure), by schema then name. Always sent by this engine; optional for older servers.
+          items:
+            $ref: '#/components/schemas/RoutineView'
+        types:
+          type: array
+          description: Every database type (domain, composite, enumeration or range), by schema then name. Always sent by this engine; optional for older servers.
+          items:
+            $ref: '#/components/schemas/DatabaseTypeView'
+        objects:
+          type: array
+          description: Every SQL object (a trigger, grant, extension or other object the model does not type), by schema then name. Always sent by this engine; optional for older servers.
+          items:
+            $ref: '#/components/schemas/SqlObjectView'
         schemas:
           type: array
-          description: Every schema, by name; the ones the file declares and the ones a table, view or sequence uses.
+          description: Every schema, by name; the ones the file declares and the ones a table, view, sequence, routine, database type or SQL object uses.
           items:
             $ref: '#/components/schemas/SchemaView'
         quoting:
@@ -8651,6 +8933,394 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/GenerationHintsView'
+    RoutineView:
+      x-engine-record: Maquettiste.Engine.RoutineView
+      description: |
+        One resolved routine (a stored function or procedure), with the annotations of its file (as `TableView`). Parameter and
+        result types are resolved to native types for the database's dialect, a database type of the same database included.
+      type: object
+      required: [id, name, schema, routineKind, parameters, returns, language, body, hasBody, deterministic, security, dependsOn, comment, displayName,
+        pluralName, description, stereotypes, tags, category, properties, generation]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        name:
+          type: string
+        schema:
+          type: [string, 'null']
+        routineKind:
+          type: string
+          enum: [function, procedure]
+        parameters:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoutineParameterView'
+        returns:
+          description: The result, or null when the routine returns nothing (a procedure).
+          oneOf:
+            - $ref: '#/components/schemas/RoutineReturnsView'
+            - type: 'null'
+        language:
+          type: string
+          description: The file's language, else the dialect's own (plpgsql on PostgreSQL, tsql on SQL Server, sql elsewhere).
+        body:
+          type: string
+          description: The body for the database's dialect (or the `*` body); empty when the file has none for it.
+        hasBody:
+          type: boolean
+        deterministic:
+          type: boolean
+        security:
+          type: string
+          enum: [invoker, definer]
+        dependsOn:
+          type: array
+          description: The ids (a synthesized table's key) of the tables, views, sequences, routines, database types and SQL objects its `dependsOn` names.
+          items:
+            type: string
+        comment:
+          type: [string, 'null']
+        displayName:
+          type: [string, 'null']
+        pluralName:
+          type: [string, 'null']
+        description:
+          type: [string, 'null']
+        stereotypes:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        category:
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+        properties:
+          type: object
+          additionalProperties: true
+        generation:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/GenerationHintsView'
+      example:
+        id: 01J92P0V2M0000000000000002
+        name: invoice_total
+        schema: dbo
+        routineKind: function
+        parameters:
+          - { name: invoice_id, type: uuid, dbTypeId: null, length: null, precision: null, scale: null, nativeType: uniqueidentifier, mode: in, default: null }
+        returns: { type: decimal, dbTypeId: null, length: null, precision: 18, scale: 2, nativeType: 'decimal(18,2)', table: null }
+        language: tsql
+        body: "BEGIN\n    RETURN (SELECT COALESCE(SUM(quantity * unit_price_amount), 0) FROM dbo.invoice_lines WHERE invoice_id = @invoice_id);\nEND"
+        hasBody: true
+        deterministic: false
+        security: invoker
+        dependsOn: []
+        comment: null
+        displayName: null
+        pluralName: null
+        description: The sum of an invoice's lines.
+        stereotypes: []
+        tags: []
+        category: null
+        properties: {}
+        generation: {}
+    RoutineParameterView:
+      x-engine-record: Maquettiste.Engine.RoutineParameterView
+      description: A parameter of a routine.
+      type: object
+      required: [name, type, dbTypeId, length, precision, scale, nativeType, mode, default]
+      properties:
+        name:
+          type: string
+        type:
+          type: [string, 'null']
+          description: The built-in type keyword, or null when a database type or a native type alone gives the type.
+        dbTypeId:
+          description: The id of the database type that types the parameter, or null.
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+        length:
+          type: [integer, 'null']
+        precision:
+          type: [integer, 'null']
+        scale:
+          type: [integer, 'null']
+        nativeType:
+          type: string
+          description: The file's native type, else the database type's native name, else the type map's.
+        mode:
+          type: string
+          enum: [in, out, inout]
+        default:
+          type: [string, 'null']
+          description: The default value as SQL text.
+    RoutineReturnsView:
+      x-engine-record: Maquettiste.Engine.RoutineReturnsView
+      description: The result of a routine, a single value or a table (`table` set).
+      type: object
+      required: [type, dbTypeId, length, precision, scale, nativeType, table]
+      properties:
+        type:
+          type: [string, 'null']
+          description: The built-in type keyword, or null when a database type or a native type alone gives the type.
+        dbTypeId:
+          description: The id of the database type of a single value, or null.
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+        length:
+          type: [integer, 'null']
+        precision:
+          type: [integer, 'null']
+        scale:
+          type: [integer, 'null']
+        nativeType:
+          type: string
+          description: The native type of a single value; empty for a table result.
+        table:
+          description: The columns of a table result, or null for a single value.
+          oneOf:
+            - type: array
+              items:
+                $ref: '#/components/schemas/RoutineColumnView'
+            - type: 'null'
+    RoutineColumnView:
+      x-engine-record: Maquettiste.Engine.RoutineColumnView
+      description: A column of a routine's table result.
+      type: object
+      required: [name, type, dbTypeId, length, precision, scale, nativeType, nullable]
+      properties:
+        name:
+          type: string
+        type:
+          type: [string, 'null']
+          description: The built-in type keyword, or null when a database type or a native type alone gives the type.
+        dbTypeId:
+          description: The id of the database type, or null.
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+        length:
+          type: [integer, 'null']
+        precision:
+          type: [integer, 'null']
+        scale:
+          type: [integer, 'null']
+        nativeType:
+          type: string
+        nullable:
+          type: boolean
+    DatabaseTypeView:
+      x-engine-record: Maquettiste.Engine.DatabaseTypeView
+      description: |
+        One resolved database type (domain, composite, enumeration or range), with the annotations of its file (as `TableView`).
+        `nativeName` is what a column or parameter typed by it writes: the file's `nativeName`; else, when the database creates the
+        type (`isCreated`: a definition for the dialect, any kind on PostgreSQL, a domain on SQL Server), its schema-qualified name;
+        else a domain's base or an enum's string (SQLite), or the empty string.
+      type: object
+      required: [id, name, schema, typeKind, base, baseNativeType, length, precision, scale, check, members, fields, subtype, subtypeNativeType, definition,
+        isCreated, nativeName, dependsOn, comment, displayName, pluralName, description, stereotypes, tags, category, properties, generation]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        name:
+          type: string
+        schema:
+          type: [string, 'null']
+        typeKind:
+          type: string
+          enum: [domain, composite, enum, range]
+        base:
+          type: [string, 'null']
+        baseNativeType:
+          type: [string, 'null']
+        length:
+          type: [integer, 'null']
+        precision:
+          type: [integer, 'null']
+        scale:
+          type: [integer, 'null']
+        check:
+          type: [string, 'null']
+        members:
+          type: array
+          items:
+            type: string
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/DatabaseTypeFieldView'
+        subtype:
+          type: [string, 'null']
+        subtypeNativeType:
+          type: [string, 'null']
+        definition:
+          type: [string, 'null']
+          description: The definition for the dialect (the text after the type's name), or null to build it from the structured form.
+        isCreated:
+          type: boolean
+        nativeName:
+          type: string
+        dependsOn:
+          type: array
+          description: The ids of the database types its fields use.
+          items:
+            type: string
+        comment:
+          type: [string, 'null']
+        displayName:
+          type: [string, 'null']
+        pluralName:
+          type: [string, 'null']
+        description:
+          type: [string, 'null']
+        stereotypes:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        category:
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+        properties:
+          type: object
+          additionalProperties: true
+        generation:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/GenerationHintsView'
+      example:
+        id: 01J92P0V2H0000000000000001
+        name: email_address
+        schema: billing
+        typeKind: domain
+        base: string
+        baseNativeType: varchar(254)
+        length: 254
+        precision: null
+        scale: null
+        check: VALUE LIKE '%_@_%'
+        members: []
+        fields: []
+        subtype: null
+        subtypeNativeType: null
+        definition: null
+        isCreated: true
+        nativeName: billing.email_address
+        dependsOn: []
+        comment: null
+        displayName: null
+        pluralName: null
+        description: An email address, checked where the dialect can.
+        stereotypes: []
+        tags: []
+        category: null
+        properties: {}
+        generation: {}
+    DatabaseTypeFieldView:
+      x-engine-record: Maquettiste.Engine.DatabaseTypeFieldView
+      description: A field of a composite database type.
+      type: object
+      required: [name, type, dbTypeId, length, precision, scale, nativeType]
+      properties:
+        name:
+          type: string
+        type:
+          type: [string, 'null']
+          description: The built-in type keyword, or null when a database type or a native type alone gives the type.
+        dbTypeId:
+          description: The id of the database type, or null.
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+        length:
+          type: [integer, 'null']
+        precision:
+          type: [integer, 'null']
+        scale:
+          type: [integer, 'null']
+        nativeType:
+          type: string
+    SqlObjectView:
+      x-engine-record: Maquettiste.Engine.SqlObjectView
+      description: One resolved SQL object (a trigger, grant, extension or other object the model does not type), with the annotations of its file (as `TableView`).
+      type: object
+      required: [id, name, schema, objectKind, phase, dependsOn, body, hasBody, displayName, pluralName, description, stereotypes, tags, category,
+        properties, generation]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        name:
+          type: string
+        schema:
+          type: [string, 'null']
+        objectKind:
+          type: string
+          description: What the object is, as the file says (trigger, grant, extension...).
+        phase:
+          type: string
+          enum: [before, after]
+          description: Run before the database types and tables, or after the routines and views.
+        dependsOn:
+          type: array
+          items:
+            type: string
+        body:
+          type: string
+          description: The statements for the database's dialect (or the `*` ones); empty when the file has none for it.
+        hasBody:
+          type: boolean
+        displayName:
+          type: [string, 'null']
+        pluralName:
+          type: [string, 'null']
+        description:
+          type: [string, 'null']
+        stereotypes:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        category:
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+        properties:
+          type: object
+          additionalProperties: true
+        generation:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/GenerationHintsView'
+      example:
+        id: 01J92P0V2N0000000000000001
+        name: invoices_keep_number
+        schema: billing
+        objectKind: trigger
+        phase: after
+        dependsOn: [01J92P0V2M0000000000000001, 01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4]
+        body: CREATE TRIGGER invoices_keep_number BEFORE UPDATE OF number ON billing.invoices FOR EACH ROW EXECUTE FUNCTION billing.keep_invoice_number();
+        hasBody: true
+        displayName: null
+        pluralName: null
+        description: null
+        stereotypes: []
+        tags: []
+        category: null
+        properties: {}
+        generation: {}
     GenerationHintsView:
       x-engine-record: Maquettiste.Engine.Model.GenerationHints
       description: One pack's generation hints on a resolved object (every member written).
@@ -8719,6 +9389,11 @@ components:
         sequenceId:
           type: [string, 'null']
           description: The id of the sequence that supplies values (a sequence file's id, or a synthesized key such as `<entityId>.sequence@<databaseId>`).
+        dbTypeId:
+          description: The id of the database type the column uses (its file's `nativeType` names the type by id or name), or null. Always sent by this engine; optional for older servers.
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
         collation:
           type: [string, 'null']
         comment:
@@ -9327,6 +10002,108 @@ components:
         declaredIn:
           description: The script path.
           type: string
+    ExtensionFileList:
+      x-engine-record: Maquettiste.Engine.ExtensionFileList
+      type: object
+      required: [folder, files]
+      properties:
+        folder:
+          description: The repo-relative folder the paths are under.
+          type: string
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtensionFileInfo'
+    ExtensionFileInfo:
+      x-engine-record: Maquettiste.Engine.ExtensionFileInfo
+      type: object
+      required: [path, kind, size, hash, diagnostics, rules]
+      properties:
+        path:
+          description: The path under `extensions/`.
+          type: string
+        rules:
+          description: For a rule script that loads, the rules it registers (`x/<id>` and the severity it declares); empty for a schema.
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtensionRuleInfo'
+        kind:
+          type: string
+          enum: [schema, rule]
+        size:
+          type: integer
+        hash:
+          $ref: '#/components/schemas/Hash'
+        diagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+    ExtensionRuleInfo:
+      x-engine-record: Maquettiste.Engine.ExtensionRuleInfo
+      type: object
+      required: [id, severity]
+      properties:
+        id:
+          type: string
+          pattern: '^x/'
+        severity:
+          $ref: '#/components/schemas/DiagnosticSeverity'
+    ExtensionFileContent:
+      x-engine-record: Maquettiste.Engine.ExtensionFileContent
+      type: object
+      required: [path, kind, hash, text]
+      properties:
+        path:
+          type: string
+        kind:
+          type: string
+          enum: [schema, rule]
+        hash:
+          $ref: '#/components/schemas/Hash'
+        text:
+          type: string
+    ExtensionFileWrite:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+    ExtensionFileMove:
+      x-engine-record: Maquettiste.Engine.ExtensionFileMove
+      type: object
+      required: [from, to]
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+    ExtensionWriteResult:
+      x-engine-record: Maquettiste.Engine.ExtensionWriteResult
+      type: object
+      required: [outcome, hash, current, text, diagnostics, files]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/SaveOutcome'
+        hash:
+          description: The new hash when saved (null after a delete); the disk hash on conflict (null when the file is gone).
+          oneOf:
+            - $ref: '#/components/schemas/Hash'
+            - type: 'null'
+        current:
+          description: The disk text on conflict, else null.
+          type: [string, 'null']
+        text:
+          description: The text written by a write (a schema in canonical form), else null.
+          type: [string, 'null']
+        diagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+        files:
+          type: array
+          description: Paths under `extensions/` written or deleted.
+          items:
+            type: string
     PackFileContent:
       x-engine-record: Maquettiste.Engine.PackFileContent
       type: object

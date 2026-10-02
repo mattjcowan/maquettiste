@@ -555,6 +555,13 @@ internal sealed partial class DatabaseRun
             sequence.Dependencies = deps.ToList();
         var sequences = _sequenceOrder.Select(s => s.Sequence)
             .OrderBy(s => s.Schema ?? "", StringComparer.Ordinal).ThenBy(s => s.Name, StringComparer.Ordinal).ThenBy(s => s.Id, StringComparer.Ordinal).ToList();
+        FinishDatabaseObjects(views, sequences);
+        var types = _typeOrder.Select(t => t.Type)
+            .OrderBy(t => t.Schema ?? "", StringComparer.Ordinal).ThenBy(t => t.Name, StringComparer.Ordinal).ThenBy(t => t.Id, StringComparer.Ordinal).ToList();
+        var routines = _routines.Select(r => r.Routine)
+            .OrderBy(r => r.Schema ?? "", StringComparer.Ordinal).ThenBy(r => r.Name, StringComparer.Ordinal).ThenBy(r => r.Id, StringComparer.Ordinal).ToList();
+        var objects = _objects.Select(o => o.Object)
+            .OrderBy(o => o.Schema ?? "", StringComparer.Ordinal).ThenBy(o => o.Name, StringComparer.Ordinal).ThenBy(o => o.Id, StringComparer.Ordinal).ToList();
 
         var membership = new DependencySet(_run.Keys)
             .Add("k:entity").Add("k:relation").Add("k:enum").Add("k:table").Add("k:mapping").Add("k:value-object").Add("k:stereotype")
@@ -567,12 +574,21 @@ internal sealed partial class DatabaseRun
             membership.AddRange(deps.ToList());
         foreach (var (view, _) in _views)
             membership.AddRange(view.Dependencies);
+        membership.Add("k:routine").Add("k:database-type").Add("k:sql-object");
+        foreach (var type in types)
+            membership.AddRange(type.Dependencies);
+        foreach (var routine in routines)
+            membership.AddRange(routine.Dependencies);
+        foreach (var obj in objects)
+            membership.AddRange(obj.Dependencies);
+
         var keys = membership.ToList();
 
         var schemaNames = new SortedSet<string>(StringComparer.Ordinal);
         foreach (var schema in _db.Schemas)
             schemaNames.Add(schema.Name);
-        foreach (var name in tables.Select(t => t.Schema).Concat(views.Select(v => v.Schema)).Concat(sequences.Select(s => s.Schema)))
+        foreach (var name in tables.Select(t => t.Schema).Concat(views.Select(v => v.Schema)).Concat(sequences.Select(s => s.Schema))
+            .Concat(types.Select(t => t.Schema)).Concat(routines.Select(r => r.Schema)).Concat(objects.Select(o => o.Schema)))
         {
             if (name is not null)
                 schemaNames.Add(name);
@@ -592,6 +608,9 @@ internal sealed partial class DatabaseRun
                 Tables = new RList<RTable>(tables.Where(t => string.Equals(t.Schema, name, StringComparison.Ordinal)), keys),
                 Views = new RList<RView>(views.Where(v => string.Equals(v.Schema, name, StringComparison.Ordinal)), keys),
                 Sequences = new RList<RSequence>(sequences.Where(s => string.Equals(s.Schema, name, StringComparison.Ordinal)), keys),
+                Routines = new RList<RRoutine>(routines.Where(r => string.Equals(r.Schema, name, StringComparison.Ordinal)), keys),
+                Types = new RList<RDatabaseType>(types.Where(t => string.Equals(t.Schema, name, StringComparison.Ordinal)), keys),
+                Objects = new RList<RSqlObject>(objects.Where(o => string.Equals(o.Schema, name, StringComparison.Ordinal)), keys),
             };
             _run.FillPhysicalAnnotations(schema, declared, null, schemaDeps);
             schema.Dependencies = schemaDeps.ToList();
@@ -603,6 +622,9 @@ internal sealed partial class DatabaseRun
         _rdb.Tables = new RList<RTable>(tables, keys);
         _rdb.Views = new RList<RView>(views, keys);
         _rdb.Sequences = new RList<RSequence>(sequences, keys);
+        _rdb.Routines = new RList<RRoutine>(routines, keys);
+        _rdb.Types = new RList<RDatabaseType>(types, keys);
+        _rdb.Objects = new RList<RSqlObject>(objects, keys);
         _run.Register(_rdb);
         return _rdb;
     }

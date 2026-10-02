@@ -34,6 +34,11 @@ export const EACH_KINDS = [
   "package",
   "database",
   "table",
+  "view",
+  "sequence",
+  "routine",
+  "database type",
+  "sql object",
   "locale",
   "process",
   "actor",
@@ -68,6 +73,8 @@ export function scopeHelp(scope: string): string {
   if (s === "each table") return "Runs once per table of every database: the tables the databases design and the tables their mappings resolve.";
   if (s === "each view") return "Runs once per view of every database; one file each.";
   if (s === "each sequence") return "Runs once per sequence of every database, the ones the resolver creates for keys included; one file each.";
+  if (s === "each routine" || s === "each database type" || s === "each sql object")
+    return "Runs once per routine, database type or SQL object of every database; one file each.";
   if (s === "each locale") return "Runs once per declared language; no element, no filter.";
   if (s === "each process" || s === "each actor" || s === "each scenario") return PROCESS_SCOPE_HELP;
   if (s.startsWith("select ")) return `Runs once per element that the selector ${s.slice(7)}, registered by the pack's scripts, returns.`;

@@ -58,6 +58,15 @@ internal static partial class BuiltinRules
             case Sequence sequence:
                 PhysicalRules.CheckSequence(context, sequence, report);
                 break;
+            case Routine routine:
+                DatabaseObjectRules.CheckRoutine(context, routine, report);
+                break;
+            case DatabaseType databaseType:
+                DatabaseObjectRules.CheckDatabaseType(context, databaseType, report);
+                break;
+            case SqlObject sqlObject:
+                DatabaseObjectRules.CheckSqlObject(context, sqlObject, report);
+                break;
             case Mapping mapping:
                 MappingRules.CheckMapping(context, mapping, report);
                 break;

@@ -1,6 +1,6 @@
 import Editor, { DiffEditor, type OnMount } from "@monaco-editor/react";
 import { useEffect, useRef, useState } from "react";
-import { monacoTheme, monaco } from "./monaco-setup";
+import { monacoTheme, monaco, setJsonSchema } from "./monaco-setup";
 import { setCompletionData } from "./scribanProviders";
 import type { TemplateCompletionData } from "./scribanCompletion";
 
@@ -58,6 +58,13 @@ export interface CodeEditorProps {
   onCursorLine?: (line: number) => void;
   /** 1-based lines to highlight (the lines of a template that match a chosen output line). */
   highlightLines?: number[];
+  /**
+   * A JSON schema to validate the text against as it is typed: `ref` is the `$schema` value the file carries (resolved against the
+   * model's URI, so a file that names it finds this schema without a request), `schema` the schema itself.
+   */
+  jsonSchema?: { ref: string; schema: unknown } | null;
+  /** The editor's own findings (a JSON syntax or schema problem), on every change. */
+  onMarkers?: (markers: CodeMarker[]) => void;
 }
 
 const SEVERITY = { error: 8, warning: 4, info: 2 } as const;
@@ -76,6 +83,8 @@ export default function CodeEditor({
   completion,
   onCursorLine,
   highlightLines,
+  jsonSchema,
+  onMarkers,
 }: CodeEditorProps) {
   const theme = useTheme();
   const saveRef = useRef(onSave);
@@ -103,6 +112,49 @@ export default function CodeEditor({
     setCompletionData(uri, completion);
     return () => setCompletionData(uri, null);
   }, [editor, completion, path]);
+  useEffect(() => {
+    const uri = editor?.getModel()?.uri.toString();
+    if (!uri || !jsonSchema) return;
+    let schemaUri: string;
+    try {
+      schemaUri = new URL(jsonSchema.ref, uri).toString();
+    } catch {
+      schemaUri = `maquettiste:/${jsonSchema.ref.replace(/^[./]+/, "")}`;
+    }
+    setJsonSchema(uri, { uri: schemaUri, fileMatch: [uri], schema: jsonSchema.schema });
+    return () => setJsonSchema(uri, null);
+  }, [editor, jsonSchema, path]);
+  const markersRef = useRef(onMarkers);
+  useEffect(() => {
+    markersRef.current = onMarkers;
+  }, [onMarkers]);
+  useEffect(() => {
+    const model = editor?.getModel();
+    if (!model || !markersRef.current) return;
+    const uri = model.uri.toString();
+    // Only the other owners' markers, and only when they change: this editor's own markers (set from props) also fire the event.
+    let last = "";
+    const read = () => {
+      const found: CodeMarker[] = monaco.editor
+        .getModelMarkers({ resource: model.uri })
+        .filter((m) => m.owner !== "maquettiste")
+        .map((m) => ({
+          line: m.startLineNumber,
+          column: m.startColumn,
+          message: m.message,
+          severity: m.severity >= SEVERITY.error ? "error" : m.severity >= SEVERITY.warning ? "warning" : "info",
+        }));
+      const key = JSON.stringify(found);
+      if (key === last) return;
+      last = key;
+      markersRef.current?.(found);
+    };
+    read();
+    const sub = monaco.editor.onDidChangeMarkers((uris) => {
+      if (uris.some((u) => u.toString() === uri)) read();
+    });
+    return () => sub.dispose();
+  }, [editor, path]);
   const decorations = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   useEffect(() => {
     if (!editor) return;

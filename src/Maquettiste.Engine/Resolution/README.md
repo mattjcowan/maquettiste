@@ -46,6 +46,12 @@ The resolver (stage 3), the resolved model types (`RList<T>`, `RElement`, `REnti
   entries; a custom type's `nativeTypes.<dialect>` wins over both for the columns that store it (applied once, in
   `AddColumn`, so entity, child and junction tables and copied key columns agree; 2026-10-01); `Column.NativeType` wins over
   all; missing facets take `defaultStringLength`, `decimalPrecision`/`decimalScale`, `datetimePrecision`.
+- Routines, database types and SQL objects (`DatabaseRun.Objects.cs`, 2026-10-01, erratum E40): resolved per database before
+  its tables into `RRoutine`, `RDatabaseType` and `RSqlObject` on `RDatabase.Routines`, `.Types`, `.Objects` and each `RSchema`;
+  parameter, result and field types resolve to native types (a database type of the same database through its `NativeName`);
+  a column whose file's `nativeType` names a database type (id, name or schema-qualified name) gets `RColumn.DbType` and the
+  type's native name; `dependsOn` resolves to the database's objects once every one exists (engine-design.md section 7,
+  "Routines, database types and SQL objects").
 - Dependency keys (section 11, D38): `e:` of every contributing file, `s:conventions`, `s:typeMaps`, `s:inflection` when used, and
   `r:<id>` for every entity and relation an object derives from (lookup tables: `r:<enumId>`; designed tables: `r:<tableId>`).
   A foreign-key relation also lists what its resolved `RForeignKey`'s name and actions come from (the host table's designed or

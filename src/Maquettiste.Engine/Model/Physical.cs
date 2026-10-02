@@ -268,7 +268,11 @@ public sealed record Column : ElementBase
     /// <summary>The scale facet.</summary>
     public int? Scale { get; init; }
 
-    /// <summary>A native type that replaces the dialect map's.</summary>
+    /// <summary>
+    /// A native type that replaces the dialect map's, or the id or name of a database type of the same database, which the column then
+    /// uses (its native name for the dialect).
+    /// </summary>
+    [ElementRef(Keyed = true)]
     public string? NativeType { get; init; }
 
     /// <summary>Nullability. On a designed column <see langword="null"/> means nullable; on an overlay it keeps the synthesized value.</summary>
@@ -533,4 +537,294 @@ public sealed record Sequence : Element
 
     /// <summary>How many values the server caches.</summary>
     public int? Cache { get; init; }
+}
+
+/// <summary>A stored function or procedure of a database (<c>model/databases/&lt;db&gt;/routines/</c>).</summary>
+public sealed record Routine : Element
+{
+    /// <inheritdoc/>
+    [JsonIgnore]
+    public override ElementKind Kind => ElementKind.Routine;
+
+    /// <summary>The id of the database.</summary>
+    [ElementRef(ElementKind.Database)]
+    public required string Database { get; init; }
+
+    /// <summary>The id of the schema; <see langword="null"/> means the default schema.</summary>
+    [ElementRef(IndexKinds = ["schema"])]
+    public string? Schema { get; init; }
+
+    /// <summary>A function or a procedure.</summary>
+    public RoutineKind RoutineKind { get; init; } = RoutineKind.Function;
+
+    /// <summary>The parameters, in order.</summary>
+    public IReadOnlyList<RoutineParameter> Parameters { get; init; } = [];
+
+    /// <summary>The result, or <see langword="null"/> when the routine returns nothing (a procedure).</summary>
+    public RoutineReturns? Returns { get; init; }
+
+    /// <summary>The body's language, or <see langword="null"/> for the dialect's own.</summary>
+    public string? Language { get; init; }
+
+    /// <summary>The body per dialect name, or <c>"*"</c> for every dialect.</summary>
+    public required IReadOnlyDictionary<string, string> Body { get; init; }
+
+    /// <summary>Whether the routine returns the same result for the same arguments.</summary>
+    public bool Deterministic { get; init; }
+
+    /// <summary>Whose rights the routine runs with.</summary>
+    public RoutineSecurity Security { get; init; } = RoutineSecurity.Invoker;
+
+    /// <summary>Ids of the tables, views, sequences, routines, database types and SQL objects that must exist first.</summary>
+    [ElementRef(ElementKind.Table, ElementKind.View, ElementKind.Sequence, ElementKind.Routine, ElementKind.DatabaseType, ElementKind.SqlObject)]
+    public IReadOnlyList<string> DependsOn { get; init; } = [];
+
+    /// <summary>A database comment.</summary>
+    public string? Comment { get; init; }
+}
+
+/// <summary>Whether a routine is a function or a procedure.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<RoutineKind>))]
+public enum RoutineKind
+{
+    /// <summary>Returns a value or a table: <c>function</c>.</summary>
+    [JsonStringEnumMemberName("function")] Function,
+
+    /// <summary>Called for its effects: <c>procedure</c>.</summary>
+    [JsonStringEnumMemberName("procedure")] Procedure,
+}
+
+/// <summary>Whose rights a routine runs with.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<RoutineSecurity>))]
+public enum RoutineSecurity
+{
+    /// <summary>The caller's: <c>invoker</c>.</summary>
+    [JsonStringEnumMemberName("invoker")] Invoker,
+
+    /// <summary>The owner's: <c>definer</c>.</summary>
+    [JsonStringEnumMemberName("definer")] Definer,
+}
+
+/// <summary>The direction of a routine parameter.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<ParameterMode>))]
+public enum ParameterMode
+{
+    /// <summary>Passed in: <c>in</c>.</summary>
+    [JsonStringEnumMemberName("in")] In,
+
+    /// <summary>Passed out: <c>out</c>.</summary>
+    [JsonStringEnumMemberName("out")] Out,
+
+    /// <summary>Both: <c>inout</c>.</summary>
+    [JsonStringEnumMemberName("inout")] InOut,
+}
+
+/// <summary>A parameter of a routine.</summary>
+public sealed record RoutineParameter
+{
+    /// <summary>The parameter name.</summary>
+    public required string Name { get; init; }
+
+    /// <summary>A built-in type keyword or the id of a database type of the same database.</summary>
+    [ElementRef(Keyed = true)]
+    public string? Type { get; init; }
+
+    /// <summary>The length facet.</summary>
+    public int? Length { get; init; }
+
+    /// <summary>The precision facet.</summary>
+    public int? Precision { get; init; }
+
+    /// <summary>The scale facet.</summary>
+    public int? Scale { get; init; }
+
+    /// <summary>A native type that replaces the one the type gives.</summary>
+    public string? NativeType { get; init; }
+
+    /// <summary>The direction.</summary>
+    public ParameterMode Mode { get; init; } = ParameterMode.In;
+
+    /// <summary>A default value as SQL text.</summary>
+    public string? Default { get; init; }
+}
+
+/// <summary>The result of a routine: a single value or a table.</summary>
+public sealed record RoutineReturns
+{
+    /// <summary>For a single value: a built-in type keyword or the id of a database type of the same database.</summary>
+    [ElementRef(Keyed = true)]
+    public string? Type { get; init; }
+
+    /// <summary>The length facet.</summary>
+    public int? Length { get; init; }
+
+    /// <summary>The precision facet.</summary>
+    public int? Precision { get; init; }
+
+    /// <summary>The scale facet.</summary>
+    public int? Scale { get; init; }
+
+    /// <summary>A native type that replaces the one the type gives, or a result no built-in type names.</summary>
+    public string? NativeType { get; init; }
+
+    /// <summary>For a table result: its columns; <see langword="null"/> for a single value.</summary>
+    public IReadOnlyList<RoutineColumn>? Table { get; init; }
+}
+
+/// <summary>A column of a routine's table result.</summary>
+public sealed record RoutineColumn
+{
+    /// <summary>The column name.</summary>
+    public required string Name { get; init; }
+
+    /// <summary>A built-in type keyword or the id of a database type of the same database.</summary>
+    [ElementRef(Keyed = true)]
+    public string? Type { get; init; }
+
+    /// <summary>The length facet.</summary>
+    public int? Length { get; init; }
+
+    /// <summary>The precision facet.</summary>
+    public int? Precision { get; init; }
+
+    /// <summary>The scale facet.</summary>
+    public int? Scale { get; init; }
+
+    /// <summary>A native type that replaces the one the type gives.</summary>
+    public string? NativeType { get; init; }
+
+    /// <summary>Whether the column is nullable.</summary>
+    public bool Nullable { get; init; } = true;
+}
+
+/// <summary>A type a database owns: a domain, composite, enumeration or range (<c>model/databases/&lt;db&gt;/types/</c>).</summary>
+public sealed record DatabaseType : Element
+{
+    /// <inheritdoc/>
+    [JsonIgnore]
+    public override ElementKind Kind => ElementKind.DatabaseType;
+
+    /// <summary>The id of the database.</summary>
+    [ElementRef(ElementKind.Database)]
+    public required string Database { get; init; }
+
+    /// <summary>The id of the schema; <see langword="null"/> means the default schema.</summary>
+    [ElementRef(IndexKinds = ["schema"])]
+    public string? Schema { get; init; }
+
+    /// <summary>What kind of type it is.</summary>
+    public required DatabaseTypeKind TypeKind { get; init; }
+
+    /// <summary>For a domain: the built-in type it restricts.</summary>
+    public string? Base { get; init; }
+
+    /// <summary>The length facet of the base.</summary>
+    public int? Length { get; init; }
+
+    /// <summary>The precision facet of the base.</summary>
+    public int? Precision { get; init; }
+
+    /// <summary>The scale facet of the base.</summary>
+    public int? Scale { get; init; }
+
+    /// <summary>For a domain: a CHECK expression over <c>VALUE</c>.</summary>
+    public string? Check { get; init; }
+
+    /// <summary>For an enum: the labels, in order.</summary>
+    public IReadOnlyList<string> Members { get; init; } = [];
+
+    /// <summary>For a composite: the fields, in order.</summary>
+    public IReadOnlyList<DatabaseTypeField> Fields { get; init; } = [];
+
+    /// <summary>For a range: the built-in type of its bounds.</summary>
+    public string? Subtype { get; init; }
+
+    /// <summary>The definition per dialect name (the text after the type's name), or <c>"*"</c>; it replaces the structured form.</summary>
+    public IReadOnlyDictionary<string, string> Definition { get; init; } = ImmutableDictionary<string, string>.Empty;
+
+    /// <summary>The name columns and parameters write, when it is not the type's own.</summary>
+    public string? NativeName { get; init; }
+
+    /// <summary>A database comment.</summary>
+    public string? Comment { get; init; }
+}
+
+/// <summary>What kind of type a database type is.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<DatabaseTypeKind>))]
+public enum DatabaseTypeKind
+{
+    /// <summary>A built-in type with a constraint: <c>domain</c>.</summary>
+    [JsonStringEnumMemberName("domain")] Domain,
+
+    /// <summary>Named fields: <c>composite</c>.</summary>
+    [JsonStringEnumMemberName("composite")] Composite,
+
+    /// <summary>A list of labels: <c>enum</c>.</summary>
+    [JsonStringEnumMemberName("enum")] Enum,
+
+    /// <summary>A range over a subtype: <c>range</c>.</summary>
+    [JsonStringEnumMemberName("range")] Range,
+}
+
+/// <summary>A field of a composite database type.</summary>
+public sealed record DatabaseTypeField
+{
+    /// <summary>The field name.</summary>
+    public required string Name { get; init; }
+
+    /// <summary>A built-in type keyword or the id of a database type of the same database.</summary>
+    [ElementRef(Keyed = true)]
+    public string? Type { get; init; }
+
+    /// <summary>The length facet.</summary>
+    public int? Length { get; init; }
+
+    /// <summary>The precision facet.</summary>
+    public int? Precision { get; init; }
+
+    /// <summary>The scale facet.</summary>
+    public int? Scale { get; init; }
+
+    /// <summary>A native type that replaces the one the type gives.</summary>
+    public string? NativeType { get; init; }
+}
+
+/// <summary>A named database object the model does not type: SQL statements per dialect (<c>model/databases/&lt;db&gt;/objects/</c>).</summary>
+public sealed record SqlObject : Element
+{
+    /// <inheritdoc/>
+    [JsonIgnore]
+    public override ElementKind Kind => ElementKind.SqlObject;
+
+    /// <summary>The id of the database.</summary>
+    [ElementRef(ElementKind.Database)]
+    public required string Database { get; init; }
+
+    /// <summary>The id of the schema; <see langword="null"/> means the default schema.</summary>
+    [ElementRef(IndexKinds = ["schema"])]
+    public string? Schema { get; init; }
+
+    /// <summary>What the object is, in free text (trigger, grant, extension...).</summary>
+    public required string ObjectKind { get; init; }
+
+    /// <summary>Whether the statements run before the types and tables or after the routines and views.</summary>
+    public SqlObjectPhase Phase { get; init; } = SqlObjectPhase.After;
+
+    /// <summary>Ids of the tables, views, sequences, routines, database types and SQL objects that must exist first.</summary>
+    [ElementRef(ElementKind.Table, ElementKind.View, ElementKind.Sequence, ElementKind.Routine, ElementKind.DatabaseType, ElementKind.SqlObject)]
+    public IReadOnlyList<string> DependsOn { get; init; } = [];
+
+    /// <summary>The statements per dialect name, or <c>"*"</c> for every dialect.</summary>
+    public required IReadOnlyDictionary<string, string> Body { get; init; }
+}
+
+/// <summary>When a SQL object's statements run, relative to the tables.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<SqlObjectPhase>))]
+public enum SqlObjectPhase
+{
+    /// <summary>Before the database types and tables: <c>before</c>.</summary>
+    [JsonStringEnumMemberName("before")] Before,
+
+    /// <summary>After the routines and views: <c>after</c>.</summary>
+    [JsonStringEnumMemberName("after")] After,
 }

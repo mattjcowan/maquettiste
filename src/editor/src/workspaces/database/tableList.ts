@@ -72,15 +72,30 @@ export function tableKeyOfFile(
   return null;
 }
 
-/** What the Database screen's list shows: its tables, views or sequences (a kind chip picks). */
-export type ListKind = "table" | "view" | "sequence";
+/** What the Database screen's list shows: its tables, views, sequences, routines, database types or SQL objects (a kind chip
+ * picks). */
+export type ListKind = "table" | ObjectListKind;
+/** The kinds the list shows from the resolved database view (everything but tables, which come from the table summaries). */
+export type ObjectListKind = "view" | "sequence" | "routine" | "database-type" | "sql-object";
 export const LIST_KINDS: readonly { kind: ListKind; label: string }[] = [
   { kind: "table", label: "Tables" },
   { kind: "view", label: "Views" },
   { kind: "sequence", label: "Sequences" },
+  { kind: "routine", label: "Routines" },
+  { kind: "database-type", label: "Types" },
+  { kind: "sql-object", label: "Objects" },
 ];
 
-/** A database's views or sequences whose name (or schema.name) contains every word of the filter, by name; at most `cap`. */
+/** The member of the resolved database view that lists each kind. */
+export const OBJECT_LIST_MEMBERS: Record<ObjectListKind, "views" | "sequences" | "routines" | "types" | "objects"> = {
+  view: "views",
+  sequence: "sequences",
+  routine: "routines",
+  "database-type": "types",
+  "sql-object": "objects",
+};
+
+/** A database's views, sequences, routines, database types or SQL objects whose name (or schema.name) contains every word of the filter, by name; at most `cap`. */
 export function filterObjects<T extends { id: string; name: string; schema: string | null }>(
   objects: readonly T[],
   filter: string,

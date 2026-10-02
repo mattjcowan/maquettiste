@@ -88,4 +88,26 @@ public sealed record SchemaDiffResult(
     string Hash,
     IReadOnlyList<TableChange> Tables,
     IReadOnlyList<ObjectChange> Views,
-    IReadOnlyList<ObjectChange> Sequences);
+    IReadOnlyList<ObjectChange> Sequences)
+{
+    /// <summary>Database type changes: added, renamed, altered, then dropped, each by key.</summary>
+    public IReadOnlyList<DefinitionChange> Types { get; init; } = [];
+
+    /// <summary>Routine changes, as <see cref="Types"/>.</summary>
+    public IReadOnlyList<DefinitionChange> Routines { get; init; } = [];
+
+    /// <summary>SQL object changes, as <see cref="Types"/>.</summary>
+    public IReadOnlyList<DefinitionChange> Objects { get; init; } = [];
+}
+
+/// <summary>A change to a routine, database type or SQL object.</summary>
+/// <param name="Kind">The change kind.</param>
+/// <param name="Key">The object's key (its id).</param>
+/// <param name="OldName">The old name (not for added).</param>
+/// <param name="NewName">The new name (not for dropped).</param>
+/// <param name="OldKind">What the object was (<c>function</c>, <c>domain</c>, the SQL object's kind...), so a migration can drop it (not for added).</param>
+/// <param name="NewKind">What it is now (not for dropped).</param>
+/// <param name="OldSchema">The old schema name (not for added).</param>
+/// <param name="Changes">Property changes: <c>schema</c>, <c>kind</c>, <c>definition</c>.</param>
+public sealed record DefinitionChange(ChangeKind Kind, string Key, string? OldName, string? NewName, string? OldKind, string? NewKind, string? OldSchema,
+    IReadOnlyList<PropertyChange> Changes);

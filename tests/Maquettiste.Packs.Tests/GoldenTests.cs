@@ -38,6 +38,30 @@ public sealed class GoldenTests
     }
 
     [Fact]
+    public async Task Sql_ddl_writes_one_script_per_routine_database_type_and_sql_object_only_when_object_scripts_is_on()
+    {
+        // Each database of the dialects fixture has a routine, a domain type and a trigger (PackRepo.AddDatabaseObjects).
+        string[] folders =
+        [
+            "main/billing/routines", "main/billing/types", "main/billing/objects", "reporting/dbo/routines", "reporting/dbo/types", "reporting/dbo/objects",
+            "local/routines", "local/types", "local/objects",
+        ];
+        using (var off = PackRepo.BillingDialects())
+        {
+            await off.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+            foreach (var folder in folders)
+                Assert.False(Directory.Exists(off.PathOf("db/" + folder)), $"db/{folder} was written without objectScripts");
+        }
+
+        using var repo = PackRepo.BillingDialects();
+        repo.EditJson(".maquettiste/maquettiste.json", settings => settings["packs"]!["sql-ddl"]!["parameters"] = new JsonObject { ["objectScripts"] = true });
+        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+        foreach (var folder in folders)
+            Golden.AssertMatches(Fixtures.Path(["golden", "sql-ddl", "objects-dialects", .. folder.Split('/')]), repo.PathOf("db/" + folder));
+        Assert.Equal(File.ReadAllText(Fixtures.Path("golden", "sql-ddl", "billing-dialects", "main", "schema.sql")), repo.Read("db/main/schema.sql"));
+    }
+
+    [Fact]
     public async Task Csharp_dapper_over_the_billing_fixture_matches_the_golden_tree()
     {
         using var repo = PackRepo.Billing();
