@@ -36,3 +36,6 @@ Thumbs.db
 
 # Claude Code local permissions
 .claude/settings.local.json
+
+# The engine's working folders (unit state, run journal, locks) are never committed.
+**/.maquettiste/.cache/
