@@ -20,6 +20,7 @@ import type {
   ViewView,
 } from "@/api/types";
 import { BUILTIN_TYPES } from "@/model/model";
+import { resolveQueries } from "./queries";
 
 type Json = Record<string, unknown>;
 const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
@@ -924,7 +925,7 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
     });
   const limits: Record<string, number> = { postgresql: 63, sqlserver: 128, mysql: 64, oracle: 128 };
   const packageEntries = Array.isArray(db.packages) ? (db.packages as unknown[]) : [];
-  return {
+  const view: DatabaseView = {
     id: databaseId,
     name: dbName,
     dialect,
@@ -947,6 +948,9 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
     ),
     ...annotationsOf(db, stereotypes),
   };
+  // The queries over its tables and views (queries.ts), bound against the view just built.
+  view.queries = resolveQueries(view, input.docs).queries;
+  return view;
 }
 
 const qualifiedName = (schema: string | null, name: string) => (schema ? `${schema}.${name}` : name);

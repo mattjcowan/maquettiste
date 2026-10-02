@@ -434,16 +434,17 @@ database shows on the Database screen at once. The explorers remember which rows
   lists what references it.
 
   **Creating a table, a view, a sequence or another database object.** A database's New actions are **New schema…**,
-  **New table…**, **New view…**, **New sequence…**, **New routine…**, **New database type…** and **New SQL object…**. They
-  are on the database row's menu, on the **+** button of the Databases explorer while the database or anything inside it
-  is selected, and on the Database screen's **New** menu (for the database it shows). A schema row's menu offers every one
-  but New schema… in that schema, and the Tables, Views, Sequences, Routines, Types and Objects folders offer the one they
-  hold. The palette has the same actions while the Database screen is showing. Each dialog asks for:
+  **New table…**, **New view…**, **New sequence…**, **New routine…**, **New query…**, **New database type…** and **New SQL
+  object…**. They are on the database row's menu, on the **+** button of the Databases explorer while the database or
+  anything inside it is selected, and on the Database screen's **New** menu (for the database it shows). A schema row's
+  menu offers every one but New schema… and New query… (a query has no schema) in that schema, and the Tables, Views,
+  Sequences, Routines, Types, Objects and Queries folders offer the one they hold. The palette has the same actions while
+  the Database screen is showing. Each dialog asks for:
 
   - **Name**: letters, digits and underscores, not starting with a digit, and not already used in the same schema:
     tables, views, sequences and database types share one set of names, while routines and SQL objects each have their
-    own.
-  - **Schema**: one of the database's schemas; the default schema is picked first.
+    own; a query's name is not used by another query of the database.
+  - **Schema**: one of the database's schemas; the default schema is picked first. A query has none.
   - For a table, **Kind**: **Designed table (its own columns)**. A projected table is not made here: it comes from mapping
     an entity to the database, and the dialog's **Open the Mappings tab** link goes there. **Start with an id column
     (int64, primary key)**, ticked by default, gives the table its first column and primary key.
@@ -460,6 +461,10 @@ database shows on the Database screen at once. The explorers remember which rows
   - For a SQL object, **Object kind** (what it is, in your words: trigger to start, with suggestions such as grant or
     extension), **Runs** (**After the routines and views**, the default, or **Before the types and tables**), then
     **Dialect** and **Body**, the statements, run as written.
+  - For a query, **Result entity** (an entity whose shape each row has, or none for an ad hoc row), **From** (a table or
+    view of the database; with an entity, its table there is picked first) and **Alias** (the first letter of each word
+    of the source's name: `i` for invoices, `il` for invoice_lines). The query starts valid: with an entity, its select
+    list fills the entity's key from the column that stores it; without one, it holds the source's first column.
 
   **Create** saves the new file in one step (Undo removes it), shows the Databases explorer and opens the element's editor.
   The editors have text tabs:
@@ -497,6 +502,8 @@ database shows on the Database screen at once. The explorers remember which rows
     the old one back.
   - **SQL object**: **General** (name, marks and schema), **Definition** (**Object kind**, **Runs** and **Depends on**),
     **Body** (the statements, one SQL editor per dialect, as a view's body), **Code generation** and **References**.
+  - **Query**: **General**, **Sources**, **Select**, **Filter**, **Group and order**, **Parameters**, **Collections**,
+    **SQL**, **JSON**, **Code generation** and **References**; the Queries part below walks through them.
 
   **Depends on** lists what must exist before a routine or a SQL object, each with a button that removes it, and its
   picker adds any other table, view, sequence, routine, database type or SQL object of the same database. Every change in
@@ -695,16 +702,26 @@ database shows on the Database screen at once. The explorers remember which rows
   ```
 
   - **The result shape.** With `entity`, each row is that entity: every select field names the `attribute` it fills (its
-    name defaults to the attribute's), or a `name` of its own for a value the entity does not hold. Without `entity`,
-    the select list is the row: each field has a `name`, and a `type` (a built-in type) and `nullable` when the
-    expression does not say them, and a pack turns the fields into a record. A required attribute of the entity that no
-    field fills is MQ4026 (a warning: the rows leave it at its default); an attribute of a value object type spans
-    several columns and is not asked for.
+    name defaults to the attribute's), or a `name` of its own for a value the entity does not hold. A field may also
+    fill a member of a value object attribute, written `<attribute id>.<member id>` (the members of one attribute build
+    the value together; its name defaults to `totalAmount` for `total.amount`), or the foreign key of a to-one
+    navigation, written as the relation end the navigation leads to (the invoice's customer end fills `CustomerId`; its
+    name defaults to the foreign key column's, `customerId`). A field that fills an attribute takes the attribute's type
+    in generated code: a value of unknown type (an unknown function, an `sql` text) takes it, a number of another
+    number type is converted, and a value that cannot convert (a text into a number) is MQ4033. Without `entity`, the
+    select list is the row: each field has a `name`, and a `type` (a built-in type) and `nullable` when the expression
+    does not say them, and a pack turns the fields into a record. A required attribute of the entity that no field
+    fills is MQ4026 (a warning: the rows leave it at its default); an attribute of a value object type spans several
+    columns and is not asked for. A query's rows are read-only projections: an entity row holds what the query selects
+    and leaves the rest at its defaults, so it is not a row to save back through a repository. The result entity, and
+    a collection's element entity, is a concrete one (an abstract one is MQ4041).
   - **Sources.** `from` and each of `joins` name a `source` and an `alias`. The source is a table or view of the
     query's database: a table or view file's id (a designed table, or a synthesized table's override), a table key as
     the database view lists it (`<entity id>@<database id>`), or an entity id for that entity's table there. The alias
     defaults to the table's or view's name. A join has a `kind`: `inner` (the default), `left`, `right`, `full` or
-    `cross`, and an `on` condition unless it is a cross join; the outer side of an outer join reads as nullable.
+    `cross`, and an `on` condition unless it is a cross join (a join without one, or a cross join with one, is MQ4035);
+    the outer side of an outer join reads as nullable. MySQL has no full join (MQ4036), and SQLite runs right and full
+    joins from version 3.39 only (MQ4037, a warning).
   - **Column references.** `{ "column": "alias.<column>" }` names a column of a source. The canonical form writes the
     column part as the column's **key**, the `key` the database view lists for it: the attribute id for an attribute's
     column, the attribute path for a value object member (`<attribute id>.<member id>`), the end and key attribute for
@@ -720,12 +737,13 @@ database shows on the Database screen at once. The explorers remember which rows
     | `{ "column": "i.<key>" }` | a column of a source |
     | `{ "param": "customerId" }` | a parameter |
     | `{ "value": "I" }` | a literal string, number or boolean |
+    | `{ "value": "2.0", "type": "decimal" }` | a decimal number written as text, so its digits are kept (`2.0`, not `2`); the editor writes a number with a fractional point this way |
     | `{ "null": true }` | the null literal |
-    | `{ "op": "+", "args": [...] }` | `+`, `-`, `*`, `/`, `%` or `concat` over the arguments |
-    | `{ "call": "lower", "args": [...] }` | a function: `lower`, `upper`, `coalesce`, `count`, `sum`, `min`, `max`, `avg`, `length` and `now` are spelled per dialect, any other name is written as given, and a routine id of the database calls that routine; `count` without arguments counts rows |
+    | `{ "op": "+", "args": [...] }` | `+`, `-`, `*`, `/`, `%` or `concat` over two or more arguments (`-` over one negates it; fewer is MQ4042) |
+    | `{ "call": "lower", "args": [...] }` | a function: `lower`, `upper`, `coalesce`, `count`, `sum`, `min`, `max`, `avg`, `length` and `now` are spelled per dialect, any other name (letters, digits and underscores, optionally `schema.name`; anything else is MQ4034) is written as given, and a routine id of the database calls that routine; `count` without arguments counts rows |
     | `{ "case": [{ "when": <predicate>, "then": <expression> }], "else": <expression> }` | the first branch whose condition holds |
-    | `{ "cast": <expression>, "type": "date" }` | a conversion to a built-in type, through the dialect's type map |
-    | `{ "sql": { "postgresql": "...", "sqlite": "..." } }` | an opaque expression per dialect (or `*`), for what the tree cannot say |
+    | `{ "cast": <expression>, "type": "date" }` | a conversion to a built-in type, through the dialect's type map; on MySQL to the types its `CAST` takes (`CHAR`, `SIGNED`, `DECIMAL(p,s)`, `DATE`, `DATETIME`, `TIME`, `BINARY`, `JSON`, `DOUBLE`) |
+    | `{ "sql": { "postgresql": "...", "sqlite": "..." } }` | an opaque expression per dialect (or `*`), for what the tree cannot say; a blank text counts as none |
 
   - **Predicates.** A condition (`where`, `having`, a join's `on`, a case branch's `when`) is one of `{ "and": [...] }`,
     `{ "or": [...] }`, `{ "not": <predicate> }`, a comparison `{ "op": ..., "left": <expression>, "right": ... }` or
@@ -733,36 +751,51 @@ database shows on the Database screen at once. The explorers remember which rows
     insensitive; written as `LOWER(a) LIKE LOWER(b)` where the dialect has no `ILIKE`), `in` and `notIn` (a list of
     expressions, or one parameter with `collection: true`), `between` (a list of two: the low and the high bound),
     `isNull` and `isNotNull` (no right side). A nested query of `exists` has its own `from`, `joins` and `where` and
-    may name the aliases of the query around it; it is written `EXISTS (SELECT 1 ...)`. Negate it with
-    `{ "not": { "exists": ... } }`.
+    may name the aliases of the query around it; it is written `EXISTS (SELECT 1 ...)`, its clauses on lines of their own
+    indented one level. Negate it with `{ "not": { "exists": ... } }`. A list parameter is only the whole right side
+    of `in` or `notIn`; anywhere else (a comparison, the select list, a function's arguments, a list of values) it is
+    MQ4039.
   - **Grouping, ordering, paging.** `groupBy` is a list of expressions and `having` a condition over the groups;
     `distinct` removes duplicate rows. Each of `orderBy` has an `expression`, a `direction` (`asc`, the default, or
-    `desc`) and optionally `nulls` (`first` or `last`, emulated where the dialect has no such clause). `paging` has an
+    `desc`) and optionally `nulls` (`first` or `last`, emulated where the dialect has no such clause). A distinct query
+    orders only by expressions of its select list, and not by `nulls` on `sqlserver` and `mysql`, whose emulation adds
+    a term the select list does not have (MQ4038). `paging` has an
     `offset` and a `limit`, each a number or the name of an integer parameter; it is written `LIMIT ... OFFSET ...`, or
     `OFFSET ... ROWS FETCH NEXT ... ROWS ONLY` on `sqlserver` and `oracle`.
   - **Parameters.** Each parameter has a `name`, a `type` (a built-in type or a database type of the same database),
     optional length, precision and scale, `collection: true` for a list (an `in` or `notIn` right side), a `default`
-    the generated method uses when the caller passes none, and a description. In SQL a parameter is a placeholder,
-    `@name` by default.
+    the generated method uses when the caller passes none (a value of the parameter's type; another is MQ4043, as is a
+    number too large to hold), and a description. Parameter names differ ignoring case (MQ3001). In SQL a parameter is
+    a placeholder, `@name` by default.
   - **Collections.** A collection fills a list per result row: its `attribute` is a collection attribute of the entity,
-    or the relation end a to-many navigation of the entity leads to (the invoice's lines above), or a name for an ad
-    hoc row; its `entity` is the element shape (the navigation's target by default), and its `query` a nested query
+    or the relation end a to-many navigation of the entity leads to (the invoice's lines above; only an end with a
+    navigation name is a navigation, so an unnamed end is MQ4027), or a name for an ad hoc row; its `entity` is the element shape (the navigation's target by default), and its `query` a nested query
     whose `where` ties its rows to the parent with equalities at its top (`l.<invoice key> = i.<id>`). A collection
     runs as a second statement, once for all the parent rows: the parent's statement carries the parent column of each
-    equality (as a hidden column `__key0_0` when no select field holds it), and the collection's takes the parent values
-    as the list parameter `__keys0` (`__keys1`, ...) and returns each row's value as `__key0`, so the rows group under
-    their parent. A list parameter is written `IN @__keys0`, for a data access library that expands lists into their
-    items. A collection that names its parent anywhere else, or not at all, is MQ4028.
+    equality (as a hidden column `mq_key0_0` when no select field holds it), and the collection's takes the parent values
+    as the list parameter `mq_keys0` (`mq_keys1`, ...) and returns each row's value as `mq_key0`, so the rows group under
+    their parent. A list parameter is written `IN @mq_keys0`, for a data access library that expands lists into their
+    items. A grouped collection (a `groupBy`, or an aggregate such as `count` or `sum`) groups by its key columns too,
+    and a grouped parent by its hidden key columns; a distinct parent must select its keys or group by them (MQ4032).
+    A collection that names its parent anywhere else, or not at all, is MQ4028. Names starting with `mq_` are reserved
+    for these columns and parameters and for the generated code's own names (MQ4040).
   - **The SQL preview.** `GET /api/model/queries/{id}/sql` and the MCP tool `preview_query_sql` return the query's
     statement and one per collection, each with the parameters it names, for the database's dialect or another
     (`dialect`); `placeholder` picks `@name` (the default), `:name` or `$1`, and `lists` picks `expand` (`IN @ids`, the
     default) or `any` (`= ANY(@ids)` with an array parameter on `postgresql`). The database view lists every query with
-    its SQL for the database's dialect.
+    its SQL for the database's dialect. An `sql` expression without a text for the dialect asked for is written `NULL`
+    in the preview, and MQ4029 comes with it; for the database's own dialect it is an error of the model, and the query
+    has no SQL until it is fixed.
   - **Generation.** A pack unit `for` `each query` runs once per query of every database, with the template variable
     `query`; `query_sql query` renders its statement and `query_collection_sql query.collections[0]` a collection's,
-    both taking a dialect and options (`{ placeholder: ":", lists: "any" }`) as further arguments. The csharp-dapper
-    pack writes one query class per query (`Queries/<Name>Query.g.cs`). The sql-ddl pack has nothing to write for a
-    query, and the schema diff does not see queries.
+    both taking a dialect and options (`{ placeholder: ":", lists: "any" }`) as further arguments;
+    `query_sql_parameters query` (or a collection, with the same arguments) lists the parameter names in placeholder
+    order, the order `$1`, `$2`... number them. The csharp-dapper pack writes one query class per query
+    (`Queries/<Name>Query.g.cs`, the name Pascal-cased, with `Q` in front when it would start with a digit; two queries
+    of a database whose class names are equal are MQ4040, as are two collections, or two fields of an ad hoc row, whose
+    names are equal once Pascal-cased). A query with collections returns `<Name>Result` records, the row and one list
+    per collection; a collection's statement runs for at most 1000 parent keys at a time. The sql-ddl pack has nothing
+    to write for a query, and the schema diff does not see queries.
   - **Deletes.** A query refers to its database, its entity, its sources, the attributes its fields fill and the ids in
     its column keys. Deleting one of these is refused while the query names it; with its dependents
     (`delete-dependents`) the query is deleted whole, since its aliases tie its parts together.
@@ -781,9 +814,79 @@ database shows on the Database screen at once. The explorers remember which rows
     | MQ4029 | error | an `sql` expression without a text for the database's dialect (nor `*`) |
     | MQ4030 | error | paging by a parameter that is not an integer |
     | MQ4031 | error | a comparison with the wrong right side (two values for `between`, none for `isNull`, one otherwise) |
+    | MQ4032 | error | a distinct parent that neither selects nor groups by a collection's key column |
+    | MQ4033 | warning | a field whose value cannot convert to the type of the attribute it fills |
+    | MQ4034 | error | a function name that is neither an identifier (or `schema.name`) nor a routine id |
+    | MQ4035 | error | a join other than cross without `on`, or a cross join with one |
+    | MQ4036 | error | a full join on a MySQL database |
+    | MQ4037 | warning | a right or full join on a SQLite database (it needs SQLite 3.39) |
+    | MQ4038 | error | a distinct query ordering by an expression its select list does not have (or by nulls on `sqlserver` and `mysql`) |
+    | MQ4039 | error | a list parameter used other than as the whole right side of `in` or `notIn` |
+    | MQ4040 | error | names that collide in generated code (collections, an ad hoc row's fields, queries of a database, once Pascal-cased) or start with `mq_` |
+    | MQ4041 | error | an abstract result or element entity |
+    | MQ4042 | error | an operation with fewer than two operands (`-` may take one) |
+    | MQ4043 | error | a number too large to hold, a typed literal that is not a decimal number, or a default that does not match its parameter's type |
 
     A parameter type that is neither a built-in type nor a database type of the database is MQ4018; two parameters or
     two fields with one name, or two queries of a database with one name, are MQ3001.
+  - **Building a query in the editor.** **New query…** (see "Creating a table, a view, a sequence or another database
+    object" above) creates the query and opens its editor; the Databases explorer lists it in the database's Queries
+    folder and the Database screen under its **Queries** chip, where picking one shows its SQL in the preview pane. The
+    inspector sums it up (the result entity, or an ad hoc shape of so many fields, and how many sources, parameters and
+    collections it has) with **Show the SQL**, which opens the editor on its SQL tab. Nothing in the editor is SQL text
+    but the SQL per dialect form: every cell writes the query's data, and every change is one save and one step Undo takes
+    back. The tabs:
+    - **General**: the name, marks and description, and the **Result entity**. Choosing none turns the select list into
+      an ad hoc row: each field keeps its attribute's name as its own. Choosing another entity keeps the fields it has
+      (the same attribute, member or foreign key) and turns each of the others into a field of its own name, its
+      expression kept: its name, else the old attribute's (numbered when another field has it). Nothing is lost, and
+      nothing names what the new entity lacks.
+    - **Sources**: the **From** source and its alias, then the joins, each with its kind (inner, left, right, full or
+      cross), its source, its alias and its **on** condition. **Add join** adds a source not read yet, one that shares a
+      foreign key with a source already read first. **Join by foreign key** fills the condition from the foreign key
+      between the joined source and one before it (when several link them, it lists them). Renaming an alias renames every
+      column reference through it, the collections' correlations included.
+    - **Select**: with a result entity, one row per attribute (an attribute of a value object type spans several columns:
+      one row per member instead, `total.amount`), then one per to-one relationship's foreign key (`customer (foreign
+      key to Customer)`), its expression, or **Select <attribute>** to give it one, and its type as the engine infers
+      it. A field that names what the entity does not have (after a hand edit) is listed under the fields, marked not on
+      the entity, with **Remove**. **Fill from columns by name** gives every attribute without a field the column that stores it, else the column
+      whose name matches the attribute's ignoring case and underscores (`issuedOn` and `issued_on`), from the source you
+      pick. **Add field** adds a field of its own name. Without an entity, the fields are the row: name, expression,
+      **Declared type** and **Nulls** (inferred unless you say), moved up and down.
+    - **Expressions**: each cell picks a form, then what the form needs. A **Column** is picked from the columns of the
+      aliases in scope, shown as `alias.column` and written as the column's key (so a rename does not break it); a
+      **Parameter** from the query's own; a **Value** is typed (a number, true or false, or a text, quoted when it would read
+      as a number: `'1'`; a number with a fractional point keeps its digits, `2.0`, written as a typed decimal literal); a **Function** names one of lower, upper, coalesce, count, sum, min, max, avg, length and now,
+      any other function, or a routine of the database, with its arguments; an **Operation** is +, -, *, /, % or concat
+      over its arguments; a **Conversion** converts its operand to a built-in type; **SQL per dialect** holds one text per
+      dialect (or * for any), for what the other forms cannot say: it starts as `NULL`, a new dialect's text too, and
+      clearing a text removes that dialect (the form keeps one). A **Case** is edited as JSON for now.
+    - **Filter**: the where condition as a tree. **Add condition** adds a comparison (left, operator, right; the right
+      side follows the operator: nothing for is null, a list or a list parameter for in, the two bounds for between),
+      **Add group** a group whose conditions all hold (and) or any of which holds (or), **Add exists** a condition on a
+      nested query, edited as JSON for now (its from, joins and where; it may name the aliases around it). Every node
+      has **Negate** (not) and **Remove**.
+    - **Group and order**: **Distinct**, the **Group by** expressions, the **Having** condition, the **Order by** terms
+      (direction, and where the nulls go, the database's order by default) and the query's **Paging**: an offset and a
+      limit, each none, a number, or an integer parameter.
+    - **Parameters**: a grid of name, type (a built-in type or a database type), length, precision, scale, **List** (a
+      list for in and not in), **Default** (a number for a number type, true or false for bool) and description, with
+      **Add parameter**, move and delete. Renaming a parameter renames its uses and the paging's.
+    - **Collections**: one card per collection: what it **Fills** (a collection attribute of the result entity, or the
+      other end of a to-many relationship of it, when that end has a navigation name; a name for an ad hoc one), its **Elements** entity (the relationship's
+      other entity unless you pick one), then the nested query's Sources, Select, Filter and Group and order, the same as
+      the query's, with the query's aliases in scope: an equality at the top of its filter between one of its columns and
+      one of the query's ties its rows to the parent row (`l.invoice_id = i.id`), and the card says by what. **Add
+      collection** starts one on the next to-many relationship, its source the other entity's table and its filter that
+      tie, from the foreign key.
+    - **SQL**: the statement as the engine renders it for the database's dialect, or the one picked in **Dialect**, with
+      the parameters it names, then each collection's statement; it renders again after each change, and another
+      dialect shows nothing until its own SQL comes. What stops it (a column the source does not have, an undeclared
+      parameter) is listed above it with its rule and the node it points at, and shows in Problems too; while it stands
+      the SQL is not rendered. A dialect other than the database's without an SQL text renders `NULL` in its place, with
+      MQ4029 listed above.
+    - **JSON**: the query's file, edited as text.
 - **Diagrams**: the saved diagrams outside the domains.
 - **Seed data**: an entity's or a relationship's initial rows, in its editor's **Seed data** tab and in the domain's
   Seed data folder; a reference type's rows are its Rows tab. A seed lists its columns once and holds one row per line,

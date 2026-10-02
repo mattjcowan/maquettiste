@@ -253,7 +253,7 @@ describe("the editors' edits", () => {
 
 describe("the Database screen and generation", () => {
   it("lists the kinds by chip, and previews each through the pack's each-<kind> unit", () => {
-    expect(LIST_KINDS.map((k) => k.label)).toEqual(["Tables", "Views", "Sequences", "Routines", "Types", "Objects"]);
+    expect(LIST_KINDS.map((k) => k.label)).toEqual(["Tables", "Views", "Sequences", "Routines", "Queries", "Types", "Objects"]);
     expect(OBJECT_LIST_MEMBERS["database-type"]).toBe("types");
     const ddl = {
       name: "sql-ddl",

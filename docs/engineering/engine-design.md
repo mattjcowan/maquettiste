@@ -821,13 +821,16 @@ tables, and many-to-many between them through queries.
   `length`, `precision`, `scale`, `collection` for `in` lists, `default` as a JSON string, number or boolean, `description`);
   `from` (`source`, `alias`); `joins` (`source`, `alias`, `kind` `inner|left|right|full|cross`, default `inner`, `on`);
   `select` (required, at least one: `name`, `attribute`, `type` and `nullable` for an ad hoc row, `expression`; `name` or
-  `attribute` required); `where`; `groupBy`; `having`; `orderBy` (`expression`, `direction` `asc|desc`, `nulls`
+  `attribute` required; `attribute` is an attribute id, `<attribute id>.<member id>` for a member of a value object
+  attribute, or the id of the relation end a to-one navigation leads to, for its foreign key column); `where`; `groupBy`; `having`; `orderBy` (`expression`, `direction` `asc|desc`, `nulls`
   `first|last`); `distinct`; `paging` (`offset` and `limit`, each an integer parameter's name or a number); `collections`
   (`attribute`, `entity`, `query`: a nested query with `from`, `joins`, `select`, `where`, `groupBy`, `having`, `orderBy`,
   `distinct`, whose predicates may name the outer query's aliases).
 - The trees are `$defs` of `query.json`, each one object whose `x-order` lists every member so the canonical writer orders
-  them: an **expression** is exactly one of `column` (`alias.<column>`), `param`, `value` (string, number or boolean),
-  `null` (`true`), `op` (`+ - * / % concat`) with `args`, `call` (a function name or a routine id) with `args`, `case`
+  them: an **expression** is exactly one of `column` (`alias.<column>`), `param`, `value` (string, number or boolean;
+  with `type: "decimal"`, a decimal number written as text, `{ "value": "2.0", "type": "decimal" }`, so its digits survive
+  an editor whose numbers drop them), `null` (`true`), `op` (`+ - * / % concat`) with `args`, `call` (a function name,
+  `^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$`, or a routine id) with `args`, `case`
   (`[{ when, then }]`) with `else`, `cast` with `type` (a built-in keyword), `sql` (a dialect map); a **predicate** is
   exactly one of `and`, `or`, `not`, `op` (`eq ne lt le gt ge like ilike in notIn between isNull isNotNull`) with `left`
   and `right` (one expression, or a list for `in`, `notIn` and `between`), `exists` (a nested query). `oneOf` over
@@ -836,8 +839,8 @@ tables, and many-to-many between them through queries.
   `QueryPaging`, `QueryCollection`, `QuerySubquery`, `QueryWhen`, `QueryExpression` and `QueryPredicate`, plain records so the
   reference walker and the indexer recurse through the trees. `QueryPredicate.Right` is a list read through a converter that
   takes one expression or an array (a list of one is written back as the expression). The references: `database`, `entity`
-  and a collection's `entity` are typed; a field's `attribute` is an attribute reference; a source, a column, a call, a
-  parameter type and a collection's `attribute` are keyed references (`[ElementRef(Keyed = true)]`), so each id-shaped segment
+  and a collection's `entity` are typed; a source, a column, a call, a parameter type, a field's `attribute` and a
+  collection's `attribute` are keyed references (`[ElementRef(Keyed = true)]`), so each id-shaped segment
   of `<entity id>@<database id>` or `alias.<attribute id>.<member id>` is a reference and any other text is not.
 
 *Decisions where the brief left a choice.* The canonical column form is `alias.<column key>`, the key the database view lists
@@ -860,7 +863,9 @@ complete, each query file of the database resolves by id into an `RQuery` (`RAnn
 parameters, so a keyword or a database type with its native type, plus `CodeType`, the keyword a code type map maps: the
 keyword, a domain's base, else `string`), `From` and `Joins` (`RQuerySource`: `Alias`, `JoinKind` `from|inner|left|right|full|
 cross`, `Table` or `View`, `Name`, `Schema`, `On`, and `Optional` for the outer side of an outer join), `Select`
-(`RQueryField`: `Name`, `Attribute`, `Expression`, `Type`, `NativeType`, `CodeType`, `Nullable`), `Where`, `GroupBy`,
+(`RQueryField`: `Name`, `Attribute`, `Member` (a value object member the field fills, `Attribute` then the value object
+attribute), `Navigation` and `ForeignKeyColumn` (a to-one navigation whose foreign key column of the entity's table the field
+fills), `Expression`, `Type`, `NativeType`, `CodeType`, `Nullable`), `Where`, `GroupBy`,
 `Having`, `OrderBy` (`RQueryOrder`), `Distinct`, `Paging` (`RQueryPaging`: a parameter or a number per bound), `Collections`
 (`RQueryCollection`: `Name`, `Attribute` or `Navigation`, `Entity`, the nested `Query`, `Keys`), `Sql` (the rendering for the
 database's dialect with the default options, empty when the query has errors) and `Uses` (the tables, views, routines and
@@ -872,10 +877,14 @@ carries an inferred `Type`, `NativeType`, `CodeType` and `Nullable`: a column's 
 the outer side of a join), a parameter's, a literal's (`string`, `bool`, `int32` or `int64`, `decimal`, `double`), a cast's
 target, an operation's widest argument (`concat` is a string), a call's (`count` `int64`, `sum` widened, `avg` `decimal` or
 `double`, `min`, `max`, `lower`, `upper` and `coalesce` their argument's, `length` `int32`, `now` `datetime`, a routine its
-result, any other unknown), a case's first typed branch; a field's `type` and `nullable` override them. A collection's keys
+result, any other unknown), a case's first typed branch; a field's `type` and `nullable` override them. A field that fills an
+attribute or a value object member without a `type` holds the attribute's type in generated code: a value of unknown type takes
+the attribute's keyword, a number of another number type or a text of another text type converts (the pack casts it), and any
+other is MQ4033. A cast on a MySQL database takes the type MySQL's `CAST` accepts as its native type. A collection's keys
 are the equalities at the top of its nested `where` between a parent column and an expression of the nested query
-(`RQueryKey`: `Outer`, `Inner`, `ParentField` (a select field over the same column, else the hidden `__key<c>_<k>`),
-`Hidden`, `ChildField` `__key<k>`, `Parameter` `__keys<k>`). Dependency keys: the query file and its referrers, the database,
+(`RQueryKey`: `Outer`, `Inner`, `ParentField` (a select field over the same column, else the hidden `mq_key<c>_<k>`; names
+starting with `mq_` are reserved for these and for generated code, MQ4040),
+`Hidden`, `ChildField` `mq_key<k>`, `Parameter` `mq_keys<k>`). Dependency keys: the query file and its referrers, the database,
 the type maps and conventions, the dependencies of every table and view it reads, each routine and database type it uses, the
 result and collection entities (and their bases), a navigation's relation; the database lists add `k:query`. Queries do not
 enter the schema snapshot, so the schema diff and its hash ignore them.
@@ -889,15 +898,29 @@ not have, or an attribute where no entity is named), MQ4026 (warning: a required
 MQ4027 (a collection that names neither a collection attribute nor a to-many navigation, or selects nothing), MQ4028 (a nested
 query naming an alias no enclosing query declares, or a collection naming its parent outside an equality at the top of its
 where, or not at all), MQ4029 (an `sql` expression without a text for the dialect nor `*`), MQ4030 (paging by a parameter that
-is not `int16`, `int32` or `int64`), MQ4031 (a comparison's right side of the wrong shape). A parameter type that is neither
-built-in nor a database type of the database is MQ4018, and two parameters or two fields with one name are MQ3001, from the
-resolver; the validator keys query names per database case-insensitively (MQ3001), since a query becomes a class named after
-it.
+is not `int16`, `int32` or `int64`), MQ4031 (a comparison's right side of the wrong shape), and as built on 2026-10-02 after
+the review of the query rounds: MQ4032 (a distinct parent that neither selects nor groups by a collection's key column, which
+a hidden column would add to what DISTINCT compares), MQ4033 (warning: a field whose value cannot convert to its attribute's
+type), MQ4034 (a call naming neither an identifier, optionally schema-qualified, nor a routine id: the name reaches SQL as
+written), MQ4035 (a join other than cross without `on`, or a cross join with one), MQ4036 (a full join on MySQL), MQ4037
+(warning: a right or full join on SQLite, which runs them from 3.39), MQ4038 (a distinct query ordering by an expression its
+select list, or a collection's key columns, does not have, or by `nulls` on SQL Server and MySQL, whose emulation adds a
+term), MQ4039 (a list parameter used other than as the whole right side of `in` or `notIn`), MQ4040 (names that collide in
+generated code: two collections, or fields of an ad hoc row, equal once Pascal-cased, a collection named `Item` after its
+result record's row, a name starting with `mq_`, two queries of a database whose class names, `QueryClassName`: Pascal-cased
+with `Q` before a leading digit, are equal), MQ4041 (an abstract result or element entity), MQ4042 (an operation with fewer
+than two operands; `-` takes one) and MQ4043 (a number literal or default no double holds, a typed literal that is not a
+decimal number, a default that is not a value of its parameter's type). Names, unselected attributes, conversions, abstract
+entities and MQ4037 leave the query rendered; every other finding leaves it without SQL. A parameter type that is neither
+built-in nor a database type of the database is MQ4018, and two parameters with one name ignoring case or two fields with one
+name are MQ3001, from the resolver; the validator keys query names per database case-insensitively (MQ3001), since a query
+becomes a class named after it.
 
 *Rendering* (`Rendering/QuerySql.cs`, public). `QuerySql.Render(RQuery, string? dialect, QuerySqlOptions?)` and
 `QuerySql.RenderCollection(RQueryCollection, ...)` return a `QuerySqlText(Sql, Parameters, Diagnostics)`: one clause per
 line, identifiers quoted by the database's quoting through `SqlDialects`, tables schema-qualified (not on SQLite), table
-aliases without `AS`, fields as `<expression> AS <name>`. `QuerySqlOptions.Placeholder` is `@` (`@name`, the default), `:`
+aliases without `AS`, fields as `<expression> AS <name>` (a name starting with `_` is quoted, since Oracle's unquoted
+identifiers start with a letter). `QuerySqlOptions.Placeholder` is `@` (`@name`, the default), `:`
 or `$` (`$1`, numbered by first appearance; `Parameters` lists the names in that order); `Lists` is `expand` (`x IN @ids`,
 for a data access library that expands a list into its items) or `any` (`x = ANY(@ids)` with an array parameter on
 PostgreSQL; other dialects expand). Per dialect: `length` is `LEN` on SQL Server, `CHAR_LENGTH` on MySQL, `LENGTH`
@@ -907,17 +930,28 @@ routine as its quoted, qualified name; `concat` is `||`, or `CONCAT(...)` on SQL
 and SQLite and emulated with a leading `CASE WHEN x IS NULL` term on SQL Server and MySQL; paging is `LIMIT … OFFSET …`
 (SQLite `LIMIT -1` and MySQL `LIMIT 18446744073709551615` when only an offset is given), `OFFSET … ROWS FETCH NEXT … ROWS
 ONLY` on SQL Server (with `ORDER BY (SELECT NULL)` when the query has no order) and Oracle; a cast takes the native type of
-its keyword through the dialect's effective type map; literals go through `SqlDialects.Literal`; an `exists` is
-`EXISTS (SELECT 1 FROM … WHERE …)` inline, correlated by its aliases. An `sql` expression without a text for the dialect
-renders `NULL` and returns MQ4029. The template helpers are `query_sql(query, dialect?, options?)` and
-`query_collection_sql(collection, dialect?, options?)` (`options` an object with `placeholder` and `lists`); they record the
-top query's dependencies and fail the unit with the renderer's diagnostic.
+its keyword through the dialect's effective type map, on MySQL the type its `CAST` accepts (`QuerySql.MySqlCastType`:
+`CHAR` for the texts, uuid and ulid, `SIGNED` for the integers, bool and duration, `BINARY`, `DECIMAL(p,s)`, `DATE`,
+`DATETIME` for both datetimes, `TIME`, `JSON`, `DOUBLE` for float and double); literals go through `SqlDialects.Literal`,
+a typed decimal literal as its text without leading zeros; an `exists` is `EXISTS (SELECT 1` followed by its clauses on
+lines of their own, indented four spaces deeper per level, correlated by its aliases (the text of literals and `sql`
+expressions is never touched). A grouped statement (a `groupBy`, or an aggregate call, `count`, `sum`, `min`, `max`,
+`avg` or any other name the renderer knows as an aggregate, in the select list, having or order) adds its key columns to
+its GROUP BY: a collection its key expressions, a parent its hidden key columns. An `sql` expression without a text for
+the dialect (a blank text is none) renders `NULL` and returns MQ4029. The template helpers are `query_sql(query, dialect?,
+options?)`, `query_collection_sql(collection, dialect?, options?)` (`options` an object with `placeholder` and `lists`) and
+`query_sql_parameters(query or collection, dialect?, options?)` (the options may stand in the dialect's place), the
+parameter names in placeholder order (`QuerySql.Parameters`, the order of `$n`); they record the top query's dependencies
+and fail the unit with the renderer's diagnostic.
 
 *Collections.* The portable form is the default and the only one built: the parent's statement carries each key's parent
 column (a hidden column when no field holds it), and each collection is a statement of its own, run once for all parent rows
-(a second round trip): its select list plus each key's inner expression as `__key<k>`, its where without the key equalities
-plus `<inner> IN @__keys<k>`, its grouping and order. The repository groups the rows by their keys and attaches them to the
-parent whose key values match; with several keys the `IN` lists over-fetch and the full tuple decides. The JSON aggregation
+(a second round trip): its select list plus each key's inner expression as `mq_key<k>`, its where without the key equalities
+plus `<inner> IN @mq_keys<k>`, its grouping (with its keys, when grouped) and order. The repository groups the rows by their
+keys and attaches them to the parent whose key values match; with several keys the `IN` lists over-fetch and the full tuple
+decides. Generated code returns the collections beside the row, never on the entity: csharp-dapper's `<Name>Result` holds the
+row (`Item`) and one list per collection, and the entity's collection attribute or navigation is left as the entity class
+leaves it. csharp-dapper runs a collection's statement for at most 1000 parent keys at a time and merges the chunks in order. The JSON aggregation
 form (`json_agg`, `JSON_ARRAYAGG`, `FOR JSON`) is not built: the portable form is one path that every dialect and every data
 access layer runs, with typed rows instead of JSON to parse; aggregation is left for a later round.
 
@@ -940,7 +974,9 @@ answer `GET /api/model/queries/{id}/sql?dialect=&placeholder=&lists=` (404 `not-
 *Generation.* `each query` takes the `where` of `each view` (tags, stereotypes, categories, the database, a script; packages
 and `abstract` refused at pack load) and the query's `generation.skip`. csharp-dapper's `query` unit writes
 `Queries/<Name>Query.g.cs` per query (an interface and a class with one `ExecuteAsync(<parameters>, CancellationToken)`
-returning the entity, a `<Name>Row` record, or `<Name>Result` with the collections) and its `registrations` unit
+returning the entity, a `<Name>Row` record, or `<Name>Result` with the row and the collections; the class name is
+`QueryClassName`'s, the template's own names start with `mq_`, entity and value types are written `global::`-qualified, and
+the class's remarks say its entity rows are read-only projections) and its `registrations` unit
 `Queries/QueryRegistrations.g.cs`; sql-ddl has nothing to write for a query.
 
 ## 8. Template packs (W6 loads and plans; W5 renders)
@@ -958,7 +994,7 @@ returning the entity, a `<Name>Row` record, or `<Name>Result` with the collectio
 - **Delimiters**: Scriban 7.5 has no custom delimiter option, so `DelimiterTranslator` rewrites a template that uses `Open`/`Close` into `{{ }}` form before parsing. Code spans become `{{…}}`, and a text span containing `{{` or `}}` is wrapped in an escape block `{%{…}%}` with enough `%` that the text cannot close it. Line breaks are kept one for one, so error positions map back unchanged.
 - **Context** per unit: a fresh `TemplateContext` with `StrictVariables = true`, `EnableRelaxedMemberAccess = true`, `EnableRelaxedTargetAccess = false`, `LoopLimit` and `RecursiveLimit` from `SandboxLimits`, `NewLine = "\n"`, invariant culture, `MemberRenamer` = snake_case, and a `MemberFilter` that admits only public get-only properties of resolved-model types and helper result types. No `ScriptObject.Import` of arbitrary CLR types. `include` resolves through a `TemplateLoader` confined to the pack folder, which records `t:<pack>/<path>`. Builtins `date.now`, `math.random`, `object.eval` and `object.eval_template` are replaced by functions that fail with MQ6012.
 - **Tracking proxy**: `TrackingTemplateContext` overrides `GetMemberAccessorImpl`. For any `IResolvedObject`, the accessor records the object's `Dependencies` into the unit's `IReadRecorder` on every member read. Every list of resolved objects is an `RList<T>`; enumerating it, indexing it or reading `size` records its `MembershipKeys` (the kind-set and element keys that decide which items it holds, set by the resolver: `model.entities` → `k:entity`; `database.tables` → `k:entity`, `k:relation`, `k:enum`, `k:table`, `k:mapping`; and so on). `lookup` of a missing id records `e:<id>`, so creating that element later re-renders the unit. Helpers receive the same recorder. Reference data (reference-types-seeds-localization.md §1.5, §2.5): a row (`RRow`, `RSeedRow`) records its seed's keys (the seed's `e:` key and its target's); `reference_type.rows` records `k:seed`, `r:<type id>` and the `e:` key of each of the type's seeds, so editing one seed re-renders only the units that read that seed's rows; a storage choice (`RStorageChoice`) records `s:referenceData`, the type's `e:` key and the database's; `row <type> "<code>"` records the type, its rows' membership and the row; `row_uuid <row>` returns the row's ULID bits as a UUID. Localization helpers (reference-types-seeds-localization.md section 3.7): `display_name`, `plural_name`, `description_of`, `label_of` `<x> [locale]` and `translate <x> "<field>" [locale]` walk the locale's chain (`RLocale.chain`: the locale, its `fallbacks` or supported truncations, the default) down to the default-locale value; without a locale argument they use the unit's `locale` in an `each locale` unit, else the default; `has_translation <x> "<field>" <locale>` reads one locale. `model.locales` lists the `RLocale`s.
-- **Helpers** (`BuiltinHelpers`, all pure): `pascal camel snake kebab upper_snake` (split on non-alphanumerics, lower→upper and acronym→word boundaries; digits join the preceding word; words lowercased, then styled: `HTTPServer2Id` → `http_server2_id`); `pluralize singularize` (fixed English rules, `inflection` overrides, element `pluralName` wins); `type_of <attr|column|type> "<target>"` (pack type map or dialect); `sql_quote <name> "<dialect>"` (pg/sqlite/oracle `"x"`, sqlserver `[x]`, mysql `` `x` ``, by the database's `Quoting` and embedded reserved-word lists); `sql_literal <value> "<dialect>"` (strings single-quoted with `''`, sqlserver `N'…'`; booleans `true/false` on pg, `1/0` elsewhere; dates ISO 8601 quoted; null `NULL`); `indent <text> <n|string>`, `dedent`; `escape_md escape_xml escape_json`; `json <value>` (canonical, compact); `has_stereotype has_tag in_category`; `lookup <id>`; `banner "<comment prefix>"` → `<prefix> Generated by Maquettiste (<pack>/<unit id>). Do not edit; changes are overwritten.` (no timestamp, no version); `file <path> <content>`; `state_path <state>` (a process state's dotted path, `Fulfilment.Shipping.Packed`; a state id works too; records the state); `iso_duration_ms <text>` (the milliseconds of an ISO 8601 duration with the interpreter's fixed spans, a month 30 days and a year 365; a text that does not parse fails the unit with MQ6006 naming it). Pack helpers from JavaScript register under their own names and fail with MQ6013 on a collision.
+- **Helpers** (`BuiltinHelpers`, all pure): `pascal camel snake kebab upper_snake` (split on non-alphanumerics, lower→upper and acronym→word boundaries; digits join the preceding word; words lowercased, then styled: `HTTPServer2Id` → `http_server2_id`); `pluralize singularize` (fixed English rules, `inflection` overrides, element `pluralName` wins); `type_of <attr|column|type> "<target>"` (pack type map or dialect); `sql_quote <name> "<dialect>"` (pg/sqlite/oracle `"x"`, sqlserver `[x]`, mysql `` `x` ``, by the database's `Quoting` and embedded reserved-word lists); `sql_literal <value> "<dialect>"` (strings single-quoted with `''`, sqlserver `N'…'`; booleans `true/false` on pg, `1/0` elsewhere; dates ISO 8601 quoted; null `NULL`); `indent <text> <n|string>`, `dedent`; `escape_md escape_xml escape_json`; `json <value>` (canonical, compact); `has_stereotype has_tag in_category`; `lookup <id>`; `banner "<comment prefix>"` → `<prefix> Generated by Maquettiste (<pack>/<unit id>). Do not edit; changes are overwritten.` (no timestamp, no version); `file <path> <content>`; `state_path <state>` (a process state's dotted path, `Fulfilment.Shipping.Packed`; a state id works too; records the state); `iso_duration_ms <text>` (the milliseconds of an ISO 8601 duration with the interpreter's fixed spans, a month 30 days and a year 365; a text that does not parse fails the unit with MQ6006 naming it); `query_sql`, `query_collection_sql` and `query_sql_parameters` (a query's or a collection's statement, and its parameter names in placeholder order; section 7, "Queries"). Pack helpers from JavaScript register under their own names and fail with MQ6013 on a collision.
 - **Output normalization**: rendered text is kept as a string; post-processing (§13) encodes it.
 
 ## 10. Script sandbox (W4)

@@ -97,11 +97,14 @@ golden tree).
 - `sql_quote <name|table|column|view|sequence|schema|database> [<dialect|database>] [<always|reserved|never>]`: the dialect may be
   omitted when the name is a table, column or view, or the unit's element is (or belongs to) a database. Quoting comes from the
   third argument, else that database's `quoting`, else `reserved`. `reserved` quotes reserved words of the dialect **and** any
-  name that is not `^[A-Za-z_][A-Za-z0-9_]*$`. Dialect aliases: `postgres`, `pg`, `mssql`, `mariadb`.
+  name that is not `^[A-Za-z_][A-Za-z0-9_]*$` or starts with `_` (Oracle's unquoted identifiers start with a letter; added
+  2026-10-02). Dialect aliases: `postgres`, `pg`, `mssql`, `mariadb`.
 - `QuerySql` (public, 2026-10-02, engine-design.md section 7 "Queries"): renders an `RQuery` or `RQueryCollection` as
   parameterised SQL per dialect (`@`, `:` or positional `$` placeholders; lists `IN @x` or `= ANY(@x)`), quoting through
-  `SqlDialects`, function spellings, `ilike` lowered, `NULLS FIRST|LAST` emulated, paging per dialect; a collection is its own
-  statement keyed by `__keys<n>`/`__key<n>`.
+  `SqlDialects`, function spellings, `ilike` lowered, `NULLS FIRST|LAST` emulated, paging per dialect, MySQL casts to the types
+  its `CAST` takes, a grouped statement grouping by its key columns too, an `exists` indented on lines of its own; a collection
+  is its own statement keyed by `mq_keys<n>`/`mq_key<n>`. `QuerySql.Parameters` (the helper `query_sql_parameters`) lists the
+  parameter names in placeholder order.
 - `type_of`: pack maps (`types/<target>.json`) win over dialect names; a collection attribute takes the map's `collection`
   pattern, otherwise an optional attribute or nullable column takes `nullable`. With a dialect target, a column of a database
   in that dialect yields its resolved `native_type`; anything else goes through the dialect map (enums as `int32`, value objects

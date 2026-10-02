@@ -4,20 +4,25 @@
 // and saves the result through the create endpoint as one undo step.
 //
 // A schema is a database operation (add-schema, DatabaseSchemas.tsx); a table, a view, a sequence, a routine, a database type
-// and a SQL object are element files of the database (schemas/v1/table.json, view.json, sequence.json, routine.json,
-// database-type.json, sql-object.json). Each has a kind here, a label, a check and a document builder, and the menus follow.
+// a SQL object and a query are element files of the database (schemas/v1/table.json, view.json, sequence.json, routine.json,
+// database-type.json, sql-object.json, query.json). Each has a kind here, a label, a check and a document builder, and the menus
+// follow.
 import { BUILTIN_TYPES, IDENTIFIER } from "@/model/model";
 import type { BuiltinType } from "@/api/types";
+import { columnOptions, columnRef, defaultAlias, fieldName, type Field, type SourceOption } from "@/model/queryTree";
 
 /** What a database's New menu creates, in menu order. */
-export type DatabaseObjectKind = "schema" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object";
+export type DatabaseObjectKind = "schema" | "table" | "view" | "sequence" | "routine" | "query" | "database-type" | "sql-object";
 
 /** The New actions of a database, in menu order. */
-export const DATABASE_CREATE: readonly DatabaseObjectKind[] = ["schema", "table", "view", "sequence", "routine", "database-type", "sql-object"];
+export const DATABASE_CREATE: readonly DatabaseObjectKind[] = ["schema", "table", "view", "sequence", "routine", "query", "database-type", "sql-object"];
 
 /** The element kinds among them (a schema is an entry of the database file). */
 export type DatabaseElementKind = Exclude<DatabaseObjectKind, "schema">;
-export const DATABASE_ELEMENT_KINDS: readonly DatabaseElementKind[] = ["table", "view", "sequence", "routine", "database-type", "sql-object"];
+export const DATABASE_ELEMENT_KINDS: readonly DatabaseElementKind[] = ["table", "view", "sequence", "routine", "query", "database-type", "sql-object"];
+
+/** What a schema row offers: everything but a query, which has no schema (it shows under the default one). */
+export const SCHEMA_ELEMENT_KINDS: readonly DatabaseElementKind[] = DATABASE_ELEMENT_KINDS.filter((k) => k !== "query");
 
 export const DATABASE_CREATE_LABELS: Record<DatabaseObjectKind, string> = {
   schema: "New schema…",
@@ -25,6 +30,7 @@ export const DATABASE_CREATE_LABELS: Record<DatabaseObjectKind, string> = {
   view: "New view…",
   sequence: "New sequence…",
   routine: "New routine…",
+  query: "New query…",
   "database-type": "New database type…",
   "sql-object": "New SQL object…",
 };
@@ -36,6 +42,7 @@ export const DATABASE_CREATE_TITLES: Record<DatabaseObjectKind, string> = {
   view: "New view",
   sequence: "New sequence",
   routine: "New routine",
+  query: "New query",
   "database-type": "New database type",
   "sql-object": "New SQL object",
 };
@@ -126,6 +133,12 @@ export interface DatabaseObjectInput {
   /** SQL object: what it is (free text) and when it runs. The statements are `dialect` and `body`. */
   objectKind?: string;
   phase?: ObjectPhase;
+  /** Query: the result entity (none: an ad hoc row), the from source (a table key or a view id), its alias and the first fields
+   * (querySelect). A query has no schema. */
+  entity?: string | null;
+  source?: string;
+  alias?: string;
+  select?: Field[];
 }
 
 /** A name already used in the database, by schema name (null: the default schema) and, when known, the element's kind. */
@@ -135,17 +148,20 @@ export interface TakenName {
   kind?: string;
 }
 
-export type InputProblems = Partial<Record<"name" | "body" | "start" | "increment" | "members" | "objectKind", string>>;
+export type InputProblems = Partial<Record<"name" | "body" | "start" | "increment" | "members" | "objectKind" | "source" | "alias", string>>;
 
 /** Which names a new element must not repeat: tables, views, sequences and database types share one set of names (relations
- * and types are named alike in a schema); routines and SQL objects each have their own. */
-const nameGroup = (kind: string | undefined): string => (kind === "routine" ? "routine" : kind === "sql-object" ? "sql-object" : "relation");
+ * and types are named alike in a schema); routines, SQL objects and queries each have their own (a query's across the whole
+ * database, since it has no schema). */
+const nameGroup = (kind: string | undefined): string =>
+  kind === "routine" ? "routine" : kind === "sql-object" ? "sql-object" : kind === "query" ? "query" : "relation";
 
 const CLASH_WORDS: Record<string, string> = {
   relation: "a table, view or sequence",
   "database-type": "a database type",
   routine: "a routine",
   "sql-object": "a SQL object",
+  query: "a query",
 };
 
 const WHOLE = /^-?\d+$/;
@@ -169,10 +185,21 @@ export function databaseObjectProblems(
     const schema = (schemaName ?? defaultSchema ?? "").toLowerCase();
     const group = nameGroup(input.kind);
     const clash = taken.find(
-      (t) => nameGroup(t.kind) === group && t.name.toLowerCase() === name.toLowerCase() && (t.schema ?? defaultSchema ?? "").toLowerCase() === schema,
+      (t) =>
+        nameGroup(t.kind) === group &&
+        t.name.toLowerCase() === name.toLowerCase() &&
+        (group === "query" || (t.schema ?? defaultSchema ?? "").toLowerCase() === schema),
     );
     if (clash)
-      out.name = `${clash.name} is already ${CLASH_WORDS[clash.kind === "database-type" ? "database-type" : group]} in ${schemaName ?? defaultSchema ?? "this database"}.`;
+      out.name =
+        group === "query"
+          ? `${clash.name} is already a query of this database.`
+          : `${clash.name} is already ${CLASH_WORDS[clash.kind === "database-type" ? "database-type" : group]} in ${schemaName ?? defaultSchema ?? "this database"}.`;
+  }
+  if (input.kind === "query") {
+    if (!(input.source ?? "").trim()) out.source = "Pick the table or view the query reads.";
+    const alias = (input.alias ?? "").trim();
+    if (alias && !IDENTIFIER.test(alias)) out.alias = "Use letters, digits and underscores, not starting with a digit.";
   }
   if (input.kind === "view" && !(input.body ?? "").trim()) out.body = "Enter the view's SQL body.";
   if (input.kind === "routine" && !(input.body ?? "").trim()) out.body = "Enter the routine's body.";
@@ -201,6 +228,18 @@ type Json = Record<string, unknown>;
 /** The new element's document: what its schema requires, plus the dialog's choices (defaults are left out). */
 export function buildDatabaseObject(input: DatabaseObjectInput, newId: () => string): Json {
   const id = newId();
+  if (input.kind === "query") {
+    const alias = (input.alias ?? "").trim();
+    return {
+      kind: "query",
+      id,
+      name: input.name.trim(),
+      database: input.database,
+      ...(input.entity ? { entity: input.entity } : {}),
+      from: { source: input.source ?? "", ...(alias ? { alias } : {}) },
+      select: input.select ?? [],
+    };
+  }
   const head: Json = { kind: input.kind, id, name: input.name.trim(), database: input.database, ...(input.schema ? { schema: input.schema } : {}) };
   switch (input.kind) {
     case "table": {
@@ -247,6 +286,26 @@ export function buildDatabaseObject(input: DatabaseObjectInput, newId: () => str
       };
   }
 }
+
+/**
+ * The fields a new query starts with, so it is valid as created (a select list has at least one field): with a result entity,
+ * its key attribute filled from the column that stores it (by attribute id, else by name); without one, the source's first
+ * column as a field named after it; a view without declared columns, the value 1 as `value`.
+ */
+export function querySelect(source: SourceOption | null, alias: string, key: { id: string; name: string } | null): Field[] {
+  const columns = columnOptions(source);
+  const a = alias || source?.name || "";
+  if (key) {
+    const fold = (s: string) => s.replace(/_/g, "").toLowerCase();
+    const c = columns.find((x) => x.column?.attributeId === key.id) ?? columns.find((x) => fold(x.name) === fold(key.name)) ?? columns[0];
+    return [{ attribute: key.id, expression: c ? { column: columnRef(a, c) } : { null: true } }];
+  }
+  const first = columns[0];
+  return first ? [{ name: fieldName(first.name), expression: { column: columnRef(a, first) } }] : [{ name: "value", expression: { value: 1 } }];
+}
+
+/** The alias a new query's source starts with: the first letter of each word of its name. */
+export const queryAlias = (source: SourceOption | null): string => (source ? defaultAlias(source.name) : "");
 
 /** The members a database type of a kind starts with, so there is something to create: a domain's base (string), a range's
  * subtype (int32), an enum's members, a composite's first field. */

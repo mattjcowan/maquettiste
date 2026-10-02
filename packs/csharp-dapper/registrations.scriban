@@ -69,7 +69,7 @@ public static partial class QueryRegistrations
     public static IReadOnlyList<(Type Service, Type Implementation)> All { get; } =
     [
 {{- for q in queries }}
-        (typeof(I{{ pascal q.name }}Query), typeof({{ pascal q.name }}Query)),
+        (typeof(I{{ cs_class (pascal q.name) }}Query), typeof({{ cs_class (pascal q.name) }}Query)),
 {{- end }}
     ];
 

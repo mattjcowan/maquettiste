@@ -16,7 +16,7 @@ namespace Maquettiste.Engine.Tests.Resolution;
 
 /// <summary>
 /// Queries (added 2026-10-02, erratum E41): a query file resolved over the database's tables and views, its trees, types and
-/// collections, the SQL renderer per dialect, the resolver's rules MQ4021 to MQ4031 with their pointers, the <c>each query</c> scope
+/// collections, the SQL renderer per dialect, the resolver's rules MQ4021 to MQ4043 with their pointers, the <c>each query</c> scope
 /// and the <c>query_sql</c> helper, the database view and resolved records, and what the schema diff makes of them (nothing).
 /// </summary>
 public sealed class QueryTests
@@ -266,7 +266,7 @@ public sealed class QueryTests
         Assert.Same(model.Entity("Invoice"), collection.Entity); // the navigation's target when the file names none
         Assert.Same(query, collection.Query.Parent);
         var key = Assert.Single(collection.Keys);
-        Assert.Equal(("id", false, "__key0", "__keys0", "uuid"), (key.ParentField, key.Hidden, key.ChildField, key.Parameter, key.Type));
+        Assert.Equal(("id", false, "mq_key0", "mq_keys0", "uuid"), (key.ParentField, key.Hidden, key.ChildField, key.Parameter, key.Type));
         Assert.True(key.Outer.IsOuter);
         Assert.Equal("customer_id", key.Inner.ColumnName);
         Assert.Same(model.Db("main").Routines.Single(), collection.Query.Where!.And[1].Right!.Routine);
@@ -277,12 +277,12 @@ public sealed class QueryTests
             """, QuerySql.Render(query).Sql);
         var statement = QuerySql.RenderCollection(collection);
         Assert.Equal("""
-            SELECT i.id AS id, i.number AS number, i.customer_id AS __key0
+            SELECT i.id AS id, i.number AS number, i.customer_id AS mq_key0
             FROM public.invoices i
-            WHERE i.total > public.tax_of(10) AND i.customer_id IN @__keys0
+            WHERE i.total > public.tax_of(10) AND i.customer_id IN @mq_keys0
             ORDER BY i.number ASC
             """, statement.Sql);
-        Assert.Equal(["__keys0"], statement.Parameters);
+        Assert.Equal(["mq_keys0"], statement.Parameters);
 
         // A parent that does not select the key column carries it as a hidden column.
         var hidden = new Shop();
@@ -303,9 +303,9 @@ public sealed class QueryTests
             """);
         var adHoc = Assert.Single(hidden.Resolve().Db("main").Queries);
         var hiddenKey = Assert.Single(adHoc.Collections.Single().Keys);
-        Assert.Equal(("__key0_0", true), (hiddenKey.ParentField, hiddenKey.Hidden));
+        Assert.Equal(("mq_key0_0", true), (hiddenKey.ParentField, hiddenKey.Hidden));
         Assert.Null(adHoc.Entity);
-        Assert.Equal("SELECT c.name AS name, c.id AS __key0_0\nFROM public.customers c", QuerySql.Render(adHoc).Sql);
+        Assert.Equal("SELECT c.name AS name, c.id AS mq_key0_0\nFROM public.customers c", QuerySql.Render(adHoc).Sql);
     }
 
     [Fact]
@@ -452,7 +452,7 @@ public sealed class QueryTests
         Assert.Equal("desc", query.OrderBy[0].GetProperty("direction").GetString());
         var lines = Assert.Single(query.Collections);
         Assert.Equal(("lines", "01J92P0V1H4D2M1HCK82ASJEWT", "01J92P0V0GWFR78HZH0P8Z3GY7"), (lines.Name, lines.Attribute, lines.EntityId));
-        Assert.Equal(["__keys0"], lines.SqlParameters);
+        Assert.Equal(["mq_keys0"], lines.SqlParameters);
         Assert.Equal("i.01J92P0V0Q9EK961M5HAQ3C5MY", Assert.Single(lines.Keys).Outer);
         Assert.Contains("01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4", query.Uses);
         Assert.Equal(JsonValueKind.Object, query.Select[0].Expression.ValueKind);

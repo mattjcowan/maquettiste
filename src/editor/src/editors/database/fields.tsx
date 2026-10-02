@@ -1,8 +1,12 @@
-// The fields the database object editors (and the inspector, for views, sequences, routines, database types and SQL objects)
-// share: the schema picker, the comment, a sequence's definition, the kind pickers of routines, database types and SQL objects,
+// The fields the database object editors (and the inspector, for views, sequences, routines, database types, SQL objects and
+// queries) share: the schema picker, the comment, a sequence's definition, the kind pickers of routines, database types and SQL objects,
 // and each kind's summary. Every commit is one edit and one save, so one undo step.
 import { useEffect, useRef, useState } from "react";
 import { useElements, useIndex } from "@/api/queries";
+import { Button } from "@/components/ui/button";
+import { useServices } from "@/app/context";
+import { useEditorNavigation } from "@/app/navigation";
+import { setView } from "@/editors/tabs";
 import { Field, Input, Select } from "@/components/ui/input";
 import { CheckboxField } from "@/components/ui/checkbox";
 import { setOptional, type FormProps } from "@/inspector/fields";
@@ -426,6 +430,46 @@ export function SqlObjectFields(props: FormProps) {
         Statements for {dialectWords(rec, "body") || "no dialect"}; depends on {depends} {depends === 1 ? "object" : "objects"}. The object&apos;s editor edits
         them (Definition and Body tabs).
       </p>
+    </div>
+  );
+}
+
+/** A query's summary in the inspector: its database, its result shape, how many sources, parameters and collections it has,
+ * and the way to its SQL. */
+export function QueryFields(props: FormProps) {
+  const rec = props.json as Rec;
+  const { store } = useServices();
+  const { openEditor } = useEditorNavigation();
+  const index = useIndex();
+  const rows = index.data ?? [];
+  const count = (member: string) => (Array.isArray(rec[member]) ? (rec[member] as unknown[]).length : 0);
+  const entity = typeof rec.entity === "string" ? rows.find((r) => r.id === rec.entity) : undefined;
+  const fields = count("select");
+  const sources = 1 + count("joins");
+  const words = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const summary = rows.find((r) => r.id === props.id);
+  return (
+    <div className="flex flex-col gap-2" data-testid="query-fields">
+      <DatabaseLine json={props.json} />
+      <p className="text-12 text-secondary">
+        {typeof rec.entity === "string" ? `Each row is ${entity?.name ?? rec.entity}` : `An ad hoc shape (${words(fields, "field", "fields")})`};{" "}
+        {words(sources, "source", "sources")}; {words(count("parameters"), "parameter", "parameters")};{" "}
+        {words(count("collections"), "collection", "collections")}. The query&apos;s editor edits them.
+      </p>
+      <Button
+        size="sm"
+        variant="link"
+        className="self-start px-0"
+        disabled={!summary}
+        onClick={() => {
+          if (!summary) return;
+          store.getState().updateEditors((s) => setView(s, "query", "sql"));
+          openEditor(summary, true);
+        }}
+        data-testid="query-open-sql"
+      >
+        Show the SQL
+      </Button>
     </div>
   );
 }

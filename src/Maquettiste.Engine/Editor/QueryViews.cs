@@ -87,7 +87,10 @@ public sealed record QuerySourceView(string Source, string Alias, string Kind, s
 
 /// <summary>A field of a select list.</summary>
 /// <param name="Name">The field's name in the result row.</param>
-/// <param name="AttributeId">The attribute it fills, or <see langword="null"/>.</param>
+/// <param name="AttributeId">
+/// What it fills: an attribute's id, <c>attributeId.memberId</c> for a value object member, the relation end a to-one navigation leads
+/// to for its foreign key, or <see langword="null"/>.
+/// </param>
 /// <param name="Expression">The value as the file writes it (an expression tree).</param>
 /// <param name="Type">The built-in type keyword, or <see langword="null"/> when unknown.</param>
 /// <param name="NativeType">The native type, or <see langword="null"/> when unknown.</param>
@@ -217,7 +220,7 @@ internal static class QueryViews
         new(source.Source, source.Alias, source.JoinKind, source.Table?.Key, source.View?.Id, source.Name, source.Schema, Tree(on));
 
     private static List<QueryFieldView> Fields(IReadOnlyList<RQueryField> fields, IReadOnlyList<QueryField>? files) =>
-        [.. fields.Select((f, i) => new QueryFieldView(f.Name, f.Attribute?.Id,
+        [.. fields.Select((f, i) => new QueryFieldView(f.Name, f.Member is { } member ? f.Attribute!.Id + "." + member.Id : f.Navigation?.To.Id ?? f.Attribute?.Id,
             files is not null && i < files.Count ? Tree(files[i].Expression)!.Value : EmptyObject, f.Type, f.NativeType, f.CodeType, f.Nullable))];
 
     private static RQuery RootOf(RQuery query)

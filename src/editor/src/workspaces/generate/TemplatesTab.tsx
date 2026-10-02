@@ -133,12 +133,19 @@ export function TemplatesTab({ pack, packHash, files, units, scopes, focusFile, 
     setBuffers((prev) => ({ ...prev, [path]: { ...(prev[path] ?? buffer), text } }));
   };
 
-  const save = async (overHash?: string | null) => {
-    if (!path || !buffer || busy) return;
-    if (overHash === undefined && !isDirty(buffer)) return;
+  // `latest` is the editor's text at the keystroke (Ctrl+S in the code editor): the state's copy may lag it by a render.
+  const save = async (overHash?: string | null, latest?: string) => {
+    if (!path || !buffer) return;
+    if (busyRef.current) {
+      queued.current = true; // runs right after the save in flight instead of being dropped
+      return;
+    }
+    const text = latest ?? buffer.text;
+    if (overHash === undefined && !isDirty({ ...buffer, text })) return;
+    if (text !== buffer.text) setBuffers((prev) => ({ ...prev, [path]: { ...(prev[path] ?? buffer), text } }));
+    busyRef.current = true;
     setBusy(true);
     try {
-      const text = buffer.text;
       const result = await endpoints.savePackFile(pack, path, text, overHash === undefined ? buffer.hash : overHash);
       if (result.outcome === "conflict") {
         setConflictFor(path, { path, hash: result.hash, current: result.current });
@@ -159,9 +166,17 @@ export function TemplatesTab({ pack, packHash, files, units, scopes, focusFile, 
       await qc.invalidateQueries({ queryKey: keys.pack(pack) });
       await qc.invalidateQueries({ queryKey: keys.packs });
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
+  const busyRef = useRef(false);
+  const queued = useRef(false);
+  useEffect(() => {
+    if (busy || !queued.current) return;
+    queued.current = false;
+    void save();
+  });
 
   const takeTheirs = () => {
     if (!conflict) return;
@@ -480,7 +495,7 @@ export function TemplatesTab({ pack, packHash, files, units, scopes, focusFile, 
               value={buffer.text}
               revision={revisions[path] ?? 0}
               onChange={edit}
-              onSave={() => void save()}
+              onSave={(text) => void save(undefined, text)}
               markers={markers}
               label={`${pack}/${path}`}
               completion={scriban ? (context.data ?? null) : null}

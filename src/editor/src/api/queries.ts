@@ -34,6 +34,8 @@ export const keys = {
   validationRules: ["validationRules"] as const,
   databaseViews: ["databaseView"] as const,
   databaseView: (id: string) => ["databaseView", id] as const,
+  /** Under the previews' key, so a model change renders the query again once the edits settle, as the DDL preview does. */
+  querySql: (id: string, dialect: string | null) => ["preview", "query-sql", id, dialect ?? ""] as const,
   tables: ["tables"] as const,
   databaseTables: (id: string) => ["tables", id] as const,
   previews: ["preview"] as const,
@@ -162,6 +164,21 @@ export function useDatabaseView(id: string | null) {
     queryFn: async (): Promise<DatabaseViewState> =>
       mergeDatabaseView(qc.getQueryData<DatabaseViewState>(keys.databaseView(id ?? "")), await endpoints.getDatabaseView(id!)),
     enabled: !!id,
+  });
+}
+
+/**
+ * A query's SQL for a dialect (null: its database's), rendered again after every model change, the last answer for the same query
+ * and dialect showing meanwhile. Another query or dialect shows nothing until its own answer comes (never the previous one's SQL
+ * under the new label). Only while the index has the query: a query just deleted is not asked for (it would answer 404).
+ */
+export function useQuerySql(id: string | null, dialect: string | null) {
+  const index = useIndex();
+  const known = !!id && !!index.data?.some((r) => r.id === id);
+  return useQuery({
+    queryKey: keys.querySql(id ?? "", dialect),
+    queryFn: () => endpoints.getQuerySql(id!, dialect),
+    enabled: known,
   });
 }
 

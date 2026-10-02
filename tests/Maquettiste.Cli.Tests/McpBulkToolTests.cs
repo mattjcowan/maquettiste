@@ -97,7 +97,7 @@ public sealed class McpBulkToolTests
         Assert.Equal((string)record["query"]!["sql"]!, (string)preview["sql"]!);
         Assert.Equal(["customerId", "statuses", "offset", "limit"], preview["parameters"]!.AsArray().Select(p => (string)p!));
         var lines = Assert.Single(preview["collections"]!.AsArray())!;
-        Assert.Equal(["__keys0"], lines["parameters"]!.AsArray().Select(p => (string)p!));
+        Assert.Equal(["mq_keys0"], lines["parameters"]!.AsArray().Select(p => (string)p!));
 
         var server = (await session.OkAsync("preview_query_sql", new { id = invoicesByCustomer, dialect = "sqlserver", placeholder = "$" }))["preview"]!;
         Assert.EndsWith("OFFSET $3 ROWS FETCH NEXT $4 ROWS ONLY", (string)server["sql"]!, StringComparison.Ordinal);

@@ -41,10 +41,11 @@ test("list, edit and save a script rule, see its findings and a syntax error, an
   await page.getByRole("tab", { name: /Problems/ }).click();
   await expect(page.getByTestId("problems-list").getByTestId("problem-x/entity-names").first()).toBeVisible();
 
-  // A syntax error is shown on the file as soon as it is saved.
+  // A syntax error is shown on the file as soon as it is saved. (No "." in the typed text: it would open the rule API
+  // completion, and the "(" that follows could accept a suggestion and make the fragment valid again.)
   await code.locator(".view-lines").click();
   await page.keyboard.press("Control+End");
-  await page.keyboard.type("\nmaquettiste.rule({ id: ");
+  await page.keyboard.type("\nmaquettiste rule({ id: ");
   await page.keyboard.press("Control+s");
   await expect(screen.getByTestId("extension-problem").first()).toContainText("MQ5002");
   await expect(page.getByTestId("problems-list").getByTestId("problem-MQ5002").first()).toBeVisible();

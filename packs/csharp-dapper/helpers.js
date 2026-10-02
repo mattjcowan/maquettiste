@@ -21,6 +21,10 @@ const keywords = new Set([
 // A C# identifier: keywords get the verbatim "@" prefix ("class" -> "@class").
 maquettiste.helper("cs_ident", (name) => (keywords.has(name) ? "@" + name : name));
 
+// A class name from a Pascal-cased name: "Q" in front of one that is empty or starts with a digit ("2024Report" -> "Q2024Report"),
+// as the engine names a query's class when it checks that two queries of a database do not collide (MQ4040).
+maquettiste.helper("cs_class", (name) => (/^[0-9]/.test(String(name)) || String(name) === "" ? "Q" + String(name) : String(name)));
+
 const valueTypes = new Set([
   "bool", "byte", "sbyte", "short", "ushort", "int", "uint", "long", "ulong", "float", "double", "decimal", "char",
   "DateOnly", "TimeOnly", "DateTime", "DateTimeOffset", "TimeSpan", "Guid", "JsonElement",

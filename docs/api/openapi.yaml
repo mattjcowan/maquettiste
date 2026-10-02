@@ -2748,8 +2748,8 @@ paths:
         the one named: the query's statement and one statement per collection. Identifiers are quoted by the database's quoting
         setting, functions spelled per dialect, `ilike` lowered where the dialect has none, paging written as `LIMIT/OFFSET` or
         `OFFSET … FETCH NEXT`. A collection runs once for all parent rows (a second round trip): the parent's statement carries
-        the correlation columns, the collection's takes their values as the list parameter `__keys0` (`__keys1`...) and returns
-        each row's as `__key0`. An `sql` expression without a text for the dialect is MQ4029 in `diagnostics`. A model with
+        the correlation columns, the collection's takes their values as the list parameter `mq_keys0` (`mq_keys1`...) and returns
+        each row's as `mq_key0`. An `sql` expression without a text for the dialect is MQ4029 in `diagnostics`. A model with
         errors returns `preview: null` and the diagnostics. The MCP tool `preview_query_sql` answers the same.
       x-maquettiste-role: viewer
       x-maquettiste-engine: GenerationService.GetQuerySqlAsync(queryId, dialect, options)
@@ -9566,9 +9566,10 @@ components:
         name:
           type: string
         attributeId:
-          oneOf:
-            - $ref: '#/components/schemas/Ulid'
-            - type: 'null'
+          description: >-
+            What the field fills: an attribute's id, attributeId.memberId for a member of a value object attribute, or the
+            relation end a to-one navigation leads to (its foreign key); null for an ad hoc field.
+          type: [string, 'null']
         expression:
           $ref: '../../schemas/v1/query.json#/$defs/expression'
         type:
@@ -9681,10 +9682,10 @@ components:
         parameters: [customerId, offset, limit]
         collections:
           - name: lines
-            sql: "SELECT l.id AS id, l.quantity AS quantity, l.invoice_id AS __key0\nFROM billing.invoice_lines l\nWHERE l.invoice_id IN @__keys0"
-            parameters: [__keys0]
+            sql: "SELECT l.id AS id, l.quantity AS quantity, l.invoice_id AS mq_key0\nFROM billing.invoice_lines l\nWHERE l.invoice_id IN @mq_keys0"
+            parameters: [mq_keys0]
             keys:
-              - { outer: i.id, parentField: id, hidden: false, childField: __key0, parameter: __keys0, type: uuid, nativeType: uuid }
+              - { outer: i.id, parentField: id, hidden: false, childField: mq_key0, parameter: mq_keys0, type: uuid, nativeType: uuid }
     QueryCollectionSql:
       x-engine-record: Maquettiste.Engine.QueryCollectionSql
       description: The statement of one collection, run once for all parent rows with the list of their key values.

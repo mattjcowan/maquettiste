@@ -235,8 +235,9 @@
           "$ref": "common.json#/$defs/identifier"
         },
         "attribute": {
-          "description": "The attribute of the query's entity (or of a collection's entity) the field fills.",
-          "$ref": "common.json#/$defs/id"
+          "description": "What the field fills on the query's entity (or a collection's entity): an attribute id, attributeId.memberId for a member of a value object attribute, or the id of the relation end a to-one navigation of the entity leads to (or the navigation's id), for its foreign key column.",
+          "type": "string",
+          "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}(\\.[0-7][0-9A-HJKMNP-TV-Z]{25})?$"
         },
         "type": {
           "description": "The field's type in an ad hoc row; absent, inferred from the expression.",
@@ -425,9 +426,16 @@
           "enum": ["+", "-", "*", "/", "%", "concat"]
         },
         "call": {
-          "description": "A function name (lower, upper, coalesce, count, sum, min, max, avg, length, now, or any other, passed through) or a routine id of the database.",
+          "description": "A function name (lower, upper, coalesce, count, sum, min, max, avg, length, now, or any other identifier, optionally schema-qualified, passed through) or a routine id of the database.",
           "type": "string",
-          "minLength": 1
+          "anyOf": [
+            {
+              "$ref": "common.json#/$defs/id"
+            },
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)?$"
+            }
+          ]
         },
         "args": {
           "type": "array",
@@ -449,6 +457,7 @@
           "$ref": "#/$defs/expression"
         },
         "type": {
+          "description": "The type of a cast; on a value, decimal, with the number written as text (\"value\": \"2.0\") so that its digits are kept.",
           "$ref": "common.json#/$defs/builtinType"
         },
         "sql": {

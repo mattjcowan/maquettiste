@@ -8,7 +8,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Dapper;
-using App.Model.Billing;
 
 namespace App.Model.Queries;
 
@@ -16,49 +15,91 @@ namespace App.Model.Queries;
 public partial interface ILocalInvoicesByCustomerQuery
 {
     /// <summary>Runs the query and fills its collections.</summary>
-    Task<IReadOnlyList<LocalInvoicesByCustomerResult>> ExecuteAsync(Guid customerId, IEnumerable<int> statuses, int offset = 0, int limit = 50, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<LocalInvoicesByCustomerResult>> ExecuteAsync(Guid customerId, IEnumerable<int> statuses, int offset = 0, int limit = 50, decimal minimum = 0.5m, CancellationToken mq_cancellationToken = default);
 }
 
 /// <summary>One row of query LocalInvoicesByCustomer with its collections.</summary>
-public sealed partial record LocalInvoicesByCustomerResult(Invoice Item, IReadOnlyList<InvoiceLine> Lines);
+public sealed partial record LocalInvoicesByCustomerResult(global::App.Model.Billing.Invoice Item, IReadOnlyList<global::App.Model.Billing.InvoiceLine> Lines, IReadOnlyList<global::App.Model.Billing.InvoiceLine> SameLines);
 
 /// <summary>The Dapper implementation of <see cref="ILocalInvoicesByCustomerQuery"/> (database local, sqlite).</summary>
-public partial class LocalInvoicesByCustomerQuery(IDbConnection connection, IDbTransaction? transaction = null) : ILocalInvoicesByCustomerQuery
+/// <remarks>
+/// The results are read-only projections: each Invoice holds what the query selects and leaves its other
+/// properties at their defaults, so it is not a row to save back through a repository.
+/// </remarks>
+public partial class LocalInvoicesByCustomerQuery(IDbConnection mq_connection, IDbTransaction? mq_transaction = null) : ILocalInvoicesByCustomerQuery
 {
     private const string Sql = """
-        SELECT i.id AS id, i.number AS number, i.issued_on AS issuedOn, i.status AS status, i.notes AS notes, i.created_at AS createdAt
+        SELECT i.id AS id, i.number AS number, i.issued_on AS issuedOn, i.status AS status, i.notes AS notes, i.created_at AS createdAt, i.customer_id AS customerId, i.total_amount AS totalAmount, i.total_currency AS totalCurrency
         FROM invoices i
-        WHERE i.customer_id = @customerId AND i.status IN @statuses AND i.deleted_at IS NULL
+        WHERE i.customer_id = @customerId AND i.status IN @statuses AND i.deleted_at IS NULL AND (i.total_amount + 0.0) >= CAST(@minimum AS real)
         ORDER BY i.issued_on DESC, i.number ASC
         LIMIT @limit OFFSET @offset
         """;
 
     private const string LinesSql = """
-        SELECT l.id AS id, l.quantity AS quantity, l.description AS description, l.invoice_id AS __key0
+        SELECT l.id AS id, l.quantity AS quantity, l.description AS description, l.invoice_id AS mq_key0
         FROM invoice_lines l
-        WHERE l.invoice_id IN @__keys0
+        WHERE l.invoice_id IN @mq_keys0
         ORDER BY l.id ASC
         """;
 
+    private const string SameLinesSql = """
+        SELECT l.id AS id, CAST(l.quantity AS integer) AS quantity, l.description AS description, l.invoice_id AS mq_key0, l.invoice_id AS mq_key1
+        FROM invoice_lines l
+        WHERE l.invoice_id IN @mq_keys0 AND l.invoice_id IN @mq_keys1
+        ORDER BY l.id ASC
+        """;
+
+    /// <summary>The most parent keys one collection statement takes: more parent rows run it once per this many keys.</summary>
+    private const int MaxKeysPerStatement = 1000;
+
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<LocalInvoicesByCustomerResult>> ExecuteAsync(Guid customerId, IEnumerable<int> statuses, int offset = 0, int limit = 50, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<LocalInvoicesByCustomerResult>> ExecuteAsync(Guid customerId, IEnumerable<int> statuses, int offset = 0, int limit = 50, decimal minimum = 0.5m, CancellationToken mq_cancellationToken = default)
     {
-        var rows = (await connection.QueryAsync<Row>(new CommandDefinition(Sql, new { customerId = customerId, statuses = statuses, offset = offset, limit = limit }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false)).ToList();
-        var lines = Array.Empty<LinesRow>().ToLookup(r => r.__key0);
-        if (rows.Count > 0)
+        var mq_rows = (await mq_connection.QueryAsync<Row>(new CommandDefinition(Sql, new { customerId = customerId, statuses = statuses, offset = offset, limit = limit, minimum = minimum }, mq_transaction, cancellationToken: mq_cancellationToken)).ConfigureAwait(false)).ToList();
+
+        var mq_c0Keys = mq_rows.Select(mq_r => mq_r.id).Distinct().ToArray();
+        var mq_c0Found = new List<LinesRow>();
+        for (var mq_at = 0; mq_at < mq_c0Keys.Length; mq_at += MaxKeysPerStatement)
         {
-            var found = await connection.QueryAsync<LinesRow>(new CommandDefinition(LinesSql, new
+            var mq_chunk = mq_c0Keys[mq_at..Math.Min(mq_at + MaxKeysPerStatement, mq_c0Keys.Length)];
+            var mq_found = await mq_connection.QueryAsync<LinesRow>(new CommandDefinition(LinesSql, new
             {
-                __keys0 = rows.Select(r => r.id).Distinct().ToArray(),
+                mq_keys0 = mq_chunk,
                 customerId = customerId,
                 statuses = statuses,
                 offset = offset,
                 limit = limit,
-            }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
-            lines = found.ToLookup(r => r.__key0);
+                minimum = minimum,
+            }, mq_transaction, cancellationToken: mq_cancellationToken)).ConfigureAwait(false);
+            mq_c0Found.AddRange(mq_found);
         }
 
-        return rows.Select(r => new LocalInvoicesByCustomerResult(r.ToItem(), [.. lines[r.id].Select(x => x.ToItem())])).ToList();
+        var mq_c0 = mq_c0Found.ToLookup(mq_x => mq_x.mq_key0);
+
+        var mq_c1Keys = mq_rows.Select(mq_r => (mq_r.id, mq_r.id)).Distinct().ToArray();
+        var mq_c1Found = new List<SameLinesRow>();
+        for (var mq_at = 0; mq_at < mq_c1Keys.Length; mq_at += MaxKeysPerStatement)
+        {
+            var mq_chunk = mq_c1Keys[mq_at..Math.Min(mq_at + MaxKeysPerStatement, mq_c1Keys.Length)];
+            var mq_set = mq_chunk.ToHashSet();
+            var mq_found = await mq_connection.QueryAsync<SameLinesRow>(new CommandDefinition(SameLinesSql, new
+            {
+                mq_keys0 = mq_chunk.Select(mq_k => mq_k.Item1).Distinct().ToArray(),
+                mq_keys1 = mq_chunk.Select(mq_k => mq_k.Item2).Distinct().ToArray(),
+                customerId = customerId,
+                statuses = statuses,
+                offset = offset,
+                limit = limit,
+                minimum = minimum,
+            }, mq_transaction, cancellationToken: mq_cancellationToken)).ConfigureAwait(false);
+            // Each key's list over-fetches: keep the rows whose whole key is one of this chunk's.
+            mq_c1Found.AddRange(mq_found.Where(mq_x => mq_set.Contains((mq_x.mq_key0, mq_x.mq_key1))));
+        }
+
+        var mq_c1 = mq_c1Found.ToLookup(mq_x => (mq_x.mq_key0, mq_x.mq_key1));
+
+        return mq_rows.Select(mq_r => new LocalInvoicesByCustomerResult(mq_r.ToItem(), [.. mq_c0[mq_r.id].Select(mq_x => mq_x.ToItem())], [.. mq_c1[(mq_r.id, mq_r.id)].Select(mq_x => mq_x.ToItem())])).ToList();
     }
 
     /// <summary>One row as Dapper reads it, field by field.</summary>
@@ -70,15 +111,20 @@ public partial class LocalInvoicesByCustomerQuery(IDbConnection connection, IDbT
         public int status { get; set; }
         public string? notes { get; set; }
         public DateTimeOffset createdAt { get; set; }
+        public Guid customerId { get; set; }
+        public decimal? totalAmount { get; set; }
+        public string? totalCurrency { get; set; }
 
-        public Invoice ToItem() => new()
+        public global::App.Model.Billing.Invoice ToItem() => new()
         {
             Id = id,
             Number = number,
             IssuedOn = issuedOn,
-            Status = (InvoiceStatus)status,
+            Status = (global::App.Model.Billing.InvoiceStatus)status,
             Notes = notes,
             CreatedAt = createdAt,
+            CustomerId = customerId,
+            Total = (totalAmount is null && totalCurrency is null ? null : new global::App.Model.Billing.Money { Amount = (decimal)totalAmount!, Currency = (string)totalCurrency! }),
         };
     }
 
@@ -88,12 +134,29 @@ public partial class LocalInvoicesByCustomerQuery(IDbConnection connection, IDbT
         public string id { get; set; } = default!;
         public int quantity { get; set; }
         public string? description { get; set; }
-        public Guid __key0 { get; set; }
+        public Guid mq_key0 { get; set; }
 
-        public InvoiceLine ToItem() => new()
+        public global::App.Model.Billing.InvoiceLine ToItem() => new()
         {
             Id = id,
             Quantity = quantity,
+            Description = description,
+        };
+    }
+
+    /// <summary>One element of collection sameLines with its parent's key, as Dapper reads it.</summary>
+    private sealed class SameLinesRow
+    {
+        public string id { get; set; } = default!;
+        public long quantity { get; set; }
+        public string? description { get; set; }
+        public Guid mq_key0 { get; set; }
+        public Guid mq_key1 { get; set; }
+
+        public global::App.Model.Billing.InvoiceLine ToItem() => new()
+        {
+            Id = id,
+            Quantity = (int)quantity,
             Description = description,
         };
     }

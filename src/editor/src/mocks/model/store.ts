@@ -37,6 +37,7 @@ import { typedElement } from "./typed";
 import { applyRules, diagnosticKey, validateModel, type ModelEntry } from "./validate";
 import { ModelIndex } from "./modelIndex";
 import { applyCase, foreignKeyMismatches, resolveDatabase } from "./physical";
+import { resolveQueries } from "./queries";
 
 type Json = Record<string, unknown>;
 
@@ -95,6 +96,7 @@ const DATABASE_OBJECT_FOLDERS: Partial<Record<string, string>> = {
   routine: "routines",
   "database-type": "types",
   "sql-object": "objects",
+  query: "queries",
 };
 
 function emptyChangeSet(source: ChangeSet["source"] = "editor"): ChangeSet {
@@ -287,7 +289,8 @@ export class MockModel {
 
   /**
    * What the resolver finds once the model validates without error, as the server's ModelStore.ValidateAsync adds it: the resolved
-   * MQ4005 of a foreign key column whose type an overlay pins apart from the referenced column's. Once per model version.
+   * MQ4005 of a foreign key column whose type an overlay pins apart from the referenced column's, and what a query gets wrong
+   * (MQ4021 to MQ4043, with MQ3001 and MQ4018). Once per model version.
    */
   private resolverFindings(validated: Diagnostic[]): Diagnostic[] {
     if (validated.some((d) => d.severity === "error")) return [];
@@ -300,8 +303,11 @@ export class MockModel {
         { docs, conventions: settings.conventions as Json, databaseConventions: settings.databases as Record<string, Json> },
         String(db.id),
       );
-      if (view)
-        out.push(...foreignKeyMismatches(view, docs).map((d) => ({ ...d, filePath: d.elementId ? (this.entries.get(d.elementId)?.path ?? null) : null })));
+      if (!view) continue;
+      out.push(...foreignKeyMismatches(view, docs).map((d) => ({ ...d, filePath: d.elementId ? (this.entries.get(d.elementId)?.path ?? null) : null })));
+      // The queries' findings (MQ3001, MQ4018, MQ4021 to MQ4043), which only the resolver can see (queries.ts).
+      const paths = new Map([...this.entries.values()].filter((e) => e.json.kind === "query").map((e) => [e.id, e.path]));
+      out.push(...applyRules(resolveQueries(view, docs, paths).diagnostics, this.rules()));
     }
     this.findingsCache = { version: this.version, diagnostics: out };
     return out;

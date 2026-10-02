@@ -62,7 +62,7 @@ clobber a concurrent edit or leave a dangling id.
      (an element rename also moves its file).
 4. Check: a successful save already returns `diagnostics`; `validate` (optionally scoped by `elementIds`) checks the model.
    For a query, `preview_query_sql` returns the SQL it renders (for its database's dialect or another) with the diagnostics
-   (MQ4021 to MQ4031) that point at the node to fix.
+   (MQ4021 to MQ4043) that point at the node to fix.
    Custom property schemas (`extensions/<name>.json`) and script rules (`extensions/rules/<name>.js`, findings `x/<id>`, run by `validate`) are files: `list_extension_files`, `read_extension_file`, `write_extension_file` (with `expectedHash`, `new` to create; a rule's syntax error comes back at once), `move_extension_file`, `delete_extension_file`.
 5. Reference data and translations: `reference_type_usage` lists the attributes that use a reference type and its storage
    per database; `create_seed` gives a reference type that has none its empty seed; `export_seed_csv` / `import_seed_csv` (a dry run unless `apply` is true, then `expectedHash`) move rows as

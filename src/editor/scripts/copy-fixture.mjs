@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Copies the billing fixture (tests/fixtures/models/billing/.maquettiste) and the manifests of the
 // two example packs into src/mocks/fixture/, inside the editor's own tree, where the mocks import
-// them with import.meta.glob. Keeping the copy inside src/editor means Vite's dev-server file
+// them with import.meta.glob. The engine's reserved-word lists (the query SQL renderer's quoting) go to
+// src/mocks/fixture/reserved/ the same way. Keeping the copy inside src/editor means Vite's dev-server file
 // allow list (server.fs.allow) never has to reach outside the project (phase2-design.md 4.4).
 // Runs on `npm install` (postinstall) and before dev, build and test; the copy is gitignored.
 import fs from "node:fs";
@@ -39,4 +40,9 @@ for (const pack of packs) {
   fs.mkdirSync(path.join(packsCopy, pack), { recursive: true });
   fs.copyFileSync(manifest, path.join(packsCopy, pack, "pack.json"));
 }
-console.log(`copy-fixture: copied the billing fixture and ${packs.length} pack manifests into src/mocks/fixture/`);
+const reserved = path.join(repoRoot, "src/Maquettiste.Engine/Rendering/Resources");
+const reservedCopy = path.join(editorRoot, "src/mocks/fixture/reserved");
+fs.mkdirSync(reservedCopy, { recursive: true });
+for (const name of fs.readdirSync(reserved).filter((n) => /^reserved-[a-z]+\.txt$/.test(n)))
+  fs.copyFileSync(path.join(reserved, name), path.join(reservedCopy, name));
+console.log(`copy-fixture: copied the billing fixture, ${packs.length} pack manifests and the reserved-word lists into src/mocks/fixture/`);

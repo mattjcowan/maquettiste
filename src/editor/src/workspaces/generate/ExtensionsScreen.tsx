@@ -127,12 +127,20 @@ export function ExtensionsScreen() {
     setBuffers((prev) => ({ ...prev, [path]: { ...(prev[path] ?? buffer), text } }));
   };
 
-  const save = async (overHash?: string | null) => {
-    if (!path || !buffer || busy) return;
-    if (overHash === undefined && !isDirty(buffer)) return;
+  // `latest` is the editor's text at the keystroke (Ctrl+S in the code editor): the state's copy may lag it by a render.
+  const save = async (overHash?: string | null, latest?: string) => {
+    if (!path || !buffer) return;
+    if (busyRef.current) {
+      // A save asked while one is in flight (Ctrl+S twice in a row) runs right after it instead of being dropped.
+      queued.current = true;
+      return;
+    }
+    const text = latest ?? buffer.text;
+    if (overHash === undefined && !isDirty({ ...buffer, text })) return;
+    if (text !== buffer.text) setBuffers((prev) => ({ ...prev, [path]: { ...(prev[path] ?? buffer), text } }));
+    busyRef.current = true;
     setBusy(true);
     try {
-      const text = buffer.text;
       const result = await endpoints.saveExtensionFile(path, text, overHash === undefined ? buffer.hash : overHash);
       setSaved((prev) => ({ ...prev, [path]: result.diagnostics }));
       if (result.outcome === "conflict") {
@@ -153,9 +161,17 @@ export function ExtensionsScreen() {
       if (written !== text) setRevisions((prev) => ({ ...prev, [path]: (prev[path] ?? 0) + 1 }));
       await refresh();
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
+  const busyRef = useRef(false);
+  const queued = useRef(false);
+  useEffect(() => {
+    if (busy || !queued.current) return;
+    queued.current = false;
+    void save();
+  });
 
   const takeTheirs = () => {
     if (!conflict) return;
@@ -411,7 +427,7 @@ export function ExtensionsScreen() {
                   value={buffer.text}
                   revision={revisions[path] ?? 0}
                   onChange={edit}
-                  onSave={() => void save()}
+                  onSave={(text) => void save(undefined, text)}
                   markers={markers}
                   label={`extensions/${path}`}
                   jsonSchema={kind === "schema" ? JSON_SCHEMA : null}

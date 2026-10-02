@@ -33,7 +33,7 @@ import {
 import { applicableExtensions, SchemaForm } from "./SchemaForm";
 import { emptyTitle, inspectorContext, type InspectorContext } from "./context";
 import { OpenTableButton, TableInspector } from "./TableInspector";
-import { DatabaseTypeFields, RoutineFields, SchemaField, SequenceFields, SqlObjectFields, ViewFields } from "@/editors/database/fields";
+import { DatabaseTypeFields, QueryFields, RoutineFields, SchemaField, SequenceFields, SqlObjectFields, ViewFields } from "@/editors/database/fields";
 import { EntityAttributeList } from "./AttributeList";
 import { ActorInspectorSection, ProcessInspectorSection, ScenarioInspectorSection, useProcessNodeShown } from "./ProcessSections";
 import { attributesView, INSPECTOR_TAB_LABELS, inspectorTabs, resolveInspectorTab } from "./tabs";
@@ -277,6 +277,7 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
               {kind === "routine" ? <RoutineFields {...props} /> : null}
               {kind === "database-type" ? <DatabaseTypeFields {...props} /> : null}
               {kind === "sql-object" ? <SqlObjectFields {...props} /> : null}
+              {kind === "query" ? <QueryFields {...props} /> : null}
               {kind === "process" ? <ProcessInspectorSection {...props} /> : null}
               {kind === "actor" ? <ActorInspectorSection {...props} /> : null}
               {kind === "scenario" ? <ScenarioInspectorSection {...props} /> : null}
@@ -313,6 +314,7 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
                 "routine",
                 "database-type",
                 "sql-object",
+                "query",
                 "package",
                 "diagram",
                 "process",

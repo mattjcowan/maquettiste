@@ -15,14 +15,17 @@ namespace App.Model.Queries;
 public partial interface IRevenueByMonthQuery
 {
     /// <summary>Runs the query.</summary>
-    Task<IReadOnlyList<RevenueByMonthRow>> ExecuteAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<RevenueByMonthRow>> ExecuteAsync(DateOnly from, DateOnly to, CancellationToken mq_cancellationToken = default);
 }
 
 /// <summary>One row of query RevenueByMonth.</summary>
 public sealed partial record RevenueByMonthRow(DateOnly Month, long InvoiceCount, decimal Revenue);
 
 /// <summary>The Dapper implementation of <see cref="IRevenueByMonthQuery"/> (database main, postgresql).</summary>
-public partial class RevenueByMonthQuery(IDbConnection connection, IDbTransaction? transaction = null) : IRevenueByMonthQuery
+/// <remarks>
+/// The results are read-only projections: rows of the query's own shape.
+/// </remarks>
+public partial class RevenueByMonthQuery(IDbConnection mq_connection, IDbTransaction? mq_transaction = null) : IRevenueByMonthQuery
 {
     private const string Sql = """
         SELECT CAST(date_trunc('month', i.issued_on) AS date) AS month, COUNT(*) AS invoiceCount, COALESCE(SUM(i.total_amount), 0) AS revenue
@@ -33,10 +36,10 @@ public partial class RevenueByMonthQuery(IDbConnection connection, IDbTransactio
         """;
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<RevenueByMonthRow>> ExecuteAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<RevenueByMonthRow>> ExecuteAsync(DateOnly from, DateOnly to, CancellationToken mq_cancellationToken = default)
     {
-        var rows = (await connection.QueryAsync<Row>(new CommandDefinition(Sql, new { from = from, to = to }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false)).ToList();
-        return rows.Select(r => r.ToItem()).ToList();
+        var mq_rows = (await mq_connection.QueryAsync<Row>(new CommandDefinition(Sql, new { from = from, to = to }, mq_transaction, cancellationToken: mq_cancellationToken)).ConfigureAwait(false)).ToList();
+        return mq_rows.Select(mq_r => mq_r.ToItem()).ToList();
     }
 
     /// <summary>One row as Dapper reads it, field by field.</summary>

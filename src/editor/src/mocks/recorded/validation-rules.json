@@ -560,6 +560,102 @@
     "canBeOff": true
   },
   {
+    "id": "MQ4032",
+    "defaultSeverity": "error",
+    "description": "A collection's correlation key is neither selected nor grouped by its parent, which is distinct: the hidden key column would change which rows DISTINCT removes.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4033",
+    "defaultSeverity": "warning",
+    "description": "A select field's value cannot convert to the type of the entity attribute it fills.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4034",
+    "defaultSeverity": "error",
+    "description": "A query calls a function whose name is neither an identifier (optionally schema-qualified, name or schema.name) nor a routine id.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4035",
+    "defaultSeverity": "error",
+    "description": "A join's condition does not fit its kind: a join other than cross needs on, a cross join takes none.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4036",
+    "defaultSeverity": "error",
+    "description": "A query uses a full join on a MySQL database, which has none.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4037",
+    "defaultSeverity": "warning",
+    "description": "A query uses a right or full join on a SQLite database, which needs SQLite 3.39 or later.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4038",
+    "defaultSeverity": "error",
+    "description": "A distinct query orders by an expression that is not in its select list, or by nulls first or last where the dialect emulates them (SQL Server, MySQL).",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4039",
+    "defaultSeverity": "error",
+    "description": "A list parameter (collection: true) is used other than as the whole right side of in or notIn.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4040",
+    "defaultSeverity": "error",
+    "description": "Names of a query collide in generated code or are reserved: two collections with one name, fields, collections or parameters whose names are equal ignoring case or once Pascal-cased, a name starting with mq_, or two queries of a database whose class names are equal once Pascal-cased.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4041",
+    "defaultSeverity": "error",
+    "description": "A query's result entity, or a collection's element entity, is abstract.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4042",
+    "defaultSeverity": "error",
+    "description": "An operation has fewer than two operands (only - takes one, as a negation).",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4043",
+    "defaultSeverity": "error",
+    "description": "A literal or a parameter's default does not fit: a number too large to hold, a typed literal whose text is not a decimal number, or a default whose value does not match the parameter's type.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
     "id": "MQ5001",
     "defaultSeverity": "error",
     "description": "Property fails its extension schema.",

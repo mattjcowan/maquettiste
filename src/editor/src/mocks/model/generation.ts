@@ -38,6 +38,8 @@ import {
   type SeedRows,
 } from "./render";
 import { unifiedDiff } from "./diff";
+import { resolveQueries, sortDiagnostics } from "./queries";
+import type { QuerySqlOptions } from "./querySql";
 
 type Json = Record<string, unknown>;
 
@@ -120,6 +122,41 @@ export class MockGeneration {
     const settings = this.model.projectSettings();
     const view = resolveDatabase({ docs, conventions: settings.conventions as Json, databaseConventions: settings.databases as Record<string, Json> }, id);
     return { view, diagnostics: [] };
+  }
+
+  /**
+   * GET /api/model/queries/{id}/sql (GenerationService.GetQuerySqlAsync): the query's statement and one per collection for a
+   * dialect, or `preview: null` with the diagnostics while the model has validation or resolution errors (MQ6017 when no query has
+   * the id); what the dialect cannot render (MQ4029) joins the diagnostics. Throws on an unknown dialect or option.
+   */
+  querySql(id: string, dialect: string | null, options: QuerySqlOptions | null): components["schemas"]["QuerySqlResult"] {
+    const report = this.model.validate().diagnostics;
+    if (report.some((d) => d.severity === "error")) return { preview: null, diagnostics: report };
+    const docs = this.model.docs();
+    const settings = this.model.projectSettings();
+    const database = docs.get(id)?.kind === "query" ? String(docs.get(id)?.database ?? "") : "";
+    const view = database
+      ? resolveDatabase({ docs, conventions: settings.conventions as Json, databaseConventions: settings.databases as Record<string, Json> }, database)
+      : null;
+    const found = view ? resolveQueries(view, docs).preview(id, dialect, options) : null;
+    if (!found)
+      return {
+        preview: null,
+        diagnostics: [
+          ...report,
+          {
+            rule: "MQ6017",
+            severity: "error",
+            message: `No query has the id '${id}'.`,
+            elementId: id,
+            filePath: null,
+            jsonPointer: null,
+            line: null,
+            column: null,
+          },
+        ],
+      };
+    return { preview: found.preview, diagnostics: sortDiagnostics([...report, ...found.diagnostics]) };
   }
 
   private tablesCache: {

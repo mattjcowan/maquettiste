@@ -3825,7 +3825,7 @@
         ],
         "operationId": "getQuerySql",
         "summary": "The SQL of one query for a dialect",
-        "description": "Renders a query (a query element over a database's tables and views) as parameterised SQL for its database's dialect, or\nthe one named: the query's statement and one statement per collection. Identifiers are quoted by the database's quoting\nsetting, functions spelled per dialect, `ilike` lowered where the dialect has none, paging written as `LIMIT/OFFSET` or\n`OFFSET … FETCH NEXT`. A collection runs once for all parent rows (a second round trip): the parent's statement carries\nthe correlation columns, the collection's takes their values as the list parameter `__keys0` (`__keys1`...) and returns\neach row's as `__key0`. An `sql` expression without a text for the dialect is MQ4029 in `diagnostics`. A model with\nerrors returns `preview: null` and the diagnostics. The MCP tool `preview_query_sql` answers the same.\n",
+        "description": "Renders a query (a query element over a database's tables and views) as parameterised SQL for its database's dialect, or\nthe one named: the query's statement and one statement per collection. Identifiers are quoted by the database's quoting\nsetting, functions spelled per dialect, `ilike` lowered where the dialect has none, paging written as `LIMIT/OFFSET` or\n`OFFSET … FETCH NEXT`. A collection runs once for all parent rows (a second round trip): the parent's statement carries\nthe correlation columns, the collection's takes their values as the list parameter `mq_keys0` (`mq_keys1`...) and returns\neach row's as `mq_key0`. An `sql` expression without a text for the dialect is MQ4029 in `diagnostics`. A model with\nerrors returns `preview: null` and the diagnostics. The MCP tool `preview_query_sql` answers the same.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "GenerationService.GetQuerySqlAsync(queryId, dialect, options)",
         "parameters": [
@@ -15970,13 +15970,10 @@
             "type": "string"
           },
           "attributeId": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/Ulid"
-              },
-              {
-                "type": "null"
-              }
+            "description": "What the field fills: an attribute's id, attributeId.memberId for a member of a value object attribute, or the relation end a to-one navigation leads to (its foreign key); null for an ad hoc field.",
+            "type": [
+              "string",
+              "null"
             ]
           },
           "expression": {
@@ -16196,17 +16193,17 @@
           "collections": [
             {
               "name": "lines",
-              "sql": "SELECT l.id AS id, l.quantity AS quantity, l.invoice_id AS __key0\nFROM billing.invoice_lines l\nWHERE l.invoice_id IN @__keys0",
+              "sql": "SELECT l.id AS id, l.quantity AS quantity, l.invoice_id AS mq_key0\nFROM billing.invoice_lines l\nWHERE l.invoice_id IN @mq_keys0",
               "parameters": [
-                "__keys0"
+                "mq_keys0"
               ],
               "keys": [
                 {
                   "outer": "i.id",
                   "parentField": "id",
                   "hidden": false,
-                  "childField": "__key0",
-                  "parameter": "__keys0",
+                  "childField": "mq_key0",
+                  "parameter": "mq_keys0",
                   "type": "uuid",
                   "nativeType": "uuid"
                 }
@@ -24178,9 +24175,16 @@
             ]
           },
           "call": {
-            "description": "A function name (lower, upper, coalesce, count, sum, min, max, avg, length, now, or any other, passed through) or a routine id of the database.",
+            "description": "A function name (lower, upper, coalesce, count, sum, min, max, avg, length, now, or any other identifier, optionally schema-qualified, passed through) or a routine id of the database.",
             "type": "string",
-            "minLength": 1
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/id"
+              },
+              {
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)?$"
+              }
+            ]
           },
           "args": {
             "type": "array",
@@ -24202,6 +24206,7 @@
             "$ref": "#/components/schemas/expression"
           },
           "type": {
+            "description": "The type of a cast; on a value, decimal, with the number written as text (\"value\": \"2.0\") so that its digits are kept.",
             "$ref": "#/components/schemas/builtinType"
           },
           "sql": {
@@ -24364,8 +24369,9 @@
             "$ref": "#/components/schemas/identifier"
           },
           "attribute": {
-            "description": "The attribute of the query's entity (or of a collection's entity) the field fills.",
-            "$ref": "#/components/schemas/id"
+            "description": "What the field fills on the query's entity (or a collection's entity): an attribute id, attributeId.memberId for a member of a value object attribute, or the id of the relation end a to-one navigation of the entity leads to (or the navigation's id), for its foreign key column.",
+            "type": "string",
+            "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}(\\.[0-7][0-9A-HJKMNP-TV-Z]{25})?$"
           },
           "type": {
             "description": "The field's type in an ad hoc row; absent, inferred from the expression.",
@@ -24890,8 +24896,9 @@
                 "$ref": "#/components/schemas/identifier"
               },
               "attribute": {
-                "description": "The attribute of the query's entity (or of a collection's entity) the field fills.",
-                "$ref": "#/components/schemas/id"
+                "description": "What the field fills on the query's entity (or a collection's entity): an attribute id, attributeId.memberId for a member of a value object attribute, or the id of the relation end a to-one navigation of the entity leads to (or the navigation's id), for its foreign key column.",
+                "type": "string",
+                "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}(\\.[0-7][0-9A-HJKMNP-TV-Z]{25})?$"
               },
               "type": {
                 "description": "The field's type in an ad hoc row; absent, inferred from the expression.",
@@ -25149,9 +25156,16 @@
                 ]
               },
               "call": {
-                "description": "A function name (lower, upper, coalesce, count, sum, min, max, avg, length, now, or any other, passed through) or a routine id of the database.",
+                "description": "A function name (lower, upper, coalesce, count, sum, min, max, avg, length, now, or any other identifier, optionally schema-qualified, passed through) or a routine id of the database.",
                 "type": "string",
-                "minLength": 1
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/id"
+                  },
+                  {
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)?$"
+                  }
+                ]
               },
               "args": {
                 "type": "array",
@@ -25173,6 +25187,7 @@
                 "$ref": "#/components/schemas/expression"
               },
               "type": {
+                "description": "The type of a cast; on a value, decimal, with the number written as text (\"value\": \"2.0\") so that its digits are kept.",
                 "$ref": "#/components/schemas/builtinType"
               },
               "sql": {

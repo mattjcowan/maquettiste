@@ -188,7 +188,9 @@ internal sealed class PackRepo : IDisposable
 
     /// <summary>
     /// A copy of the billing fixture's InvoicesByCustomer query on the SQLite database, which CompileTests runs: its sources are the
-    /// synthesized tables' keys there, its columns the same column keys, its statuses the stored member values.
+    /// synthesized tables' keys there, its columns the same column keys, its statuses the stored member values. It also fills the
+    /// invoice's customer foreign key by its relation end and its Money total by its members, filters on a decimal parameter with a
+    /// default (cast, since SQLite binds a decimal as text) and a typed decimal literal, and has a second collection keyed twice (the several-key form of the statement).
     /// </summary>
     private void AddLocalQuery()
     {
@@ -200,6 +202,22 @@ internal sealed class PackRepo : IDisposable
         query["collections"]![0]!["query"]!["from"]!["source"] = "01J92P0V0GWFR78HZH0P8Z3GY7@" + LocalId;
         // The SQLite database stores the status as the member value (no mapping there stores it as text).
         query["parameters"]![1] = new JsonObject { ["name"] = "statuses", ["type"] = "int32", ["collection"] = true };
+        const string Total = "01J92P0V0T6EA0XM025XQX8GBW", Amount = "01J92P0V08P9BVJAPQ793XYNTQ", Currency = "01J92P0V093A7BE6Q8AS477H7D";
+        var select = query["select"]!.AsArray();
+        select.Add(JsonNode.Parse("""{ "attribute": "01J92P0V1EHF7PB28CZJG9C5SN", "expression": { "column": "i.01J92P0V1EHF7PB28CZJG9C5SN.01J92P0V0KGPC29TQQG8R57EBM" } }"""));
+        select.Add(JsonNode.Parse($$"""{ "attribute": "{{Total}}.{{Amount}}", "expression": { "column": "i.{{Total}}.{{Amount}}" } }"""));
+        select.Add(JsonNode.Parse($$"""{ "attribute": "{{Total}}.{{Currency}}", "expression": { "column": "i.{{Total}}.{{Currency}}" } }"""));
+        query["parameters"]!.AsArray().Add(JsonNode.Parse("""{ "name": "minimum", "type": "decimal", "default": 0.5 }"""));
+        query["where"]!["and"]!.AsArray().Add(JsonNode.Parse($$"""
+            { "op": "ge", "left": { "op": "+", "args": [{ "column": "i.{{Total}}.{{Amount}}" }, { "value": "0.0", "type": "decimal" }] }, "right": { "cast": { "param": "minimum" }, "type": "double" } }
+            """));
+        var twice = query["collections"]![0]!.DeepClone().AsObject();
+        twice["attribute"] = "sameLines";
+        // The quantity read as an int64 fills the int32 attribute through a cast in the generated code.
+        twice["query"]!["select"]![1]!["expression"] = JsonNode.Parse("""{ "cast": { "column": "l.01J92P0V0Y049452AH0K8CDC9N" }, "type": "int64" }""");
+        var on = twice["query"]!["where"]!.DeepClone();
+        twice["query"]!["where"] = new JsonObject { ["and"] = new JsonArray(on, on.DeepClone()) };
+        query["collections"]!.AsArray().Add(twice);
         Repo.WriteFile(".maquettiste/model/databases/local/queries/local-invoices-by-customer.json", query.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }) + "\n");
     }
 

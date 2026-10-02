@@ -42,6 +42,7 @@ import type {
   ReferenceTypeUsage,
   RuleCatalogEntry,
   PackRenameResult,
+  QuerySqlResult,
 } from "./types";
 
 function must<T>(data: T | undefined, response: Response): T {
@@ -201,6 +202,12 @@ export async function saveDiagram(id: string, json: ModelJson, hash: string): Pr
 
 export async function getDatabaseView(id: string): Promise<DatabaseViewResult> {
   const { data, response } = await api().GET("/api/databases/{id}/view", { params: { path: { id } } });
+  return must(data, response);
+}
+
+/** The SQL of one query for its database's dialect or the one named: its statement and one per collection, with what stops it. */
+export async function getQuerySql(id: string, dialect?: string | null): Promise<QuerySqlResult> {
+  const { data, response } = await api().GET("/api/model/queries/{id}/sql", { params: { path: { id }, query: dialect ? { dialect } : {} } });
   return must(data, response);
 }
 

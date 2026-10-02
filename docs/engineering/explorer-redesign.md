@@ -193,6 +193,26 @@ Database screen's chips list them from the resolved view (`routines`, `types`, `
 pack's each-routine, each-database-type and each-sql-object units. Tests: `tests/unit/database-objects.test.ts`, Playwright
 `database-new-routine`, `database-new-database-type` and `database-new-sql-object` (mock-only).
 
+**As built (queries, 2026-10-02).** `DATABASE_CREATE` gains `query` (New query…, after New routine…; not on a schema row, since
+a query has no schema: `SCHEMA_ELEMENT_KINDS`): the dialog asks for the result entity (optional), the from source (a table key
+or a view id of the database's resolved view, the entity's table first) and its alias (`defaultAlias`: the first letter of each
+word of the source's name), and creates a valid query whose select list fills the entity's key from its column, or holds the
+source's first column for an ad hoc row (`querySelect`), as one undo step. Query names are checked across the database.
+`model/queryTree.ts` holds the trees' types (query.json), constructors, `describe`/`describePredicate` labels, the editor's
+checks, the edits across a query (`renameParameter`, `renameAlias`, `setResultEntity`) and what needs the resolved view
+(`sourceOptions`, `findSource`, `scopeOf`, `resolveColumn`, `foreignKeyJoins`, `fillFromColumns`). The editor
+(`editors/database/QueryEditor.tsx`, sections in `QueryParts.tsx`, cells in `queryExpression.tsx` and `queryPredicate.tsx`)
+has General, Sources, Select, Filter, Group and order, Parameters, Collections (each card reuses the Sources, Select, Filter
+and Group and order sections with the parent's aliases in scope), SQL (`GET /api/model/queries/{id}/sql` per dialect, under
+the previews' query key so a model change renders it again 400 ms later), JSON, Code generation and References; a case
+expression and an exists condition's nested query are edited as JSON for now. The inspector's `QueryFields` sums a query up
+with Show the SQL; the Database screen's Queries chip lists the resolved view's `queries`, and picking one shows its SQL in
+the preview pane (`ddlPreviewTarget` scope `query`). The mock binds and renders queries as the engine does
+(`mocks/model/queries.ts`, `querySql.ts`, a port of `DatabaseRun.Queries.cs` and `QuerySql.cs`; the billing queries render
+byte for byte as the engine's goldens), reports MQ3001, MQ4018 and MQ4021 to MQ4043 through validate, and answers the SQL
+endpoint. Tests: `tests/unit/query-tree.test.ts`, `tests/unit/mock-queries.test.ts`, Playwright `database-new-query` and
+`query-editor` (mock-only).
+
 ### 1.9 Related-element highlighting
 
 *New 2026-09-28.* Selecting a row tints the rows related to it:

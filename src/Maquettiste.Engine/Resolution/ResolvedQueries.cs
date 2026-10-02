@@ -154,8 +154,29 @@ public sealed class RQueryField
     /// <summary>The field's name in the result row (the attribute's when the file gives none).</summary>
     public string Name { get; internal set; } = "";
 
-    /// <summary>The attribute of the result entity the field fills, or <see langword="null"/>.</summary>
+    /// <summary>
+    /// The attribute of the result entity the field fills (for a value object member, the value object attribute), or
+    /// <see langword="null"/>.
+    /// </summary>
     public RAttribute? Attribute { get; internal set; }
+
+    /// <summary>
+    /// The member of the value object <see cref="Attribute"/> the field fills (the file writes <c>attributeId.memberId</c>), or
+    /// <see langword="null"/> when the field fills the attribute itself.
+    /// </summary>
+    public RAttribute? Member { get; internal set; }
+
+    /// <summary>
+    /// The to-one navigation of the result entity whose foreign key the field fills (the file names the relation end the navigation
+    /// leads to, or the navigation's id), or <see langword="null"/>.
+    /// </summary>
+    public RNavigation? Navigation { get; internal set; }
+
+    /// <summary>
+    /// The column of the result entity's table that holds the foreign key <see cref="Navigation"/> fills (its key is
+    /// <c>&lt;end id&gt;.&lt;key attribute id&gt;</c>), or <see langword="null"/>.
+    /// </summary>
+    public RColumn? ForeignKeyColumn { get; internal set; }
 
     /// <summary>The value.</summary>
     public RQueryExpression Expression { get; internal set; } = null!;
@@ -254,10 +275,10 @@ public sealed class RQueryKey
     /// <summary>Whether <see cref="ParentField"/> is a hidden column the parent's SQL adds after the select list.</summary>
     public bool Hidden { get; internal set; }
 
-    /// <summary>The column of the collection's statement that carries the value for matching (<c>__key0</c>, <c>__key1</c>...).</summary>
+    /// <summary>The column of the collection's statement that carries the value for matching (<c>mq_key0</c>, <c>mq_key1</c>...).</summary>
     public string ChildField { get; internal set; } = "";
 
-    /// <summary>The list parameter of the collection's statement (<c>__keys0</c>, <c>__keys1</c>...).</summary>
+    /// <summary>The list parameter of the collection's statement (<c>mq_keys0</c>, <c>mq_keys1</c>...).</summary>
     public string Parameter { get; internal set; } = "";
 
     /// <summary>The value's built-in type keyword, or <see langword="null"/>.</summary>
@@ -319,6 +340,9 @@ public sealed class RQueryExpression
 
     /// <summary>The literal as a plain value (string, long, decimal, double or bool).</summary>
     public object? Value { get; internal set; }
+
+    /// <summary>A typed decimal literal's text as SQL writes it (<c>{ "value": "2.0", "type": "decimal" }</c>), else null.</summary>
+    internal string? LiteralText { get; set; }
 
     /// <summary>Whether the node is the null literal.</summary>
     public bool Null { get; internal set; }

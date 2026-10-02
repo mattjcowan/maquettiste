@@ -42,8 +42,8 @@ export interface CodeEditorProps {
   label: string;
   /** A model per path (its own undo history), for editors that switch between files. */
   path?: string;
-  /** Ctrl+S (Cmd+S) inside the editor. */
-  onSave?: () => void;
+  /** Ctrl+S (Cmd+S) inside the editor, with the editor's text at that moment (the state's copy may lag a keystroke). */
+  onSave?: (text: string) => void;
   /** The text lost focus (an editor that saves on leaving it). */
   onBlur?: () => void;
   markers?: CodeMarker[];
@@ -101,7 +101,7 @@ export default function CodeEditor({
     cursorRef.current = onCursorLine;
   }, [onCursorLine]);
   const handleMount: OnMount = (instance) => {
-    instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveRef.current?.());
+    instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveRef.current?.(instance.getValue()));
     instance.onDidChangeCursorPosition((e) => cursorRef.current?.(e.position.lineNumber));
     instance.onDidBlurEditorText(() => blurRef.current?.());
     setEditor(instance);

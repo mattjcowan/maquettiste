@@ -540,8 +540,8 @@ export interface paths {
          *     the one named: the query's statement and one statement per collection. Identifiers are quoted by the database's quoting
          *     setting, functions spelled per dialect, `ilike` lowered where the dialect has none, paging written as `LIMIT/OFFSET` or
          *     `OFFSET … FETCH NEXT`. A collection runs once for all parent rows (a second round trip): the parent's statement carries
-         *     the correlation columns, the collection's takes their values as the list parameter `__keys0` (`__keys1`...) and returns
-         *     each row's as `__key0`. An `sql` expression without a text for the dialect is MQ4029 in `diagnostics`. A model with
+         *     the correlation columns, the collection's takes their values as the list parameter `mq_keys0` (`mq_keys1`...) and returns
+         *     each row's as `mq_key0`. An `sql` expression without a text for the dialect is MQ4029 in `diagnostics`. A model with
          *     errors returns `preview: null` and the diagnostics. The MCP tool `preview_query_sql` answers the same.
          */
         get: operations["getQuerySql"];
@@ -3730,7 +3730,8 @@ export interface components {
         /** @description A field of a select list, with its inferred type. */
         QueryFieldView: {
             name: string;
-            attributeId: components["schemas"]["Ulid"] | null;
+            /** @description What the field fills: an attribute's id, attributeId.memberId for a member of a value object attribute, or the relation end a to-one navigation leads to (its foreign key); null for an ad hoc field. */
+            attributeId: string | null;
             expression: components["schemas"]["expression"];
             type: string | null;
             nativeType: string | null;
@@ -3783,17 +3784,17 @@ export interface components {
          *       "collections": [
          *         {
          *           "name": "lines",
-         *           "sql": "SELECT l.id AS id, l.quantity AS quantity, l.invoice_id AS __key0\nFROM billing.invoice_lines l\nWHERE l.invoice_id IN @__keys0",
+         *           "sql": "SELECT l.id AS id, l.quantity AS quantity, l.invoice_id AS mq_key0\nFROM billing.invoice_lines l\nWHERE l.invoice_id IN @mq_keys0",
          *           "parameters": [
-         *             "__keys0"
+         *             "mq_keys0"
          *           ],
          *           "keys": [
          *             {
          *               "outer": "i.id",
          *               "parentField": "id",
          *               "hidden": false,
-         *               "childField": "__key0",
-         *               "parameter": "__keys0",
+         *               "childField": "mq_key0",
+         *               "parameter": "mq_keys0",
          *               "type": "uuid",
          *               "nativeType": "uuid"
          *             }
@@ -5980,12 +5981,13 @@ export interface components {
             null?: true;
             /** @enum {unknown} */
             op?: "+" | "-" | "*" | "/" | "%" | "concat";
-            /** @description A function name (lower, upper, coalesce, count, sum, min, max, avg, length, now, or any other, passed through) or a routine id of the database. */
-            call?: string;
+            /** @description A function name (lower, upper, coalesce, count, sum, min, max, avg, length, now, or any other identifier, optionally schema-qualified, passed through) or a routine id of the database. */
+            call?: string | components["schemas"]["id"] | unknown;
             args?: components["schemas"]["expression"][];
             case?: components["schemas"]["when"][];
             else?: components["schemas"]["expression"];
             cast?: components["schemas"]["expression"];
+            /** @description The type of a cast; on a value, decimal, with the number written as text ("value": "2.0") so that its digits are kept. */
             type?: components["schemas"]["builtinType"];
             /** @description An opaque expression per dialect, for what the tree cannot say; the query cannot be rendered for a dialect without a text (nor "*"). */
             sql?: components["schemas"]["dialectMap"];
@@ -6018,8 +6020,8 @@ export interface components {
         field: {
             /** @description The field's name in the result row; absent, the attribute's name. */
             name?: components["schemas"]["identifier"];
-            /** @description The attribute of the query's entity (or of a collection's entity) the field fills. */
-            attribute?: components["schemas"]["id"];
+            /** @description What the field fills on the query's entity (or a collection's entity): an attribute id, attributeId.memberId for a member of a value object attribute, or the id of the relation end a to-one navigation of the entity leads to (or the navigation's id), for its foreign key column. */
+            attribute?: string;
             /** @description The field's type in an ad hoc row; absent, inferred from the expression. */
             type?: components["schemas"]["builtinType"];
             /** @description Whether the field may be null; absent, inferred from the expression. */
@@ -6181,8 +6183,8 @@ export interface components {
                 field: {
                     /** @description The field's name in the result row; absent, the attribute's name. */
                     name?: components["schemas"]["identifier"];
-                    /** @description The attribute of the query's entity (or of a collection's entity) the field fills. */
-                    attribute?: components["schemas"]["id"];
+                    /** @description What the field fills on the query's entity (or a collection's entity): an attribute id, attributeId.memberId for a member of a value object attribute, or the id of the relation end a to-one navigation of the entity leads to (or the navigation's id), for its foreign key column. */
+                    attribute?: string;
                     /** @description The field's type in an ad hoc row; absent, inferred from the expression. */
                     type?: components["schemas"]["builtinType"];
                     /** @description Whether the field may be null; absent, inferred from the expression. */
@@ -6258,12 +6260,13 @@ export interface components {
                     null?: true;
                     /** @enum {unknown} */
                     op?: "+" | "-" | "*" | "/" | "%" | "concat";
-                    /** @description A function name (lower, upper, coalesce, count, sum, min, max, avg, length, now, or any other, passed through) or a routine id of the database. */
-                    call?: string;
+                    /** @description A function name (lower, upper, coalesce, count, sum, min, max, avg, length, now, or any other identifier, optionally schema-qualified, passed through) or a routine id of the database. */
+                    call?: string | components["schemas"]["id"] | unknown;
                     args?: components["schemas"]["expression"][];
                     case?: components["schemas"]["when"][];
                     else?: components["schemas"]["expression"];
                     cast?: components["schemas"]["expression"];
+                    /** @description The type of a cast; on a value, decimal, with the number written as text ("value": "2.0") so that its digits are kept. */
                     type?: components["schemas"]["builtinType"];
                     /** @description An opaque expression per dialect, for what the tree cannot say; the query cannot be rendered for a dialect without a text (nor "*"). */
                     sql?: components["schemas"]["dialectMap"];

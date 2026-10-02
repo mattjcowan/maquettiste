@@ -80,27 +80,41 @@ hierarchies, whose rows span tables (no repository is generated for them).
 
 A query element (a query over a database's tables and views, written as data) becomes one class in `Queries/`, in the
 namespace `<namespace>.Queries`: an interface `I<Name>Query` and a class `<Name>Query` over an `IDbConnection` (and an optional
-`IDbTransaction`) with one method:
+`IDbTransaction`) with one method. `<Name>` is the query's name Pascal-cased, with `Q` in front when it would start with a
+digit (the `cs_class` helper; the engine reports two queries of a database that end up with one class name, MQ4040).
 
 ```csharp
 Task<IReadOnlyList<InvoicesByCustomerResult>> ExecuteAsync(Guid customerId, IEnumerable<string> statuses, int offset = 0, int limit = 50,
-    CancellationToken cancellationToken = default);
+    CancellationToken mq_cancellationToken = default);
 ```
 
 Its parameters are the query's, typed through `types/csharp.json` (a list parameter is an `IEnumerable<T>`), the ones with a
-constant default last. The SQL is what the engine renders for the query's database (`query_sql`), with `@name` placeholders and
+constant default last (a string, bool, integer, double, `decimal` with `m` or `float` with `f`). The class's own names, its
+constructor's `mq_connection` and `mq_transaction`, the method's `mq_cancellationToken` and its locals, start with `mq_`,
+which the engine reserves (MQ4040), so a parameter, a field or a collection may take any other name. Entity, enum and value
+object types are written `global::`-qualified, so no type of the `Queries` namespace hides them, and `System.Text.Json` is
+imported when a field is `json` (a `JsonElement`). The SQL is what the engine renders for the query's database (`query_sql`), with `@name` placeholders and
 `IN @name` for a list, which Dapper expands. A private `Row` class has one property per select field, named as the field (Dapper
 matches column aliases without regard to case), and converts to the result:
 
 - With an `entity`, each row becomes that entity: a field that names an attribute fills its property (an enum stored as text goes
-  through `<Enum>Codes.Parse`, an enum stored as a number is cast); a field without an attribute is read but not copied. A
-  value object attribute spans several columns and is not filled from one field.
+  through `<Enum>Codes.Parse`, an enum stored as a number is cast, a number of another number type than the attribute's is
+  cast to it); a field that names a value object member (`<attribute id>.<member id>`) fills it, the members of one attribute
+  building the value together (an optional one is null when all of its fields are); a field that names the relation end of a
+  to-one navigation fills the entity's foreign key property (`CustomerId`); a field without an attribute is read but not
+  copied. The rows are read-only projections, as the class's remarks say: an entity holds what the query selects and leaves
+  its other properties at their defaults, so it is not a row to save back through the entity's repository.
 - Without one, the method returns `<Name>Row`, a `sealed partial record` with one property per field (`pascal` of its name),
   typed by the field's type and nullability.
 - With collections, the method returns `<Name>Result(Item, <Collection>…)`: after the parent rows, each collection's statement
-  (`query_collection_sql`) runs once with the parent rows' key values (`__keys0`), its rows are grouped by their `__key0` and
-  attached to the parent whose key matches. An element is the collection's `entity`, or a generated `<Name><Collection>Item`
-  record.
+  (`query_collection_sql`) runs with the parent rows' distinct key values (`mq_keys0`), at most `MaxKeysPerStatement` (1000)
+  of them per run, so a large parent set stays under the databases' parameter limits; the runs go in the parents' order and
+  their rows are merged, grouped by their `mq_key0` and attached to the parent whose key matches. With several keys each run
+  keeps only the rows whose whole key is one of its own (the `IN` lists over-fetch). An element is the collection's `entity`,
+  or a generated `<Name><Collection>Item` record. The collections are on the result record, never on the entity.
+
+A template that binds parameters by position (`$1`, `$2`...) gets their names in placeholder order from
+`query_sql_parameters query` (or a collection), with the same dialect and options arguments as `query_sql`.
 
 `QueryRegistrations.All` lists the `(Service, Implementation)` pairs of every query class, as the repositories' registration
 files do.

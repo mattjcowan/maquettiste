@@ -252,6 +252,8 @@ test("the keyboard walks the chart: arrows, Enter into a container, Escape out, 
   await page.keyboard.press("ArrowRight");
   await expect.poll(selected).toBe(S(101));
   const labels = chart(page).getByTestId("transition-label");
+  // The labels are drawn again after the selection moves: count them once they are back.
+  await expect(labels).not.toHaveCount(0);
   const count = await labels.count();
   await page.keyboard.press("t");
   await expect(chart(page).locator("xpath=..").getByTestId("chart-hint")).toContainText("New transition from Drafting");

@@ -113,6 +113,7 @@ describe("context menus (1.8)", () => {
       "new-db:view",
       "new-db:sequence",
       "new-db:routine",
+      "new-db:query",
       "new-db:database-type",
       "new-db:sql-object",
       "expand-all",

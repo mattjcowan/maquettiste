@@ -14,7 +14,9 @@ import { mentions, recordings, replayable, type Recording } from "./recorded";
 import { validPackPath } from "./model/packs";
 import { validExtensionPath } from "./model/extensions";
 import { BAD_CURSOR, filterOf, filterRows, isEmptyFilter, kinds, MAX_LIMIT, page, parseLimit, trim } from "./model/bulk";
-import type { ResolvedRecord } from "@/api/types";
+import type { DatabaseView, ResolvedRecord } from "@/api/types";
+import { resolveQueries } from "./model/queries";
+import { parseDialect } from "./model/querySql";
 import { isUlid, readTag } from "./wire";
 import { processHandlers } from "./processHandlers";
 // Recorded by the functions test of GET /api/validation/rules, which fails when the catalog changes without a new recording.
@@ -516,13 +518,33 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
     http.put("/api/diagrams/{id}", ({ params, request }) => saveLike(params.id, request, true) as never),
     http.get("/api/databases/{id}/view", ({ params }) => {
       const rec = replayable(recorded, "getDatabaseView", pristine(), (r) => mentions(r, params.id));
-      if (rec) return answer(rec) as never;
+      if (rec) {
+        // A recording made before queries existed: its queries are bound against the recorded tables (queries.ts).
+        const body = rec.body as { view: DatabaseView | null; diagnostics: unknown[] };
+        if (!body.view || body.view.queries || !Array.isArray(body.view.tables)) return answer(rec) as never;
+        return HttpResponse.json({ ...body, view: { ...body.view, queries: resolveQueries(body.view, model.docs()).queries } } as never);
+      }
       const result = generation.databaseView(params.id);
       if (!result)
         return model.entries.has(params.id)
           ? problem(404, "not-a-database", `${params.id} is not a database.`)
           : problem(404, "not-found", `No element has the id ${params.id}.`);
       return HttpResponse.json(result);
+    }),
+    http.get("/api/model/queries/{id}/sql", ({ params, request }) => {
+      const entry = model.entries.get(params.id);
+      if (!entry) return problem(404, "not-found", `No query has the id ${params.id}.`);
+      if (entry.json.kind !== "query") return problem(404, "not-a-query", `${params.id} is not a query.`);
+      const q = new URL(request.url).searchParams;
+      const placeholder = q.get("placeholder") || "@";
+      const lists = q.get("lists") || "expand";
+      const dialect = q.get("dialect") || null;
+      if (!["@", ":", "$"].includes(placeholder))
+        return problem(400, "bad-request", "The request is not valid.", `placeholder must be @, : or $, not '${placeholder}'.`);
+      if (!["expand", "any"].includes(lists)) return problem(400, "bad-request", "The request is not valid.", `lists must be expand or any, not '${lists}'.`);
+      if (dialect !== null && !parseDialect(dialect))
+        return problem(400, "bad-request", "The request is not valid.", `'${dialect}' is not a dialect (postgresql, sqlserver, mysql, sqlite, oracle).`);
+      return HttpResponse.json(generation.querySql(params.id, dialect, { placeholder, lists }));
     }),
     http.get("/api/databases/{id}/tables", ({ params }) => {
       const rec = replayable(recorded, "getDatabaseTables", pristine(), (r) => mentions(r, params.id));

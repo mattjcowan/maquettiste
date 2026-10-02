@@ -8,7 +8,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Dapper;
-using App.Model.Billing;
 
 namespace App.Model.Queries;
 
@@ -16,24 +15,30 @@ namespace App.Model.Queries;
 public partial interface IFindCustomersWithIssuedInvoicesQuery
 {
     /// <summary>Runs the query.</summary>
-    Task<IReadOnlyList<Customer>> ExecuteAsync(string namePattern = "%", CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<global::App.Model.Billing.Customer>> ExecuteAsync(string namePattern = "%", CancellationToken mq_cancellationToken = default);
 }
 
 /// <summary>The Dapper implementation of <see cref="IFindCustomersWithIssuedInvoicesQuery"/> (database main, postgresql).</summary>
-public partial class FindCustomersWithIssuedInvoicesQuery(IDbConnection connection, IDbTransaction? transaction = null) : IFindCustomersWithIssuedInvoicesQuery
+/// <remarks>
+/// The results are read-only projections: each Customer holds what the query selects and leaves its other
+/// properties at their defaults, so it is not a row to save back through a repository.
+/// </remarks>
+public partial class FindCustomersWithIssuedInvoicesQuery(IDbConnection mq_connection, IDbTransaction? mq_transaction = null) : IFindCustomersWithIssuedInvoicesQuery
 {
     private const string Sql = """
         SELECT c.id AS id, c.name AS name, c.email AS email, c.created_at AS createdAt
         FROM billing.customers c
-        WHERE c.name ILIKE @namePattern AND EXISTS (SELECT 1 FROM billing.invoices i WHERE i.customer_id = c.id AND i.status = 'I')
+        WHERE c.name ILIKE @namePattern AND EXISTS (SELECT 1
+            FROM billing.invoices i
+            WHERE i.customer_id = c.id AND i.status = 'I')
         ORDER BY LOWER(c.name) ASC
         """;
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<Customer>> ExecuteAsync(string namePattern = "%", CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<global::App.Model.Billing.Customer>> ExecuteAsync(string namePattern = "%", CancellationToken mq_cancellationToken = default)
     {
-        var rows = (await connection.QueryAsync<Row>(new CommandDefinition(Sql, new { namePattern = namePattern }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false)).ToList();
-        return rows.Select(r => r.ToItem()).ToList();
+        var mq_rows = (await mq_connection.QueryAsync<Row>(new CommandDefinition(Sql, new { namePattern = namePattern }, mq_transaction, cancellationToken: mq_cancellationToken)).ConfigureAwait(false)).ToList();
+        return mq_rows.Select(mq_r => mq_r.ToItem()).ToList();
     }
 
     /// <summary>One row as Dapper reads it, field by field.</summary>
@@ -44,7 +49,7 @@ public partial class FindCustomersWithIssuedInvoicesQuery(IDbConnection connecti
         public string email { get; set; } = default!;
         public DateTimeOffset createdAt { get; set; }
 
-        public Customer ToItem() => new()
+        public global::App.Model.Billing.Customer ToItem() => new()
         {
             Id = id,
             Name = name,

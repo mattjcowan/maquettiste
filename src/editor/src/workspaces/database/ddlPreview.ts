@@ -4,7 +4,8 @@
 // the table; with a view, sequence, routine, database type or SQL object selected, its `each view`, `each sequence`, `each
 // routine`, `each database type` or `each sql object` unit renders it; else the database unit renders the whole database. A
 // unit may write nothing for an element (the sql-ddl pack writes a view's own script only when its objectScripts parameter is
-// on): the screen then shows the whole database, which creates it too.
+// on): the screen then shows the whole database, which creates it too. A query creates nothing in the database: its target is
+// the engine's own SQL of the query (GET /api/model/queries/{id}/sql), whatever the packs.
 import { databaseUnits } from "@/workspaces/reference-data/storageChoices";
 
 export interface DdlPreviewTarget {
@@ -12,12 +13,13 @@ export interface DdlPreviewTarget {
   unit: string;
   /** The element rendered: the table key, or the database id. */
   elementId: string;
-  /** Whether it renders the selected table, view, sequence, routine, database type or SQL object, or the whole database. */
+  /** Whether it renders the selected table, view, sequence, routine, database type, SQL object or query (its SQL, not a pack's
+   * unit: `pack` and `unit` are empty), or the whole database. */
   scope: "table" | DdlObjectKind | "database";
 }
 
 /** The kinds the Database screen picks besides tables. */
-export type DdlObjectKind = "view" | "sequence" | "routine" | "database-type" | "sql-object";
+export type DdlObjectKind = "view" | "sequence" | "routine" | "query" | "database-type" | "sql-object";
 
 /** A view, sequence, routine, database type or SQL object picked on the Database screen. */
 export interface DdlObject {
@@ -37,6 +39,7 @@ export function ddlPreviewTarget(
   object: DdlObject | null = null,
 ): DdlPreviewTarget | null {
   if (!database) return null;
+  if (object?.kind === "query") return { pack: "", unit: "", elementId: object.id, scope: "query" };
   const units = databaseUnits(packs);
   const chosen = units.find((u) => PREFERRED.test(u.unit)) ?? units[0];
   if (!chosen) return null;
@@ -63,6 +66,7 @@ export function databaseTargetOf(packs: readonly PackLike[], database: string | 
 
 /** The pane header's line: the pack and unit previewed, and what it renders. */
 export function ddlPreviewCaption(target: DdlPreviewTarget, name: string | null): string {
+  if (target.scope === "query") return `query SQL · ${name ?? target.elementId}`;
   return `${target.pack}/${target.unit} · ${target.scope !== "database" && name ? name : "whole database"}`;
 }
 

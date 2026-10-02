@@ -139,8 +139,12 @@ public sealed record QueryField
     /// <summary>The field's name in the result row, or <see langword="null"/> for the attribute's name.</summary>
     public string? Name { get; init; }
 
-    /// <summary>The attribute of the result entity the field fills.</summary>
-    [ElementRef(IndexKinds = ["attribute"])]
+    /// <summary>
+    /// What the field fills on the result entity: an attribute's id, <c>attributeId.memberId</c> for a member of a value object
+    /// attribute, or the relation end a to-one navigation leads to (its foreign key column). Keyed: each id segment is a reference,
+    /// and the resolver reports what does not resolve (MQ4025).
+    /// </summary>
+    [ElementRef(Keyed = true)]
     public string? Attribute { get; init; }
 
     /// <summary>The field's type in an ad hoc row, or <see langword="null"/> to infer it.</summary>

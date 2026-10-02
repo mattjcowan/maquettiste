@@ -71,8 +71,8 @@ function useCommands(close: () => void): LocalItem[] {
   const { store } = useServices();
   const theme = useEditor(store, (s) => s.theme);
   const canApply = useEditor(store, (s) => s.generation.planId !== null && s.generation.applyJob === null);
-  // New table…, New view…, New sequence…, New routine…, New database type… and New SQL object… add to the database the
-  // Database screen shows.
+  // New table…, New view…, New sequence…, New routine…, New query…, New database type… and New SQL object… add to the
+  // database the Database screen shows.
   const database = useEditor(store, (s) => (s.workspace === "database" ? s.activeDatabase : null));
   const { openWorkspace } = useEditorNavigation();
   const { undo, redo } = useUndoRedo();

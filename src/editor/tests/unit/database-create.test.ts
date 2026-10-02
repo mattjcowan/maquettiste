@@ -98,13 +98,14 @@ describe("the documents they create", () => {
 describe("the menus that offer them", () => {
   const menu = (t: MenuTarget) => menuFor([t]).map((i) => `${i.id} ${i.label}`);
 
-  it("a database row offers New schema…, New table…, New view…, New sequence…, New routine…, New database type… and New SQL object…", () => {
+  it("a database row offers New schema…, New table…, New view…, New sequence…, New routine…, New query…, New database type… and New SQL object…", () => {
     expect(DATABASE_CREATE.map((k) => DATABASE_CREATE_LABELS[k])).toEqual([
       "New schema…",
       "New table…",
       "New view…",
       "New sequence…",
       "New routine…",
+      "New query…",
       "New database type…",
       "New SQL object…",
     ]);
@@ -115,6 +116,7 @@ describe("the menus that offer them", () => {
         "new-db:view New view…",
         "new-db:sequence New sequence…",
         "new-db:routine New routine…",
+        "new-db:query New query…",
         "new-db:database-type New database type…",
         "new-db:sql-object New SQL object…",
       ]),

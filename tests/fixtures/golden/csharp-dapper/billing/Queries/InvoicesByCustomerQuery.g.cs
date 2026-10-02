@@ -8,7 +8,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Dapper;
-using App.Model.Billing;
 
 namespace App.Model.Queries;
 
@@ -16,14 +15,18 @@ namespace App.Model.Queries;
 public partial interface IInvoicesByCustomerQuery
 {
     /// <summary>Runs the query and fills its collections.</summary>
-    Task<IReadOnlyList<InvoicesByCustomerResult>> ExecuteAsync(Guid customerId, IEnumerable<string> statuses, int offset = 0, int limit = 50, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<InvoicesByCustomerResult>> ExecuteAsync(Guid customerId, IEnumerable<string> statuses, int offset = 0, int limit = 50, CancellationToken mq_cancellationToken = default);
 }
 
 /// <summary>One row of query InvoicesByCustomer with its collections.</summary>
-public sealed partial record InvoicesByCustomerResult(Invoice Item, IReadOnlyList<InvoiceLine> Lines);
+public sealed partial record InvoicesByCustomerResult(global::App.Model.Billing.Invoice Item, IReadOnlyList<global::App.Model.Billing.InvoiceLine> Lines);
 
 /// <summary>The Dapper implementation of <see cref="IInvoicesByCustomerQuery"/> (database main, postgresql).</summary>
-public partial class InvoicesByCustomerQuery(IDbConnection connection, IDbTransaction? transaction = null) : IInvoicesByCustomerQuery
+/// <remarks>
+/// The results are read-only projections: each Invoice holds what the query selects and leaves its other
+/// properties at their defaults, so it is not a row to save back through a repository.
+/// </remarks>
+public partial class InvoicesByCustomerQuery(IDbConnection mq_connection, IDbTransaction? mq_transaction = null) : IInvoicesByCustomerQuery
 {
     private const string Sql = """
         SELECT i.id AS id, i.number AS number, i.issued_on AS issuedOn, i.status AS status, i.notes AS notes, i.created_at AS createdAt
@@ -34,31 +37,39 @@ public partial class InvoicesByCustomerQuery(IDbConnection connection, IDbTransa
         """;
 
     private const string LinesSql = """
-        SELECT l.id AS id, l.quantity AS quantity, l.description AS description, l.invoice_id AS __key0
+        SELECT l.id AS id, l.quantity AS quantity, l.description AS description, l.invoice_id AS mq_key0
         FROM billing.invoice_lines l
-        WHERE l.invoice_id IN @__keys0
+        WHERE l.invoice_id IN @mq_keys0
         ORDER BY l.id ASC
         """;
 
+    /// <summary>The most parent keys one collection statement takes: more parent rows run it once per this many keys.</summary>
+    private const int MaxKeysPerStatement = 1000;
+
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<InvoicesByCustomerResult>> ExecuteAsync(Guid customerId, IEnumerable<string> statuses, int offset = 0, int limit = 50, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<InvoicesByCustomerResult>> ExecuteAsync(Guid customerId, IEnumerable<string> statuses, int offset = 0, int limit = 50, CancellationToken mq_cancellationToken = default)
     {
-        var rows = (await connection.QueryAsync<Row>(new CommandDefinition(Sql, new { customerId = customerId, statuses = statuses, offset = offset, limit = limit }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false)).ToList();
-        var lines = Array.Empty<LinesRow>().ToLookup(r => r.__key0);
-        if (rows.Count > 0)
+        var mq_rows = (await mq_connection.QueryAsync<Row>(new CommandDefinition(Sql, new { customerId = customerId, statuses = statuses, offset = offset, limit = limit }, mq_transaction, cancellationToken: mq_cancellationToken)).ConfigureAwait(false)).ToList();
+
+        var mq_c0Keys = mq_rows.Select(mq_r => mq_r.id).Distinct().ToArray();
+        var mq_c0Found = new List<LinesRow>();
+        for (var mq_at = 0; mq_at < mq_c0Keys.Length; mq_at += MaxKeysPerStatement)
         {
-            var found = await connection.QueryAsync<LinesRow>(new CommandDefinition(LinesSql, new
+            var mq_chunk = mq_c0Keys[mq_at..Math.Min(mq_at + MaxKeysPerStatement, mq_c0Keys.Length)];
+            var mq_found = await mq_connection.QueryAsync<LinesRow>(new CommandDefinition(LinesSql, new
             {
-                __keys0 = rows.Select(r => r.id).Distinct().ToArray(),
+                mq_keys0 = mq_chunk,
                 customerId = customerId,
                 statuses = statuses,
                 offset = offset,
                 limit = limit,
-            }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
-            lines = found.ToLookup(r => r.__key0);
+            }, mq_transaction, cancellationToken: mq_cancellationToken)).ConfigureAwait(false);
+            mq_c0Found.AddRange(mq_found);
         }
 
-        return rows.Select(r => new InvoicesByCustomerResult(r.ToItem(), [.. lines[r.id].Select(x => x.ToItem())])).ToList();
+        var mq_c0 = mq_c0Found.ToLookup(mq_x => mq_x.mq_key0);
+
+        return mq_rows.Select(mq_r => new InvoicesByCustomerResult(mq_r.ToItem(), [.. mq_c0[mq_r.id].Select(mq_x => mq_x.ToItem())])).ToList();
     }
 
     /// <summary>One row as Dapper reads it, field by field.</summary>
@@ -71,12 +82,12 @@ public partial class InvoicesByCustomerQuery(IDbConnection connection, IDbTransa
         public string? notes { get; set; }
         public DateTimeOffset createdAt { get; set; }
 
-        public Invoice ToItem() => new()
+        public global::App.Model.Billing.Invoice ToItem() => new()
         {
             Id = id,
             Number = number,
             IssuedOn = issuedOn,
-            Status = InvoiceStatusCodes.Parse(status),
+            Status = global::App.Model.Billing.InvoiceStatusCodes.Parse(status),
             Notes = notes,
             CreatedAt = createdAt,
         };
@@ -88,9 +99,9 @@ public partial class InvoicesByCustomerQuery(IDbConnection connection, IDbTransa
         public string id { get; set; } = default!;
         public int quantity { get; set; }
         public string? description { get; set; }
-        public Guid __key0 { get; set; }
+        public Guid mq_key0 { get; set; }
 
-        public InvoiceLine ToItem() => new()
+        public global::App.Model.Billing.InvoiceLine ToItem() => new()
         {
             Id = id,
             Quantity = quantity,

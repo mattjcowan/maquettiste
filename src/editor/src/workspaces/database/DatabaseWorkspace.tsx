@@ -2,15 +2,16 @@
 // GET /api/databases/{id}/view as TableNodes and ForeignKeyEdges (auto-laid out, positions per
 // browser), the dialect selector (edits the database element) and the live DDL preview
 // (POST /api/templates/preview with the unit ddlPreview.ts picks: an enabled pack's database unit, or its each-table
-// unit for a selected table, the each-<kind> unit of a picked view, sequence, routine, database type or SQL object), refreshed
-// 400 ms after any model.changed. The list beside the canvas shows the tables, views, sequences, routines, database types or
-// SQL objects (a kind chip picks which), and the toolbar's New menu creates any of them, or a schema, in the database.
+// unit for a selected table, the each-<kind> unit of a picked view, sequence, routine, database type or SQL object; a picked
+// query shows its own SQL), refreshed 400 ms after any model.changed. The list beside the canvas shows the tables, views,
+// sequences, routines, queries, database types or SQL objects (a kind chip picks which), and the toolbar's New menu creates any
+// of them, or a schema, in the database.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Background, Controls, MiniMap, ReactFlow, ReactFlowProvider, useNodesInitialized, useReactFlow, type NodeChange, type Viewport } from "@xyflow/react";
 import { Download, LayoutGrid, Plus } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/menu";
 import { exportCanvas } from "@/canvas/export";
-import { useDatabaseTables, useDatabaseView, useIndex, usePacks, usePreview, useProject } from "@/api/queries";
+import { useDatabaseTables, useDatabaseView, useIndex, usePacks, usePreview, useProject, useQuerySql } from "@/api/queries";
 import type { DatabaseDoc } from "@/api/types";
 import { useEditor } from "@/state/store";
 import { useServices } from "@/app/context";
@@ -273,7 +274,9 @@ function DatabaseCanvas() {
   const objects = useMemo(() => {
     const resolved = view.data?.view;
     const out = {} as Record<ObjectListKind, { id: string; name: string; schema: string | null }[]>;
-    for (const kind of Object.keys(OBJECT_LIST_MEMBERS) as ObjectListKind[]) out[kind] = resolved?.[OBJECT_LIST_MEMBERS[kind]] ?? [];
+    for (const kind of Object.keys(OBJECT_LIST_MEMBERS) as ObjectListKind[])
+      // A query has no schema.
+      out[kind] = (resolved?.[OBJECT_LIST_MEMBERS[kind]] ?? []).map((o) => ({ id: o.id, name: o.name, schema: "schema" in o ? o.schema : null }));
     return out;
   }, [view.data]);
   const listedObjects = useMemo(() => (listKind === "table" ? null : filterObjects(objects[listKind], tableFilter)), [listKind, objects, tableFilter]);
@@ -296,7 +299,8 @@ function DatabaseCanvas() {
   const packs = usePacks();
   const table = tables.find((t) => t.key === selectedTable) ?? null;
   const target = ddlPreviewTarget(packs.data ?? [], activeDatabase ?? null, table?.key ?? null, picked);
-  const preview = usePreview(target?.pack ?? "", target?.unit ?? "", target?.elementId ?? null, !!target && !!view.data?.view);
+  const querySql = useQuerySql(target?.scope === "query" ? target.elementId : null, null);
+  const preview = usePreview(target?.pack ?? "", target?.unit ?? "", target?.elementId ?? null, !!target && target.scope !== "query" && !!view.data?.view);
   // An object's unit that writes nothing for the pick (a pack parameter turns it off): the whole database instead.
   const objectEmpty =
     !!picked && target?.scope === picked.kind && !preview.isPlaceholderData && !!preview.data && !preview.data.files.length && !preview.data.diagnostics.length;
@@ -364,7 +368,7 @@ function DatabaseCanvas() {
               size="sm"
               variant="ghost"
               disabled={!activeDatabase}
-              title="Create a schema, table, view, sequence, routine, database type or SQL object in this database"
+              title="Create a schema, table, view, sequence, routine, query, database type or SQL object in this database"
               data-testid="database-new-menu"
             >
               <Plus /> New
@@ -532,11 +536,11 @@ function DatabaseCanvas() {
             data-testid="ddl-preview"
           >
             <div className="flex h-6 shrink-0 items-center gap-2 border-b border-default px-2 text-12" data-testid="ddl-panel-header">
-              <span className="font-semibold">DDL preview</span>
+              <span className="font-semibold">{target?.scope === "query" ? "SQL preview" : "DDL preview"}</span>
               <span className="min-w-0 flex-1 truncate text-secondary" data-testid="ddl-preview-unit" title="The pack and unit this preview renders">
                 {target ? ddlPreviewCaption(target, picked?.name ?? table?.name ?? null) : "no unit"}
               </span>
-              {shownPreview.isFetching ? <Spinner label="Rendering" /> : null}
+              {(target?.scope === "query" ? querySql : shownPreview).isFetching ? <Spinner label="Rendering" /> : null}
               <PanelToggle panel="ddl" />
             </div>
             <div className="min-h-0 flex-1">
@@ -546,6 +550,28 @@ function DatabaseCanvas() {
                 <EmptyState title="Nothing to preview">
                   <span data-testid="ddl-preview-none">{NO_DDL_UNIT}</span>
                 </EmptyState>
+              ) : target.scope === "query" ? (
+                querySql.data?.preview ? (
+                  <CodeView
+                    language="sql"
+                    readOnly
+                    label="Query SQL"
+                    value={[querySql.data.preview.sql, ...querySql.data.preview.collections.map((c) => `-- collection ${c.name}\n${c.sql}`)].join("\n\n")}
+                  />
+                ) : querySql.data ? (
+                  <ul className="p-2 text-12 text-danger" data-testid="query-preview-problems">
+                    {querySql.data.diagnostics
+                      .filter((d) => d.severity === "error")
+                      .slice(0, 5)
+                      .map((d, i) => (
+                        <li key={i}>
+                          {d.rule} {d.message}
+                        </li>
+                      ))}
+                  </ul>
+                ) : (
+                  <Spinner label="Rendering the query" />
+                )
               ) : shownPreview.data?.diagnostics.length && !shownPreview.data.files.length ? (
                 <ul className="p-2 text-12 text-danger">
                   {shownPreview.data.diagnostics.map((d, i) => (

@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Globalization;
 using System.Text;
 using Maquettiste.Engine.Diagnostics;
@@ -69,6 +70,69 @@ public static class QuerySql
         return writer.Result();
     }
 
+    /// <summary>
+    /// The parameter names of a query's statement in placeholder order (the positions of <c>$n</c> placeholders), as
+    /// <see cref="Render"/> lists them in <see cref="QuerySqlText.Parameters"/>; the template helper <c>query_sql_parameters</c>.
+    /// </summary>
+    /// <param name="query">The resolved query.</param>
+    /// <param name="dialect">A dialect name, or <see langword="null"/> for the query's database's.</param>
+    /// <param name="options">The options, or <see langword="null"/> for <see cref="QuerySqlOptions.Default"/>.</param>
+    /// <returns>The names, each once, in first-appearance order.</returns>
+    public static IReadOnlyList<string> Parameters(RQuery query, string? dialect = null, QuerySqlOptions? options = null) =>
+        Render(query, dialect, options).Parameters;
+
+    /// <summary>The aggregate functions: a query whose select list, having or order calls one is grouped.</summary>
+    private static readonly FrozenSet<string> Aggregates = FrozenSet.Create(StringComparer.Ordinal,
+        "COUNT", "COUNT_BIG", "SUM", "MIN", "MAX", "AVG", "STRING_AGG", "ARRAY_AGG", "GROUP_CONCAT", "LISTAGG", "JSON_AGG", "JSONB_AGG",
+        "JSON_ARRAYAGG", "JSON_OBJECTAGG", "JSON_GROUP_ARRAY", "JSON_GROUP_OBJECT", "BOOL_AND", "BOOL_OR", "EVERY", "BIT_AND", "BIT_OR",
+        "BIT_XOR", "STDDEV", "STDDEV_POP", "STDDEV_SAMP", "STDEV", "STDEVP", "VARIANCE", "VAR_POP", "VAR_SAMP", "VAR", "VARP", "ANY_VALUE");
+
+    /// <summary>Whether a query is grouped: it has a GROUP BY, or its select list, having or order calls an aggregate function.</summary>
+    internal static bool IsGrouped(RQuery query) =>
+        query.GroupBy.Count > 0 || query.Select.Any(f => HasAggregate(f.Expression)) || (query.Having is { } having && HasAggregate(having))
+        || query.OrderBy.Any(o => HasAggregate(o.Expression));
+
+    /// <summary>Whether an expression calls an aggregate function (outside nested queries).</summary>
+    internal static bool HasAggregate(RQueryExpression expression) =>
+        (expression.Node == "call" && expression.Routine is null && expression.Call is { } call && Aggregates.Contains(call.ToUpperInvariant()))
+        || expression.Args.Any(HasAggregate)
+        || (expression.Cast is { } cast && HasAggregate(cast))
+        || expression.Case.Any(w => HasAggregate(w.When) || HasAggregate(w.Then))
+        || (expression.Else is { } otherwise && HasAggregate(otherwise));
+
+    private static bool HasAggregate(RQueryPredicate predicate) =>
+        predicate.And.Any(HasAggregate) || predicate.Or.Any(HasAggregate) || (predicate.Not is { } not && HasAggregate(not))
+        || (predicate.Left is { } left && HasAggregate(left)) || (predicate.Right is { } right && HasAggregate(right)) || predicate.Values.Any(HasAggregate);
+
+    /// <summary>
+    /// The type a MySQL <c>CAST</c> takes for a built-in keyword: MySQL casts only to CHAR, SIGNED, UNSIGNED, DECIMAL(p,s), DATE,
+    /// DATETIME, TIME, BINARY, JSON and DOUBLE.
+    /// </summary>
+    /// <param name="keyword">The keyword.</param>
+    /// <param name="decimalType">The native decimal type with its precision and scale (<c>decimal(18,2)</c>).</param>
+    /// <returns>The cast type.</returns>
+    internal static string MySqlCastType(string keyword, string decimalType) => keyword switch
+    {
+        "int16" or "int32" or "int64" or "bool" or "duration" => "SIGNED",
+        "binary" => "BINARY",
+        "decimal" => decimalType.ToUpperInvariant(),
+        "date" => "DATE",
+        "datetime" or "datetimeOffset" => "DATETIME",
+        "time" => "TIME",
+        "json" => "JSON",
+        "float" or "double" => "DOUBLE",
+        _ => "CHAR",
+    };
+
+    /// <summary>One expression as the query's statement writes it for its database's dialect (to compare two expressions).</summary>
+    internal static string ExpressionText(RQuery query, RQueryExpression expression) => new Writer(query, null, null).Text(expression);
+
+    /// <summary>The text an <c>sql</c> expression has for a dialect: its own, else <c>"*"</c>'s; a blank text counts as none.</summary>
+    internal static string? SqlFor(IReadOnlyDictionary<string, string> texts, string dialect) =>
+        texts.TryGetValue(dialect, out var text) && !string.IsNullOrWhiteSpace(text) ? text
+        : texts.TryGetValue("*", out text) && !string.IsNullOrWhiteSpace(text) ? text
+        : null;
+
     /// <summary>The SQL spelling of the functions the renderer knows, per dialect; any other name is written as given.</summary>
     internal static string? FunctionName(string name, Dialect dialect) => name.ToLowerInvariant() switch
     {
@@ -95,6 +159,7 @@ public static class QuerySql
         private readonly List<string> _parameters = [];
         private readonly List<Diagnostic> _diagnostics = [];
         private readonly StringBuilder _sb = new();
+        private string _newline = "\n";
         private IReadOnlyDictionary<string, string>? _typeMap;
         private EffectiveConventions? _conventions;
 
@@ -115,6 +180,8 @@ public static class QuerySql
 
         public QuerySqlText Result() => new(_sb.ToString(), [.. _parameters], [.. _diagnostics]);
 
+        public string Text(RQueryExpression expression) => Expression(expression);
+
         private static RQuery Root(RQuery query)
         {
             while (query.Parent is { } parent)
@@ -126,17 +193,22 @@ public static class QuerySql
         {
             var columns = query.Select.Select(f => Expression(f.Expression) + " AS " + Q(f.Name)).ToList();
             var hidden = new HashSet<string>(StringComparer.Ordinal);
+            var hiddenKeys = new List<RQueryExpression>();
             foreach (var collection in query.Collections)
             {
                 foreach (var key in collection.Keys)
                 {
                     if (key.Hidden && hidden.Add(key.ParentField))
+                    {
                         columns.Add(Expression(key.Outer) + " AS " + Q(key.ParentField));
+                        hiddenKeys.Add(key.Outer);
+                    }
                 }
             }
 
             Select(query.Distinct, columns);
-            Body(query, query.Where, null);
+            // A grouped parent groups by its hidden key columns too, or they would be neither grouped nor aggregated.
+            Body(query, query.Where, null, IsGrouped(query) ? hiddenKeys : []);
             Order(query.OrderBy, query.Paging is not null);
             Paging(query.Paging);
         }
@@ -148,7 +220,8 @@ public static class QuerySql
             foreach (var key in collection.Keys)
                 columns.Add(Expression(key.Inner) + " AS " + Q(key.ChildField));
             Select(query.Distinct, columns);
-            Body(query, query.Where, collection);
+            // A grouped collection groups by its key columns too: each group then belongs to one parent row.
+            Body(query, query.Where, collection, IsGrouped(query) ? [.. collection.Keys.Select(k => k.Inner)] : []);
             Order(query.OrderBy, false);
         }
 
@@ -157,13 +230,16 @@ public static class QuerySql
             _sb.Append(distinct ? "SELECT DISTINCT " : "SELECT ").Append(string.Join(", ", columns));
         }
 
-        /// <summary>FROM, the joins, WHERE (a collection's key equalities replaced by its key lists), GROUP BY and HAVING.</summary>
-        private void Body(RQuery query, RQueryPredicate? where, RQueryCollection? collection)
+        /// <summary>
+        /// FROM, the joins, WHERE (a collection's key equalities replaced by its key lists), GROUP BY (with <paramref name="keys"/>, the
+        /// key columns a grouped statement adds, each once) and HAVING.
+        /// </summary>
+        private void Body(RQuery query, RQueryPredicate? where, RQueryCollection? collection, IReadOnlyList<RQueryExpression> keys)
         {
-            _sb.Append('\n').Append("FROM ").Append(Source(query.From));
+            _sb.Append(_newline).Append("FROM ").Append(Source(query.From));
             foreach (var join in query.Joins)
             {
-                _sb.Append('\n').Append(join.JoinKind switch
+                _sb.Append(_newline).Append(join.JoinKind switch
                 {
                     "left" => "LEFT JOIN ",
                     "right" => "RIGHT JOIN ",
@@ -199,11 +275,19 @@ public static class QuerySql
             }
 
             if (conditions.Count > 0)
-                _sb.Append('\n').Append("WHERE ").Append(string.Join(" AND ", conditions));
-            if (query.GroupBy.Count > 0)
-                _sb.Append('\n').Append("GROUP BY ").Append(string.Join(", ", query.GroupBy.Select(Expression)));
+                _sb.Append(_newline).Append("WHERE ").Append(string.Join(" AND ", conditions));
+            var groups = query.GroupBy.Select(Expression).ToList();
+            foreach (var key in keys)
+            {
+                var text = Expression(key);
+                if (!groups.Contains(text, StringComparer.Ordinal))
+                    groups.Add(text);
+            }
+
+            if (groups.Count > 0)
+                _sb.Append(_newline).Append("GROUP BY ").Append(string.Join(", ", groups));
             if (query.Having is { } having)
-                _sb.Append('\n').Append("HAVING ").Append(Predicate(having, true));
+                _sb.Append(_newline).Append("HAVING ").Append(Predicate(having, true));
         }
 
         private void Order(IReadOnlyList<RQueryOrder> orderBy, bool paged)
@@ -356,14 +440,20 @@ public static class QuerySql
             return left + symbol + Expression(predicate.Right!);
         }
 
-        /// <summary>A nested query inline (an exists condition): SELECT 1 and its body.</summary>
+        /// <summary>
+        /// A nested query inline (an exists condition): SELECT 1 and its body, each clause on a line of its own indented one level
+        /// deeper than the statement around it (the text of literals and sql expressions is written as is).
+        /// </summary>
         private string Subquery(RQuery query)
         {
             var saved = _sb.ToString();
+            var newline = _newline;
             _sb.Clear();
+            _newline = newline + "    ";
             Select(false, ["1"]);
-            Body(query, query.Where, null);
-            var text = _sb.ToString().Replace("\n", " ", StringComparison.Ordinal);
+            Body(query, query.Where, null, []);
+            var text = _sb.ToString();
+            _newline = newline;
             _sb.Clear().Append(saved);
             return text;
         }
@@ -377,7 +467,7 @@ public static class QuerySql
                 case "param":
                     return Placeholder(expression.Param!.Name);
                 case "value":
-                    return SqlDialects.Literal(expression.Value, _dialect);
+                    return expression.LiteralText ?? SqlDialects.Literal(expression.Value, _dialect);
                 case "null":
                     return "NULL";
                 case "op":
@@ -398,7 +488,7 @@ public static class QuerySql
                     return "CAST(" + Expression(expression.Cast!) + " AS " + CastType(expression) + ")";
                 case "sql":
                 {
-                    if (expression.Sql.TryGetValue(_dialectName, out var text) || expression.Sql.TryGetValue("*", out text))
+                    if (SqlFor(expression.Sql, _dialectName) is { } text)
                         return text;
                     _diagnostics.Add(RuleCatalog.Create("MQ4029",
                         $"Query '{_root.Name}' has an sql expression without a text for {_dialectName} (and no \"*\" text), so it cannot be rendered there.",
@@ -455,6 +545,8 @@ public static class QuerySql
             var settings = _root.Settings ?? throw new InvalidOperationException("A resolved query carries its project settings.");
             _typeMap ??= DialectTypeMaps.Effective(_dialect, settings);
             _conventions ??= EffectiveConventions.For(settings, _root.Database.Name);
+            if (_dialect == Dialect.MySql)
+                return MySqlCastType(keyword, DialectTypeMaps.Render(_typeMap, "decimal", null, null, null, _conventions));
             return _typeMap.ContainsKey(keyword) ? DialectTypeMaps.Render(_typeMap, keyword, null, null, null, _conventions) : keyword;
         }
     }

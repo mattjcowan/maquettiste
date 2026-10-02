@@ -68,7 +68,8 @@ internal static class SqlDialects
     /// <summary>
     /// Quotes an identifier: PostgreSQL, SQLite and Oracle <c>"x"</c>, SQL Server <c>[x]</c>, MySQL <c>`x`</c>, with the closing
     /// character doubled inside. <paramref name="quoting"/> <c>always</c> quotes, <c>never</c> leaves the name as is, and
-    /// <c>reserved</c> quotes reserved words of the dialect and names that are not regular identifiers.
+    /// <c>reserved</c> quotes reserved words of the dialect, names that are not regular identifiers, and names that start with an
+    /// underscore (Oracle's unquoted identifiers must start with a letter).
     /// </summary>
     /// <param name="name">The identifier.</param>
     /// <param name="dialect">The dialect.</param>
@@ -80,7 +81,7 @@ internal static class SqlDialects
         {
             Quoting.Always => true,
             Quoting.Never => false,
-            _ => !IsRegular(name) || IsReserved(dialect, name),
+            _ => !IsRegular(name) || name[0] == '_' || IsReserved(dialect, name),
         };
         if (!quote)
             return name;
