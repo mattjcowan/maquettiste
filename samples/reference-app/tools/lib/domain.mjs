@@ -537,6 +537,60 @@ export function compile(domain) {
     });
   }
 
+  // Queries (written as data): entity and source names become ids, a field's attribute name the attribute of the query's (or
+  // the collection's) entity, a collection's attribute the end its navigation leads to; trees are copied as written.
+  const stereotypeAttrId = new Map(); // "<key>.<attribute>" -> id
+  for (const o of out) {
+    if (o.schema === "stereotype.json") for (const a of o.doc.attributes ?? []) stereotypeAttrId.set(`${o.doc.key}.${a.name}`, a.id);
+  }
+  const fieldAttr = (entName, attrName, where) => {
+    for (let ent = entities.get(entName); ent; ent = ent.spec.base ? entities.get(ent.spec.base) : undefined) {
+      const own = ent.attrs.find((x) => x.name === attrName);
+      if (own) return own.id;
+      for (const key of ent.spec.stereotypes ?? []) if (stereotypeAttrId.has(`${key}.${attrName}`)) return stereotypeAttrId.get(`${key}.${attrName}`);
+    }
+    throw new Error(`${where}: ${entName} has no attribute ${attrName}`);
+  };
+  const sourceRef = (name, where) => {
+    if (name.startsWith("view:")) {
+      const view = name.slice(5);
+      if (!db.views?.[view]) throw new Error(`${where}: unknown view ${view}`);
+      return id(`view:${view}`);
+    }
+    if (db.tables?.[name]) return id(`table:${name}`);
+    return entityRef(name, where).id;
+  };
+  const navigationEnd = (entName, nav, where) => {
+    const entId = entities.get(entName).id;
+    for (const r of relations) {
+      const ends = r.doc.ends;
+      for (let i = 0; i < ends.length; i++) {
+        if (ends[i].navigation === nav && ends.some((e, j) => j !== i && e.entity === entId)) return ends[i].id;
+      }
+    }
+    throw new Error(`${where}: ${entName} has no navigation ${nav}`);
+  };
+  const subquery = (q, entName, where) => ({
+    from: { source: sourceRef(q.from.source, where), alias: q.from.alias },
+    joins: q.joins?.map((j) => ({ ...j, source: sourceRef(j.source, where) })),
+    select: q.select?.map((f) => (f.attribute ? { ...f, attribute: fieldAttr(entName, f.attribute, where) } : f)),
+    where: q.where, groupBy: q.groupBy, having: q.having, orderBy: q.orderBy, distinct: q.distinct,
+  });
+  for (const [name, q] of Object.entries(db.queries ?? {})) {
+    const where = `query ${name}`;
+    if (!q.description) throw new Error(`${where}: missing description`);
+    const body = subquery(q, q.entity, where);
+    emit("queries", `model/databases/${kebab(db.name)}/queries/${kebab(name)}.json`, "query.json", {
+      kind: "query", id: id(`query:${name}`), name, database: dbId, description: q.description, tags: q.tags,
+      entity: q.entity ? entityRef(q.entity, where).id : undefined, parameters: q.parameters, ...body, paging: q.paging,
+      collections: q.collections?.map((c) => ({
+        attribute: q.entity ? navigationEnd(q.entity, c.attribute, where) : c.attribute,
+        entity: c.entity ? entityRef(c.entity, where).id : undefined,
+        query: subquery(c.query, c.entity, `${where} ${c.attribute}`),
+      })),
+    });
+  }
+
   const paths = new Set();
   for (const o of out) {
     if (paths.has(o.modelPath)) throw new Error(`two elements write ${o.modelPath}`);
@@ -549,6 +603,7 @@ export function compile(domain) {
       referenceTypes: out.filter((o) => o.schema === "reference-type.json").length,
       valueObjects: Object.keys(project.valueObjects ?? {}).length, scalarTypes: Object.keys(project.scalarTypes ?? {}).length, mappings: mappings.length,
       diagrams: packages.length, tables: tables.length + Object.keys(db.tables ?? {}).length, views: Object.keys(db.views ?? {}).length, sequences: sequenceId.size,
+      queries: Object.keys(db.queries ?? {}).length,
     },
   };
 }

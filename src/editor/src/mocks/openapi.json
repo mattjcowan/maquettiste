@@ -1174,7 +1174,7 @@
         ],
         "operationId": "getResolvedModel",
         "summary": "The resolved model as flat records, in pages",
-        "description": "What templates read (the resolved model of SPEC Section 10), as data for external systems. Resolved objects reference each\nother, so they are projected into flat records (`x-engine-record`) where other objects appear by id; each record has `id`,\n`kind` and `name`. Choose what to read with `scope`, which follows the template scopes (`get_template_context`):\n\n- `entities`: `EntityRecord`, each attribute resolved (`type` with the enum, value object, scalar or reference type it\n  names, `default`, `length`, `precision`, `scale`, `isKey`; the base entity's attributes come first, marked `isInherited`),\n  the key, alternate keys, `base` and `derived`, navigations, `relations`, one mapping per database (table key and the\n  column of each attribute path) and the annotations.\n- `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,\n  `scenarios`: the matching record.\n- `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards,\n  actions, gates and invokes, actors by id.\n- `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and\n  indexes, views, sequences, routines, database types and SQL objects); `tables`: one `TableRecord` per table, for\n  databases too large for one record; `routines`, `database-types`, `sql-objects`: one `RoutineRecord`,\n  `DatabaseTypeRecord` or `SqlObjectRecord` per object.\n- `all` (the default): every scope but `tables`, `routines`, `database-types` and `sql-objects`, which `databases` holds.\n\n`database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases and tables to\nit; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it\nis null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change\nbetween pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors\nreturns no records and the errors in `diagnostics`. The MCP tool `get_resolved_model` and `maquettiste model export\n--resolved` answer the same.\n",
+        "description": "What templates read (the resolved model of SPEC Section 10), as data for external systems. Resolved objects reference each\nother, so they are projected into flat records (`x-engine-record`) where other objects appear by id; each record has `id`,\n`kind` and `name`. Choose what to read with `scope`, which follows the template scopes (`get_template_context`):\n\n- `entities`: `EntityRecord`, each attribute resolved (`type` with the enum, value object, scalar or reference type it\n  names, `default`, `length`, `precision`, `scale`, `isKey`; the base entity's attributes come first, marked `isInherited`),\n  the key, alternate keys, `base` and `derived`, navigations, `relations`, one mapping per database (table key and the\n  column of each attribute path) and the annotations.\n- `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,\n  `scenarios`: the matching record.\n- `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards,\n  actions, gates and invokes, actors by id.\n- `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and\n  indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,\n  for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,\n  `DatabaseTypeRecord`, `SqlObjectRecord` or `QueryRecord` per object.\n- `all` (the default): every scope but `tables`, `routines`, `database-types`, `sql-objects` and `queries`, which\n  `databases` holds.\n\n`database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases and tables to\nit; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it\nis null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change\nbetween pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors\nreturns no records and the errors in `diagnostics`. The MCP tool `get_resolved_model` and `maquettiste model export\n--resolved` answer the same.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "GenerationService.GetResolvedAsync(query)",
         "parameters": [
@@ -1201,7 +1201,8 @@
                 "tables",
                 "routines",
                 "database-types",
-                "sql-objects"
+                "sql-objects",
+                "queries"
               ],
               "default": "all"
             }
@@ -3812,6 +3813,81 @@
         }
       }
     },
+    "/api/model/queries/{id}/sql": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ElementId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "databases"
+        ],
+        "operationId": "getQuerySql",
+        "summary": "The SQL of one query for a dialect",
+        "description": "Renders a query (a query element over a database's tables and views) as parameterised SQL for its database's dialect, or\nthe one named: the query's statement and one statement per collection. Identifiers are quoted by the database's quoting\nsetting, functions spelled per dialect, `ilike` lowered where the dialect has none, paging written as `LIMIT/OFFSET` or\n`OFFSET … FETCH NEXT`. A collection runs once for all parent rows (a second round trip): the parent's statement carries\nthe correlation columns, the collection's takes their values as the list parameter `__keys0` (`__keys1`...) and returns\neach row's as `__key0`. An `sql` expression without a text for the dialect is MQ4029 in `diagnostics`. A model with\nerrors returns `preview: null` and the diagnostics. The MCP tool `preview_query_sql` answers the same.\n",
+        "x-maquettiste-role": "viewer",
+        "x-maquettiste-engine": "GenerationService.GetQuerySqlAsync(queryId, dialect, options)",
+        "parameters": [
+          {
+            "name": "dialect",
+            "in": "query",
+            "description": "postgresql, sqlserver, mysql, sqlite or oracle; absent for the query's database's.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "placeholder",
+            "in": "query",
+            "description": "The placeholder style, `@name` (default), `:name` or `$1`.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "@",
+                ":",
+                "$"
+              ],
+              "default": "@"
+            }
+          },
+          {
+            "name": "lists",
+            "in": "query",
+            "description": "How a list parameter is written, `IN @name` for a data access library that expands lists (default) or `= ANY(@name)` on PostgreSQL.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "expand",
+                "any"
+              ],
+              "default": "expand"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The statements, or the diagnostics that prevented them.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuerySqlResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/api/databases/{id}/view": {
       "parameters": [
         {
@@ -3824,7 +3900,7 @@
         ],
         "operationId": "getDatabaseView",
         "summary": "The resolved tables of one database",
-        "description": "The physical model after conventions, mappings and table overlays are applied: every table (synthesized,\ndesigned or imported), its columns with the attribute each one stores, keys, foreign keys and indexes, and\nevery view, sequence, routine, database type, SQL object and schema. The database, each schema, table, column,\nview, sequence, routine, database type and SQL object carries the annotations of its own file or entry (display and plural names, description, stereotypes, tags, category,\nproperties, generation hints); a synthesized table without an overlay, or a synthesized column without an\noverlay entry, has none. The Database workspace draws table diagrams from it and the Mappings workspace\nsets it beside the entity. A model with errors returns `view: null` and the diagnostics.\n",
+        "description": "The physical model after conventions, mappings and table overlays are applied: every table (synthesized,\ndesigned or imported), its columns with the attribute each one stores, keys, foreign keys and indexes, and\nevery view, sequence, routine, database type, SQL object, query and schema. The database, each schema, table, column,\nview, sequence, routine, database type, SQL object and query carries the annotations of its own file or entry (display and plural names, description, stereotypes, tags, category,\nproperties, generation hints); a synthesized table without an overlay, or a synthesized column without an\noverlay entry, has none. The Database workspace draws table diagrams from it and the Mappings workspace\nsets it beside the entity. A model with errors returns `view: null` and the diagnostics.\n",
         "x-maquettiste-role": "viewer",
         "x-engine-addition": "E1 GenerationService.GetDatabaseViewAsync(databaseId)",
         "responses": {
@@ -7705,7 +7781,7 @@
         }
       },
       "NotFound": {
-        "description": "No such element, diagram, plan, path in the plan, job or connection (`not-found`, `not-a-diagram`, `not-a-database`).",
+        "description": "No such element, diagram, plan, path in the plan, job or connection (`not-found`, `not-a-diagram`, `not-a-database`, `not-a-query`).",
         "content": {
           "application/problem+json": {
             "schema": {
@@ -7844,6 +7920,7 @@
               "not-found",
               "not-a-diagram",
               "not-a-database",
+              "not-a-query",
               "invalid-icon",
               "precondition-required",
               "queue-full",
@@ -9651,6 +9728,7 @@
           "routine",
           "database-type",
           "sql-object",
+          "query",
           "mapping",
           "diagram",
           "tag-vocabulary",
@@ -9744,7 +9822,7 @@
             "description": "The element's display name, when it has one (E5). Search matches it and the explorer shows it as the label."
           },
           "database": {
-            "description": "The owning database's id, on table, view, sequence, routine, database-type, sql-object and mapping rows (E5).",
+            "description": "The owning database's id, on table, view, sequence, routine, database-type, sql-object, query and mapping rows (E5).",
             "$ref": "#/components/schemas/Ulid"
           },
           "entity": {
@@ -9919,6 +9997,9 @@
           },
           {
             "$ref": "#/components/schemas/sql-object"
+          },
+          {
+            "$ref": "#/components/schemas/query"
           },
           {
             "$ref": "#/components/schemas/mapping"
@@ -11164,6 +11245,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/SqlObjectRecord"
+                },
+                {
+                  "$ref": "#/components/schemas/QueryRecord"
                 }
               ]
             }
@@ -13790,6 +13874,36 @@
           }
         }
       },
+      "QueryRecord": {
+        "x-engine-record": "Maquettiste.Engine.QueryRecord",
+        "description": "One query of a database on its own (scope `queries`).",
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "database",
+          "query"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "kind": {
+            "type": "string",
+            "const": "query"
+          },
+          "name": {
+            "type": "string"
+          },
+          "database": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "query": {
+            "$ref": "#/components/schemas/QueryView"
+          }
+        }
+      },
       "DatabaseViewResult": {
         "x-engine-addition": "E1",
         "x-engine-record": "Maquettiste.Engine.DatabaseViewResult",
@@ -14041,6 +14155,13 @@
             "description": "Every SQL object (a trigger, grant, extension or other object the model does not type), by schema then name. Always sent by this engine; optional for older servers.",
             "items": {
               "$ref": "#/components/schemas/SqlObjectView"
+            }
+          },
+          "queries": {
+            "type": "array",
+            "description": "Every query over the database's tables and views, by name, with its SQL for the database's dialect. Always sent by this engine; optional for older servers.",
+            "items": {
+              "$ref": "#/components/schemas/QueryView"
             }
           },
           "schemas": {
@@ -15490,6 +15611,639 @@
           "category": null,
           "properties": {},
           "generation": {}
+        }
+      },
+      "QueryView": {
+        "x-engine-record": "Maquettiste.Engine.QueryView",
+        "description": "One resolved query (a query over the database's tables and views, written as data), with the annotations of its file (as\n`TableView`). The trees (`where`, `having`, `groupBy`, `orderBy`, each field's `expression`, a join's `on`, a collection's\n`query`) are as the file writes them (`query.json`); resolution adds the sources' tables and views, each field's type,\nthe collections' correlation keys and the SQL for the database's dialect.\n",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "entityId",
+          "parameters",
+          "from",
+          "joins",
+          "select",
+          "where",
+          "groupBy",
+          "having",
+          "orderBy",
+          "distinct",
+          "paging",
+          "collections",
+          "sql",
+          "sqlParameters",
+          "uses",
+          "displayName",
+          "pluralName",
+          "description",
+          "stereotypes",
+          "tags",
+          "category",
+          "properties",
+          "generation"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "entityId": {
+            "description": "The entity each result row has, or null for an ad hoc row (the select list).",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parameters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QueryParameterView"
+            }
+          },
+          "from": {
+            "$ref": "#/components/schemas/QuerySourceView"
+          },
+          "joins": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuerySourceView"
+            }
+          },
+          "select": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QueryFieldView"
+            }
+          },
+          "where": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/predicate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "groupBy": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/expression"
+            }
+          },
+          "having": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/predicate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "orderBy": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/order"
+            }
+          },
+          "distinct": {
+            "type": "boolean"
+          },
+          "paging": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/paging"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "collections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QueryCollectionView"
+            }
+          },
+          "sql": {
+            "type": "string",
+            "description": "The SQL for the database's dialect with `@name` placeholders, with the hidden key columns its collections need."
+          },
+          "sqlParameters": {
+            "type": "array",
+            "description": "The parameters the SQL names, in first-appearance order.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "uses": {
+            "type": "array",
+            "description": "The ids (a synthesized table's key) of the tables, views, routines and database types the query reads.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pluralName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stereotypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "category": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "properties": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "generation": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/GenerationHintsView"
+            }
+          }
+        }
+      },
+      "QueryParameterView": {
+        "x-engine-record": "Maquettiste.Engine.QueryParameterView",
+        "description": "A parameter of a query.",
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "dbTypeId",
+          "length",
+          "precision",
+          "scale",
+          "nativeType",
+          "codeType",
+          "collection",
+          "default",
+          "description"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The built-in type keyword, or null when a database type gives the type."
+          },
+          "dbTypeId": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "length": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "precision": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "scale": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "nativeType": {
+            "type": "string"
+          },
+          "codeType": {
+            "type": "string",
+            "description": "The built-in keyword a code type map maps (a database type's base, or string)."
+          },
+          "collection": {
+            "type": "boolean",
+            "description": "Whether the caller passes a list of values."
+          },
+          "default": {
+            "description": "The default value, or null."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "QuerySourceView": {
+        "x-engine-record": "Maquettiste.Engine.QuerySourceView",
+        "description": "A source of a query, the first (`kind` from) or a joined one.",
+        "type": "object",
+        "required": [
+          "source",
+          "alias",
+          "kind",
+          "tableKey",
+          "viewId",
+          "name",
+          "schema",
+          "on"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "The source as the file writes it (a table or view id, a table key or an entity id)."
+          },
+          "alias": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "from",
+              "inner",
+              "left",
+              "right",
+              "full",
+              "cross"
+            ]
+          },
+          "tableKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "viewId": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "schema": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "on": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/predicate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "QueryFieldView": {
+        "x-engine-record": "Maquettiste.Engine.QueryFieldView",
+        "description": "A field of a select list, with its inferred type.",
+        "type": "object",
+        "required": [
+          "name",
+          "attributeId",
+          "expression",
+          "type",
+          "nativeType",
+          "codeType",
+          "nullable"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "attributeId": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expression": {
+            "$ref": "#/components/schemas/expression"
+          },
+          "type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nativeType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "codeType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nullable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "QueryCollectionView": {
+        "x-engine-record": "Maquettiste.Engine.QueryCollectionView",
+        "description": "A collection of a query, its nested query and the statement that fills it for every parent row at once.",
+        "type": "object",
+        "required": [
+          "name",
+          "attribute",
+          "entityId",
+          "query",
+          "select",
+          "keys",
+          "sql",
+          "sqlParameters"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "attribute": {
+            "type": "string",
+            "description": "The file's attribute (an attribute id, a relation end id or an ad hoc name)."
+          },
+          "entityId": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "query": {
+            "$ref": "#/components/schemas/subquery"
+          },
+          "select": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QueryFieldView"
+            }
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QueryKeyView"
+            }
+          },
+          "sql": {
+            "type": "string"
+          },
+          "sqlParameters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "QueryKeyView": {
+        "x-engine-record": "Maquettiste.Engine.QueryKeyView",
+        "description": "A correlation key of a collection: the parent row carries the value as `parentField` (a hidden column when no select field\ndoes), the collection's statement takes the parent values as the list parameter `parameter` and returns each row's value as\n`childField`.\n",
+        "type": "object",
+        "required": [
+          "outer",
+          "parentField",
+          "hidden",
+          "childField",
+          "parameter",
+          "type",
+          "nativeType"
+        ],
+        "properties": {
+          "outer": {
+            "type": "string"
+          },
+          "parentField": {
+            "type": "string"
+          },
+          "hidden": {
+            "type": "boolean"
+          },
+          "childField": {
+            "type": "string"
+          },
+          "parameter": {
+            "type": "string"
+          },
+          "type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nativeType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "QuerySqlResult": {
+        "x-engine-record": "Maquettiste.Engine.QuerySqlResult",
+        "type": "object",
+        "required": [
+          "preview",
+          "diagnostics"
+        ],
+        "properties": {
+          "preview": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/QuerySqlPreview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
+          }
+        }
+      },
+      "QuerySqlPreview": {
+        "x-engine-record": "Maquettiste.Engine.QuerySqlPreview",
+        "description": "The SQL of one query for one dialect.",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "database",
+          "dialect",
+          "sql",
+          "parameters",
+          "collections"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "database": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "dialect": {
+            "type": "string",
+            "enum": [
+              "postgresql",
+              "sqlserver",
+              "mysql",
+              "sqlite",
+              "oracle"
+            ]
+          },
+          "sql": {
+            "type": "string"
+          },
+          "parameters": {
+            "type": "array",
+            "description": "The parameters the statement names, in first-appearance order (the positions of `$n` placeholders).",
+            "items": {
+              "type": "string"
+            }
+          },
+          "collections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QueryCollectionSql"
+            }
+          }
+        },
+        "example": {
+          "id": "01K6QRY0000000000000000001",
+          "name": "InvoicesByCustomer",
+          "database": "01J92P0V1QRN2181XM2ZWE02W4",
+          "dialect": "postgresql",
+          "sql": "SELECT i.id AS id, i.number AS number\nFROM billing.invoices i\nWHERE i.customer_id = @customerId\nORDER BY i.issued_on DESC\nLIMIT @limit OFFSET @offset",
+          "parameters": [
+            "customerId",
+            "offset",
+            "limit"
+          ],
+          "collections": [
+            {
+              "name": "lines",
+              "sql": "SELECT l.id AS id, l.quantity AS quantity, l.invoice_id AS __key0\nFROM billing.invoice_lines l\nWHERE l.invoice_id IN @__keys0",
+              "parameters": [
+                "__keys0"
+              ],
+              "keys": [
+                {
+                  "outer": "i.id",
+                  "parentField": "id",
+                  "hidden": false,
+                  "childField": "__key0",
+                  "parameter": "__keys0",
+                  "type": "uuid",
+                  "nativeType": "uuid"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "QueryCollectionSql": {
+        "x-engine-record": "Maquettiste.Engine.QueryCollectionSql",
+        "description": "The statement of one collection, run once for all parent rows with the list of their key values.",
+        "type": "object",
+        "required": [
+          "name",
+          "sql",
+          "parameters",
+          "keys"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "sql": {
+            "type": "string"
+          },
+          "parameters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QueryKeyView"
+            }
+          }
         }
       },
       "GenerationHintsView": {
@@ -23273,6 +24027,1322 @@
         ],
         "additionalProperties": false
       },
+      "predicate": {
+        "title": "Predicate",
+        "description": "Exactly one of: and, or (lists of predicates), not (a predicate), op with left and right (a list for in, notIn and between; none for isNull and isNotNull), exists (a nested query).",
+        "type": "object",
+        "x-order": [
+          "and",
+          "or",
+          "not",
+          "op",
+          "left",
+          "right",
+          "exists"
+        ],
+        "properties": {
+          "and": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/predicate"
+            },
+            "minItems": 1
+          },
+          "or": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/predicate"
+            },
+            "minItems": 1
+          },
+          "not": {
+            "$ref": "#/components/schemas/predicate"
+          },
+          "op": {
+            "enum": [
+              "eq",
+              "ne",
+              "lt",
+              "le",
+              "gt",
+              "ge",
+              "like",
+              "ilike",
+              "in",
+              "notIn",
+              "between",
+              "isNull",
+              "isNotNull"
+            ]
+          },
+          "left": {
+            "$ref": "#/components/schemas/expression"
+          },
+          "right": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/expression"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/expression"
+                },
+                "minItems": 1
+              }
+            ]
+          },
+          "exists": {
+            "$ref": "#/components/schemas/subquery"
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "and"
+            ]
+          },
+          {
+            "required": [
+              "or"
+            ]
+          },
+          {
+            "required": [
+              "not"
+            ]
+          },
+          {
+            "required": [
+              "op"
+            ]
+          },
+          {
+            "required": [
+              "exists"
+            ]
+          }
+        ],
+        "dependentRequired": {
+          "op": [
+            "left"
+          ]
+        },
+        "additionalProperties": false
+      },
+      "expression": {
+        "title": "Expression",
+        "description": "Exactly one of: column (alias.column_name; the column part may also be an attribute id or a column key), param, value, null, op with args, call (with args), case (with else), cast with type, sql (an opaque text per dialect).",
+        "type": "object",
+        "x-order": [
+          "column",
+          "param",
+          "value",
+          "null",
+          "op",
+          "call",
+          "args",
+          "case",
+          "else",
+          "cast",
+          "type",
+          "sql"
+        ],
+        "properties": {
+          "column": {
+            "type": "string",
+            "minLength": 1
+          },
+          "param": {
+            "$ref": "#/components/schemas/identifier"
+          },
+          "value": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          "null": {
+            "description": "The null literal.",
+            "const": true
+          },
+          "op": {
+            "enum": [
+              "+",
+              "-",
+              "*",
+              "/",
+              "%",
+              "concat"
+            ]
+          },
+          "call": {
+            "description": "A function name (lower, upper, coalesce, count, sum, min, max, avg, length, now, or any other, passed through) or a routine id of the database.",
+            "type": "string",
+            "minLength": 1
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/expression"
+            }
+          },
+          "case": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/when"
+            },
+            "minItems": 1
+          },
+          "else": {
+            "$ref": "#/components/schemas/expression"
+          },
+          "cast": {
+            "$ref": "#/components/schemas/expression"
+          },
+          "type": {
+            "$ref": "#/components/schemas/builtinType"
+          },
+          "sql": {
+            "description": "An opaque expression per dialect, for what the tree cannot say; the query cannot be rendered for a dialect without a text (nor \"*\").",
+            "$ref": "#/components/schemas/dialectMap",
+            "minProperties": 1
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "column"
+            ]
+          },
+          {
+            "required": [
+              "param"
+            ]
+          },
+          {
+            "required": [
+              "value"
+            ]
+          },
+          {
+            "required": [
+              "null"
+            ]
+          },
+          {
+            "required": [
+              "op"
+            ]
+          },
+          {
+            "required": [
+              "call"
+            ]
+          },
+          {
+            "required": [
+              "case"
+            ]
+          },
+          {
+            "required": [
+              "cast"
+            ]
+          },
+          {
+            "required": [
+              "sql"
+            ]
+          }
+        ],
+        "dependentRequired": {
+          "op": [
+            "args"
+          ],
+          "cast": [
+            "type"
+          ]
+        },
+        "additionalProperties": false
+      },
+      "when": {
+        "title": "Case branch",
+        "type": "object",
+        "x-order": [
+          "when",
+          "then"
+        ],
+        "properties": {
+          "when": {
+            "$ref": "#/components/schemas/predicate"
+          },
+          "then": {
+            "$ref": "#/components/schemas/expression"
+          }
+        },
+        "required": [
+          "when",
+          "then"
+        ],
+        "additionalProperties": false
+      },
+      "from": {
+        "title": "Query source",
+        "type": "object",
+        "x-order": [
+          "source",
+          "alias"
+        ],
+        "properties": {
+          "source": {
+            "description": "A table or view of the query's database: a table or view file's id, a table key as the database view lists it (<entity id>@<database id>), or an entity id for the entity's table there.",
+            "type": "string",
+            "minLength": 1
+          },
+          "alias": {
+            "description": "The name column references use (alias.column); absent, the table's or view's name.",
+            "$ref": "#/components/schemas/identifier"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "join": {
+        "title": "Join",
+        "type": "object",
+        "x-order": [
+          "source",
+          "alias",
+          "kind",
+          "on"
+        ],
+        "properties": {
+          "source": {
+            "description": "A table or view of the query's database, as in from.",
+            "type": "string",
+            "minLength": 1
+          },
+          "alias": {
+            "$ref": "#/components/schemas/identifier"
+          },
+          "kind": {
+            "enum": [
+              "inner",
+              "left",
+              "right",
+              "full",
+              "cross"
+            ],
+            "default": "inner"
+          },
+          "on": {
+            "$ref": "#/components/schemas/predicate"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "field": {
+        "title": "Select field",
+        "type": "object",
+        "x-order": [
+          "name",
+          "attribute",
+          "type",
+          "nullable",
+          "expression"
+        ],
+        "properties": {
+          "name": {
+            "description": "The field's name in the result row; absent, the attribute's name.",
+            "$ref": "#/components/schemas/identifier"
+          },
+          "attribute": {
+            "description": "The attribute of the query's entity (or of a collection's entity) the field fills.",
+            "$ref": "#/components/schemas/id"
+          },
+          "type": {
+            "description": "The field's type in an ad hoc row; absent, inferred from the expression.",
+            "$ref": "#/components/schemas/builtinType"
+          },
+          "nullable": {
+            "description": "Whether the field may be null; absent, inferred from the expression.",
+            "type": "boolean"
+          },
+          "expression": {
+            "$ref": "#/components/schemas/expression"
+          }
+        },
+        "required": [
+          "expression"
+        ],
+        "anyOf": [
+          {
+            "required": [
+              "name"
+            ]
+          },
+          {
+            "required": [
+              "attribute"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      },
+      "order": {
+        "title": "Order",
+        "type": "object",
+        "x-order": [
+          "expression",
+          "direction",
+          "nulls"
+        ],
+        "properties": {
+          "expression": {
+            "$ref": "#/components/schemas/expression"
+          },
+          "direction": {
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "default": "asc"
+          },
+          "nulls": {
+            "enum": [
+              "first",
+              "last"
+            ]
+          }
+        },
+        "required": [
+          "expression"
+        ],
+        "additionalProperties": false
+      },
+      "subquery": {
+        "title": "Nested query",
+        "description": "A query inside a collection or an exists condition; it may name the aliases of the queries around it.",
+        "type": "object",
+        "x-order": [
+          "from",
+          "joins",
+          "select",
+          "where",
+          "groupBy",
+          "having",
+          "orderBy",
+          "distinct"
+        ],
+        "properties": {
+          "from": {
+            "$ref": "#/components/schemas/from"
+          },
+          "joins": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/join"
+            },
+            "default": []
+          },
+          "select": {
+            "description": "The fields; required in a collection, ignored by exists (which selects 1).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/field"
+            },
+            "default": []
+          },
+          "where": {
+            "$ref": "#/components/schemas/predicate"
+          },
+          "groupBy": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/expression"
+            },
+            "default": []
+          },
+          "having": {
+            "$ref": "#/components/schemas/predicate"
+          },
+          "orderBy": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/order"
+            },
+            "default": []
+          },
+          "distinct": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "from"
+        ],
+        "additionalProperties": false
+      },
+      "parameter": {
+        "title": "Query parameter",
+        "type": "object",
+        "x-order": [
+          "name",
+          "type",
+          "length",
+          "precision",
+          "scale",
+          "collection",
+          "default",
+          "description"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/components/schemas/identifier"
+          },
+          "type": {
+            "$ref": "#/components/schemas/dbTypeRef"
+          },
+          "length": {
+            "$ref": "#/components/schemas/length"
+          },
+          "precision": {
+            "$ref": "#/components/schemas/precision"
+          },
+          "scale": {
+            "$ref": "#/components/schemas/scale"
+          },
+          "collection": {
+            "description": "Whether the caller passes a list of values (for in and notIn).",
+            "type": "boolean",
+            "default": false
+          },
+          "default": {
+            "description": "The value the generated method uses when the caller passes none.",
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "paging": {
+        "title": "Paging",
+        "type": "object",
+        "x-order": [
+          "offset",
+          "limit"
+        ],
+        "properties": {
+          "offset": {
+            "description": "The rows to skip: an integer parameter's name or a number.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/identifier"
+              },
+              {
+                "type": "integer",
+                "minimum": 0
+              }
+            ]
+          },
+          "limit": {
+            "description": "The most rows to return: an integer parameter's name or a number.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/identifier"
+              },
+              {
+                "type": "integer",
+                "minimum": 1
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "collection": {
+        "title": "Collection",
+        "type": "object",
+        "x-order": [
+          "attribute",
+          "entity",
+          "query"
+        ],
+        "properties": {
+          "attribute": {
+            "description": "The collection the rows fill: the id of a collection attribute of the query's entity or of the relation end its to-many navigation leads to, or a name for an ad hoc row.",
+            "type": "string",
+            "minLength": 1
+          },
+          "entity": {
+            "description": "The entity each element has; absent, the nested select list is the element shape.",
+            "$ref": "#/components/schemas/id"
+          },
+          "query": {
+            "description": "The nested query; its predicates may name the outer query's aliases (the correlation), only in equality conditions at the top of its where.",
+            "$ref": "#/components/schemas/subquery"
+          }
+        },
+        "required": [
+          "attribute",
+          "query"
+        ],
+        "additionalProperties": false
+      },
+      "query": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Query",
+        "description": "A query over the tables and views of a database, written as data (model/databases/<db>/queries/): sources, joins, a select list, predicates, grouping, ordering, paging and collections. Its result shape is an entity, or the select list when no entity is named.",
+        "type": "object",
+        "x-order": [
+          "$schema",
+          "kind",
+          "id",
+          "name",
+          "displayName",
+          "pluralName",
+          "database",
+          "description",
+          "stereotypes",
+          "tags",
+          "category",
+          "entity",
+          "parameters",
+          "from",
+          "joins",
+          "select",
+          "where",
+          "groupBy",
+          "having",
+          "orderBy",
+          "distinct",
+          "paging",
+          "collections",
+          "properties",
+          "generation",
+          "source"
+        ],
+        "properties": {
+          "$schema": {
+            "$ref": "#/components/schemas/schemaPath"
+          },
+          "kind": {
+            "const": "query"
+          },
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/label",
+            "default": ""
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluralName": {
+            "type": "string"
+          },
+          "database": {
+            "$ref": "#/components/schemas/id"
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "tags": {
+            "$ref": "#/components/schemas/tagList",
+            "default": []
+          },
+          "category": {
+            "$ref": "#/components/schemas/id"
+          },
+          "entity": {
+            "description": "The entity whose shape each result row has; absent, the select list is the row shape (a name and a type per field).",
+            "$ref": "#/components/schemas/id"
+          },
+          "parameters": {
+            "description": "The values the caller passes, by name.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/parameter"
+            },
+            "default": []
+          },
+          "from": {
+            "$ref": "#/components/schemas/from"
+          },
+          "joins": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/join"
+            },
+            "default": []
+          },
+          "select": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/field"
+            },
+            "minItems": 1
+          },
+          "where": {
+            "$ref": "#/components/schemas/predicate"
+          },
+          "groupBy": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/expression"
+            },
+            "default": []
+          },
+          "having": {
+            "$ref": "#/components/schemas/predicate"
+          },
+          "orderBy": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/order"
+            },
+            "default": []
+          },
+          "distinct": {
+            "type": "boolean",
+            "default": false
+          },
+          "paging": {
+            "$ref": "#/components/schemas/paging"
+          },
+          "collections": {
+            "description": "Collections filled per result row by a correlated query (a sub-select yielding a list per parent row).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/collection"
+            },
+            "default": []
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
+          },
+          "generation": {
+            "$ref": "#/components/schemas/generation",
+            "default": {}
+          },
+          "source": {
+            "$ref": "#/components/schemas/source"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "database",
+          "from",
+          "select"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "parameter": {
+            "title": "Query parameter",
+            "type": "object",
+            "x-order": [
+              "name",
+              "type",
+              "length",
+              "precision",
+              "scale",
+              "collection",
+              "default",
+              "description"
+            ],
+            "properties": {
+              "name": {
+                "$ref": "#/components/schemas/identifier"
+              },
+              "type": {
+                "$ref": "#/components/schemas/dbTypeRef"
+              },
+              "length": {
+                "$ref": "#/components/schemas/length"
+              },
+              "precision": {
+                "$ref": "#/components/schemas/precision"
+              },
+              "scale": {
+                "$ref": "#/components/schemas/scale"
+              },
+              "collection": {
+                "description": "Whether the caller passes a list of values (for in and notIn).",
+                "type": "boolean",
+                "default": false
+              },
+              "default": {
+                "description": "The value the generated method uses when the caller passes none.",
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ]
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          "from": {
+            "title": "Query source",
+            "type": "object",
+            "x-order": [
+              "source",
+              "alias"
+            ],
+            "properties": {
+              "source": {
+                "description": "A table or view of the query's database: a table or view file's id, a table key as the database view lists it (<entity id>@<database id>), or an entity id for the entity's table there.",
+                "type": "string",
+                "minLength": 1
+              },
+              "alias": {
+                "description": "The name column references use (alias.column); absent, the table's or view's name.",
+                "$ref": "#/components/schemas/identifier"
+              }
+            },
+            "required": [
+              "source"
+            ],
+            "additionalProperties": false
+          },
+          "join": {
+            "title": "Join",
+            "type": "object",
+            "x-order": [
+              "source",
+              "alias",
+              "kind",
+              "on"
+            ],
+            "properties": {
+              "source": {
+                "description": "A table or view of the query's database, as in from.",
+                "type": "string",
+                "minLength": 1
+              },
+              "alias": {
+                "$ref": "#/components/schemas/identifier"
+              },
+              "kind": {
+                "enum": [
+                  "inner",
+                  "left",
+                  "right",
+                  "full",
+                  "cross"
+                ],
+                "default": "inner"
+              },
+              "on": {
+                "$ref": "#/components/schemas/predicate"
+              }
+            },
+            "required": [
+              "source"
+            ],
+            "additionalProperties": false
+          },
+          "field": {
+            "title": "Select field",
+            "type": "object",
+            "x-order": [
+              "name",
+              "attribute",
+              "type",
+              "nullable",
+              "expression"
+            ],
+            "properties": {
+              "name": {
+                "description": "The field's name in the result row; absent, the attribute's name.",
+                "$ref": "#/components/schemas/identifier"
+              },
+              "attribute": {
+                "description": "The attribute of the query's entity (or of a collection's entity) the field fills.",
+                "$ref": "#/components/schemas/id"
+              },
+              "type": {
+                "description": "The field's type in an ad hoc row; absent, inferred from the expression.",
+                "$ref": "#/components/schemas/builtinType"
+              },
+              "nullable": {
+                "description": "Whether the field may be null; absent, inferred from the expression.",
+                "type": "boolean"
+              },
+              "expression": {
+                "$ref": "#/components/schemas/expression"
+              }
+            },
+            "required": [
+              "expression"
+            ],
+            "anyOf": [
+              {
+                "required": [
+                  "name"
+                ]
+              },
+              {
+                "required": [
+                  "attribute"
+                ]
+              }
+            ],
+            "additionalProperties": false
+          },
+          "order": {
+            "title": "Order",
+            "type": "object",
+            "x-order": [
+              "expression",
+              "direction",
+              "nulls"
+            ],
+            "properties": {
+              "expression": {
+                "$ref": "#/components/schemas/expression"
+              },
+              "direction": {
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "default": "asc"
+              },
+              "nulls": {
+                "enum": [
+                  "first",
+                  "last"
+                ]
+              }
+            },
+            "required": [
+              "expression"
+            ],
+            "additionalProperties": false
+          },
+          "paging": {
+            "title": "Paging",
+            "type": "object",
+            "x-order": [
+              "offset",
+              "limit"
+            ],
+            "properties": {
+              "offset": {
+                "description": "The rows to skip: an integer parameter's name or a number.",
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/identifier"
+                  },
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                ]
+              },
+              "limit": {
+                "description": "The most rows to return: an integer parameter's name or a number.",
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/identifier"
+                  },
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "collection": {
+            "title": "Collection",
+            "type": "object",
+            "x-order": [
+              "attribute",
+              "entity",
+              "query"
+            ],
+            "properties": {
+              "attribute": {
+                "description": "The collection the rows fill: the id of a collection attribute of the query's entity or of the relation end its to-many navigation leads to, or a name for an ad hoc row.",
+                "type": "string",
+                "minLength": 1
+              },
+              "entity": {
+                "description": "The entity each element has; absent, the nested select list is the element shape.",
+                "$ref": "#/components/schemas/id"
+              },
+              "query": {
+                "description": "The nested query; its predicates may name the outer query's aliases (the correlation), only in equality conditions at the top of its where.",
+                "$ref": "#/components/schemas/subquery"
+              }
+            },
+            "required": [
+              "attribute",
+              "query"
+            ],
+            "additionalProperties": false
+          },
+          "subquery": {
+            "title": "Nested query",
+            "description": "A query inside a collection or an exists condition; it may name the aliases of the queries around it.",
+            "type": "object",
+            "x-order": [
+              "from",
+              "joins",
+              "select",
+              "where",
+              "groupBy",
+              "having",
+              "orderBy",
+              "distinct"
+            ],
+            "properties": {
+              "from": {
+                "$ref": "#/components/schemas/from"
+              },
+              "joins": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/join"
+                },
+                "default": []
+              },
+              "select": {
+                "description": "The fields; required in a collection, ignored by exists (which selects 1).",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/field"
+                },
+                "default": []
+              },
+              "where": {
+                "$ref": "#/components/schemas/predicate"
+              },
+              "groupBy": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/expression"
+                },
+                "default": []
+              },
+              "having": {
+                "$ref": "#/components/schemas/predicate"
+              },
+              "orderBy": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/order"
+                },
+                "default": []
+              },
+              "distinct": {
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "required": [
+              "from"
+            ],
+            "additionalProperties": false
+          },
+          "when": {
+            "title": "Case branch",
+            "type": "object",
+            "x-order": [
+              "when",
+              "then"
+            ],
+            "properties": {
+              "when": {
+                "$ref": "#/components/schemas/predicate"
+              },
+              "then": {
+                "$ref": "#/components/schemas/expression"
+              }
+            },
+            "required": [
+              "when",
+              "then"
+            ],
+            "additionalProperties": false
+          },
+          "expression": {
+            "title": "Expression",
+            "description": "Exactly one of: column (alias.column_name; the column part may also be an attribute id or a column key), param, value, null, op with args, call (with args), case (with else), cast with type, sql (an opaque text per dialect).",
+            "type": "object",
+            "x-order": [
+              "column",
+              "param",
+              "value",
+              "null",
+              "op",
+              "call",
+              "args",
+              "case",
+              "else",
+              "cast",
+              "type",
+              "sql"
+            ],
+            "properties": {
+              "column": {
+                "type": "string",
+                "minLength": 1
+              },
+              "param": {
+                "$ref": "#/components/schemas/identifier"
+              },
+              "value": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ]
+              },
+              "null": {
+                "description": "The null literal.",
+                "const": true
+              },
+              "op": {
+                "enum": [
+                  "+",
+                  "-",
+                  "*",
+                  "/",
+                  "%",
+                  "concat"
+                ]
+              },
+              "call": {
+                "description": "A function name (lower, upper, coalesce, count, sum, min, max, avg, length, now, or any other, passed through) or a routine id of the database.",
+                "type": "string",
+                "minLength": 1
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/expression"
+                }
+              },
+              "case": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/when"
+                },
+                "minItems": 1
+              },
+              "else": {
+                "$ref": "#/components/schemas/expression"
+              },
+              "cast": {
+                "$ref": "#/components/schemas/expression"
+              },
+              "type": {
+                "$ref": "#/components/schemas/builtinType"
+              },
+              "sql": {
+                "description": "An opaque expression per dialect, for what the tree cannot say; the query cannot be rendered for a dialect without a text (nor \"*\").",
+                "$ref": "#/components/schemas/dialectMap",
+                "minProperties": 1
+              }
+            },
+            "oneOf": [
+              {
+                "required": [
+                  "column"
+                ]
+              },
+              {
+                "required": [
+                  "param"
+                ]
+              },
+              {
+                "required": [
+                  "value"
+                ]
+              },
+              {
+                "required": [
+                  "null"
+                ]
+              },
+              {
+                "required": [
+                  "op"
+                ]
+              },
+              {
+                "required": [
+                  "call"
+                ]
+              },
+              {
+                "required": [
+                  "case"
+                ]
+              },
+              {
+                "required": [
+                  "cast"
+                ]
+              },
+              {
+                "required": [
+                  "sql"
+                ]
+              }
+            ],
+            "dependentRequired": {
+              "op": [
+                "args"
+              ],
+              "cast": [
+                "type"
+              ]
+            },
+            "additionalProperties": false
+          },
+          "predicate": {
+            "title": "Predicate",
+            "description": "Exactly one of: and, or (lists of predicates), not (a predicate), op with left and right (a list for in, notIn and between; none for isNull and isNotNull), exists (a nested query).",
+            "type": "object",
+            "x-order": [
+              "and",
+              "or",
+              "not",
+              "op",
+              "left",
+              "right",
+              "exists"
+            ],
+            "properties": {
+              "and": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/predicate"
+                },
+                "minItems": 1
+              },
+              "or": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/predicate"
+                },
+                "minItems": 1
+              },
+              "not": {
+                "$ref": "#/components/schemas/predicate"
+              },
+              "op": {
+                "enum": [
+                  "eq",
+                  "ne",
+                  "lt",
+                  "le",
+                  "gt",
+                  "ge",
+                  "like",
+                  "ilike",
+                  "in",
+                  "notIn",
+                  "between",
+                  "isNull",
+                  "isNotNull"
+                ]
+              },
+              "left": {
+                "$ref": "#/components/schemas/expression"
+              },
+              "right": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/expression"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/expression"
+                    },
+                    "minItems": 1
+                  }
+                ]
+              },
+              "exists": {
+                "$ref": "#/components/schemas/subquery"
+              }
+            },
+            "oneOf": [
+              {
+                "required": [
+                  "and"
+                ]
+              },
+              {
+                "required": [
+                  "or"
+                ]
+              },
+              {
+                "required": [
+                  "not"
+                ]
+              },
+              {
+                "required": [
+                  "op"
+                ]
+              },
+              {
+                "required": [
+                  "exists"
+                ]
+              }
+            ],
+            "dependentRequired": {
+              "op": [
+                "left"
+              ]
+            },
+            "additionalProperties": false
+          }
+        }
+      },
       "mapping": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Mapping",
@@ -24003,6 +26073,7 @@
                 "routine",
                 "database-type",
                 "sql-object",
+                "query",
                 "mapping",
                 "diagram",
                 "tag-vocabulary",
@@ -26300,7 +28371,7 @@
                 },
                 "for": {
                   "type": "string",
-                  "pattern": "^(model|each (package|entity|relation|enum|value object|table|view|sequence|routine|database type|sql object|reference type|seed|locale|process|actor|scenario)|select [A-Za-z_][A-Za-z0-9_]*)$"
+                  "pattern": "^(model|each (package|entity|relation|enum|value object|table|view|sequence|routine|database type|sql object|query|reference type|seed|locale|process|actor|scenario)|select [A-Za-z_][A-Za-z0-9_]*)$"
                 },
                 "where": {
                   "title": "Unit filters",

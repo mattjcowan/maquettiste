@@ -22,7 +22,8 @@ For entity `Invoice` in package `Billing`:
 | `reference-type` | `overwrite` | `each reference type` | `ReferenceData/UnitOfMeasure.g.cs`: a `sealed record` and a static class of rows (see Reference types) |
 | `resources` | `overwrite` | `each locale` | `ReferenceData/ReferenceData.resx`, `ReferenceData.fr.resx`, …: display names and row labels per declared locale |
 | `repository` | file blocks | `each entity` | `Billing/InvoiceRepository.g.cs`: `IInvoiceRepository` and `InvoiceRepository` |
-| `registrations` | file blocks | `model` | `Billing/BillingRepositories.g.cs`: one per package with repositories |
+| `query` | `overwrite` | `each query` | `Queries/InvoicesByCustomerQuery.g.cs`: `IInvoicesByCustomerQuery` and `InvoicesByCustomerQuery` (see Queries) |
+| `registrations` | file blocks | `model` | `Billing/BillingRepositories.g.cs`: one per package with repositories; `Queries/QueryRegistrations.g.cs` when the model has queries |
 | `type-handlers` | `overwrite` | `model` | `DapperTypeHandlers.g.cs`: the Dapper type handlers and `UlidGenerator` |
 
 Folders follow the package tree (`Billing/Catalog/` for package `Catalog` inside `Billing`), and namespaces follow it too:
@@ -74,6 +75,35 @@ insert and filtered on read.
 Not covered, by design of an example pack: navigations and junction tables (write queries for them in the companion or in your
 own repository class, which is `partial`), collections stored in child tables (their property is left empty), and table-per-type
 hierarchies, whose rows span tables (no repository is generated for them).
+
+## Queries
+
+A query element (a query over a database's tables and views, written as data) becomes one class in `Queries/`, in the
+namespace `<namespace>.Queries`: an interface `I<Name>Query` and a class `<Name>Query` over an `IDbConnection` (and an optional
+`IDbTransaction`) with one method:
+
+```csharp
+Task<IReadOnlyList<InvoicesByCustomerResult>> ExecuteAsync(Guid customerId, IEnumerable<string> statuses, int offset = 0, int limit = 50,
+    CancellationToken cancellationToken = default);
+```
+
+Its parameters are the query's, typed through `types/csharp.json` (a list parameter is an `IEnumerable<T>`), the ones with a
+constant default last. The SQL is what the engine renders for the query's database (`query_sql`), with `@name` placeholders and
+`IN @name` for a list, which Dapper expands. A private `Row` class has one property per select field, named as the field (Dapper
+matches column aliases without regard to case), and converts to the result:
+
+- With an `entity`, each row becomes that entity: a field that names an attribute fills its property (an enum stored as text goes
+  through `<Enum>Codes.Parse`, an enum stored as a number is cast); a field without an attribute is read but not copied. A
+  value object attribute spans several columns and is not filled from one field.
+- Without one, the method returns `<Name>Row`, a `sealed partial record` with one property per field (`pascal` of its name),
+  typed by the field's type and nullability.
+- With collections, the method returns `<Name>Result(Item, <Collection>…)`: after the parent rows, each collection's statement
+  (`query_collection_sql`) runs once with the parent rows' key values (`__keys0`), its rows are grouped by their `__key0` and
+  attached to the parent whose key matches. An element is the collection's `entity`, or a generated `<Name><Collection>Item`
+  record.
+
+`QueryRegistrations.All` lists the `(Service, Implementation)` pairs of every query class, as the repositories' registration
+files do.
 
 ## Registration
 

@@ -109,6 +109,14 @@ internal sealed partial class ChangePlanner
             return;
         }
 
+        // A query whose required reference goes (a source, a column, a selected attribute) is deleted whole: its aliases tie its parts
+        // together, so dropping a join or a field would leave references to it (engine-design.md section 7, "Queries").
+        if (referrer.Element is Query)
+        {
+            MarkCascadeDeleted(index, referrerId, "needs " + Label(target), mode);
+            return;
+        }
+
         // Remove the smallest enclosing part that leaves the referrer valid; the list itself is skipped when emptying it would widen it.
         if (JsonPointer.TryParse(reference.JsonPointer, out var segments))
         {

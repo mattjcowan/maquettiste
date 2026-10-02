@@ -30,6 +30,7 @@ public sealed record KindInfo(ElementKind Kind, string Name, Type ClrType, strin
         new(ElementKind.Routine, "routine", typeof(Routine), "routine.json", "model/databases/{db}/routines", null),
         new(ElementKind.DatabaseType, "database-type", typeof(DatabaseType), "database-type.json", "model/databases/{db}/types", null),
         new(ElementKind.SqlObject, "sql-object", typeof(SqlObject), "sql-object.json", "model/databases/{db}/objects", null),
+        new(ElementKind.Query, "query", typeof(Query), "query.json", "model/databases/{db}/queries", null),
         new(ElementKind.Mapping, "mapping", typeof(Mapping), "mapping.json", "model/mappings", null),
         new(ElementKind.Diagram, "diagram", typeof(Diagram), "diagram.json", "model/diagrams", null),
         new(ElementKind.TagVocabulary, "tag-vocabulary", typeof(TagVocabulary), "tag-vocabulary.json", "model/vocabularies", "tags.json"),

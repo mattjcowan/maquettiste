@@ -1,0 +1,56 @@
+{
+  "$schema": "../../../../.schema/v1/query.json",
+  "kind": "query",
+  "id": "01JQRY00000000000000000001",
+  "name": "recent_log",
+  "database": "01JDBS00000000000000000001",
+  "parameters": [
+    {
+      "name": "level",
+      "type": "string",
+      "length": 16
+    },
+    {
+      "name": "take",
+      "type": "int32"
+    }
+  ],
+  "from": {
+    "source": "01JTAB00000000000000000001",
+    "alias": "a"
+  },
+  "select": [
+    {
+      "name": "id",
+      "expression": {
+        "column": "a.id"
+      }
+    },
+    {
+      "name": "message",
+      "expression": {
+        "column": "a.message"
+      }
+    }
+  ],
+  "where": {
+    "op": "eq",
+    "left": {
+      "column": "a.level"
+    },
+    "right": {
+      "param": "level"
+    }
+  },
+  "orderBy": [
+    {
+      "expression": {
+        "column": "a.id"
+      },
+      "direction": "desc"
+    }
+  ],
+  "paging": {
+    "limit": "take"
+  }
+}

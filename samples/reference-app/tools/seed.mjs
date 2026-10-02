@@ -77,7 +77,7 @@ function batches(documents) {
   const packages = [...new Set(relations.map((r) => r.package))];
   const packageName = new Map(documents.filter((d) => d.doc.kind === "package").map((d) => [d.doc.id, d.doc.name]));
   for (const p of packages) out.push({ label: `relations:${packageName.get(p) ?? p}`, docs: relations.filter((r) => r.package === p) });
-  take("physical", "table overlays"); take("mappings"); take("diagrams");
+  take("physical", "table overlays"); take("mappings"); take("diagrams"); take("queries");
   return out;
 }
 

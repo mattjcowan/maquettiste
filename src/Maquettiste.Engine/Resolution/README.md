@@ -87,6 +87,16 @@ The resolver (stage 3), the resolved model types (`RList<T>`, `RElement`, `REnti
   with none named stays W2's MQ4011); MQ4009 for a table overlay nothing consumes (a TPH-derived or TPC abstract entity, a bound
   entity, or a target without a synthesized table in the database), which is then not applied.
 - A bound dependent's relation attributes get no columns (the designed table is complete as written).
+- Queries (`DatabaseRun.Queries.cs`, 2026-10-02, erratum E41): resolved per database after `FinishDatabaseObjects` into `RQuery`
+  on `RDatabase.Queries` (by name, id), with `RQuerySource`, `RQueryField`, `RQueryParameter`, `RQueryOrder`, `RQueryPaging`,
+  `RQueryCollection` (and its `RQueryKey` correlation keys) and the trees as `RQueryExpression` and `RQueryPredicate`, each node
+  with an inferred type; a nested query (collection, `exists`) is an `RQuery` with `Parent`. Sources resolve by table key, table
+  or view file id, or entity id; columns by key, attribute id or (loosely, when unique) name. The resolver reports the query
+  rules MQ4021 to MQ4031, MQ4018 for a parameter type and MQ3001 for duplicate parameter or field names, with the JSON pointer of
+  the node, since only it knows the columns; `RQuery.Sql` is `QuerySql.Render` for the database's dialect, empty on errors.
+  Dependency keys: the file and its referrers, the database, the type maps and conventions, every table's and view's it reads,
+  the routines and database types it uses, the result and collection entities; the database lists add `k:query`
+  (engine-design.md section 7, "Queries").
 
 Tests: `tests/Maquettiste.Engine.Tests/Resolution/` (golden billing model in `Golden/billing/resolved.txt`, rewritten with
 `MAQUETTISTE_UPDATE_GOLDEN=1`).

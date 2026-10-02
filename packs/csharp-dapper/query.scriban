@@ -1,0 +1,273 @@
+{{-
+# A Dapper query class per query: an interface and a class with one ExecuteAsync that runs the query's SQL (query_sql) and
+# returns its rows as the query's entity, or as a generated <Name>Row record for an ad hoc row. Each collection runs as a
+# second statement (query_collection_sql) for all parent rows at once, matched to its parent by the correlation keys; a query
+# with collections returns <Name>Result records (the row and one list per collection).
+include "_csharp.scriban"
+include "_dapper.scriban"
+name = pascal query.name
+db = query.database
+
+# The C# type of a field's value in the private row class Dapper fills.
+func field_type(f)
+  $t = f.code_type ? (type_of f.code_type "csharp") : "object"
+  ret f.nullable ? $t + "?" : $t
+end
+
+# The C# expression that reads an entity attribute from a row's field; null when the attribute cannot be read from one field.
+func read_field(a, f, src)
+  if a.type.kind == "value-object"
+    ret null
+  end
+  $full = type_of a "csharp"
+  if a.type.kind == "enum"
+    $en = enum_type(a)
+    if f.code_type == "string" || f.code_type == "text"
+      if f.nullable && !a.required
+        ret src + " is null ? null : " + $en + "Codes.Parse(" + src + ")"
+      end
+      ret $en + "Codes.Parse(" + src + (f.nullable ? "!" : "") + ")"
+    end
+    if f.nullable && !a.required
+      ret "(" + $en + "?)" + src
+    end
+    ret "(" + $en + ")" + src
+  end
+  if f.nullable && a.required
+    ret "(" + $full + ")" + src + "!"
+  end
+  ret src
+end
+
+# "Name = expression" for each field that fills an attribute of the entity (read inside the row class, so a field is a member).
+func entity_assignments(e, fields)
+  $result = []
+  for f in fields
+    if f.attribute
+      $read = read_field(f.attribute, f, cs_ident f.name)
+      if $read
+        $result[$result.size] = (prop_name(f.attribute, type_name(e)) + " = " + $read)
+      end
+    end
+  end
+  ret $result
+end
+
+# The C# literal of a parameter default, or null when the type has no constant form.
+func default_literal(p)
+  if p.default == null || p.collection
+    ret null
+  end
+  if p.code_type == "string" || p.code_type == "text"
+    ret json p.default
+  end
+  if p.code_type == "bool"
+    ret p.default ? "true" : "false"
+  end
+  if p.code_type == "int16" || p.code_type == "int32" || p.code_type == "int64" || p.code_type == "double"
+    ret json p.default
+  end
+  ret null
+end
+
+func param_type(p)
+  $t = type_of p.code_type "csharp"
+  ret p.collection ? "IEnumerable<" + $t + ">" : $t
+end
+
+# Method parameters: required ones first, then those with a default, then the cancellation token.
+required_params = []
+optional_params = []
+for p in query.parameters
+  $literal = default_literal(p)
+  if $literal
+    optional_params[optional_params.size] = (param_type(p) + " " + (cs_ident p.name) + " = " + $literal)
+  else
+    required_params[required_params.size] = (param_type(p) + " " + (cs_ident p.name))
+  end
+end
+signature = (required_params | array.concat optional_params | array.add "CancellationToken cancellationToken = default") | array.join ", "
+args = []
+for p in query.parameters
+  args[args.size] = ((cs_ident p.name) + " = " + (cs_ident p.name))
+end
+
+entity = query.entity
+item_type = entity ? type_name(entity) : name + "Row"
+has_collections = query.collections.size > 0
+result_type = has_collections ? name + "Result" : item_type
+uses = []
+if entity
+  if ns(entity) != pack.params.namespace + ".Queries"
+    uses[uses.size] = ns(entity)
+  end
+  for u in namespaces_used(entity, entity.attributes)
+    uses[uses.size] = u
+  end
+end
+for c in query.collections
+  if c.entity
+    uses[uses.size] = ns(c.entity)
+    for u in namespaces_used(c.entity, c.entity.attributes)
+      uses[uses.size] = u
+    end
+  end
+end
+uses = uses | array.uniq | array.sort
+
+# The parent row's hidden key fields (correlation columns no select field carries), once each.
+hidden_keys = []
+hidden_names = []
+for c in query.collections
+  for k in c.keys
+    if k.hidden && !(hidden_names | array.contains k.parent_field)
+      hidden_names[hidden_names.size] = k.parent_field
+      hidden_keys[hidden_keys.size] = k
+    end
+  end
+end
+
+# The C# type of the parent's value of a key: the select field's, or the hidden field's.
+func key_type(k)
+  for f in query.select
+    if f.name == k.parent_field
+      ret field_type(f)
+    end
+  end
+  $t = k.code_type ? (type_of k.code_type "csharp") : "object"
+  ret k.outer.nullable ? $t + "?" : $t
+end
+
+func element_type(c)
+  ret c.entity ? type_name(c.entity) : name + (pascal c.name) + "Item"
+end
+-}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Dapper;
+{{- for u in uses }}
+using {{ u }};
+{{- end }}
+
+namespace {{ pack.params.namespace }}.Queries;
+
+{{ doc(query.description, "") }}public partial interface I{{ name }}Query
+{
+    /// <summary>Runs the query{{ if has_collections }} and fills its collections{{ end }}.</summary>
+    Task<IReadOnlyList<{{ result_type }}>> ExecuteAsync({{ signature }});
+}
+{{- if !entity }}
+
+/// <summary>One row of query {{ query.name }}.</summary>
+public sealed partial record {{ name }}Row({{ for f in query.select }}{{ field_type(f) }} {{ cs_ident (pascal f.name) }}{{ if !for.last }}, {{ end }}{{ end }});
+{{- end }}
+{{- for c in query.collections }}
+{{- if !c.entity }}
+
+/// <summary>One element of collection {{ c.name }} of query {{ query.name }}.</summary>
+public sealed partial record {{ element_type(c) }}({{ for f in c.query.select }}{{ field_type(f) }} {{ cs_ident (pascal f.name) }}{{ if !for.last }}, {{ end }}{{ end }});
+{{- end }}
+{{- end }}
+{{- if has_collections }}
+
+/// <summary>One row of query {{ query.name }} with its collections.</summary>
+public sealed partial record {{ result_type }}({{ item_type }} Item{{ for c in query.collections }}, IReadOnlyList<{{ element_type(c) }}> {{ cs_ident (pascal c.name) }}{{ end }});
+{{- end }}
+
+/// <summary>The Dapper implementation of <see cref="I{{ name }}Query"/> (database {{ db.name }}, {{ db.dialect }}).</summary>
+public partial class {{ name }}Query(IDbConnection connection, IDbTransaction? transaction = null) : I{{ name }}Query
+{
+    private const string Sql = """
+{{ indent (query_sql query) 8 }}
+        """;
+{{- for c in query.collections }}
+
+    private const string {{ pascal c.name }}Sql = """
+{{ indent (query_collection_sql c) 8 }}
+        """;
+{{- end }}
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<{{ result_type }}>> ExecuteAsync({{ signature }})
+    {
+        var rows = (await connection.QueryAsync<Row>(new CommandDefinition(Sql, new { {{ args | array.join ", " }} }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false)).ToList();
+{{- if has_collections }}
+{{- for c in query.collections }}
+{{- cname = pascal c.name }}
+        var {{ camel c.name }} = Array.Empty<{{ cname }}Row>().ToLookup({{ if c.keys.size == 1 }}r => r.{{ cs_ident c.keys[0].child_field }}{{ else }}r => ({{ for k in c.keys }}r.{{ cs_ident k.child_field }}{{ if !for.last }}, {{ end }}{{ end }}){{ end }});
+        if (rows.Count > 0)
+        {
+            var found = await connection.QueryAsync<{{ cname }}Row>(new CommandDefinition({{ cname }}Sql, new
+            {
+{{- for k in c.keys }}
+                {{ k.parameter }} = rows.Select(r => r.{{ cs_ident k.parent_field }}).Distinct().ToArray(),
+{{- end }}
+{{- for a in args }}
+                {{ a }},
+{{- end }}
+            }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+            {{ camel c.name }} = found.ToLookup({{ if c.keys.size == 1 }}r => r.{{ cs_ident c.keys[0].child_field }}{{ else }}r => ({{ for k in c.keys }}r.{{ cs_ident k.child_field }}{{ if !for.last }}, {{ end }}{{ end }}){{ end }});
+        }
+{{- end }}
+
+        return rows.Select(r => new {{ result_type }}(r.ToItem(){{ for c in query.collections }}, [.. {{ camel c.name }}[{{ if c.keys.size == 1 }}r.{{ cs_ident c.keys[0].parent_field }}{{ else }}({{ for k in c.keys }}r.{{ cs_ident k.parent_field }}{{ if !for.last }}, {{ end }}{{ end }}){{ end }}].Select(x => x.ToItem())]{{ end }})).ToList();
+{{- else }}
+        return rows.Select(r => r.ToItem()).ToList();
+{{- end }}
+    }
+
+    /// <summary>One row as Dapper reads it, field by field.</summary>
+    private sealed class Row
+    {
+{{- for f in query.select }}
+        public {{ field_type(f) }} {{ cs_ident f.name }} { get; set; }{{ if !f.nullable && f.code_type && !(cs_value_type (type_of f.code_type "csharp")) }} = default!;{{ end }}
+{{- end }}
+{{- for k in hidden_keys }}
+        public {{ key_type(k) }} {{ cs_ident k.parent_field }} { get; set; }{{ if !k.outer.nullable && k.code_type && !(cs_value_type (type_of k.code_type "csharp")) }} = default!;{{ end }}
+{{- end }}
+
+{{- if entity }}
+
+        public {{ item_type }} ToItem() => new()
+        {
+{{- for line in entity_assignments(entity, query.select) }}
+            {{ line }},
+{{- end }}
+        };
+{{- else }}
+
+        public {{ item_type }} ToItem() => new({{ for f in query.select }}{{ cs_ident f.name }}{{ if !for.last }}, {{ end }}{{ end }});
+{{- end }}
+    }
+{{- for c in query.collections }}
+
+    /// <summary>One element of collection {{ c.name }} with its parent's key, as Dapper reads it.</summary>
+    private sealed class {{ pascal c.name }}Row
+    {
+{{- for f in c.query.select }}
+        public {{ field_type(f) }} {{ cs_ident f.name }} { get; set; }{{ if !f.nullable && f.code_type && !(cs_value_type (type_of f.code_type "csharp")) }} = default!;{{ end }}
+{{- end }}
+{{- for k in c.keys }}
+        public {{ key_type(k) }} {{ cs_ident k.child_field }} { get; set; }{{ if !(cs_value_type (key_type(k))) && !(key_type(k) | string.ends_with "?") }} = default!;{{ end }}
+{{- end }}
+
+{{- if c.entity }}
+
+        public {{ element_type(c) }} ToItem() => new()
+        {
+{{- for line in entity_assignments(c.entity, c.query.select) }}
+            {{ line }},
+{{- end }}
+        };
+{{- else }}
+
+        public {{ element_type(c) }} ToItem() => new({{ for f in c.query.select }}{{ cs_ident f.name }}{{ if !for.last }}, {{ end }}{{ end }});
+{{- end }}
+    }
+{{- end }}
+}

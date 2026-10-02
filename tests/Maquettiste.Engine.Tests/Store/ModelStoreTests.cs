@@ -37,7 +37,7 @@ public sealed class ModelStoreTests
         await store.LoadAsync(Ct);
 
         Assert.Equal(1, loader.Calls);
-        Assert.Equal(26, store.Current!.Documents.Count);
+        Assert.Equal(29, store.Current!.Documents.Count);
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public sealed class ModelStoreTests
         var index = await s.Store.GetIndexAsync(Ct);
 
         Assert.NotNull(s.Store.Current);
-        Assert.Equal(26, index.Count);
+        Assert.Equal(29, index.Count);
         foreach (var summary in index)
         {
             Assert.Equal(ContentHash.Of(File.ReadAllBytes(s.Harness.Repo.PathOf(summary.Path))), summary.Hash);
@@ -175,7 +175,7 @@ public sealed class ModelStoreTests
     }
 
     [Fact]
-    public async Task Renaming_a_database_moves_its_folder_with_every_table_view_and_sequence()
+    public async Task Renaming_a_database_moves_its_folder_with_every_table_view_sequence_and_query()
     {
         await using var s = await BillingStore.OpenAsync();
         var db = s.Doc("database", "main");
@@ -186,7 +186,7 @@ public sealed class ModelStoreTests
         Assert.Equal(SaveOutcome.Saved, result.Outcome);
         Assert.Equal(".maquettiste/model/databases/primary-store/database.json", result.Current!.Path);
         Assert.False(Directory.Exists(s.Harness.Model("model/databases/main")));
-        Assert.Equal(4, children.Count);
+        Assert.Equal(7, children.Count);
         foreach (var id in children)
             Assert.StartsWith(".maquettiste/model/databases/primary-store/", s.Store.Current!.GetDocument(id)!.Path, StringComparison.Ordinal);
         Assert.Equal(children.Order(StringComparer.Ordinal), result.Changes!.Changed.Select(c => c.Id).Where(children.Contains).Order(StringComparer.Ordinal));
@@ -381,7 +381,7 @@ public sealed class ModelStoreTests
         var changes = await s.Store.RefreshAsync(["model/entities/customer.json"], Ct);
 
         Assert.True(changes.IsEmpty);
-        Assert.Equal(26, s.Store.Current!.Documents.Count);
+        Assert.Equal(29, s.Store.Current!.Documents.Count);
     }
 
     [Fact]

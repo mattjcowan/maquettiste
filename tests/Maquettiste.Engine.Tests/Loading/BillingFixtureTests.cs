@@ -23,7 +23,7 @@ public sealed class BillingFixtureTests
         var model = result.Snapshot;
 
         Assert.Empty(model.LoadDiagnostics);
-        Assert.Equal(26, model.Documents.Count);
+        Assert.Equal(29, model.Documents.Count);
         Assert.Equal(5, model.All<Entity>().Count);
         Assert.Equal(4, model.All<Relation>().Count);
         Assert.Equal(3, model.All<Stereotype>().Count);
@@ -40,9 +40,10 @@ public sealed class BillingFixtureTests
         Assert.NotEqual(Engine.Hashing.HashBuilder.Of(invoice.Hash, null), invoice.DependencyHash);
         Assert.Equal(Engine.Hashing.ContentHash.Of(await File.ReadAllBytesAsync(harness.Model("model/entities/invoice.json"), TestContext.Current.CancellationToken)), invoice.Hash);
 
-        // References resolve through the index: the invoice is referenced by relations, mappings, the overlay table and the diagram.
+        // References resolve through the index: the invoice is referenced by relations, mappings, the overlay table, the diagram and the
+        // query whose result rows are invoices.
         var referrers = model.ReferencesTo(invoice.Element.Id).Select(r => model.GetDocument(r.FromElementId)!.Element.KindName).Distinct().Order(StringComparer.Ordinal);
-        Assert.Equal(["diagram", "mapping", "relation", "table"], referrers);
+        Assert.Equal(["diagram", "mapping", "query", "relation", "table"], referrers);
         Assert.Contains(result.Changes.Changed, c => c.Id == invoice.Element.Id);
     }
 

@@ -1,0 +1,123 @@
+{
+  "$schema": "../../../../.schema/v1/query.json",
+  "kind": "query",
+  "id": "01M1VT84C70CBMVASNATA1MXMZ",
+  "name": "SalesByChannel",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "description": "Revenue per sales channel since a date, largest first; orders without a channel count as direct.",
+  "parameters": [
+    {
+      "name": "since",
+      "type": "datetimeoffset"
+    },
+    {
+      "name": "top",
+      "type": "int32",
+      "default": 10
+    }
+  ],
+  "from": {
+    "source": "01M1GBW3NDKS6WCM5FAXYVHV7B",
+    "alias": "o"
+  },
+  "joins": [
+    {
+      "source": "01M38NCZKS41XQ56VGTP0P6PM7",
+      "alias": "ch",
+      "kind": "left",
+      "on": {
+        "op": "eq",
+        "left": {
+          "column": "ch.id"
+        },
+        "right": {
+          "column": "o.sales_channel_id"
+        }
+      }
+    }
+  ],
+  "select": [
+    {
+      "name": "channel",
+      "nullable": false,
+      "expression": {
+        "call": "coalesce",
+        "args": [
+          {
+            "column": "ch.name"
+          },
+          {
+            "value": "direct"
+          }
+        ]
+      }
+    },
+    {
+      "name": "orders",
+      "expression": {
+        "call": "count"
+      }
+    },
+    {
+      "name": "revenue",
+      "nullable": false,
+      "expression": {
+        "call": "coalesce",
+        "args": [
+          {
+            "call": "sum",
+            "args": [
+              {
+                "column": "o.grand_total_amount"
+              }
+            ]
+          },
+          {
+            "value": 0
+          }
+        ]
+      }
+    }
+  ],
+  "where": {
+    "and": [
+      {
+        "op": "ge",
+        "left": {
+          "column": "o.ordered_at"
+        },
+        "right": {
+          "param": "since"
+        }
+      },
+      {
+        "op": "isNull",
+        "left": {
+          "column": "o.deleted_at"
+        }
+      }
+    ]
+  },
+  "groupBy": [
+    {
+      "column": "ch.name"
+    }
+  ],
+  "orderBy": [
+    {
+      "expression": {
+        "call": "sum",
+        "args": [
+          {
+            "column": "o.grand_total_amount"
+          }
+        ]
+      },
+      "direction": "desc",
+      "nulls": "last"
+    }
+  ],
+  "paging": {
+    "limit": "top"
+  }
+}

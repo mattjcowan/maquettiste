@@ -115,12 +115,12 @@ export function PromoteDialog({ id, onClose, onDone }: { id: string | null; onCl
       const refs = await endpoints.getReferences(id);
       const userIds = [...new Set(refs.map((r) => r.fromElementId))].filter((x) => x !== id).sort();
       const users = (await Promise.all(userIds.map((u) => qc.fetchQuery(elementQuery(u))))).filter((d): d is ElementDocument => !!d);
-      // The owners' mapping elements and seeds, which may point at an attribute the promotion removes.
+      // The owners' mapping elements, seeds and queries, which may point at an attribute the promotion removes.
       const owners = users.filter((u) => u.json.kind === "entity").map((u) => u.element.id);
       const ownerRefs = (await Promise.all(owners.map((o) => endpoints.getReferences(o)))).flat();
       const depIds = [...new Set(ownerRefs.map((r) => r.fromElementId))].filter((x) => x !== id && !userIds.includes(x)).sort();
       const dependents = (await Promise.all(depIds.map((d) => qc.fetchQuery(elementQuery(d))))).filter(
-        (d): d is ElementDocument => !!d && (d.json.kind === "mapping" || d.json.kind === "seed"),
+        (d): d is ElementDocument => !!d && (d.json.kind === "mapping" || d.json.kind === "seed" || d.json.kind === "query"),
       );
       if (!live || !source) return;
       const plan = planPromotion(

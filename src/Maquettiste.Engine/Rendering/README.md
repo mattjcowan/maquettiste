@@ -61,7 +61,10 @@ golden tree).
 - **Helpers** (all section 9 names): `pascal camel snake kebab upper_snake` (`Text/Casing`), `pluralize singularize` (`Text/Inflector`
   with `inflection` overrides, records `s:inflection`; an element argument returns its `PluralName`/`Name`), `type_of`,
   `sql_quote`, `sql_literal`, `indent`, `dedent`, `escape_md`, `escape_xml`, `escape_json`, `json`, `has_stereotype`, `has_tag`,
-  `in_category` (these three take any `RAnnotated`: a conceptual element, a database, schema, table, column, view or sequence), `lookup`, `banner`, `file`.
+  `in_category` (these three take any `RAnnotated`: a conceptual element, a database, schema, table, column, view or sequence), `lookup`, `banner`, `file`,
+  `query_sql` and `query_collection_sql` (2026-10-02: a query's or a collection's statement from `QuerySql`, for the database's
+  dialect or the one given, with `{ placeholder, lists }` options; they record the top query and fail the unit with MQ4029 when an
+  `sql` expression has no text for the dialect).
   The `hints` variable reads any `RAnnotated`'s `Generation` too, so a table unit sees its table file's hints (2026-10-01). Pack JavaScript helpers register under their own names (callable and pipeable);
   a name that collides with a builtin or a variable is MQ6013 and fails every unit of the pack. Transforms run before the
   template, in `transforms` order, merged into `data` (later wins).
@@ -95,6 +98,10 @@ golden tree).
   omitted when the name is a table, column or view, or the unit's element is (or belongs to) a database. Quoting comes from the
   third argument, else that database's `quoting`, else `reserved`. `reserved` quotes reserved words of the dialect **and** any
   name that is not `^[A-Za-z_][A-Za-z0-9_]*$`. Dialect aliases: `postgres`, `pg`, `mssql`, `mariadb`.
+- `QuerySql` (public, 2026-10-02, engine-design.md section 7 "Queries"): renders an `RQuery` or `RQueryCollection` as
+  parameterised SQL per dialect (`@`, `:` or positional `$` placeholders; lists `IN @x` or `= ANY(@x)`), quoting through
+  `SqlDialects`, function spellings, `ilike` lowered, `NULLS FIRST|LAST` emulated, paging per dialect; a collection is its own
+  statement keyed by `__keys<n>`/`__key<n>`.
 - `type_of`: pack maps (`types/<target>.json`) win over dialect names; a collection attribute takes the map's `collection`
   pattern, otherwise an optional attribute or nullable column takes `nullable`. With a dialect target, a column of a database
   in that dialect yields its resolved `native_type`; anything else goes through the dialect map (enums as `int32`, value objects

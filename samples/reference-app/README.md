@@ -4,7 +4,8 @@
 
 The data layer of a B2B wholesale distributor, modeled in Maquettiste and generated end to end: 200 entities in 12 packages,
 8 value objects, 5 scalar types, 23 enums, 2 reference types, 439 relations, one PostgreSQL 16 database (`main`, schema `northwind`) with
-table overlays, a designed table, a view and three sequences, and one subject-area diagram per package.
+table overlays, a designed table, a view, three sequences and two queries (a customer's open sales orders with their lines, and
+revenue by sales channel), and one subject-area diagram per package.
 
 The database file `main` has no `byConvention` member on purpose: it keeps the rule from before 0.3.0 (every entity, or the
 entities of its `packages`), and `generate --check` proves that such models still generate byte-identical output. A new

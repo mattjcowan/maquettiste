@@ -1,0 +1,186 @@
+{
+  "$schema": "../../../../.schema/v1/query.json",
+  "kind": "query",
+  "id": "01M271B0Z1YTW9BX14WNDVQ9PB",
+  "name": "OpenSalesOrders",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "description": "A customer's sales orders in some statuses, newest first, a page at a time, each with its lines.",
+  "entity": "01M1GBW3NDKS6WCM5FAXYVHV7B",
+  "parameters": [
+    {
+      "name": "customerId",
+      "type": "uuid"
+    },
+    {
+      "name": "statuses",
+      "type": "string",
+      "length": 8,
+      "collection": true,
+      "description": "Status codes such as SUBMIT or CONFIRM."
+    },
+    {
+      "name": "offset",
+      "type": "int32",
+      "default": 0
+    },
+    {
+      "name": "limit",
+      "type": "int32",
+      "default": 50
+    }
+  ],
+  "from": {
+    "source": "01M1GBW3NDKS6WCM5FAXYVHV7B",
+    "alias": "o"
+  },
+  "select": [
+    {
+      "attribute": "01M2EACDTQ5DK0E5KCNM4GSD8R",
+      "expression": {
+        "column": "o.id"
+      }
+    },
+    {
+      "attribute": "01M256CQ05TNXT00ZA778NC7F1",
+      "expression": {
+        "column": "o.order_number"
+      }
+    },
+    {
+      "attribute": "01M2DKD1SBG981A6F0Q0ZK5KHV",
+      "expression": {
+        "column": "o.ordered_at"
+      }
+    },
+    {
+      "attribute": "01M25N9ECNK5AHV2W8MZ7FJFZV",
+      "expression": {
+        "column": "o.status"
+      }
+    },
+    {
+      "attribute": "01M1R59J0CTZBR59JSYZK7MAY8",
+      "expression": {
+        "column": "o.source"
+      }
+    },
+    {
+      "attribute": "01M369MWGWXN4Z2PG5Y282PDFP",
+      "expression": {
+        "column": "o.promised_delivery_on"
+      }
+    },
+    {
+      "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+      "expression": {
+        "column": "o.created_at"
+      }
+    }
+  ],
+  "where": {
+    "and": [
+      {
+        "op": "eq",
+        "left": {
+          "column": "o.customer_id"
+        },
+        "right": {
+          "param": "customerId"
+        }
+      },
+      {
+        "op": "in",
+        "left": {
+          "column": "o.status"
+        },
+        "right": {
+          "param": "statuses"
+        }
+      },
+      {
+        "op": "isNull",
+        "left": {
+          "column": "o.deleted_at"
+        }
+      }
+    ]
+  },
+  "orderBy": [
+    {
+      "expression": {
+        "column": "o.ordered_at"
+      },
+      "direction": "desc"
+    }
+  ],
+  "paging": {
+    "offset": "offset",
+    "limit": "limit"
+  },
+  "collections": [
+    {
+      "attribute": "01M2VXSFDMPFZ9Q4Y9QGTDRH41",
+      "entity": "01M2JSECEQ3FD3TKWAQR961TJ0",
+      "query": {
+        "from": {
+          "source": "01M2JSECEQ3FD3TKWAQR961TJ0",
+          "alias": "l"
+        },
+        "select": [
+          {
+            "attribute": "01M2P7JZ3EC056KSQ3XN0K8C61",
+            "expression": {
+              "column": "l.id"
+            }
+          },
+          {
+            "attribute": "01M2RHECM7J1M1VF8CRJ5EGFWW",
+            "expression": {
+              "column": "l.line_number"
+            }
+          },
+          {
+            "attribute": "01M22KBCXDVN3E8C0ZJDZXT4Q3",
+            "expression": {
+              "column": "l.quantity"
+            }
+          },
+          {
+            "attribute": "01M2TNPAR5AG0F4DVMDQQR8D60",
+            "expression": {
+              "column": "l.status"
+            }
+          },
+          {
+            "attribute": "01M328GFFRFJENF733S4SAT0JD",
+            "expression": {
+              "column": "l.description"
+            }
+          },
+          {
+            "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+            "expression": {
+              "column": "l.created_at"
+            }
+          }
+        ],
+        "where": {
+          "op": "eq",
+          "left": {
+            "column": "l.sales_order_id"
+          },
+          "right": {
+            "column": "o.id"
+          }
+        },
+        "orderBy": [
+          {
+            "expression": {
+              "column": "l.line_number"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

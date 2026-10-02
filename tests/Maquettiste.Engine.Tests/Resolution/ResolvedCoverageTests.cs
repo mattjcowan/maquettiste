@@ -46,6 +46,18 @@ public sealed class ResolvedCoverageTests
         new("database type", "database-type.json", "", typeof(RDatabaseType)),
         new("database type field", "database-type.json", "fields/[]", typeof(RDatabaseTypeField)),
         new("sql object", "sql-object.json", "", typeof(RSqlObject)),
+        new("query", "query.json", "", typeof(RQuery)),
+        new("query parameter", "query.json", "$defs/parameter", typeof(RQueryParameter)),
+        new("query source", "query.json", "$defs/from", typeof(RQuerySource)),
+        new("query join", "query.json", "$defs/join", typeof(RQuerySource)),
+        new("query field", "query.json", "$defs/field", typeof(RQueryField)),
+        new("query order", "query.json", "$defs/order", typeof(RQueryOrder)),
+        new("query paging", "query.json", "$defs/paging", typeof(RQueryPaging)),
+        new("query collection", "query.json", "$defs/collection", typeof(RQueryCollection)),
+        new("nested query", "query.json", "$defs/subquery", typeof(RQuery)),
+        new("case branch", "query.json", "$defs/when", typeof(RQueryWhen)),
+        new("expression", "query.json", "$defs/expression", typeof(RQueryExpression)),
+        new("predicate", "query.json", "$defs/predicate", typeof(RQueryPredicate)),
 
         // Conceptual kinds and their parts.
         new("package", "package.json", "", typeof(RPackage)),
@@ -106,6 +118,8 @@ public sealed class ResolvedCoverageTests
     {
         // The overlay entry's synthesized column key is the column's key.
         [("column", "attribute")] = "Key",
+        // A join's kind is the source's join kind (from for the first source).
+        [("query join", "kind")] = "JoinKind",
         // identity or sequence: Identity says the first, Sequence names the second.
         [("column", "generated")] = "Identity",
         [("foreign key", "referencesTable")] = "ReferencedTable",
@@ -117,7 +131,7 @@ public sealed class ResolvedCoverageTests
 
     /// <summary>
     /// Gaps this test found outside the physical model on 2026-10-01, left for a later round: each is a property of the file that no
-    /// resolved member carries yet. The physical kinds (database, schema, table, column, constraints, view, sequence, routine, database type, SQL object) have none.
+    /// resolved member carries yet. The physical kinds (database, schema, table, column, constraints, view, sequence, routine, database type, SQL object, query) have none.
     /// </summary>
     private static readonly HashSet<(string Target, string Property)> Pending =
     [

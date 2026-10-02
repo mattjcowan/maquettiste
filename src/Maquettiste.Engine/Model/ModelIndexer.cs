@@ -456,6 +456,7 @@ internal static class ModelIndexer
                 Routine r => r.Database,
                 DatabaseType t => t.Database,
                 SqlObject o => o.Database,
+                Query q => q.Database,
                 Mapping m => m.Database,
                 _ => null,
             },

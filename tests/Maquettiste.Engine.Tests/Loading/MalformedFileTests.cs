@@ -33,13 +33,13 @@ public sealed class MalformedFileTests
         await s.Store.LoadAsync(Ct);
         var model = s.Store.Current!;
 
-        Assert.Equal(25, model.Documents.Count);
+        Assert.Equal(28, model.Documents.Count);
         Assert.DoesNotContain(model.Documents, d => d.Path == ".maquettiste/model/entities/customer.json");
         var d = Assert.Single(model.LoadDiagnostics, d => d.FilePath == ".maquettiste/model/entities/customer.json");
         Assert.Equal("MQ1001", d.Rule);
         Assert.NotNull(d.Line);
         Assert.NotNull(d.Column);
-        Assert.Equal(25, (await s.Store.GetIndexAsync(Ct)).Count);
+        Assert.Equal(28, (await s.Store.GetIndexAsync(Ct)).Count);
     }
 
     [Fact]
@@ -55,7 +55,7 @@ public sealed class MalformedFileTests
         await s.Store.LoadAsync(Ct);
         var model = s.Store.Current!;
 
-        Assert.Equal(25, model.Documents.Count);
+        Assert.Equal(28, model.Documents.Count);
         var d = Assert.Single(model.LoadDiagnostics, d => d.FilePath == ".maquettiste/model/entities/customer.json");
         Assert.Equal("MQ1001", d.Rule);
         var text = Encoding.UTF8.GetString(bytes.AsSpan(0, at));
@@ -77,7 +77,7 @@ public sealed class MalformedFileTests
         await s.Store.LoadAsync(Ct);
         var model = s.Store.Current!;
 
-        Assert.Equal(26, model.Documents.Count);
+        Assert.Equal(29, model.Documents.Count);
         Assert.Null(model.Settings.Name);
         Assert.Contains(model.LoadDiagnostics, d => d.Rule == "MQ1001" && d.FilePath == ".maquettiste/maquettiste.json");
         Assert.Contains(model.LoadDiagnostics, d => d.Rule == "MQ5004" && d.FilePath == ".maquettiste/extensions/retention.json");

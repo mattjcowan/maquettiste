@@ -56,6 +56,12 @@
       }
     },
     {
+      "id": "query",
+      "template": "query.scriban",
+      "for": "each query",
+      "output": "{{ join_path pack.params.generatedFolder \"Queries\" ((pascal query.name) + \"Query.g.cs\") }}"
+    },
+    {
       "id": "registrations",
       "template": "registrations.scriban",
       "for": "model"

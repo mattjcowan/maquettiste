@@ -1,0 +1,565 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Query",
+  "description": "A query over the tables and views of a database, written as data (model/databases/<db>/queries/): sources, joins, a select list, predicates, grouping, ordering, paging and collections. Its result shape is an entity, or the select list when no entity is named.",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "kind",
+    "id",
+    "name",
+    "displayName",
+    "pluralName",
+    "database",
+    "description",
+    "stereotypes",
+    "tags",
+    "category",
+    "entity",
+    "parameters",
+    "from",
+    "joins",
+    "select",
+    "where",
+    "groupBy",
+    "having",
+    "orderBy",
+    "distinct",
+    "paging",
+    "collections",
+    "properties",
+    "generation",
+    "source"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "kind": {
+      "const": "query"
+    },
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "name": {
+      "$ref": "common.json#/$defs/label",
+      "default": ""
+    },
+    "displayName": {
+      "type": "string"
+    },
+    "pluralName": {
+      "type": "string"
+    },
+    "database": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "description": {
+      "$ref": "common.json#/$defs/description"
+    },
+    "stereotypes": {
+      "$ref": "common.json#/$defs/keyList",
+      "default": []
+    },
+    "tags": {
+      "$ref": "common.json#/$defs/tagList",
+      "default": []
+    },
+    "category": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "entity": {
+      "description": "The entity whose shape each result row has; absent, the select list is the row shape (a name and a type per field).",
+      "$ref": "common.json#/$defs/id"
+    },
+    "parameters": {
+      "description": "The values the caller passes, by name.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/parameter"
+      },
+      "default": []
+    },
+    "from": {
+      "$ref": "#/$defs/from"
+    },
+    "joins": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/join"
+      },
+      "default": []
+    },
+    "select": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/field"
+      },
+      "minItems": 1
+    },
+    "where": {
+      "$ref": "#/$defs/predicate"
+    },
+    "groupBy": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/expression"
+      },
+      "default": []
+    },
+    "having": {
+      "$ref": "#/$defs/predicate"
+    },
+    "orderBy": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/order"
+      },
+      "default": []
+    },
+    "distinct": {
+      "type": "boolean",
+      "default": false
+    },
+    "paging": {
+      "$ref": "#/$defs/paging"
+    },
+    "collections": {
+      "description": "Collections filled per result row by a correlated query (a sub-select yielding a list per parent row).",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/collection"
+      },
+      "default": []
+    },
+    "properties": {
+      "$ref": "common.json#/$defs/properties",
+      "default": {}
+    },
+    "generation": {
+      "$ref": "common.json#/$defs/generation",
+      "default": {}
+    },
+    "source": {
+      "$ref": "common.json#/$defs/source"
+    }
+  },
+  "required": ["kind", "id", "name", "database", "from", "select"],
+  "additionalProperties": false,
+  "$defs": {
+    "parameter": {
+      "title": "Query parameter",
+      "type": "object",
+      "x-order": ["name", "type", "length", "precision", "scale", "collection", "default", "description"],
+      "properties": {
+        "name": {
+          "$ref": "common.json#/$defs/identifier"
+        },
+        "type": {
+          "$ref": "common.json#/$defs/dbTypeRef"
+        },
+        "length": {
+          "$ref": "common.json#/$defs/length"
+        },
+        "precision": {
+          "$ref": "common.json#/$defs/precision"
+        },
+        "scale": {
+          "$ref": "common.json#/$defs/scale"
+        },
+        "collection": {
+          "description": "Whether the caller passes a list of values (for in and notIn).",
+          "type": "boolean",
+          "default": false
+        },
+        "default": {
+          "description": "The value the generated method uses when the caller passes none.",
+          "type": ["string", "number", "boolean"]
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "required": ["name", "type"],
+      "additionalProperties": false
+    },
+    "from": {
+      "title": "Query source",
+      "type": "object",
+      "x-order": ["source", "alias"],
+      "properties": {
+        "source": {
+          "description": "A table or view of the query's database: a table or view file's id, a table key as the database view lists it (<entity id>@<database id>), or an entity id for the entity's table there.",
+          "type": "string",
+          "minLength": 1
+        },
+        "alias": {
+          "description": "The name column references use (alias.column); absent, the table's or view's name.",
+          "$ref": "common.json#/$defs/identifier"
+        }
+      },
+      "required": ["source"],
+      "additionalProperties": false
+    },
+    "join": {
+      "title": "Join",
+      "type": "object",
+      "x-order": ["source", "alias", "kind", "on"],
+      "properties": {
+        "source": {
+          "description": "A table or view of the query's database, as in from.",
+          "type": "string",
+          "minLength": 1
+        },
+        "alias": {
+          "$ref": "common.json#/$defs/identifier"
+        },
+        "kind": {
+          "enum": ["inner", "left", "right", "full", "cross"],
+          "default": "inner"
+        },
+        "on": {
+          "$ref": "#/$defs/predicate"
+        }
+      },
+      "required": ["source"],
+      "additionalProperties": false
+    },
+    "field": {
+      "title": "Select field",
+      "type": "object",
+      "x-order": ["name", "attribute", "type", "nullable", "expression"],
+      "properties": {
+        "name": {
+          "description": "The field's name in the result row; absent, the attribute's name.",
+          "$ref": "common.json#/$defs/identifier"
+        },
+        "attribute": {
+          "description": "The attribute of the query's entity (or of a collection's entity) the field fills.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "type": {
+          "description": "The field's type in an ad hoc row; absent, inferred from the expression.",
+          "$ref": "common.json#/$defs/builtinType"
+        },
+        "nullable": {
+          "description": "Whether the field may be null; absent, inferred from the expression.",
+          "type": "boolean"
+        },
+        "expression": {
+          "$ref": "#/$defs/expression"
+        }
+      },
+      "required": ["expression"],
+      "anyOf": [
+        {
+          "required": ["name"]
+        },
+        {
+          "required": ["attribute"]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "order": {
+      "title": "Order",
+      "type": "object",
+      "x-order": ["expression", "direction", "nulls"],
+      "properties": {
+        "expression": {
+          "$ref": "#/$defs/expression"
+        },
+        "direction": {
+          "enum": ["asc", "desc"],
+          "default": "asc"
+        },
+        "nulls": {
+          "enum": ["first", "last"]
+        }
+      },
+      "required": ["expression"],
+      "additionalProperties": false
+    },
+    "paging": {
+      "title": "Paging",
+      "type": "object",
+      "x-order": ["offset", "limit"],
+      "properties": {
+        "offset": {
+          "description": "The rows to skip: an integer parameter's name or a number.",
+          "anyOf": [
+            {
+              "$ref": "common.json#/$defs/identifier"
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "limit": {
+          "description": "The most rows to return: an integer parameter's name or a number.",
+          "anyOf": [
+            {
+              "$ref": "common.json#/$defs/identifier"
+            },
+            {
+              "type": "integer",
+              "minimum": 1
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "collection": {
+      "title": "Collection",
+      "type": "object",
+      "x-order": ["attribute", "entity", "query"],
+      "properties": {
+        "attribute": {
+          "description": "The collection the rows fill: the id of a collection attribute of the query's entity or of the relation end its to-many navigation leads to, or a name for an ad hoc row.",
+          "type": "string",
+          "minLength": 1
+        },
+        "entity": {
+          "description": "The entity each element has; absent, the nested select list is the element shape.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "query": {
+          "description": "The nested query; its predicates may name the outer query's aliases (the correlation), only in equality conditions at the top of its where.",
+          "$ref": "#/$defs/subquery"
+        }
+      },
+      "required": ["attribute", "query"],
+      "additionalProperties": false
+    },
+    "subquery": {
+      "title": "Nested query",
+      "description": "A query inside a collection or an exists condition; it may name the aliases of the queries around it.",
+      "type": "object",
+      "x-order": ["from", "joins", "select", "where", "groupBy", "having", "orderBy", "distinct"],
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/from"
+        },
+        "joins": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/join"
+          },
+          "default": []
+        },
+        "select": {
+          "description": "The fields; required in a collection, ignored by exists (which selects 1).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/field"
+          },
+          "default": []
+        },
+        "where": {
+          "$ref": "#/$defs/predicate"
+        },
+        "groupBy": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/expression"
+          },
+          "default": []
+        },
+        "having": {
+          "$ref": "#/$defs/predicate"
+        },
+        "orderBy": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/order"
+          },
+          "default": []
+        },
+        "distinct": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": ["from"],
+      "additionalProperties": false
+    },
+    "when": {
+      "title": "Case branch",
+      "type": "object",
+      "x-order": ["when", "then"],
+      "properties": {
+        "when": {
+          "$ref": "#/$defs/predicate"
+        },
+        "then": {
+          "$ref": "#/$defs/expression"
+        }
+      },
+      "required": ["when", "then"],
+      "additionalProperties": false
+    },
+    "expression": {
+      "title": "Expression",
+      "description": "Exactly one of: column (alias.column_name; the column part may also be an attribute id or a column key), param, value, null, op with args, call (with args), case (with else), cast with type, sql (an opaque text per dialect).",
+      "type": "object",
+      "x-order": ["column", "param", "value", "null", "op", "call", "args", "case", "else", "cast", "type", "sql"],
+      "properties": {
+        "column": {
+          "type": "string",
+          "minLength": 1
+        },
+        "param": {
+          "$ref": "common.json#/$defs/identifier"
+        },
+        "value": {
+          "type": ["string", "number", "boolean"]
+        },
+        "null": {
+          "description": "The null literal.",
+          "const": true
+        },
+        "op": {
+          "enum": ["+", "-", "*", "/", "%", "concat"]
+        },
+        "call": {
+          "description": "A function name (lower, upper, coalesce, count, sum, min, max, avg, length, now, or any other, passed through) or a routine id of the database.",
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/expression"
+          }
+        },
+        "case": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/when"
+          },
+          "minItems": 1
+        },
+        "else": {
+          "$ref": "#/$defs/expression"
+        },
+        "cast": {
+          "$ref": "#/$defs/expression"
+        },
+        "type": {
+          "$ref": "common.json#/$defs/builtinType"
+        },
+        "sql": {
+          "description": "An opaque expression per dialect, for what the tree cannot say; the query cannot be rendered for a dialect without a text (nor \"*\").",
+          "$ref": "common.json#/$defs/dialectMap",
+          "minProperties": 1
+        }
+      },
+      "oneOf": [
+        {
+          "required": ["column"]
+        },
+        {
+          "required": ["param"]
+        },
+        {
+          "required": ["value"]
+        },
+        {
+          "required": ["null"]
+        },
+        {
+          "required": ["op"]
+        },
+        {
+          "required": ["call"]
+        },
+        {
+          "required": ["case"]
+        },
+        {
+          "required": ["cast"]
+        },
+        {
+          "required": ["sql"]
+        }
+      ],
+      "dependentRequired": {
+        "op": ["args"],
+        "cast": ["type"]
+      },
+      "additionalProperties": false
+    },
+    "predicate": {
+      "title": "Predicate",
+      "description": "Exactly one of: and, or (lists of predicates), not (a predicate), op with left and right (a list for in, notIn and between; none for isNull and isNotNull), exists (a nested query).",
+      "type": "object",
+      "x-order": ["and", "or", "not", "op", "left", "right", "exists"],
+      "properties": {
+        "and": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/predicate"
+          },
+          "minItems": 1
+        },
+        "or": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/predicate"
+          },
+          "minItems": 1
+        },
+        "not": {
+          "$ref": "#/$defs/predicate"
+        },
+        "op": {
+          "enum": ["eq", "ne", "lt", "le", "gt", "ge", "like", "ilike", "in", "notIn", "between", "isNull", "isNotNull"]
+        },
+        "left": {
+          "$ref": "#/$defs/expression"
+        },
+        "right": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/expression"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/expression"
+              },
+              "minItems": 1
+            }
+          ]
+        },
+        "exists": {
+          "$ref": "#/$defs/subquery"
+        }
+      },
+      "oneOf": [
+        {
+          "required": ["and"]
+        },
+        {
+          "required": ["or"]
+        },
+        {
+          "required": ["not"]
+        },
+        {
+          "required": ["op"]
+        },
+        {
+          "required": ["exists"]
+        }
+      ],
+      "dependentRequired": {
+        "op": ["left"]
+      },
+      "additionalProperties": false
+    }
+  }
+}

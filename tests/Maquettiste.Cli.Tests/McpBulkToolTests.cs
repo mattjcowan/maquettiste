@@ -80,6 +80,37 @@ public sealed class McpBulkToolTests
     }
 
     [Fact]
+    public async Task Queries_read_as_records_and_their_sql_previews_for_any_dialect()
+    {
+        const string invoicesByCustomer = "01K6QRY0000000000000000001";
+        await using var session = await McpSession.StartAsync(ct: TestContext.Current.CancellationToken);
+
+        var records = await session.OkAsync("get_resolved_model", new { scope = "queries" });
+        Assert.Equal(["FindCustomersWithIssuedInvoices", "InvoicesByCustomer", "RevenueByMonth"], records["items"]!.AsArray().Select(i => (string)i!["name"]!));
+        var record = records["items"]!.AsArray().Single(i => (string)i!["id"]! == invoicesByCustomer)!;
+        var view = await session.OkAsync("get_database_view", new { id = MainDatabase });
+        Assert.True(JsonNode.DeepEquals(view["view"]!["queries"]!.AsArray().Single(q => (string)q!["id"]! == invoicesByCustomer), record["query"]));
+        Assert.Equal(3, (await session.OkAsync("get_elements", new { kind = "query" }))["items"]!.AsArray().Count);
+
+        var preview = (await session.OkAsync("preview_query_sql", new { id = invoicesByCustomer }))["preview"]!;
+        Assert.Equal("postgresql", (string)preview["dialect"]!);
+        Assert.Equal((string)record["query"]!["sql"]!, (string)preview["sql"]!);
+        Assert.Equal(["customerId", "statuses", "offset", "limit"], preview["parameters"]!.AsArray().Select(p => (string)p!));
+        var lines = Assert.Single(preview["collections"]!.AsArray())!;
+        Assert.Equal(["__keys0"], lines["parameters"]!.AsArray().Select(p => (string)p!));
+
+        var server = (await session.OkAsync("preview_query_sql", new { id = invoicesByCustomer, dialect = "sqlserver", placeholder = "$" }))["preview"]!;
+        Assert.EndsWith("OFFSET $3 ROWS FETCH NEXT $4 ROWS ONLY", (string)server["sql"]!, StringComparison.Ordinal);
+        var mysql = await session.OkAsync("preview_query_sql", new { id = "01K6QRY0000000000000000002", dialect = "mysql" });
+        Assert.Equal("MQ4029", (string)Assert.Single(mysql["diagnostics"]!.AsArray(), d => (string)d!["rule"]! == "MQ4029")!["rule"]!);
+
+        Assert.Equal("not-a-query", (await session.ErrorAsync("preview_query_sql", new { id = Invoice })).Code);
+        Assert.Equal("not-found", (await session.ErrorAsync("preview_query_sql", new { id = Unknown })).Code);
+        Assert.Equal("bad-request", (await session.ErrorAsync("preview_query_sql", new { id = invoicesByCustomer, dialect = "cobol" })).Code);
+        Assert.Equal("bad-request", (await session.ErrorAsync("preview_query_sql", new { id = invoicesByCustomer, lists = "all" })).Code);
+    }
+
+    [Fact]
     public async Task The_index_pages_on_request_and_bad_paging_arguments_are_bad_requests()
     {
         await using var session = await McpSession.StartAsync(ct: TestContext.Current.CancellationToken);

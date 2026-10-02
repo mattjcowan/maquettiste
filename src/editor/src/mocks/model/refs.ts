@@ -151,9 +151,32 @@ export function referencesOf(doc: Json): Ref[] {
       arr(doc.fields).forEach((f, i) => typeRef(`/fields/${i}/type`, f));
       break;
     }
+    case "query": {
+      push("/database", "database", doc.database, true);
+      push("/entity", "entity", doc.entity, false);
+      // Keyed references (a source's table key, a column's alias.key, a call's routine, a parameter's database type, a collection's
+      // attribute or end): every segment that is an id; a field's attribute and a collection's entity: the id itself.
+      const keyed = new Set(["source", "column", "call", "type", "attribute"]);
+      const walk = (node: unknown, pointer: string): void => {
+        if (Array.isArray(node)) return node.forEach((x, i) => walk(x, `${pointer}/${i}`));
+        if (!node || typeof node !== "object") return;
+        for (const [key, value] of Object.entries(node as Json)) {
+          const at = `${pointer}/${key}`;
+          if (typeof value === "string" && keyed.has(key)) {
+            for (const to of value.split(/[@.]/).filter((x) => ULID.test(x)))
+              if (!own.has(to) && to !== id) out.push({ fromId: id, pointer: at, field: key, toId: to, required: true });
+          } else if (typeof value === "string" && key === "entity" && pointer !== "") push(at, key, value, false);
+          else walk(value, at);
+        }
+      };
+      for (const key of ["parameters", "from", "joins", "select", "where", "groupBy", "having", "orderBy", "collections"]) walk(doc[key], `/${key}`);
+      break;
+    }
   }
   return out;
 }
+
+const ULID = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
 
 /** Ids of the sub-elements a document holds (attributes, ends, keys, members, columns…). */
 export function subElementIds(doc: Json): string[] {

@@ -19,6 +19,9 @@ public sealed class DeleteCascadeTests
     private const string SettlesMappingId = "01J92P0V1ZYK32MC97T5NBB5Y5";
     private const string SequenceId = "01J92P0V1S972MSFDJ8G6V6MWT";
     private const string ViewId = "01J92P0V1YZ4YP352KD1A50FXS";
+    private const string InvoicesByCustomerId = "01K6QRY0000000000000000001";
+    private const string RevenueByMonthId = "01K6QRY0000000000000000002";
+    private const string FindCustomersWithIssuedInvoicesId = "01K6QRY0000000000000000003";
 
     private static CancellationToken Ct => EditorRepo.Ct;
 
@@ -83,7 +86,8 @@ public sealed class DeleteCascadeTests
         var result = await r.Store.DeleteAsync(database.Element.Id, database.Hash, DeleteResolution.DeleteDependents, ChangeSource.Editor, Ct);
 
         Assert.Equal(SaveOutcome.Saved, plan.Outcome);
-        Assert.Equal([SequenceId, EditorRepo.OverlayTableId, ViewId, SettlesMappingId, InvoiceMappingId], plan.Deletes.Select(d => d.Id));
+        Assert.Equal([SequenceId, EditorRepo.OverlayTableId, ViewId, SettlesMappingId, InvoiceMappingId, InvoicesByCustomerId, RevenueByMonthId, FindCustomersWithIssuedInvoicesId],
+            plan.Deletes.Select(d => d.Id));
         Assert.All(plan.Deletes, d => Assert.Equal("needs database main", d.Because));
         Assert.Equal("/databases/main", Assert.Single(plan.Settings).Pointer);
         var warning = Assert.Single(plan.Warnings);
@@ -121,7 +125,10 @@ public sealed class DeleteCascadeTests
         Assert.Equal(SaveOutcome.Saved, result.Outcome);
         Assert.Single(notifications);
         Assert.Equal(
-            ["01J92P0V1ACKN3G6TK3NJDTM82", "01J92P0V1BWHG0REWKSTR292RS", "01J92P0V1DKHD5Q02DV6S5M53D", EditorRepo.OverlayTableId, InvoiceMappingId, SettlesMappingId],
+            [
+                "01J92P0V1ACKN3G6TK3NJDTM82", "01J92P0V1BWHG0REWKSTR292RS", "01J92P0V1DKHD5Q02DV6S5M53D", EditorRepo.OverlayTableId, InvoiceMappingId,
+                InvoicesByCustomerId, RevenueByMonthId, FindCustomersWithIssuedInvoicesId, SettlesMappingId,
+            ],
             plan.Deletes.Select(d => d.Id));
         Assert.Equal(affected.Order(StringComparer.Ordinal), result.Changes!.Deleted.Order(StringComparer.Ordinal));
         Assert.Equal([DiagramId], result.Changes.Changed.Select(c => c.Id));
@@ -160,12 +167,38 @@ public sealed class DeleteCascadeTests
         var plan = await r.Store.GetDeletePlanAsync([MoneyId], DeleteResolution.DeleteDependents, Ct);
         var result = await r.Store.DeleteAsync(MoneyId, money.Hash, DeleteResolution.DeleteDependents, ChangeSource.Editor, Ct);
 
-        Assert.Empty(plan.Deletes);
+        // The revenue query reads total's amount column by its key (alias.attribute.member), so it goes whole with the attribute.
+        var query = Assert.Single(plan.Deletes);
+        Assert.Equal((RevenueByMonthId, "needs attribute amount of value-object Money"), (query.Id, query.Because));
         Assert.Contains(plan.Removes, x => x.Name == "InvoiceLine" && x.What == "attribute unitPrice" && x.SubKind == "attribute" && x.Because == "needs value-object Money");
         Assert.Contains(plan.Removes, x => x.Id == InvoiceMappingId && x.What == "attribute total" && x.Because == "needs attribute total of entity Invoice");
         Assert.Equal(SaveOutcome.Saved, result.Outcome);
         Assert.DoesNotContain(r.Store.Current!.Get<Entity>(EditorRepo.InvoiceId)!.Attributes, a => a.Name == "total");
         Assert.Single(r.Store.Current.Get<Mapping>(InvoiceMappingId)!.Attributes);
+        var validation = await r.Store.ValidateAsync(ValidationScope.All, Ct);
+        Assert.DoesNotContain(validation.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+    }
+
+    [Fact]
+    public async Task A_table_lists_the_queries_that_read_it_and_delete_dependents_removes_each_whole()
+    {
+        await using var r = EditorRepo.Create();
+        var table = (await r.Store.GetElementAsync(EditorRepo.OverlayTableId, Ct))!;
+        string[] queries = [InvoicesByCustomerId, RevenueByMonthId, FindCustomersWithIssuedInvoicesId];
+
+        var refused = await r.Store.DeleteAsync(table.Element.Id, table.Hash, DeleteResolution.Refuse, ChangeSource.Editor, Ct);
+        var cleared = await r.Store.GetDeletePlanAsync([EditorRepo.OverlayTableId], DeleteResolution.RemoveReferences, Ct);
+        var plan = await r.Store.GetDeletePlanAsync([EditorRepo.OverlayTableId], DeleteResolution.DeleteDependents, Ct);
+        var result = await r.Store.DeleteAsync(table.Element.Id, table.Hash, DeleteResolution.DeleteDependents, ChangeSource.Editor, Ct);
+
+        Assert.Equal(SaveOutcome.Referenced, refused.Outcome);
+        Assert.Equal(queries.Order(StringComparer.Ordinal), refused.Referrers.Select(x => x.FromElementId).Distinct().Order(StringComparer.Ordinal));
+        Assert.Equal(queries.Order(StringComparer.Ordinal), cleared.Refused.Select(x => x.Id).Distinct().Order(StringComparer.Ordinal)); // a source is required
+        Assert.Equal(queries.Order(StringComparer.Ordinal), plan.Deletes.Select(d => d.Id).Order(StringComparer.Ordinal));
+        Assert.All(plan.Deletes, d => Assert.Equal(("query", "needs table Invoice register"), (d.Kind, d.Because)));
+        Assert.Empty(plan.Removes);
+        Assert.Equal(SaveOutcome.Saved, result.Outcome);
+        Assert.All(queries, id => Assert.Null(r.Store.Current!.GetDocument(id)));
         var validation = await r.Store.ValidateAsync(ValidationScope.All, Ct);
         Assert.DoesNotContain(validation.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
     }
@@ -190,9 +223,9 @@ public sealed class DeleteCascadeTests
         Assert.Equal(DeleteResolution.DeleteDependents, parsed.Batch!.Operations[0].Resolution);
         Assert.Equal(SaveOutcome.Saved, plan.Outcome);
         Assert.Equal([ProductId, EditorRepo.InvoiceId], plan.Ids);
-        Assert.Equal(7, plan.Deletes.Count); // refers to, then Invoice's three relations, overlay and two mappings
+        Assert.Equal(10, plan.Deletes.Count); // refers to, then Invoice's three relations, overlay, two mappings and the three queries over it
         Assert.Equal(SaveOutcome.Saved, result.Outcome);
-        Assert.Equal(9, result.Changes!.Deleted.Count);
+        Assert.Equal(12, result.Changes!.Deleted.Count);
         Assert.Equal([DiagramId], result.Changes.Changed.Select(c => c.Id));
     }
 

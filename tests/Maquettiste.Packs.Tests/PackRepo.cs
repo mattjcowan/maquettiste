@@ -182,7 +182,25 @@ internal sealed class PackRepo : IDisposable
                 ["type"] = new JsonObject { ["ref"] = "01J92P0V2G0000000000000001" },
             }));
             AddDatabaseObjects();
+            AddLocalQuery();
         }
+    }
+
+    /// <summary>
+    /// A copy of the billing fixture's InvoicesByCustomer query on the SQLite database, which CompileTests runs: its sources are the
+    /// synthesized tables' keys there, its columns the same column keys, its statuses the stored member values.
+    /// </summary>
+    private void AddLocalQuery()
+    {
+        var query = JsonNode.Parse(File.ReadAllText(Path.Combine(Repo.ModelRoot, "model", "databases", "main", "queries", "invoices-by-customer.json")))!.AsObject();
+        query["id"] = "01J92P0V2Q0000000000000001";
+        query["name"] = "LocalInvoicesByCustomer";
+        query["database"] = LocalId;
+        query["from"]!["source"] = "01J92P0V0FJ23CGSNKM7P1W5V7@" + LocalId;
+        query["collections"]![0]!["query"]!["from"]!["source"] = "01J92P0V0GWFR78HZH0P8Z3GY7@" + LocalId;
+        // The SQLite database stores the status as the member value (no mapping there stores it as text).
+        query["parameters"]![1] = new JsonObject { ["name"] = "statuses", ["type"] = "int32", ["collection"] = true };
+        Repo.WriteFile(".maquettiste/model/databases/local/queries/local-invoices-by-customer.json", query.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }) + "\n");
     }
 
     /// <summary>The PostgreSQL database <c>main</c>.</summary>

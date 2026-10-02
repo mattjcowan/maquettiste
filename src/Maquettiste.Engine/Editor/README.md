@@ -3,6 +3,8 @@
 The engine additions the editor's functions call (phase2-design.md section 3.8, explorer-redesign.md section 4.1).
 
 - E1 `GenerationService.GetDatabaseViewAsync` → `DatabaseViews` (the resolved tables of one database; null on a model with errors).
+- `GenerationService.GetQuerySqlAsync` → `QueryViews.Preview` (2026-10-02): one query's statement and one per collection for a
+  dialect, null on a model with errors; `QueryViews.Project` gives `DatabaseView.Queries` and the `queries` scope's `QueryRecord`.
 - E2 `GenerationService.GetPacksAsync` → `PackList`. E3 settings documents → `SettingsDocuments`.
 - E5 index rows: `ElementSummary` gains `DisplayName`, `Database`, `Entity`, `MemberCount` and `Ends` (`Model/ModelIndexer.Summarize`),
   left out of the JSON when null.

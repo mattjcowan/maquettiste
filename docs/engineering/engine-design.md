@@ -80,6 +80,7 @@ Public surface: the root facade, `Model`, `Diagnostics`, `Pipeline` (interfaces 
 | `database` | `Database` | `model/databases/<db>/database.json` | `database.json` |
 | `table` / `view` / `sequence` | `Table` / `View` / `Sequence` | `model/databases/<db>/tables/` `views/` `sequences/` | `table.json` `view.json` `sequence.json` |
 | `routine` / `database-type` / `sql-object` | `Routine` / `DatabaseType` / `SqlObject` | `model/databases/<db>/routines/` `types/` `objects/` | `routine.json` `database-type.json` `sql-object.json` |
+| `query` | `Query` | `model/databases/<db>/queries/` | `query.json` |
 | `mapping` | `Mapping` | `model/mappings/` | `mapping.json` |
 | `diagram` | `Diagram` | `model/diagrams/` | `diagram.json` |
 | `tag-vocabulary` | `TagVocabulary` | `model/vocabularies/tags.json` | `tag-vocabulary.json` |
@@ -806,11 +807,147 @@ outside `all`, as `tables`). The OpenAPI contract declares the new members witho
 the editor's recorded mocks stay valid; the server always sends them. The MCP tools that take a kind (`create_element`,
 `get_schema`, `get_elements`) and the CLI's `model export` and `validate` take the kinds through the kind table.
 
+**Queries (status: built 2026-10-02, erratum E41).** As built on 2026-10-02, a database holds a fourth kind beside its routines,
+database types and SQL objects: the `query`, a query over the database's tables and views written as data. Tables, views and
+routines are the physical model and generate the repository layer; entities are the service layer's shapes. An entity is
+filled by its simple one-table mapping or by a query whose result shape it is, and which generates the repository method that
+materialises it. A query is a JSON tree an agent edits and a pack walks per dialect, never SQL text; the only opaque SQL is the
+`sql` expression, one expression per dialect. Entities and tables stay separable: tables without entities, entities without
+tables, and many-to-many between them through queries.
+
+- `query` (`queries/`, `Query`, `query.json`, scope `each query`, template variable `query`): the annotations, `name`,
+  `database` and `source` a view has, but no `schema` (a query creates nothing in the database); `entity` (optional: the
+  result shape; without it the select list is an ad hoc row); `parameters` (`name`, `type` as `common.json#/$defs/dbTypeRef`,
+  `length`, `precision`, `scale`, `collection` for `in` lists, `default` as a JSON string, number or boolean, `description`);
+  `from` (`source`, `alias`); `joins` (`source`, `alias`, `kind` `inner|left|right|full|cross`, default `inner`, `on`);
+  `select` (required, at least one: `name`, `attribute`, `type` and `nullable` for an ad hoc row, `expression`; `name` or
+  `attribute` required); `where`; `groupBy`; `having`; `orderBy` (`expression`, `direction` `asc|desc`, `nulls`
+  `first|last`); `distinct`; `paging` (`offset` and `limit`, each an integer parameter's name or a number); `collections`
+  (`attribute`, `entity`, `query`: a nested query with `from`, `joins`, `select`, `where`, `groupBy`, `having`, `orderBy`,
+  `distinct`, whose predicates may name the outer query's aliases).
+- The trees are `$defs` of `query.json`, each one object whose `x-order` lists every member so the canonical writer orders
+  them: an **expression** is exactly one of `column` (`alias.<column>`), `param`, `value` (string, number or boolean),
+  `null` (`true`), `op` (`+ - * / % concat`) with `args`, `call` (a function name or a routine id) with `args`, `case`
+  (`[{ when, then }]`) with `else`, `cast` with `type` (a built-in keyword), `sql` (a dialect map); a **predicate** is
+  exactly one of `and`, `or`, `not`, `op` (`eq ne lt le gt ge like ilike in notIn between isNull isNotNull`) with `left`
+  and `right` (one expression, or a list for `in`, `notIn` and `between`), `exists` (a nested query). `oneOf` over
+  `required` members picks the form and `dependentRequired` adds `args` to `op` and `type` to `cast`.
+- Model records (`Model/Queries.cs`): `Query`, `QueryParameter`, `QuerySource`, `QueryJoin`, `QueryField`, `QueryOrder`,
+  `QueryPaging`, `QueryCollection`, `QuerySubquery`, `QueryWhen`, `QueryExpression` and `QueryPredicate`, plain records so the
+  reference walker and the indexer recurse through the trees. `QueryPredicate.Right` is a list read through a converter that
+  takes one expression or an array (a list of one is written back as the expression). The references: `database`, `entity`
+  and a collection's `entity` are typed; a field's `attribute` is an attribute reference; a source, a column, a call, a
+  parameter type and a collection's `attribute` are keyed references (`[ElementRef(Keyed = true)]`), so each id-shaped segment
+  of `<entity id>@<database id>` or `alias.<attribute id>.<member id>` is a reference and any other text is not.
+
+*Decisions where the brief left a choice.* The canonical column form is `alias.<column key>`, the key the database view lists
+(an attribute id, a value object member's attribute path, `<end id>.<key attribute id>` for a foreign key, a designed
+column's id): it survives renames and changes of the column conventions, and the reference index sees it, so a delete plan
+follows it. A physical column name is accepted (the only form for a view's columns, since view columns have no ids) and
+matches ordinally, then ignoring case, then ignoring case and underscores, when only one column matches; a name without an
+alias resolves when exactly one source of the nearest query has it. A source is a table or view file's id (a designed table or
+a synthesized table's overlay), a table key, or an entity id (its table in the query's database). The null literal is
+`{ "null": true }`, because the canonical writer drops nulls; a negated `exists` is `{ "not": { "exists": ... } }` rather than
+a `not` flag beside `exists`, which would give one key two shapes. `select` is required at the top level and optional in a
+nested query (`exists` selects 1; a collection without fields is MQ4027). A collection's `attribute` is a collection
+attribute of the query's entity, or the relation end a to-many navigation of the entity leads to (or the navigation's id),
+or a name for an ad hoc collection; its element entity defaults to the navigation's target. A value object attribute spans
+several columns, so MQ4026 does not ask for it.
+
+*Resolution* (`DatabaseRun.Queries.cs`). After `FinishDatabaseObjects`, so tables, views, routines and database types are
+complete, each query file of the database resolves by id into an `RQuery` (`RAnnotated`, annotations from its file) on
+`RDatabase.Queries`, ordered by (name, id): `Entity`, `Parameters` (`RQueryParameter`: the slot resolution of routine
+parameters, so a keyword or a database type with its native type, plus `CodeType`, the keyword a code type map maps: the
+keyword, a domain's base, else `string`), `From` and `Joins` (`RQuerySource`: `Alias`, `JoinKind` `from|inner|left|right|full|
+cross`, `Table` or `View`, `Name`, `Schema`, `On`, and `Optional` for the outer side of an outer join), `Select`
+(`RQueryField`: `Name`, `Attribute`, `Expression`, `Type`, `NativeType`, `CodeType`, `Nullable`), `Where`, `GroupBy`,
+`Having`, `OrderBy` (`RQueryOrder`), `Distinct`, `Paging` (`RQueryPaging`: a parameter or a number per bound), `Collections`
+(`RQueryCollection`: `Name`, `Attribute` or `Navigation`, `Entity`, the nested `Query`, `Keys`), `Sql` (the rendering for the
+database's dialect with the default options, empty when the query has errors) and `Uses` (the tables, views, routines and
+database types it reads, in first-use order). The trees resolve to `RQueryExpression` (`Node`: `column`, `param`, `value`,
+`null`, `op`, `call`, `case`, `cast` or `sql`) and `RQueryPredicate` (`Node`: `and`, `or`, `not`, `compare`, `exists`; `Right`
+for one operand, `Values` for the lists of `in` and `between`), plain objects templates walk as snake_case members. A nested
+query (a collection's, an `exists`) is an `RQuery` with `Parent` set and its top query's parameters. Every expression
+carries an inferred `Type`, `NativeType`, `CodeType` and `Nullable`: a column's (a reference column's code type; nullable on
+the outer side of a join), a parameter's, a literal's (`string`, `bool`, `int32` or `int64`, `decimal`, `double`), a cast's
+target, an operation's widest argument (`concat` is a string), a call's (`count` `int64`, `sum` widened, `avg` `decimal` or
+`double`, `min`, `max`, `lower`, `upper` and `coalesce` their argument's, `length` `int32`, `now` `datetime`, a routine its
+result, any other unknown), a case's first typed branch; a field's `type` and `nullable` override them. A collection's keys
+are the equalities at the top of its nested `where` between a parent column and an expression of the nested query
+(`RQueryKey`: `Outer`, `Inner`, `ParentField` (a select field over the same column, else the hidden `__key<c>_<k>`),
+`Hidden`, `ChildField` `__key<k>`, `Parameter` `__keys<k>`). Dependency keys: the query file and its referrers, the database,
+the type maps and conventions, the dependencies of every table and view it reads, each routine and database type it uses, the
+result and collection entities (and their bases), a navigation's relation; the database lists add `k:query`. Queries do not
+enter the schema snapshot, so the schema diff and its hash ignore them.
+
+*Validation*. The rules on a query need the resolved columns, which only the resolver has, so the resolver reports them, with
+the JSON pointer of the node, and `ModelStore` adds them to every validate path as it does MQ4005: MQ4021 (a source that is not
+a table or view of the database, or a call of an id that is not one of its routines), MQ4022 (an alias declared twice, or a
+column naming an alias no source declares), MQ4023 (an unknown column, or a name without an alias that no source or several
+sources have), MQ4024 (an undeclared parameter, in an expression or the paging), MQ4025 (a field's attribute the entity does
+not have, or an attribute where no entity is named), MQ4026 (warning: a required attribute of the entity no field fills),
+MQ4027 (a collection that names neither a collection attribute nor a to-many navigation, or selects nothing), MQ4028 (a nested
+query naming an alias no enclosing query declares, or a collection naming its parent outside an equality at the top of its
+where, or not at all), MQ4029 (an `sql` expression without a text for the dialect nor `*`), MQ4030 (paging by a parameter that
+is not `int16`, `int32` or `int64`), MQ4031 (a comparison's right side of the wrong shape). A parameter type that is neither
+built-in nor a database type of the database is MQ4018, and two parameters or two fields with one name are MQ3001, from the
+resolver; the validator keys query names per database case-insensitively (MQ3001), since a query becomes a class named after
+it.
+
+*Rendering* (`Rendering/QuerySql.cs`, public). `QuerySql.Render(RQuery, string? dialect, QuerySqlOptions?)` and
+`QuerySql.RenderCollection(RQueryCollection, ...)` return a `QuerySqlText(Sql, Parameters, Diagnostics)`: one clause per
+line, identifiers quoted by the database's quoting through `SqlDialects`, tables schema-qualified (not on SQLite), table
+aliases without `AS`, fields as `<expression> AS <name>`. `QuerySqlOptions.Placeholder` is `@` (`@name`, the default), `:`
+or `$` (`$1`, numbered by first appearance; `Parameters` lists the names in that order); `Lists` is `expand` (`x IN @ids`,
+for a data access library that expands a list into its items) or `any` (`x = ANY(@ids)` with an array parameter on
+PostgreSQL; other dialects expand). Per dialect: `length` is `LEN` on SQL Server, `CHAR_LENGTH` on MySQL, `LENGTH`
+elsewhere; `now` is `CURRENT_TIMESTAMP`; `count` without arguments is `COUNT(*)`; any other name is written as given and a
+routine as its quoted, qualified name; `concat` is `||`, or `CONCAT(...)` on SQL Server and MySQL; `%` is `MOD` on Oracle;
+`ilike` is `ILIKE` on PostgreSQL and `LOWER(a) LIKE LOWER(b)` elsewhere; `NULLS FIRST|LAST` is written on PostgreSQL, Oracle
+and SQLite and emulated with a leading `CASE WHEN x IS NULL` term on SQL Server and MySQL; paging is `LIMIT … OFFSET …`
+(SQLite `LIMIT -1` and MySQL `LIMIT 18446744073709551615` when only an offset is given), `OFFSET … ROWS FETCH NEXT … ROWS
+ONLY` on SQL Server (with `ORDER BY (SELECT NULL)` when the query has no order) and Oracle; a cast takes the native type of
+its keyword through the dialect's effective type map; literals go through `SqlDialects.Literal`; an `exists` is
+`EXISTS (SELECT 1 FROM … WHERE …)` inline, correlated by its aliases. An `sql` expression without a text for the dialect
+renders `NULL` and returns MQ4029. The template helpers are `query_sql(query, dialect?, options?)` and
+`query_collection_sql(collection, dialect?, options?)` (`options` an object with `placeholder` and `lists`); they record the
+top query's dependencies and fail the unit with the renderer's diagnostic.
+
+*Collections.* The portable form is the default and the only one built: the parent's statement carries each key's parent
+column (a hidden column when no field holds it), and each collection is a statement of its own, run once for all parent rows
+(a second round trip): its select list plus each key's inner expression as `__key<k>`, its where without the key equalities
+plus `<inner> IN @__keys<k>`, its grouping and order. The repository groups the rows by their keys and attaches them to the
+parent whose key values match; with several keys the `IN` lists over-fetch and the full tuple decides. The JSON aggregation
+form (`json_agg`, `JSON_ARRAYAGG`, `FOR JSON`) is not built: the portable form is one path that every dialect and every data
+access layer runs, with typed rows instead of JSON to parse; aggregation is left for a later round.
+
+*Deletes.* A query refers to its database, its entity, its sources, its fields' attributes and the ids in its column keys
+and calls. A plain delete of one of them is refused with the query among the referrers; `remove-references` clears an
+optional reference and refuses a required one; `delete-dependents` deletes the query whole (`ChangePlanner.Cascade`: a query
+is never trimmed, since its aliases tie its parts together and a removed join or field would leave references to it).
+
+*API.* `DatabaseView` and `DatabaseRecord` gain `Queries` (`QueryView`: id, name, `entityId`, `parameters`
+(`QueryParameterView`), `from` and `joins` (`QuerySourceView`), `select` (`QueryFieldView` with the expression as written and
+the inferred type), `where`, `groupBy`, `having`, `orderBy` and `paging` as the file writes them, `distinct`, `collections`
+(`QueryCollectionView`: the nested query as written, its resolved fields, `keys` as `QueryKeyView`, its `sql`), `sql`,
+`sqlParameters`, `uses`, the annotations). The resolved model gains the scope `queries` (`QueryRecord`, outside `all`).
+`GenerationService.GetQuerySqlAsync(queryId, dialect, options, ct)` validates and resolves like `GetDatabaseViewAsync` and
+returns `QuerySqlResult(Preview, Diagnostics)`, the preview (`QuerySqlPreview`: the statement and one `QueryCollectionSql` per
+collection) null on a model with errors or an unknown id (MQ6017); an unknown dialect is an `ArgumentException`. The functions
+answer `GET /api/model/queries/{id}/sql?dialect=&placeholder=&lists=` (404 `not-a-query` for another kind), the MCP server
+`preview_query_sql`.
+
+*Generation.* `each query` takes the `where` of `each view` (tags, stereotypes, categories, the database, a script; packages
+and `abstract` refused at pack load) and the query's `generation.skip`. csharp-dapper's `query` unit writes
+`Queries/<Name>Query.g.cs` per query (an interface and a class with one `ExecuteAsync(<parameters>, CancellationToken)`
+returning the entity, a `<Name>Row` record, or `<Name>Result` with the collections) and its `registrations` unit
+`Queries/QueryRegistrations.g.cs`; sql-ddl has nothing to write for a query.
+
 ## 8. Template packs (W6 loads and plans; W5 renders)
 
 - **Discovery.** Every `templates/<name>/pack.json` whose `name` equals its folder is a pack; `packs.<name>.enabled: false` turns it off. Packs run in ordinal name order. `types/<target>.json` files are type maps for `type_of` (keyword → language type, plus `"nullable": "{type}?"` and `"collection": "IReadOnlyList<{type}>"` patterns). Built-in dialect targets need no file.
-- **`for`**: `model` (one unit, no element), `each package|entity|relation|enum|value object|table|view|sequence|routine|database type|sql object|reference type|seed|locale|process|actor|scenario` (one unit per resolved element; `table`, `view`, `sequence`, `routine`, `database type` and `sql object` cover every database (§7.0a and "Routines, database types and SQL objects" in §7); the unit key of `each reference type`, `each seed`, `each process`, `each actor` and `each scenario` is the element id, and the scope alias is `reference_type`, `seed`, `process`, `actor` or `scenario`; `where` on the three phase 3 scopes takes tags, stereotypes, categories and packages (a scenario's package is its process's, an actor has none, so a package filter matches no actor) and refuses `database` and `abstract` at pack load (MQ6001); `each locale` plans one unit per declared locale, the default first then ordinal, with the `RLocale` as `element` and `locale`, unit key `locale:<tag>`, and rejects `where` at pack load), or `select <name>` (a JavaScript selector that returns elements or ids; unknown ids fail with MQ6017). `generation["*"|pack].skip` on an element drops its units. `where` filters as in §2.5; `where.database` also picks `mapping` for entity and relation units.
-- **Template context.** Variables: `model`, `element`, a scope alias (`package`, `entity`, `relation`, `enum`, `value_object`, `table`, `view`, `sequence`, `reference_type`, `seed`, `locale`, `process`, `actor`, `scenario`), `pack` (`name`, `version`, `params`), `mapping` (`REntityMapping`/`RRelationMapping` for `where.database`, else the only one, else null), `mappings` (by database name), `schema_diff` (database name → `SchemaDiffResult`), `hints` (merged `generation["*"]` and `generation[pack]`), `data` (transform results), `unit` (`id`, `key`).
+- **`for`**: `model` (one unit, no element), `each package|entity|relation|enum|value object|table|view|sequence|routine|database type|sql object|query|reference type|seed|locale|process|actor|scenario` (one unit per resolved element; `table`, `view`, `sequence`, `routine`, `database type`, `sql object` and `query` cover every database (§7.0a, "Routines, database types and SQL objects" and "Queries" in §7); the unit key of `each reference type`, `each seed`, `each process`, `each actor` and `each scenario` is the element id, and the scope alias is `reference_type`, `seed`, `process`, `actor` or `scenario`; `where` on the three phase 3 scopes takes tags, stereotypes, categories and packages (a scenario's package is its process's, an actor has none, so a package filter matches no actor) and refuses `database` and `abstract` at pack load (MQ6001); `each locale` plans one unit per declared locale, the default first then ordinal, with the `RLocale` as `element` and `locale`, unit key `locale:<tag>`, and rejects `where` at pack load), or `select <name>` (a JavaScript selector that returns elements or ids; unknown ids fail with MQ6017). `generation["*"|pack].skip` on an element drops its units. `where` filters as in §2.5; `where.database` also picks `mapping` for entity and relation units.
+- **Template context.** Variables: `model`, `element`, a scope alias (`package`, `entity`, `relation`, `enum`, `value_object`, `table`, `view`, `sequence`, `routine`, `database_type`, `sql_object`, `query`, `reference_type`, `seed`, `locale`, `process`, `actor`, `scenario`), `pack` (`name`, `version`, `params`), `mapping` (`REntityMapping`/`RRelationMapping` for `where.database`, else the only one, else null), `mappings` (by database name), `schema_diff` (database name → `SchemaDiffResult`), `hints` (merged `generation["*"]` and `generation[pack]`), `data` (transform results), `unit` (`id`, `key`).
 - **Output.** `Output` is rendered with the same context (tracked like the body) and prefixed with `PackSettings.Output`. A template emits more files with `{{ file "path" content }}`, usually after `{{ capture content }}…{{ end }}` (D10). With `Output` null, only file blocks are written. Block paths take the same prefix and the unit's mode, except `pair`, whose blocks are `overwrite`.
 - **Modes.** `overwrite`, `once` (written only when missing; recorded as owned), `regions` (committed roots only; MQ6015), `pair` (`Output` rendered every time with `Template`; `Companion.Template` rendered to `Companion.Output` only when that file is missing, as owned).
 - **Built versus committed.** A file's root is the longest `outputs.allow` path that contains it. `Commit` decides the manifest location (§12.2), `--check` coverage, the roots `init` names as built, and the `.gitignore` entries `init --gitignore` writes when asked (never by default; spec-errata E39).
@@ -998,6 +1135,7 @@ public sealed class GenerationService                       // (29–35) W6
     public Task<string?> GetPlanDiffAsync(string planId, string path, CancellationToken ct);   // (31) from stored blobs, no re-render
     public Task<PreviewResult> PreviewAsync(string pack, string unitId, string? elementId, CancellationToken ct);   // (35)
     public Task<DatabaseViewResult> GetDatabaseViewAsync(string databaseId, CancellationToken ct);   // E1: load, validate, resolve; no lock, no writes
+    public Task<QuerySqlResult> GetQuerySqlAsync(string queryId, string? dialect, QuerySqlOptions? options, CancellationToken ct);   // 2026-10-02: as E1, then QuerySql
     public Task<PackListResult> GetPacksAsync(CancellationToken ct); }   // E2: every pack under templates/, enabled or not
 public enum LockMode { Wait, Fail }
 public sealed record GenerationRequest { public GenerationMode Mode { get; init; } = GenerationMode.Apply; public IReadOnlyList<string>? Packs { get; init; }
@@ -1036,6 +1174,7 @@ public sealed record DatabaseViewResult(DatabaseView? View, IReadOnlyList<Diagno
 public sealed record DatabaseView(string Id, string Name, string Dialect, string? Version, string? DefaultSchema, IReadOnlyList<TableView> Tables,
     IReadOnlyList<ViewView> Views, IReadOnlyList<SequenceView> Sequences,
     IReadOnlyList<RoutineView> Routines, IReadOnlyList<DatabaseTypeView> Types, IReadOnlyList<SqlObjectView> Objects, // 2026-10-01
+    IReadOnlyList<QueryView> Queries, // 2026-10-02, §7 "Queries"
     IReadOnlyList<SchemaView> Schemas, string Quoting, int? MaxIdentifierLength,
     string ByConvention, IReadOnlyList<ConventionPackageView> Packages, /* annotations (§7.0a): */ string? DisplayName, string? PluralName,
     string? Description, IReadOnlyList<string> Stereotypes, IReadOnlyList<string> Tags, string? Category, IReadOnlyDictionary<string, object?> Properties,
@@ -1068,6 +1207,20 @@ public static class ModelPages
     public static ModelKindsResult Kinds(IReadOnlyList<ElementSummary> index, bool byPackage); }   // a bad cursor is FormatException
 public sealed record ResolvedQuery(string Scope = "all", string? Database = null, string? Cursor = null, int Limit = 100);
 // GenerationService: Task<ResolvedPage> GetResolvedAsync(ResolvedQuery query, CancellationToken ct);   records in Editor/ResolvedRecords.cs
+
+// Queries (2026-10-02, §7 "Queries"), namespace Maquettiste.Engine; projections in Editor/QueryViews.cs
+public static class QuerySql {
+    public static QuerySqlText Render(RQuery query, string? dialect = null, QuerySqlOptions? options = null);   // ArgumentException: unknown dialect or option
+    public static QuerySqlText RenderCollection(RQueryCollection collection, string? dialect = null, QuerySqlOptions? options = null); }
+public sealed record QuerySqlOptions { public static QuerySqlOptions Default { get; }
+    public string Placeholder { get; init; } = "@";   // "@", ":" or "$"
+    public string Lists { get; init; } = "expand"; }   // "expand" or "any"
+public sealed record QuerySqlText(string Sql, IReadOnlyList<string> Parameters, IReadOnlyList<Diagnostic> Diagnostics);
+public sealed record QuerySqlResult(QuerySqlPreview? Preview, IReadOnlyList<Diagnostic> Diagnostics);
+public sealed record QuerySqlPreview(string Id, string Name, string Database, string Dialect, string Sql, IReadOnlyList<string> Parameters,
+    IReadOnlyList<QueryCollectionSql> Collections);
+public sealed record QueryCollectionSql(string Name, string Sql, IReadOnlyList<string> Parameters, IReadOnlyList<QueryKeyView> Keys);
+// QueryView, QueryParameterView, QuerySourceView, QueryFieldView, QueryCollectionView, QueryKeyView and QueryRecord: docs/api/openapi.yaml.
 
 // The schema copies in <ModelRoot>/.schema/v1/ (§3), namespace Maquettiste.Engine.Json; init, the editor's start and the MCP server's start
 public static class SchemaFolder

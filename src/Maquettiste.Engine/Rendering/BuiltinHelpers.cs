@@ -117,11 +117,11 @@ internal static class BuiltinHelpers
         "pascal", "camel", "snake", "kebab", "upper_snake", "pluralize", "singularize", "type_of", "sql_quote", "sql_literal",
         "indent", "dedent", "escape_md", "escape_xml", "escape_json", "json", "has_stereotype", "has_tag", "in_category", "lookup",
         "banner", "file", "row", "row_uuid", "display_name", "plural_name", "description_of", "label_of", "translate", "has_translation",
-        "state_path", "iso_duration_ms");
+        "state_path", "iso_duration_ms", "query_sql", "query_collection_sql");
 
     /// <summary>The unit variables (engine-design.md section 8); pack helpers may not use these names either.</summary>
     public static readonly FrozenSet<string> Variables = FrozenSet.Create(StringComparer.Ordinal,
-        "model", "element", "package", "entity", "relation", "enum", "value_object", "table", "view", "sequence", "routine", "database_type", "sql_object", "reference_type",
+        "model", "element", "package", "entity", "relation", "enum", "value_object", "table", "view", "sequence", "routine", "database_type", "sql_object", "query", "reference_type",
         "seed", "locale", "process", "actor", "scenario", "pack", "mapping", "mappings", "schema_diff", "hints", "data", "unit");
 
     private static readonly JavaScriptEncoder JsonEncoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
@@ -178,6 +178,8 @@ internal static class BuiltinHelpers
         Add(builtins, "type_of", 2, 2, (c, a) => TypeOf.Map(c, a[0], AsText(a[1])));
         Add(builtins, "sql_quote", 1, 3, (c, a) => SqlQuote(c, a[0], a.Count > 1 ? a[1] : null, a.Count > 2 ? AsText(a[2]) : null));
         Add(builtins, "sql_literal", 2, 2, (c, a) => SqlLiteral(c, a[0], a[1]));
+        Add(builtins, "query_sql", 1, 3, (c, a) => QuerySqlText(c, "query_sql", a));
+        Add(builtins, "query_collection_sql", 1, 3, (c, a) => QuerySqlText(c, "query_collection_sql", a));
         Add(builtins, "indent", 2, 2, (_, a) => Indent(AsText(a[0]), IndentPrefix(a[1])));
         Add(builtins, "dedent", 1, 1, (_, a) => Dedent(AsText(a[0])));
         Add(builtins, "escape_md", 1, 1, (_, a) => EscapeMarkdown(AsText(a[0])));
@@ -544,6 +546,70 @@ internal static class BuiltinHelpers
         catch (ArgumentException ex)
         {
             throw new RenderHelperException("MQ6006", "`sql_literal`: " + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// <c>query_sql(query, dialect?, options?)</c> and <c>query_collection_sql(collection, dialect?, options?)</c>: the statement
+    /// <see cref="QuerySql"/> renders for the query's database's dialect, or the one named (a name or a database); <c>options</c>
+    /// takes <c>placeholder</c> (<c>@</c>, <c>:</c> or <c>$</c>) and <c>lists</c> (<c>expand</c> or <c>any</c>). A query that cannot
+    /// be rendered for the dialect fails the unit with the renderer's diagnostic (MQ4029).
+    /// </summary>
+    private static string QuerySqlText(TrackingTemplateContext context, string name, IReadOnlyList<object?> args)
+    {
+        var dialect = args.Count > 1 ? args[1] switch
+        {
+            null => null,
+            RDatabase database => database.Dialect,
+            var other => AsText(other) is { Length: > 0 } text ? text : null,
+        } : null;
+        var options = QuerySqlOptions.Default;
+        if (args.Count > 2 && args[2] is IDictionary<string, object?> map)
+        {
+            options = new QuerySqlOptions
+            {
+                Placeholder = map.TryGetValue("placeholder", out var placeholder) && placeholder is not null ? AsText(placeholder) : "@",
+                Lists = map.TryGetValue("lists", out var lists) && lists is not null ? AsText(lists) : "expand",
+            };
+        }
+        else if (args.Count > 2 && args[2] is not null)
+        {
+            throw new RenderHelperException("MQ6006", $"`{name}` takes its options as an object ({{ placeholder: \"@\", lists: \"expand\" }}).");
+        }
+
+        QuerySqlText result;
+        try
+        {
+            switch (name, args[0])
+            {
+                case ("query_sql", RQuery query):
+                    context.Recorder.RecordObject(Top(query));
+                    result = QuerySql.Render(query, dialect, options);
+                    break;
+                case ("query_collection_sql", RQueryCollection collection):
+                    context.Recorder.RecordObject(Top(collection.Query));
+                    result = QuerySql.RenderCollection(collection, dialect, options);
+                    break;
+                default:
+                    throw new RenderHelperException("MQ6006", name == "query_sql"
+                        ? $"`query_sql` takes a query, not a {TemplateValues.TypeName(args[0])}."
+                        : $"`query_collection_sql` takes a collection of a query (query.collections[i]), not a {TemplateValues.TypeName(args[0])}.");
+            }
+        }
+        catch (ArgumentException ex)
+        {
+            throw new RenderHelperException("MQ6006", $"`{name}`: " + ex.Message);
+        }
+
+        if (result.Diagnostics.Count > 0)
+            throw new RenderHelperException(result.Diagnostics[0].Rule, result.Diagnostics[0].Message);
+        return result.Sql;
+
+        static RQuery Top(RQuery query)
+        {
+            while (query.Parent is { } parent)
+                query = parent;
+            return query;
         }
     }
 

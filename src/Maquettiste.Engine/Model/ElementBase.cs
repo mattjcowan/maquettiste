@@ -63,6 +63,7 @@ public abstract record ElementBase
 [JsonDerivedType(typeof(Routine))]
 [JsonDerivedType(typeof(DatabaseType))]
 [JsonDerivedType(typeof(SqlObject))]
+[JsonDerivedType(typeof(Query))]
 [JsonDerivedType(typeof(Mapping))]
 [JsonDerivedType(typeof(Diagram))]
 [JsonDerivedType(typeof(TagVocabulary))]

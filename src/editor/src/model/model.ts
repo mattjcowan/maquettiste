@@ -55,6 +55,7 @@ export const KIND_ORDER: ElementKind[] = [
   "routine",
   "database-type",
   "sql-object",
+  "query",
   "mapping",
   "package",
   "tag-vocabulary",
@@ -111,7 +112,7 @@ export function relationKind(relation: RelationDoc): NonNullable<RelationDoc["re
 }
 
 /** The kinds whose index rows carry their database (E5). */
-export const DATABASE_MEMBER_KINDS: ReadonlySet<string> = new Set(["table", "view", "sequence", "routine", "database-type", "sql-object", "mapping"]);
+export const DATABASE_MEMBER_KINDS: ReadonlySet<string> = new Set(["table", "view", "sequence", "routine", "database-type", "sql-object", "query", "mapping"]);
 
 /** An index row built from a document the SPA just saved (phase2-design.md 4.3). */
 export function summaryFromDocument(doc: ElementDocument): ElementSummary {

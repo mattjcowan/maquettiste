@@ -64,7 +64,9 @@ public sealed class BulkReadTests
         Assert.Equal(4, billing.Json["items"]!.AsArray().Count);
         var byId = await host.GetAsync("/api/model/elements?kind=entity&package=" + EditorHost.BillingPackageId);
         Assert.True(JsonNode.DeepEquals(billing.Json["items"], byId.Json["items"]));
-        Assert.Equal([EditorHost.CustomerId], (await host.GetAsync("/api/model/elements?query=CUSTOM")).Json["items"]!.AsArray().Select(r => r!["id"]!.GetValue<string>()));
+        // The name filter matches Customer and the two queries whose names say customer (FindCustomersWithIssuedInvoices, InvoicesByCustomer).
+        Assert.Equal([EditorHost.CustomerId, "01K6QRY0000000000000000003", "01K6QRY0000000000000000001"],
+            (await host.GetAsync("/api/model/elements?query=CUSTOM")).Json["items"]!.AsArray().Select(r => r!["id"]!.GetValue<string>()));
         Assert.Contains(EditorHost.CustomerId, (await host.GetAsync("/api/model/elements?tag=pii")).Json["items"]!.AsArray().Select(r => r!["id"]!.GetValue<string>()));
         Assert.Contains(EditorHost.InvoiceId, (await host.GetAsync("/api/model/elements?stereotype=audited")).Json["items"]!.AsArray().Select(r => r!["id"]!.GetValue<string>()));
 
@@ -269,6 +271,36 @@ public sealed class BulkReadTests
         Contract.AssertResponse(notADatabase, "/api/model/resolved");
         var missing = await host.GetAsync("/api/model/resolved?database=" + Unknown);
         Assert.Equal("not-found", missing.ProblemCode);
+    }
+
+    [Fact]
+    public async Task Queries_read_as_records_and_their_sql_comes_back_per_dialect()
+    {
+        const string invoicesByCustomer = "01K6QRY0000000000000000001";
+        await using var host = EditorHost.Create();
+
+        var records = await host.GetAsync("/api/model/resolved?scope=queries");
+        Contract.AssertResponse(records, "/api/model/resolved");
+        Assert.Equal(["FindCustomersWithIssuedInvoices", "InvoicesByCustomer", "RevenueByMonth"], records.Json["items"]!.AsArray().Select(i => i!["name"]!.GetValue<string>()));
+        var view = await host.GetAsync("/api/databases/" + EditorHost.MainDatabaseId + "/view");
+        Contract.AssertResponse(view, "/api/databases/{id}/view");
+        Assert.Equal(3, view.Json["view"]!["queries"]!.AsArray().Count);
+
+        var sql = await host.GetAsync("/api/model/queries/" + invoicesByCustomer + "/sql");
+        Assert.Equal(200, sql.Status);
+        Contract.AssertResponse(sql, "/api/model/queries/{id}/sql");
+        Assert.Equal("postgresql", sql.Json["preview"]!["dialect"]!.GetValue<string>());
+        Assert.Contains("LIMIT @limit OFFSET @offset", sql.Json["preview"]!["sql"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Single(sql.Json["preview"]!["collections"]!.AsArray());
+
+        var oracle = await host.GetAsync("/api/model/queries/" + invoicesByCustomer + "/sql?dialect=oracle&placeholder=:");
+        Contract.AssertResponse(oracle, "/api/model/queries/{id}/sql");
+        Assert.EndsWith("FETCH NEXT :limit ROWS ONLY", oracle.Json["preview"]!["sql"]!.GetValue<string>(), StringComparison.Ordinal);
+
+        Assert.Equal("not-a-query", (await host.GetAsync("/api/model/queries/" + EditorHost.InvoiceId + "/sql")).ProblemCode);
+        Assert.Equal("not-found", (await host.GetAsync("/api/model/queries/" + Unknown + "/sql")).ProblemCode);
+        Assert.Equal("bad-request", (await host.GetAsync("/api/model/queries/" + invoicesByCustomer + "/sql?dialect=cobol")).ProblemCode);
+        Assert.Equal("bad-request", (await host.GetAsync("/api/model/queries/" + invoicesByCustomer + "/sql?placeholder=%3F")).ProblemCode);
     }
 
     [Fact]

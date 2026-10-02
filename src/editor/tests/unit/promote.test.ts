@@ -87,6 +87,26 @@ describe("planPromotion", () => {
     expect(plan.updates.map((u) => u.id)).toEqual(["CUST"]);
   });
 
+  it("blocks a query that reads a removed attribute, and leaves one that does not alone", () => {
+    const reads: PromoteUser = {
+      kind: "query",
+      id: "Q1",
+      name: "CustomersByShipTo",
+      from: { source: "CUST@DB", alias: "c" },
+      select: [{ attribute: "CUST-ship", expression: { column: "c.CUST-ship" } }],
+    };
+    const other: PromoteUser = {
+      kind: "query",
+      id: "Q2",
+      name: "CustomerNames",
+      from: { source: "CUST@DB", alias: "c" },
+      select: [{ attribute: "CUST-name", expression: { column: "c.CUST-name" } }],
+    };
+    const plan = planPromotion(address, [customer], ids(), [reads, other]);
+    expect(plan.blocked).toEqual(["CustomersByShipTo (a query that reads Customer.shipTo; change the query first)"]);
+    expect(plan.updates.map((u) => u.id)).toEqual(["CUST"]);
+  });
+
   it("blocks a seed whose only columns are removed attributes", () => {
     const seed: PromoteUser = { kind: "seed", id: "SEED", name: "Only", columns: ["CUST-ship"], rows: [] };
     expect(planPromotion(address, [customer], ids(), [seed]).blocked).toEqual(["Only (a seed whose only columns are the promoted attributes)"]);

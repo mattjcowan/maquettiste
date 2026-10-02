@@ -19,7 +19,7 @@ public static partial class LocaleChains
     /// diagrams and the two vocabulary containers are out of scope; the categories inside the tree are in).</summary>
     public static readonly FrozenSet<ElementKind> ElementKinds = KindInfo.All
         .Select(k => k.Kind)
-        .Where(k => k is not (ElementKind.Database or ElementKind.Table or ElementKind.View or ElementKind.Sequence or ElementKind.Routine or ElementKind.DatabaseType or ElementKind.SqlObject or ElementKind.Mapping
+        .Where(k => k is not (ElementKind.Database or ElementKind.Table or ElementKind.View or ElementKind.Sequence or ElementKind.Routine or ElementKind.DatabaseType or ElementKind.SqlObject or ElementKind.Query or ElementKind.Mapping
             or ElementKind.Diagram or ElementKind.TagVocabulary or ElementKind.CategoryTree))
         .ToFrozenSet();
 

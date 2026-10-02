@@ -164,13 +164,14 @@ for (const scenario of [undefined, "medium"] as const) {
       });
       // A change from the disk (source disk), and a delete that edits its referrers (several rows in one event).
       h.step(() => backend.model.externalEdit(entity.id, (j) => void (j.name = "FromDisk")));
-      // (An entity only diagrams or optional fields refer to: a relation end is required and refuses the delete.)
+      // (An entity only diagrams or optional fields refer to, or a relation: the billing queries name the relations' ends, so the delete
+      // takes the queries with it and edits the diagram.)
       const referenced = rows().find((r) => (r.kind === "relation" || (r.kind === "entity" && lonely(r))) && (backend.model.references(r.id)?.length ?? 0) > 0);
       expect(referenced).toBeTruthy();
       if (referenced) {
         const doc = backend.model.get(referenced.id)!;
         h.step(() => {
-          const result = backend.model.delete(referenced.id, doc.hash, "remove-references");
+          const result = backend.model.delete(referenced.id, doc.hash, "delete-dependents");
           expect(result.outcome).toBe("saved");
           expect(result.changes!.changed.length).toBeGreaterThan(0);
         });

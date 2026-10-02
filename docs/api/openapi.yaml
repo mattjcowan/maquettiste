@@ -834,10 +834,11 @@ paths:
         - `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards,
           actions, gates and invokes, actors by id.
         - `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and
-          indexes, views, sequences, routines, database types and SQL objects); `tables`: one `TableRecord` per table, for
-          databases too large for one record; `routines`, `database-types`, `sql-objects`: one `RoutineRecord`,
-          `DatabaseTypeRecord` or `SqlObjectRecord` per object.
-        - `all` (the default): every scope but `tables`, `routines`, `database-types` and `sql-objects`, which `databases` holds.
+          indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,
+          for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,
+          `DatabaseTypeRecord`, `SqlObjectRecord` or `QueryRecord` per object.
+        - `all` (the default): every scope but `tables`, `routines`, `database-types`, `sql-objects` and `queries`, which
+          `databases` holds.
 
         `database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases and tables to
         it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it
@@ -853,7 +854,7 @@ paths:
           description: What to read.
           schema:
             type: string
-            enum: [all, packages, entities, relations, enums, value-objects, scalar-types, reference-types, seeds, processes, actors, scenarios, databases, tables, routines, database-types, sql-objects]
+            enum: [all, packages, entities, relations, enums, value-objects, scalar-types, reference-types, seeds, processes, actors, scenarios, databases, tables, routines, database-types, sql-objects, queries]
             default: all
         - name: database
           in: query
@@ -2735,6 +2736,57 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
 
+  /api/model/queries/{id}/sql:
+    parameters:
+      - $ref: '#/components/parameters/ElementId'
+    get:
+      tags: [databases]
+      operationId: getQuerySql
+      summary: The SQL of one query for a dialect
+      description: |
+        Renders a query (a query element over a database's tables and views) as parameterised SQL for its database's dialect, or
+        the one named: the query's statement and one statement per collection. Identifiers are quoted by the database's quoting
+        setting, functions spelled per dialect, `ilike` lowered where the dialect has none, paging written as `LIMIT/OFFSET` or
+        `OFFSET … FETCH NEXT`. A collection runs once for all parent rows (a second round trip): the parent's statement carries
+        the correlation columns, the collection's takes their values as the list parameter `__keys0` (`__keys1`...) and returns
+        each row's as `__key0`. An `sql` expression without a text for the dialect is MQ4029 in `diagnostics`. A model with
+        errors returns `preview: null` and the diagnostics. The MCP tool `preview_query_sql` answers the same.
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: GenerationService.GetQuerySqlAsync(queryId, dialect, options)
+      parameters:
+        - name: dialect
+          in: query
+          description: postgresql, sqlserver, mysql, sqlite or oracle; absent for the query's database's.
+          schema:
+            type: string
+        - name: placeholder
+          in: query
+          description: The placeholder style, `@name` (default), `:name` or `$1`.
+          schema:
+            type: string
+            enum: ['@', ':', '$']
+            default: '@'
+        - name: lists
+          in: query
+          description: How a list parameter is written, `IN @name` for a data access library that expands lists (default) or `= ANY(@name)` on PostgreSQL.
+          schema:
+            type: string
+            enum: [expand, any]
+            default: expand
+      responses:
+        '200':
+          description: The statements, or the diagnostics that prevented them.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuerySqlResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
   /api/databases/{id}/view:
     parameters:
       - $ref: '#/components/parameters/ElementId'
@@ -2745,8 +2797,8 @@ paths:
       description: |
         The physical model after conventions, mappings and table overlays are applied: every table (synthesized,
         designed or imported), its columns with the attribute each one stores, keys, foreign keys and indexes, and
-        every view, sequence, routine, database type, SQL object and schema. The database, each schema, table, column,
-        view, sequence, routine, database type and SQL object carries the annotations of its own file or entry (display and plural names, description, stereotypes, tags, category,
+        every view, sequence, routine, database type, SQL object, query and schema. The database, each schema, table, column,
+        view, sequence, routine, database type, SQL object and query carries the annotations of its own file or entry (display and plural names, description, stereotypes, tags, category,
         properties, generation hints); a synthesized table without an overlay, or a synthesized column without an
         overlay entry, has none. The Database workspace draws table diagrams from it and the Mappings workspace
         sets it beside the entity. A model with errors returns `view: null` and the diagnostics.
@@ -5403,7 +5455,7 @@ components:
             status: 401
             code: unauthenticated
     NotFound:
-      description: No such element, diagram, plan, path in the plan, job or connection (`not-found`, `not-a-diagram`, `not-a-database`).
+      description: No such element, diagram, plan, path in the plan, job or connection (`not-found`, `not-a-diagram`, `not-a-database`, `not-a-query`).
       content:
         application/problem+json:
           schema:
@@ -5503,6 +5555,7 @@ components:
             - not-found
             - not-a-diagram
             - not-a-database
+            - not-a-query
             - invalid-icon
             - precondition-required
             - queue-full
@@ -6397,7 +6450,7 @@ components:
                   $ref: '#/components/schemas/StorageChoice'
     ElementKind:
       type: string
-      enum: [package, entity, value-object, scalar-type, enum, relation, database, table, view, sequence, routine, database-type, sql-object, mapping, diagram, tag-vocabulary, category-tree, stereotype, reference-type, seed, process, actor, scenario]
+      enum: [package, entity, value-object, scalar-type, enum, relation, database, table, view, sequence, routine, database-type, sql-object, query, mapping, diagram, tag-vocabulary, category-tree, stereotype, reference-type, seed, process, actor, scenario]
     ChangeSource:
       type: string
       enum: [editor, disk, cli, engine]
@@ -6444,7 +6497,7 @@ components:
           type: string
           description: The element's display name, when it has one (E5). Search matches it and the explorer shows it as the label.
         database:
-          description: The owning database's id, on table, view, sequence, routine, database-type, sql-object and mapping rows (E5).
+          description: The owning database's id, on table, view, sequence, routine, database-type, sql-object, query and mapping rows (E5).
           $ref: '#/components/schemas/Ulid'
         entity:
           description: The entity a mapping maps or a table overlay applies to, on mapping and table rows that have one (E5).
@@ -6548,6 +6601,7 @@ components:
         - $ref: '../../schemas/v1/routine.json'
         - $ref: '../../schemas/v1/database-type.json'
         - $ref: '../../schemas/v1/sql-object.json'
+        - $ref: '../../schemas/v1/query.json'
         - $ref: '../../schemas/v1/mapping.json'
         - $ref: '../../schemas/v1/diagram.json'
         - $ref: '../../schemas/v1/tag-vocabulary.json'
@@ -7210,6 +7264,7 @@ components:
             - $ref: '#/components/schemas/RoutineRecord'
             - $ref: '#/components/schemas/DatabaseTypeRecord'
             - $ref: '#/components/schemas/SqlObjectRecord'
+            - $ref: '#/components/schemas/QueryRecord'
         next:
           type: [string, 'null']
           description: The cursor of the next page; null on the last one.
@@ -8485,6 +8540,23 @@ components:
           $ref: '#/components/schemas/Ulid'
         sqlObject:
           $ref: '#/components/schemas/SqlObjectView'
+    QueryRecord:
+      x-engine-record: Maquettiste.Engine.QueryRecord
+      description: One query of a database on its own (scope `queries`).
+      type: object
+      required: [id, kind, name, database, query]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        kind:
+          type: string
+          const: query
+        name:
+          type: string
+        database:
+          $ref: '#/components/schemas/Ulid'
+        query:
+          $ref: '#/components/schemas/QueryView'
     # ---------------------------------------------------------------- databases (E1)
     DatabaseViewResult:
       x-engine-addition: E1
@@ -8623,6 +8695,11 @@ components:
           description: Every SQL object (a trigger, grant, extension or other object the model does not type), by schema then name. Always sent by this engine; optional for older servers.
           items:
             $ref: '#/components/schemas/SqlObjectView'
+        queries:
+          type: array
+          description: Every query over the database's tables and views, by name, with its SQL for the database's dialect. Always sent by this engine; optional for older servers.
+          items:
+            $ref: '#/components/schemas/QueryView'
         schemas:
           type: array
           description: Every schema, by name; the ones the file declares and the ones a table, view, sequence, routine, database type or SQL object uses.
@@ -9321,6 +9398,311 @@ components:
         category: null
         properties: {}
         generation: {}
+    QueryView:
+      x-engine-record: Maquettiste.Engine.QueryView
+      description: |
+        One resolved query (a query over the database's tables and views, written as data), with the annotations of its file (as
+        `TableView`). The trees (`where`, `having`, `groupBy`, `orderBy`, each field's `expression`, a join's `on`, a collection's
+        `query`) are as the file writes them (`query.json`); resolution adds the sources' tables and views, each field's type,
+        the collections' correlation keys and the SQL for the database's dialect.
+      type: object
+      required: [id, name, entityId, parameters, from, joins, select, where, groupBy, having, orderBy, distinct, paging, collections, sql,
+        sqlParameters, uses, displayName, pluralName, description, stereotypes, tags, category, properties, generation]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        name:
+          type: string
+        entityId:
+          description: The entity each result row has, or null for an ad hoc row (the select list).
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+        parameters:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryParameterView'
+        from:
+          $ref: '#/components/schemas/QuerySourceView'
+        joins:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuerySourceView'
+        select:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryFieldView'
+        where:
+          oneOf:
+            - $ref: '../../schemas/v1/query.json#/$defs/predicate'
+            - type: 'null'
+        groupBy:
+          type: array
+          items:
+            $ref: '../../schemas/v1/query.json#/$defs/expression'
+        having:
+          oneOf:
+            - $ref: '../../schemas/v1/query.json#/$defs/predicate'
+            - type: 'null'
+        orderBy:
+          type: array
+          items:
+            $ref: '../../schemas/v1/query.json#/$defs/order'
+        distinct:
+          type: boolean
+        paging:
+          oneOf:
+            - $ref: '../../schemas/v1/query.json#/$defs/paging'
+            - type: 'null'
+        collections:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryCollectionView'
+        sql:
+          type: string
+          description: The SQL for the database's dialect with `@name` placeholders, with the hidden key columns its collections need.
+        sqlParameters:
+          type: array
+          description: The parameters the SQL names, in first-appearance order.
+          items:
+            type: string
+        uses:
+          type: array
+          description: The ids (a synthesized table's key) of the tables, views, routines and database types the query reads.
+          items:
+            type: string
+        displayName:
+          type: [string, 'null']
+        pluralName:
+          type: [string, 'null']
+        description:
+          type: [string, 'null']
+        stereotypes:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        category:
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+        properties:
+          type: object
+          additionalProperties: true
+        generation:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/GenerationHintsView'
+    QueryParameterView:
+      x-engine-record: Maquettiste.Engine.QueryParameterView
+      description: A parameter of a query.
+      type: object
+      required: [name, type, dbTypeId, length, precision, scale, nativeType, codeType, collection, default, description]
+      properties:
+        name:
+          type: string
+        type:
+          type: [string, 'null']
+          description: The built-in type keyword, or null when a database type gives the type.
+        dbTypeId:
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+        length:
+          type: [integer, 'null']
+        precision:
+          type: [integer, 'null']
+        scale:
+          type: [integer, 'null']
+        nativeType:
+          type: string
+        codeType:
+          type: string
+          description: The built-in keyword a code type map maps (a database type's base, or string).
+        collection:
+          type: boolean
+          description: Whether the caller passes a list of values.
+        default:
+          description: The default value, or null.
+        description:
+          type: [string, 'null']
+    QuerySourceView:
+      x-engine-record: Maquettiste.Engine.QuerySourceView
+      description: A source of a query, the first (`kind` from) or a joined one.
+      type: object
+      required: [source, alias, kind, tableKey, viewId, name, schema, on]
+      properties:
+        source:
+          type: string
+          description: The source as the file writes it (a table or view id, a table key or an entity id).
+        alias:
+          type: string
+        kind:
+          type: string
+          enum: [from, inner, left, right, full, cross]
+        tableKey:
+          type: [string, 'null']
+        viewId:
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+        name:
+          type: string
+        schema:
+          type: [string, 'null']
+        on:
+          oneOf:
+            - $ref: '../../schemas/v1/query.json#/$defs/predicate'
+            - type: 'null'
+    QueryFieldView:
+      x-engine-record: Maquettiste.Engine.QueryFieldView
+      description: A field of a select list, with its inferred type.
+      type: object
+      required: [name, attributeId, expression, type, nativeType, codeType, nullable]
+      properties:
+        name:
+          type: string
+        attributeId:
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+        expression:
+          $ref: '../../schemas/v1/query.json#/$defs/expression'
+        type:
+          type: [string, 'null']
+        nativeType:
+          type: [string, 'null']
+        codeType:
+          type: [string, 'null']
+        nullable:
+          type: boolean
+    QueryCollectionView:
+      x-engine-record: Maquettiste.Engine.QueryCollectionView
+      description: A collection of a query, its nested query and the statement that fills it for every parent row at once.
+      type: object
+      required: [name, attribute, entityId, query, select, keys, sql, sqlParameters]
+      properties:
+        name:
+          type: string
+        attribute:
+          type: string
+          description: The file's attribute (an attribute id, a relation end id or an ad hoc name).
+        entityId:
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+        query:
+          $ref: '../../schemas/v1/query.json#/$defs/subquery'
+        select:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryFieldView'
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryKeyView'
+        sql:
+          type: string
+        sqlParameters:
+          type: array
+          items:
+            type: string
+    QueryKeyView:
+      x-engine-record: Maquettiste.Engine.QueryKeyView
+      description: |
+        A correlation key of a collection: the parent row carries the value as `parentField` (a hidden column when no select field
+        does), the collection's statement takes the parent values as the list parameter `parameter` and returns each row's value as
+        `childField`.
+      type: object
+      required: [outer, parentField, hidden, childField, parameter, type, nativeType]
+      properties:
+        outer:
+          type: string
+        parentField:
+          type: string
+        hidden:
+          type: boolean
+        childField:
+          type: string
+        parameter:
+          type: string
+        type:
+          type: [string, 'null']
+        nativeType:
+          type: [string, 'null']
+    QuerySqlResult:
+      x-engine-record: Maquettiste.Engine.QuerySqlResult
+      type: object
+      required: [preview, diagnostics]
+      properties:
+        preview:
+          oneOf:
+            - $ref: '#/components/schemas/QuerySqlPreview'
+            - type: 'null'
+        diagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+    QuerySqlPreview:
+      x-engine-record: Maquettiste.Engine.QuerySqlPreview
+      description: The SQL of one query for one dialect.
+      type: object
+      required: [id, name, database, dialect, sql, parameters, collections]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        name:
+          type: string
+        database:
+          $ref: '#/components/schemas/Ulid'
+        dialect:
+          type: string
+          enum: [postgresql, sqlserver, mysql, sqlite, oracle]
+        sql:
+          type: string
+        parameters:
+          type: array
+          description: The parameters the statement names, in first-appearance order (the positions of `$n` placeholders).
+          items:
+            type: string
+        collections:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryCollectionSql'
+      example:
+        id: 01K6QRY0000000000000000001
+        name: InvoicesByCustomer
+        database: 01J92P0V1QRN2181XM2ZWE02W4
+        dialect: postgresql
+        sql: "SELECT i.id AS id, i.number AS number\nFROM billing.invoices i\nWHERE i.customer_id = @customerId\nORDER BY i.issued_on DESC\nLIMIT @limit OFFSET @offset"
+        parameters: [customerId, offset, limit]
+        collections:
+          - name: lines
+            sql: "SELECT l.id AS id, l.quantity AS quantity, l.invoice_id AS __key0\nFROM billing.invoice_lines l\nWHERE l.invoice_id IN @__keys0"
+            parameters: [__keys0]
+            keys:
+              - { outer: i.id, parentField: id, hidden: false, childField: __key0, parameter: __keys0, type: uuid, nativeType: uuid }
+    QueryCollectionSql:
+      x-engine-record: Maquettiste.Engine.QueryCollectionSql
+      description: The statement of one collection, run once for all parent rows with the list of their key values.
+      type: object
+      required: [name, sql, parameters, keys]
+      properties:
+        name:
+          type: string
+        sql:
+          type: string
+        parameters:
+          type: array
+          items:
+            type: string
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryKeyView'
     GenerationHintsView:
       x-engine-record: Maquettiste.Engine.Model.GenerationHints
       description: One pack's generation hints on a resolved object (every member written).

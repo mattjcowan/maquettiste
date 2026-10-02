@@ -65,6 +65,12 @@ the navigation on the other end's entity) and `attributes` (which make the conve
 **Diagram**: `name`, `description`, `columns` (grid width, default 4). Members are the package's entities in file order and
 every relation between two of them.
 
+**Queries** (`database.queries` in `00-project.yaml`): each one is a query file's JSON tree written as YAML (`parameters`,
+`from`, `joins`, `select`, `where`, `groupBy`, `orderBy`, `paging`, `collections`), with names where the file has ids: `entity`
+and a collection's `entity` are entity names, a `source` is an entity name (its table), a designed table's name or
+`view:<name>`, a field's `attribute` is an attribute of the query's (or the collection's) entity, stereotype attributes
+included, and a collection's `attribute` is the navigation it fills. Column references are written `alias.column_name`.
+
 ## Ids
 
 Ids are ULIDs derived from each element's domain key (`entity:SalesOrder`, `attr:SalesOrder.orderNumber`,

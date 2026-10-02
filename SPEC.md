@@ -483,7 +483,7 @@ Conventions map the whole entity model to tables in one pass; per-element overri
 
 To reach roughly 90% boilerplate coverage, data access needs more than CRUD, so five optional element kinds sit beside entities:
 
-- **Queries**: named finders with parameters, a filter in a small predicate language (comparisons, `in`, null checks, traversal across relations), sort, paging and an optional projection. Templates render them per dialect with engine helpers.
+- **Queries**: named finders with parameters, a filter in a small predicate language (comparisons, `in`, null checks, traversal across relations), sort, paging and an optional projection. Templates render them per dialect with engine helpers. *(Errata E41, docs/engineering/spec-errata.md.)* Queries arrive with 0.5.3 as an element kind under a database (`model/databases/<db>/queries/`), over its tables and views, with an entity as the result shape or, without one, an ad hoc row from the select list (the projection); the filter, the joins, the select list, grouping, ordering, paging and correlated collections are a JSON tree that agents edit and packs walk per dialect, not a predicate language or JavaScript, and the engine renders it as parameterised SQL per dialect.
 - **Projections**: named shapes of an entity (field subsets, flattened relation fields, computed fields) that become DTOs, API contracts and read models.
 - **Operations**: commands and queries with typed input and output shapes (a projection or an inline shape), the actor allowed to call them, and the events they raise. CRUD operations are implied for every entity and can be switched off per entity.
 - **Events**: domain events with a payload shape, raised by operations or by process transitions, so handlers, outbox tables and message contracts can be generated.
@@ -1067,7 +1067,7 @@ The direction is settled; ten choices below are still open and none of them bloc
 - [ ] Hosted mode: `git` CLI through `Process` versus LibGit2Sharp; and where a repo's clone credential lives when several repos need different ones.
 - [ ] Hosted mode: should apply (real writes) ever run on the shared instance, or stay CI-only?
 - [ ] Pack packaging after git references: npm or NuGet first?
-- [ ] Query predicate syntax: a small custom language, a JSON expression tree, or a JavaScript subset?
+- [ ] Query predicate syntax: a small custom language, a JSON expression tree, or a JavaScript subset? *(Errata E41: a JSON expression tree.)*
 - [ ] Processes: generate only definitions and handler stubs, or also a small runtime for executing statecharts?
 - [ ] Reserve the `maquettiste` names on npm, NuGet and Docker Hub now.
 

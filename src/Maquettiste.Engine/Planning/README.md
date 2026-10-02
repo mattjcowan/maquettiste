@@ -53,10 +53,11 @@ Tests: `tests/Maquettiste.Engine.Tests/Planning/`; fixture packs in `tests/fixtu
   (foreign keys of other tables still point at it); skip the table through an overlay instead. A view or sequence (`each view`,
   `each sequence`) counts the hints of its own file, and `where` reads its own tags, stereotypes and category; `packages`,
   `notPackages` and `abstract` on those scopes are refused at pack load (MQ6001). `each routine`, `each database type` and
-  `each sql object` (2026-10-01) plan one unit per object of every database and follow the same rules as `each view`.
+  `each sql object` (2026-10-01) and `each query` (2026-10-02) plan one unit per object of every database and follow the same
+  rules as `each view`.
 - `where` (every set filter must match; lists match any value): tags and stereotypes of the element; categories by id or name
   with descendants (through the category tree); packages by id or qualified name with sub-packages (a package unit matches on the
-  package itself and its ancestors); `database` (a table, view, sequence, routine, database type or SQL object in it; an entity or relation with a mapping there, i.e. in
+  package itself and its ancestors); `database` (a table, view, sequence, routine, database type, SQL object or query in it; an entity or relation with a mapping there, i.e. in
   `Mappings`; any other element or a model unit when the database exists); `abstract` (entities by `IsAbstract`, anything else
   counts as not abstract); `script` (a JavaScript filter, seeded with the unit key).
 - Keys: `<pack>/<unitId>` or `<pack>/<unitId>:<elementId>`; units ordered by pack order then key ordinal, a duplicate key kept once.

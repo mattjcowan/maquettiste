@@ -22,6 +22,7 @@ public sealed record DatabaseViewResult(DatabaseView? View, IReadOnlyList<Diagno
 /// <param name="Routines">Every routine (function or procedure), in the resolver's (schema, name) order.</param>
 /// <param name="Types">Every database type (domain, composite, enumeration or range), in the resolver's (schema, name) order.</param>
 /// <param name="Objects">Every SQL object (a trigger, grant, extension or other object the model does not type), in the resolver's (schema, name) order.</param>
+/// <param name="Queries">Every query over the database's tables and views, by (name, id), with its SQL for the database's dialect.</param>
 /// <param name="Schemas">Every schema, by name: the ones the database file declares and the ones its tables, views, sequences,
 /// routines, database types and SQL objects use.</param>
 /// <param name="Quoting"><c>always</c>, <c>reserved</c> or <c>never</c>.</param>
@@ -38,7 +39,7 @@ public sealed record DatabaseViewResult(DatabaseView? View, IReadOnlyList<Diagno
 /// <param name="Generation">As <see cref="TableView.Generation"/>.</param>
 public sealed record DatabaseView(string Id, string Name, string Dialect, string? Version, string? DefaultSchema, IReadOnlyList<TableView> Tables,
     IReadOnlyList<ViewView> Views, IReadOnlyList<SequenceView> Sequences, IReadOnlyList<RoutineView> Routines, IReadOnlyList<DatabaseTypeView> Types,
-    IReadOnlyList<SqlObjectView> Objects, IReadOnlyList<SchemaView> Schemas, string Quoting, int? MaxIdentifierLength,
+    IReadOnlyList<SqlObjectView> Objects, IReadOnlyList<QueryView> Queries, IReadOnlyList<SchemaView> Schemas, string Quoting, int? MaxIdentifierLength,
     string ByConvention, IReadOnlyList<ConventionPackageView> Packages, string? DisplayName, string? PluralName, string? Description,
     IReadOnlyList<string> Stereotypes, IReadOnlyList<string> Tags, string? Category, IReadOnlyDictionary<string, object?> Properties,
     IReadOnlyDictionary<string, GenerationHints> Generation);
@@ -497,7 +498,7 @@ internal static class DatabaseViews
         return new DatabaseView(database.Id, database.Name, database.Dialect, database.Version, database.DefaultSchema,
             [.. database.Tables.Select(Table)], [.. database.Views.Select(View)], [.. database.Sequences.Select(Sequence)],
             [.. database.Routines.Select(ProjectRoutine)], [.. database.Types.Select(ProjectType)], [.. database.Objects.Select(ProjectObject)],
-            [.. database.Schemas.Select(Schema)], database.Quoting, database.MaxIdentifierLength, database.ByConvention,
+            [.. database.Queries.Select(QueryViews.Project)], [.. database.Schemas.Select(Schema)], database.Quoting, database.MaxIdentifierLength, database.ByConvention,
             [.. database.Packages.Select(p => new ConventionPackageView(p.PackageId, p.Schema))],
             OrNull(database.DisplayName), OrNull(database.PluralName), database.Description, [.. database.Stereotypes.Select(s => s.Key)],
             database.Tags, database.Category?.Id, database.Properties, database.Generation);

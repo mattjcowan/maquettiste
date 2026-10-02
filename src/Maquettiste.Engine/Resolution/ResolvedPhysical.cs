@@ -39,6 +39,9 @@ public sealed class RDatabase : RAnnotated
     /// <summary>Every SQL object, by (schema, name).</summary>
     public RList<RSqlObject> Objects { get; internal set; } = RList<RSqlObject>.Empty;
 
+    /// <summary>Every query, by (name, id).</summary>
+    public RList<RQuery> Queries { get; internal set; } = RList<RQuery>.Empty;
+
     /// <summary><c>always</c>, <c>reserved</c> or <c>never</c>.</summary>
     public string Quoting { get; internal set; } = "reserved";
 

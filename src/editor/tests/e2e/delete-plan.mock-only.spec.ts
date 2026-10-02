@@ -46,7 +46,7 @@ test("an entity with relations: the plan names the relation, clearing alone cann
   await expect(side.getByTestId("explorer-row-Product")).toBeVisible();
 });
 
-test("a database with tables: deleting with dependents takes its tables, views, sequences, routines, database types, SQL objects and mappings", async ({
+test("a database with tables: deleting with dependents takes its tables, views, sequences, routines, database types, SQL objects, queries and mappings", async ({
   page,
 }) => {
   await openEditor(page);
@@ -58,7 +58,7 @@ test("a database with tables: deleting with dependents takes its tables, views, 
 
   const dialog = page.getByTestId("delete-plan-dialog");
   const deletes = dialog.getByTestId("delete-plan-deletes");
-  await expect(deletes).toContainText("Will be deleted (10)");
+  await expect(deletes).toContainText("Will be deleted (13)");
   for (const name of [
     "Invoice register",
     "outstanding_invoices",
@@ -70,10 +70,13 @@ test("a database with tables: deleting with dependents takes its tables, views, 
     "reporting_read",
     "Invoice in main",
     "settles in main",
+    "InvoicesByCustomer",
+    "RevenueByMonth",
+    "FindCustomersWithIssuedInvoices",
   ])
     await expect(deletes).toContainText(name);
   await expect(deletes).toContainText("needs database main");
-  await expect(dialog.getByTestId("delete-with-dependents")).toHaveText("Delete with 10 dependents");
+  await expect(dialog.getByTestId("delete-with-dependents")).toHaveText("Delete with 13 dependents");
 
   await dialog.getByTestId("delete-with-dependents").click();
   await expect(dialog).toHaveCount(0);

@@ -193,9 +193,9 @@ internal sealed partial class PackLoader(EngineOptions options, ISchemaRegistry 
                 Error(InvalidPack, $"Unit '{unit.Id}' is for 'model', which has no element: its 'where' can only name a database.", pointer + "/where");
             if (string.Equals(unit.For, "each locale", StringComparison.Ordinal) && unit.Where is not null)
                 Error(InvalidPack, $"Unit '{unit.Id}' is for 'each locale', which has no element to filter: it takes no 'where'.", pointer + "/where");
-            if (unit.For is "each view" or "each sequence" or "each routine" or "each database type" or "each sql object" && unit.Where is { } objectWhere)
+            if (unit.For is "each view" or "each sequence" or "each routine" or "each database type" or "each sql object" or "each query" && unit.Where is { } objectWhere)
             {
-                // Views, sequences, routines, database types and SQL objects belong to a database, not to a package, and are never abstract.
+                // Views, sequences, routines, database types, SQL objects and queries belong to a database, not to a package, and are never abstract.
                 if (objectWhere.Packages.Count > 0 || objectWhere.NotPackages.Count > 0)
                     Error(InvalidPack, $"Unit '{unit.Id}' is for '{unit.For}', which is in no package: its 'where' cannot filter on packages.",
                         pointer + (objectWhere.Packages.Count > 0 ? "/where/packages" : "/where/notPackages"));

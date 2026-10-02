@@ -7,9 +7,10 @@
 // - Each entity attribute typed as the promoted element becomes a relationship from that entity to the new one: the
 //   attribute's name is the navigation on the owner; a single value is many-to-one (min 1 when the attribute was
 //   required), a collection one-to-many. The attribute leaves the owner.
-// - What still points at a removed attribute is rewritten too (`dependents`: the owners' mapping elements and seeds): a
-//   mapping's attribute row for it is dropped (the new relationship's foreign key maps by convention), a seed's column for
-//   it is dropped with its cells. A seed left with no column blocks.
+// - What still points at a removed attribute is rewritten too (`dependents`: the owners' mapping elements, seeds and
+//   queries): a mapping's attribute row for it is dropped (the new relationship's foreign key maps by convention), a
+//   seed's column for it is dropped with its cells. A seed left with no column blocks, and so does a query that reads
+//   the attribute (a column key, a selected attribute or a collection), since the plan cannot rewrite what it selects.
 // - Other elements that refer to the promoted element without an attribute: a diagram shows the new entity in its
 //   place; any other kind blocks, since the delete would leave it dangling. `rewritten` lists every rewrite.
 // - A use the rewrite cannot express (an attribute of a value object or a relationship, or an attribute in a key)
@@ -190,6 +191,10 @@ export function planPromotion(source: PromoteSource, users: readonly PromoteUser
         return { ...r, values };
       });
       for (const i of drop) rewritten.push(`Seed ${dep.name} drops its column for ${removed.get(columns[i])}`);
+    } else if (dep.kind === "query") {
+      const text = JSON.stringify(dep);
+      const read = [...removed].filter(([attributeId]) => text.includes(attributeId)).map(([, name]) => name);
+      if (read.length) blocked.push(`${dep.name} (a query that reads ${read.join(", ")}; change the query first)`);
     }
   }
   const updates = [...edited.values()].map((json) => ({ id: json.id, json: json as Record<string, unknown> }));

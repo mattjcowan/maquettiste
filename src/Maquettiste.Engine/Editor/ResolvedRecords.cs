@@ -7,7 +7,7 @@ namespace Maquettiste.Engine;
 
 /// <summary>What <see cref="GenerationService.GetResolvedAsync"/> reads.</summary>
 /// <param name="Scope">One of <see cref="ResolvedRecords.Scopes"/>: <c>all</c> (every kind but <c>tables</c>, <c>routines</c>,
-/// <c>database-types</c> and <c>sql-objects</c>, which <c>databases</c> already holds), or one kind's plural, such as <c>entities</c> or
+/// <c>database-types</c>, <c>sql-objects</c> and <c>queries</c>, which <c>databases</c> already holds), or one kind's plural, such as <c>entities</c> or
 /// <c>databases</c>.</param>
 /// <param name="Database">A database id: entities and relations mapped (not ignored) in it, that database, and its tables only; the
 /// other kinds are not narrowed.</param>
@@ -20,7 +20,7 @@ public sealed record ResolvedQuery(string Scope = "all", string? Database = null
 /// <see cref="EnumRecord"/>, <see cref="ValueObjectRecord"/>, <see cref="ScalarTypeRecord"/>, <see cref="ReferenceTypeRecord"/>,
 /// <see cref="SeedRecord"/>, <see cref="ProcessRecord"/>, <see cref="ActorRecord"/>, <see cref="ScenarioRecord"/>,
 /// <see cref="DatabaseRecord"/>, <see cref="TableRecord"/>, <see cref="RoutineRecord"/>, <see cref="DatabaseTypeRecord"/> or
-/// <see cref="SqlObjectRecord"/>; each has <c>id</c>, <c>kind</c> and <c>name</c>.</param>
+/// <see cref="SqlObjectRecord"/> or <see cref="QueryRecord"/>; each has <c>id</c>, <c>kind</c> and <c>name</c>.</param>
 /// <param name="Next">The cursor of the next page, or <see langword="null"/> on the last one.</param>
 /// <param name="Diagnostics">When the model has errors, the errors that prevented resolution (and <paramref name="Items"/> is empty);
 /// otherwise empty (validate reports the warnings).</param>
@@ -666,6 +666,7 @@ public sealed record ExpectationRecord(bool Accepted, IReadOnlyList<string> Stat
 /// <param name="Routines">Every routine, as <see cref="DatabaseView.Routines"/>.</param>
 /// <param name="Types">Every database type, as <see cref="DatabaseView.Types"/>.</param>
 /// <param name="Objects">Every SQL object, as <see cref="DatabaseView.Objects"/>.</param>
+/// <param name="Queries">Every query, as <see cref="DatabaseView.Queries"/>.</param>
 /// <param name="Schemas">Every schema, as <see cref="DatabaseView.Schemas"/>.</param>
 /// <param name="Quoting">As <see cref="DatabaseView.Quoting"/>.</param>
 /// <param name="MaxIdentifierLength">As <see cref="DatabaseView.MaxIdentifierLength"/>.</param>
@@ -681,7 +682,7 @@ public sealed record ExpectationRecord(bool Accepted, IReadOnlyList<string> Stat
 /// <param name="Generation">As <see cref="DatabaseView.Generation"/>.</param>
 public sealed record DatabaseRecord(string Id, string Kind, string Name, string Dialect, string? Version, string? DefaultSchema, IReadOnlyList<TableView> Tables,
     IReadOnlyList<ViewView> Views, IReadOnlyList<SequenceView> Sequences, IReadOnlyList<RoutineView> Routines, IReadOnlyList<DatabaseTypeView> Types,
-    IReadOnlyList<SqlObjectView> Objects, IReadOnlyList<SchemaView> Schemas, string Quoting, int? MaxIdentifierLength,
+    IReadOnlyList<SqlObjectView> Objects, IReadOnlyList<QueryView> Queries, IReadOnlyList<SchemaView> Schemas, string Quoting, int? MaxIdentifierLength,
     string ByConvention, IReadOnlyList<ConventionPackageView> Packages, string? DisplayName, string? PluralName, string? Description,
     IReadOnlyList<string> Stereotypes, IReadOnlyList<string> Tags, string? Category, IReadOnlyDictionary<string, object?> Properties,
     IReadOnlyDictionary<string, GenerationHints> Generation);
@@ -718,6 +719,14 @@ public sealed record DatabaseTypeRecord(string Id, string Kind, string Name, str
 /// <param name="SqlObject">The object.</param>
 public sealed record SqlObjectRecord(string Id, string Kind, string Name, string Database, SqlObjectView SqlObject);
 
+/// <summary>One query of a database, on its own (scope <c>queries</c>).</summary>
+/// <param name="Id">The query's id.</param>
+/// <param name="Kind"><c>query</c>.</param>
+/// <param name="Name">The query's name.</param>
+/// <param name="Database">The database's id.</param>
+/// <param name="Query">The query.</param>
+public sealed record QueryRecord(string Id, string Kind, string Name, string Database, QueryView Query);
+
 /// <summary>Projects the resolved model into flat records (resolved objects reference each other, so R-types are never serialized).</summary>
 public static class ResolvedRecords
 {
@@ -740,6 +749,7 @@ public static class ResolvedRecords
         ["routines"] = "routine",
         ["database-types"] = "database-type",
         ["sql-objects"] = "sql-object",
+        ["queries"] = "query",
     };
 
     /// <summary>Every scope name, <c>all</c> first, then the others in <see cref="Scopes"/> order.</summary>
@@ -839,6 +849,15 @@ public static class ResolvedRecords
             }
         }
 
+        if (scope is "queries")
+        {
+            foreach (var d in model.Databases.Where(d => database is null || d.Id == database))
+            {
+                foreach (var q in d.Queries)
+                    yield return new Entry("query", q.Name, q.Id, () => new QueryRecord(q.Id, "query", q.Name, d.Id, QueryViews.Project(q)));
+            }
+        }
+
         if (scope is "routines" or "database-types" or "sql-objects")
         {
             foreach (var d in model.Databases.Where(d => database is null || d.Id == database))
@@ -866,7 +885,7 @@ public static class ResolvedRecords
     {
         var view = DatabaseViews.From(database);
         return new DatabaseRecord(view.Id, "database", view.Name, view.Dialect, view.Version, view.DefaultSchema, view.Tables, view.Views, view.Sequences,
-            view.Routines, view.Types, view.Objects, view.Schemas, view.Quoting, view.MaxIdentifierLength, view.ByConvention, view.Packages, view.DisplayName, view.PluralName, view.Description,
+            view.Routines, view.Types, view.Objects, view.Queries, view.Schemas, view.Quoting, view.MaxIdentifierLength, view.ByConvention, view.Packages, view.DisplayName, view.PluralName, view.Description,
             view.Stereotypes, view.Tags, view.Category, view.Properties, view.Generation);
     }
 

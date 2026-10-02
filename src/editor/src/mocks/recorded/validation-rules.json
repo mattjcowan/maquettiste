@@ -450,7 +450,7 @@
   {
     "id": "MQ4018",
     "defaultSeverity": "error",
-    "description": "A routine parameter or result, or a composite type's field, names a type that is neither a built-in type nor a database type of the same database.",
+    "description": "A routine or query parameter, a routine result, or a composite type's field names a type that is neither a built-in type nor a database type of the same database.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -467,6 +467,94 @@
     "id": "MQ4020",
     "defaultSeverity": "error",
     "description": "Routines, database types and SQL objects depend on each other in a cycle (dependsOn, or a composite type's fields), so no creation order exists.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4021",
+    "defaultSeverity": "error",
+    "description": "A query's source (from or a join) is not a table or view of the query's database, or a call names an id that is not a routine of that database: unknown, of another database, or of another kind.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4022",
+    "defaultSeverity": "error",
+    "description": "A query declares an alias twice, or a column reference names an alias that no source of the query declares.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4023",
+    "defaultSeverity": "error",
+    "description": "A query's column reference names no column of its source (by name, attribute id or column key), or a column name without an alias is ambiguous or unknown.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4024",
+    "defaultSeverity": "error",
+    "description": "A query expression or its paging names a parameter the query does not declare.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4025",
+    "defaultSeverity": "error",
+    "description": "A select field names an attribute that the query's entity (or the collection's entity) does not have, or names an attribute where no entity is named.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4026",
+    "defaultSeverity": "warning",
+    "description": "A required attribute of the query's entity is not selected, so the rows leave it at its default.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4027",
+    "defaultSeverity": "error",
+    "description": "A query collection names neither a collection attribute nor a to-many navigation of the query's entity, or its nested query selects nothing.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4028",
+    "defaultSeverity": "error",
+    "description": "A nested query names an outer alias that no enclosing query declares, or a collection's query names its parent's aliases outside an equality at the top of its where.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4029",
+    "defaultSeverity": "error",
+    "description": "A query's sql expression has no text for the database's dialect and no \"*\" text, so the query cannot be rendered there.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4030",
+    "defaultSeverity": "error",
+    "description": "A query's paging names a parameter whose type is not an integer type.",
+    "family": "MQ40xx",
+    "familyLabel": "Databases and mappings",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4031",
+    "defaultSeverity": "error",
+    "description": "A query comparison's right side has the wrong shape: between takes two values, isNull and isNotNull none, in and notIn a list or one list parameter, the others one value.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true

@@ -21,6 +21,22 @@ test("Promote to entity rewrites the uses, and refuses a use it cannot rewrite",
   await expect(page.getByTestId("promote-confirm")).toBeDisabled();
   await page.getByRole("button", { name: "Cancel" }).click();
 
+  // A query reads Customer.email, the attribute the promotion would remove: it blocks until the query goes.
+  await side.getByLabel("Search the model").fill("EmailAddress");
+  await menu(page, "EmailAddress", "Promote to entity");
+  await expect(page.getByTestId("promote-blocked")).toContainText("FindCustomersWithIssuedInvoices (a query that reads Customer.email");
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await workspace(page, "Databases");
+  await side.getByLabel("Search the model").fill("FindCustomersWithIssuedInvoices");
+  await side.getByTestId("explorer-row-FindCustomersWithIssuedInvoices").click({ button: "right" });
+  await page.getByTestId("row-menu").getByRole("menuitem", { name: "Delete" }).click();
+  const confirm = page.getByRole("dialog", { name: "Delete FindCustomersWithIssuedInvoices?" });
+  await expect(confirm).toContainText("Nothing else refers to it");
+  await confirm.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect(side.getByTestId("explorer-row-FindCustomersWithIssuedInvoices")).toHaveCount(0);
+  await workspace(page, "Domain model");
+
   await side.getByLabel("Search the model").fill("EmailAddress");
   await menu(page, "EmailAddress", "Promote to entity");
   await expect(page.getByTestId("promote-uses")).toContainText("New relationship Customer");

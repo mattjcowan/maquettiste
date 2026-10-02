@@ -52,7 +52,11 @@ test("Used lists the references, goes to one, and history and go to definition m
   await expect(panel).toHaveAttribute("data-complete", "true");
   await expect(page.getByTestId("tab-references")).toHaveAttribute("data-state", "active");
   await expect(panel.getByTestId("references-title")).toContainText("Entity Invoice");
+  // The list is virtualised: the diagram membership sits below the queries that read the entity, so scroll to it and back.
+  const list = panel.getByRole("list", { name: "References to Invoice" });
+  await list.evaluate((el) => el.scrollTo(0, el.scrollHeight));
   await expect(panel.getByTestId("reference-row").filter({ hasText: "on diagram Billing overview" })).toBeVisible();
+  await list.evaluate((el) => el.scrollTo(0, 0));
   await expect(panel.getByTestId("references-kind").filter({ hasText: "Relationships" })).toBeVisible();
 
   // A row goes to the referencing element.

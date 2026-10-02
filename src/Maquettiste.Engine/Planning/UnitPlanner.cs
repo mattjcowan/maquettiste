@@ -119,7 +119,7 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
                     foreach (var element in Candidates(model, pack, unit, parameters, Pool, packFile, pointer, diagnostics, ct))
                     {
                         ct.ThrowIfCancellationRequested();
-                        if (element is RElement or RView or RSequence or RRoutine or RDatabaseType or RSqlObject && SkippedByHints(((RAnnotated)element).Generation, pack.Name))
+                        if (element is RElement or RView or RSequence or RRoutine or RDatabaseType or RSqlObject or RQuery && SkippedByHints(((RAnnotated)element).Generation, pack.Name))
                             continue;
                         if (element is RTable table && filter.FileOf(table) is { } tableFile && SkippedByHints(tableFile.Generation, pack.Name))
                             continue;
@@ -218,7 +218,7 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
             }
 
             var filter = new UnitFilter(model);
-            if (element is RElement or RView or RSequence or RRoutine or RDatabaseType or RSqlObject && SkippedByHints(((RAnnotated)element).Generation, pack.Name))
+            if (element is RElement or RView or RSequence or RRoutine or RDatabaseType or RSqlObject or RQuery && SkippedByHints(((RAnnotated)element).Generation, pack.Name))
                 return ("skip-hint", $"{Describe(element)} has generation.skip for this pack (or for every pack).");
             if (element is RTable table && filter.FileOf(table) is { } tableFile && SkippedByHints(tableFile.Generation, pack.Name))
                 return ("skip-hint", $"The table file of {Describe(element)} has generation.skip for this pack (or for every pack).");
@@ -354,6 +354,7 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
             case "each routine": return model.Databases.SelectMany(d => d.Routines);
             case "each database type": return model.Databases.SelectMany(d => d.Types);
             case "each sql object": return model.Databases.SelectMany(d => d.Objects);
+            case "each query": return model.Databases.SelectMany(d => d.Queries);
             case "each reference type": return model.ReferenceTypes;
             case "each seed": return model.Seeds;
             case "each locale": return model.Locales;
@@ -629,6 +630,7 @@ internal sealed class UnitFilter
         RRoutine routine => string.Equals(routine.Database.Name, database, StringComparison.Ordinal),
         RDatabaseType type => string.Equals(type.Database.Name, database, StringComparison.Ordinal),
         RSqlObject obj => string.Equals(obj.Database.Name, database, StringComparison.Ordinal),
+        RQuery query => string.Equals(query.Database.Name, database, StringComparison.Ordinal),
         REntity entity => entity.Mappings.ContainsKey(database),
         RRelation relation => relation.Mappings.ContainsKey(database),
         _ => _model.Databases.Any(d => string.Equals(d.Name, database, StringComparison.Ordinal)),
@@ -648,7 +650,7 @@ internal sealed class UnitFilter
             set.UnionWith(source.Tags);
         if (element is RTable table && _tableFiles.TryGetValue(table.Key, out var file))
             set.UnionWith(file.Tags);
-        if (element is RView or RSequence or RRoutine or RDatabaseType or RSqlObject)
+        if (element is RView or RSequence or RRoutine or RDatabaseType or RSqlObject or RQuery)
             set.UnionWith(((RAnnotated)element).Tags);
         return set;
     }
@@ -660,7 +662,7 @@ internal sealed class UnitFilter
             set.UnionWith(source.Stereotypes.Select(s => s.Key));
         if (element is RTable table && _tableFiles.TryGetValue(table.Key, out var file))
             set.UnionWith(file.Stereotypes);
-        if (element is RView or RSequence or RRoutine or RDatabaseType or RSqlObject)
+        if (element is RView or RSequence or RRoutine or RDatabaseType or RSqlObject or RQuery)
             set.UnionWith(((RAnnotated)element).Stereotypes.Select(s => s.Key));
         return set;
     }
@@ -672,7 +674,7 @@ internal sealed class UnitFilter
             ids.Add(own);
         if (element is RTable table && _tableFiles.TryGetValue(table.Key, out var file) && file.Category is { } fileCategory)
             ids.Add(fileCategory);
-        if (element is RView or RSequence or RRoutine or RDatabaseType or RSqlObject && ((RAnnotated)element).Category?.Id is { } physicalCategory)
+        if (element is RView or RSequence or RRoutine or RDatabaseType or RSqlObject or RQuery && ((RAnnotated)element).Category?.Id is { } physicalCategory)
             ids.Add(physicalCategory);
         foreach (var start in ids)
         {

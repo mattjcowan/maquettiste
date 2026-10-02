@@ -312,6 +312,10 @@ internal sealed class ValidationContext
             case SqlObject sqlObject when sqlObject.Name.Length > 0:
                 yield return ("sql-object|" + sqlObject.Database + "|" + sqlObject.Schema + "|" + sqlObject.Name.ToUpperInvariant(), "SQL objects of the same database schema");
                 break;
+            // A query becomes a repository class named after it: one name per database, compared case-insensitively.
+            case Query query when query.Name.Length > 0:
+                yield return ("query|" + query.Database + "|" + query.Name.ToUpperInvariant(), "queries of the same database");
+                break;
         }
     }
 

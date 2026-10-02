@@ -1,6 +1,6 @@
 {{-
 # One registration file per package (file blocks): the package's repository interfaces and implementations, for any
-# dependency-injection container.
+# dependency-injection container; and one for the query classes (Queries/QueryRegistrations.g.cs) when the model has queries.
 include "_csharp.scriban"
 include "_dapper.scriban"
 for p in model.packages
@@ -44,4 +44,43 @@ public static partial class {{ class_name }}
 }
 {{ end -}}
 {{- file (join_path pack.params.generatedFolder (package_folder entities[0]) (class_name + ".g.cs")) content -}}
+{{- end -}}
+{{-
+queries = []
+for db in model.databases
+  for q in db.queries
+    queries[queries.size] = q
+  end
+end
+if queries.size > 0
+-}}
+{{- capture content -}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+
+namespace {{ pack.params.namespace }}.Queries;
+
+/// <summary>The Dapper query classes of the model.</summary>
+/// <example><code>QueryRegistrations.Register((service, implementation) => services.AddScoped(service, implementation));</code></example>
+public static partial class QueryRegistrations
+{
+    /// <summary>Every query class: the interface to register and the class that implements it.</summary>
+    public static IReadOnlyList<(Type Service, Type Implementation)> All { get; } =
+    [
+{{- for q in queries }}
+        (typeof(I{{ pascal q.name }}Query), typeof({{ pascal q.name }}Query)),
+{{- end }}
+    ];
+
+    /// <summary>Calls <paramref name="register"/> once per query class.</summary>
+    public static void Register(Action<Type, Type> register)
+    {
+        ArgumentNullException.ThrowIfNull(register);
+        foreach (var (service, implementation) in All)
+            register(service, implementation);
+    }
+}
+{{ end -}}
+{{- file (join_path pack.params.generatedFolder "Queries" "QueryRegistrations.g.cs") content -}}
 {{- end -}}

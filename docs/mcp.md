@@ -168,7 +168,7 @@ claude mcp add maquettiste -- docker run -i --rm --user 0:0 -v "$PWD:/repo" -w /
 ```
 
 Checked on Linux (Docker Engine, amd64) with a stdio client over `docker run -i --rm --user ... maquettiste mcp`: `initialize`
-in 0.7 s, `tools/list` with 18 tools (image 0.1.0; the published 0.2.0 image lists 24, the current source 56), `validate` in 55 ms,
+in 0.7 s, `tools/list` with 18 tools (image 0.1.0; the published 0.2.0 image lists 24, the current source 57), `validate` in 55 ms,
 the container removed on exit. The registration (the arguments exactly, both forms and both runtimes, the merge, the replacement and the
 removal of an earlier `mcp.sh`) is covered by the CLI tests; the `/bin/sh` line was run with a stand-in `docker` reachable only
 through `$HOME/.docker/bin` from a folder behind a symbolic link (the real path mounted, stderr in the log). A Mac client started
@@ -190,7 +190,7 @@ Create the copy first with `docker/dev-billing.sh`, or without Docker, then buil
 ```sh
 mkdir -p tmp/billing && cp -r tests/fixtures/models/billing/.maquettiste tmp/billing/
 dotnet build src/Maquettiste.Cli -c Release
-claude                               # then /mcp shows maquettiste connected with 56 tools
+claude                               # then /mcp shows maquettiste connected with 57 tools
 ```
 
 A headless check that needs no approval prompt (an explicit `--mcp-config` is trusted):
@@ -224,7 +224,7 @@ the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.We
 | `get_model_kinds` | getModelKinds | `by` (`kind` default, or `package`) | `{ total, kinds: [{ kind, count }], packages }`; with `package`, per package `{ package, name, count, kinds }`, the elements in no package first |
 | `get_element` | getElement | `id` | the document: `json` (canonical), `hash`, `path`, the typed element, the sidecar text |
 | `get_elements` | getElements | `ids` (element or sub-element ids, at most 1000), the index filters, `fields` (top-level members to keep), `cursor`, `limit` (default 100, at most 1000) | `{ items: [{ id, kind, path, hash, json }], next, missing }`: the canonical documents in pages, ordered by kind, name and id |
-| `get_resolved_model` | getResolvedModel | `scope` (`all` default, `packages`, `entities`, `relations`, `enums`, `value-objects`, `scalar-types`, `reference-types`, `seeds`, `processes`, `actors`, `scenarios`, `databases`, `tables`, `routines`, `database-types`, `sql-objects`), `database` (an id), `cursor`, `limit` | `{ items, next, diagnostics }`: what templates read, as flat records with `id`, `kind` and `name` (other objects by id); a model with errors returns no items and the errors |
+| `get_resolved_model` | getResolvedModel | `scope` (`all` default, `packages`, `entities`, `relations`, `enums`, `value-objects`, `scalar-types`, `reference-types`, `seeds`, `processes`, `actors`, `scenarios`, `databases`, `tables`, `routines`, `database-types`, `sql-objects`, `queries`), `database` (an id), `cursor`, `limit` | `{ items, next, diagnostics }`: what templates read, as flat records with `id`, `kind` and `name` (other objects by id); a model with errors returns no items and the errors |
 | `save_element` | saveElement | `id`, `element` (whole document), `expectedHash` | the save result (new `hash`, changes) |
 | `create_element` | createElement | `element` (an id is assigned when absent) | the save result with the new `id`; write a database with `byConvention` (`none`, `packages` or `all`): without it a database with no `packages` takes every entity (the rule from before 0.3.0) |
 | `delete_element` | deleteElement, getDeletePlan | `id`, `expectedHash` (not with `dryRun`), `resolution` (`refuse` default, `remove-references` or `delete-dependents`), `dryRun` (`true`: write nothing and return the plan; the resolution then defaults to `delete-dependents`) | the save result; with `dryRun` the delete plan `{ ids, resolution, outcome, deletes: [{ id, kind, name, path, because }], clears: [{ id, kind, name, pointer, field, target, because }], removes: [{ id, kind, name, pointer, what, subId, subKind, because }], refused: [{ id, kind, name, pointer, why, rule }], settings: [{ pointer, what }], warnings: [{ message, pack, unit }] }` |
@@ -245,7 +245,8 @@ the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.We
 | `reference_type_usage` | getReferenceTypeUsage | `id` of a reference type | `usages`: attribute, owner, domain, collection, required and the effective storage per database |
 | `validate` | validate | `elementIds` (optional scope), `includeReferrers`, `includeScriptRules` (default `true`: the script rules of `extensions/rules/` run, their findings are `x/<id>`) | the report: diagnostics with rule ids, file, JSON pointer, line and column; counts |
 | `list_validation_rules` | listValidationRules | | the built-in rules, ordered by id: `id`, `defaultSeverity`, `description`, `family` (the hundreds group, such as `MQ72xx`) and `familyLabel`, `canBeOff` (false for MQ1xxx), `quickFix` (the batch operation that fixes a finding, when the rule has one); override a severity with `validation.rules` through `save_settings` |
-| `get_database_view` | getDatabaseView | `id` of a database | the resolved physical view: the tables of the entities mapped to it (by its `byConvention` setting and its `packages`, or one by one by mapping elements, less the ignored ones), with columns, keys, indexes and foreign keys, views, sequences, `routines` (parameters and result with native types, language, body, `dependsOn`), `types` (database types with `isCreated` and `nativeName`), `objects` (SQL objects with `objectKind`, `phase`, `dependsOn` and body) and `schemas` (`name`, `isDefault`, `isDeclared`). The database, each schema, table, column, view, sequence, routine, database type and SQL object carries the annotations of its own file or entry: `displayName`, `pluralName`, `description`, `stereotypes` (keys), `tags`, `category` (id), `properties` (merged with the stereotypes' defaults) and `generation`; a synthesized table without an overlay, or a synthesized column without an overlay entry, has none, whatever its entity or attribute carries. The database also gives `quoting`, `maxIdentifierLength`, `byConvention` and `packages`; a column its `default`, `sequenceId`, `dbTypeId` (the database type its native type names), `collation`, `comment` and `computedStored`. A new database with nothing mapped has no tables |
+| `get_database_view` | getDatabaseView | `id` of a database | the resolved physical view: the tables of the entities mapped to it (by its `byConvention` setting and its `packages`, or one by one by mapping elements, less the ignored ones), with columns, keys, indexes and foreign keys, views, sequences, `routines` (parameters and result with native types, language, body, `dependsOn`), `types` (database types with `isCreated` and `nativeName`), `objects` (SQL objects with `objectKind`, `phase`, `dependsOn` and body), `queries` (parameters, sources, the select list with each field's inferred type, the trees as the file writes them, collections with their correlation keys, `sql` for the database's dialect and `uses`) and `schemas` (`name`, `isDefault`, `isDeclared`). The database, each schema, table, column, view, sequence, routine, database type, SQL object and query carries the annotations of its own file or entry: `displayName`, `pluralName`, `description`, `stereotypes` (keys), `tags`, `category` (id), `properties` (merged with the stereotypes' defaults) and `generation`; a synthesized table without an overlay, or a synthesized column without an overlay entry, has none, whatever its entity or attribute carries. The database also gives `quoting`, `maxIdentifierLength`, `byConvention` and `packages`; a column its `default`, `sequenceId`, `dbTypeId` (the database type its native type names), `collation`, `comment` and `computedStored`. A new database with nothing mapped has no tables |
+| `preview_query_sql` | getQuerySql | `id` of a query, `dialect` (`postgresql`, `sqlserver`, `mysql`, `sqlite`, `oracle`; the database's when absent), `placeholder` (`@` default, `:` or `$`), `lists` (`expand` default, or `any`) | `{ preview: { id, name, database, dialect, sql, parameters, collections: [{ name, sql, parameters, keys }] }, diagnostics }`: the query's statement and one per collection, each with the parameters it names in first-appearance order; a list parameter is `IN @name` (for a data access library that expands lists) or, with `lists: any`, `= ANY(@name)` on `postgresql`; a collection's statement takes the parent rows' key values as `__keys0` and returns each row's as `__key0`, matching the parent's `keys[i].parentField`; `preview` is null on a model with errors; an `sql` expression without a text for the dialect is MQ4029; not a query is `not-found` (`not-a-query`) |
 | `list_packs` | (part of getProject) | | pack manifests and their diagnostics |
 | `get_settings` | getSettings | | `maquettiste.json`: typed settings, canonical `json`, `hash` |
 | `save_settings` | saveSettings | `settings` (whole document), `expectedHash` | the save result |
@@ -311,6 +312,18 @@ one at a time with the scopes `routines`, `database-types` and `sql-objects` (re
 `databaseType` or `sqlObject`). A routine's parameter and result types and a composite's field types are a built-in keyword or
 the id of a database type of the same database; a column uses a database type by naming its id or name in `nativeType`.
 `validate` reports MQ4017 to MQ4020 for them.
+
+Queries (added 2026-10-02) are the kind `query`, one file per query in `model/databases/<db>/queries/`, each belonging to a
+database (`database`, no schema): a query over the database's tables and views written as JSON trees (`from`, `joins`,
+`select`, `where`, `groupBy`, `having`, `orderBy`, `paging`, `collections`), with an `entity` as its result shape or, without
+one, its select list. Column references are `alias.<column key>` (the `key` the database view lists for a column: an attribute
+id, a value object member's attribute path, a designed column's id), so the reference index sees them; a physical name is
+accepted too. They work with every element tool, `get_model_index` and `get_elements` (`kind: "query"`), `get_schema` and
+`apply_batch`; `get_database_view` lists them with their SQL, `get_resolved_model` reads them in the database records or one at
+a time with the scope `queries` (records `{ id, kind, name, database, query }`), and `preview_query_sql` renders one for any
+dialect. `validate` reports MQ4021 to MQ4031 for them (the resolver checks them, where the columns are known). Deleting a table,
+view, entity or attribute a query reads refuses with the query among the referrers; with `delete-dependents` the query is
+deleted whole.
 
 Reference types and seeds are elements: `get_element`, `create_element`, `save_element` and `apply_batch` handle them. Translations
 live in locale shards, not in element files: read them with `get_translations`, then pass the `shardHash` values you read as
@@ -443,7 +456,8 @@ get_resolved_model { "scope": "databases" }
       ],
       "views": [ { "name": "outstanding_invoices", ... } ],
       "sequences": [ { "name": "invoice_number_seq", ... } ],
-      "routines": [], "types": [], "objects": [] }
+      "routines": [], "types": [], "objects": [],
+      "queries": [ { "name": "FindCustomersWithIssuedInvoices", "sql": "SELECT c.id AS id, ...", ... }, ... ] }
   ],
   "next": null,
   "diagnostics": []

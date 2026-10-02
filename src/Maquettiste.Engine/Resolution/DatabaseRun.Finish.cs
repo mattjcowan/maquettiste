@@ -562,6 +562,8 @@ internal sealed partial class DatabaseRun
             .OrderBy(r => r.Schema ?? "", StringComparer.Ordinal).ThenBy(r => r.Name, StringComparer.Ordinal).ThenBy(r => r.Id, StringComparer.Ordinal).ToList();
         var objects = _objects.Select(o => o.Object)
             .OrderBy(o => o.Schema ?? "", StringComparer.Ordinal).ThenBy(o => o.Name, StringComparer.Ordinal).ThenBy(o => o.Id, StringComparer.Ordinal).ToList();
+        ResolveQueries(views);
+        var queries = _queries.Select(q => q.Query).OrderBy(q => q.Name, StringComparer.Ordinal).ThenBy(q => q.Id, StringComparer.Ordinal).ToList();
 
         var membership = new DependencySet(_run.Keys)
             .Add("k:entity").Add("k:relation").Add("k:enum").Add("k:table").Add("k:mapping").Add("k:value-object").Add("k:stereotype")
@@ -581,6 +583,9 @@ internal sealed partial class DatabaseRun
             membership.AddRange(routine.Dependencies);
         foreach (var obj in objects)
             membership.AddRange(obj.Dependencies);
+        membership.Add("k:query");
+        foreach (var query in queries)
+            membership.AddRange(query.Dependencies);
 
         var keys = membership.ToList();
 
@@ -625,6 +630,7 @@ internal sealed partial class DatabaseRun
         _rdb.Routines = new RList<RRoutine>(routines, keys);
         _rdb.Types = new RList<RDatabaseType>(types, keys);
         _rdb.Objects = new RList<RSqlObject>(objects, keys);
+        _rdb.Queries = new RList<RQuery>(queries, keys);
         _run.Register(_rdb);
         return _rdb;
     }

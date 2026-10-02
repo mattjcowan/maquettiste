@@ -254,6 +254,38 @@ public sealed partial class GenerationService
     }
 
     /// <summary>
+    /// The SQL of one query for a dialect (added 2026-10-02; the editor's SQL preview and the MCP <c>preview_query_sql</c> tool): loads,
+    /// validates the whole model and resolves it like <see cref="GetDatabaseViewAsync"/>, then renders the query and each of its
+    /// collections (<see cref="QuerySql"/>). Takes no run lock and writes nothing.
+    /// </summary>
+    /// <param name="queryId">The query element's id.</param>
+    /// <param name="dialect">A dialect name, or <see langword="null"/> for the query's database's.</param>
+    /// <param name="options">The placeholder and list styles, or <see langword="null"/> for the defaults.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The statements with every validation and resolution diagnostic and what the dialect cannot render (MQ4029);
+    /// <see cref="QuerySqlResult.Preview"/> is <see langword="null"/> when the model has errors or no query has the id (MQ6017).</returns>
+    /// <exception cref="ArgumentException">The dialect or an option is unknown.</exception>
+    public async Task<QuerySqlResult> GetQuerySqlAsync(string queryId, string? dialect, QuerySqlOptions? options, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(queryId);
+        if (dialect is not null && !Rendering.SqlDialects.TryParse(dialect, out _))
+            throw new ArgumentException($"'{dialect}' is not a dialect (postgresql, sqlserver, mysql, sqlite, oracle).", nameof(dialect));
+        var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var report = await _services.Validator.ValidateAsync(snapshot, new ValidationScope(), null, ct).ConfigureAwait(false);
+        if (report.HasErrors)
+            return new QuerySqlResult(null, report.Diagnostics);
+        var resolved = await _services.Resolver.ResolveAsync(snapshot, null, ct).ConfigureAwait(false);
+        var diagnostics = Outcomes.Sort(report.Diagnostics.Concat(resolved.Diagnostics));
+        if (resolved.Diagnostics.Any(Outcomes.IsInvalid))
+            return new QuerySqlResult(null, diagnostics);
+        var query = resolved.Databases.SelectMany(d => d.Queries).FirstOrDefault(q => string.Equals(q.Id, queryId, StringComparison.Ordinal));
+        if (query is null)
+            return new QuerySqlResult(null, [.. diagnostics, RuleCatalog.Create("MQ6017", $"No query has the id '{queryId}'.", queryId)]);
+        var (preview, rendering) = QueryViews.Preview(query, dialect, options);
+        return new QuerySqlResult(preview, Outcomes.Sort(diagnostics.Concat(rendering)));
+    }
+
+    /// <summary>
     /// Every pack under <c>templates/</c>, enabled or not, with its load diagnostics (E2, phase2-design.md section 3.8). The enabled
     /// packs are loaded exactly as a run loads them; disabled ones are only parsed and checked against <c>pack.json</c>'s schema.
     /// </summary>

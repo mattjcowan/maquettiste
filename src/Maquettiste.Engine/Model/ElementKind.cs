@@ -45,6 +45,9 @@ public enum ElementKind
     /// <summary>A database object the model does not type, as SQL statements per dialect (<c>sql-object</c>).</summary>
     [JsonStringEnumMemberName("sql-object")] SqlObject,
 
+    /// <summary>A query over a database's tables and views, written as data (<c>query</c>).</summary>
+    [JsonStringEnumMemberName("query")] Query,
+
     /// <summary>A binding of an entity or relation to a database (<c>mapping</c>).</summary>
     [JsonStringEnumMemberName("mapping")] Mapping,
 

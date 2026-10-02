@@ -272,3 +272,72 @@ database:
         - name: ix_integration_outbox_pending
           columns: [occurred_at]
           where: relayed_at IS NULL
+  # Queries over the tables (written as data; see the guide's Queries): the entity or ad hoc row each returns, its sources,
+  # select list and conditions. Names resolve when the model is built: entity and source names to ids, a field's attribute
+  # to the attribute of the query's (or the collection's) entity, a collection's attribute to the end its navigation leads to.
+  queries:
+    OpenSalesOrders:
+      description: A customer's sales orders in some statuses, newest first, a page at a time, each with its lines.
+      entity: SalesOrder
+      parameters:
+        - { name: customerId, type: uuid }
+        - { name: statuses, type: string, length: 8, collection: true, description: Status codes such as SUBMIT or CONFIRM. }
+        - { name: offset, type: int32, default: 0 }
+        - { name: limit, type: int32, default: 50 }
+      from: { source: SalesOrder, alias: o }
+      select:
+        - { attribute: id, expression: { column: o.id } }
+        - { attribute: orderNumber, expression: { column: o.order_number } }
+        - { attribute: orderedAt, expression: { column: o.ordered_at } }
+        - { attribute: status, expression: { column: o.status } }
+        - { attribute: source, expression: { column: o.source } }
+        - { attribute: promisedDeliveryOn, expression: { column: o.promised_delivery_on } }
+        - { attribute: createdAt, expression: { column: o.created_at } }
+      where:
+        and:
+          - { op: eq, left: { column: o.customer_id }, right: { param: customerId } }
+          - { op: in, left: { column: o.status }, right: { param: statuses } }
+          - { op: isNull, left: { column: o.deleted_at } }
+      orderBy:
+        - { expression: { column: o.ordered_at }, direction: desc }
+      paging: { offset: offset, limit: limit }
+      collections:
+        - attribute: lines
+          entity: SalesOrderLine
+          query:
+            from: { source: SalesOrderLine, alias: l }
+            select:
+              - { attribute: id, expression: { column: l.id } }
+              - { attribute: lineNumber, expression: { column: l.line_number } }
+              - { attribute: quantity, expression: { column: l.quantity } }
+              - { attribute: status, expression: { column: l.status } }
+              - { attribute: description, expression: { column: l.description } }
+              - { attribute: createdAt, expression: { column: l.created_at } }
+            where: { op: eq, left: { column: l.sales_order_id }, right: { column: o.id } }
+            orderBy:
+              - { expression: { column: l.line_number } }
+    SalesByChannel:
+      description: Revenue per sales channel since a date, largest first; orders without a channel count as direct.
+      parameters:
+        - { name: since, type: datetimeoffset }
+        - { name: top, type: int32, default: 10 }
+      from: { source: SalesOrder, alias: o }
+      joins:
+        - { source: SalesChannel, alias: ch, kind: left, on: { op: eq, left: { column: ch.id }, right: { column: o.sales_channel_id } } }
+      select:
+        - name: channel
+          nullable: false
+          expression: { call: coalesce, args: [{ column: ch.name }, { value: direct }] }
+        - { name: orders, expression: { call: count } }
+        - name: revenue
+          nullable: false
+          expression: { call: coalesce, args: [{ call: sum, args: [{ column: o.grand_total_amount }] }, { value: 0 }] }
+      where:
+        and:
+          - { op: ge, left: { column: o.ordered_at }, right: { param: since } }
+          - { op: isNull, left: { column: o.deleted_at } }
+      groupBy:
+        - { column: ch.name }
+      orderBy:
+        - { expression: { call: sum, args: [{ column: o.grand_total_amount }] }, direction: desc, nulls: last }
+      paging: { limit: top }

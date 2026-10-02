@@ -120,6 +120,7 @@ export const KIND_FOLDERS: readonly KindFolder[] = [
     "databases",
     "SQL objects of this schema: triggers, grants, extensions and the like",
   ),
+  folder("query", "Queries", "query", "queries", "query", 338, "databases", "Queries over this database's tables and views"),
   folder(
     "mapping",
     "Customised mappings",
@@ -245,6 +246,7 @@ export const KIND_LABELS: Record<ElementKind, string> = {
   routine: "Routine",
   "database-type": "Database type",
   "sql-object": "SQL object",
+  query: "Query",
   mapping: "Customised mapping",
   diagram: "Diagram",
   "tag-vocabulary": "Tags",

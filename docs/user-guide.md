@@ -617,6 +617,173 @@ database shows on the Database screen at once. The explorers remember which rows
     MQ4019 (error). Routines, database types and SQL objects that depend on each other in a circle are MQ4020 (error):
     there is no order to create them in. Two routines, two database types or two SQL objects with one name in a schema
     are MQ3001.
+
+  **Queries.** Tables, views and routines are the physical model: they are what the database holds, and they generate the
+  repository layer. Entities are the shapes the services work with. An entity is filled either by its simple mapping to
+  one table, or by a **query**: a query over the tables and views of a database, with joins, filters, grouping,
+  ordering, paging and collections, whose result rows have the shape of an entity (or, without one, of its own select
+  list), and which a pack turns into the repository method that runs it. A query is data, a tree of JSON objects an
+  agent reads and writes and a pack walks per dialect, never SQL text; an opaque text per dialect is allowed for one
+  expression at a time. Entities and tables stay separate: a table needs no entity, an entity needs no table, and one
+  query may read several tables into one entity.
+
+  A query is one file per query in `model/databases/<db>/queries/<name>.json` (kind `query`). It has a name, a
+  description, stereotypes, tags, a category, custom properties and generation hints, like a view, but no schema: a
+  query creates nothing in the database. The billing sample's `InvoicesByCustomer`, a little shortened:
+
+  ```json
+  {
+    "$schema": "../../../../.schema/v1/query.json",
+    "kind": "query",
+    "id": "01K6QRY0000000000000000001",
+    "name": "InvoicesByCustomer",
+    "database": "01J92P0V1QRN2181XM2ZWE02W4",
+    "description": "A customer's invoices in some statuses, newest first, a page at a time, each with its lines.",
+    "entity": "01J92P0V0FJ23CGSNKM7P1W5V7",
+    "parameters": [
+      { "name": "customerId", "type": "uuid" },
+      { "name": "statuses", "type": "string", "length": 1, "collection": true },
+      { "name": "offset", "type": "int32", "default": 0 },
+      { "name": "limit", "type": "int32", "default": 50 }
+    ],
+    "from": { "source": "01J92P0V1T0J6RH4MY9H81NYB4", "alias": "i" },
+    "select": [
+      { "attribute": "01J92P0V0Q9EK961M5HAQ3C5MY", "expression": { "column": "i.01J92P0V0Q9EK961M5HAQ3C5MY" } },
+      { "attribute": "01J92P0V0R3VSP7D5238DTNZX1", "expression": { "column": "i.01J92P0V0R3VSP7D5238DTNZX1" } },
+      { "attribute": "01J92P0V0SNXS6PZ42VDK42HP9", "expression": { "column": "i.01J92P0V0SNXS6PZ42VDK42HP9" } },
+      { "attribute": "01J92P0V0VB1Z49SWERMAGR4TV", "expression": { "column": "i.01J92P0V0VB1Z49SWERMAGR4TV" } },
+      { "attribute": "01J92P0V26XYZRDQ8FJ6KZXT6S", "expression": { "column": "i.01J92P0V26XYZRDQ8FJ6KZXT6S" } }
+    ],
+    "where": {
+      "and": [
+        { "op": "eq", "left": { "column": "i.01J92P0V1EHF7PB28CZJG9C5SN.01J92P0V0KGPC29TQQG8R57EBM" }, "right": { "param": "customerId" } },
+        { "op": "in", "left": { "column": "i.01J92P0V0VB1Z49SWERMAGR4TV" }, "right": { "param": "statuses" } },
+        { "op": "isNull", "left": { "column": "i.deleted_at" } }
+      ]
+    },
+    "orderBy": [{ "expression": { "column": "i.01J92P0V0SNXS6PZ42VDK42HP9" }, "direction": "desc" }],
+    "paging": { "offset": "offset", "limit": "limit" },
+    "collections": [
+      {
+        "attribute": "01J92P0V1H4D2M1HCK82ASJEWT",
+        "entity": "01J92P0V0GWFR78HZH0P8Z3GY7",
+        "query": {
+          "from": { "source": "01J92P0V0GWFR78HZH0P8Z3GY7@01J92P0V1QRN2181XM2ZWE02W4", "alias": "l" },
+          "select": [
+            { "attribute": "01J92P0V0X1EDKMF6X5RA8NZWG", "expression": { "column": "l.01J92P0V0X1EDKMF6X5RA8NZWG" } },
+            { "attribute": "01J92P0V0Y049452AH0K8CDC9N", "expression": { "column": "l.01J92P0V0Y049452AH0K8CDC9N" } }
+          ],
+          "where": {
+            "op": "eq",
+            "left": { "column": "l.01J92P0V1GMF7GJPA7981CH7YG.01J92P0V0Q9EK961M5HAQ3C5MY" },
+            "right": { "column": "i.01J92P0V0Q9EK961M5HAQ3C5MY" }
+          }
+        }
+      }
+    ]
+  }
+  ```
+
+  For `postgresql` it renders as:
+
+  ```sql
+  SELECT i.id AS id, i.number AS number, i.issued_on AS issuedOn, i.status AS status, i.created_at AS createdAt
+  FROM billing.invoices i
+  WHERE i.customer_id = @customerId AND i.status IN @statuses AND i.deleted_at IS NULL
+  ORDER BY i.issued_on DESC
+  LIMIT @limit OFFSET @offset
+  ```
+
+  - **The result shape.** With `entity`, each row is that entity: every select field names the `attribute` it fills (its
+    name defaults to the attribute's), or a `name` of its own for a value the entity does not hold. Without `entity`,
+    the select list is the row: each field has a `name`, and a `type` (a built-in type) and `nullable` when the
+    expression does not say them, and a pack turns the fields into a record. A required attribute of the entity that no
+    field fills is MQ4026 (a warning: the rows leave it at its default); an attribute of a value object type spans
+    several columns and is not asked for.
+  - **Sources.** `from` and each of `joins` name a `source` and an `alias`. The source is a table or view of the
+    query's database: a table or view file's id (a designed table, or a synthesized table's override), a table key as
+    the database view lists it (`<entity id>@<database id>`), or an entity id for that entity's table there. The alias
+    defaults to the table's or view's name. A join has a `kind`: `inner` (the default), `left`, `right`, `full` or
+    `cross`, and an `on` condition unless it is a cross join; the outer side of an outer join reads as nullable.
+  - **Column references.** `{ "column": "alias.<column>" }` names a column of a source. The canonical form writes the
+    column part as the column's **key**, the `key` the database view lists for it: the attribute id for an attribute's
+    column, the attribute path for a value object member (`<attribute id>.<member id>`), the end and key attribute for
+    a foreign key (`<end id>.<key attribute id>`), a designed column's own id. A key survives renames and changes of
+    the naming conventions, and the model's reference index sees the ids in it, so a delete or a rename follows it. A
+    physical column name is accepted too, and is the only form for a view's columns; it breaks when the name changes.
+    A name matches ignoring case, then ignoring case and underscores, when only one column matches. Without an alias, a
+    name resolves when exactly one source of the query has the column.
+  - **Expressions.** Each expression is one object of one of these forms:
+
+    | Form | Meaning |
+    | --- | --- |
+    | `{ "column": "i.<key>" }` | a column of a source |
+    | `{ "param": "customerId" }` | a parameter |
+    | `{ "value": "I" }` | a literal string, number or boolean |
+    | `{ "null": true }` | the null literal |
+    | `{ "op": "+", "args": [...] }` | `+`, `-`, `*`, `/`, `%` or `concat` over the arguments |
+    | `{ "call": "lower", "args": [...] }` | a function: `lower`, `upper`, `coalesce`, `count`, `sum`, `min`, `max`, `avg`, `length` and `now` are spelled per dialect, any other name is written as given, and a routine id of the database calls that routine; `count` without arguments counts rows |
+    | `{ "case": [{ "when": <predicate>, "then": <expression> }], "else": <expression> }` | the first branch whose condition holds |
+    | `{ "cast": <expression>, "type": "date" }` | a conversion to a built-in type, through the dialect's type map |
+    | `{ "sql": { "postgresql": "...", "sqlite": "..." } }` | an opaque expression per dialect (or `*`), for what the tree cannot say |
+
+  - **Predicates.** A condition (`where`, `having`, a join's `on`, a case branch's `when`) is one of `{ "and": [...] }`,
+    `{ "or": [...] }`, `{ "not": <predicate> }`, a comparison `{ "op": ..., "left": <expression>, "right": ... }` or
+    `{ "exists": <nested query> }`. The comparisons are `eq`, `ne`, `lt`, `le`, `gt`, `ge`, `like`, `ilike` (case
+    insensitive; written as `LOWER(a) LIKE LOWER(b)` where the dialect has no `ILIKE`), `in` and `notIn` (a list of
+    expressions, or one parameter with `collection: true`), `between` (a list of two: the low and the high bound),
+    `isNull` and `isNotNull` (no right side). A nested query of `exists` has its own `from`, `joins` and `where` and
+    may name the aliases of the query around it; it is written `EXISTS (SELECT 1 ...)`. Negate it with
+    `{ "not": { "exists": ... } }`.
+  - **Grouping, ordering, paging.** `groupBy` is a list of expressions and `having` a condition over the groups;
+    `distinct` removes duplicate rows. Each of `orderBy` has an `expression`, a `direction` (`asc`, the default, or
+    `desc`) and optionally `nulls` (`first` or `last`, emulated where the dialect has no such clause). `paging` has an
+    `offset` and a `limit`, each a number or the name of an integer parameter; it is written `LIMIT ... OFFSET ...`, or
+    `OFFSET ... ROWS FETCH NEXT ... ROWS ONLY` on `sqlserver` and `oracle`.
+  - **Parameters.** Each parameter has a `name`, a `type` (a built-in type or a database type of the same database),
+    optional length, precision and scale, `collection: true` for a list (an `in` or `notIn` right side), a `default`
+    the generated method uses when the caller passes none, and a description. In SQL a parameter is a placeholder,
+    `@name` by default.
+  - **Collections.** A collection fills a list per result row: its `attribute` is a collection attribute of the entity,
+    or the relation end a to-many navigation of the entity leads to (the invoice's lines above), or a name for an ad
+    hoc row; its `entity` is the element shape (the navigation's target by default), and its `query` a nested query
+    whose `where` ties its rows to the parent with equalities at its top (`l.<invoice key> = i.<id>`). A collection
+    runs as a second statement, once for all the parent rows: the parent's statement carries the parent column of each
+    equality (as a hidden column `__key0_0` when no select field holds it), and the collection's takes the parent values
+    as the list parameter `__keys0` (`__keys1`, ...) and returns each row's value as `__key0`, so the rows group under
+    their parent. A list parameter is written `IN @__keys0`, for a data access library that expands lists into their
+    items. A collection that names its parent anywhere else, or not at all, is MQ4028.
+  - **The SQL preview.** `GET /api/model/queries/{id}/sql` and the MCP tool `preview_query_sql` return the query's
+    statement and one per collection, each with the parameters it names, for the database's dialect or another
+    (`dialect`); `placeholder` picks `@name` (the default), `:name` or `$1`, and `lists` picks `expand` (`IN @ids`, the
+    default) or `any` (`= ANY(@ids)` with an array parameter on `postgresql`). The database view lists every query with
+    its SQL for the database's dialect.
+  - **Generation.** A pack unit `for` `each query` runs once per query of every database, with the template variable
+    `query`; `query_sql query` renders its statement and `query_collection_sql query.collections[0]` a collection's,
+    both taking a dialect and options (`{ placeholder: ":", lists: "any" }`) as further arguments. The csharp-dapper
+    pack writes one query class per query (`Queries/<Name>Query.g.cs`). The sql-ddl pack has nothing to write for a
+    query, and the schema diff does not see queries.
+  - **Deletes.** A query refers to its database, its entity, its sources, the attributes its fields fill and the ids in
+    its column keys. Deleting one of these is refused while the query names it; with its dependents
+    (`delete-dependents`) the query is deleted whole, since its aliases tie its parts together.
+  - **Problems.** The resolver checks a query, where the columns are known, and points at the node:
+
+    | Rule | Severity | Finding |
+    | --- | --- | --- |
+    | MQ4021 | error | a source that is not a table or view of the query's database, or a call of an id that is not one of its routines |
+    | MQ4022 | error | an alias declared twice, or a column naming an alias no source declares |
+    | MQ4023 | error | a column its source does not have, or a name without an alias that no source or several sources have |
+    | MQ4024 | error | a parameter the query does not declare (in an expression or the paging) |
+    | MQ4025 | error | a field naming an attribute the entity does not have, or an attribute where no entity is named |
+    | MQ4026 | warning | a required attribute of the entity that no field fills |
+    | MQ4027 | error | a collection that names neither a collection attribute nor a to-many navigation, or selects nothing |
+    | MQ4028 | error | a nested query naming an alias no enclosing query declares, or a collection naming its parent outside an equality at the top of its where |
+    | MQ4029 | error | an `sql` expression without a text for the database's dialect (nor `*`) |
+    | MQ4030 | error | paging by a parameter that is not an integer |
+    | MQ4031 | error | a comparison with the wrong right side (two values for `between`, none for `isNull`, one otherwise) |
+
+    A parameter type that is neither a built-in type nor a database type of the database is MQ4018; two parameters or
+    two fields with one name, or two queries of a database with one name, are MQ3001.
 - **Diagrams**: the saved diagrams outside the domains.
 - **Seed data**: an entity's or a relationship's initial rows, in its editor's **Seed data** tab and in the domain's
   Seed data folder; a reference type's rows are its Rows tab. A seed lists its columns once and holds one row per line,
@@ -1082,8 +1249,9 @@ are at `table.entity`. The rest of the database side works the same way, each fr
 does not declare has no annotations); each column of `table.columns` from its own entry in the table file, a designed
 or extra column or the overlay entry of a synthesized one, never from its attribute, which stays at `column.attribute`;
 and views and sequences (`database.views`, `database.sequences`) from their files, as are routines, database types and
-SQL objects (`database.routines`, `database.types`, `database.objects`, each also on its schema); a column typed by a
-database type names it at `column.db_type`. `has_stereotype`, `has_tag` and
+SQL objects (`database.routines`, `database.types`, `database.objects`, each also on its schema) and queries
+(`database.queries`, with their trees as plain objects: `query.from`, `query.select`, `query.where`, `query.collections`);
+a column typed by a database type names it at `column.db_type`. `has_stereotype`, `has_tag` and
 `in_category` take any of these as well as an element. A child table (a value object or collection stored as a table)
 names its attribute at `table.attribute`, and the constraints of a table file keep their ids (`table.indexes[0].id`).
 
@@ -1103,6 +1271,7 @@ and where the result goes (the output pattern). `sql-ddl` has ten units: `table`
 | `each table`, `each entity`, `each enum`, … | once per element of that kind | one file per element: 40 tables give 40 scripts |
 | `each view`, `each sequence` | once per view or sequence of every database (the key sequences the engine creates included) | one file each; a filter takes tags, stereotypes, categories and the database, read from the view's or sequence's own file |
 | `each routine`, `each database type`, `each sql object` | once per routine, database type or SQL object of every database | one file each, the template variable being `routine`, `database_type` or `sql_object`; a filter works as for views |
+| `each query` | once per query of every database | one file each, the template variable being `query`; `query_sql` and `query_collection_sql` render its SQL; a filter works as for views |
 | `model` | once, with the whole model | one file for many: a template that loops over every entity writes them all into one file |
 | `each locale` | once per declared language | one file per language (a resource file, a dictionary) |
 | `each process`, `each actor`, `each scenario` | once per process, actor or scenario | one file each: a page per process, a test per scenario (see "Generating code from processes") |
@@ -1420,7 +1589,7 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | `maquettiste process export <process>` | The process as an XState machine config (`--format xstate`, the only format), on stdout or into `--out <file>`. What has no XState home travels under `meta.maquettiste`, so importing the file back over the process gives the same file. |
 | `maquettiste process import <file>` | Previews importing an XState config: `--domain <package>` (with `--name`, `--use lifecycle\|orchestration`, `--subject <entity>`) for a new process, or `--into <process>` to re-import over one, keeping the ids of what matches. Prints the diagnostics and how many ids are created and removed; `--apply` writes it as one change, refused (exit 3) when the process changed while the command ran and exit 1 when the import has errors. `--format json` prints the document. |
 | `maquettiste process sync-enum <process>` | Previews making a lifecycle's bound enum follow its root-level states (members added, removed, reordered, and removals refused because a default, allowed values, a seed cell or a scenario still uses the member); `--apply` writes it; `--check` exits 2 when the enum is out of sync. A refused removal exits 1: change the uses first. |
-| `maquettiste model export` | Writes the model as data for another system: the canonical document of every element, or of the ones `--kind`, `--package` (id or name), `--tag`, `--category`, `--stereotype`, `--query` (name contains) and `--ids a,b,...` select, as one JSON array (`--format json`, the default) or one document per line (`--format ndjson`, for a pipeline); `--fields name,attributes` keeps only those members of each document (`id` and `kind` always), `--out <file>` writes a file. With `--resolved` it writes the resolved model instead, what templates read, as flat records: `--scope entities` (attributes resolved, inherited ones marked, keys, relations and mappings by id), `databases` (each database's tables, views, sequences, routines, database types and SQL objects), `tables`, `routines`, `database-types`, `sql-objects`, `processes` and the other kinds, `all` by default; `--database <id or name>` keeps what is mapped to that database. A model with errors cannot be resolved: the errors go to stderr and the command exits 1. |
+| `maquettiste model export` | Writes the model as data for another system: the canonical document of every element, or of the ones `--kind`, `--package` (id or name), `--tag`, `--category`, `--stereotype`, `--query` (name contains) and `--ids a,b,...` select, as one JSON array (`--format json`, the default) or one document per line (`--format ndjson`, for a pipeline); `--fields name,attributes` keeps only those members of each document (`id` and `kind` always), `--out <file>` writes a file. With `--resolved` it writes the resolved model instead, what templates read, as flat records: `--scope entities` (attributes resolved, inherited ones marked, keys, relations and mappings by id), `databases` (each database's tables, views, sequences, routines, database types, SQL objects and queries), `tables`, `routines`, `database-types`, `sql-objects`, `queries`, `processes` and the other kinds, `all` by default; `--database <id or name>` keeps what is mapped to that database. A model with errors cannot be resolved: the errors go to stderr and the command exits 1. |
 | `maquettiste model stats` | The kinds of element the model holds and how many of each; `--by package` adds the counts per package, `--format json` for scripts. |
 | `maquettiste model delete <id or name>` | Deletes an element with `--resolution refuse|remove-references|delete-dependents` (default refuse); `--dry-run` prints the delete plan: what would be deleted, cleared or removed, and what blocks it; `--format json` for scripts. Exit 1 when refused or invalid, 3 on a conflict. |
 | `maquettiste pack new <name>` | Scaffolds a pack under `.maquettiste/templates/<name>/` (`--from empty`, `sql-ddl` or `csharp-dapper`). Give it an `output` under an allowed root in `maquettiste.json` before the next `generate` (packs/README.md). |

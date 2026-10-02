@@ -79,6 +79,7 @@
           "routine",
           "database-type",
           "sql-object",
+          "query",
           "mapping",
           "diagram",
           "tag-vocabulary",

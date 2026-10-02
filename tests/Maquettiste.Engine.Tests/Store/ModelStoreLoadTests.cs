@@ -72,7 +72,7 @@ public sealed class ModelStoreLoadTests
 
         Assert.Null(store.Current);
         await store.LoadAsync(Ct);
-        Assert.Equal(26, store.Current!.Documents.Count);
+        Assert.Equal(29, store.Current!.Documents.Count);
     }
 
     [Fact]

@@ -19,7 +19,7 @@ public sealed class ModelStoreDeleteTests
 
         Assert.Equal(SaveOutcome.Referenced, result.Outcome);
         var kinds = result.Referrers.Select(r => s.Model.GetDocument(r.FromElementId)!.Element.KindName).Distinct().Order(StringComparer.Ordinal);
-        Assert.Equal(["diagram", "mapping", "relation", "table"], kinds);
+        Assert.Equal(["diagram", "mapping", "query", "relation", "table"], kinds);
         // Sub-element references count too: the overlay table's index and column name invoice attributes.
         Assert.Contains(result.Referrers, r => r.ToId != invoice.Element.Id);
         Assert.Equal(before, s.Files());

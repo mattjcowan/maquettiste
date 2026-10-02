@@ -146,7 +146,9 @@ describe("mock model index", () => {
     }
     const entity = entriesOf(model, "entity")[0];
     const refs = model.references(entity.id)!;
-    const scanned = [...model.entries.values()].filter((e) => e.id !== entity.id && JSON.stringify(e.json).includes(entity.id)).map((e) => e.id);
+    // References to the entity's attributes count too (a query's column names one by its key).
+    const own = [entity.id, ...((entity.json.attributes as Json[] | undefined) ?? []).map((a) => String(a.id))];
+    const scanned = [...model.entries.values()].filter((e) => e.id !== entity.id && own.some((id) => JSON.stringify(e.json).includes(id))).map((e) => e.id);
     expect(new Set(refs.map((r) => r.fromElementId))).toEqual(new Set(scanned));
   });
 });

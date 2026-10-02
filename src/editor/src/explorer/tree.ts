@@ -136,13 +136,16 @@ export type ScenarioStatus = { passed: true } | { passed: false; step: number };
 /** The E5c addendum `enumId`, read when present. */
 type Summary = TableSummary & { enumId?: string | null };
 
-/** What a schema of the Databases explorer holds, in folder order: tables, then the database objects with files of their own. */
-const OBJECT_KINDS = ["view", "sequence", "routine", "database-type", "sql-object"] as const;
+/**
+ * What a schema of the Databases explorer holds, in folder order: tables, then the database objects with files of their own. A query
+ * has no schema: it shows under the database's default one.
+ */
+const OBJECT_KINDS = ["view", "sequence", "routine", "database-type", "sql-object", "query"] as const;
 const BUCKET_KINDS = ["table", ...OBJECT_KINDS] as const;
 type BucketKind = (typeof BUCKET_KINDS)[number];
 type Bucket = Record<BucketKind, TreeNode[]>;
-const emptyBucket = (): Bucket => ({ table: [], view: [], sequence: [], routine: [], "database-type": [], "sql-object": [] });
-const emptyCounts = (): Record<BucketKind, number> => ({ table: 0, view: 0, sequence: 0, routine: 0, "database-type": 0, "sql-object": 0 });
+const emptyBucket = (): Bucket => ({ table: [], view: [], sequence: [], routine: [], "database-type": [], "sql-object": [], query: [] });
+const emptyCounts = (): Record<BucketKind, number> => ({ table: 0, view: 0, sequence: 0, routine: 0, "database-type": 0, "sql-object": 0, query: 0 });
 /** The list of a schema a physical row goes in, or undefined for a kind a schema does not hold (a mapping). */
 const bucketList = (b: Bucket, kind: string): TreeNode[] | undefined =>
   (BUCKET_KINDS as readonly string[]).includes(kind) ? b[kind as BucketKind] : undefined;

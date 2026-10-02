@@ -256,10 +256,11 @@ export interface paths {
          *     - `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards,
          *       actions, gates and invokes, actors by id.
          *     - `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and
-         *       indexes, views, sequences, routines, database types and SQL objects); `tables`: one `TableRecord` per table, for
-         *       databases too large for one record; `routines`, `database-types`, `sql-objects`: one `RoutineRecord`,
-         *       `DatabaseTypeRecord` or `SqlObjectRecord` per object.
-         *     - `all` (the default): every scope but `tables`, `routines`, `database-types` and `sql-objects`, which `databases` holds.
+         *       indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,
+         *       for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,
+         *       `DatabaseTypeRecord`, `SqlObjectRecord` or `QueryRecord` per object.
+         *     - `all` (the default): every scope but `tables`, `routines`, `database-types`, `sql-objects` and `queries`, which
+         *       `databases` holds.
          *
          *     `database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases and tables to
          *     it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it
@@ -520,6 +521,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/model/queries/{id}/sql": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description An element or sub-element id (uppercase ULID).
+                 * @example 01J92P0V0FJ23CGSNKM7P1W5V7
+                 */
+                id: components["parameters"]["ElementId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The SQL of one query for a dialect
+         * @description Renders a query (a query element over a database's tables and views) as parameterised SQL for its database's dialect, or
+         *     the one named: the query's statement and one statement per collection. Identifiers are quoted by the database's quoting
+         *     setting, functions spelled per dialect, `ilike` lowered where the dialect has none, paging written as `LIMIT/OFFSET` or
+         *     `OFFSET … FETCH NEXT`. A collection runs once for all parent rows (a second round trip): the parent's statement carries
+         *     the correlation columns, the collection's takes their values as the list parameter `__keys0` (`__keys1`...) and returns
+         *     each row's as `__key0`. An `sql` expression without a text for the dialect is MQ4029 in `diagnostics`. A model with
+         *     errors returns `preview: null` and the diagnostics. The MCP tool `preview_query_sql` answers the same.
+         */
+        get: operations["getQuerySql"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/databases/{id}/view": {
         parameters: {
             query?: never;
@@ -537,8 +570,8 @@ export interface paths {
          * The resolved tables of one database
          * @description The physical model after conventions, mappings and table overlays are applied: every table (synthesized,
          *     designed or imported), its columns with the attribute each one stores, keys, foreign keys and indexes, and
-         *     every view, sequence, routine, database type, SQL object and schema. The database, each schema, table, column,
-         *     view, sequence, routine, database type and SQL object carries the annotations of its own file or entry (display and plural names, description, stereotypes, tags, category,
+         *     every view, sequence, routine, database type, SQL object, query and schema. The database, each schema, table, column,
+         *     view, sequence, routine, database type, SQL object and query carries the annotations of its own file or entry (display and plural names, description, stereotypes, tags, category,
          *     properties, generation hints); a synthesized table without an overlay, or a synthesized column without an
          *     overlay entry, has none. The Database workspace draws table diagrams from it and the Mappings workspace
          *     sets it beside the entity. A model with errors returns `view: null` and the diagnostics.
@@ -1698,7 +1731,7 @@ export interface components {
             detail?: string;
             instance?: string;
             /** @enum {string} */
-            code: "bad-request" | "unsupported-media-type" | "too-large" | "unauthenticated" | "bad-token" | "too-many-attempts" | "forbidden" | "forbidden-origin" | "not-found" | "not-a-diagram" | "not-a-database" | "invalid-icon" | "precondition-required" | "queue-full" | "job-finished" | "model-unavailable" | "superseded" | "conflict" | "internal";
+            code: "bad-request" | "unsupported-media-type" | "too-large" | "unauthenticated" | "bad-token" | "too-many-attempts" | "forbidden" | "forbidden-origin" | "not-found" | "not-a-diagram" | "not-a-database" | "not-a-query" | "invalid-icon" | "precondition-required" | "queue-full" | "job-finished" | "model-unavailable" | "superseded" | "conflict" | "internal";
             traceId?: string;
         };
         SignInRequest: {
@@ -2148,7 +2181,7 @@ export interface components {
             }[];
         };
         /** @enum {string} */
-        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "process" | "actor" | "scenario";
+        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "process" | "actor" | "scenario";
         /** @enum {string} */
         ChangeSource: "editor" | "disk" | "cli" | "engine";
         /**
@@ -2171,7 +2204,7 @@ export interface components {
             path: components["schemas"]["RepoPath"];
             /** @description The element's display name, when it has one (E5). Search matches it and the explorer shows it as the label. */
             displayName?: string;
-            /** @description The owning database's id, on table, view, sequence, routine, database-type, sql-object and mapping rows (E5). */
+            /** @description The owning database's id, on table, view, sequence, routine, database-type, sql-object, query and mapping rows (E5). */
             database?: components["schemas"]["Ulid"];
             /** @description The entity a mapping maps or a table overlay applies to, on mapping and table rows that have one (E5). */
             entity?: components["schemas"]["Ulid"];
@@ -2221,7 +2254,7 @@ export interface components {
             missing: string[];
         };
         /** @description A canonical model file (`schemas/v1/<kind>.json`), chosen by `kind`. */
-        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["routine"] | components["schemas"]["database-type"] | components["schemas"]["sql-object"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"] | components["schemas"]["process"] | components["schemas"]["actor"] | components["schemas"]["scenario"];
+        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["routine"] | components["schemas"]["database-type"] | components["schemas"]["sql-object"] | components["schemas"]["query"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"] | components["schemas"]["process"] | components["schemas"]["actor"] | components["schemas"]["scenario"];
         /** @description A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required. Reference types and seeds (`reference-type`, `seed`) are documents like any other. */
         NewModelDocument: {
             kind: components["schemas"]["ElementKind"];
@@ -2534,7 +2567,7 @@ export interface components {
         /** @description One page of the resolved model (`getResolvedModel`). */
         ResolvedPage: {
             /** @description The records, by kind, name and id (ordinal). */
-            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"])[];
+            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"] | components["schemas"]["QueryRecord"])[];
             /** @description The cursor of the next page; null on the last one. */
             next: string | null;
             /** @description When the model has errors, the errors that prevented resolution (and `items` is empty); otherwise empty. */
@@ -3122,6 +3155,15 @@ export interface components {
             database: components["schemas"]["Ulid"];
             sqlObject: components["schemas"]["SqlObjectView"];
         };
+        /** @description One query of a database on its own (scope `queries`). */
+        QueryRecord: {
+            id: components["schemas"]["Ulid"];
+            /** @constant */
+            kind: "query";
+            name: string;
+            database: components["schemas"]["Ulid"];
+            query: components["schemas"]["QueryView"];
+        };
         DatabaseViewResult: {
             view: components["schemas"]["DatabaseView"] | null;
             diagnostics: components["schemas"]["Diagnostic"][];
@@ -3184,6 +3226,8 @@ export interface components {
             types?: components["schemas"]["DatabaseTypeView"][];
             /** @description Every SQL object (a trigger, grant, extension or other object the model does not type), by schema then name. Always sent by this engine; optional for older servers. */
             objects?: components["schemas"]["SqlObjectView"][];
+            /** @description Every query over the database's tables and views, by name, with its SQL for the database's dialect. Always sent by this engine; optional for older servers. */
+            queries?: components["schemas"]["QueryView"][];
             /** @description Every schema, by name; the ones the file declares and the ones a table, view, sequence, routine, database type or SQL object uses. */
             schemas: components["schemas"]["SchemaView"][];
             /** @enum {string} */
@@ -3610,6 +3654,171 @@ export interface components {
             generation: {
                 [key: string]: components["schemas"]["GenerationHintsView"];
             };
+        };
+        /**
+         * @description One resolved query (a query over the database's tables and views, written as data), with the annotations of its file (as
+         *     `TableView`). The trees (`where`, `having`, `groupBy`, `orderBy`, each field's `expression`, a join's `on`, a collection's
+         *     `query`) are as the file writes them (`query.json`); resolution adds the sources' tables and views, each field's type,
+         *     the collections' correlation keys and the SQL for the database's dialect.
+         */
+        QueryView: {
+            id: components["schemas"]["Ulid"];
+            name: string;
+            /** @description The entity each result row has, or null for an ad hoc row (the select list). */
+            entityId: components["schemas"]["Ulid"] | null;
+            parameters: components["schemas"]["QueryParameterView"][];
+            from: components["schemas"]["QuerySourceView"];
+            joins: components["schemas"]["QuerySourceView"][];
+            select: components["schemas"]["QueryFieldView"][];
+            where: components["schemas"]["predicate"] | null;
+            groupBy: components["schemas"]["expression"][];
+            having: components["schemas"]["predicate"] | null;
+            orderBy: components["schemas"]["order"][];
+            distinct: boolean;
+            paging: components["schemas"]["paging"] | null;
+            collections: components["schemas"]["QueryCollectionView"][];
+            /** @description The SQL for the database's dialect with `@name` placeholders, with the hidden key columns its collections need. */
+            sql: string;
+            /** @description The parameters the SQL names, in first-appearance order. */
+            sqlParameters: string[];
+            /** @description The ids (a synthesized table's key) of the tables, views, routines and database types the query reads. */
+            uses: string[];
+            displayName: string | null;
+            pluralName: string | null;
+            description: string | null;
+            stereotypes: string[];
+            tags: string[];
+            category: components["schemas"]["Ulid"] | null;
+            properties: {
+                [key: string]: unknown;
+            };
+            generation: {
+                [key: string]: components["schemas"]["GenerationHintsView"];
+            };
+        };
+        /** @description A parameter of a query. */
+        QueryParameterView: {
+            name: string;
+            /** @description The built-in type keyword, or null when a database type gives the type. */
+            type: string | null;
+            dbTypeId: components["schemas"]["Ulid"] | null;
+            length: number | null;
+            precision: number | null;
+            scale: number | null;
+            nativeType: string;
+            /** @description The built-in keyword a code type map maps (a database type's base, or string). */
+            codeType: string;
+            /** @description Whether the caller passes a list of values. */
+            collection: boolean;
+            /** @description The default value, or null. */
+            default: unknown;
+            description: string | null;
+        };
+        /** @description A source of a query, the first (`kind` from) or a joined one. */
+        QuerySourceView: {
+            /** @description The source as the file writes it (a table or view id, a table key or an entity id). */
+            source: string;
+            alias: string;
+            /** @enum {string} */
+            kind: "from" | "inner" | "left" | "right" | "full" | "cross";
+            tableKey: string | null;
+            viewId: components["schemas"]["Ulid"] | null;
+            name: string;
+            schema: string | null;
+            on: components["schemas"]["predicate"] | null;
+        };
+        /** @description A field of a select list, with its inferred type. */
+        QueryFieldView: {
+            name: string;
+            attributeId: components["schemas"]["Ulid"] | null;
+            expression: components["schemas"]["expression"];
+            type: string | null;
+            nativeType: string | null;
+            codeType: string | null;
+            nullable: boolean;
+        };
+        /** @description A collection of a query, its nested query and the statement that fills it for every parent row at once. */
+        QueryCollectionView: {
+            name: string;
+            /** @description The file's attribute (an attribute id, a relation end id or an ad hoc name). */
+            attribute: string;
+            entityId: components["schemas"]["Ulid"] | null;
+            query: components["schemas"]["subquery"];
+            select: components["schemas"]["QueryFieldView"][];
+            keys: components["schemas"]["QueryKeyView"][];
+            sql: string;
+            sqlParameters: string[];
+        };
+        /**
+         * @description A correlation key of a collection: the parent row carries the value as `parentField` (a hidden column when no select field
+         *     does), the collection's statement takes the parent values as the list parameter `parameter` and returns each row's value as
+         *     `childField`.
+         */
+        QueryKeyView: {
+            outer: string;
+            parentField: string;
+            hidden: boolean;
+            childField: string;
+            parameter: string;
+            type: string | null;
+            nativeType: string | null;
+        };
+        QuerySqlResult: {
+            preview: components["schemas"]["QuerySqlPreview"] | null;
+            diagnostics: components["schemas"]["Diagnostic"][];
+        };
+        /**
+         * @description The SQL of one query for one dialect.
+         * @example {
+         *       "id": "01K6QRY0000000000000000001",
+         *       "name": "InvoicesByCustomer",
+         *       "database": "01J92P0V1QRN2181XM2ZWE02W4",
+         *       "dialect": "postgresql",
+         *       "sql": "SELECT i.id AS id, i.number AS number\nFROM billing.invoices i\nWHERE i.customer_id = @customerId\nORDER BY i.issued_on DESC\nLIMIT @limit OFFSET @offset",
+         *       "parameters": [
+         *         "customerId",
+         *         "offset",
+         *         "limit"
+         *       ],
+         *       "collections": [
+         *         {
+         *           "name": "lines",
+         *           "sql": "SELECT l.id AS id, l.quantity AS quantity, l.invoice_id AS __key0\nFROM billing.invoice_lines l\nWHERE l.invoice_id IN @__keys0",
+         *           "parameters": [
+         *             "__keys0"
+         *           ],
+         *           "keys": [
+         *             {
+         *               "outer": "i.id",
+         *               "parentField": "id",
+         *               "hidden": false,
+         *               "childField": "__key0",
+         *               "parameter": "__keys0",
+         *               "type": "uuid",
+         *               "nativeType": "uuid"
+         *             }
+         *           ]
+         *         }
+         *       ]
+         *     }
+         */
+        QuerySqlPreview: {
+            id: components["schemas"]["Ulid"];
+            name: string;
+            database: components["schemas"]["Ulid"];
+            /** @enum {string} */
+            dialect: "postgresql" | "sqlserver" | "mysql" | "sqlite" | "oracle";
+            sql: string;
+            /** @description The parameters the statement names, in first-appearance order (the positions of `$n` placeholders). */
+            parameters: string[];
+            collections: components["schemas"]["QueryCollectionSql"][];
+        };
+        /** @description The statement of one collection, run once for all parent rows with the list of their key values. */
+        QueryCollectionSql: {
+            name: string;
+            sql: string;
+            parameters: string[];
+            keys: components["schemas"]["QueryKeyView"][];
         };
         /** @description One pack's generation hints on a resolved object (every member written). */
         GenerationHintsView: {
@@ -5743,6 +5952,339 @@ export interface components {
             source?: components["schemas"]["source"];
         };
         /**
+         * Predicate
+         * @description Exactly one of: and, or (lists of predicates), not (a predicate), op with left and right (a list for in, notIn and between; none for isNull and isNotNull), exists (a nested query).
+         */
+        predicate: {
+            and?: components["schemas"]["predicate"][];
+            or?: components["schemas"]["predicate"][];
+            not?: components["schemas"]["predicate"];
+            /** @enum {unknown} */
+            op?: "eq" | "ne" | "lt" | "le" | "gt" | "ge" | "like" | "ilike" | "in" | "notIn" | "between" | "isNull" | "isNotNull";
+            left?: components["schemas"]["expression"];
+            right?: components["schemas"]["expression"] | components["schemas"]["expression"][];
+            exists?: components["schemas"]["subquery"];
+        } & (unknown | unknown | unknown | unknown | unknown);
+        /**
+         * Expression
+         * @description Exactly one of: column (alias.column_name; the column part may also be an attribute id or a column key), param, value, null, op with args, call (with args), case (with else), cast with type, sql (an opaque text per dialect).
+         */
+        expression: {
+            column?: string;
+            param?: components["schemas"]["identifier"];
+            value?: string | number | boolean;
+            /**
+             * @description The null literal.
+             * @constant
+             */
+            null?: true;
+            /** @enum {unknown} */
+            op?: "+" | "-" | "*" | "/" | "%" | "concat";
+            /** @description A function name (lower, upper, coalesce, count, sum, min, max, avg, length, now, or any other, passed through) or a routine id of the database. */
+            call?: string;
+            args?: components["schemas"]["expression"][];
+            case?: components["schemas"]["when"][];
+            else?: components["schemas"]["expression"];
+            cast?: components["schemas"]["expression"];
+            type?: components["schemas"]["builtinType"];
+            /** @description An opaque expression per dialect, for what the tree cannot say; the query cannot be rendered for a dialect without a text (nor "*"). */
+            sql?: components["schemas"]["dialectMap"];
+        } & (unknown | unknown | unknown | unknown | unknown | unknown | unknown | unknown | unknown);
+        /** Case branch */
+        when: {
+            when: components["schemas"]["predicate"];
+            then: components["schemas"]["expression"];
+        };
+        /** Query source */
+        from: {
+            /** @description A table or view of the query's database: a table or view file's id, a table key as the database view lists it (<entity id>@<database id>), or an entity id for the entity's table there. */
+            source: string;
+            /** @description The name column references use (alias.column); absent, the table's or view's name. */
+            alias?: components["schemas"]["identifier"];
+        };
+        /** Join */
+        join: {
+            /** @description A table or view of the query's database, as in from. */
+            source: string;
+            alias?: components["schemas"]["identifier"];
+            /**
+             * @default inner
+             * @enum {unknown}
+             */
+            kind?: "inner" | "left" | "right" | "full" | "cross";
+            on?: components["schemas"]["predicate"];
+        };
+        /** Select field */
+        field: {
+            /** @description The field's name in the result row; absent, the attribute's name. */
+            name?: components["schemas"]["identifier"];
+            /** @description The attribute of the query's entity (or of a collection's entity) the field fills. */
+            attribute?: components["schemas"]["id"];
+            /** @description The field's type in an ad hoc row; absent, inferred from the expression. */
+            type?: components["schemas"]["builtinType"];
+            /** @description Whether the field may be null; absent, inferred from the expression. */
+            nullable?: boolean;
+            expression: components["schemas"]["expression"];
+        } | unknown | unknown;
+        /** Order */
+        order: {
+            expression: components["schemas"]["expression"];
+            /**
+             * @default asc
+             * @enum {unknown}
+             */
+            direction?: "asc" | "desc";
+            /** @enum {unknown} */
+            nulls?: "first" | "last";
+        };
+        /**
+         * Nested query
+         * @description A query inside a collection or an exists condition; it may name the aliases of the queries around it.
+         */
+        subquery: {
+            from: components["schemas"]["from"];
+            /** @default [] */
+            joins?: components["schemas"]["join"][];
+            /**
+             * @description The fields; required in a collection, ignored by exists (which selects 1).
+             * @default []
+             */
+            select?: components["schemas"]["field"][];
+            where?: components["schemas"]["predicate"];
+            /** @default [] */
+            groupBy?: components["schemas"]["expression"][];
+            having?: components["schemas"]["predicate"];
+            /** @default [] */
+            orderBy?: components["schemas"]["order"][];
+            /** @default false */
+            distinct?: boolean;
+        };
+        /** Query parameter */
+        parameter: {
+            name: components["schemas"]["identifier"];
+            type: components["schemas"]["dbTypeRef"];
+            length?: components["schemas"]["length"];
+            precision?: components["schemas"]["precision"];
+            scale?: components["schemas"]["scale"];
+            /**
+             * @description Whether the caller passes a list of values (for in and notIn).
+             * @default false
+             */
+            collection?: boolean;
+            /** @description The value the generated method uses when the caller passes none. */
+            default?: string | number | boolean;
+            description?: string;
+        };
+        /** Paging */
+        paging: {
+            /** @description The rows to skip: an integer parameter's name or a number. */
+            offset?: components["schemas"]["identifier"] | number;
+            /** @description The most rows to return: an integer parameter's name or a number. */
+            limit?: components["schemas"]["identifier"] | number;
+        };
+        /** Collection */
+        collection: {
+            /** @description The collection the rows fill: the id of a collection attribute of the query's entity or of the relation end its to-many navigation leads to, or a name for an ad hoc row. */
+            attribute: string;
+            /** @description The entity each element has; absent, the nested select list is the element shape. */
+            entity?: components["schemas"]["id"];
+            /** @description The nested query; its predicates may name the outer query's aliases (the correlation), only in equality conditions at the top of its where. */
+            query: components["schemas"]["subquery"];
+        };
+        /**
+         * Query
+         * @description A query over the tables and views of a database, written as data (model/databases/<db>/queries/): sources, joins, a select list, predicates, grouping, ordering, paging and collections. Its result shape is an entity, or the select list when no entity is named.
+         */
+        query: {
+            $schema?: components["schemas"]["schemaPath"];
+            /** @constant */
+            kind: "query";
+            id: components["schemas"]["id"];
+            /** @default  */
+            name: components["schemas"]["label"];
+            displayName?: string;
+            pluralName?: string;
+            database: components["schemas"]["id"];
+            description?: components["schemas"]["description"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /** @description The entity whose shape each result row has; absent, the select list is the row shape (a name and a type per field). */
+            entity?: components["schemas"]["id"];
+            /**
+             * @description The values the caller passes, by name.
+             * @default []
+             */
+            parameters?: components["schemas"]["parameter"][];
+            from: components["schemas"]["from"];
+            /** @default [] */
+            joins?: components["schemas"]["join"][];
+            select: components["schemas"]["field"][];
+            where?: components["schemas"]["predicate"];
+            /** @default [] */
+            groupBy?: components["schemas"]["expression"][];
+            having?: components["schemas"]["predicate"];
+            /** @default [] */
+            orderBy?: components["schemas"]["order"][];
+            /** @default false */
+            distinct?: boolean;
+            paging?: components["schemas"]["paging"];
+            /**
+             * @description Collections filled per result row by a correlated query (a sub-select yielding a list per parent row).
+             * @default []
+             */
+            collections?: components["schemas"]["collection"][];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+            $defs: {
+                /** Query parameter */
+                parameter: {
+                    name: components["schemas"]["identifier"];
+                    type: components["schemas"]["dbTypeRef"];
+                    length?: components["schemas"]["length"];
+                    precision?: components["schemas"]["precision"];
+                    scale?: components["schemas"]["scale"];
+                    /**
+                     * @description Whether the caller passes a list of values (for in and notIn).
+                     * @default false
+                     */
+                    collection?: boolean;
+                    /** @description The value the generated method uses when the caller passes none. */
+                    default?: string | number | boolean;
+                    description?: string;
+                };
+                /** Query source */
+                from: {
+                    /** @description A table or view of the query's database: a table or view file's id, a table key as the database view lists it (<entity id>@<database id>), or an entity id for the entity's table there. */
+                    source: string;
+                    /** @description The name column references use (alias.column); absent, the table's or view's name. */
+                    alias?: components["schemas"]["identifier"];
+                };
+                /** Join */
+                join: {
+                    /** @description A table or view of the query's database, as in from. */
+                    source: string;
+                    alias?: components["schemas"]["identifier"];
+                    /**
+                     * @default inner
+                     * @enum {unknown}
+                     */
+                    kind?: "inner" | "left" | "right" | "full" | "cross";
+                    on?: components["schemas"]["predicate"];
+                };
+                /** Select field */
+                field: {
+                    /** @description The field's name in the result row; absent, the attribute's name. */
+                    name?: components["schemas"]["identifier"];
+                    /** @description The attribute of the query's entity (or of a collection's entity) the field fills. */
+                    attribute?: components["schemas"]["id"];
+                    /** @description The field's type in an ad hoc row; absent, inferred from the expression. */
+                    type?: components["schemas"]["builtinType"];
+                    /** @description Whether the field may be null; absent, inferred from the expression. */
+                    nullable?: boolean;
+                    expression: components["schemas"]["expression"];
+                } | unknown | unknown;
+                /** Order */
+                order: {
+                    expression: components["schemas"]["expression"];
+                    /**
+                     * @default asc
+                     * @enum {unknown}
+                     */
+                    direction?: "asc" | "desc";
+                    /** @enum {unknown} */
+                    nulls?: "first" | "last";
+                };
+                /** Paging */
+                paging: {
+                    /** @description The rows to skip: an integer parameter's name or a number. */
+                    offset?: components["schemas"]["identifier"] | number;
+                    /** @description The most rows to return: an integer parameter's name or a number. */
+                    limit?: components["schemas"]["identifier"] | number;
+                };
+                /** Collection */
+                collection: {
+                    /** @description The collection the rows fill: the id of a collection attribute of the query's entity or of the relation end its to-many navigation leads to, or a name for an ad hoc row. */
+                    attribute: string;
+                    /** @description The entity each element has; absent, the nested select list is the element shape. */
+                    entity?: components["schemas"]["id"];
+                    /** @description The nested query; its predicates may name the outer query's aliases (the correlation), only in equality conditions at the top of its where. */
+                    query: components["schemas"]["subquery"];
+                };
+                /**
+                 * Nested query
+                 * @description A query inside a collection or an exists condition; it may name the aliases of the queries around it.
+                 */
+                subquery: {
+                    from: components["schemas"]["from"];
+                    /** @default [] */
+                    joins?: components["schemas"]["join"][];
+                    /**
+                     * @description The fields; required in a collection, ignored by exists (which selects 1).
+                     * @default []
+                     */
+                    select?: components["schemas"]["field"][];
+                    where?: components["schemas"]["predicate"];
+                    /** @default [] */
+                    groupBy?: components["schemas"]["expression"][];
+                    having?: components["schemas"]["predicate"];
+                    /** @default [] */
+                    orderBy?: components["schemas"]["order"][];
+                    /** @default false */
+                    distinct?: boolean;
+                };
+                /** Case branch */
+                when: {
+                    when: components["schemas"]["predicate"];
+                    then: components["schemas"]["expression"];
+                };
+                /**
+                 * Expression
+                 * @description Exactly one of: column (alias.column_name; the column part may also be an attribute id or a column key), param, value, null, op with args, call (with args), case (with else), cast with type, sql (an opaque text per dialect).
+                 */
+                expression: {
+                    column?: string;
+                    param?: components["schemas"]["identifier"];
+                    value?: string | number | boolean;
+                    /**
+                     * @description The null literal.
+                     * @constant
+                     */
+                    null?: true;
+                    /** @enum {unknown} */
+                    op?: "+" | "-" | "*" | "/" | "%" | "concat";
+                    /** @description A function name (lower, upper, coalesce, count, sum, min, max, avg, length, now, or any other, passed through) or a routine id of the database. */
+                    call?: string;
+                    args?: components["schemas"]["expression"][];
+                    case?: components["schemas"]["when"][];
+                    else?: components["schemas"]["expression"];
+                    cast?: components["schemas"]["expression"];
+                    type?: components["schemas"]["builtinType"];
+                    /** @description An opaque expression per dialect, for what the tree cannot say; the query cannot be rendered for a dialect without a text (nor "*"). */
+                    sql?: components["schemas"]["dialectMap"];
+                } & (unknown | unknown | unknown | unknown | unknown | unknown | unknown | unknown | unknown);
+                /**
+                 * Predicate
+                 * @description Exactly one of: and, or (lists of predicates), not (a predicate), op with left and right (a list for in, notIn and between; none for isNull and isNotNull), exists (a nested query).
+                 */
+                predicate: {
+                    and?: components["schemas"]["predicate"][];
+                    or?: components["schemas"]["predicate"][];
+                    not?: components["schemas"]["predicate"];
+                    /** @enum {unknown} */
+                    op?: "eq" | "ne" | "lt" | "le" | "gt" | "ge" | "like" | "ilike" | "in" | "notIn" | "between" | "isNull" | "isNotNull";
+                    left?: components["schemas"]["expression"];
+                    right?: components["schemas"]["expression"] | components["schemas"]["expression"][];
+                    exists?: components["schemas"]["subquery"];
+                } & (unknown | unknown | unknown | unknown | unknown);
+            };
+        };
+        /**
          * Mapping
          * @description Binds one entity or relation to one database.
          */
@@ -5962,7 +6504,7 @@ export interface components {
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
             /** @default [] */
-            appliesTo?: ("package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "attribute" | "enum-member" | "column" | "process" | "actor" | "scenario" | "state" | "transition" | "event")[];
+            appliesTo?: ("package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "attribute" | "enum-member" | "column" | "process" | "actor" | "scenario" | "state" | "transition" | "event")[];
             /** @default [] */
             attributes?: components["schemas"]["attribute"][];
             /** @default {} */
@@ -6883,7 +7425,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
-        /** @description No such element, diagram, plan, path in the plan, job or connection (`not-found`, `not-a-diagram`, `not-a-database`). */
+        /** @description No such element, diagram, plan, path in the plan, job or connection (`not-found`, `not-a-diagram`, `not-a-database`, `not-a-query`). */
         NotFound: {
             headers: {
                 [name: string]: unknown;
@@ -7522,7 +8064,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description What to read. */
-                scope?: "all" | "packages" | "entities" | "relations" | "enums" | "value-objects" | "scalar-types" | "reference-types" | "seeds" | "processes" | "actors" | "scenarios" | "databases" | "tables" | "routines" | "database-types" | "sql-objects";
+                scope?: "all" | "packages" | "entities" | "relations" | "enums" | "value-objects" | "scalar-types" | "reference-types" | "seeds" | "processes" | "actors" | "scenarios" | "databases" | "tables" | "routines" | "database-types" | "sql-objects" | "queries";
                 /** @description A database id; only what is mapped to it. */
                 database?: components["schemas"]["Ulid"];
                 /** @description The `next` of the previous page, as it was returned (opaque; it encodes the last position read). */
@@ -8125,6 +8667,42 @@ export interface operations {
                 };
             };
             428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    getQuerySql: {
+        parameters: {
+            query?: {
+                /** @description postgresql, sqlserver, mysql, sqlite or oracle; absent for the query's database's. */
+                dialect?: string;
+                /** @description The placeholder style, `@name` (default), `:name` or `$1`. */
+                placeholder?: "@" | ":" | "$";
+                /** @description How a list parameter is written, `IN @name` for a data access library that expands lists (default) or `= ANY(@name)` on PostgreSQL. */
+                lists?: "expand" | "any";
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description An element or sub-element id (uppercase ULID).
+                 * @example 01J92P0V0FJ23CGSNKM7P1W5V7
+                 */
+                id: components["parameters"]["ElementId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The statements, or the diagnostics that prevented them. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuerySqlResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
         };
     };
     getDatabaseView: {

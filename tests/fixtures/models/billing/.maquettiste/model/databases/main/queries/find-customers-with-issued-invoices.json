@@ -1,0 +1,101 @@
+{
+  "$schema": "../../../../.schema/v1/query.json",
+  "kind": "query",
+  "id": "01K6QRY0000000000000000003",
+  "name": "FindCustomersWithIssuedInvoices",
+  "database": "01J92P0V1QRN2181XM2ZWE02W4",
+  "description": "Customers whose name matches a pattern, ignoring case, who have at least one issued invoice.",
+  "entity": "01J92P0V0ETQKXXP951CMMNHH3",
+  "parameters": [
+    {
+      "name": "namePattern",
+      "type": "string",
+      "default": "%"
+    }
+  ],
+  "from": {
+    "source": "01J92P0V0ETQKXXP951CMMNHH3",
+    "alias": "c"
+  },
+  "select": [
+    {
+      "attribute": "01J92P0V0KGPC29TQQG8R57EBM",
+      "expression": {
+        "column": "c.01J92P0V0KGPC29TQQG8R57EBM"
+      }
+    },
+    {
+      "attribute": "01J92P0V0MS09YFZHX07JQ3KMN",
+      "expression": {
+        "column": "c.01J92P0V0MS09YFZHX07JQ3KMN"
+      }
+    },
+    {
+      "attribute": "01J92P0V0NRX99014KNVAZGPEW",
+      "expression": {
+        "column": "c.01J92P0V0NRX99014KNVAZGPEW"
+      }
+    },
+    {
+      "attribute": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+      "expression": {
+        "column": "c.01J92P0V26XYZRDQ8FJ6KZXT6S"
+      }
+    }
+  ],
+  "where": {
+    "and": [
+      {
+        "op": "ilike",
+        "left": {
+          "column": "c.01J92P0V0MS09YFZHX07JQ3KMN"
+        },
+        "right": {
+          "param": "namePattern"
+        }
+      },
+      {
+        "exists": {
+          "from": {
+            "source": "01J92P0V1T0J6RH4MY9H81NYB4",
+            "alias": "i"
+          },
+          "where": {
+            "and": [
+              {
+                "op": "eq",
+                "left": {
+                  "column": "i.01J92P0V1EHF7PB28CZJG9C5SN.01J92P0V0KGPC29TQQG8R57EBM"
+                },
+                "right": {
+                  "column": "c.01J92P0V0KGPC29TQQG8R57EBM"
+                }
+              },
+              {
+                "op": "eq",
+                "left": {
+                  "column": "i.01J92P0V0VB1Z49SWERMAGR4TV"
+                },
+                "right": {
+                  "value": "I"
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "orderBy": [
+    {
+      "expression": {
+        "call": "lower",
+        "args": [
+          {
+            "column": "c.01J92P0V0MS09YFZHX07JQ3KMN"
+          }
+        ]
+      }
+    }
+  ]
+}
