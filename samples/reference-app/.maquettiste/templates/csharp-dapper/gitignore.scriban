@@ -1,0 +1,22 @@
+{{-
+# The managed block of an ignore file (unit gitignore, mode block): the lines that keep the generated folder out of version
+# control, written only when the gitignorePath parameter names the file (under the pack output, like the other folders). The
+# lines are relative to that file's folder, so it must sit at or above generatedFolder; otherwise nothing is written. When the
+# generated folder is the file's own folder, everything in it is ignored except the file itself.
+if pack.params.gitignorePath != ""
+  parts = pack.params.gitignorePath | string.split "/"
+  name = parts | array.last
+  dir = parts | array.limit ((parts | array.size) - 1) | array.join "/"
+  generated = pack.params.generatedFolder
+  lines = null
+  if generated == dir
+    lines = "/*\n!/" + name + "\n"
+  else if dir == ""
+    lines = "/" + generated + "/\n"
+  else if generated | string.starts_with (dir + "/")
+    lines = "/" + (generated | string.slice ((dir | string.size) + 1)) + "/\n"
+  end
+  if lines
+-}}
+{{- file pack.params.gitignorePath lines -}}
+{{- end; end -}}

@@ -119,7 +119,8 @@ internal sealed class ChangeDetector(EngineOptions options) : IChangeDetector
         try
         {
             var bytes = File.ReadAllBytes(full);
-            return string.Equals(ManifestHashes.Comparable(output.ManifestHash, bytes, ContentHash.Of(bytes)), output.ManifestHash, StringComparison.Ordinal);
+            return string.Equals(ManifestHashes.Comparable(output.ManifestHash, bytes, ContentHash.Of(bytes), ManagedBlock.Marker(pack, entry.Unit)),
+                output.ManifestHash, StringComparison.Ordinal);
         }
         catch (IOException)
         {

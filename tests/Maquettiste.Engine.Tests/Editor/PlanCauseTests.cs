@@ -153,7 +153,7 @@ public sealed class PlanOutputRootTests
 public sealed class ExplainSelectionTests
 {
     [Fact]
-    public async Task Explain_names_the_run_selection_the_root_selection_and_the_failing_where_clause()
+    public async Task Explain_names_the_run_selection_and_the_failing_where_clause()
     {
         await using var repo = Create();
         var plan = (await repo.Service.PlanAsync(new GenerationRequest { Packs = ["sql-ddl"] }, null, Ct)).Plan!;
@@ -162,11 +162,7 @@ public sealed class ExplainSelectionTests
         var notSelected = await repo.Service.ExplainAsync("sql-ddl", "table", table.ElementId, null, Ct, ["csharp-dapper"]);
         Assert.Equal(("not-selected", false), (notSelected!.Reason, notSelected.Planned));
 
-        // sql-ddl writes under db, a committed root: a run of built roots does not render it; a run of committed roots does.
-        var built = await repo.Service.ExplainAsync("sql-ddl", "table", table.ElementId, null, Ct, roots: RootSelection.Built);
-        Assert.Equal("root-not-selected", built!.Reason);
-        Assert.Contains("'db', a committed root", built.Detail, StringComparison.Ordinal);
-        Assert.True((await repo.Service.ExplainAsync("sql-ddl", "table", table.ElementId, null, Ct, roots: RootSelection.Committed))!.Planned);
+        Assert.True((await repo.Service.ExplainAsync("sql-ddl", "table", table.ElementId, null, Ct))!.Planned);
 
         var packJson = repo.Repo.PathOf(".maquettiste/templates/sql-ddl/pack.json");
         var node = JsonNode.Parse(File.ReadAllText(packJson))!.AsObject();

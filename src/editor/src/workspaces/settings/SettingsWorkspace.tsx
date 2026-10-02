@@ -425,9 +425,7 @@ function ReadOnlySettings() {
         <SectionTitle>Output allowlist</SectionTitle>
         <ul className="font-mono text-12">
           {s.outputs.allow.map((a) => (
-            <li key={a.path}>
-              allow {a.path} {a.commit ? "(committed)" : "(built)"}
-            </li>
+            <li key={a.path}>allow {a.path}</li>
           ))}
           {s.outputs.deny.map((d) => (
             <li key={d}>deny {d}</li>

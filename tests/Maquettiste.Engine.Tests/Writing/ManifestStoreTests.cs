@@ -15,15 +15,16 @@ public sealed class ManifestStoreTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
-    public async Task Save_writes_one_sorted_entry_per_line_in_the_committed_folder()
+    public async Task Save_writes_one_sorted_entry_per_line_in_the_model_folder()
     {
         using var f = new WritingFixture();
 
-        await f.Manifests.SavePackAsync("sql-ddl", true,
+        await f.Manifests.SavePackAsync("sql-ddl",
         [
             new ManifestEntry("db/main/tables/team.sql", "r:" + H2, "table:01JB2Q0N"),
             new ManifestEntry("db/main/tables/invoice.sql", H1, "table:01JB2Q0M"),
             new ManifestEntry("db/main/migrations/0001.sql", "o:" + H3, "migration"),
+            new ManifestEntry(".gitignore", "bc:" + H1, "ignore"),
         ], Ct);
 
         var expected =
@@ -31,22 +32,24 @@ public sealed class ManifestStoreTests
             "  \"$schema\": \"../.schema/v1/manifest.json\",\n" +
             "  \"pack\": \"sql-ddl\",\n" +
             "  \"files\": [\n" +
+            $"    [\".gitignore\", \"bc:{H1}\", \"ignore\"],\n" +
             $"    [\"db/main/migrations/0001.sql\", \"o:{H3}\", \"migration\"],\n" +
             $"    [\"db/main/tables/invoice.sql\", \"{H1}\", \"table:01JB2Q0M\"],\n" +
             $"    [\"db/main/tables/team.sql\", \"r:{H2}\", \"table:01JB2Q0N\"]\n" +
             "  ]\n" +
             "}\n";
-        Assert.Equal(expected, f.ManifestText("sql-ddl", committed: true));
-        Assert.Equal(Path.Combine(f.Repo.ModelRoot, "manifest", "sql-ddl.json"), f.Manifests.FileOf("sql-ddl", true));
+        Assert.Equal(expected, f.ManifestText("sql-ddl"));
+        Assert.Equal(Path.Combine(f.Repo.ModelRoot, "manifest", "sql-ddl.json"), f.Manifests.FileOf("sql-ddl"));
     }
 
     [Fact]
     public async Task Saved_manifest_is_valid_against_the_manifest_schema()
     {
         using var f = new WritingFixture();
-        await f.Manifests.SavePackAsync("p", true, [new ManifestEntry("db/a.sql", H1, "u"), new ManifestEntry("db/b.sql", "o:" + H2, "u#companion")], Ct);
+        await f.Manifests.SavePackAsync("p", [new ManifestEntry("db/a.sql", H1, "u"), new ManifestEntry("db/b.sql", "o:" + H2, "u#companion"),
+            new ManifestEntry(".gitignore", "b:" + H3, "ignore")], Ct);
 
-        using var document = JsonDocument.Parse(f.ManifestText("p", true));
+        using var document = JsonDocument.Parse(f.ManifestText("p"));
         var diagnostics = TestServices.Schemas.Evaluate("manifest.json", document.RootElement, ".maquettiste/manifest/p.json");
 
         Assert.Empty(diagnostics);
@@ -65,16 +68,16 @@ public sealed class ManifestStoreTests
             new ManifestEntry("db/Ａ.sql", H3, "u:5"),
         };
 
-        await f.Manifests.SavePackAsync("p", true, entries, Ct);
-        var first = File.ReadAllBytes(f.Manifests.FileOf("p", true));
-        var firstWrite = File.GetLastWriteTimeUtc(f.Manifests.FileOf("p", true));
-        File.SetLastWriteTimeUtc(f.Manifests.FileOf("p", true), new DateTime(2001, 1, 1, 0, 0, 0, DateTimeKind.Utc));
-        await f.Manifests.SavePackAsync("p", true, [.. entries.Reverse()], Ct);
-        var second = File.ReadAllBytes(f.Manifests.FileOf("p", true));
+        await f.Manifests.SavePackAsync("p", entries, Ct);
+        var first = File.ReadAllBytes(f.Manifests.FileOf("p"));
+        var firstWrite = File.GetLastWriteTimeUtc(f.Manifests.FileOf("p"));
+        File.SetLastWriteTimeUtc(f.Manifests.FileOf("p"), new DateTime(2001, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        await f.Manifests.SavePackAsync("p", [.. entries.Reverse()], Ct);
+        var second = File.ReadAllBytes(f.Manifests.FileOf("p"));
 
         Assert.Equal(first, second);
-        Assert.NotEqual(firstWrite, File.GetLastWriteTimeUtc(f.Manifests.FileOf("p", true)));
-        Assert.Equal(new DateTime(2001, 1, 1, 0, 0, 0, DateTimeKind.Utc), File.GetLastWriteTimeUtc(f.Manifests.FileOf("p", true)));
+        Assert.NotEqual(firstWrite, File.GetLastWriteTimeUtc(f.Manifests.FileOf("p")));
+        Assert.Equal(new DateTime(2001, 1, 1, 0, 0, 0, DateTimeKind.Utc), File.GetLastWriteTimeUtc(f.Manifests.FileOf("p")));
         // Ordinal UTF-8 order: U+FF21 (EF BC A1) sorts before U+1F600 (F0 9F 98 80), unlike UTF-16 ordinal order.
         var text = Encoding.UTF8.GetString(first);
         Assert.Contains("\"db/\uFF21.sql\"", text, StringComparison.Ordinal);
@@ -86,26 +89,44 @@ public sealed class ManifestStoreTests
     }
 
     [Fact]
-    public async Task Built_manifests_live_in_the_cache_folder()
+    public async Task A_cache_copy_an_earlier_release_left_is_read_once_then_moved_into_the_model_folder()
     {
         using var f = new WritingFixture();
-        await f.Manifests.SavePackAsync("p", false, [new ManifestEntry("src/Generated/a.cs", H1, "u")], Ct);
+        await f.Manifests.SavePackAsync("p", [new ManifestEntry("db/a.sql", H1, "u")], Ct);
+        // What a release before 0.5.5 wrote for roots not marked commit.
+        var legacy = Path.Combine(f.Repo.ModelRoot, ".cache", "manifest", "p.json");
+        Assert.Equal(legacy, f.Manifests.LegacyFileOf("p"));
+        Directory.CreateDirectory(Path.GetDirectoryName(legacy)!);
+        File.WriteAllText(legacy,
+            "{\n  \"$schema\": \"../../.schema/v1/manifest.json\",\n  \"pack\": \"p\",\n  \"files\": [\n" +
+            $"    [\"db/a.sql\", \"{H3}\", \"u\"],\n    [\"src/Generated/a.cs\", \"{H2}\", \"u\"]\n  ]\n}}\n");
+        // A pack known only by its cache copy is listed too.
+        Directory.CreateDirectory(f.Manifests.LegacyFolder);
+        File.Copy(legacy, f.Manifests.LegacyFileOf("q"));
 
-        var file = Path.Combine(f.Repo.ModelRoot, ".cache", "manifest", "p.json");
-        Assert.True(File.Exists(file));
-        Assert.Contains("\"$schema\": \"../../.schema/v1/manifest.json\"", File.ReadAllText(file), StringComparison.Ordinal);
-        Assert.False(File.Exists(f.Manifests.FileOf("p", true)));
+        var set = await f.Manifests.LoadAsync([], Ct);
+
+        Assert.Equal(["p", "q"], set.Packs);
+        // The model folder's entry wins a path both list.
+        Assert.Equal([new ManifestEntry("db/a.sql", H1, "u"), new ManifestEntry("src/Generated/a.cs", H2, "u")], set.Entries("p"));
+
+        await f.Manifests.SavePackAsync("p", set.Entries("p"), Ct);
+
+        Assert.False(File.Exists(legacy));
+        Assert.Contains("src/Generated/a.cs", f.ManifestText("p"), StringComparison.Ordinal);
+        Assert.Equal(set.Entries("p"), (await f.Manifests.LoadAsync(["p"], Ct)).Entries("p"));
+        Assert.True(File.Exists(f.Manifests.LegacyFileOf("q")));
     }
 
     [Fact]
     public async Task Empty_manifest_deletes_the_file()
     {
         using var f = new WritingFixture();
-        await f.Manifests.SavePackAsync("p", true, [new ManifestEntry("db/a.sql", H1, "u")], Ct);
+        await f.Manifests.SavePackAsync("p", [new ManifestEntry("db/a.sql", H1, "u")], Ct);
 
-        await f.Manifests.SavePackAsync("p", true, [], Ct);
+        await f.Manifests.SavePackAsync("p", [], Ct);
 
-        Assert.False(File.Exists(f.Manifests.FileOf("p", true)));
+        Assert.False(File.Exists(f.Manifests.FileOf("p")));
     }
 
     [Fact]
@@ -114,7 +135,7 @@ public sealed class ManifestStoreTests
         using var f = new WritingFixture();
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            f.Manifests.SavePackAsync("p", true, [new ManifestEntry("db/a.sql", H1, "u"), new ManifestEntry("db/a.sql", H2, "v")], Ct));
+            f.Manifests.SavePackAsync("p", [new ManifestEntry("db/a.sql", H1, "u"), new ManifestEntry("db/a.sql", H2, "v")], Ct));
     }
 
     [Fact]
@@ -123,28 +144,26 @@ public sealed class ManifestStoreTests
         using var f = new WritingFixture();
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            f.Manifests.SavePackAsync("../../escape", true, [new ManifestEntry("db/a.sql", H1, "u")], Ct));
+            f.Manifests.SavePackAsync("../../escape", [new ManifestEntry("db/a.sql", H1, "u")], Ct));
     }
 
     [Fact]
-    public async Task Load_round_trips_both_buckets()
+    public async Task Load_round_trips_every_pack()
     {
         using var f = new WritingFixture();
-        await f.Manifests.SavePackAsync("p", true, [new ManifestEntry("db/a.sql", H1, "u:1")], Ct);
-        await f.Manifests.SavePackAsync("p", false, [new ManifestEntry("src/Generated/a.cs", H2, "u:1#companion")], Ct);
-        await f.Manifests.SavePackAsync("q", true, [new ManifestEntry("db/q.sql", H3, "v")], Ct);
+        await f.Manifests.SavePackAsync("p", [new ManifestEntry("db/a.sql", H1, "u:1"), new ManifestEntry("src/Generated/a.cs", H2, "u:1#companion")], Ct);
+        await f.Manifests.SavePackAsync("q", [new ManifestEntry("db/q.sql", H3, "v")], Ct);
 
         var all = await f.Manifests.LoadAsync([], Ct);
         var onlyP = await f.Manifests.LoadAsync(["p", "missing"], Ct);
 
         Assert.Equal(["p", "q"], all.Packs);
-        Assert.Equal([new ManifestEntry("db/a.sql", H1, "u:1")], all.Entries("p", committed: true));
-        Assert.Equal([new ManifestEntry("src/Generated/a.cs", H2, "u:1#companion")], all.Entries("p", committed: false));
+        Assert.Equal([new ManifestEntry("db/a.sql", H1, "u:1"), new ManifestEntry("src/Generated/a.cs", H2, "u:1#companion")], all.Entries("p"));
         Assert.True(all.TryGet("db/q.sql", out var entry, out var pack));
         Assert.Equal(("q", H3), (pack, entry.Hash));
         Assert.False(all.TryGet("db/none.sql", out _, out _));
         Assert.Equal(["p"], onlyP.Packs);
-        Assert.Empty(onlyP.Entries("q", true));
+        Assert.Empty(onlyP.Entries("q"));
     }
 
     [Fact]
@@ -162,12 +181,12 @@ public sealed class ManifestStoreTests
             $"    [\"db/c.sql\", \"{H3}\", \"u:3\"],\n" +
             ">>>>>>> theirs\n" +
             $"    [\"db/d.sql\", \"{H1}\", \"u:4\"]\n  ]\n}}\n";
-        File.WriteAllText(f.Manifests.FileOf("p", true), text);
+        File.WriteAllText(f.Manifests.FileOf("p"), text);
 
         var set = await f.Manifests.LoadAsync(["p"], Ct);
 
-        Assert.Equal(["db/a.sql", "db/b.sql", "db/c.sql", "db/d.sql"], set.Entries("p", true).Select(e => e.Path));
-        Assert.Equal(H2, set.Entries("p", true)[1].Hash);
+        Assert.Equal(["db/a.sql", "db/b.sql", "db/c.sql", "db/d.sql"], set.Entries("p").Select(e => e.Path));
+        Assert.Equal(H2, set.Entries("p")[1].Hash);
     }
 
     [Fact]
@@ -176,7 +195,7 @@ public sealed class ManifestStoreTests
         var set = new ManifestSet();
 
         Assert.Empty(set.Packs);
-        Assert.Empty(set.Entries("p", true));
+        Assert.Empty(set.Entries("p"));
         Assert.False(set.TryGet("x", out _, out _));
     }
 
@@ -184,8 +203,8 @@ public sealed class ManifestStoreTests
     public async Task Journal_overlay_applies_packs_without_a_pack_line()
     {
         using var f = new WritingFixture();
-        await f.Manifests.SavePackAsync("p", true, [new ManifestEntry("db/a.sql", H1, "u"), new ManifestEntry("db/old.sql", H1, "u")], Ct);
-        await f.Manifests.SavePackAsync("q", true, [new ManifestEntry("db/q.sql", H1, "v")], Ct);
+        await f.Manifests.SavePackAsync("p", [new ManifestEntry("db/a.sql", H1, "u"), new ManifestEntry("db/old.sql", H1, "u")], Ct);
+        await f.Manifests.SavePackAsync("q", [new ManifestEntry("db/q.sql", H1, "v")], Ct);
         var set = await f.Manifests.LoadAsync([], Ct);
 
         var overlaid = set.WithJournalOverlay(
@@ -206,8 +225,8 @@ public sealed class ManifestStoreTests
         // q finished: its saved manifest already holds its writes, so the journal line is not applied again.
         Assert.True(overlaid.TryGet("db/q.sql", out var q, out _));
         Assert.Equal(H1, q.Hash);
-        // A path only the journal knows has no root kind yet: it is in neither list.
-        Assert.Equal(["db/a.sql"], overlaid.Entries("p", true).Select(e => e.Path));
+        // A path only the journal knows is not listed until a manifest holds it.
+        Assert.Equal(["db/a.sql"], overlaid.Entries("p").Select(e => e.Path));
         // The original set is unchanged.
         Assert.True(set.TryGet("db/old.sql", out _, out _));
     }
@@ -234,14 +253,14 @@ public sealed class ManifestStoreTests
     {
         using var f = new WritingFixture();
 
-        await f.Manifests.SavePackAsync("p", true,
+        await f.Manifests.SavePackAsync("p",
         [
             new ManifestEntry("db/plain-name_1.sql", H1, "u:1"),
             new ManifestEntry("db/quote\"back\\slash.sql", H2, "u:2"),
             new ManifestEntry("db/é\U0001F600.sql", H3, "u:<3>&'"),
         ], Ct);
 
-        var text = f.ManifestText("p", committed: true);
+        var text = f.ManifestText("p");
         Assert.Contains($"    [\"db/plain-name_1.sql\", \"{H1}\", \"u:1\"],\n", text, StringComparison.Ordinal);
         Assert.Contains("\"db/quote\\\"back\\\\slash.sql\"", text, StringComparison.Ordinal);
         Assert.Contains("\"u:<3>&'\"", text, StringComparison.Ordinal);

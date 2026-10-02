@@ -507,9 +507,9 @@ internal sealed partial class SyntheticModel
         {
             Allow =
             [
-                new OutputRoot { Path = "db", Commit = true },
+                new OutputRoot { Path = "db" },
                 new OutputRoot { Path = "gen/built" },
-                new OutputRoot { Path = "gen/committed", Commit = true },
+                new OutputRoot { Path = "gen/committed" },
                 new OutputRoot { Path = "src/Generated" },
             ],
         },

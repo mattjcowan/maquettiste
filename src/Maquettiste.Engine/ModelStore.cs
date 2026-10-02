@@ -362,6 +362,9 @@ public sealed partial class ModelStore : IAsyncDisposable
             return new SettingsSaveResult(SaveOutcome.Invalid, null, null, [.. parseFailure.Diagnostics.Select(d => d with { FilePath = repoPath })]);
 
         var request = json.ToArray();
+        // outputs.allow[].commit (ignored since 0.5.5, MQ1010) is dropped from what is saved, so an older client can still save.
+        if (RetiredSettings.Strip(node))
+            request = System.Text.Encoding.UTF8.GetBytes(node!.ToJsonString());
         IReadOnlyList<Diagnostic> schemaErrors;
         using (var document = JsonDocument.Parse(DocumentReader.StripBom(request), DocumentReader.ParseOptions))
             schemaErrors = _services.Schemas.Evaluate(ModelPaths.SettingsFile, document.RootElement, repoPath);

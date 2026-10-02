@@ -26,7 +26,7 @@ internal sealed class InMemoryUnitStateStore : IUnitStateStore
     }
 }
 
-/// <summary>A temp repo with committed root <c>db</c>, built root <c>src/Generated</c>, and the W7 components over it.</summary>
+/// <summary>A temp repo with the roots <c>db</c> and <c>src/Generated</c>, the file <c>.gitignore</c>, and the W7 components over it.</summary>
 internal sealed class WritingFixture : IDisposable
 {
     public WritingFixture(HandEditPolicy policy = HandEditPolicy.Fail, IReadOnlyList<string>? deny = null)
@@ -37,7 +37,7 @@ internal sealed class WritingFixture : IDisposable
             FormatVersion = 1,
             Outputs = new OutputSettings
             {
-                Allow = [new OutputRoot { Path = "db", Commit = true }, new OutputRoot { Path = "src/Generated" }],
+                Allow = [new OutputRoot { Path = "db" }, new OutputRoot { Path = "src/Generated" }, new OutputRoot { Path = ".gitignore" }],
                 Deny = deny ?? [],
             },
         };
@@ -74,22 +74,25 @@ internal sealed class WritingFixture : IDisposable
         new PackManifest { Name = name, Version = "1.0.0", Engine = ">=1.0 <2.0", Units = [] },
         new PackSettings(), ImmutableDictionary<string, JsonElement>.Empty, [], "scripts", ImmutableDictionary<string, IReadOnlyDictionary<string, string>>.Empty);
 
-    public static PlannedUnit Planned(string key)
+    public static PlannedUnit Planned(string key, Func<PackUnit, PackUnit>? unit = null)
     {
         var slash = key.IndexOf('/', StringComparison.Ordinal);
         var pack = key[..slash];
         var unitId = key[(slash + 1)..].Split(':')[0];
-        return new PlannedUnit(key, Pack(pack), new PackUnit { Id = unitId, Template = "t.scriban", For = "model" }, null, "static");
+        var packUnit = new PackUnit { Id = unitId, Template = "t.scriban", For = "model" };
+        return new PlannedUnit(key, Pack(pack), unit is null ? packUnit : unit(packUnit), null, "static");
     }
 
-    public static OutputFile Out(string path, string text, OutputMode mode = OutputMode.Overwrite, FileRole role = FileRole.Main, bool commit = false)
+    public static OutputFile Out(string path, string text, OutputMode mode = OutputMode.Overwrite, FileRole role = FileRole.Main)
     {
         var bytes = Encoding.UTF8.GetBytes(text);
         var hash = ContentHash.Of(bytes);
         var manifestHash = mode == OutputMode.Regions
             ? ManifestHashes.RegionsPrefix + ContentHash.Of(ManifestHashes.Skeleton(bytes))
+            : mode == OutputMode.Block ? ManagedBlock.Prefix + hash
             : mode == OutputMode.Once || role == FileRole.Companion ? ManifestHashes.OwnedPrefix + hash : hash;
-        var root = path.StartsWith("db/", StringComparison.Ordinal) ? new OutputRootInfo("db", true) : new OutputRootInfo("src/Generated", commit);
+        var root = path.StartsWith("db/", StringComparison.Ordinal) ? new OutputRootInfo("db")
+            : path == ".gitignore" ? new OutputRootInfo(".gitignore") : new OutputRootInfo("src/Generated");
         return new OutputFile(path, bytes, hash, manifestHash, mode, role, root);
     }
 
@@ -99,6 +102,14 @@ internal sealed class WritingFixture : IDisposable
     {
         var rendered = new RenderedUnit(Planned(key), [], ["e:b", "e:a"], "input-" + key, [], failed);
         return new ProcessedUnit(rendered, files, [], failed);
+    }
+
+    /// <summary>A <c>block</c> unit with one block file (its lines are <paramref name="lines"/>).</summary>
+    public static ProcessedUnit BlockUnit(string key, string path, string lines, bool createFile = false, string? comment = null)
+    {
+        var planned = Planned(key, u => u with { Mode = OutputMode.Block, CreateFile = createFile, BlockComment = comment ?? "#" });
+        var rendered = new RenderedUnit(planned, [], ["e:b", "e:a"], "input-" + key, [], false);
+        return new ProcessedUnit(rendered, [Out(path, lines, OutputMode.Block)], [], false);
     }
 
     public static async IAsyncEnumerable<ProcessedUnit> Stream(IEnumerable<ProcessedUnit> units, [EnumeratorCancellation] CancellationToken ct = default)
@@ -120,15 +131,15 @@ internal sealed class WritingFixture : IDisposable
     }
 
     public WriteContext Context(ManifestSet manifests, GenerationMode mode = GenerationMode.Apply, IReadOnlyList<SkippedUnit>? skipped = null,
-        IReadOnlyDictionary<string, int>? counts = null, bool allPacks = false, RootSelection roots = RootSelection.All, bool diffs = false,
+        IReadOnlyDictionary<string, int>? counts = null, bool allPacks = false, bool diffs = false,
         IReadOnlySet<string>? planned = null, bool journal = true) =>
         new(mode, "01HRUN0000000000000000000", new Dictionary<string, HandEditPolicy> { ["p"] = Policy, ["q"] = Policy }, manifests,
-            skipped ?? [], counts ?? new Dictionary<string, int>(), allPacks, roots, diffs, journal && mode == GenerationMode.Apply ? Journal : null,
+            skipped ?? [], counts ?? new Dictionary<string, int>(), allPacks, diffs, journal && mode == GenerationMode.Apply ? Journal : null,
             State, planned);
 
     /// <summary>Runs one complete apply (journal begin and end, as the orchestrator does) and returns the summary.</summary>
     public async Task<WriteSummary> RunAsync(IEnumerable<ProcessedUnit> units, GenerationMode mode = GenerationMode.Apply,
-        IReadOnlyList<SkippedUnit>? skipped = null, bool allPacks = false, RootSelection roots = RootSelection.All, bool diffs = false,
+        IReadOnlyList<SkippedUnit>? skipped = null, bool allPacks = false, bool diffs = false,
         IReadOnlySet<string>? planned = null, IReadOnlyDictionary<string, int>? counts = null)
     {
         var manifests = await LoadManifestsAsync(overlayJournal: true);
@@ -144,15 +155,15 @@ internal sealed class WritingFixture : IDisposable
             counts = byPack;
         }
 
-        var summary = await Writer.WriteAsync(Stream(list, Ct), Context(manifests, mode, skipped, counts, allPacks, roots, diffs, planned), null, Ct);
+        var summary = await Writer.WriteAsync(Stream(list, Ct), Context(manifests, mode, skipped, counts, allPacks, diffs, planned), null, Ct);
         if (apply)
             await Journal.EndAsync(Ct);
         return summary;
     }
 
-    public string ManifestText(string pack, bool committed)
+    public string ManifestText(string pack)
     {
-        var file = Manifests.FileOf(pack, committed);
+        var file = Manifests.FileOf(pack);
         return System.IO.File.Exists(file) ? System.IO.File.ReadAllText(file, Encoding.UTF8) : "";
     }
 

@@ -20,7 +20,7 @@ public sealed class InterruptionTests
     {
         using var f = new WritingFixture(HandEditPolicy.Fail);
         await f.RunAsync(Batch("v1"));
-        var manifest = f.ManifestText("p", true);
+        var manifest = f.ManifestText("p");
         // A folder where a file must go makes the rename fail after staging.
         Directory.CreateDirectory(f.Repo.PathOf("db/blocker.sql"));
         var failing = Batch("v2");
@@ -37,7 +37,7 @@ public sealed class InterruptionTests
         Assert.Equal("one v2\n", f.Repo.ReadFile("db/one.sql"));
         Assert.Equal("two v2\n", f.Repo.ReadFile("db/two.sql"));
         Assert.Equal("three v1\n", f.Repo.ReadFile("db/three.sql"));
-        Assert.Equal(manifest, f.ManifestText("p", true));
+        Assert.Equal(manifest, f.ManifestText("p"));
         var journal = await f.Journal.ReadUnfinishedAsync(Ct);
         Assert.NotNull(journal);
         Assert.Equal(["db/one.sql", "db/two.sql"], journal.Where(r => r.Type == "write").Select(r => r.Path));

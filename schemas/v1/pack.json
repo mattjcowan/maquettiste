@@ -84,6 +84,8 @@
           "where",
           "output",
           "mode",
+          "blockComment",
+          "createFile",
           "formatter",
           "delimiters",
           "companion",
@@ -176,13 +178,26 @@
             "minLength": 1
           },
           "mode": {
+            "description": "overwrite: rewritten when inputs change. once: written only when missing, then the team's. regions: rewritten, keeping the bodies of maquettiste:keep regions. pair: a generated file and a companion written once. block: a managed block inside a file the team owns; the template renders the block's lines, and only the lines between '<comment> maquettiste: begin <pack>/<unit>' and '<comment> maquettiste: end <pack>/<unit>' are replaced, inserted at the end of the file after a blank line, or removed when the unit no longer produces them. Formatters never run on block outputs.",
             "enum": [
               "overwrite",
               "once",
               "regions",
-              "pair"
+              "pair",
+              "block"
             ],
             "default": "overwrite"
+          },
+          "blockComment": {
+            "description": "Mode block: the comment marker that starts the block's delimiter lines, for example // or ;.",
+            "type": "string",
+            "pattern": "^[^\\s]+$",
+            "default": "#"
+          },
+          "createFile": {
+            "description": "Mode block: create the target file (holding just the block) when it does not exist. When false and the file is missing, the unit writes nothing and is listed as skipped (target-missing). A file the engine created is deleted when its block is removed and nothing but whitespace is left; any other file is kept.",
+            "type": "boolean",
+            "default": false
           },
           "formatter": {
             "type": "string",

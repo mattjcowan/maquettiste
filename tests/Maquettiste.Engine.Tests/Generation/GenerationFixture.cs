@@ -9,7 +9,7 @@ namespace Maquettiste.Engine.Tests.Generation;
 /// <summary>
 /// A temporary repo with a model written by a <see cref="ModelBuilder"/>, fixture packs copied from <c>tests/fixtures/packs</c>, and
 /// the real engine (loader, validator, resolver, planner, post-processor, writer) around a <see cref="FakeRenderer"/>. Output roots:
-/// <c>out</c> (committed) and <c>gen</c> (built).
+/// <c>out</c> and <c>gen</c>.
 /// </summary>
 internal sealed class GenerationFixture : IAsyncDisposable
 {
@@ -64,7 +64,7 @@ internal sealed class GenerationFixture : IAsyncDisposable
         var builder = new ModelBuilder(seed: 7);
         builder.Settings(s => s with
         {
-            Outputs = new OutputSettings { Allow = [new OutputRoot { Path = "out", Commit = true }, new OutputRoot { Path = "gen" }] },
+            Outputs = new OutputSettings { Allow = [new OutputRoot { Path = "out" }, new OutputRoot { Path = "gen" }] },
         });
         if (settings is not null)
             builder.Settings(settings);
@@ -125,7 +125,7 @@ internal sealed class GenerationFixture : IAsyncDisposable
         return files;
     }
 
-    /// <summary>The committed manifest of a pack, or empty.</summary>
+    /// <summary>The manifest of a pack (<c>.maquettiste/manifest/</c>), or empty.</summary>
     /// <param name="pack">The pack.</param>
     /// <returns>The text.</returns>
     public string CommittedManifest(string pack) =>

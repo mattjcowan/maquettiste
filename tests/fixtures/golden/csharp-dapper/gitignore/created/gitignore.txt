@@ -1,0 +1,3 @@
+# maquettiste: begin csharp-dapper/gitignore
+/Generated/
+# maquettiste: end csharp-dapper/gitignore

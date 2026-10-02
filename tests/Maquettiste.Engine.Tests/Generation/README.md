@@ -19,7 +19,7 @@ held parse, cancellation of the prepare, capture and compare) are in `SchemaDiff
 `RunRecordTests` covers the last-run record's file format (round trip, chunked outputs, damage and truncation, a record from
 another engine build) and the unit state store leaving an unchanged state file alone; the record's behavior with the real
 renderer is in `Integration/LastRunTests.cs` (a replay equals a full run; every kind of change falls back, including a referenced
-sidecar created or edited, an extension or rule script changed and a partial added; templates, committed manifests and schema
+sidecar created or edited, an extension or rule script changed and a partial added; templates, manifests and schema
 snapshots are compared by content, so a touch is answered and a same-length, same-time-stamp rewrite is not; an intact record
 holding a path the file system refuses falls back instead of failing the run; hand edits, schema snapshots and long-lived hosts
 write no record).

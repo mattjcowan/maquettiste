@@ -4,11 +4,12 @@ name: gate2
 # and generated end to end from the editor, and compiles. Every step is a step of samples/reference-app/tools/gate2.sh, so the
 # same sequence runs locally: build the image, start it over an empty copy of the sample (tmp/gate2), seed the model through the
 # API (tools/seed.mjs, compared byte for byte with the committed model), walk the editor with Playwright (gate2.spec.ts: edit an
-# entity and a relation, plan, diff, apply), then check that the edits reached the output, that the committed root db/main
-# equals the CLI's output (generate --check) and that the built root Generated/ equals what the CLI generates into a second
-# copy, dotnet build -warnaserror of ReferenceApp.Data, and the generated DDL (schema.sql, migrations, seed) against a
-# PostgreSQL 16 service container with the table, view and sequence counts asserted. The committed sample's own db/main is
-# checked against its model and packs too. Any failing step fails the run.
+# entity and a relation, plan, diff, apply), then check that the edits reached the output, that every output equals the CLI's
+# (generate --check over every root) and that Generated/ equals what the CLI generates into a second copy, that the managed block
+# of src/ReferenceApp.Data/.gitignore was created, dotnet build -warnaserror of ReferenceApp.Data, and the generated DDL
+# (schema.sql, migrations, seed) against a PostgreSQL 16 service container with the table, view and sequence counts asserted.
+# The committed sample is checked against its model and packs too: generate, then nothing tracked may change and nothing
+# untracked may appear. Any failing step fails the run.
 
 on:
   push:
@@ -78,12 +79,15 @@ jobs:
       - name: Build the CLI
         run: dotnet build -c Release src/Maquettiste.Cli
 
-      - name: The committed model is build-model.mjs's output, validates, and db/main is its output
+      - name: The committed model is build-model.mjs's output, validates, and generating it changes nothing committed
         run: |
           set -eu
           (cd samples/reference-app/tools && npm ci --no-audit --no-fund && npm test)
           dotnet src/Maquettiste.Cli/bin/Release/net10.0/Maquettiste.Cli.dll --repo samples/reference-app validate
-          dotnet src/Maquettiste.Cli/bin/Release/net10.0/Maquettiste.Cli.dll --repo samples/reference-app generate --check
+          # Generated/ is not committed, so --check would report it missing: generate, then compare with what is committed.
+          dotnet src/Maquettiste.Cli/bin/Release/net10.0/Maquettiste.Cli.dll --repo samples/reference-app generate --quiet
+          git diff --exit-code -- samples/reference-app
+          test -z "$(git status --porcelain --untracked-files=all -- samples/reference-app)" || { git status --porcelain --untracked-files=all -- samples/reference-app; exit 1; }
 
       - name: Install the editor's Playwright
         working-directory: src/editor
@@ -103,7 +107,7 @@ jobs:
       - name: walk (Playwright live, gate2.spec.ts)
         run: sh samples/reference-app/tools/gate2.sh walk
 
-      - name: check (edits in the output, validate, committed and built roots equal the CLI output)
+      - name: check (edits in the output, validate, every root equals the CLI output, the .gitignore block)
         run: sh samples/reference-app/tools/gate2.sh check
 
       - name: build (ReferenceApp.Data, warnings as errors)

@@ -225,7 +225,7 @@ public sealed class FormatterRunnerTests : IDisposable
     public async Task Post_processor_formats_with_the_real_runner_and_normalizes_its_output()
     {
         var python = Python();
-        var paths = new FakePathPolicy(null, new OutputRootInfo("db", true));
+        var paths = new FakePathPolicy(null, new OutputRootInfo("db"));
         var processor = new PostProcessor(_repo.Options, Runner());
         var formatter = Fake(python, "crlf");
         var context = new PostProcessContext(_repo.RepoRoot, paths, [formatter], FormatterVersionsVerified: false);

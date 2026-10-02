@@ -4,8 +4,8 @@ SQL DDL for **PostgreSQL**, **SQL Server** and **SQLite** from the resolved phys
 you ask for them, one per view, sequence, routine, database type and SQL object), one schema script per database, migrations written once from the schema diff,
 and a seed script with a protected region. MySQL and Oracle databases get portable SQL without dialect-specific clauses.
 
-The pack writes to a **committed** output root. `maquettiste init --pack sql-ddl` sets `packs.sql-ddl.output` to `db` and
-declares `db` with `commit: true`, so every path below is under `db/`.
+The pack writes to one output root, which teams usually commit (migrations and the schema are applied and reviewed).
+`maquettiste init --pack sql-ddl` sets `packs.sql-ddl.output` to `db` and allows `db`, so every path below is under `db/`.
 
 ## Output
 
@@ -154,8 +154,8 @@ of seeds, written so the script can run again on a database that has them), but 
 -- maquettiste:end-keep
 ```
 
-is carried over from the file on disk. Edits outside the region are reported as hand edits. `regions` mode only works on a
-committed root.
+is carried over from the file on disk. Edits outside the region are reported as hand edits. `regions` mode works on any root, but
+the region bodies live only in the file: commit `db/` so a fresh clone keeps them.
 
 ## Object scripts
 

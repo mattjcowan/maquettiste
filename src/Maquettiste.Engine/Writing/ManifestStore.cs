@@ -11,13 +11,15 @@ using Maquettiste.Engine.Pipeline;
 namespace Maquettiste.Engine.Writing;
 
 /// <summary>
-/// Per-pack manifests (W7; engine-design.md section 12.2): committed roots at <c>&lt;ModelRoot&gt;/manifest/&lt;pack&gt;.json</c>,
-/// built roots at <c>&lt;JournalDirectory&gt;/manifest/&lt;pack&gt;.json</c> (by default <c>.maquettiste/.cache/manifest/</c>). The
-/// file is canonical JSON except that each <c>[path, hash, unit]</c> entry sits on one line, sorted by path in ordinal UTF-8 order.
+/// Per-pack manifests (W7; engine-design.md section 12.2): one file per pack at <c>&lt;ModelRoot&gt;/manifest/&lt;pack&gt;.json</c>, for
+/// every output root. The file is canonical JSON except that each <c>[path, hash, unit]</c> entry sits on one line, sorted by path
+/// in ordinal UTF-8 order. Releases before 0.5.5 kept the manifests of roots not marked <c>commit</c> under
+/// <c>&lt;JournalDirectory&gt;/manifest/</c>: such a copy is read beside the pack's manifest (the manifest's entry wins a path both
+/// list), and the pack's next save writes the merged entries to the model folder and deletes the copy.
 /// </summary>
 /// <param name="options">The engine options.</param>
 /// <param name="json">The canonical writer (for the document head and its <c>$schema</c>).</param>
-/// <param name="paths">The engine-write guard (<see cref="WriteTarget.Model"/> for committed manifests, <see cref="WriteTarget.Cache"/> for built ones).</param>
+/// <param name="paths">The engine-write guard (<see cref="WriteTarget.Model"/> for manifests, <see cref="WriteTarget.Cache"/> to delete a cache copy).</param>
 internal sealed class ManifestStore(EngineOptions options, ICanonicalJson json, IOutputPathPolicy paths) : IManifestStore
 {
     private const string SchemaFile = "manifest.json";
@@ -26,17 +28,21 @@ internal sealed class ManifestStore(EngineOptions options, ICanonicalJson json, 
 
     private int _tempCounter;
 
-    /// <summary>The folder of committed manifests.</summary>
-    internal string CommittedFolder => Path.Combine(options.EffectiveModelRoot, "manifest");
+    /// <summary>The folder of the manifests.</summary>
+    internal string Folder => Path.Combine(options.EffectiveModelRoot, "manifest");
 
-    /// <summary>The folder of built manifests.</summary>
-    internal string BuiltFolder => Path.Combine(options.EffectiveJournalDirectory, "manifest");
+    /// <summary>The folder where releases before 0.5.5 kept the manifests of roots not marked <c>commit</c>.</summary>
+    internal string LegacyFolder => Path.Combine(options.EffectiveJournalDirectory, "manifest");
 
     /// <summary>The file of a pack's manifest.</summary>
     /// <param name="pack">The pack.</param>
-    /// <param name="committed">Committed or built.</param>
     /// <returns>The absolute path.</returns>
-    internal string FileOf(string pack, bool committed) => Path.Combine(committed ? CommittedFolder : BuiltFolder, pack + ".json");
+    internal string FileOf(string pack) => Path.Combine(Folder, pack + ".json");
+
+    /// <summary>The cache copy an earlier release may have left for a pack.</summary>
+    /// <param name="pack">The pack.</param>
+    /// <returns>The absolute path.</returns>
+    internal string LegacyFileOf(string pack) => Path.Combine(LegacyFolder, pack + ".json");
 
     /// <inheritdoc/>
     public async Task<ManifestSet> LoadAsync(IReadOnlyCollection<string> packs, CancellationToken ct)
@@ -45,7 +51,7 @@ internal sealed class ManifestStore(EngineOptions options, ICanonicalJson json, 
         var names = new SortedSet<string>(StringComparer.Ordinal);
         if (packs.Count == 0)
         {
-            foreach (var folder in new[] { CommittedFolder, BuiltFolder })
+            foreach (var folder in new[] { Folder, LegacyFolder })
             {
                 if (!Directory.Exists(folder))
                     continue;
@@ -63,17 +69,16 @@ internal sealed class ManifestStore(EngineOptions options, ICanonicalJson json, 
         foreach (var pack in names)
         {
             ct.ThrowIfCancellationRequested();
-            // Collected in a hash map (committed first, so its entry wins a path listed twice), then turned into the sorted map in
-            // one step, which builds the tree from sorted input instead of rebalancing it once per entry.
+            // Collected in a hash map (the manifest first, so its entry wins a path a cache copy lists too), then turned into the
+            // sorted map in one step, which builds the tree from sorted input instead of rebalancing it once per entry.
             var entries = new Dictionary<string, (ManifestEntry, ManifestBucket)>(StringComparer.Ordinal);
-            foreach (var committed in new[] { true, false })
+            foreach (var file in new[] { FileOf(pack), LegacyFileOf(pack) })
             {
-                var bytes = await AtomicFile.ReadIfExistsAsync(FileOf(pack, committed), ct).ConfigureAwait(false);
+                var bytes = await AtomicFile.ReadIfExistsAsync(file, ct).ConfigureAwait(false);
                 if (bytes is null)
                     continue;
-                var bucket = committed ? ManifestBucket.Committed : ManifestBucket.Built;
                 foreach (var entry in Parse(bytes))
-                    entries.TryAdd(entry.Path, (entry, bucket));
+                    entries.TryAdd(entry.Path, (entry, ManifestBucket.Manifest));
             }
 
             if (entries.Count > 0)
@@ -84,13 +89,13 @@ internal sealed class ManifestStore(EngineOptions options, ICanonicalJson json, 
     }
 
     /// <inheritdoc/>
-    public async Task SavePackAsync(string pack, bool committed, IReadOnlyList<ManifestEntry> entries, CancellationToken ct)
+    public async Task SavePackAsync(string pack, IReadOnlyList<ManifestEntry> entries, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrEmpty(pack);
         ArgumentNullException.ThrowIfNull(entries);
         ct.ThrowIfCancellationRequested();
-        var file = FileOf(pack, committed);
-        var check = paths.CheckEngineWrite(committed ? WriteTarget.Model : WriteTarget.Cache, file);
+        var file = FileOf(pack);
+        var check = paths.CheckEngineWrite(WriteTarget.Model, file);
         if (!check.Allowed)
             throw new UnauthorizedAccessException($"{check.RuleId}: manifest write refused for {file}: {check.Reason}");
 
@@ -98,26 +103,31 @@ internal sealed class ManifestStore(EngineOptions options, ICanonicalJson json, 
         {
             if (File.Exists(file))
                 File.Delete(file);
-            return;
+        }
+        else
+        {
+            var bytes = Format(pack, entries);
+            var existing = await AtomicFile.ReadIfExistsAsync(file, ct).ConfigureAwait(false);
+            if (existing is null || !existing.AsSpan().SequenceEqual(bytes))
+            {
+                var tag = "manifest-" + Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "-"
+                    + Interlocked.Increment(ref _tempCounter).ToString(CultureInfo.InvariantCulture);
+                await AtomicFile.WriteAsync(file, bytes, tag, ct).ConfigureAwait(false);
+            }
         }
 
-        var bytes = Format(pack, committed, entries);
-        var existing = await AtomicFile.ReadIfExistsAsync(file, ct).ConfigureAwait(false);
-        if (existing is not null && existing.AsSpan().SequenceEqual(bytes))
-            return;
-        var tag = "manifest-" + Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + "-"
-            + Interlocked.Increment(ref _tempCounter).ToString(CultureInfo.InvariantCulture);
-        CacheFolder.EnsureIgnored(options, paths, file);
-        await AtomicFile.WriteAsync(file, bytes, tag, ct).ConfigureAwait(false);
+        // The cache copy of an earlier release was read with the manifest, so its entries are in this save: it goes now.
+        var legacy = LegacyFileOf(pack);
+        if (File.Exists(legacy) && paths.CheckEngineWrite(WriteTarget.Cache, legacy).Allowed)
+            File.Delete(legacy);
     }
 
     /// <summary>Formats a manifest: the canonical head, then one entry per line sorted by path in ordinal UTF-8 order.</summary>
     /// <param name="pack">The pack.</param>
-    /// <param name="committed">Committed or built (decides <c>$schema</c>).</param>
     /// <param name="entries">The entries, in any order.</param>
     /// <returns>The file bytes.</returns>
     /// <exception cref="ArgumentException">Two entries share a path.</exception>
-    internal byte[] Format(string pack, bool committed, IReadOnlyList<ManifestEntry> entries)
+    internal byte[] Format(string pack, IReadOnlyList<ManifestEntry> entries)
     {
         var sorted = IsSorted(entries) ? entries : entries.OrderBy(e => e.Path, Utf8OrdinalComparer.Instance).ToList();
         for (var i = 1; i < sorted.Count; i++)
@@ -127,7 +137,7 @@ internal sealed class ManifestStore(EngineOptions options, ICanonicalJson json, 
         }
 
         // The head goes through the canonical writer, so "$schema" and "pack" are exactly what it would write.
-        var documentPath = committed ? $".maquettiste/manifest/{pack}.json" : $".maquettiste/.cache/manifest/{pack}.json";
+        var documentPath = $".maquettiste/manifest/{pack}.json";
         var head = Encoding.UTF8.GetString(json.Write(new JsonObject { ["pack"] = pack }, SchemaFile, documentPath));
         var close = head.LastIndexOf("\n}", StringComparison.Ordinal);
         var sb = new StringBuilder(head.Length + (sorted.Count * 128));

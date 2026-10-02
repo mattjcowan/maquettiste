@@ -9,6 +9,7 @@ Everything here is implemented; there are no stubs left.
 | --- | --- |
 | `OutputPathPolicy.cs`, `FileSystemPaths.cs` | `IOutputPathPolicy` (§12.1) |
 | `OutputWriter.cs`, `WriteRun.cs`, `AtomicFile.cs`, `ManifestHashes.cs` | `IOutputWriter` (§12.3, §12.4) |
+| `ManagedBlock.cs` | the block of a `block` unit: find, replace, insert, remove, hash (§12.3b) |
 | `ManifestStore.cs`, `ManifestSetData.cs` | `IManifestStore` and the data behind `Pipeline.ManifestSet` (§12.2) |
 | `RunJournal.cs` | `IRunJournal` (§12.4) |
 | `RunLock.cs` | `IRunLock` (§12.4, host-contracts 28) |
@@ -21,7 +22,9 @@ Tests: `tests/Maquettiste.Engine.Tests/Writing/`.
 - `Check(path)`: relative, `/` separators, non-empty segments, no `.`/`..`, no drive, UNC or leading `/`, no `<>:"|?*` or control
   characters, no segment ending in `.` or space, no reserved device name (`CON`, `con.txt`, `LPT1`…), no `.git` or `.maquettiste`
   segment (any case); under an `outputs.allow` root (longest wins; an allow path that fails these rules, such as `../x`, is
-  ignored; `""` or `.` means the whole repo); no `outputs.deny` match; then the real path of the root must stay in the real repo
+  ignored; `""` or `.` means the whole repo), or equal to an allow path, which then names that one file (`.gitignore`,
+  `src/App/.gitignore`), unless the entry ends with `/` (spec-errata E42; for such a file root the link check requires the file's
+  real path to stay in the repo, and no folder is ever pruned under it); no `outputs.deny` match; then the real path of the root must stay in the real repo
   root and the real path of the target (every existing ancestor and the target itself, links followed up to 40 hops) must stay in
   the root's real path. Refusals carry `MQ6004`. The real paths of existing folders are cached per policy instance (one run).
 - Deny globs: `*` and `?` stay within a segment, `**` spans segments (`**/` also matches zero folders), a leading `/` is ignored, a
@@ -30,8 +33,8 @@ Tests: `tests/Maquettiste.Engine.Tests/Writing/`.
   depth: write `**/*.pem`, not `*.pem`.
 - `CheckEngineWrite`: `Model` under `ModelRoot`, `Cache` under `CacheDirectory` or `JournalDirectory`, `Setup` exactly
   `.git/hooks/post-checkout`, `.git/hooks/post-merge`, `.mcp.json`, `mcp.sh` (removed only) and
-  `.claude/skills/maquettiste-modeling/SKILL.md`, plus the repository's `.gitignore` only in a policy built with
-  `allowGitignore` (which `init --gitignore` alone passes, so no other write can reach that file); the path must be absolute and strictly inside its folder,
+  `.claude/skills/maquettiste-modeling/SKILL.md` (never the repository's `.gitignore`: `allowGitignore` and `init --gitignore` were
+  removed in 0.5.5, E42); the path must be absolute and strictly inside its folder,
   and links are resolved on both sides (a link cycle or an unreadable link is an `MQ6004` refusal, never an exception). `Output` maps the path to repo-relative and runs `Check`. A policy built with
   `null` settings (`EngineServices.EnginePaths`) refuses every `Check`.
 - `MQ6005` (duplicate and case-colliding paths) needs the whole run, so the writer reports it, not the policy. The first claimant
@@ -40,26 +43,39 @@ Tests: `tests/Maquettiste.Engine.Tests/Writing/`.
 
 ## Writer
 
-- The intake loop reads processed units in order; for each file it runs the policy, the root selection (`Check` mode forces
-  committed roots), the plan's path list (`WriteContext.PlannedPaths`), the `MQ6005` claim table (skipped units' outputs claim
-  their paths first) and the regions-on-built-root rule (`MQ6015`, unless the unit already carries it), then queues the file on a
-  bounded channel (256 files) drained by `min(EngineOptions.MaxDegreeOfParallelism, 8)` tasks.
+- The intake loop reads processed units in order; for each file it runs the policy, the plan's path list
+  (`WriteContext.PlannedPaths`) and the `MQ6005` claim table (skipped units' outputs claim their paths first), then queues the file
+  on a bounded channel (256 files) drained by `min(EngineOptions.MaxDegreeOfParallelism, 8)` tasks. Every run covers every root
+  (spec-errata E42 removed the root selection and `MQ6015`; regions work on any root).
 - Decision per file is §12.3. Owned files are `once` files and companions (or an `o:` manifest hash); their manifest hash gets the
   `o:` prefix if the post-processor did not add it; a kept owned file keeps its old `o:` hash (or `o:` + the disk hash when it was
   untracked). Hand edits: `fail` → `Conflict` + `MQ6009` error, `overwrite` → `HandEdited` and written + `MQ6009` warning,
-  `skip` → `HandEdited`, not written, old entry kept + `MQ6009` warning. The `r:` comparison hashes the disk file's skeleton
+  `skip` → `HandEdited`, not written, old entry kept + `MQ6009` warning. Written here (E42): before a file (or an orphan) counts as
+  hand-edited, the unit's recorded state in the cache is consulted (loaded once per pack, only then); when it lists the path with a
+  manifest hash the disk bytes still match, the engine wrote those bytes in this checkout and the decision is `Modified` (an orphan
+  `Deleted`). The manifest lives with the model and moves with it, so after a pull an output the team does not commit would
+  otherwise look hand-edited. The `r:` comparison hashes the disk file's skeleton
   (`ManifestHashes.Skeleton`: a line with `maquettiste:keep` followed by a space or tab opens a region, the next line with
   `maquettiste:end-keep` closes it, the body lines between are dropped, an unclosed region runs to the end of the file).
 - Writes: `<dir>/.<name>.mq-<runId>-<n>.tmp`, then `File.Move(overwrite: true)`; a failure deletes the temporary file and
   leaves the target as it was. Identical bytes are never written. The journal `write` line is appended after the rename.
+- Block files (`OutputMode.Block`, §12.3b, `ProcessBlockAsync`): the job carries the comment, the marker `<pack>/<unit id>` and
+  `createFile`; the file's bytes are scanned for the block (`ManagedBlock.Find`), and the new file is the old bytes with the block
+  replaced, appended (after a line end if missing, then a blank line unless the file ends with one) or, for a missing file with
+  `createFile`, the block alone (entry `bc:`; `b:` otherwise, and an entry keeps its `bc:`). Missing file without `createFile`:
+  nothing written, no entry, `MQ6028` info, the unit keeps its previous state. A file holding the block twice or unclosed:
+  `Conflict` + `MQ6027`, left alone. The block's lines are compared with the entry for hand edits; bytes outside the block are
+  never compared. Orphaned blocks (`OrphanBlockAsync`): the block's lines are removed (with the blank line before a block that
+  ended the file), the change is listed as `Deleted`, the file is rewritten, or deleted when only whitespace is left and the
+  entry is `bc:`; a file that no longer holds the block just loses the entry; a block edited by hand follows the policy.
 - A pack closes when `UnitCountByPack[pack]` processed units have arrived (the count is of `ProcessedUnit`s the writer will
   receive; a larger count, for example one that includes skipped units, just closes the pack at the end of the stream), or at
   the end of the stream. The run's packs are the keys of `UnitCountByPack`, the packs of skipped and arriving units, and with
   `AllPacks` every pack that has a manifest. Closing a pack: find orphans (entries of the pack produced by no unit this run;
   entries of skipped, failed and partly-refused units are kept; an entry an earlier pack produced this run is dropped without
-  touching the file; an orphan outside the selected roots is kept; an orphan the policy or the plan now refuses is kept with
-  `MQ6004`), then in apply mode save both manifest buckets (a bucket whose content is unchanged is not rewritten) with the
-  orphans still listed, save unit states, and append the journal's `pack` line.
+  touching the file; an orphan the policy or the plan now refuses is kept with `MQ6004`), then in apply mode save the manifest (unchanged content is not
+  rewritten) with the
+  orphans still listed, save unit states, and append the journal's `pack` line. (E42: one manifest per pack, saved whole.)
 - Orphans are deferred to the end of the stream, because a later pack may still produce the path (a file moving from an earlier
   pack to a later one is then neither deleted nor rewritten, and dry run and apply agree). Once every pack is closed, an orphan
   that some pack produced, or that on a case-insensitive disk is the same file as a path produced under other case, is dropped
@@ -74,7 +90,7 @@ Tests: `tests/Maquettiste.Engine.Tests/Writing/`.
   files, handled as an add and an orphan.
 - Unit states (apply only): skipped units keep their `Previous`; a rendered unit gets a new `UnitState` (sorted read keys, outputs
   with the manifest hash, length and mtime after the write) unless it failed, had a conflict or skipped hand edit, or had a file
-  refused or outside the selected roots, in which case its previous state (if any) is kept, so it renders again next run.
+  refused or a block target missing without `createFile`, in which case its previous state (if any) is kept, so it renders again next run.
 - Cancellation is observed between files: queued files are dropped, a file being written is finished and journaled, no pack is
   closed after the cancellation, and `OperationCanceledException` is thrown. An I/O failure in any file stops the run the same way
   and is rethrown. Either way the journal has no `end` line, so the next run resumes.
@@ -83,14 +99,14 @@ Tests: `tests/Maquettiste.Engine.Tests/Writing/`.
 
 ## Manifest, journal, lock, diff
 
-- Committed manifests at `<ModelRoot>/manifest/<pack>.json`; built ones at `<JournalDirectory>/manifest/<pack>.json` (by default
-  `.maquettiste/.cache/manifest/`, as in §12.2; a custom `JournalDirectory` moves them, since they are `Cache` writes). The head
+- One manifest per pack at `<ModelRoot>/manifest/<pack>.json`, for every root (spec-errata E42). A cache copy an earlier release
+  left at `<JournalDirectory>/manifest/<pack>.json` (built roots, before 0.5.5) is read beside it, the model folder's entry winning a
+  path both list; the pack's next save writes the merged entries to the model folder and deletes the copy (a `Cache` write). The head
   (`$schema`, `pack`) comes from `ICanonicalJson.Write`; entries follow, one per line, sorted by path in ordinal UTF-8 (code point)
   order. Strings are escaped as the canonical writer does (supplementary characters become escaped surrogate pairs). A manifest
   that is not valid JSON (git conflict markers) is salvaged line by line; the first occurrence of a path wins.
-- `ManifestSet` forwards to `ManifestSetData`. A journal overlay entry for a path no manifest holds has no root kind, so it is in
-  neither `Entries(pack, true)` nor `Entries(pack, false)` (but `TryGet` finds it); the writer classifies it through the path
-  policy and saves it into the right bucket when the pack closes, even when that bucket is outside the selected roots.
+- `ManifestSet` forwards to `ManifestSetData`. A journal overlay entry for a path no manifest holds is not in `Entries(pack)` (but
+  `TryGet` finds it); the writer checks it through the path policy when the pack closes (refused: dropped with `MQ6004`).
 - Journal: the orchestrator (W6) calls `ReadUnfinishedAsync`, `BeginAsync` and `EndAsync`; the writer records files and packs.
   `BeginAsync` replaces an unfinished journal but carries its `write`/`delete` lines for packs without a `pack` line into the new
   one, so a resume that is interrupted again still resumes. The replacement is written to a temporary file in the journal
@@ -107,11 +123,10 @@ Tests: `tests/Maquettiste.Engine.Tests/Writing/`.
 ## Performance notes (WP, gate 1)
 
 - Closing a pack walks every manifest entry of the pack (100,000 in the synthetic benchmark). An entry kept by this run (a
-  skipped, failed or partly refused unit, or one outside the selected roots) whose path the policy's lexical rules put under a
-  root of the entry's own bucket (`OutputPathPolicy.LexicalRoot`: lexical checks, `outputs.allow`, `outputs.deny`, no disk) is
-  kept without the symbolic link check: whatever that check would say, the bucket the entry is saved in is the same. Every other
-  entry (orphan candidates, journal-only entries, a root kind that changed) still goes through the full `Check`. This took the
-  incremental write stage from about 2 s to about 0.4 s: `Check` read links for every path.
+  skipped, failed or partly refused unit) or a path another pack produced this run needs no path check at all (nothing is written
+  or deleted for it, and since E42 there is no bucket to decide), so it skips `Check`; only journal-only entries and orphan
+  candidates go through the full `Check`. This took the incremental write stage from about 2 s to about 0.4 s: `Check` read links
+  for every path.
 - The pack's next manifest entries and unit states are collected in hash maps and sorted once when saved; the manifests and the
   unit states are then built and saved concurrently, both before the journal's `pack` line. The previous unit states are read
   only when a unit keeps its previous state.

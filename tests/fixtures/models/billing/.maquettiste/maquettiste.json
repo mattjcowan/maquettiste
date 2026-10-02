@@ -5,8 +5,7 @@
   "outputs": {
     "allow": [
       {
-        "path": "db",
-        "commit": true
+        "path": "db"
       },
       {
         "path": "src/Generated"

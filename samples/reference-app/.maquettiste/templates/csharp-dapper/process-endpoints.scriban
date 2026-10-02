@@ -2,8 +2,8 @@
 # The HTTP endpoints of a process (regions): one POST <route>/{instance}/<event> per event, mapping the request to the command
 # and sending it through the dispatcher, with one user-code region per endpoint for request mapping and response shaping. A
 # region's id is its event's id, so renaming an event keeps the region's body.
-# Regions need a committed root, so the file is written only when the endpointsFolder parameter names a folder of one. The
-# code uses ASP.NET Core minimal APIs (the project references the Microsoft.AspNetCore.App framework).
+# Region bodies live only in the file, so it belongs in a folder the team commits; it is written only when the endpointsFolder
+# parameter names one. The code uses ASP.NET Core minimal APIs (the project references the Microsoft.AspNetCore.App framework).
 include "_csharp.scriban"
 include "_process.scriban"
 p = process

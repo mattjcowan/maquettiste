@@ -88,7 +88,7 @@ public sealed class ProcessGenerationTests
             E2ERepo.CopyTree(Fixtures.Path("integration", "packs", Pack), Path.Combine(Repo.ModelRoot, "templates", Pack));
             var settingsPath = Path.Combine(Repo.ModelRoot, "maquettiste.json");
             var node = JsonNode.Parse(File.ReadAllBytes(settingsPath))!.AsObject();
-            node["outputs"] = new JsonObject { ["allow"] = new JsonArray(new JsonObject { ["path"] = "gen", ["commit"] = true }) };
+            node["outputs"] = new JsonObject { ["allow"] = new JsonArray(new JsonObject { ["path"] = "gen" }) };
             node["packs"] = new JsonObject { [Pack] = new JsonObject { ["output"] = "gen" } };
             File.WriteAllBytes(settingsPath, TestServices.Json.Write(node, "maquettiste.json", "maquettiste.json"));
             Store = new ModelStore(Repo.Options);

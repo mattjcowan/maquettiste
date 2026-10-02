@@ -29,8 +29,7 @@ internal sealed class PackRepo : IDisposable
           "outputs": {
             "allow": [
               {
-                "path": "db",
-                "commit": true
+                "path": "db"
               },
               {
                 "path": "src/Generated"
@@ -407,7 +406,7 @@ internal sealed class PackRepo : IDisposable
         Repo.WriteFile(model + "databases/local/database.json", Database("01JRDD00000000000000000003", "local", "sqlite"));
         EditJson(".maquettiste/maquettiste.json", settings =>
         {
-            settings["outputs"] = JsonNode.Parse("""{ "allow": [ { "path": "db", "commit": true }, { "path": "src/Generated" } ] }""");
+            settings["outputs"] = JsonNode.Parse("""{ "allow": [ { "path": "db" }, { "path": "src/Generated" } ] }""");
             settings["packs"] = JsonNode.Parse("""{ "csharp-dapper": { "output": "src/Generated" }, "sql-ddl": { "output": "db" } }""");
             settings["conventions"]!["referenceStorage"]!["strategy"] = strategy;
         });
@@ -448,7 +447,7 @@ internal sealed class PackRepo : IDisposable
         CopyTree(Path.Combine(Fixtures.RepoRoot, "packs", "sql-ddl"), Path.Combine(repo.Repo.ModelRoot, "templates", "sql-ddl"));
         repo.EditJson(".maquettiste/maquettiste.json", settings =>
         {
-            settings["outputs"] = JsonNode.Parse("""{ "allow": [ { "path": "db", "commit": true } ] }""");
+            settings["outputs"] = JsonNode.Parse("""{ "allow": [ { "path": "db" } ] }""");
             settings["packs"] = JsonNode.Parse("""{ "sql-ddl": { "output": "db" } }""");
         });
         return repo;
@@ -456,7 +455,7 @@ internal sealed class PackRepo : IDisposable
 
     /// <summary>
     /// A fixture model (<c>tests/fixtures/models/&lt;fixture&gt;</c>) with only the TypeScript sample pack
-    /// (<c>samples/typescript-pack</c>), writing to the committed root <c>web</c>. Relative imports end in <c>.ts</c>, so node runs
+    /// (<c>samples/typescript-pack</c>), writing to the root <c>web</c>. Relative imports end in <c>.ts</c>, so node runs
     /// the output with its type stripping, and zod schemas are off, so the output needs no package beyond node's types.
     /// </summary>
     /// <param name="fixture">The fixture folder name.</param>
@@ -468,7 +467,7 @@ internal sealed class PackRepo : IDisposable
         CopyTree(Path.Combine(Fixtures.RepoRoot, "samples", "typescript-pack"), Path.Combine(repo.Repo.ModelRoot, "templates", "typescript"));
         repo.EditJson(".maquettiste/maquettiste.json", settings =>
         {
-            settings["outputs"] = JsonNode.Parse("""{ "allow": [ { "path": "web", "commit": true } ] }""");
+            settings["outputs"] = JsonNode.Parse("""{ "allow": [ { "path": "web" } ] }""");
             settings["packs"] = JsonNode.Parse("""{ "typescript": { "output": "web", "parameters": { "importExtension": ".ts", "zod": false } } }""");
         });
         return repo;

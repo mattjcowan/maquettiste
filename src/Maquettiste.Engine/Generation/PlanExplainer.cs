@@ -9,7 +9,9 @@ namespace Maquettiste.Engine.Generation;
 /// Fills the plan's explanation members (generation-ui.md section 4): each unit's pack, unit, template, element, reason and causes. The
 /// reason is the first that applies: <c>new</c> (no recorded render), <c>forced</c>, <c>check</c> (a check run renders every unit),
 /// <c>inputs</c> (the input hash differs from the
-/// recorded one), <c>outputs</c> (inputs unchanged, an output missing or edited on disk), <c>unchanged</c> (skipped). Causes come from the
+/// recorded one), <c>outputs</c> (inputs unchanged, an output missing or edited on disk), <c>unchanged</c> (skipped), and
+/// <c>target-missing</c> for a <c>block</c> unit without <c>createFile</c> whose target files do not exist (it rendered, and writes
+/// nothing; one <c>target-missing</c> cause per file). Causes come from the
 /// recorded read keys: keys that no longer resolve (<c>absent</c>), keys whose hash differs from the one recorded at the unit's last
 /// render (unit state format 3's per-key hashes, section 4.2), keys read for the first time or no longer read, the static parts
 /// (pack version, unit definition, each parameter, scripts, output base, formatter, templates) and the outputs. A pack whose state file
@@ -42,7 +44,9 @@ internal static class PlanExplainer
             if (!states.TryGetValue(p.Pack.Name, out var packState))
                 states[p.Pack.Name] = packState = await state.LoadAsync(p.Pack.Name, ct).ConfigureAwait(false);
             packState.TryGetValue(unit.Key, out var stored);
-            var (reason, causes) = Explain(unit, stored, force, repoRoot, resolves, currentHash, p.StaticParts, state.WasReset(p.Pack.Name), check, nameOf);
+            var (reason, causes) = TargetMissing(unit, p) is { Count: > 0 } missing
+                ? ("target-missing", missing)
+                : Explain(unit, stored, force, repoRoot, resolves, currentHash, p.StaticParts, state.WasReset(p.Pack.Name), check, nameOf);
             result.Add(unit with
             {
                 Pack = p.Pack.Name,
@@ -56,6 +60,21 @@ internal static class PlanExplainer
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// The <c>target-missing</c> causes of a rendered <c>block</c> unit without <c>createFile</c> whose every target file was missing
+    /// when planned (the writer writes nothing for it, MQ6028); empty otherwise.
+    /// </summary>
+    /// <param name="unit">The plan's unit.</param>
+    /// <param name="planned">The planned unit.</param>
+    /// <returns>The causes.</returns>
+    internal static List<PlanCause> TargetMissing(PlanUnit unit, PlannedUnit planned)
+    {
+        if (unit.Skipped || planned.Unit.Mode != Model.OutputMode.Block || planned.Unit.CreateFile || unit.Outputs.Count == 0
+            || unit.Outputs.Any(o => o.DiskHashAtPlan is not null))
+            return [];
+        return [.. unit.Outputs.Select(o => new PlanCause("target-missing", o.Path, $"{o.Path} does not exist; set createFile to create it", null, o.Path))];
     }
 
     /// <summary>The reason and every cause of one unit.</summary>
@@ -129,7 +148,7 @@ internal static class PlanExplainer
                 continue;
             }
 
-            if (ManifestHashes.IsOwned(output.ManifestHash) || ManifestHashes.IsRegions(output.ManifestHash))
+            if (ManifestHashes.IsOwned(output.ManifestHash) || ManifestHashes.IsRegions(output.ManifestHash) || ManagedBlock.IsBlock(output.ManifestHash))
                 continue;
             try
             {

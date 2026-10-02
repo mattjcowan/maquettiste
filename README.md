@@ -134,7 +134,7 @@ maquettiste() { docker run --rm $([ -t 0 ] && echo -it) --user 0:0 -v "$PWD:/rep
 ```sh
 maquettiste validate             # checks the model and the packs, and replays every scenario
 maquettiste generate             # renders the packs into the output roots, incrementally
-maquettiste generate --check     # exits 2 when the committed output differs from the model
+maquettiste generate --check     # exits 2 when any output would be added, changed or deleted
 ```
 
 The user guide has a variant that reads the tag from the compose file, so the editor, the CLI and the agent server agree

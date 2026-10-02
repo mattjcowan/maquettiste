@@ -1,0 +1,7 @@
+bin/
+obj/
+
+# maquettiste: begin csharp-dapper/gitignore
+/Gen/
+# maquettiste: end csharp-dapper/gitignore
+*.user

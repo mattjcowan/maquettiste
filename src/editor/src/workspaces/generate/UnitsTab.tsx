@@ -661,19 +661,46 @@ function UnitRow(props: {
         {paths.data ? paths.data.count : ""}
       </td>
       <td role="gridcell" className={cell}>
-        <Select
-          aria-label={label("Write")}
-          className={cn(cellInput, "w-40")}
-          value={str(unit.mode) || "overwrite"}
-          onFocus={() => props.onFocus("mode")}
-          onChange={(e) => props.onChange("mode", e.target.value)}
-        >
-          {WRITE_MODES.map((m) => (
-            <option key={m.value} value={m.value}>
-              {m.label}
-            </option>
-          ))}
-        </Select>
+        <div className="flex items-center gap-1">
+          <Select
+            aria-label={label("Write")}
+            className={cn(cellInput, "w-40")}
+            value={str(unit.mode) || "overwrite"}
+            onFocus={() => props.onFocus("mode")}
+            onChange={(e) => props.onChange("mode", e.target.value)}
+          >
+            {WRITE_MODES.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </Select>
+          {unit.mode === "block" ? (
+            <>
+              <Input
+                aria-label={label("Block comment")}
+                title="The comment marker of the lines around the block"
+                className={cn(cellInput, "w-10 font-mono text-11")}
+                value={str(unit.blockComment)}
+                placeholder="#"
+                onFocus={() => props.onFocus("blockComment")}
+                onChange={(e) => props.onChange("blockComment", e.target.value)}
+                data-testid="unit-block-comment"
+              />
+              <label className="flex items-center gap-1 whitespace-nowrap text-11" title="Create the file when it does not exist">
+                <input
+                  type="checkbox"
+                  aria-label={label("Create file")}
+                  checked={unit.createFile === true}
+                  onFocus={() => props.onFocus("createFile")}
+                  onChange={(e) => props.onChange("createFile", e.target.checked ? "true" : "false")}
+                  data-testid="unit-create-file"
+                />
+                Create file
+              </label>
+            </>
+          ) : null}
+        </div>
       </td>
       <td role="gridcell" className={cell}>
         <Input

@@ -16,10 +16,9 @@ namespace Maquettiste.Engine;
 /// <param name="ElementId">The element, or <see langword="null"/> for model and locale scope.</param>
 /// <param name="Companion">Whether the file is the unit's companion output.</param>
 /// <param name="Root">The output root that holds it, or <see langword="null"/> when no root does now.</param>
-/// <param name="Commit">Whether the root is committed.</param>
-/// <param name="Mode"><c>overwrite</c>, <c>regions</c> or <c>once</c> (owned), from the manifest hash.</param>
-/// <param name="State"><c>intact</c>, <c>edited</c> (the disk bytes differ from the manifest) or <c>missing</c>.</param>
-public sealed record PackOutput(string Path, string Unit, string? ElementId, bool Companion, string? Root, bool Commit, string Mode, string State);
+/// <param name="Mode"><c>overwrite</c>, <c>regions</c>, <c>once</c> (owned) or <c>block</c>, from the manifest hash.</param>
+/// <param name="State"><c>intact</c>, <c>edited</c> (the disk bytes, or for a block its lines, differ from the manifest) or <c>missing</c>.</param>
+public sealed record PackOutput(string Path, string Unit, string? ElementId, bool Companion, string? Root, string Mode, string State);
 
 /// <summary>The outputs of one pack.</summary>
 /// <param name="Pack">The pack name.</param>
@@ -151,23 +150,20 @@ internal static partial class PackAuthoring
         var policy = services.CreatePathPolicy(snapshot.Settings);
         var repoRoot = new ModelPaths(services.Options).RepoRoot;
         var outputs = new List<PackOutput>();
-        foreach (var committed in new[] { true, false })
+        foreach (var entry in manifests.Entries(name))
         {
-            foreach (var entry in manifests.Entries(name, committed))
-            {
-                ct.ThrowIfCancellationRequested();
-                var companion = entry.Unit.EndsWith("#companion", StringComparison.Ordinal);
-                var unit = companion ? entry.Unit[..^"#companion".Length] : entry.Unit;
-                var colon = unit.IndexOf(':', StringComparison.Ordinal);
-                var check = policy.Check(entry.Path);
-                var full = Path.Combine(repoRoot, entry.Path.Replace('/', Path.DirectorySeparatorChar));
-                var bytes = await AtomicFile.ReadIfExistsAsync(full, ct).ConfigureAwait(false);
-                var state = bytes is null ? "missing"
-                    : string.Equals(ManifestHashes.Comparable(entry.Hash, bytes, ContentHash.Of(bytes)), entry.Hash, StringComparison.Ordinal) ? "intact" : "edited";
-                var mode = ManifestHashes.IsRegions(entry.Hash) ? "regions" : ManifestHashes.IsOwned(entry.Hash) ? "once" : "overwrite";
-                outputs.Add(new PackOutput(entry.Path, colon < 0 ? unit : unit[..colon], colon < 0 ? null : unit[(colon + 1)..], companion,
-                    check.Root?.Path, check.Root?.Commit ?? committed, mode, state));
-            }
+            ct.ThrowIfCancellationRequested();
+            var companion = entry.Unit.EndsWith("#companion", StringComparison.Ordinal);
+            var unit = companion ? entry.Unit[..^"#companion".Length] : entry.Unit;
+            var colon = unit.IndexOf(':', StringComparison.Ordinal);
+            var check = policy.Check(entry.Path);
+            var full = Path.Combine(repoRoot, entry.Path.Replace('/', Path.DirectorySeparatorChar));
+            var bytes = await AtomicFile.ReadIfExistsAsync(full, ct).ConfigureAwait(false);
+            var state = bytes is null ? "missing"
+                : string.Equals(ManifestHashes.Comparable(entry.Hash, bytes, ContentHash.Of(bytes), ManagedBlock.Marker(name, entry.Unit)), entry.Hash, StringComparison.Ordinal)
+                    ? "intact" : "edited";
+            var mode = ManifestHashes.IsRegions(entry.Hash) ? "regions" : ManifestHashes.IsOwned(entry.Hash) ? "once" : ManagedBlock.IsBlock(entry.Hash) ? "block" : "overwrite";
+            outputs.Add(new PackOutput(entry.Path, colon < 0 ? unit : unit[..colon], colon < 0 ? null : unit[(colon + 1)..], companion, check.Root?.Path, mode, state));
         }
 
         outputs.Sort((a, b) => string.CompareOrdinal(a.Path, b.Path));

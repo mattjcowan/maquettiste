@@ -5,7 +5,7 @@
 #   tests/fixtures/models/processes/tools/gate3.sh              # all steps, then down
 #   tests/fixtures/models/processes/tools/gate3.sh <step>...    # prepare walk validate verify generate build test roundtrip bench down
 #
-# prepare    copy this fixture to tmp/gate3 (model, isolation files, projects and committed companions; no generated output),
+# prepare    copy this fixture to tmp/gate3 (model, isolation files, projects and the hand-written companions; no generated output),
 #            add the schemas and the example packs its settings name, start the image over it, wait for GET /api/health
 # walk       Playwright project live, src/editor/tests/e2e/gate3.spec.ts: open PurchaseApproval, simulate a path in the
 #            simulation panel and record it as the scenario RecordedInTheEditor, record one SalesOrderLifecycle path the same
@@ -15,7 +15,7 @@
 # generate   (criteria 4, 6) generate --check is clean after the editor's apply; generate --force at --jobs 1 and --jobs N
 #            into two copies gives byte-identical trees, equal to the editor's output; each process exported twice is
 #            byte-identical
-# build      (criterion 4) dotnet build src/Processes.slnx -c Release -warnaserror (generated files plus the committed companions)
+# build      (criterion 4) dotnet build src/Processes.slnx -c Release -warnaserror (generated files plus the hand-written companions)
 # test       (criterion 5) dotnet test: one generated test per scenario, all passing, the recorded ones included
 # roundtrip  (criterion 7) each process exported to XState and imported --into itself in a scratch copy: byte-identical process
 #            file and an identical second export
@@ -142,10 +142,10 @@ step_verify() {
 tree_list() { (cd "$1" && find . -path ./.maquettiste -prune -o -path '*/bin' -prune -o -path '*/obj' -prune -o -type f -print | sort); }
 
 step_generate() {
-  # Committed roots (db/, src/Processes.Data/Custom): the editor's apply equals the CLI's output.
+  # Every root (db/, docs/, Generated/, src/Processes.Data/Custom): the editor's apply equals the CLI's output.
   cli --repo "$dir" --cache-dir "$dir.cache" generate --check
   # Determinism: every root generated afresh at --jobs 1 and --jobs N into two copies, then compared with each other and with
-  # the editor's output. Companions are not regenerated (they are owned), so the copies keep the committed ones.
+  # the editor's output. Companions are not regenerated (they are owned), so the copies keep the fixture's.
   n="$(nproc 2>/dev/null || echo 4)"
   for j in 1 n; do
     copy="$dir.j$j"

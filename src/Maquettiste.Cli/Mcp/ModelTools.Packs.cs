@@ -178,7 +178,7 @@ internal sealed partial class ModelTools
 
     /// <summary>Why a unit renders or not (getPlanUnit, explainUnit).</summary>
     [McpServerTool(Name = "explain_unit", Title = "Explain unit", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Why a unit renders an element or not. With planId and key: that unit of a stored plan, its reason (new, forced, inputs, outputs, unchanged), causes, read keys grouped by kind and a one-sentence summary (for a skipped unit, why it did not re-render). With pack, unit and elementId (omit elementId for a model unit): the first reason that applies (pack-invalid, unknown-unit, pack-disabled, unknown-element, scope, selector, skip-hint, filter) or, when planned, the plan's reason and causes, from planId when given else from a new dry-run plan of the pack.")]
+    [Description("Why a unit renders an element or not. With planId and key: that unit of a stored plan, its reason (new, forced, inputs, outputs, unchanged, target-missing), causes, read keys grouped by kind and a one-sentence summary (for a skipped unit, why it did not re-render). With pack, unit and elementId (omit elementId for a model unit): the first reason that applies (pack-invalid, unknown-unit, pack-disabled, unknown-element, scope, selector, skip-hint, filter) or, when planned, the plan's reason and causes, from planId when given else from a new dry-run plan of the pack.")]
     public Task<CallToolResult> ExplainUnit(
         [Description("A plan id: with key, the unit of that plan; with pack and unit, the plan to take the reason from.")] string? planId = null,
         [Description("A unit key from get_plan's units (units true).")] string? key = null,
@@ -186,18 +186,8 @@ internal sealed partial class ModelTools
         [Description("The unit id, with pack.")] string? unit = null,
         [Description("The element id (or a resolved table key), with pack and unit.")] string? elementId = null,
         [Description("The run's pack selection; a pack outside it answers 'not-selected'.")] string[]? packs = null,
-        [Description("The run's roots: all (default), committed or built; a unit writing under another root answers 'root-not-selected'.")] string? roots = null,
         CancellationToken ct = default) => GuardAsync(() => PackAsync(async () =>
     {
-        var selection = roots switch
-        {
-            null or "" or "all" => RootSelection.All,
-            "committed" => RootSelection.Committed,
-            "built" => RootSelection.Built,
-            _ => (RootSelection?)null,
-        };
-        if (selection is null)
-            return BadRequest("roots must be all, committed or built.");
         if (planId is not null && !IsUlid(planId))
             return BadRequest("planId must be a ULID.");
         if (!string.IsNullOrEmpty(key))
@@ -209,7 +199,7 @@ internal sealed partial class ModelTools
 
         if (string.IsNullOrEmpty(pack) || string.IsNullOrEmpty(unit))
             return BadRequest("Give planId and key, or pack and unit (and elementId).");
-        return await _generation.ExplainAsync(pack, unit, elementId, planId, ct, packs, selection.Value).ConfigureAwait(false) is { } answer ? Ok(answer) : NotFound("pack", pack);
+        return await _generation.ExplainAsync(pack, unit, elementId, planId, ct, packs).ConfigureAwait(false) is { } answer ? Ok(answer) : NotFound("pack", pack);
     }), ct);
 
     /// <summary>A unit's output paths (unitPaths).</summary>
@@ -240,7 +230,7 @@ internal sealed partial class ModelTools
 
     /// <summary>A pack's recorded outputs (getPackOutputs).</summary>
     [McpServerTool(Name = "get_pack_outputs", Title = "Pack outputs", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("The files a pack's manifests record: path, unit, element, companion, root, committed or built, mode (overwrite, regions, once) and state on disk (intact, edited, missing), with when a manifest was last written.")]
+    [Description("The files a pack's manifest records: path, unit, element, companion, root, mode (overwrite, regions, once, block) and state on disk (intact, edited, missing; for a block, its lines), with when the manifest was last written.")]
     public Task<CallToolResult> GetPackOutputs([Description("The pack name; required.")] string? pack = null, CancellationToken ct = default) =>
         GuardAsync(() => PackAsync(async () =>
         {

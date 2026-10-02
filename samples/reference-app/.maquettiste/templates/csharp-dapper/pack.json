@@ -2,11 +2,12 @@
   "name": "csharp-dapper",
   "version": "1.0.0",
   "engine": ">=1.0 <2.0",
-  "description": "C# model and Dapper data access: entity classes as generated/hand-written pairs, enums, value objects, reference types as records with a static class of rows and resource files per locale, one repository per mapped entity and one registration file per package; for processes, the states, definition and contracts, handlers, services, machine and store as pairs, HTTP endpoints with regions, a typed dispatcher with pipeline behaviours, a generated statechart interpreter and one xunit test per scenario.",
+  "description": "C# model and Dapper data access: entity classes as generated/hand-written pairs, enums, value objects, reference types as records with a static class of rows and resource files per locale, one repository per mapped entity and one registration file per package; for processes, the states, definition and contracts, handlers, services, machine and store as pairs, HTTP endpoints with regions, a typed dispatcher with pipeline behaviours, a generated statechart interpreter and one xunit test per scenario; optionally, a managed block in an ignore file that keeps the generated folder out of version control.",
   "parameters": {
     "database": "",
     "endpointsFolder": "",
     "generatedFolder": "",
+    "gitignorePath": "",
     "namespace": "App.Model",
     "partialFolder": "",
     "testsFolder": ""
@@ -181,6 +182,13 @@
       "id": "scenario-tests",
       "template": "scenario-tests.scriban",
       "for": "each scenario"
+    },
+    {
+      "id": "gitignore",
+      "template": "gitignore.scriban",
+      "for": "model",
+      "mode": "block",
+      "createFile": true
     }
   ]
 }

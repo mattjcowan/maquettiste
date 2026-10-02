@@ -32,17 +32,6 @@ public sealed class SchemaSnapshotTests
     }
 
     [Fact]
-    public async Task A_run_over_part_of_the_roots_does_not_move_the_snapshot()
-    {
-        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic");
-        var packFile = f.Repo.PathOf(".maquettiste/templates/basic/pack.json");
-        f.WritePackFile("basic", "pack.json", File.ReadAllText(packFile).Replace("\"units\"", "\"usesSchemaDiff\": true,\n  \"units\"", StringComparison.Ordinal));
-        var result = await f.Service.RunAsync(new GenerationRequest { Roots = RootSelection.Built }, null, GenerationFixture.Ct);
-        Assert.Equal(RunOutcome.Succeeded, result.Outcome);
-        Assert.False(f.Repo.Exists(".maquettiste/snapshots/main.json"));
-    }
-
-    [Fact]
     public async Task The_snapshot_serialized_during_the_run_is_what_a_capture_after_it_saves()
     {
         // A run serializes the snapshot from the diff's own capture while it renders (WA); a store the run does not know takes the

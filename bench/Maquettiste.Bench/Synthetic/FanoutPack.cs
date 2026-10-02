@@ -7,8 +7,9 @@ namespace Maquettiste.Bench.Synthetic;
 
 /// <summary>
 /// The <c>fanout</c> pack's manifest (engine-design.md section 17, D30): <c>n</c> units per entity cycling through seven templates
-/// (C#, TypeScript, Markdown, SQL, JSON; three of them call JavaScript helpers), one unit in five written to the committed root
-/// <c>gen/committed</c> and the rest to the built root <c>gen/built</c>, plus one index per package.
+/// (C#, TypeScript, Markdown, SQL, JSON; three of them call JavaScript helpers), one unit in five written to the root
+/// <c>gen/committed</c> and the rest to the root <c>gen/built</c> (two roots that behave alike; the folder names are historical), plus one
+/// index per package.
 /// The checked-in <c>bench/packs/fanout/pack.json</c> is this manifest for the default of 20 units.
 /// </summary>
 internal static class FanoutPack

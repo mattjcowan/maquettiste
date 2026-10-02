@@ -1189,6 +1189,8 @@ export function packRecord(json: Json): PackManifest {
       where: (u.where as Json | undefined) ?? null,
       output: (u.output as string | undefined) ?? null,
       mode: ((u.mode as string | undefined) ?? "overwrite") as PackManifest["units"][number]["mode"],
+      blockComment: (u.blockComment as string | undefined) ?? "#",
+      createFile: u.createFile === true,
       formatter: (u.formatter as string | undefined) ?? null,
       delimiters: (u.delimiters as { open: string; close: string } | undefined) ?? null,
       companion: (u.companion as { template: string; output: string } | undefined) ?? null,

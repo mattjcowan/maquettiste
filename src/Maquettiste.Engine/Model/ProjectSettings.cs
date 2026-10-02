@@ -151,21 +151,25 @@ public sealed record ExplorerFolderMatch
 /// <summary>Output roots and deny rules.</summary>
 public sealed record OutputSettings
 {
-    /// <summary>The allowlist (SPEC section 4 <c>allow</c> roots): repo-relative folders generated files may be written under.</summary>
+    /// <summary>
+    /// The allowlist (SPEC section 4 <c>allow</c> roots): repo-relative folders generated files may be written under, or single files
+    /// (an entry names a file a unit writes exactly, such as <c>.gitignore</c>; an entry ending in <c>/</c> is a folder only).
+    /// </summary>
     public IReadOnlyList<OutputRoot> Allow { get; init; } = [];
 
     /// <summary>Deny globs (<c>*</c>, <c>**</c>, <c>?</c>) over repo-relative paths.</summary>
     public IReadOnlyList<string> Deny { get; init; } = [];
 }
 
-/// <summary>An output root.</summary>
+/// <summary>
+/// An output root: a folder generation may write under, and the file of that name itself (so an entry such as <c>.gitignore</c> or
+/// <c>src/App/.gitignore</c> allows exactly that file without making its folder a root). Which outputs a team commits is the team's
+/// choice; the root records nothing about it (the <c>commit</c> flag of earlier releases is ignored since 0.5.5, MQ1010).
+/// </summary>
 public sealed record OutputRoot
 {
-    /// <summary>The repo-relative folder.</summary>
+    /// <summary>The repo-relative folder or file; a trailing <c>/</c> limits the entry to the folder.</summary>
     public required string Path { get; init; }
-
-    /// <summary>Whether output under the root is committed (manifest under <c>.maquettiste/manifest/</c>) or built (gitignored).</summary>
-    public bool Commit { get; init; }
 }
 
 /// <summary>What a run does with a generated file whose disk content differs from its manifest hash.</summary>

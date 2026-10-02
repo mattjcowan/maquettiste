@@ -5,12 +5,10 @@
   "outputs": {
     "allow": [
       {
-        "path": "db",
-        "commit": true
+        "path": "db"
       },
       {
-        "path": "src/Processes.Data/Custom",
-        "commit": true
+        "path": "src/Processes.Data/Custom"
       },
       {
         "path": "src/Processes.Data/Generated"
@@ -19,8 +17,7 @@
         "path": "src/Processes.Tests/Generated"
       },
       {
-        "path": "docs",
-        "commit": true
+        "path": "docs"
       }
     ]
   },

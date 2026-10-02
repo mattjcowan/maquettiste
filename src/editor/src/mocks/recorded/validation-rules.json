@@ -72,6 +72,14 @@
     "canBeOff": false
   },
   {
+    "id": "MQ1010",
+    "defaultSeverity": "info",
+    "description": "An outputs.allow entry sets commit, which is ignored since 0.5.5; remove it (maquettiste format drops it).",
+    "family": "MQ10xx",
+    "familyLabel": "Model files",
+    "canBeOff": false
+  },
+  {
     "id": "MQ2001",
     "defaultSeverity": "error",
     "description": "Dangling reference.",
@@ -800,14 +808,6 @@
     "canBeOff": true
   },
   {
-    "id": "MQ6015",
-    "defaultSeverity": "error",
-    "description": "Regions mode on a built root.",
-    "family": "MQ60xx",
-    "familyLabel": "Packs and generation",
-    "canBeOff": true
-  },
-  {
     "id": "MQ6016",
     "defaultSeverity": "error",
     "description": "Script error.",
@@ -834,7 +834,7 @@
   {
     "id": "MQ6019",
     "defaultSeverity": "error",
-    "description": "A unit's output path cannot stay under an allowed output root.",
+    "description": "A unit's output path cannot stay under an allowed output root or be an allowed file.",
     "family": "MQ60xx",
     "familyLabel": "Packs and generation",
     "canBeOff": true
@@ -891,6 +891,22 @@
     "id": "MQ6026",
     "defaultSeverity": "error",
     "description": "A preview names an element outside its unit's scope.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6027",
+    "defaultSeverity": "error",
+    "description": "A block unit's target file holds its block twice, or a block that is not closed; the file is left alone.",
+    "family": "MQ60xx",
+    "familyLabel": "Packs and generation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ6028",
+    "defaultSeverity": "info",
+    "description": "A block unit's target file does not exist and createFile is false; nothing is written (target-missing).",
     "family": "MQ60xx",
     "familyLabel": "Packs and generation",
     "canBeOff": true

@@ -26,7 +26,7 @@ internal static partial class PackAuthoring
     /// <summary>
     /// Removes a pack (<c>DELETE /api/packs/{pack}</c>) when <c>pack.json</c> still has <paramref name="expectedHash"/>: the
     /// <c>packs.&lt;pack&gt;</c> entry of <c>maquettiste.json</c> first (through the settings save, so a refused save removes nothing), then
-    /// the folder <c>.maquettiste/templates/&lt;pack&gt;/</c>, then its committed and built manifests and its unit states. Generated files
+    /// the folder <c>.maquettiste/templates/&lt;pack&gt;/</c>, then its manifest and its unit states. Generated files
     /// stay on disk, untracked: with no manifest left, no later run treats them as orphans (engine-design.md, pack removal). Every
     /// delete is checked against the engine-write guard before the first one; a refused path refuses the whole removal. The caller holds
     /// the run lock, so no run writes the manifests meanwhile.
@@ -48,8 +48,7 @@ internal static partial class PackAuthoring
 
             var removals = PlanRemoval(services, root);
             var manifests = await services.Manifests.LoadAsync([name], ct).ConfigureAwait(false);
-            var untracked = new[] { true, false }.SelectMany(committed => manifests.Entries(name, committed)).Select(e => e.Path)
-                .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+            var untracked = manifests.Entries(name).Select(e => e.Path).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
 
             string? settingsHash = null;
             var settled = false;
@@ -93,8 +92,7 @@ internal static partial class PackAuthoring
                 }
             }
 
-            await services.Manifests.SavePackAsync(name, true, [], ct).ConfigureAwait(false);
-            await services.Manifests.SavePackAsync(name, false, [], ct).ConfigureAwait(false);
+            await services.Manifests.SavePackAsync(name, [], ct).ConfigureAwait(false);
             await services.UnitState.SaveAsync(name, [], ct).ConfigureAwait(false);
             files.Sort(StringComparer.Ordinal);
             return new PackRemoveResult(SaveOutcome.Saved, null, null, files, untracked, settingsHash, []);

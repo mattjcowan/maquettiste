@@ -329,12 +329,10 @@
                         "outputs": {
                           "allow": [
                             {
-                              "path": "db",
-                              "commit": true
+                              "path": "db"
                             },
                             {
-                              "path": "src/Generated",
-                              "commit": false
+                              "path": "src/Generated"
                             }
                           ],
                           "deny": []
@@ -438,6 +436,8 @@
                               "where": null,
                               "output": "{{ kebab table.database.name }}/{{ if table.schema }}{{ table.schema }}/{{ end }}tables/{{ table.name }}.sql",
                               "mode": "overwrite",
+                              "blockComment": "#",
+                              "createFile": false,
                               "formatter": null,
                               "delimiters": null,
                               "companion": null,
@@ -450,6 +450,8 @@
                               "where": null,
                               "output": "{{ kebab database.name }}/schema.sql",
                               "mode": "overwrite",
+                              "blockComment": "#",
+                              "createFile": false,
                               "formatter": null,
                               "delimiters": null,
                               "companion": null,
@@ -5335,8 +5337,7 @@
               "example": {
                 "packs": [
                   "sql-ddl"
-                ],
-                "roots": "all"
+                ]
               }
             }
           }
@@ -5436,7 +5437,6 @@
                         "jobs": null,
                         "handEdits": null,
                         "includeDiffs": false,
-                        "roots": "all",
                         "lock": "wait",
                         "stageBarriers": false
                       },
@@ -5485,8 +5485,7 @@
                               "mode": "pair",
                               "role": "main",
                               "root": {
-                                "path": "src/Generated",
-                                "commit": false
+                                "path": "src/Generated"
                               },
                               "diskHashAtPlan": null
                             },
@@ -5497,8 +5496,7 @@
                               "mode": "pair",
                               "role": "companion",
                               "root": {
-                                "path": "src/Generated",
-                                "commit": false
+                                "path": "src/Generated"
                               },
                               "diskHashAtPlan": null
                             }
@@ -5752,7 +5750,6 @@
                             "jobs": null,
                             "handEdits": null,
                             "includeDiffs": false,
-                            "roots": "all",
                             "lock": "wait",
                             "stageBarriers": false
                           },
@@ -6366,7 +6363,7 @@
         ],
         "operationId": "deletePack",
         "summary": "Remove a pack, leaving the files it generated on disk",
-        "description": "`If-Match` carries the `pack.json` hash read. Removes the `packs.<pack>` entry of `maquettiste.json` (through the settings\nsave), then the folder `.maquettiste/templates/<pack>/`, then the pack's committed and built manifests and its unit states.\nThe files the pack generated stay on disk and are no longer tracked: `untracked` lists them. Waits for a generation run in\nprogress. 409 when `pack.json` changed (or `maquettiste.json` kept changing meanwhile); 422 (nothing removed) when the settings save is refused. Sends `project.changed`\nwhen the settings changed, then `templates.changed` (empty `files`) and `packs.changed`.\n",
+        "description": "`If-Match` carries the `pack.json` hash read. Removes the `packs.<pack>` entry of `maquettiste.json` (through the settings\nsave), then the folder `.maquettiste/templates/<pack>/`, then the pack's manifest and its unit states.\nThe files the pack generated stay on disk and are no longer tracked: `untracked` lists them. Waits for a generation run in\nprogress. 409 when `pack.json` changed (or `maquettiste.json` kept changing meanwhile); 422 (nothing removed) when the settings save is refused. Sends `project.changed`\nwhen the settings changed, then `templates.changed` (empty `files`) and `packs.changed`.\n",
         "x-maquettiste-role": "maintainer",
         "x-maquettiste-engine": "GenerationService.DeletePackAsync(pack, expectedHash)",
         "parameters": [
@@ -6439,7 +6436,7 @@
         ],
         "operationId": "renamePack",
         "summary": "Rename a pack, keeping the files it generated tracked",
-        "description": "`If-Match` carries the `pack.json` hash read. The new name follows the pack-name rule (lowercase letters and digits separated\nby single hyphens, starting with a letter) and must not be used by another pack folder, a `packs.<name>` settings entry or\nthe manifests of a former pack. Moves the `packs.<pack>` entry of `maquettiste.json` to `packs.<name>` with its values\n(through the settings save), renames the folder `.maquettiste/templates/<pack>/` (never a copy), writes the new name into\n`pack.json`, and moves the pack's committed and built manifests and its unit states, so the files it generated stay tracked\nand no later run deletes them as orphans. Generation hints keyed by the old name are listed in `hints` and left as they are:\nthe editor moves them with one model batch after the rename, so they are one undo step.\nWith `dryRun` every check runs and the answer says what would move, writing nothing. Waits for a generation run in\nprogress. 409 when `pack.json` changed (or `maquettiste.json` kept changing meanwhile); 422 (nothing changed) when the\nname is refused or the settings save is. Sends `project.changed` when the settings changed, then\n`templates.changed` (empty `files`) for both names and `packs.changed`. The ETag is the new `pack.json` hash.\n",
+        "description": "`If-Match` carries the `pack.json` hash read. The new name follows the pack-name rule (lowercase letters and digits separated\nby single hyphens, starting with a letter) and must not be used by another pack folder, a `packs.<name>` settings entry or\nthe manifests of a former pack. Moves the `packs.<pack>` entry of `maquettiste.json` to `packs.<name>` with its values\n(through the settings save), renames the folder `.maquettiste/templates/<pack>/` (never a copy), writes the new name into\n`pack.json`, and moves the pack's manifest and its unit states, so the files it generated stay tracked\nand no later run deletes them as orphans. Generation hints keyed by the old name are listed in `hints` and left as they are:\nthe editor moves them with one model batch after the rename, so they are one undo step.\nWith `dryRun` every check runs and the answer says what would move, writing nothing. Waits for a generation run in\nprogress. 409 when `pack.json` changed (or `maquettiste.json` kept changing meanwhile); 422 (nothing changed) when the\nname is refused or the settings save is. Sends `project.changed` when the settings changed, then\n`templates.changed` (empty `files`) for both names and `packs.changed`. The ETag is the new `pack.json` hash.\n",
         "x-maquettiste-role": "maintainer",
         "x-maquettiste-engine": "GenerationService.RenamePackAsync(pack, newName, expectedHash)",
         "parameters": [
@@ -7148,8 +7145,8 @@
           "packs"
         ],
         "operationId": "getPackOutputs",
-        "summary": "The files a pack's manifests record",
-        "description": "Every manifest entry of the pack (committed and built roots) with its unit, element, root, mode and state on disk (`intact`, `edited`, `missing`), and when a manifest was last written.",
+        "summary": "The files a pack's manifest records",
+        "description": "Every manifest entry of the pack with its unit, element, root, mode and state on disk (`intact`, `edited`, `missing`; for a `block` output, the state of its lines in the file), and when the manifest was last written.",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "GenerationService.GetPackOutputsAsync(pack)",
         "responses": {
@@ -8353,19 +8350,16 @@
             ],
             "properties": {
               "allow": {
+                "description": "Folders generation may write under; an entry also allows the file of its own path (such as `.gitignore`) unless it ends with `/`. A `commit` member of an older file is ignored (MQ1010).",
                 "type": "array",
                 "items": {
                   "type": "object",
                   "required": [
-                    "path",
-                    "commit"
+                    "path"
                   ],
                   "properties": {
                     "path": {
                       "type": "string"
-                    },
-                    "commit": {
-                      "type": "boolean"
                     }
                   }
                 }
@@ -9250,6 +9244,8 @@
           "where",
           "output",
           "mode",
+          "blockComment",
+          "createFile",
           "formatter",
           "delimiters",
           "companion",
@@ -9282,6 +9278,14 @@
           },
           "mode": {
             "$ref": "#/components/schemas/OutputMode"
+          },
+          "blockComment": {
+            "type": "string",
+            "description": "Mode `block`: the comment marker of the delimiter lines (`#` by default)."
+          },
+          "createFile": {
+            "type": "boolean",
+            "description": "Mode `block`: create the target file when it does not exist (otherwise the unit writes nothing: `target-missing`)."
           },
           "formatter": {
             "type": [
@@ -16663,14 +16667,6 @@
           "check"
         ]
       },
-      "RootSelection": {
-        "type": "string",
-        "enum": [
-          "all",
-          "committed",
-          "built"
-        ]
-      },
       "LockMode": {
         "type": "string",
         "enum": [
@@ -16718,7 +16714,8 @@
           "overwrite",
           "once",
           "regions",
-          "pair"
+          "pair",
+          "block"
         ]
       },
       "FileChangeKind": {
@@ -16776,9 +16773,6 @@
           "includeDiffs": {
             "type": "boolean",
             "default": false
-          },
-          "roots": {
-            "$ref": "#/components/schemas/RootSelection"
           },
           "lock": {
             "$ref": "#/components/schemas/LockMode"
@@ -16914,15 +16908,12 @@
         "x-engine-record": "Maquettiste.Engine.Pipeline.OutputRootInfo",
         "type": "object",
         "required": [
-          "path",
-          "commit"
+          "path"
         ],
         "properties": {
           "path": {
-            "type": "string"
-          },
-          "commit": {
-            "type": "boolean"
+            "type": "string",
+            "description": "The `outputs.allow` entry that holds the file (a folder, or the file's own path)."
           }
         }
       },
@@ -17022,6 +17013,7 @@
               "inputs",
               "outputs",
               "unchanged",
+              "target-missing",
               null
             ]
           },
@@ -18173,7 +18165,8 @@
               "parameter",
               "scripts",
               "output-base",
-              "formatter"
+              "formatter",
+              "target-missing"
             ]
           },
           "key": {
@@ -18503,7 +18496,6 @@
           "elementId",
           "companion",
           "root",
-          "commit",
           "mode",
           "state"
         ],
@@ -18529,15 +18521,13 @@
               "null"
             ]
           },
-          "commit": {
-            "type": "boolean"
-          },
           "mode": {
             "type": "string",
             "enum": [
               "overwrite",
               "regions",
-              "once"
+              "once",
+              "block"
             ]
           },
           "state": {
@@ -18610,19 +18600,6 @@
             "items": {
               "type": "string"
             }
-          },
-          "roots": {
-            "description": "The run's root selection; a unit whose output pattern's literal prefix is under a root of the other kind answers root-not-selected.",
-            "type": [
-              "string",
-              "null"
-            ],
-            "enum": [
-              "all",
-              "committed",
-              "built",
-              null
-            ]
           }
         }
       },
@@ -18669,13 +18646,13 @@
               "selector",
               "skip-hint",
               "filter",
-              "root-not-selected",
               "new",
               "forced",
               "check",
               "inputs",
               "outputs",
-              "unchanged"
+              "unchanged",
+              "target-missing"
             ]
           },
           "detail": {
@@ -20480,21 +20457,17 @@
             ],
             "properties": {
               "allow": {
+                "description": "Where generation may write: each entry's path is a repo-relative folder generated files may be written under, or a file a unit writes exactly (for example .gitignore or src/App/.gitignore; an entry ending in / is a folder only). Which outputs to commit is the team's choice.",
                 "type": "array",
                 "items": {
                   "type": "object",
                   "x-order": [
-                    "path",
-                    "commit"
+                    "path"
                   ],
                   "properties": {
                     "path": {
                       "type": "string",
                       "minLength": 1
-                    },
-                    "commit": {
-                      "type": "boolean",
-                      "default": false
                     }
                   },
                   "required": [
@@ -28431,6 +28404,8 @@
                 "where",
                 "output",
                 "mode",
+                "blockComment",
+                "createFile",
                 "formatter",
                 "delimiters",
                 "companion",
@@ -28523,13 +28498,26 @@
                   "minLength": 1
                 },
                 "mode": {
+                  "description": "overwrite: rewritten when inputs change. once: written only when missing, then the team's. regions: rewritten, keeping the bodies of maquettiste:keep regions. pair: a generated file and a companion written once. block: a managed block inside a file the team owns; the template renders the block's lines, and only the lines between '<comment> maquettiste: begin <pack>/<unit>' and '<comment> maquettiste: end <pack>/<unit>' are replaced, inserted at the end of the file after a blank line, or removed when the unit no longer produces them. Formatters never run on block outputs.",
                   "enum": [
                     "overwrite",
                     "once",
                     "regions",
-                    "pair"
+                    "pair",
+                    "block"
                   ],
                   "default": "overwrite"
+                },
+                "blockComment": {
+                  "description": "Mode block: the comment marker that starts the block's delimiter lines, for example // or ;.",
+                  "type": "string",
+                  "pattern": "^[^\\s]+$",
+                  "default": "#"
+                },
+                "createFile": {
+                  "description": "Mode block: create the target file (holding just the block) when it does not exist. When false and the file is missing, the unit writes nothing and is listed as skipped (target-missing). A file the engine created is deleted when its block is removed and nothing but whitespace is left; any other file is kept.",
+                  "type": "boolean",
+                  "default": false
                 },
                 "formatter": {
                   "type": "string",

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    The generated scenario tests (Generated/, the csharp-dapper pack's scenario-tests unit, gitignored) and ScenarioHost,
+    The generated scenario tests (Generated/, the csharp-dapper pack's scenario-tests unit, not committed) and ScenarioHost,
     which runs them against the Processes.Data stores over an in-memory SQLite database built from the sql-ddl output
     (db/main/schema.sql).
   -->

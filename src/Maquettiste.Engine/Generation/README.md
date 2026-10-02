@@ -53,13 +53,15 @@ Tests: `tests/Maquettiste.Engine.Tests/Generation/` (a fake renderer that honors
    bounded queue (256 files). With `StageBarriers` each of stages 6 to 8 completes before the next.
 7. Writer context: counts per run pack (so each pack's manifest and unit states are saved as soon as its last unit arrives),
    skipped units, hand-edit policy per pack (`Request.HandEdits` ← `packs.<name>.handEdits` ← `handEdits`; `fail` in check mode),
-   `AllPacks` when no pack filter, the request's roots, diffs in dry run only, the journal in apply only.
-8. Apply only, when the outcome is `Succeeded` and `Roots` is `All`: snapshots with a non-empty diff are saved at `ToRevision`
+   `AllPacks` when no pack filter, diffs in dry run only, the journal in apply only. Every run covers every root (spec-errata E42
+   removed `GenerationRequest.Roots`).
+8. Apply only, when the outcome is `Succeeded`: snapshots with a non-empty diff are saved at `ToRevision`
    (the bytes were serialized on the thread pool since the diff, see "Performance notes (WA)"). Then `Journal.EndAsync`. A cancelled or failed apply closes the journal without `end` (`DisposeAsync`), so the next run resumes.
 
 Outcome: errors other than MQ6009, MQ6010 and MQ6018 → `Invalid`; a conflict (or in check mode any hand edit) → `Conflicts`;
 in check mode an added, modified, deleted or orphaned file (an owned orphan, `OrphanedOwned`, included: an apply would drop its
-manifest line), a stale manifest entry or MQ6018 → `Drift`; else `Succeeded`.
+manifest line), a stale manifest entry or MQ6018 → `Drift`; else `Succeeded`. Check renders every root (E42); a block whose
+target file is missing without `createFile` (MQ6028, info) is not drift.
 Cancellation returns `Cancelled`; any other exception (an I/O failure while writing) propagates, with the journal left to resume.
 
 ## Last-run record (one-shot hosts; WB)
@@ -71,12 +73,13 @@ its model store warm and neither reads nor writes the record, so its runs are un
 - **Replay.** An apply run (not forced, no stage barriers, not a plan's dry run) of a service whose model store has not loaded yet
   first reads `CacheDirectory/last-run.v1.bin` under the run lock. It is answered from the record when all of these hold: the record
   is intact (SHA-256 trailer, checked before any decoded field is used) and from this engine build (`RunRecord.CurrentBuild`, below);
-  its key matches (engine build, repo, model, journal and cache folders, and the request's packs, roots and hand-edit override);
+  its key matches (engine build, repo, model, journal and cache folders, and the request's packs and hand-edit override; key `mq-last-run-3`, roots left it with E42);
   there is no journal file; the enumerated model files (the loader's own enumeration) are exactly the recorded ones with the recorded
   length and last-write time, the referenced sidecars too, and the referenced sidecars that were missing are still missing; the
   content hash of every file under `<ModelRoot>/templates` (relative paths and bytes, dot files included) is the recorded one; the
-  files directly in the unit-state folder and the built-root manifest folder are the recorded ones with the recorded stats; the
-  content hash of the files directly in the committed manifest folder and `<ModelRoot>/snapshots` is the recorded one; and every
+  files directly in the unit-state folder and the journal folder's `manifest/` (a cache copy of a manifest an earlier release left,
+  until the next save moves it) are the recorded ones with the recorded stats; the
+  content hash of the files directly in the manifest folder `<ModelRoot>/manifest` and `<ModelRoot>/snapshots` is the recorded one; and every
   output the planned units' states record still has its recorded stat (an owned output only needs to exist). The result is the one a full run gives: `Succeeded`, no changes, 0 rendered, every planned
   unit skipped, nothing written, the diagnostics of stages 1 to 5 (load, validate, pack load, resolve, plan) as recorded, and
   timings for `load` (the input check) and `skip` (the output check). Nothing is written, not even the journal. Progress reports a
@@ -88,8 +91,9 @@ its model store warm and neither reads nor writes the record, so its runs are un
 - **Recording.** Any other apply run with `ReuseLastRun` first deletes the record, hashes the templates folder (before the packs
   load, so a template changed during the run shows as changed), and after the run writes a new record when the run `Succeeded`, no
   run pack has a non-empty schema diff (saving the snapshot changes what `d:` keys hash, so the next run is not a no-op), no
-  diagnostic has rule MQ6004, MQ6005, MQ6009, MQ6010 or MQ6015 (refused paths, duplicate claims, hand edits, lost regions, regions
-  on built roots: what a next run would report again), no journal file is left, the store's last load produced the run's snapshot,
+  diagnostic has rule MQ6004, MQ6005, MQ6009, MQ6010, MQ6027 or MQ6028 (refused paths, duplicate claims, hand edits, lost regions,
+  a block file holding its block twice, a block target missing without `createFile`: what a next run would report again, or a
+  file that may appear without any recorded stat changing), no journal file is left, the store's last load produced the run's snapshot,
   and every planned unit's stored state, as the writer saved it (`UnitStateStore.Remembered`), is current: a skipped unit keeps its
   state (same input hash, same outputs); a rendered unit has a new state with the input hash it rendered with. These are exactly the
   conditions under which a full run with the same inputs skips every unit and changes nothing, so a replay equals that run. The
@@ -108,9 +112,9 @@ its model store warm and neither reads nor writes the record, so its runs are un
 - **Trust.** The record trusts stats (length and last-write time) only where the design already does: for model files and
   referenced sidecars, as the index cache (§5) takes a file whose stat matches without reading it, and for outputs, as the skip
   check (§11) takes an output whose stat matches as intact. Templates (with partials, helper scripts and pack manifests: what units'
-  static hashes are made of), committed manifests and schema snapshots, which a full run reads on every run and which a checkout or
+  static hashes are made of), manifests and schema snapshots, which a full run reads on every run and which a checkout or
   a script can rewrite, are compared by content: about 0.06 MB of templates and a 3 MB manifest on the benchmark repo. Unit-state
-  files (28 MB there) and built-root manifests, under the cache and journal folders, are written only by the engine and compared by
+  files (28 MB there) and any cache copy of a manifest an earlier release left, under the cache and journal folders, are written only by the engine and compared by
   stat: the engine rewrites them only in a run, which follows an input change the record sees on its own, and a rewrite with the
   same content leaves the answer right. A tool that rewrites a model file with the same length inside the same timestamp tick is
   not seen, as with the index cache. The record is keyed by the full repo path (a copy of the cache from another checkout does not
@@ -178,11 +182,16 @@ no watch member.
   requested design change (D29, section 12.3): an owned orphan whose file still exists keeps its entry and is reported `Kept`; the
   entry is dropped only once the file is gone. An earlier integration-stage change that stopped check from counting owned orphans
   was reverted (WI review): it made `--check` pass while the next apply still changed the committed manifest.
-- Check mode also reports, as `Modified` with the new manifest hash, a committed output whose manifest entry is missing or
-  differs although the file on disk already has the new bytes (the committed manifest would change on apply): drift. The writer's
-  `Unchanged` decision alone would hide it.
-- Schema snapshots are saved only after an apply that `Succeeded` over all roots: a run limited to built roots (or one with
-  conflicts) could leave a migration unwritten, and advancing the snapshot would lose it.
+- Check mode also reports, as `Modified` with the new manifest hash, an output whose manifest entry is missing or differs although
+  the file on disk already has the new bytes (the manifest would change on apply): drift. The writer's `Unchanged` decision alone
+  would hide it. Since E42 this covers every output (before, committed roots only); a block compares the hash of its lines (a
+  `bc:` entry against a `b:` render is not drift), and a block without an entry whose target file does not exist is left to the
+  writer.
+- Schema snapshots are saved only after an apply that `Succeeded` (before E42, also only over all roots): a run with conflicts
+  could leave a migration unwritten, and advancing the snapshot would lose it.
+- Plan reason `target-missing` (E42, `PlanExplainer.TargetMissing`): a rendered `block` unit without `createFile` whose every target
+  file was missing at plan time gets that reason and one `target-missing` cause per file ("<path> does not exist; set createFile
+  to create it") instead of the usual explanation; the writer writes nothing for it (MQ6028).
 - `GenerationRequest.Jobs` sets render and post-processing parallelism; the writer's drain tasks follow
   `EngineOptions.MaxDegreeOfParallelism` (W7).
 - `RunOutcome.Failed` is returned only by `ApplyAsync` (unknown plan, missing blobs) and by `PlanAsync` never; internal errors
@@ -202,7 +211,7 @@ look-ahead bound on a large model, and the benchmark budgets. The original list:
   recorded by `include`), and whether the renderer records `t:` for a unit's own template;
 - that the renderer records `r:` keys through the tracking context (a mapping created later re-renders the entity's units);
 - `select` and `where.script` with real pack scripts, and pack helpers during rendering sharing the pack's sandbox scripts;
-- file blocks, `pair` companions, `regions` and `once` through Scriban, including MQ6011 and MQ6015;
+- file blocks, `pair` companions, `regions` and `once` through Scriban, including MQ6011 (MQ6015 retired with E42);
 - schema-diff migrations: a `for: model`, `mode: once` unit reading `schema_diff` whose `d:` key re-renders it after a model change,
   and the snapshot advancing only after a full successful apply;
 - plan → apply with real templates, including a region edit after planning (`Stale`);
@@ -249,11 +258,10 @@ and before the path reaches the store, so a manifest write under the real prefix
   `SchemaDiffer.DiffAndCapture` (one capture instead of two) and, for each database whose diff is not empty, starts
   `SnapshotStore.Prepare` on the thread pool with that capture stamped `ToRevision` (`PreparedRun.PendingSnapshots`).
   `SaveSnapshotsAsync` awaits the prepared bytes and writes them (`SnapshotStore.WriteAsync`), under the same condition as
-  before (apply, `Succeeded`, all roots). A snapshot store or differ that is not the engine's own (a test double) takes the old
+  before (apply, `Succeeded`). A snapshot store or differ that is not the engine's own (a test double) takes the old
   path, a capture and `SaveAsync` after the apply. On the benchmark the end of an incremental run follows the last file write by
-  about 0.2 s instead of 0.9 s. A run that fails, is cancelled, or covers only part of the roots leaves the prepared bytes unused
-  (the task does no I/O; its failure is observed); an apply over `--roots committed` or `built` therefore still serializes the
-  snapshot once for nothing. The prepare task gets the run's token (checked before sorting and before serializing), and the diff's
+  about 0.2 s instead of 0.9 s. A run that fails or is cancelled leaves the prepared bytes unused (the task does no I/O; its failure is
+  observed). (Before E42 an apply over `--roots committed` or `built` also left them unused.) The prepare task gets the run's token (checked before sorting and before serializing), and the diff's
   parallel capture and compare observe it too, so a cancelled run stops that work at the next table or step. The prepared bytes
   are also parsed back on a separate thread-pool task for the next run's load (`Prepare(…, parse: true, …)`);
   `SaveSnapshotsAsync` waits for the bytes only, never for that parse, so it is off the critical path even when rendering is

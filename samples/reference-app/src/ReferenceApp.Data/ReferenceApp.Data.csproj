@@ -2,7 +2,8 @@
 
   <!--
     The data layer of the Northwind Operations reference application.
-    Generated/ is the csharp-dapper pack's built root (gitignored): run
+    Generated/ is the csharp-dapper pack's generated folder, kept out of
+    git by the block the pack writes into this folder's .gitignore: run
     `maquettiste generate` before building. Custom/ holds the hand-written
     halves of generated partial types. The isolation files next to
     samples/reference-app (Directory.Build.props, Directory.Packages.props,

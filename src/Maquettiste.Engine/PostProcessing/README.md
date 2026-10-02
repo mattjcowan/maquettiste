@@ -13,6 +13,8 @@ Line endings, protected regions and formatters (stage 7; engine-design.md sectio
   `IOutputPathPolicy.Check`. Nothing is written, so dry runs and `--check` use the same code in memory.
   Manifest hashes: `r:` + skeleton hash for regions files, `o:` + content hash for owned files (`once` mode and pair
   companions), else the content hash. A `pair` unit's file blocks get mode `overwrite`; every other file keeps the unit's mode.
+  A `block` file (spec-errata E42, engine-design.md §12.3b) stops after step 1: its body is the normalized text with a final line
+  end, never formatted, hashed `b:` over those lines; the writer puts it in the file.
 - `FormatterRunner` (`IFormatterRunner`): runs `Command` with `ArgumentList` (no shell; `{path}` replaced by the repo-relative
   path) in the repo root, input on stdin, output from stdout, stderr captured for the message. Non-zero exit, timeout
   (`TimeoutSeconds`, process tree killed), a command that cannot start, or output that is not UTF-8 is MQ6008.
@@ -23,9 +25,9 @@ Line endings, protected regions and formatters (stage 7; engine-design.md sectio
 - `TextNormalizer`: LF, no BOM, strict UTF-8 (`TryEncode` and `TryDecode` report invalid text instead of throwing).
 
 Failure mapping: a failed unit returns no files (the writer keeps its previous outputs) and carries the diagnostics.
-MQ6004 path refused; MQ6015 regions on a built root; MQ6006 malformed region markers in the generated output (a template bug)
+MQ6004 path refused (MQ6015, regions on a built root, is retired: spec-errata E42); MQ6006 malformed region markers in the generated output (a template bug)
 or rendered text that is not valid Unicode (an unpaired UTF-16 surrogate, for example a string sliced inside an emoji; the file
-never reaches the formatter);
+never reaches the formatter), or a `block` body holding one of its own delimiter lines;
 MQ6010 a region on disk the new output lacks, malformed markers on disk, or a disk file that is not UTF-8; MQ6008 formatter.
 
 Deviations and notes:

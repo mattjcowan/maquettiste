@@ -132,7 +132,6 @@ public sealed class CliApp(CliEnvironment environment)
         Commands:
           init                  Create .maquettiste/, the schema files and a starter pack
                                   --pack sql-ddl|csharp-dapper|none (default sql-ddl), --hooks,
-                                  --gitignore (add the built roots and the cache to .gitignore),
                                   --mcp (.mcp.json), --skill (.claude/skills), --agent-setup (both),
                                   --docker <image> (implies --mcp: .mcp.json runs the server in the image),
                                   --runtime docker|podman (the container command for --docker, default docker),
@@ -140,8 +139,9 @@ public sealed class CliApp(CliEnvironment environment)
           validate              Validate the model and packs
                                   --format text|json|sarif, --output <file>
           generate              Incremental generation
-                                  --pack <name> (repeatable), --force, --roots all|committed|built,
-                                  --hand-edits fail|overwrite|skip, --watch, --dry-run, --diff, --check,
+                                  --pack <name> (repeatable), --force,
+                                  --hand-edits fail|overwrite|skip, --watch, --dry-run, --diff,
+                                  --check (render every root in memory; exit 2 when a file would change),
                                   --format text|json, --no-wait
           migrate               Upgrade the model format (format 1 is current)
           format                Rewrite every model file in canonical form and report the count

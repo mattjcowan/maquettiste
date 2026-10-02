@@ -25,9 +25,10 @@ public sealed class OutputWriterTests
         Assert.Equal([("db/tables/a.sql", FileChangeKind.Added), ("src/Generated/B.g.cs", FileChangeKind.Added)],
             summary.Changes.Select(c => (c.Path, c.Kind)));
         Assert.Equal("create table a;\n", f.Repo.ReadFile("db/tables/a.sql"));
-        Assert.Contains($"[\"db/tables/a.sql\", \"{ContentHash.Of("create table a;\n")}\", \"table:01A\"]", f.ManifestText("p", true), StringComparison.Ordinal);
-        Assert.DoesNotContain("B.g.cs", f.ManifestText("p", true), StringComparison.Ordinal);
-        Assert.Contains("\"src/Generated/B.g.cs\"", f.ManifestText("p", false), StringComparison.Ordinal);
+        // One manifest for every root, in the model folder.
+        Assert.Contains($"[\"db/tables/a.sql\", \"{ContentHash.Of("create table a;\n")}\", \"table:01A\"]", f.ManifestText("p"), StringComparison.Ordinal);
+        Assert.Contains("\"src/Generated/B.g.cs\"", f.ManifestText("p"), StringComparison.Ordinal);
+        Assert.False(System.IO.File.Exists(f.Manifests.LegacyFileOf("p")));
         var state = f.State.Packs["p"]["p/table:01A"];
         Assert.Equal("input-p/table:01A", state.InputHash);
         Assert.Equal(["e:a", "e:b"], state.ReadKeys);
@@ -43,7 +44,7 @@ public sealed class OutputWriterTests
     {
         using var f = new WritingFixture();
         await f.RunAsync([Unit("p/u", Out("db/a.sql", "a\n"))]);
-        var manifest = f.ManifestText("p", true);
+        var manifest = f.ManifestText("p");
         System.IO.File.SetLastWriteTimeUtc(f.Repo.PathOf("db/a.sql"), Old);
 
         var summary = await f.RunAsync([Unit("p/u", Out("db/a.sql", "a\n"))]);
@@ -51,7 +52,7 @@ public sealed class OutputWriterTests
         Assert.Equal(0, summary.Written);
         Assert.Empty(summary.Changes);
         Assert.Equal(Old, System.IO.File.GetLastWriteTimeUtc(f.Repo.PathOf("db/a.sql")));
-        Assert.Equal(manifest, f.ManifestText("p", true));
+        Assert.Equal(manifest, f.ManifestText("p"));
     }
 
     [Fact]
@@ -68,7 +69,7 @@ public sealed class OutputWriterTests
         Assert.Equal(ContentHash.Of("b\n"), change.NewHash);
         Assert.Equal("--- a/db/a.sql\n+++ b/db/a.sql\n@@ -1 +1 @@\n-a\n+b\n", change.Diff);
         Assert.Equal("b\n", f.Repo.ReadFile("db/a.sql"));
-        Assert.Contains(ContentHash.Of("b\n"), f.ManifestText("p", true), StringComparison.Ordinal);
+        Assert.Contains(ContentHash.Of("b\n"), f.ManifestText("p"), StringComparison.Ordinal);
         Assert.Empty(f.TempFiles());
     }
 
@@ -77,7 +78,7 @@ public sealed class OutputWriterTests
     {
         using var f = new WritingFixture(HandEditPolicy.Fail);
         await f.RunAsync([Unit("p/u", Out("db/a.sql", "a\n"))]);
-        var manifest = f.ManifestText("p", true);
+        var manifest = f.ManifestText("p");
         f.Repo.WriteFile("db/a.sql", "edited\n");
 
         var summary = await f.RunAsync([Unit("p/u", Out("db/a.sql", "b\n"))]);
@@ -85,7 +86,7 @@ public sealed class OutputWriterTests
         var change = Assert.Single(summary.Changes);
         Assert.Equal(FileChangeKind.Conflict, change.Kind);
         Assert.Equal("edited\n", f.Repo.ReadFile("db/a.sql"));
-        Assert.Equal(manifest, f.ManifestText("p", true));
+        Assert.Equal(manifest, f.ManifestText("p"));
         var diagnostic = Assert.Single(summary.Diagnostics);
         Assert.Equal(("MQ6009", Diagnostics.DiagnosticSeverity.Error, "db/a.sql"), (diagnostic.Rule, diagnostic.Severity, diagnostic.FilePath));
         // The unit renders again next time: its state is not replaced.
@@ -105,7 +106,7 @@ public sealed class OutputWriterTests
         Assert.Equal("b\n", f.Repo.ReadFile("db/a.sql"));
         Assert.Equal(1, summary.Written);
         Assert.Equal(Diagnostics.DiagnosticSeverity.Warning, Assert.Single(summary.Diagnostics).Severity);
-        Assert.Contains(ContentHash.Of("b\n"), f.ManifestText("p", true), StringComparison.Ordinal);
+        Assert.Contains(ContentHash.Of("b\n"), f.ManifestText("p"), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -120,7 +121,7 @@ public sealed class OutputWriterTests
         Assert.Equal(FileChangeKind.HandEdited, Assert.Single(summary.Changes).Kind);
         Assert.Equal("edited\n", f.Repo.ReadFile("db/a.sql"));
         Assert.Equal(0, summary.Written);
-        Assert.Contains(ContentHash.Of("a\n"), f.ManifestText("p", true), StringComparison.Ordinal);
+        Assert.Contains(ContentHash.Of("a\n"), f.ManifestText("p"), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -135,8 +136,8 @@ public sealed class OutputWriterTests
         Assert.Equal([("db/a.sql", FileChangeKind.Conflict)], summary.Changes.Select(c => (c.Path, c.Kind)));
         Assert.Equal("someone else's\n", f.Repo.ReadFile("db/a.sql"));
         // The identical file is adopted into the manifest without a write.
-        Assert.Contains("\"db/b.sql\"", f.ManifestText("p", true), StringComparison.Ordinal);
-        Assert.DoesNotContain("\"db/a.sql\"", f.ManifestText("p", true), StringComparison.Ordinal);
+        Assert.Contains("\"db/b.sql\"", f.ManifestText("p"), StringComparison.Ordinal);
+        Assert.DoesNotContain("\"db/a.sql\"", f.ManifestText("p"), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -144,7 +145,7 @@ public sealed class OutputWriterTests
     {
         using var f = new WritingFixture();
         await f.RunAsync([Unit("p/scaffold", Out("db/seed.sql", "v1\n", OutputMode.Once))]);
-        Assert.Contains($"\"o:{ContentHash.Of("v1\n")}\"", f.ManifestText("p", true), StringComparison.Ordinal);
+        Assert.Contains($"\"o:{ContentHash.Of("v1\n")}\"", f.ManifestText("p"), StringComparison.Ordinal);
         f.Repo.WriteFile("db/seed.sql", "team owns this\n");
 
         var second = await f.RunAsync([Unit("p/scaffold", Out("db/seed.sql", "v2\n", OutputMode.Once))]);
@@ -154,7 +155,7 @@ public sealed class OutputWriterTests
         Assert.Empty(second.Diagnostics);
         Assert.Equal(FileChangeKind.OrphanedOwned, Assert.Single(third.Changes).Kind);
         Assert.Equal("team owns this\n", f.Repo.ReadFile("db/seed.sql"));
-        Assert.Equal("", f.ManifestText("p", true));
+        Assert.Equal("", f.ManifestText("p"));
     }
 
     [Fact]
@@ -173,7 +174,7 @@ public sealed class OutputWriterTests
             summary.Changes.Select(c => (c.Path, c.Kind)));
         Assert.Equal("partial class E { void Mine() {} }\n", f.Repo.ReadFile("src/Generated/E.cs"));
         Assert.Equal("partial class E { int B; }\n", f.Repo.ReadFile("src/Generated/E.g.cs"));
-        Assert.Contains("\"entity:01E#companion\"", f.ManifestText("p", false), StringComparison.Ordinal);
+        Assert.Contains("\"entity:01E#companion\"", f.ManifestText("p"), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -182,7 +183,7 @@ public sealed class OutputWriterTests
         using var f = new WritingFixture();
         const string v1 = "create table a (\n  id int\n  -- maquettiste:keep id=extra\n  -- maquettiste:end-keep\n);\n";
         await f.RunAsync([Unit("p/u", Out("db/a.sql", v1, OutputMode.Regions))]);
-        Assert.Contains("\"r:", f.ManifestText("p", true), StringComparison.Ordinal);
+        Assert.Contains("\"r:", f.ManifestText("p"), StringComparison.Ordinal);
 
         // A hand edit inside the region: the post-processor carries it into the new output, which the writer accepts.
         const string inside = "create table a (\n  id int\n  -- maquettiste:keep id=extra\n  , note text\n  -- maquettiste:end-keep\n);\n";
@@ -196,17 +197,6 @@ public sealed class OutputWriterTests
         f.Repo.WriteFile("db/a.sql", v2.Replace("bigint", "smallint", StringComparison.Ordinal));
         var conflict = await f.RunAsync([Unit("p/u", Out("db/a.sql", v2.Replace("bigint", "numeric", StringComparison.Ordinal), OutputMode.Regions))]);
         Assert.Equal(FileChangeKind.Conflict, Assert.Single(conflict.Changes).Kind);
-    }
-
-    [Fact]
-    public async Task Regions_mode_on_a_built_root_is_refused()
-    {
-        using var f = new WritingFixture();
-
-        var summary = await f.RunAsync([Unit("p/u", Out("src/Generated/a.cs", "x\n", OutputMode.Regions))]);
-
-        Assert.Equal("MQ6015", Assert.Single(summary.Diagnostics).Rule);
-        Assert.False(f.Repo.Exists("src/Generated/a.cs"));
     }
 
     [Fact]
@@ -228,8 +218,8 @@ public sealed class OutputWriterTests
         Assert.False(Directory.Exists(f.Repo.PathOf("db/deep")));
         Assert.True(Directory.Exists(f.Repo.PathOf("src/Generated")));
         Assert.False(Directory.Exists(f.Repo.PathOf("src/Generated/x")));
-        Assert.Equal("", f.ManifestText("p", false));
-        Assert.DoesNotContain("gone", f.ManifestText("p", true), StringComparison.Ordinal);
+        Assert.DoesNotContain("gone", f.ManifestText("p"), StringComparison.Ordinal);
+        Assert.DoesNotContain("Only.cs", f.ManifestText("p"), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -242,7 +232,7 @@ public sealed class OutputWriterTests
         var fail = await f.RunAsync([]);
         Assert.Equal(FileChangeKind.Conflict, Assert.Single(fail.Changes).Kind);
         Assert.True(f.Repo.Exists("db/gone.sql"));
-        Assert.Contains("gone.sql", f.ManifestText("p", true), StringComparison.Ordinal);
+        Assert.Contains("gone.sql", f.ManifestText("p"), StringComparison.Ordinal);
 
         f.Policy = HandEditPolicy.Skip;
         var skip = await f.RunAsync([]);
@@ -253,7 +243,7 @@ public sealed class OutputWriterTests
         var overwrite = await f.RunAsync([]);
         Assert.Equal(FileChangeKind.HandEdited, Assert.Single(overwrite.Changes).Kind);
         Assert.False(f.Repo.Exists("db/gone.sql"));
-        Assert.Equal("", f.ManifestText("p", true));
+        Assert.Equal("", f.ManifestText("p"));
     }
 
     [Fact]
@@ -273,8 +263,8 @@ public sealed class OutputWriterTests
         Assert.Empty(summary.Changes);
         Assert.True(f.Repo.Exists("db/s.sql"));
         Assert.True(f.Repo.Exists("db/f.sql"));
-        Assert.Contains("db/s.sql", f.ManifestText("p", true), StringComparison.Ordinal);
-        Assert.Contains("db/f.sql", f.ManifestText("p", true), StringComparison.Ordinal);
+        Assert.Contains("db/s.sql", f.ManifestText("p"), StringComparison.Ordinal);
+        Assert.Contains("db/f.sql", f.ManifestText("p"), StringComparison.Ordinal);
         Assert.Same(skippedState, f.State.Packs["p"]["p/skipped"]);
         Assert.Same(failedState, f.State.Packs["p"]["p/failing"]);
     }
@@ -292,7 +282,7 @@ public sealed class OutputWriterTests
         var all = await f.RunAsync([Unit("p/u", Out("db/p.sql", "p\n"))], allPacks: true, counts: new Dictionary<string, int> { ["p"] = 1 });
         Assert.Equal([("db/q.sql", FileChangeKind.Deleted)], all.Changes.Select(c => (c.Path, c.Kind)));
         Assert.False(f.Repo.Exists("db/q.sql"));
-        Assert.Equal("", f.ManifestText("q", true));
+        Assert.Equal("", f.ManifestText("q"));
     }
 
     [Fact]
@@ -305,29 +295,20 @@ public sealed class OutputWriterTests
 
         Assert.Empty(summary.Changes);
         Assert.True(f.Repo.Exists("db/shared.sql"));
-        Assert.Contains("db/shared.sql", f.ManifestText("p", true), StringComparison.Ordinal);
-        Assert.Equal("", f.ManifestText("q", true));
+        Assert.Contains("db/shared.sql", f.ManifestText("p"), StringComparison.Ordinal);
+        Assert.Equal("", f.ManifestText("q"));
     }
 
     [Fact]
-    public async Task Root_selection_limits_writes_and_orphans()
+    public async Task Regions_mode_works_under_any_root()
     {
         using var f = new WritingFixture();
-        await f.RunAsync([Unit("p/u", Out("db/a.sql", "a\n"), Out("src/Generated/A.cs", "A\n"))]);
-        var builtManifest = f.ManifestText("p", false);
-        var state = f.State.Packs["p"]["p/u"];
+        const string v1 = "a\n// maquettiste:keep id=x\nbody\n// maquettiste:end-keep\n";
+        var summary = await f.RunAsync([Unit("p/u", Out("src/Generated/a.cs", v1, OutputMode.Regions))]);
 
-        var committedOnly = await f.RunAsync([Unit("p/u", Out("db/a.sql", "a2\n"), Out("src/Generated/A.cs", "A2\n"))], roots: RootSelection.Committed);
-
-        Assert.Equal([("db/a.sql", FileChangeKind.Modified)], committedOnly.Changes.Select(c => (c.Path, c.Kind)));
-        Assert.Equal("A\n", f.Repo.ReadFile("src/Generated/A.cs"));
-        Assert.Equal(builtManifest, f.ManifestText("p", false));
-        // A unit whose outputs were only partly covered keeps its old state, so the next full run renders it again.
-        Assert.Same(state, f.State.Packs["p"]["p/u"]);
-
-        var builtOnly = await f.RunAsync([Unit("p/u", Out("db/a.sql", "a3\n"), Out("src/Generated/A.cs", "A3\n"))], roots: RootSelection.Built);
-        Assert.Equal([("src/Generated/A.cs", FileChangeKind.Modified)], builtOnly.Changes.Select(c => (c.Path, c.Kind)));
-        Assert.Equal("a2\n", f.Repo.ReadFile("db/a.sql"));
+        Assert.Empty(summary.Diagnostics);
+        Assert.Equal(v1, f.Repo.ReadFile("src/Generated/a.cs"));
+        Assert.Contains("\"r:", f.ManifestText("p"), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -335,7 +316,7 @@ public sealed class OutputWriterTests
     {
         using var f = new WritingFixture();
         await f.RunAsync([Unit("p/u", Out("db/a.sql", "a\n")), Unit("p/gone", Out("db/gone.sql", "g\n"))]);
-        var manifest = f.ManifestText("p", true);
+        var manifest = f.ManifestText("p");
         var state = f.State.Packs["p"];
 
         var summary = await f.RunAsync([Unit("p/u", Out("db/a.sql", "b\n")), Unit("p/new", Out("db/new.sql", "n\n"))],
@@ -348,22 +329,28 @@ public sealed class OutputWriterTests
         Assert.Equal("a\n", f.Repo.ReadFile("db/a.sql"));
         Assert.True(f.Repo.Exists("db/gone.sql"));
         Assert.False(f.Repo.Exists("db/new.sql"));
-        Assert.Equal(manifest, f.ManifestText("p", true));
+        Assert.Equal(manifest, f.ManifestText("p"));
         Assert.Same(state, f.State.Packs["p"]);
         Assert.False(System.IO.File.Exists(f.Journal.FilePath));
     }
 
     [Fact]
-    public async Task Check_covers_committed_roots_only()
+    public async Task Check_covers_every_root_and_writes_nothing()
     {
         using var f = new WritingFixture();
-        await f.RunAsync([Unit("p/u", Out("db/a.sql", "a\n"), Out("src/Generated/A.cs", "A\n"))]);
+        await f.RunAsync([Unit("p/u", Out("db/a.sql", "a\n"), Out("src/Generated/A.cs", "A\n"), Out("src/Generated/B.cs", "B\n"))]);
         f.Repo.WriteFile("src/Generated/A.cs", "edited\n");
 
-        var summary = await f.RunAsync([Unit("p/u", Out("db/a.sql", "a2\n"), Out("src/Generated/A.cs", "A\n"))], mode: GenerationMode.Check);
+        var summary = await f.RunAsync([Unit("p/u", Out("db/a.sql", "a2\n"), Out("src/Generated/A.cs", "A\n"), Out("src/Generated/C.cs", "C\n"))],
+            mode: GenerationMode.Check);
 
-        Assert.Equal([("db/a.sql", FileChangeKind.Modified)], summary.Changes.Select(c => (c.Path, c.Kind)));
+        Assert.Equal(
+            [("db/a.sql", FileChangeKind.Modified), ("src/Generated/A.cs", FileChangeKind.Conflict), ("src/Generated/B.cs", FileChangeKind.Deleted),
+                ("src/Generated/C.cs", FileChangeKind.Added)],
+            summary.Changes.Select(c => (c.Path, c.Kind)));
         Assert.Equal("a\n", f.Repo.ReadFile("db/a.sql"));
+        Assert.True(f.Repo.Exists("src/Generated/B.cs"));
+        Assert.False(f.Repo.Exists("src/Generated/C.cs"));
     }
 
     [Fact]
@@ -428,7 +415,7 @@ public sealed class OutputWriterTests
             yield return Unit("p/u", Out("db/p.sql", "p\n"));
             await Task.Yield();
             // p has closed: its manifest is on disk and the journal holds its pack line before q starts.
-            Assert.Contains("db/p.sql", f.ManifestText("p", true), StringComparison.Ordinal);
+            Assert.Contains("db/p.sql", f.ManifestText("p"), StringComparison.Ordinal);
             Assert.Contains("{\"t\":\"pack\",\"pack\":\"p\"}", System.IO.File.ReadAllText(f.Journal.FilePath), StringComparison.Ordinal);
             yield return Unit("q/u", Out("db/q.sql", "q\n"));
         }
@@ -450,7 +437,7 @@ public sealed class OutputWriterTests
                 .Select(i => Unit($"p/u:{i:D3}", Out($"src/Generated/F{i % 7}/file{i}.cs", $"// {i}\n")))
                 .ToList();
             var summary = await f.RunAsync(units, diffs: true);
-            return (f.ManifestText("p", false), string.Join("\n", summary.Changes.Select(c => $"{c.Path} {c.Kind} {c.NewHash} {c.Diff}")));
+            return (f.ManifestText("p"), string.Join("\n", summary.Changes.Select(c => $"{c.Path} {c.Kind} {c.NewHash} {c.Diff}")));
         }
 
         var one = await RunWith(1);

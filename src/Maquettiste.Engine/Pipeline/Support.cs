@@ -61,8 +61,7 @@ public enum WriteTarget
     [JsonStringEnumMemberName("cache")] Cache,
 
     /// <summary>
-    /// <c>init</c> only: the git hooks (<c>--hooks</c>), <c>.mcp.json</c>, the modeling skill, and the repository's <c>.gitignore</c>
-    /// only for <c>--gitignore</c>: <c>setup</c>.
+    /// <c>init</c> only: the git hooks (<c>--hooks</c>), <c>.mcp.json</c> and the modeling skill: <c>setup</c>.
     /// </summary>
     [JsonStringEnumMemberName("setup")] Setup,
 }
@@ -117,11 +116,10 @@ public sealed class ManifestSet
     public bool TryGet(string path, [MaybeNullWhen(false)] out ManifestEntry entry, [MaybeNullWhen(false)] out string pack) =>
         Data.TryGet(path, out entry, out pack);
 
-    /// <summary>Returns a pack's entries for committed or built roots, ordinal by path.</summary>
+    /// <summary>Returns a pack's entries, ordinal by path (entries only an unfinished journal knows are not listed).</summary>
     /// <param name="pack">The pack name.</param>
-    /// <param name="committed">Committed (<see langword="true"/>) or built roots.</param>
     /// <returns>The entries.</returns>
-    public IReadOnlyList<ManifestEntry> Entries(string pack, bool committed) => Data.Entries(pack, committed);
+    public IReadOnlyList<ManifestEntry> Entries(string pack) => Data.Entries(pack);
 
     /// <summary>Overlays an unfinished journal's entries for packs without a <c>pack</c> line (resume; engine-design.md section 12.4).</summary>
     /// <param name="records">The journal records.</param>
@@ -140,24 +138,23 @@ public sealed record JournalRecord(string Type, string? Pack, string? Path, stri
 /// <summary>Loads and saves per-pack manifests (W7; engine-design.md section 12.2).</summary>
 public interface IManifestStore
 {
-    /// <summary>Loads the manifests of packs (committed and built).</summary>
+    /// <summary>Loads the manifests of packs (<c>&lt;ModelRoot&gt;/manifest/&lt;pack&gt;.json</c>).</summary>
     /// <param name="packs">Pack names; every manifest file found is included when the set is empty.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>The set.</returns>
     Task<ManifestSet> LoadAsync(IReadOnlyCollection<string> packs, CancellationToken ct);
 
-    /// <summary>Saves a pack's manifest for committed or built roots; an empty list deletes the file.</summary>
+    /// <summary>Saves a pack's manifest; an empty list deletes the file.</summary>
     /// <param name="pack">The pack name.</param>
-    /// <param name="committed">Committed or built roots.</param>
     /// <param name="entries">The entries, in any order.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>A task.</returns>
-    Task SavePackAsync(string pack, bool committed, IReadOnlyList<ManifestEntry> entries, CancellationToken ct);
+    Task SavePackAsync(string pack, IReadOnlyList<ManifestEntry> entries, CancellationToken ct);
 }
 
 /// <summary>One manifest entry.</summary>
 /// <param name="Path">The repo-relative path.</param>
-/// <param name="Hash">The manifest hash (with any <c>r:</c> or <c>o:</c> prefix).</param>
+/// <param name="Hash">The manifest hash (with any <c>r:</c>, <c>o:</c>, <c>b:</c> or <c>bc:</c> prefix).</param>
 /// <param name="Unit"><c>&lt;unitId&gt;</c> or <c>&lt;unitId&gt;:&lt;elementId&gt;</c>, plus <c>#companion</c> for companions.</param>
 public sealed record ManifestEntry(string Path, string Hash, string Unit);
 

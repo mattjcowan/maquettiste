@@ -4,18 +4,15 @@ using Maquettiste.Engine.Pipeline;
 
 namespace Maquettiste.Engine.Writing;
 
-/// <summary>Which manifest file an entry came from.</summary>
+/// <summary>Where an entry came from.</summary>
 internal enum ManifestBucket
 {
-    /// <summary><c>.maquettiste/manifest/&lt;pack&gt;.json</c>.</summary>
-    Committed,
-
-    /// <summary><c>&lt;JournalDirectory&gt;/manifest/&lt;pack&gt;.json</c>.</summary>
-    Built,
+    /// <summary>The pack's manifest, <c>&lt;ModelRoot&gt;/manifest/&lt;pack&gt;.json</c> (or, read once, a cache copy of an earlier release).</summary>
+    Manifest,
 
     /// <summary>
-    /// An entry that only an unfinished journal knows about: the journal does not record the root kind, so the writer classifies it
-    /// through the path policy when the pack's manifests are next saved.
+    /// An entry that only an unfinished journal knows about: the writer checks it through the path policy when the pack's manifest is
+    /// next saved.
     /// </summary>
     Journal,
 }
@@ -30,8 +27,8 @@ internal sealed record PackManifestData(ImmutableSortedDictionary<string, (Manif
 }
 
 /// <summary>
-/// The immutable data behind <see cref="ManifestSet"/>: every pack's committed and built entries, plus entries overlaid from an
-/// unfinished journal (engine-design.md sections 12.2 and 12.4).
+/// The immutable data behind <see cref="ManifestSet"/>: every pack's entries, plus entries overlaid from an unfinished journal
+/// (engine-design.md sections 12.2 and 12.4).
 /// </summary>
 internal sealed class ManifestSetData
 {
@@ -80,17 +77,15 @@ internal sealed class ManifestSetData
         return false;
     }
 
-    /// <summary>A pack's committed or built entries, ordinal by path. Journal-only entries are in neither list.</summary>
+    /// <summary>A pack's entries, ordinal by path. Journal-only entries are not listed.</summary>
     /// <param name="pack">The pack.</param>
-    /// <param name="committed">Committed or built.</param>
     /// <returns>The entries.</returns>
-    public IReadOnlyList<ManifestEntry> Entries(string pack, bool committed)
+    public IReadOnlyList<ManifestEntry> Entries(string pack)
     {
         ArgumentNullException.ThrowIfNull(pack);
         if (!_packs.TryGetValue(pack, out var data))
             return [];
-        var bucket = committed ? ManifestBucket.Committed : ManifestBucket.Built;
-        return [.. data.Entries.Values.Where(v => v.Bucket == bucket).Select(v => v.Entry)];
+        return [.. data.Entries.Values.Where(v => v.Bucket == ManifestBucket.Manifest).Select(v => v.Entry)];
     }
 
     /// <summary>Every entry of a pack with its bucket, ordinal by path.</summary>

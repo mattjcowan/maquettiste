@@ -272,9 +272,7 @@ paths:
                       outputs:
                         allow:
                         - path: db
-                          commit: true
                         - path: src/Generated
-                          commit: false
                         deny: []
                       handEdits: fail
                       formatters: []
@@ -361,6 +359,8 @@ paths:
                         where: null
                         output: '{{ kebab table.database.name }}/{{ if table.schema }}{{ table.schema }}/{{ end }}tables/{{ table.name }}.sql'
                         mode: overwrite
+                        blockComment: '#'
+                        createFile: false
                         formatter: null
                         delimiters: null
                         companion: null
@@ -371,6 +371,8 @@ paths:
                         where: null
                         output: '{{ kebab database.name }}/schema.sql'
                         mode: overwrite
+                        blockComment: '#'
+                        createFile: false
                         formatter: null
                         delimiters: null
                         companion: null
@@ -3754,7 +3756,6 @@ paths:
               $ref: '#/components/schemas/GenerationRequest'
             example:
               packs: [sql-ddl]
-              roots: all
       responses:
         '202':
           description: Queued.
@@ -3825,7 +3826,6 @@ paths:
                       jobs: null
                       handEdits: null
                       includeDiffs: false
-                      roots: all
                       lock: wait
                       stageBarriers: false
                     modelVersion: 4
@@ -3870,7 +3870,6 @@ paths:
                         role: main
                         root:
                           path: src/Generated
-                          commit: false
                         diskHashAtPlan: null
                       - path: src/Generated/Billing/Customer.cs
                         contentHash: fcb7734055150d7dffd027ed678bd5e7ab46fafef01fcefc954fb3851076e5b3
@@ -3879,7 +3878,6 @@ paths:
                         role: companion
                         root:
                           path: src/Generated
-                          commit: false
                         diskHashAtPlan: null
                     changes:
                     - path: db/main/billing/tables/customers.sql
@@ -4072,7 +4070,6 @@ paths:
                           jobs: null
                           handEdits: null
                           includeDiffs: false
-                          roots: all
                           lock: wait
                           stageBarriers: false
                         modelVersion: 4
@@ -4508,7 +4505,7 @@ paths:
       summary: Remove a pack, leaving the files it generated on disk
       description: |
         `If-Match` carries the `pack.json` hash read. Removes the `packs.<pack>` entry of `maquettiste.json` (through the settings
-        save), then the folder `.maquettiste/templates/<pack>/`, then the pack's committed and built manifests and its unit states.
+        save), then the folder `.maquettiste/templates/<pack>/`, then the pack's manifest and its unit states.
         The files the pack generated stay on disk and are no longer tracked: `untracked` lists them. Waits for a generation run in
         progress. 409 when `pack.json` changed (or `maquettiste.json` kept changing meanwhile); 422 (nothing removed) when the settings save is refused. Sends `project.changed`
         when the settings changed, then `templates.changed` (empty `files`) and `packs.changed`.
@@ -4560,7 +4557,7 @@ paths:
         by single hyphens, starting with a letter) and must not be used by another pack folder, a `packs.<name>` settings entry or
         the manifests of a former pack. Moves the `packs.<pack>` entry of `maquettiste.json` to `packs.<name>` with its values
         (through the settings save), renames the folder `.maquettiste/templates/<pack>/` (never a copy), writes the new name into
-        `pack.json`, and moves the pack's committed and built manifests and its unit states, so the files it generated stay tracked
+        `pack.json`, and moves the pack's manifest and its unit states, so the files it generated stay tracked
         and no later run deletes them as orphans. Generation hints keyed by the old name are listed in `hints` and left as they are:
         the editor moves them with one model batch after the rename, so they are one undo step.
         With `dryRun` every check runs and the answer says what would move, writing nothing. Waits for a generation run in
@@ -5016,8 +5013,8 @@ paths:
     get:
       tags: [packs]
       operationId: getPackOutputs
-      summary: The files a pack's manifests record
-      description: Every manifest entry of the pack (committed and built roots) with its unit, element, root, mode and state on disk (`intact`, `edited`, `missing`), and when a manifest was last written.
+      summary: The files a pack's manifest records
+      description: Every manifest entry of the pack with its unit, element, root, mode and state on disk (`intact`, `edited`, `missing`; for a `block` output, the state of its lines in the file), and when the manifest was last written.
       x-maquettiste-role: viewer
       x-maquettiste-engine: GenerationService.GetPackOutputsAsync(pack)
       responses:
@@ -5773,15 +5770,14 @@ components:
           required: [allow, deny]
           properties:
             allow:
+              description: Folders generation may write under; an entry also allows the file of its own path (such as `.gitignore`) unless it ends with `/`. A `commit` member of an older file is ignored (MQ1010).
               type: array
               items:
                 type: object
-                required: [path, commit]
+                required: [path]
                 properties:
                   path:
                     type: string
-                  commit:
-                    type: boolean
             deny:
               type: array
               items:
@@ -6211,7 +6207,7 @@ components:
     PackUnit:
       x-engine-record: Maquettiste.Engine.Model.PackUnit
       type: object
-      required: [id, template, for, where, output, mode, formatter, delimiters, companion, transforms]
+      required: [id, template, for, where, output, mode, blockComment, createFile, formatter, delimiters, companion, transforms]
       properties:
         id:
           type: string
@@ -6228,6 +6224,12 @@ components:
           type: [string, 'null']
         mode:
           $ref: '#/components/schemas/OutputMode'
+        blockComment:
+          type: string
+          description: 'Mode `block`: the comment marker of the delimiter lines (`#` by default).'
+        createFile:
+          type: boolean
+          description: 'Mode `block`: create the target file when it does not exist (otherwise the unit writes nothing: `target-missing`).'
         formatter:
           type: [string, 'null']
         delimiters:
@@ -9913,9 +9915,6 @@ components:
     GenerationMode:
       type: string
       enum: [apply, dry-run, check]
-    RootSelection:
-      type: string
-      enum: [all, committed, built]
     LockMode:
       type: string
       enum: [wait, fail]
@@ -9930,7 +9929,7 @@ components:
       enum: [main, block, companion]
     OutputMode:
       type: string
-      enum: [overwrite, once, regions, pair]
+      enum: [overwrite, once, regions, pair, block]
     FileChangeKind:
       type: string
       enum: [added, modified, deleted, unchanged, hand-edited, kept, orphaned-owned, conflict]
@@ -9959,8 +9958,6 @@ components:
         includeDiffs:
           type: boolean
           default: false
-        roots:
-          $ref: '#/components/schemas/RootSelection'
         lock:
           $ref: '#/components/schemas/LockMode'
         stageBarriers:
@@ -10028,12 +10025,11 @@ components:
     OutputRootInfo:
       x-engine-record: Maquettiste.Engine.Pipeline.OutputRootInfo
       type: object
-      required: [path, commit]
+      required: [path]
       properties:
         path:
           type: string
-        commit:
-          type: boolean
+          description: The `outputs.allow` entry that holds the file (a folder, or the file's own path).
     PlanFile:
       x-engine-record: Maquettiste.Engine.PlanFile
       type: object
@@ -10071,7 +10067,7 @@ components:
           description: Null for `model` and `each locale` units.
         reason:
           type: [string, 'null']
-          enum: [new, forced, check, inputs, outputs, unchanged, null]
+          enum: [new, forced, check, inputs, outputs, unchanged, target-missing, null]
         causes:
           description: The first 20 causes, ordinal by kind then key.
           type: array
@@ -10665,7 +10661,7 @@ components:
       properties:
         kind:
           type: string
-          enum: [element, kind-set, referrers, setting, template, schema-diff, translation, localization, absent, inputs, output-missing, output-edited, state-reset, pack-version, unit, parameter, scripts, output-base, formatter]
+          enum: [element, kind-set, referrers, setting, template, schema-diff, translation, localization, absent, inputs, output-missing, output-edited, state-reset, pack-version, unit, parameter, scripts, output-base, formatter, target-missing]
         key:
           type: string
         detail:
@@ -10830,7 +10826,7 @@ components:
     PackOutput:
       x-engine-record: Maquettiste.Engine.PackOutput
       type: object
-      required: [path, unit, elementId, companion, root, commit, mode, state]
+      required: [path, unit, elementId, companion, root, mode, state]
       properties:
         path:
           type: string
@@ -10842,11 +10838,9 @@ components:
           type: boolean
         root:
           type: [string, 'null']
-        commit:
-          type: boolean
         mode:
           type: string
-          enum: [overwrite, regions, once]
+          enum: [overwrite, regions, once, block]
         state:
           type: string
           enum: [intact, edited, missing]
@@ -10880,10 +10874,6 @@ components:
           type: [array, 'null']
           items:
             type: string
-        roots:
-          description: The run's root selection; a unit whose output pattern's literal prefix is under a root of the other kind answers root-not-selected.
-          type: [string, 'null']
-          enum: [all, committed, built, null]
     ExplainResult:
       x-engine-record: Maquettiste.Engine.ExplainResult
       type: object
@@ -10899,7 +10889,7 @@ components:
           type: boolean
         reason:
           type: string
-          enum: [pack-invalid, unknown-unit, pack-disabled, not-selected, unknown-element, scope, selector, skip-hint, filter, root-not-selected, new, forced, check, inputs, outputs, unchanged]
+          enum: [pack-invalid, unknown-unit, pack-disabled, not-selected, unknown-element, scope, selector, skip-hint, filter, new, forced, check, inputs, outputs, unchanged, target-missing]
         detail:
           type: string
         key:

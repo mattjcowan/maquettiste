@@ -146,10 +146,6 @@ public sealed class PackAuthoringEndpointTests
         var notSelected = await host.SendJsonAsync("POST", "/api/generate/explain", new { pack = "sql-ddl", unit = "schema", packs = new[] { "csharp-dapper" } });
         Contract.AssertResponse(notSelected, "/api/generate/explain");
         Assert.Equal("not-selected", notSelected.Json["reason"]!.GetValue<string>());
-        var built = await host.SendJsonAsync("POST", "/api/generate/explain", new { pack = "sql-ddl", unit = "schema", elementId = EditorHost.MainDatabaseId, roots = "built" });
-        Contract.AssertResponse(built, "/api/generate/explain");
-        Assert.Equal("root-not-selected", built.Json["reason"]!.GetValue<string>());
-        Assert.Equal(400, (await host.SendJsonAsync("POST", "/api/generate/explain", new { pack = "sql-ddl", unit = "schema", roots = "some" })).Status);
 
         var unknown = await host.SendJsonAsync("POST", "/api/generate/explain", new { pack = "sql-ddl", unit = "ghost" });
         Assert.Equal("unknown-unit", unknown.Json["reason"]!.GetValue<string>());

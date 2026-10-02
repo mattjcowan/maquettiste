@@ -66,18 +66,15 @@
       "x-order": ["allow", "deny"],
       "properties": {
         "allow": {
+          "description": "Where generation may write: each entry's path is a repo-relative folder generated files may be written under, or a file a unit writes exactly (for example .gitignore or src/App/.gitignore; an entry ending in / is a folder only). Which outputs to commit is the team's choice.",
           "type": "array",
           "items": {
             "type": "object",
-            "x-order": ["path", "commit"],
+            "x-order": ["path"],
             "properties": {
               "path": {
                 "type": "string",
                 "minLength": 1
-              },
-              "commit": {
-                "type": "boolean",
-                "default": false
               }
             },
             "required": ["path"],

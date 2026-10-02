@@ -17,7 +17,6 @@ import type {
   PlanUnit,
   PreviewResult,
   RenderedFile,
-  RootSelection,
 } from "@/api/types";
 import type { components } from "@/api/schema";
 import { sha256Hex } from "@/lib/sha256";
@@ -50,7 +49,7 @@ interface PlannedFile {
   unitKey: string;
   role: RenderedFile["role"];
   mode: "overwrite" | "pair";
-  root: { path: string; commit: boolean };
+  root: { path: string };
 }
 
 interface StoredPlan {
@@ -94,11 +93,10 @@ export class MockGeneration {
     return null;
   }
 
-  private packOutput(pack: string): { path: string; commit: boolean } {
+  private packOutput(pack: string): { path: string } {
     const settings = this.model.projectSettings();
     const output = settings.packs[pack]?.output || ((this.renderers.get(pack) ?? pack) === "sql-ddl" ? "db" : "src/Generated");
-    const allow = settings.outputs.allow.find((a) => output === a.path || output.startsWith(a.path + "/"));
-    return { path: output, commit: allow?.commit ?? false };
+    return { path: output };
   }
 
   /** A pack's effective parameter: the project's value, else the manifest's default. */
@@ -452,12 +450,9 @@ export class MockGeneration {
     };
   }
 
-  private planFiles(packs: string[], roots: RootSelection): { units: RenderUnit[]; files: Map<string, PlannedFile> } {
+  private planFiles(packs: string[]): { units: RenderUnit[]; files: Map<string, PlannedFile> } {
     const files = new Map<string, PlannedFile>();
-    const units = this.renderUnits(packs).filter((u) => {
-      const root = this.packOutput(u.pack);
-      return roots === "all" || (roots === "committed" ? root.commit : !root.commit);
-    });
+    const units = this.renderUnits(packs);
     for (const unit of units)
       for (const file of unit.files)
         files.set(file.path, {
@@ -472,7 +467,7 @@ export class MockGeneration {
     return { units, files };
   }
 
-  private request(input: GenerationRequest): Required<GenerationRequest> {
+  private request(input: GenerationRequest): Required<Omit<GenerationRequest, "roots">> {
     return {
       mode: "dry-run",
       packs: input.packs ?? null,
@@ -480,7 +475,6 @@ export class MockGeneration {
       jobs: input.jobs ?? null,
       handEdits: input.handEdits ?? null,
       includeDiffs: false,
-      roots: input.roots ?? "all",
       lock: "wait",
       stageBarriers: false,
     };
@@ -504,7 +498,7 @@ export class MockGeneration {
       this.store(id, { plan, files: new Map(), diskAtPlan: new Map(), modelVersion: this.model.version });
       return { outcome: "invalid", plan: clone(plan) };
     }
-    const { units, files } = this.planFiles(packs, request.roots);
+    const { units, files } = this.planFiles(packs);
     const handPolicy = request.handEdits ?? this.model.projectSettings().handEdits;
     const changes: FileChange[] = [];
     const diskAtPlan = new Map<string, string | null>();
@@ -664,7 +658,7 @@ export class MockGeneration {
         ),
       };
     const request = stored.plan.request;
-    const { units, files } = this.planFiles(stored.plan.packs, (request.roots ?? "all") as RootSelection);
+    const { units, files } = this.planFiles(stored.plan.packs);
     const staleUnits = new Set<string>();
     const planned = new Map(stored.plan.units.map((u) => [u.key, u.inputHash]));
     for (const u of units) {

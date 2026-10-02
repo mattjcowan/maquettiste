@@ -180,6 +180,20 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
             }
 
             var diagnostics = ImmutableArray.CreateBuilder<Diagnostic>();
+            // A member an earlier release accepted (outputs.allow[].commit) is reported and read as if it were not there.
+            var retired = RetiredSettings.Findings(root, repoPath);
+            JsonDocument? stripped = null;
+            if (retired.Count > 0)
+            {
+                foreach (var d in retired)
+                    diagnostics.Add(Locate(d, bytes));
+                var node = System.Text.Json.Nodes.JsonNode.Parse(root.GetRawText());
+                RetiredSettings.Strip(node);
+                stripped = JsonDocument.Parse(node!.ToJsonString());
+                root = stripped.RootElement;
+            }
+
+            using var strippedScope = stripped;
             if (!trusted)
             {
                 var schemaDiagnostics = schemas.Evaluate(ModelPaths.SettingsFile, root, repoPath);

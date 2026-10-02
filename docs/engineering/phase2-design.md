@@ -279,7 +279,7 @@ Server state lives only in TanStack Query. `useEditorStore` (Zustand, sliced) ho
 
 **Mappings.** For the selected entity and database: the entity's attributes on the left and its table's columns (from the database view) on the right, joined by `attributeId`/`attributePath`; convention-derived columns muted, columns overridden by the entity's mapping element highlighted with the accent. Editing an override (column name, storage, ignore, prefix; table, inheritance and shape for the entity) creates or saves the `mapping` element for that entity and database.
 
-**Generate.** Pack and root selection, then Plan: progress from `job.progress` (stage, done of total, current path) with Cancel. The plan view counts files by `FileChangeKind` and pack, lists `changes` in a virtualized table filtered by kind and pack, and flags hand edits and conflicts. Selecting a file loads `GET …/diff?path=` into the Diff tab, rendered by the in-house unified-diff viewer (split or inline, virtualized, syntax colors by extension; PD16). Apply queues the plan by id; the result is the apply job's `applyResult.outcome` (read from `GET /api/jobs/{id}` after `job.completed`): `succeeded`, or `stale` (lists `staleUnits` and `stalePaths`, offers Re-plan), `invalid` (shows the diagnostics) or `conflicts`, each shown as a failure although the job's `state` is `succeeded`. Run history lists `GET /api/jobs`.
+**Generate.** Pack and root selection (*root selection removed 2026-10-02, spec-errata E42*), then Plan: progress from `job.progress` (stage, done of total, current path) with Cancel. The plan view counts files by `FileChangeKind` and pack, lists `changes` in a virtualized table filtered by kind and pack, and flags hand edits and conflicts. Selecting a file loads `GET …/diff?path=` into the Diff tab, rendered by the in-house unified-diff viewer (split or inline, virtualized, syntax colors by extension; PD16). Apply queues the plan by id; the result is the apply job's `applyResult.outcome` (read from `GET /api/jobs/{id}` after `job.completed`): `succeeded`, or `stale` (lists `staleUnits` and `stalePaths`, offers Re-plan), `invalid` (shows the diagnostics) or `conflicts`, each shown as a failure although the job's `state` is `succeeded`. Run history lists `GET /api/jobs`.
 
 **Settings.** Tags (the tag vocabulary element), categories (tree editor over the category tree), stereotypes (list and form), and conventions (the `Conventions` members for the project and per database, with the inherited value as placeholder) saved through `PUT /api/project/settings`. Type maps, output allowlist and formatters are shown read-only in phase 2.
 
@@ -399,8 +399,8 @@ samples/reference-app/
 ├── domain/*.yaml                  # the domain description the seed script turns into model batches
 ├── tools/seed.mjs                 # builds the model through a running editor's API (bearer token), batch by batch
 ├── .maquettiste/                  # the committed model, sql-ddl and csharp-dapper packs (copies of packs/, checked equal in CI)
-├── db/main/                       # committed root: generated DDL and migrations
-├── src/ReferenceApp.Data/         # ReferenceApp.Data.csproj (net10.0, Dapper, Npgsql); Generated/ is a built root; partials hand-written
+├── db/main/                       # committed root: generated DDL and migrations (E42: an output root the sample commits)
+├── src/ReferenceApp.Data/         # ReferenceApp.Data.csproj (net10.0, Dapper, Npgsql); Generated/ is a built root (E42: not committed, ignored by the pack's .gitignore block); partials hand-written
 └── Directory.Build.props  Directory.Packages.props  .editorconfig   # `<Project />`, `<Project />`, `root = true`
 ```
 

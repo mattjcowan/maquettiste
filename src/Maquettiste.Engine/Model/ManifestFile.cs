@@ -3,8 +3,7 @@ using System.Text.Json.Serialization;
 namespace Maquettiste.Engine.Model;
 
 /// <summary>
-/// A per-pack manifest file: <c>.maquettiste/manifest/&lt;pack&gt;.json</c> for committed roots and
-/// <c>.maquettiste/.cache/manifest/&lt;pack&gt;.json</c> for built roots (engine-design.md section 12.2).
+/// A per-pack manifest file: <c>.maquettiste/manifest/&lt;pack&gt;.json</c>, for every output root (engine-design.md section 12.2).
 /// </summary>
 public sealed record ManifestFile
 {

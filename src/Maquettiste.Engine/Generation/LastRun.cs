@@ -28,7 +28,7 @@ internal sealed record FolderStamp(string Folder, IReadOnlyList<FileStamp> Files
 /// What a one-shot process needs to know about the last apply run to answer a run with unchanged inputs without loading,
 /// validating, resolving or planning (Generation/README.md, "Last-run record"): the key of the run (engine build, folders, request
 /// shape), the stat of every model file and referenced sidecar as the run read it, the content hash of the templates folder, the
-/// engine's own files after the run (the stat of unit states and built-root manifests, the content hash of committed manifests and
+/// engine's own files after the run (the stat of unit states and of any cache copy of a manifest an earlier release left, the content hash of manifests and
 /// schema snapshots), every output the planned units' states record, the number of planned units and the diagnostics of stages 1
 /// to 5.
 /// </summary>
@@ -318,9 +318,10 @@ internal sealed class LastRun(EngineServices services)
 {
     /// <summary>
     /// Rules whose diagnostics mean a following run may not be a no-op although its inputs are unchanged (a refused path, a
-    /// duplicate claim, hand edits, a lost region, regions on a built root): a run reporting any of them writes no record.
+    /// duplicate claim, hand edits, a lost region, a block file that holds its block twice, a block whose target file is missing):
+    /// a run reporting any of them writes no record.
     /// </summary>
-    private static readonly FrozenSet<string> Unsettled = new[] { "MQ6004", "MQ6005", "MQ6009", "MQ6010", "MQ6015" }.ToFrozenSet(StringComparer.Ordinal);
+    private static readonly FrozenSet<string> Unsettled = new[] { "MQ6004", "MQ6005", "MQ6009", "MQ6010", "MQ6027", "MQ6028" }.ToFrozenSet(StringComparer.Ordinal);
 
     private readonly EngineFiles _files = new(services.EnginePaths, WriteTarget.Cache, services.Options);
 
@@ -334,8 +335,9 @@ internal sealed class LastRun(EngineServices services)
     private string TemplatesFolder => Path.Combine(Path.GetFullPath(Options.EffectiveModelRoot), "templates");
 
     /// <summary>
-    /// The engine folders a replay compares by stat: unit states and built-root manifests, which only the engine writes, under the
-    /// cache and journal folders. Every file directly in them counts, so a new, changed or removed file falls back to the full run.
+    /// The engine folders a replay compares by stat: unit states, and the cache copies of manifests that releases before 0.5.5 left
+    /// (the next save moves them into the model folder), which only the engine writes, under the cache and journal folders. Every
+    /// file directly in them counts, so a new, changed or removed file falls back to the full run.
     /// </summary>
     internal IReadOnlyList<string> EngineFolderPaths =>
     [
@@ -344,8 +346,8 @@ internal sealed class LastRun(EngineServices services)
     ];
 
     /// <summary>
-    /// The engine folders a replay compares by content: committed manifests and schema snapshots, which are committed with the model
-    /// and can be rewritten by a checkout or a script. Every file directly in them counts.
+    /// The engine folders a replay compares by content: the manifests and schema snapshots, which live with the model and can be
+    /// rewritten by a checkout or a script. Every file directly in them counts.
     /// </summary>
     internal IReadOnlyList<string> CommittedFolderPaths =>
     [
@@ -355,14 +357,14 @@ internal sealed class LastRun(EngineServices services)
 
     /// <summary>
     /// The key of a run: engine build (<see cref="RunRecord.CurrentBuild"/>), repo, model, journal and cache folders, and the
-    /// request's packs, roots and hand-edit override. A record answers only a run with the same key.
+    /// request's packs and hand-edit override. A record answers only a run with the same key.
     /// </summary>
     /// <param name="request">The request.</param>
     /// <returns>The key.</returns>
     internal string Key(GenerationRequest request)
     {
         using var hash = new HashBuilder();
-        hash.Add("mq-last-run-2").Add(EngineVersion.Value).Add(RunRecord.CurrentBuild)
+        hash.Add("mq-last-run-3").Add(EngineVersion.Value).Add(RunRecord.CurrentBuild)
             .Add(Path.GetFullPath(Options.RepoRoot)).Add(Path.GetFullPath(Options.EffectiveModelRoot))
             .Add(Path.GetFullPath(Options.EffectiveJournalDirectory)).Add(Path.GetFullPath(Options.CacheDirectory));
         if (request.Packs is null)
@@ -377,7 +379,7 @@ internal sealed class LastRun(EngineServices services)
                 hash.Add(pack);
         }
 
-        hash.Add((long)request.Roots).Add(request.HandEdits is { } policy ? ((int)policy).ToString(CultureInfo.InvariantCulture) : "settings");
+        hash.Add(request.HandEdits is { } policy ? ((int)policy).ToString(CultureInfo.InvariantCulture) : "settings");
         return hash.Finish();
     }
 

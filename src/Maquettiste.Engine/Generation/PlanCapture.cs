@@ -95,13 +95,13 @@ internal sealed class PlanCapture(PlanStore plans, string planId, string repoRoo
             {
                 // A plain content hash whose file still has the recorded stat was just verified by stage 5: no need to read it again.
                 var info = new FileInfo(Path.Combine(repoRoot, output.Path.Replace('/', Path.DirectorySeparatorChar)));
-                var verified = !ManifestHashes.IsOwned(output.ManifestHash) && !ManifestHashes.IsRegions(output.ManifestHash)
+                var verified = !ManifestHashes.IsOwned(output.ManifestHash) && !ManifestHashes.IsRegions(output.ManifestHash) && !ManagedBlock.IsBlock(output.ManifestHash)
                     && info.Exists && info.Length == output.Length && info.LastWriteTimeUtc.Ticks == output.LastWriteUtcTicks;
                 var disk = verified ? output.ManifestHash : await DiskHashAsync(repoRoot, output.Path, ct).ConfigureAwait(false);
                 var owned = ManifestHashes.IsOwned(output.ManifestHash);
                 var mode = unit.Unit.Unit.Mode;
                 var role = owned && mode == OutputMode.Pair ? FileRole.Companion : FileRole.Main;
-                var root = paths.Check(output.Path).Root ?? new OutputRootInfo("", false);
+                var root = paths.Check(output.Path).Root ?? new OutputRootInfo("");
                 files.Add(new PlanFile(output.Path, disk ?? "", output.ManifestHash, mode, role, root, disk));
             }
 

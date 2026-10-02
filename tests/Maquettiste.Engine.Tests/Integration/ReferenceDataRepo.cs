@@ -62,7 +62,7 @@ internal sealed class ReferenceDataRepo : IAsyncDisposable
 
         var settingsPath = Path.Combine(repo.ModelRoot, "maquettiste.json");
         var node = JsonNode.Parse(File.ReadAllBytes(settingsPath))!.AsObject();
-        node["outputs"] = new JsonObject { ["allow"] = new JsonArray(new JsonObject { ["path"] = "gen", ["commit"] = true }) };
+        node["outputs"] = new JsonObject { ["allow"] = new JsonArray(new JsonObject { ["path"] = "gen" }) };
         node["packs"] = new JsonObject { [Pack] = new JsonObject { ["output"] = "gen" } };
         node["databases"] = new JsonObject { ["reporting"] = new JsonObject { ["referenceStorage"] = new JsonObject { ["strategy"] = "check" } } };
         node["referenceData"]!["strategies"]!["check"]!["collections"] = true;

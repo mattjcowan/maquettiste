@@ -92,7 +92,6 @@ export type PlanCause = S["PlanCause"];
 export type PlanUnitDetail = S["PlanUnitDetail"];
 export type ExplainRequest = S["ExplainRequest"];
 export type ExplainResult = S["ExplainResult"];
-export type RootSelection = S["RootSelection"];
 export type JobCounts = S["JobCounts"];
 export type PresenceReport = S["PresenceReport"];
 export type PresenceEntry = S["PresenceEntry"];

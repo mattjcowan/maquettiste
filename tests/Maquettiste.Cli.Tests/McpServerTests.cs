@@ -89,7 +89,7 @@ public sealed class McpSurfaceTests
         Assert.Equal("bad-request", (await session.ErrorAsync("delete_element", new { id = McpSession.Customer, expectedHash = "x", resolution = "cascade" })).Code);
         Assert.Equal("precondition-required", (await session.ErrorAsync("save_element", new { id = McpSession.Customer, element = new { kind = "entity" }, expectedHash = "" })).Code);
         Assert.Equal("bad-request", (await session.ErrorAsync("create_element", new { element = 42 })).Code);
-        Assert.Equal("bad-request", (await session.ErrorAsync("plan", new { roots = "somewhere" })).Code);
+        Assert.Equal("bad-request", (await session.ErrorAsync("plan", new { handEdits = "sometimes" })).Code);
         Assert.Equal("not-found", (await session.ErrorAsync("get_plan", new { planId = "01J92P0V0000000000000000ZZ" })).Code);
         Assert.Equal("bad-request", (await session.ErrorAsync("apply_plan", new { planId = "not-a-plan" })).Code);
         // Missing or wrongly typed arguments get the documented problem naming the argument, not the SDK's generic error.

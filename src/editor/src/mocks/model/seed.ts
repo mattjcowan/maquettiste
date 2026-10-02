@@ -61,7 +61,7 @@ export function mediumSeed(entityCount = 200): Seed {
     $schema: ".schema/v1/maquettiste.json",
     formatVersion: 1,
     name: "medium",
-    outputs: { allow: [{ path: "db", commit: true }, { path: "src/Generated" }] },
+    outputs: { allow: [{ path: "db" }, { path: "src/Generated" }] },
     packs: { "sql-ddl": { output: "db" }, "csharp-dapper": { output: "src/Generated" } },
   });
   const packageIds: string[] = [];

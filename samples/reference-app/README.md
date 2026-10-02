@@ -20,18 +20,22 @@ tools/check-model.mjs    fails when .maquettiste/ is not exactly what build-mode
 tools/seed.mjs           builds the same model through a running editor's API, batch by batch
 tools/empty-editor.sh    starts the editor image on an empty project for seed.mjs
 .maquettiste/            the committed model; templates/ are copies of packs/sql-ddl and packs/csharp-dapper;
-                         manifest/sql-ddl.json and snapshots/main.json are written by maquettiste generate
+                         manifest/<pack>.json and snapshots/main.json are written by maquettiste generate
 tools/db-apply.sh        applies db/main to postgres:16 (schema, migrations, seed twice) and asserts the object counts
 tools/gate2.sh           the gate 2 check, step by step (also what .github/workflows/gate2.yml runs)
 db/main/                 committed sql-ddl output: schema.sql, tables/views/sequences, migrations/0001.sql, seed.sql
-src/ReferenceApp.Data/   ReferenceApp.Data.csproj (net10.0, Dapper, Npgsql); Generated/ is built (gitignored),
+src/ReferenceApp.Data/   ReferenceApp.Data.csproj (net10.0, Dapper, Npgsql); Generated/ is generated and not committed:
+                         .gitignore there carries the csharp-dapper pack's managed block that ignores it;
                          Custom/ holds hand-written partial halves of generated types
 Directory.Build.props, Directory.Packages.props, .editorconfig
                          isolation: keep the repository's central package management, lock files and analyzers out
 ```
 
-`maquettiste.json` declares `db` (committed: the sql-ddl output) and `src/ReferenceApp.Data/Generated` (built: the
-csharp-dapper output, namespace `ReferenceApp.Data`), and stores enums as their codes by default (`enumStorage: string`).
+`maquettiste.json` allows `db` (the sql-ddl output, committed), `src/ReferenceApp.Data/Generated` (the csharp-dapper output,
+namespace `ReferenceApp.Data`, not committed) and the single file `src/ReferenceApp.Data/.gitignore`, and stores enums as
+their codes by default (`enumStorage: string`). The csharp-dapper pack writes from `src/ReferenceApp.Data` with
+`generatedFolder` and `partialFolder` `Generated` and `gitignorePath` `.gitignore`, so its `gitignore` unit (mode `block`,
+`createFile`) keeps a managed block holding `/Generated/` in `src/ReferenceApp.Data/.gitignore`.
 
 ## Build and check the model
 
@@ -49,8 +53,8 @@ From the repository root (the CLI built with `dotnet build -c Release src/Maquet
 
 ```sh
 CLI="dotnet src/Maquettiste.Cli/bin/Release/net10.0/Maquettiste.Cli.dll --repo samples/reference-app"
-$CLI generate                   # db/ (committed) and src/ReferenceApp.Data/Generated/ (built): 855 files, 209 tables
-$CLI generate --check           # exit 0: the committed db/ equals what the model generates (exit 2 on drift)
+$CLI generate                   # db/ and src/ReferenceApp.Data/Generated/ (855 files, 209 tables) and the .gitignore block
+$CLI generate --check           # exit 0 after a generate: every output equals what the model generates (exit 2 on drift)
 dotnet build samples/reference-app/src/ReferenceApp.Data -warnaserror
 samples/reference-app/tools/db-apply.sh          # 209 tables, 1 view, 3 sequences in both databases
 samples/reference-app/tools/db-apply.sh --down
@@ -58,7 +62,7 @@ samples/reference-app/tools/db-apply.sh --down
 
 `db/main/seed.sql` carries the generated lookup rows plus hand-written currencies and countries inside its
 `maquettiste:keep id=seed-data` region, which regeneration preserves. The C# companions (`Customer.cs` next to
-`Customer.g.cs`) are written once into the built root; the hand-written code lives in `src/ReferenceApp.Data/Custom/`
+`Customer.g.cs`) are written once into `Generated/`; the hand-written code lives in `src/ReferenceApp.Data/Custom/`
 as further partial parts, so a fresh clone needs no committed stubs.
 
 ## Seeding through the editor
@@ -88,9 +92,9 @@ this folder to `tmp/gate2/` without the model, `db/` and build output, starts th
 API (`seed.mjs --compare`), runs the Playwright walk `src/editor/tests/e2e/gate2.spec.ts` (add `receivingHours` to
 `Warehouse` in the grid, rename the relation `delivery route departs from warehouse` to `delivery route departs from depot`, plan, open a diff, apply,
 `applyResult.outcome` = `succeeded`). Then `check` asserts that both edits are in the model files, `warehouses.sql` and
-`Warehouse.g.cs`, runs `validate`, runs `generate --check` (the committed root `db/main` equals the CLI's output) and, since
-`--check` covers committed roots only, generates the built root `Generated/` with the CLI into a second copy and compares
-it with `diff -r`. Last come `dotnet build -warnaserror` of `ReferenceApp.Data` and `db-apply.sh` against PostgreSQL
+`Warehouse.g.cs`, runs `validate`, runs `generate --check` over every output (the editor's apply equals the CLI's output, `db/main`, `Generated/` and the
+`.gitignore` block the apply created included) and generates the whole project again with the CLI (`--force`) into a second copy,
+comparing `Generated/` with `diff -r`. Last come `dotnet build -warnaserror` of `ReferenceApp.Data` and `db-apply.sh` against PostgreSQL
 (both databases must hold 209 tables, 1 view and 3 sequences). The workflow also runs `generate --check` on this folder, so
 the committed `db/main` cannot go stale when a pack changes, and it runs on pull requests to main. From the repository root, with the image built and
 `npm ci && npx playwright install chromium` done in `src/editor`:

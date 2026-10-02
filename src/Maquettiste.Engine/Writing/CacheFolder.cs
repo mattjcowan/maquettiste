@@ -4,7 +4,7 @@ namespace Maquettiste.Engine.Writing;
 
 /// <summary>
 /// The engine's own folder in the repository, <c>&lt;ModelRoot&gt;/.cache</c> (the default journal folder: run journal, run lock,
-/// built-root manifests, and the cache when a host points <c>CacheDirectory</c> under it). It ignores itself: before the engine
+/// and the cache when a host points <c>CacheDirectory</c> under it). It ignores itself: before the engine
 /// writes anything under it, the folder gets a <c>.gitignore</c> holding the single line <c>*</c>, so nothing in it is committed by
 /// accident and the repository's own <c>.gitignore</c> is never touched. A journal folder the host chose (<c>JournalDirectory</c>
 /// set) is the host's, and gets no file.

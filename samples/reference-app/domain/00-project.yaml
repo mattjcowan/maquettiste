@@ -12,8 +12,8 @@ settings:
   outputs:
     allow:
       - path: db
-        commit: true
       - path: src/ReferenceApp.Data/Generated
+      - path: src/ReferenceApp.Data/.gitignore
   conventions:
     enumStorage: string
     referenceStorage:
@@ -33,9 +33,12 @@ settings:
         collections: false
   packs:
     csharp-dapper:
-      output: src/ReferenceApp.Data/Generated
+      output: src/ReferenceApp.Data
       parameters:
+        generatedFolder: Generated
+        gitignorePath: .gitignore
         namespace: ReferenceApp.Data
+        partialFolder: Generated
     sql-ddl:
       output: db
 

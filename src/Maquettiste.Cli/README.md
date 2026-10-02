@@ -78,20 +78,16 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
   2 (`Generation/Outcomes.cs`, which also maps MQ6010 to conflicts); the CLI maps outcomes one to one.
 - **init:** creates the phase 1 folders under `.maquettiste/` (`model/{packages,entities,relations,enums,types,databases,mappings,
   diagrams,vocabularies}`, `templates`, `extensions`; a `.gitkeep` in each folder still empty), a canonical `maquettiste.json`
-  (format 1, `outputs.allow` `db` committed and `src/Generated` built, `packs.<starter>.output` `db` for sql-ddl or
+  (format 1, `outputs.allow` `db` and `src/Generated`, `packs.<starter>.output` `db` for sql-ddl or
   `src/Generated` for csharp-dapper), every embedded schema in `.schema/v1/` (refreshed on every run through the engine's
   `SchemaFolder.RefreshAsync`, which `mcp` and the editor also run at their start; files no longer shipped are removed) and the starter pack in `templates/<pack>/`. Existing files are kept,
   except that `init --pack <other>` on a kept settings file adds that pack and its `packs.<other>` entry; a plain re-run adds no pack, so a pack the team removed stays removed. After its report
-  a plain `init` prints one line naming the built roots of the settings file (`InitCommand.BuiltRootsNote`): `generate`
-  regenerates them, and the team ignores or commits them as it prefers. It never reads or writes the repository's `.gitignore`,
-  which is the customer's file: its `OutputPathPolicy` is built without `allowGitignore`, so the guard refuses that path, and a
-  block an earlier version wrote stays exactly as it is. The engine's `.maquettiste/.cache/` ignores itself instead (a `.gitignore`
-  holding `*`, written by the engine's `Writing/CacheFolder` before its first write there).
-  `--gitignore` is the opt-in: it adds a `# maquettiste:begin` … `# maquettiste:end` block to `.gitignore` with the built roots of
-  the settings file and `/.maquettiste/.cache/` (rewritten in place on a re-run, other lines kept), through a policy built with
-  `allowGitignore: true`. With the option, a `.gitignore` whose markers are not exactly one begin line followed by one end line is
-  refused with the line number (exit 4) before anything is written, so stray markers never cause user lines to be dropped.
-  `--hooks` writes `post-checkout` and `post-merge` hooks (mode 755) that run `maquettiste generate --roots built --quiet` and never
+  `init` prints the formatters note (`InitCommand.FormattersNote`). It never reads or writes the repository's `.gitignore`, which is
+  the customer's file: its `OutputPathPolicy` refuses that path for every engine write, and a block an earlier version wrote stays
+  exactly as it is. `--gitignore` was removed in 0.5.5 (spec-errata E42) and is a usage error (exit 4) whose message points to a
+  pack unit in `block` mode, the generation primitive that manages lines of such a file. The engine's `.maquettiste/.cache/` ignores
+  itself (a `.gitignore` holding `*`, written by the engine's `Writing/CacheFolder` before its first write there).
+  `--hooks` writes `post-checkout` and `post-merge` hooks (mode 755) that run `maquettiste generate --quiet` and never
   fail git; a hook that init did not write is kept; without a `.git` folder the hooks are skipped with a message.
   `--mcp` registers `maquettiste mcp` in `.mcp.json` (merged, an existing `maquettiste` entry kept; `dotnet tool run maquettiste mcp`
   when the local tool manifest lists the command), `--skill` writes the embedded modeling skill to
@@ -136,8 +132,9 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
   `--format text` (one `path(line,col): severity rule: message` line per diagnostic), `json` (`schemas/v1/diagnostics.json`) or
   `sarif` (`SarifWriter`). `--output <file>` writes through the project's output path policy, so the file must lie under an
   `outputs.allow` root (redirect stdout otherwise).
-- **generate:** `--pack` (repeatable), `--force`, `--roots`, `--hand-edits`, `--dry-run` (the plan as `A`/`M`/`D`/`H`/`K`/`O`/`C`
-  lines, `C` being a conflict), `--diff` (with `--dry-run` or `--check`), `--check` (committed roots, in memory), `--format
+- **generate:** `--pack` (repeatable), `--force`, `--hand-edits`, `--dry-run` (the plan as `A`/`M`/`D`/`H`/`K`/`O`/`C`
+  lines, `C` being a conflict), `--diff` (with `--dry-run` or `--check`), `--check` (every root, in memory; exit 2 when a file would be added, changed or
+  deleted; `--roots` was removed in 0.5.5 and is a usage error), `--format
   text|json` and `--no-wait` (`LockMode.Fail`: exit 4 when another run holds the lock; the default waits). An apply also lists its
   changes on stdout unless quiet. The summary counts added, modified, deleted, unchanged (files the writer compared and left alone),
   units skipped and hand edits; `--verbosity detailed` adds stage timings. The JSON result leaves out the run id and timings so
@@ -158,7 +155,7 @@ edit in a fresh process from 3.30 to 2.86 s and a no-op answered by the last-run
 - **format:** rewrites every model file (`maquettiste.json`, element files under `model/`, locale shards) with the engine's
   canonical writer (SPEC section 11), through the model write guard; prints `formatted <path>` per rewritten file on stdout and
   "Formatted n of m model files." on stderr. A file that is not JSON, has no known kind or fails its schema is left as it is and
-  named on stderr. `--check` writes nothing, prints `would format <path>` and exits 2 (drift) when any file would change, else 0.
+  named on stderr. A `commit` member left in an `outputs.allow` entry (MQ1010) is dropped. `--check` writes nothing, prints `would format <path>` and exits 2 (drift) when any file would change, else 0.
 - **Permission errors:** an `UnauthorizedAccessException` anywhere in a failure (the run lock, the cache, an output or model
   file, the engine's `.name.mq-<id>-<n>.tmp` named as its target) prints one line, `maquettiste: permission denied: cannot write
   <path>. …`, with the `--user 0:0` hint on Linux (the image's entrypoint then repairs ownership and runs as the repo's owner),

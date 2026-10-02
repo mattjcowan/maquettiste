@@ -31,11 +31,14 @@ test("every panel hides and comes back; the layout and the page state survive a 
   await expect(billing).toHaveAttribute("aria-expanded", "true");
 
   await page.getByTestId("rail-generate").click();
-  const pack = page.getByRole("checkbox", { name: "Pack sql-ddl" });
+  await page.getByTestId("pack-picker").click();
+  const pack = page.getByTestId("pack-picker-list").getByRole("checkbox", { name: "Pack sql-ddl" });
   const packBefore = await pack.getAttribute("aria-checked");
   await pack.click();
   const packAfter = packBefore === "true" ? "false" : "true";
   await expect(pack).toHaveAttribute("aria-checked", packAfter);
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("pack-picker-list")).toHaveCount(0);
 
   await page.getByTestId("rail-settings").click();
   await page.getByRole("tab", { name: "Locales" }).click();
@@ -86,7 +89,9 @@ test("every panel hides and comes back; the layout and the page state survive a 
   await expect(page).toHaveURL(/\/settings\/locales/);
   await expect(page.getByRole("tab", { name: "Locales" })).toHaveAttribute("aria-selected", "true");
   await page.getByTestId("rail-generate").click();
-  await expect(page.getByRole("checkbox", { name: "Pack sql-ddl" })).toHaveAttribute("aria-checked", packAfter);
+  await page.getByTestId("pack-picker").click();
+  await expect(page.getByTestId("pack-picker-list").getByRole("checkbox", { name: "Pack sql-ddl" })).toHaveAttribute("aria-checked", packAfter);
+  await page.keyboard.press("Escape");
 
   // The shortcuts: Alt+Shift+E hides and shows the explorer, Alt+Shift+H the top bar controls.
   await page.getByTestId("rail-domain-model").click();

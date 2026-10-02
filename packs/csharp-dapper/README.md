@@ -6,9 +6,10 @@ file per package and Dapper type handlers; for processes, their states, definiti
 machine and store as generated and hand-written pairs, HTTP endpoints with user-code regions, a typed in-process dispatcher with
 pipeline behaviours, a generated statechart interpreter and one xunit test per scenario (see Processes).
 
-The pack writes to a **built** output root. `maquettiste init --pack csharp-dapper` sets `packs.csharp-dapper.output` to
-`src/Generated` and declares that root without `commit`, so it is regenerated on every build and is yours to ignore or commit (`init --gitignore` writes the entry); every path below is
-under `src/Generated/`. The generated code needs C# 12, .NET 9 or later (`Guid.CreateVersion7`) and the `Dapper` package.
+The pack writes to one output root. `maquettiste init --pack csharp-dapper` sets `packs.csharp-dapper.output` to
+`src/Generated` and allows that folder; `generate` rewrites it whenever the model changes, and whether you commit it or keep it out
+of version control is your choice (the `gitignore` unit below can write the ignore line for you). Every path below is under
+`src/Generated/`. The generated code needs C# 12, .NET 9 or later (`Guid.CreateVersion7`) and the `Dapper` package.
 
 ## Output
 
@@ -25,6 +26,7 @@ For entity `Invoice` in package `Billing`:
 | `query` | `overwrite` | `each query` | `Queries/InvoicesByCustomerQuery.g.cs`: `IInvoicesByCustomerQuery` and `InvoicesByCustomerQuery` (see Queries) |
 | `registrations` | file blocks | `model` | `Billing/BillingRepositories.g.cs`: one per package with repositories; `Queries/QueryRegistrations.g.cs` when the model has queries |
 | `type-handlers` | `overwrite` | `model` | `DapperTypeHandlers.g.cs`: the Dapper type handlers and `UlidGenerator` |
+| `gitignore` | `block`, `createFile` | `model` | Only with `gitignorePath` set: a managed block in that ignore file listing the generated folder (see Keeping the generated folder out of version control) |
 
 Folders follow the package tree (`Billing/Catalog/` for package `Catalog` inside `Billing`), and namespaces follow it too:
 `<namespace>.Billing.Catalog`.
@@ -48,9 +50,30 @@ public partial class Invoice
 The C# compiler merges both halves. The generated half never needs editing, so regeneration never loses work, and deleting a
 companion brings back the empty stub.
 
-With the default settings the companions sit next to the generated files, in the built `src/Generated` root, which is regenerated on every build. To commit
-them, give them their own committed root: set `packs.csharp-dapper.output` to `src`, `generatedFolder` to `Generated` and
-`partialFolder` to `Model`, and declare `src/Generated` (built) and `src/Model` (`commit: true`) in `outputs.allow`.
+With the default settings the companions sit next to the generated files, in `src/Generated`. To commit them while leaving the
+generated files out of version control, give them their own folder: set `packs.csharp-dapper.output` to `src`, `generatedFolder`
+to `Generated` and `partialFolder` to `Model`, declare `src/Generated` and `src/Model` in `outputs.allow`, and commit `src/Model`
+(with `gitignorePath` set to `.gitignore` and `src/.gitignore` allowed, the pack ignores `src/Generated/` for you).
+
+## Keeping the generated folder out of version control
+
+The `gitignore` unit (mode `block`, `createFile: true`) writes nothing until the `gitignorePath` parameter names an ignore file,
+relative to the pack output like the other folders. It then keeps one managed block in that file, between
+`# maquettiste: begin csharp-dapper/gitignore` and `# maquettiste: end csharp-dapper/gitignore`, and never touches the file's other
+lines; the file is created (holding just the block) when it does not exist. The block holds the generated folder relative to the
+file's folder: `/Generated/` for `generatedFolder` `Generated` and `gitignorePath` `.gitignore`. When the generated folder is the
+file's own folder, it holds `/*` and `!/<file name>` (everything but the file itself); when the generated folder is not at or
+under the file's folder, the unit writes nothing. The file's path must be allowed: add it to `outputs.allow` as a file entry, so
+only that file becomes writable. The reference application does this:
+
+```json
+"outputs": { "allow": [ { "path": "db" }, { "path": "src/ReferenceApp.Data/Generated" }, { "path": "src/ReferenceApp.Data/.gitignore" } ] },
+"packs": { "csharp-dapper": { "output": "src/ReferenceApp.Data",
+  "parameters": { "generatedFolder": "Generated", "partialFolder": "Generated", "gitignorePath": ".gitignore", "namespace": "ReferenceApp.Data" } } }
+```
+
+Clearing `gitignorePath`, or removing the unit, removes the block again (and the file, when the engine created it and nothing
+else is left). Nothing here needs git: the file is plain text for whatever tool reads it.
 
 ## Repositories
 
@@ -194,12 +217,12 @@ Guards, actions, services and storage are hand-owned logic, so their units are p
 regenerated on every run, the `.cs` companion is written once and never touched again. The generated half declares what the
 companion must supply (a partial method per untranslated guard or action, the service interfaces the class implements, the
 store interface), so a guard, action or service added to the model fails the build until its companion code is written. Keep
-the companions in a committed root (`partialFolder`, see The pair pattern). Endpoints are one file per process whose set of
+the companions in a folder you commit (`partialFolder`, see The pair pattern). Endpoints are one file per process whose set of
 endpoints follows the events: each has a region between `// maquettiste:keep id=<event id>` (the event's model id, so renaming
 the event keeps the region's body) and the end marker, just before the
 command is sent, where the request can be mapped further (`command = command with { ... }`) and the response reshaped
-(`respond = result => ...`); the rest of the file is regenerated and region bodies carry over. Regions need a committed root,
-hence `endpointsFolder`.
+(`respond = result => ...`); the rest of the file is regenerated and region bodies carry over. Region bodies live only in
+the file, so keep it in a folder you commit, hence `endpointsFolder`.
 
 ### Dispatch
 
@@ -301,8 +324,9 @@ Set them in `maquettiste.json` under `packs.csharp-dapper.parameters`.
 | `database` | `""` | The database the repositories and foreign-key properties use; empty picks, per entity, the first database by name that maps it. |
 | `generatedFolder` | `""` | Folder (under the pack output) for generated files. |
 | `partialFolder` | `""` | Folder (under the pack output) for the once-written companions. |
-| `endpointsFolder` | `""` | Folder (under the pack output) for the process endpoint files; empty writes none. It must be in a committed root: the files have user-code regions. |
+| `endpointsFolder` | `""` | Folder (under the pack output) for the process endpoint files; empty writes none. Keep it in a folder you commit: the files have user-code regions. |
 | `testsFolder` | `""` | Folder (under the pack output) for the generated scenario tests (a test project's); empty writes none. |
+| `gitignorePath` | `""` | Path (under the pack output) of an ignore file that gets a managed block listing `generatedFolder`; empty writes none. Allow the file in `outputs.allow`. |
 
 ## Files
 
@@ -317,4 +341,5 @@ Set them in `maquettiste.json` under `packs.csharp-dapper.parameters`.
 | `_process.scriban` | Shared functions of the process units: names, folders, attribute types, C# literals, the translator's input. |
 | `process-*.scriban`, `*.partial.scriban` | The process units and their companions. |
 | `dispatch*.scriban`, `interpreter*.scriban`, `actors.scriban`, `scenario-tests.scriban` | The model-level process units and the scenario tests. |
+| `gitignore.scriban` | The managed block of the ignore file named by `gitignorePath`. |
 | `types/csharp.json` | The type map. |

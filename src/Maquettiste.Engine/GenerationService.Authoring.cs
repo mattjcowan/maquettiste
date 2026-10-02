@@ -47,7 +47,7 @@ public sealed record UnitPathsResult(int Count, int Rendered, IReadOnlyList<Unit
 /// <param name="Planned">Whether the unit plans the element.</param>
 /// <param name="Reason">The first reason that applies: <c>pack-disabled</c>, <c>pack-invalid</c>, <c>unknown-unit</c>, <c>unknown-element</c>,
 /// <c>scope</c>, <c>selector</c>, <c>skip-hint</c>, <c>filter</c>, or, when planned, the plan's reason (<c>new</c>, <c>forced</c>, <c>inputs</c>,
-/// <c>outputs</c>, <c>unchanged</c>).</param>
+/// <c>outputs</c>, <c>unchanged</c>, <c>target-missing</c>).</param>
 /// <param name="Detail">One sentence.</param>
 /// <param name="Key">The unit key.</param>
 /// <param name="PlanId">The plan the planned answer comes from.</param>
@@ -229,9 +229,8 @@ public sealed partial class GenerationService
     /// <param name="planId">A plan to read the answer from, or <see langword="null"/>.</param>
     /// <param name="ct">Cancellation.</param>
     /// <param name="selectedPacks">The run's pack selection (<see langword="null"/>: every enabled pack).</param>
-    /// <param name="roots">The run's root selection.</param>
     public async Task<ExplainResult?> ExplainAsync(string pack, string unitId, string? elementId, string? planId, CancellationToken ct,
-        IReadOnlyList<string>? selectedPacks = null, RootSelection roots = RootSelection.All)
+        IReadOnlyList<string>? selectedPacks = null)
     {
         ArgumentNullException.ThrowIfNull(pack);
         ArgumentNullException.ThrowIfNull(unitId);
@@ -268,9 +267,6 @@ public sealed partial class GenerationService
             return Answer("unknown-element", $"'{elementId}' is not in the resolved model (deleted, renamed or never defined).");
         if (UnitPlanner.WhyNot(prepared.Resolved, loaded, unit, element, _services.Scripts, ct) is { } why)
             return Answer(why.Kind, why.Detail);
-        if (unit.Output is { } pattern
-            && UnitRules.RootNotSelected(pattern, loaded.Settings.Output, prepared.Snapshot.Settings.Outputs.Allow, roots) is { } notSelected)
-            return Answer("root-not-selected", notSelected);
 
         var plan = planId is null ? null : await GetPlanAsync(planId, ct).ConfigureAwait(false);
         if (plan?.Units.Any(u => string.Equals(u.Key, key, StringComparison.Ordinal)) != true)

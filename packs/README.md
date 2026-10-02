@@ -5,11 +5,11 @@
 This folder holds the example packs (two from phase 1, `process-docs` from phase 3), and this file is the guide to writing a pack
 of your own.
 
-| Pack | Root | Generates |
+| Pack | Default root | Generates |
 | --- | --- | --- |
-| [`sql-ddl`](sql-ddl/README.md) | committed (`db`) | Table DDL for PostgreSQL, SQL Server and SQLite, one schema script per database, `once` migrations from the schema diff, a `regions` seed script, and (with `processTables`) instance, history and audit tables per process |
-| [`csharp-dapper`](csharp-dapper/README.md) | built (`src/Generated`) | Entity `pair` files, enums, value objects, a Dapper repository per mapped entity, one registration file per package, `types/csharp.json`; per process the states, definition and contracts, handler, service, machine and store pairs, `regions` endpoints, a typed dispatcher with pipeline behaviours, a generated statechart interpreter and one xunit test per scenario |
-| [`process-docs`](process-docs/README.md) | committed (`docs`) | Markdown pages: one per process (a state diagram in diagram text, states, transitions, gates and their audit record, events, actors), one per actor, a walk-through per scenario, and an index |
+| [`sql-ddl`](sql-ddl/README.md) | `db` | Table DDL for PostgreSQL, SQL Server and SQLite, one schema script per database, `once` migrations from the schema diff, a `regions` seed script, and (with `processTables`) instance, history and audit tables per process |
+| [`csharp-dapper`](csharp-dapper/README.md) | `src/Generated` | Entity `pair` files, enums, value objects, a Dapper repository per mapped entity, one registration file per package, `types/csharp.json`; per process the states, definition and contracts, handler, service, machine and store pairs, `regions` endpoints, a typed dispatcher with pipeline behaviours, a generated statechart interpreter, one xunit test per scenario and, with `gitignorePath`, a managed block in an ignore file |
+| [`process-docs`](process-docs/README.md) | `docs` | Markdown pages: one per process (a state diagram in diagram text, states, transitions, gates and their audit record, events, actors), one per actor, a walk-through per scenario, and an index |
 
 `sql-ddl` and `csharp-dapper` are embedded into the CLI: `maquettiste init --pack <name>` copies one into
 `.maquettiste/templates/<name>/`, and `maquettiste pack new <name> --from <pack>` starts a new pack from one; the bench generates
@@ -60,16 +60,17 @@ A pack is a folder `.maquettiste/templates/<name>/` whose `pack.json` has the sa
 | --- | --- |
 | `overwrite` | Fully generated files (the default). |
 | `once` | Scaffolds the team takes over: migrations, starting points. Written only when missing, never deleted. |
-| `regions` | Generated files with hand-written islands between `maquettiste:keep id=<id>` and `maquettiste:end-keep` lines. Committed roots only. |
-| `pair` | A generated file plus a companion written once (`Invoice.g.cs` + `Invoice.cs`), the customization pattern for built roots. Needs `companion.template` and `companion.output`. |
+| `regions` | Generated files with hand-written islands between `maquettiste:keep id=<id>` and `maquettiste:end-keep` lines. Any root; the region bodies live only in the file, so keep it in a folder the team commits. |
+| `pair` | A generated file plus a companion written once (`Invoice.g.cs` + `Invoice.cs`), the customization pattern for output the team does not commit. Needs `companion.template` and `companion.output`. |
+| `block` | A few lines inside a file the team owns (an ignore file, a configuration file): the template renders the block's lines, kept between `<blockComment> maquettiste: begin <pack>/<unit>` and `... end ...` lines (`blockComment` defaults to `#`); the rest of the file is never touched. `createFile: true` creates a missing file; without it the unit writes nothing until the file exists (`target-missing`, MQ6028). Removing the unit removes the block. Never formatted. |
 
 A unit without `output` writes only **file blocks**: `{{ capture content }}…{{ end }}{{ file path content }}`, one call per file,
 for zero or many files per unit (one registration file per package, one migration per revision). Blocks take the unit's mode,
 except under `pair`, where they are `overwrite`. Text outside file blocks in such a unit is warning MQ6011.
 
-Decide committed versus built by who consumes the output: SQL that is applied or reviewed is committed (`db`, with a manifest in
-`.maquettiste/manifest/`, checked by `generate --check`); code that is compiled is built (gitignored, manifest in the cache). The
-root is decided by `outputs.allow` in `maquettiste.json`, not by the pack.
+Where output may go is decided by `outputs.allow` in `maquettiste.json`, not by the pack: a folder, or a single file (a block
+unit's ignore file, say). Which outputs the team commits is its choice; every pack has one manifest in `.maquettiste/manifest/`,
+and `generate --check` renders every output.
 
 ### 3. Write templates against the resolved model
 

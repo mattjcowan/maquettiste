@@ -15,9 +15,7 @@ public sealed record ApplyRequest(string? PlanId);
 /// <param name="ElementId">The element, absent for model scope.</param>
 /// <param name="PlanId">A plan to take the reason and causes from; a new dry-run plan of the pack otherwise.</param>
 /// <param name="Packs">The run's pack selection; a pack outside it answers <c>not-selected</c>.</param>
-/// <param name="Roots">The run's root selection; a unit writing under another root answers <c>root-not-selected</c>.</param>
-public sealed record ExplainRequest(string? Pack, string? Unit, string? ElementId, string? PlanId,
-    IReadOnlyList<string>? Packs = null, RootSelection? Roots = null);
+public sealed record ExplainRequest(string? Pack, string? Unit, string? ElementId, string? PlanId, IReadOnlyList<string>? Packs = null);
 
 /// <summary>Plan, per-file diff and apply, as jobs (phase2-design.md section 3.7).</summary>
 public static class GenerateEndpoints
@@ -100,7 +98,7 @@ public static class GenerateEndpoints
         try
         {
             var result = await generation.ExplainAsync(request.Pack, request.Unit, request.ElementId, request.PlanId, ct,
-                request.Packs, request.Roots ?? RootSelection.All).ConfigureAwait(false);
+                request.Packs).ConfigureAwait(false);
             return result is null ? Api.NotFound("pack", request.Pack) : Api.Json(result);
         }
         catch (ArgumentException ex)

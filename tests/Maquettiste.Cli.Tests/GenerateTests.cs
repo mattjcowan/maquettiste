@@ -79,9 +79,13 @@ public sealed class GenerateTests
         Assert.Equal(2, withDiff.ExitCode);
         Assert.Contains("+    name varchar(150) NOT NULL,", Text.Lines(withDiff.Out));
 
-        // Built roots are not checked: deleting a built file is no drift once the model matches again.
+        // Every root is checked: a deleted file under src/Generated is drift too, until generate restores it.
         repo.Replace(CustomerFile, "\"length\": 150", "\"length\": 120");
         File.Delete(repo.PathOf("src/Generated/Customer.g.cs"));
+        var deleted = await repo.RunAsync("generate", "--check");
+        Assert.Equal(2, deleted.ExitCode);
+        Assert.Equal(["A src/Generated/Customer.g.cs"], Text.Lines(deleted.Out));
+        Assert.Equal(0, (await repo.RunAsync("generate")).ExitCode);
         Assert.Equal(0, (await repo.RunAsync("generate", "--check")).ExitCode);
 
         // A missing committed file is drift.
@@ -222,7 +226,7 @@ public sealed class GenerateTests
     }
 
     [Fact]
-    public async Task Pack_and_roots_filters_limit_the_run()
+    public async Task The_pack_filter_limits_the_run_and_roots_is_refused()
     {
         using var repo = CliRepo.Billing();
         var packOnly = await repo.RunAsync("generate", "--pack", "classes");
@@ -231,10 +235,10 @@ public sealed class GenerateTests
         Assert.NotEmpty(repo.Tree("src/Generated"));
 
         using var built = CliRepo.Billing();
-        var builtOnly = await built.RunAsync("generate", "--roots", "built");
-        Assert.Equal(0, builtOnly.ExitCode);
-        Assert.False(Directory.Exists(built.PathOf("db")));
-        Assert.NotEmpty(built.Tree("src/Generated"));
+        var roots = await built.RunAsync("generate", "--roots", "built");
+        Assert.Equal(4, roots.ExitCode);
+        Assert.Contains("--roots was removed in 0.5.5", roots.Error, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(built.PathOf("src/Generated")));
     }
 
     [Fact]

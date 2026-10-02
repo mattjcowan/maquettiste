@@ -10,8 +10,8 @@ namespace Maquettiste.Engine.Tests.PostProcessing;
 
 public sealed class PostProcessorTests : IDisposable
 {
-    private static readonly OutputRootInfo Committed = new("db", true);
-    private static readonly OutputRootInfo Built = new("src/Generated", false);
+    private static readonly OutputRootInfo Committed = new("db");
+    private static readonly OutputRootInfo Built = new("src/Generated");
 
     private readonly TempRepo _repo = new();
     private readonly FakeFormatterRunner _runner = new();
@@ -80,14 +80,41 @@ public sealed class PostProcessorTests : IDisposable
     }
 
     [Fact]
-    public async Task Regions_on_a_built_root_fail_with_MQ6015()
+    public async Task Regions_work_under_any_root()
     {
-        var unit = Units.Rendered(OutputMode.Regions, null, Units.File("src/Generated/x.cs", "a"));
+        var unit = Units.Rendered(OutputMode.Regions, null, Units.File("src/Generated/x.cs", "a\n"));
+
+        var result = await Processor().ProcessAsync(unit, Context(), TestContext.Current.CancellationToken);
+
+        Assert.False(result.Failed);
+        Assert.Empty(result.Diagnostics);
+        Assert.StartsWith("r:", Assert.Single(result.Files).ManifestHash, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_block_file_is_its_lines_with_a_final_line_end_hashed_with_b_and_never_formatted()
+    {
+        var unit = Units.Rendered(OutputMode.Block, null, Units.File("src/Generated/.ignore", "\uFEFF/a/\r\n/b/"));
+        var formatter = Units.Formatter("all", ".ignore");
+
+        var result = await Processor().ProcessAsync(unit, Context(true, formatter), TestContext.Current.CancellationToken);
+
+        Assert.False(result.Failed);
+        var file = Assert.Single(result.Files);
+        Assert.Equal("/a/\n/b/\n", Text(file));
+        Assert.Equal(("b:" + ContentHash.Of("/a/\n/b/\n"), OutputMode.Block), (file.ManifestHash, file.Mode));
+        Assert.Empty(_runner.Calls);
+    }
+
+    [Fact]
+    public async Task A_block_that_holds_its_own_delimiter_fails_the_unit()
+    {
+        var unit = Units.Rendered(OutputMode.Block, null, Units.File("src/Generated/.ignore", "x\n# maquettiste: end pack/unit\n"));
 
         var result = await Processor().ProcessAsync(unit, Context(), TestContext.Current.CancellationToken);
 
         Assert.True(result.Failed);
-        Assert.Equal("MQ6015", Assert.Single(result.Diagnostics).Rule);
+        Assert.Equal("MQ6006", Assert.Single(result.Diagnostics).Rule);
     }
 
     [Fact]

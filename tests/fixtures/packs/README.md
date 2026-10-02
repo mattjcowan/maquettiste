@@ -12,6 +12,6 @@ substitutes while recording reads through `IReadRecorder` as the real renderer's
 
 | Pack | Units |
 | --- | --- |
-| `basic` | `entity` (each entity → `out/entities/<name>.txt`, committed root), `index` (model → `out/index.txt`) |
+| `basic` | `entity` (each entity → `out/entities/<name>.txt`), `index` (model → `out/index.txt`) |
 | `scripted` | a JavaScript selector (`select audited`) and a JavaScript `where.script` filter, over `helpers.js` |
 | `modes` | `once`, `pair` (with a companion), `regions`, and a unit with file blocks only |

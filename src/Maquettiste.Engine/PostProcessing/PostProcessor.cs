@@ -12,7 +12,8 @@ namespace Maquettiste.Engine.PostProcessing;
 /// Stage 7 (W8; engine-design.md section 13). Per rendered file, in order: (1) normalize line endings to LF, strip a BOM, encode
 /// UTF-8; (2) format with the unit's formatter (by name, else by extension; <c>"none"</c> disables it); (3) in <c>regions</c> mode,
 /// move each protected region body of the file on disk into the same region of the new output; (4) hash (the skeleton, prefixed
-/// <c>r:</c>, for regions; <c>o:</c> for owned files) and classify the root through <see cref="IOutputPathPolicy"/>.
+/// <c>r:</c>, for regions; <c>o:</c> for owned files) and classify the root through <see cref="IOutputPathPolicy"/>. A <c>block</c>
+/// file is normalized and hashed (<c>b:</c>) as the block's lines alone, never formatted: the writer puts it in the file.
 /// Nothing is written: the result is in memory, so dry runs and <c>--check</c> use the same code.
 /// </summary>
 /// <param name="options">The engine options (the repo root when the context names none).</param>
@@ -45,7 +46,7 @@ internal sealed class PostProcessor(EngineOptions options, IFormatterRunner form
         foreach (var file in unit.Files)
         {
             ct.ThrowIfCancellationRequested();
-            var processed = await ProcessFileAsync(file, packUnit, named, elementId, repoRoot, context, diagnostics, ct).ConfigureAwait(false);
+            var processed = await ProcessFileAsync(file, unit.Unit.Pack.Name, packUnit, named, elementId, repoRoot, context, diagnostics, ct).ConfigureAwait(false);
             if (processed is null)
                 failed = true;
             else
@@ -127,7 +128,7 @@ internal sealed class PostProcessor(EngineOptions options, IFormatterRunner form
     }
 
     /// <summary>Processes one file; <see langword="null"/> when it failed (diagnostics added).</summary>
-    private async Task<OutputFile?> ProcessFileAsync(RenderedFile file, PackUnit unit, Selection selection, string? elementId, string repoRoot,
+    private async Task<OutputFile?> ProcessFileAsync(RenderedFile file, string pack, PackUnit unit, Selection selection, string? elementId, string repoRoot,
         PostProcessContext context, List<Diagnostic> diagnostics, CancellationToken ct)
     {
         var check = context.Paths.Check(file.Path);
@@ -139,13 +140,8 @@ internal sealed class PostProcessor(EngineOptions options, IFormatterRunner form
 
         var path = check.NormalizedPath;
         var mode = FileMode(unit.Mode, file.Role);
-        if (mode == OutputMode.Regions && !check.Root.Commit)
-        {
-            diagnostics.Add(Error("MQ6015",
-                $"Unit '{unit.Id}' uses regions mode, but '{path}' is under the built root '{check.Root.Path}'; regions work only on committed roots (use pair or once).",
-                elementId, path));
-            return null;
-        }
+        if (mode == OutputMode.Block)
+            return Block(file, path, pack, unit, elementId, check.Root, diagnostics);
 
         // (1) Normalize and encode. A template that slices a string inside a surrogate pair fails this unit, not the run.
         var text = TextNormalizer.Normalize(file.Text);
@@ -188,6 +184,28 @@ internal sealed class PostProcessor(EngineOptions options, IFormatterRunner form
         var owned = mode == OutputMode.Once || file.Role == FileRole.Companion;
         var manifestHash = skeletonHash ?? (owned ? "o:" + contentHash : contentHash);
         return new OutputFile(path, bytes, contentHash, manifestHash, mode, file.Role, check.Root);
+    }
+
+    /// <summary>A <c>block</c> file: the block's lines, normalized, with a final line end; no formatter, no regions.</summary>
+    private static OutputFile? Block(RenderedFile file, string path, string pack, PackUnit unit, string? elementId, OutputRootInfo root, List<Diagnostic> diagnostics)
+    {
+        var body = Writing.ManagedBlock.Body(TextNormalizer.Normalize(file.Text));
+        var marker = Writing.ManagedBlock.Marker(pack, unit.Id);
+        if (Writing.ManagedBlock.HoldsDelimiter(body, marker))
+        {
+            diagnostics.Add(Error("MQ6006", $"The block of unit '{unit.Id}' for '{path}' holds one of its own delimiter lines ('maquettiste: begin {marker}' or 'end'), which would end it early.",
+                elementId, path));
+            return null;
+        }
+
+        if (!TextNormalizer.TryEncode(body, out var bytes))
+        {
+            diagnostics.Add(NotUnicode(path, elementId));
+            return null;
+        }
+
+        var contentHash = ContentHash.Of(bytes);
+        return new OutputFile(path, bytes, contentHash, Writing.ManagedBlock.Prefix + contentHash, OutputMode.Block, file.Role, root);
     }
 
     private async Task<string?> FormatAsync(FormatterSettings formatter, string path, byte[] input, string? elementId, PostProcessContext context,

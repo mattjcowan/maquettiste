@@ -1,4 +1,4 @@
-// The Generate workspace (phase2-design.md 4.8): pack and root selection, then Plan with live
+// The Generate workspace (phase2-design.md 4.8): pack selection (PackPicker.tsx), then Plan with live
 // progress and Cancel; the plan summarized per pack and its changes grouped by unit with the reason each renders
 // (PlanExplain.tsx, generation-ui.md 4), filtered by kind, pack, unit and text, hand edits and conflicts flagged; selecting a file opens its
 // diff in the bottom panel. Apply queues the plan by id; the result is the apply job's
@@ -7,18 +7,17 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { CircleAlert, CircleCheck, Play, Square, Wand2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import * as endpoints from "@/api/endpoints";
-import { keys, useJob, useJobs, usePlan, useProject, useSettings } from "@/api/queries";
-import type { JobInfo, RootSelection } from "@/api/types";
+import { keys, useJob, useJobs, usePacks, usePlan, useProject, useSettings } from "@/api/queries";
+import type { JobInfo } from "@/api/types";
 import { useEditor } from "@/state/store";
 import { useServices } from "@/app/context";
 import { isFinished, jobOutcome } from "@/realtime/jobs";
 import { Button, iconLabel } from "@/components/ui/button";
 import { Badge, EmptyState, SectionTitle, Spinner, Toolbar } from "@/components/ui/misc";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Select } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import { X } from "lucide-react";
 import { PackEditor } from "./PackEditor";
+import { PackPicker, type PickerPack } from "./PackPicker";
 import { ExplainForm, PlanChanges, type ExplainAsk, PlanSummary, UnchangedUnits, WhyPanel } from "./PlanExplain";
 import { closePackTab, EXTENSIONS_TAB } from "./packTabs";
 import { ExtensionsScreen } from "./ExtensionsScreen";
@@ -84,9 +83,19 @@ function PlanScreen() {
   // The ticked packs live in the store, so the page state (state/pageState.ts) keeps them across a reload.
   const chosen = generation.chosenPacks;
   const setChosen = (next: string[]) => store.getState().setGeneration({ chosenPacks: next });
-  const [roots, setRoots] = useState<RootSelection>("all");
   const [busy, setBusy] = useState(false);
-  const selectedPacks = chosen ? chosen.filter((name) => packs.some((p) => p.name === name)) : enabled;
+  // A disabled pack shows unticked in the picker, so a stored choice that names one does not send it.
+  const selectedPacks = chosen ? chosen.filter((name) => enabled.includes(name)) : enabled;
+  const summaries = usePacks();
+  const pickerPacks = useMemo<PickerPack[]>(
+    () =>
+      packs.map((p) => ({
+        name: p.name,
+        enabled: enabled.includes(p.name),
+        warnings: summaries.data?.find((s) => s.name === p.name)?.diagnostics.length ?? 0,
+      })),
+    [packs, enabled, summaries.data],
+  );
   const running = [planJob.data, applyJob.data].find((j) => j && !isFinished(j)) ?? null;
 
   useEffect(() => {
@@ -112,7 +121,7 @@ function PlanScreen() {
     try {
       store.getState().setGeneration({ planJob: null, planId: null, applyJob: null });
       store.getState().showDiff(null);
-      const job = await jobs.startPlan({ packs: selectedPacks, roots });
+      const job = await jobs.startPlan({ packs: selectedPacks });
       store.getState().setGeneration({ planJob: job.id, planId: isFinished(job) ? (job.planResult?.plan?.id ?? null) : null });
     } catch (error) {
       store.getState().notify(`The plan could not start: ${(error as Error).message}`, "error");
@@ -134,7 +143,7 @@ function PlanScreen() {
     }
   };
 
-  // Palette commands (4.8): Plan and Apply run here with this workspace's current pack and root choice.
+  // Palette commands (4.8): Plan and Apply run here with this workspace's current pack choice.
   const command = useEditor(store, (s) => s.command);
   const commandActions = useRef({ startPlan, startApply });
   commandActions.current = { startPlan, startApply };
@@ -162,27 +171,7 @@ function PlanScreen() {
       <Toolbar label="Generation">
         <Wand2 className="size-4 text-secondary" aria-hidden />
         <span className="text-13 font-semibold">Generate</span>
-        <fieldset className="ml-4 flex items-center gap-2">
-          <legend className="sr-only">Packs</legend>
-          {packs.map((p) => (
-            <label key={p.name} className="flex items-center gap-1.5 text-13">
-              <Checkbox
-                checked={selectedPacks.includes(p.name)}
-                aria-label={`Pack ${p.name}`}
-                onCheckedChange={(v) => setChosen(v === true ? [...selectedPacks, p.name] : selectedPacks.filter((x) => x !== p.name))}
-              />
-              {p.name}
-            </label>
-          ))}
-        </fieldset>
-        <label htmlFor="roots" className="ml-2 text-12 text-secondary">
-          Roots
-        </label>
-        <Select id="roots" className="h-7 w-32 text-12" value={roots} onChange={(e) => setRoots(e.target.value as RootSelection)}>
-          <option value="all">all</option>
-          <option value="committed">committed</option>
-          <option value="built">built</option>
-        </Select>
+        <PackPicker packs={pickerPacks} selected={selectedPacks} onChange={setChosen} />
         <div className="ml-auto flex items-center gap-2">
           {running ? (
             <Button size="sm" onClick={() => void cancel()} data-testid="cancel-job">
@@ -264,7 +253,7 @@ function PlanScreen() {
           ) : generation.planJob && !planJob.data ? (
             <Spinner label="Starting" />
           ) : !running ? (
-            <EmptyState title="No plan yet">Choose the packs and roots, then Plan. The plan is a dry run: nothing is written until you apply it.</EmptyState>
+            <EmptyState title="No plan yet">Choose the packs, then Plan. The plan is a dry run: nothing is written until you apply it.</EmptyState>
           ) : null}
         </div>
         <aside className="flex min-h-0 flex-col overflow-auto border-l border-default bg-surface" aria-label="Plan explanation and run history">

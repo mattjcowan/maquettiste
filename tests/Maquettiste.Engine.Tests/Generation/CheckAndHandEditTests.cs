@@ -3,7 +3,7 @@ using Maquettiste.Engine.Pipeline;
 
 namespace Maquettiste.Engine.Tests.Generation;
 
-/// <summary><c>--check</c> (in memory, committed roots, every unit rendered) and hand-edit policies through to the writer.</summary>
+/// <summary><c>--check</c> (in memory, every root, every unit rendered) and hand-edit policies through to the writer.</summary>
 public sealed class CheckAndHandEditTests
 {
     [Fact]
@@ -82,15 +82,16 @@ public sealed class CheckAndHandEditTests
     }
 
     [Fact]
-    public async Task Check_ignores_built_roots()
+    public async Task Check_covers_every_root()
     {
         await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic");
         f.WritePackFile("basic", "pack.json", File.ReadAllText(f.Repo.PathOf(".maquettiste/templates/basic/pack.json")).Replace("\"out/", "\"gen/", StringComparison.Ordinal));
         await f.RunAsync();
-        await f.WriteModelAsync(b => Models.Shop(b, customerName: "text"));
+        Assert.Equal(RunOutcome.Succeeded, (await f.RunAsync(GenerationMode.Check)).Outcome);
+        File.Delete(f.Repo.PathOf(f.Repo.ListFiles().First(p => p.StartsWith("gen/", StringComparison.Ordinal))));
         var check = await f.RunAsync(GenerationMode.Check);
-        Assert.Equal(RunOutcome.Succeeded, check.Outcome);
-        Assert.Empty(check.Changes);
+        Assert.Equal(RunOutcome.Drift, check.Outcome);
+        Assert.Equal(FileChangeKind.Added, Assert.Single(check.Changes).Kind);
     }
 
     [Fact]

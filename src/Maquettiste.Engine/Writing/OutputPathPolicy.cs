@@ -30,28 +30,22 @@ internal sealed class OutputPathPolicy : IOutputPathPolicy
     private readonly string _journalDirectory;
     private readonly ImmutableArray<string> _setupPaths;
     private readonly bool _hasSettings;
-    private readonly ImmutableArray<(string Path, OutputRootInfo Info)> _roots;
+    private readonly ImmutableArray<(string Path, bool FolderOnly, OutputRootInfo Info)> _roots;
     private readonly ImmutableArray<(string Pattern, Regex Regex)> _deny;
     private readonly ConcurrentDictionary<string, string> _realFolders = new(StringComparer.Ordinal);
 
     /// <summary>Creates the policy.</summary>
     /// <param name="options">The engine options.</param>
     /// <param name="settings">The project settings; <see langword="null"/> allows engine-write checks only.</param>
-    /// <param name="allowGitignore">
-    /// Whether <see cref="WriteTarget.Setup"/> may write the repository's <c>.gitignore</c>: only <c>init --gitignore</c> passes
-    /// <see langword="true"/>, so no other write, by any command, can reach that file.
-    /// </param>
-    public OutputPathPolicy(EngineOptions options, ProjectSettings? settings, bool allowGitignore = false)
+    public OutputPathPolicy(EngineOptions options, ProjectSettings? settings)
     {
         ArgumentNullException.ThrowIfNull(options);
         _repoRoot = Full(options.RepoRoot);
         _modelRoot = Full(options.EffectiveModelRoot);
         _cacheDirectory = Full(options.CacheDirectory);
         _journalDirectory = Full(options.EffectiveJournalDirectory);
-        ImmutableArray<string> gitignore = allowGitignore ? [Path.Combine(_repoRoot, ".gitignore")] : [];
         _setupPaths =
         [
-            .. gitignore,
             Path.Combine(_repoRoot, ".git", "hooks", "post-checkout"),
             Path.Combine(_repoRoot, ".git", "hooks", "post-merge"),
             Path.Combine(_repoRoot, ".mcp.json"),
@@ -60,15 +54,16 @@ internal sealed class OutputPathPolicy : IOutputPathPolicy
             Path.Combine(_repoRoot, ".claude", "skills", "maquettiste-modeling", "SKILL.md"),
         ];
         _hasSettings = settings is not null;
-        var roots = new List<(string, OutputRootInfo)>();
+        var roots = new List<(string, bool, OutputRootInfo)>();
         var deny = new List<(string, Regex)>();
         if (settings is not null)
         {
             foreach (var root in settings.Outputs.Allow)
             {
                 // An allow path that fails the lexical rules is ignored: nothing can be written under it.
+                // An entry also allows the file it names (".gitignore", "src/App/.gitignore"), unless it ends with "/".
                 if (NormalizeRoot(root.Path) is { } normalized)
-                    roots.Add((normalized, new OutputRootInfo(normalized, root.Commit)));
+                    roots.Add((normalized, root.Path.TrimEnd().EndsWith('/') || normalized.Length == 0, new OutputRootInfo(normalized)));
             }
 
             foreach (var pattern in settings.Outputs.Deny)
@@ -113,9 +108,10 @@ internal sealed class OutputPathPolicy : IOutputPathPolicy
         if (!_hasSettings)
             return Refuse(path, null, "no output roots are configured for this check (engine writes only)");
 
-        foreach (var (rootPath, info) in _roots)
+        foreach (var (rootPath, folderOnly, info) in _roots)
         {
-            if (rootPath.Length == 0 || (path.Length > rootPath.Length && path[rootPath.Length] == '/' && path.StartsWith(rootPath, StringComparison.Ordinal)))
+            if (rootPath.Length == 0 || (path.Length > rootPath.Length && path[rootPath.Length] == '/' && path.StartsWith(rootPath, StringComparison.Ordinal))
+                || (!folderOnly && string.Equals(path, rootPath, StringComparison.Ordinal)))
             {
                 root = info;
                 break;
@@ -159,7 +155,7 @@ internal sealed class OutputPathPolicy : IOutputPathPolicy
             case WriteTarget.Setup:
             {
                 if (!_setupPaths.Any(p => string.Equals(p, full, FileSystemPaths.Comparison)))
-                    return Refuse(full, null, "setup writes are limited to the post-checkout and post-merge hooks, .mcp.json, mcp.sh, .claude/skills/maquettiste-modeling/SKILL.md and, with init --gitignore only, .gitignore");
+                    return Refuse(full, null, "setup writes are limited to the post-checkout and post-merge hooks, .mcp.json, mcp.sh and .claude/skills/maquettiste-modeling/SKILL.md");
                 try
                 {
                     var realRepo = FileSystemPaths.RealPath(_repoRoot);
@@ -333,6 +329,13 @@ internal sealed class OutputPathPolicy : IOutputPathPolicy
                 return $"a symbolic link takes the output root '{root.Path}' outside the repo";
             var target = Path.Combine(_repoRoot, path.Replace('/', Path.DirectorySeparatorChar));
             var realTarget = FileSystemPaths.RealPath(target, _realFolders);
+            // A file root (the path is the root's own path): the file itself must stay in the repo, and must not be a folder.
+            if (string.Equals(path, root.Path, StringComparison.Ordinal))
+            {
+                if (Directory.Exists(target))
+                    return $"'{path}' is a folder: an outputs.allow entry allows the file of its own path only when no folder has that name";
+                return FileSystemPaths.IsUnder(realTarget, realRepo, allowEqual: false) ? null : "a symbolic link takes the file outside the repo";
+            }
             return FileSystemPaths.IsUnder(realTarget, realRoot, allowEqual: false)
                 ? null
                 : "a symbolic link takes the path outside its output root";

@@ -40,7 +40,7 @@ internal static partial class PackAuthoring
     /// Renames a pack (<c>POST /api/packs/{pack}/rename</c>) when <c>pack.json</c> still has <paramref name="expectedHash"/>: the
     /// <c>packs.&lt;name&gt;</c> entry of <c>maquettiste.json</c> becomes <c>packs.&lt;newName&gt;</c> with its values kept (through the settings
     /// save, so a refused save changes nothing), then the folder <c>.maquettiste/templates/&lt;name&gt;/</c> is renamed (never copied),
-    /// <c>pack.json</c> names the new folder, and the committed and built manifests and the unit states move to the new name, so every
+    /// <c>pack.json</c> names the new folder, and the manifest and the unit states move to the new name, so every
     /// generated file stays tracked and no later run treats it as an orphan (engine-design.md, pack rename). The caller holds the run lock.
     /// </summary>
     /// <exception cref="PackPathException">The old name is not a pack key, the folder is a link, or a path may not be written.</exception>
@@ -80,9 +80,8 @@ internal static partial class PackAuthoring
                 return Refused($"An interrupted run of '{name}' has not finished; run generation once to finish it, then rename the pack.");
 
             var moves = PlanMove(services, root, target);
-            var committed = manifests.Entries(name, true);
-            var built = manifests.Entries(name, false);
-            var tracked = committed.Concat(built).Select(e => e.Path).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+            var entries = manifests.Entries(name);
+            var tracked = entries.Select(e => e.Path).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
             var snapshot = await store.GetSnapshotAsync(ct).ConfigureAwait(false);
             var hints = HintOwners(snapshot, name);
             if (dryRun)
@@ -142,10 +141,8 @@ internal static partial class PackAuthoring
             await WriteGuardedAsync(services, Path.Combine(target, "pack.json"), packBytes, CancellationToken.None).ConfigureAwait(false);
 
             // From here on nothing is cancelled: the folder has moved, so its manifests and states follow it.
-            await services.Manifests.SavePackAsync(newName, true, committed, CancellationToken.None).ConfigureAwait(false);
-            await services.Manifests.SavePackAsync(newName, false, built, CancellationToken.None).ConfigureAwait(false);
-            await services.Manifests.SavePackAsync(name, true, [], CancellationToken.None).ConfigureAwait(false);
-            await services.Manifests.SavePackAsync(name, false, [], CancellationToken.None).ConfigureAwait(false);
+            await services.Manifests.SavePackAsync(newName, entries, CancellationToken.None).ConfigureAwait(false);
+            await services.Manifests.SavePackAsync(name, [], CancellationToken.None).ConfigureAwait(false);
             var states = await services.UnitState.LoadAsync(name, CancellationToken.None).ConfigureAwait(false);
             var prefix = name + "/";
             await services.UnitState.SaveAsync(newName, [.. states.Values.Select(s => s.Key.StartsWith(prefix, StringComparison.Ordinal)

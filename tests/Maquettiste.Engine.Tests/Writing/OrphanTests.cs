@@ -33,9 +33,9 @@ public sealed class OrphanTests
         Assert.Equal(Old, System.IO.File.GetLastWriteTimeUtc(f.Repo.PathOf("db/shared.sql")));
         if (mode == GenerationMode.Apply)
         {
-            Assert.DoesNotContain("db/shared.sql", f.ManifestText("p", true), StringComparison.Ordinal);
-            Assert.Contains("db/other.sql", f.ManifestText("p", true), StringComparison.Ordinal);
-            Assert.Contains("db/shared.sql", f.ManifestText("q", true), StringComparison.Ordinal);
+            Assert.DoesNotContain("db/shared.sql", f.ManifestText("p"), StringComparison.Ordinal);
+            Assert.Contains("db/other.sql", f.ManifestText("p"), StringComparison.Ordinal);
+            Assert.Contains("db/shared.sql", f.ManifestText("q"), StringComparison.Ordinal);
             Assert.False(System.IO.File.Exists(f.Journal.FilePath));
         }
     }
@@ -53,7 +53,7 @@ public sealed class OrphanTests
         Assert.Contains(summary.Changes, c => c is { Path: "db/gone.sql", Kind: FileChangeKind.Deleted, Pack: "p" });
         Assert.False(f.Repo.Exists("db/gone.sql"));
         Assert.Equal(1, summary.Deleted);
-        Assert.DoesNotContain("db/gone.sql", f.ManifestText("p", true), StringComparison.Ordinal);
+        Assert.DoesNotContain("db/gone.sql", f.ManifestText("p"), StringComparison.Ordinal);
         // The pack's second save gets its own journal line, so the journal ends cleanly.
         Assert.False(System.IO.File.Exists(f.Journal.FilePath));
     }
@@ -73,7 +73,7 @@ public sealed class OrphanTests
         Assert.DoesNotContain(summary.Diagnostics, d => d.Rule == "MQ6009");
         Assert.Equal(content, f.Repo.ReadFile("db/invoice.sql"));
         Assert.Equal(["invoice.sql"], Directory.EnumerateFiles(f.Repo.PathOf("db")).Select(Path.GetFileName).Order(StringComparer.Ordinal));
-        var manifest = f.ManifestText("p", true);
+        var manifest = f.ManifestText("p");
         Assert.Contains("\"db/invoice.sql\"", manifest, StringComparison.Ordinal);
         Assert.DoesNotContain("\"db/Invoice.sql\"", manifest, StringComparison.Ordinal);
         var changes = summary.Changes.Select(c => (c.Path, c.Kind)).ToList();
@@ -98,7 +98,7 @@ public sealed class OrphanTests
 
         var summary = await f.RunAsync([Unit("p/u", Out("db/invoice.sql", "v2\n"))]);
 
-        var manifest = f.ManifestText("p", true);
+        var manifest = f.ManifestText("p");
         if (caseInsensitive)
         {
             Assert.Equal([("db/invoice.sql", FileChangeKind.Conflict)], summary.Changes.Select(c => (c.Path, c.Kind)));

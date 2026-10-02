@@ -350,7 +350,6 @@ export class MockPackAuthoring {
           elementId: unit?.elementId ?? null,
           companion: false,
           root: path.split("/")[0],
-          commit: true,
           mode: "overwrite",
           state: "intact",
         };

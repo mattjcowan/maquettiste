@@ -31,8 +31,7 @@
         "mode": "pair",
         "role": "main",
         "root": {
-          "path": "src/Generated",
-          "commit": false
+          "path": "src/Generated"
         },
         "diskHashAtPlan": null
       },
@@ -43,8 +42,7 @@
         "mode": "pair",
         "role": "companion",
         "root": {
-          "path": "src/Generated",
-          "commit": false
+          "path": "src/Generated"
         },
         "diskHashAtPlan": null
       }

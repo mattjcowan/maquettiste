@@ -90,12 +90,16 @@ public sealed class LastRunTests
         Assert.Equal(0, (await AssertFullAsync(repo)).UnitsRendered);
         await AssertReplayedAsync(repo);
 
-        // A committed manifest touched (compared by content: answered), a built root's manifest touched (compared by stat), a unit
-        // state file removed, the record damaged.
+        // A manifest touched (compared by content: answered), a cache copy of a manifest that an earlier release left appearing (the
+        // engine folders are compared by stat: the full run reads it, moves it into the model folder and deletes it), a unit state
+        // file removed, the record damaged.
         Touch(repo.Repo.PathOf(".maquettiste/manifest/e2e.json"));
         await AssertReplayedAsync(repo);
-        Touch(repo.Repo.PathOf(".maquettiste/.cache/manifest/billing-demo.json"));
+        var legacy = repo.Repo.PathOf(".maquettiste/.cache/manifest/billing-demo.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(legacy)!);
+        File.Copy(repo.Repo.PathOf(".maquettiste/manifest/billing-demo.json"), legacy);
         await AssertFullAsync(repo);
+        Assert.False(File.Exists(legacy));
         await AssertReplayedAsync(repo);
         File.Delete(Path.Combine(repo.Repo.CacheDirectory, "units", "e2e.v4.bin"));
         Assert.True((await AssertFullAsync(repo)).UnitsRendered > 0);

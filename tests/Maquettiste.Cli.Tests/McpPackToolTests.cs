@@ -48,7 +48,6 @@ public sealed class McpPackToolTests
         Assert.True((bool)why["planned"]!);
         Assert.Equal("unknown-unit", (string)(await session.OkAsync("explain_unit", new { pack = "ddl", unit = "ghost" }))["reason"]!);
         Assert.Equal("not-selected", (string)(await session.OkAsync("explain_unit", new { pack = "ddl", unit = (string)unit["unit"]!, elementId = (string?)unit["elementId"], packs = new[] { "other" } }))["reason"]!);
-        Assert.Equal("bad-request", (await session.ErrorAsync("explain_unit", new { pack = "ddl", unit = "ghost", roots = "some" })).Code);
         Assert.Equal("bad-request", (await session.ErrorAsync("explain_unit", new { key = "x" })).Code);
 
         var paths = await session.OkAsync("unit_paths", new { pack = "docs", unit = "index" });

@@ -126,12 +126,8 @@ public sealed class ModelChangeTests
         Assert.All(filtered.Changes, c => Assert.Equal("e2e", c.Pack));
         Assert.True(repo.Repo.Exists("src/Generated/demo/docs/helpers.txt"));
 
-        // Built roots only: the committed outputs stay as they are.
+        // Every root is covered by a run.
         await repo.EditAsync(E2ERepo.ProductId, n => n["attributes"]![1]!["length"] = 50);
-        var built = await repo.Service.RunAsync(new GenerationRequest { Roots = RootSelection.Built, Jobs = 2 }, null, Ct);
-        E2ERepo.AssertOutcome(RunOutcome.Succeeded, built);
-        Assert.All(built.Changes, c => Assert.StartsWith("src/Generated/", c.Path, StringComparison.Ordinal));
-        Assert.Contains("length 40", repo.Repo.ReadFile("db/e2e/entities/product.txt"), StringComparison.Ordinal);
         var rest = await repo.ApplyAsync();
         Assert.Contains(rest.Changes, c => c.Path == "db/e2e/entities/product.txt" && c.Kind == FileChangeKind.Modified);
         await IncrementalTests.AssertIncrementalEqualsForcedAsync(repo);

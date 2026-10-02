@@ -79,9 +79,9 @@ describe("outputs and new pack", () => {
   it("adds the orphan state and groups by unit or root", () => {
     const rows = outputRows(
       [
-        { path: "db/b.sql", unit: "table", elementId: "e1", companion: false, root: "db", commit: true, mode: "overwrite", state: "intact" },
-        { path: "db/a.sql", unit: "table", elementId: "e2", companion: false, root: "db", commit: true, mode: "overwrite", state: "missing" },
-        { path: "src/x.cs", unit: "old", elementId: null, companion: false, root: "src", commit: false, mode: "once", state: "intact" },
+        { path: "db/b.sql", unit: "table", elementId: "e1", companion: false, root: "db", mode: "overwrite", state: "intact" },
+        { path: "db/a.sql", unit: "table", elementId: "e2", companion: false, root: "db", mode: "overwrite", state: "missing" },
+        { path: "src/x.cs", unit: "old", elementId: null, companion: false, root: "src", mode: "once", state: "intact" },
       ],
       ["table"],
       (id) => id === "e1",

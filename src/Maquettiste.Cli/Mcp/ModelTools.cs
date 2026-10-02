@@ -546,7 +546,6 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     /// <summary>Plans generation (startPlan, run to completion).</summary>
     /// <param name="packs">Pack names.</param>
     /// <param name="force">Whether to ignore the unit cache.</param>
-    /// <param name="roots">Which roots.</param>
     /// <param name="handEdits">A hand-edit policy.</param>
     /// <param name="jobs">Parallelism.</param>
     /// <param name="ct">Cancellation.</param>
@@ -556,22 +555,12 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     public Task<CallToolResult> Plan(
         [Description("Only these packs (default: every enabled pack).")] string[]? packs = null,
         [Description("Render every unit, ignoring the unit cache.")] bool force = false,
-        [Description("all (default), committed or built.")] string? roots = null,
         [Description("fail, overwrite or skip: overrides the project's hand-edit policy.")] string? handEdits = null,
         [Description("Parallelism for this run (at least 1).")] int? jobs = null,
         CancellationToken ct = default) => GuardAsync(async () =>
     {
         if (jobs is < 1)
             return BadRequest("jobs must be at least 1.");
-        var rootSelection = roots switch
-        {
-            null or "" or "all" => RootSelection.All,
-            "committed" => RootSelection.Committed,
-            "built" => RootSelection.Built,
-            _ => (RootSelection?)null,
-        };
-        if (rootSelection is null)
-            return BadRequest($"roots must be all, committed or built, not '{roots}'.");
         HandEditPolicy? policy;
         switch (handEdits)
         {
@@ -598,7 +587,6 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
             Force = force,
             Jobs = jobs,
             HandEdits = policy,
-            Roots = rootSelection.Value,
             IncludeDiffs = false,
             StageBarriers = false,
             Lock = LockMode.Wait,

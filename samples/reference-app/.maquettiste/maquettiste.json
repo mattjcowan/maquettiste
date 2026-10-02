@@ -5,11 +5,13 @@
   "outputs": {
     "allow": [
       {
-        "path": "db",
-        "commit": true
+        "path": "db"
       },
       {
         "path": "src/ReferenceApp.Data/Generated"
+      },
+      {
+        "path": "src/ReferenceApp.Data/.gitignore"
       }
     ]
   },
@@ -40,9 +42,12 @@
   },
   "packs": {
     "csharp-dapper": {
-      "output": "src/ReferenceApp.Data/Generated",
+      "output": "src/ReferenceApp.Data",
       "parameters": {
-        "namespace": "ReferenceApp.Data"
+        "generatedFolder": "Generated",
+        "gitignorePath": ".gitignore",
+        "namespace": "ReferenceApp.Data",
+        "partialFolder": "Generated"
       }
     },
     "sql-ddl": {

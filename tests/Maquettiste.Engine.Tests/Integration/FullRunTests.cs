@@ -43,15 +43,15 @@ public sealed class FullRunTests
         Assert.Contains("Guid Id,", outputs["db/e2e/types/Product.cs"], StringComparison.Ordinal); // pack type map
         Assert.StartsWith("-- migration 0 -> 1 of main", outputs["db/migrations/1.sql"], StringComparison.Ordinal);
 
-        // Committed packs have a manifest under .maquettiste/manifest, built ones under .maquettiste/.cache/manifest; each entry is
-        // the hash of the bytes on disk (owned files o:, regions r: with emptied bodies).
+        // Every pack has one manifest under .maquettiste/manifest, whatever its roots; each entry is the hash of the bytes on disk
+        // (owned files o:, regions r: with emptied bodies). Nothing goes to the cache folder.
         var e2e = ManifestEntries(repo.Manifest("e2e"));
-        var demo = ManifestEntries(repo.Manifest("billing-demo", committed: false));
+        var demo = ManifestEntries(repo.Manifest("billing-demo"));
         var migrations = ManifestEntries(repo.Manifest("migrations"));
         Assert.Equal(outputs.Keys.Where(p => p.StartsWith("db/e2e/", StringComparison.Ordinal)), e2e.Keys);
         Assert.Equal(outputs.Keys.Where(p => p.StartsWith("src/Generated/demo/", StringComparison.Ordinal)), demo.Keys);
         Assert.Equal(["db/migrations/1.sql"], migrations.Keys);
-        Assert.False(repo.Repo.Exists(".maquettiste/manifest/billing-demo.json"));
+        Assert.False(repo.Repo.Exists(".maquettiste/.cache/manifest/billing-demo.json"));
         foreach (var (path, hash) in e2e.Concat(demo).Concat(migrations))
         {
             var sha = E2ERepo.Sha(File.ReadAllBytes(repo.Repo.PathOf(path)));
@@ -124,8 +124,8 @@ public sealed class FullRunTests
         // And check mode finds no drift.
         var check = await repo.RunAsync(GenerationMode.Check);
         E2ERepo.AssertOutcome(RunOutcome.Succeeded, check);
-        Assert.All(check.Changes, c => Assert.Equal(FileChangeKind.Kept, c.Kind)); // committed once files and companions
-        Assert.Equal(10, check.Changes.Count);
+        Assert.All(check.Changes, c => Assert.Equal(FileChangeKind.Kept, c.Kind)); // once files and companions, under every root
+        Assert.Equal(15, check.Changes.Count);
         Assert.Equal(times, repo.WriteTimes());
     }
 

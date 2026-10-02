@@ -60,22 +60,8 @@ public enum GenerationMode
     /// <summary>Compute changes and diffs, write nothing: <c>dry-run</c>.</summary>
     [JsonStringEnumMemberName("dry-run")] DryRun,
 
-    /// <summary>Render every unit in memory over committed roots and report drift: <c>check</c>.</summary>
+    /// <summary>Render every unit in memory over every root and report drift: <c>check</c>.</summary>
     [JsonStringEnumMemberName("check")] Check,
-}
-
-/// <summary>Which output roots a run covers. <see cref="GenerationMode.Check"/> forces <see cref="Committed"/>.</summary>
-[JsonConverter(typeof(JsonStringEnumConverter<RootSelection>))]
-public enum RootSelection
-{
-    /// <summary>Every root: <c>all</c>.</summary>
-    [JsonStringEnumMemberName("all")] All,
-
-    /// <summary>Roots with <c>commit: true</c>: <c>committed</c>.</summary>
-    [JsonStringEnumMemberName("committed")] Committed,
-
-    /// <summary>Roots with <c>commit: false</c>: <c>built</c>.</summary>
-    [JsonStringEnumMemberName("built")] Built,
 }
 
 /// <summary>The role of a rendered file within its unit.</summary>
@@ -231,15 +217,15 @@ public sealed record RenderedUnit(
 }
 
 /// <summary>The output root that contains a file.</summary>
-/// <param name="Path">The root's repo-relative folder.</param>
-/// <param name="Commit">Whether the root is committed.</param>
-public sealed record OutputRootInfo(string Path, bool Commit);
+/// <param name="Path">The root's repo-relative folder, or the file it names (an <c>outputs.allow</c> entry that is the file's own path).</param>
+public sealed record OutputRootInfo(string Path);
 
 /// <summary>A post-processed file ready for stage 8.</summary>
 /// <param name="Path">The repo-relative path.</param>
-/// <param name="Content">The bytes to write (UTF-8, LF, no BOM).</param>
+/// <param name="Content">The bytes to write (UTF-8, LF, no BOM); for a <c>block</c> file, the block's lines only (the writer puts them in the file).</param>
 /// <param name="ContentHash">The hash of <paramref name="Content"/>.</param>
-/// <param name="ManifestHash">The manifest hash: the content hash, <c>r:</c> + skeleton hash, or <c>o:</c> + content hash.</param>
+/// <param name="ManifestHash">The manifest hash: the content hash, <c>r:</c> + skeleton hash, <c>o:</c> + content hash, or for a
+/// <c>block</c> file <c>b:</c> + the hash of the block's lines (the writer turns it into <c>bc:</c> when it creates the file).</param>
 /// <param name="Mode">The output mode.</param>
 /// <param name="Role">The file's role.</param>
 /// <param name="Root">The containing output root.</param>

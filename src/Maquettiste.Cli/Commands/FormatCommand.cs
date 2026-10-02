@@ -12,7 +12,7 @@ namespace Maquettiste.Cli.Commands;
 
 /// <summary>
 /// <c>maquettiste format</c>: rewrites every model file in canonical form (SPEC section 11), the form the editor and the engine
-/// write, so hand-written files stop reporting MQ1003. It covers <c>maquettiste.json</c>, the element files under <c>model/</c>
+/// write, so hand-written files stop reporting MQ1003 (and <c>maquettiste.json</c> loses the retired <c>commit</c> flag, MQ1010). It covers <c>maquettiste.json</c>, the element files under <c>model/</c>
 /// and the locale shards. A file that is not valid JSON, has no known kind or fails its schema is left as it is and listed (run
 /// <c>maquettiste validate</c> for the reasons). <c>--check</c> writes nothing, lists the files that would change and exits 2 (drift, as
 /// <c>generate --check</c>) when there is any. Exit 0 otherwise, and 1 when there is no model.
@@ -119,9 +119,19 @@ internal static class FormatCommand
                     break;
             }
 
+            var node = JsonNode.Parse(root.GetRawText())!;
+            if (kind == ModelFileKind.Settings && RetiredSettings.Strip(node))
+            {
+                // outputs.allow[].commit (ignored since 0.5.5, MQ1010) is dropped; the rest must still pass the schema.
+                using var stripped = JsonDocument.Parse(node.ToJsonString());
+                return schemas.Evaluate(schemaFile, stripped.RootElement, repoPath).Any(d => d.Severity == DiagnosticSeverity.Error)
+                    ? null
+                    : json.Write(node, schemaFile, repoPath);
+            }
+
             if (schemas.Evaluate(schemaFile, root, repoPath).Any(d => d.Severity == DiagnosticSeverity.Error))
                 return null;
-            return json.Write(JsonNode.Parse(root.GetRawText())!, schemaFile, repoPath);
+            return json.Write(node, schemaFile, repoPath);
         }
     }
 }

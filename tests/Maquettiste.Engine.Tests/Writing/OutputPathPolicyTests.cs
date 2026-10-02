@@ -42,7 +42,6 @@ public sealed class OutputPathPolicyTests
     [InlineData(".git/hooks/pre-commit", "always denied")]
     [InlineData("docs/readme.md", "outputs.allow")]
     [InlineData("dbx/a.sql", "outputs.allow")]
-    [InlineData("db", "outputs.allow")]
     [InlineData("src/a.cs", "outputs.allow")]
     public void Check_refuses_invalid_and_unlisted_paths(string path, string reason)
     {
@@ -66,7 +65,7 @@ public sealed class OutputPathPolicyTests
             {
                 Allow =
                 [
-                    new OutputRoot { Path = "src", Commit = true },
+                    new OutputRoot { Path = "src" },
                     new OutputRoot { Path = "src/Generated/" },
                     new OutputRoot { Path = "../escape" },
                 ],
@@ -78,11 +77,64 @@ public sealed class OutputPathPolicyTests
         var committed = policy.Check("src/Handwritten.cs");
 
         Assert.True(generated.Allowed);
-        Assert.Equal(new OutputRootInfo("src/Generated", false), generated.Root);
+        Assert.Equal(new OutputRootInfo("src/Generated"), generated.Root);
         Assert.Equal("src/Generated/Billing/Invoice.g.cs", generated.NormalizedPath);
         Assert.True(committed.Allowed);
-        Assert.Equal(new OutputRootInfo("src", true), committed.Root);
+        Assert.Equal(new OutputRootInfo("src"), committed.Root);
         Assert.False(policy.Check("escape/a.txt").Allowed);
+    }
+
+    [Fact]
+    public void An_allow_entry_also_allows_the_file_of_its_own_path_unless_it_ends_with_a_slash()
+    {
+        using var repo = new Testing.TempRepo();
+        var settings = new ProjectSettings
+        {
+            FormatVersion = 1,
+            Outputs = new OutputSettings
+            {
+                Allow = [new OutputRoot { Path = ".gitignore" }, new OutputRoot { Path = "src/App/.gitignore" }, new OutputRoot { Path = "gen/" }, new OutputRoot { Path = "db" }],
+                Deny = ["**/*.secret"],
+            },
+        };
+        var policy = new OutputPathPolicy(repo.Options, settings);
+
+        Assert.Equal(new OutputRootInfo(".gitignore"), policy.Check(".gitignore").Root);
+        Assert.True(policy.Check("src/App/.gitignore").Allowed);
+        // The file entry does not make its folder a root, so the repository root never becomes one.
+        Assert.Contains("outputs.allow", policy.Check("src/App/Other.cs").Reason, StringComparison.Ordinal);
+        Assert.Contains("outputs.allow", policy.Check("README.md").Reason, StringComparison.Ordinal);
+        Assert.Contains("outputs.allow", policy.Check("src/.gitignore").Reason, StringComparison.Ordinal);
+        // A trailing slash allows the folder only.
+        Assert.True(policy.Check("gen/a.cs").Allowed);
+        Assert.Contains("outputs.allow", policy.Check("gen").Reason, StringComparison.Ordinal);
+        // A folder entry's own path is a file only while no folder has that name.
+        Assert.True(policy.Check("db").Allowed);
+        Directory.CreateDirectory(repo.PathOf("db"));
+        Assert.Contains("is a folder", new OutputPathPolicy(repo.Options, settings).Check("db").Reason, StringComparison.Ordinal);
+        Assert.Contains("outputs.deny", policy.Check("gen/a.secret").Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_file_entry_that_is_a_link_out_of_the_repo_is_refused()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+        using var repo = new Testing.TempRepo();
+        var outside = Path.Combine(Path.GetTempPath(), "mq-outside-" + Guid.NewGuid().ToString("N") + ".txt");
+        File.WriteAllText(outside, "x\n");
+        try
+        {
+            File.CreateSymbolicLink(repo.PathOf(".gitignore"), outside);
+            var settings = new ProjectSettings { FormatVersion = 1, Outputs = new OutputSettings { Allow = [new OutputRoot { Path = ".gitignore" }] } };
+            var check = new OutputPathPolicy(repo.Options, settings).Check(".gitignore");
+            Assert.False(check.Allowed);
+            Assert.Equal("MQ6004", check.RuleId);
+        }
+        finally
+        {
+            File.Delete(outside);
+        }
     }
 
     [Theory]
@@ -221,12 +273,12 @@ public sealed class OutputPathPolicyTests
     }
 
     [Fact]
-    public void The_repository_gitignore_is_a_setup_write_only_when_init_gitignore_allows_it()
+    public void The_repository_gitignore_is_never_an_engine_write_and_is_an_output_only_through_an_allow_entry()
     {
         using var f = new WritingFixture();
         var gitignore = Path.Combine(f.Repo.RepoRoot, ".gitignore");
 
-        // Without the opt-in, no target reaches the customer's file.
+        // No engine write (setup, model, cache) reaches the customer's file, and without settings no output does either.
         foreach (var target in new[] { WriteTarget.Setup, WriteTarget.Model, WriteTarget.Cache, WriteTarget.Output })
         {
             var refused = f.EnginePaths.CheckEngineWrite(target, gitignore);
@@ -234,14 +286,11 @@ public sealed class OutputPathPolicyTests
             Assert.Equal(OutputPathPolicy.RefusedRule, refused.RuleId);
         }
 
-        Assert.False(f.Paths.CheckEngineWrite(WriteTarget.Output, gitignore).Allowed);
-        Assert.Contains("with init --gitignore only", f.EnginePaths.CheckEngineWrite(WriteTarget.Setup, gitignore).Reason, StringComparison.Ordinal);
+        Assert.DoesNotContain("gitignore", f.EnginePaths.CheckEngineWrite(WriteTarget.Setup, gitignore).Reason, StringComparison.Ordinal);
 
-        // With it, the file (and only the root one) is allowed; the other setup paths are unchanged.
-        var optedIn = new OutputPathPolicy(f.Repo.Options, null, allowGitignore: true);
-        Assert.True(optedIn.CheckEngineWrite(WriteTarget.Setup, gitignore).Allowed);
-        Assert.False(optedIn.CheckEngineWrite(WriteTarget.Setup, Path.Combine(f.Repo.RepoRoot, "src", ".gitignore")).Allowed);
-        Assert.True(optedIn.CheckEngineWrite(WriteTarget.Setup, Path.Combine(f.Repo.RepoRoot, ".git", "hooks", "post-merge")).Allowed);
+        // Generation reaches it only because the fixture's outputs.allow names the file.
+        Assert.True(f.Paths.CheckEngineWrite(WriteTarget.Output, gitignore).Allowed);
+        Assert.False(f.Paths.CheckEngineWrite(WriteTarget.Output, Path.Combine(f.Repo.RepoRoot, "src", ".gitignore")).Allowed);
         Assert.True(f.EnginePaths.CheckEngineWrite(WriteTarget.Setup, Path.Combine(f.Repo.RepoRoot, ".mcp.json")).Allowed);
     }
 

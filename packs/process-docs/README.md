@@ -5,12 +5,12 @@ events, context, guards, actions, invokes, actors and scenarios; a page per acto
 page. Every page is derived from the model and overwritten on each run, so the pages never need editing: change the model and
 generate again.
 
-The pages are meant to be read and reviewed next to the model, so the pack writes to a **committed** output root. A project uses
+The pages are meant to be read and reviewed next to the model, so the pack writes to an output root you would normally commit. A project uses
 it by copying the pack into `.maquettiste/templates/process-docs/`, registering its output and allowing that root in
 `maquettiste.json`:
 
 ```json
-"outputs": { "allow": [ { "path": "docs", "commit": true } ] },
+"outputs": { "allow": [ { "path": "docs" } ] },
 "packs": { "process-docs": { "output": "docs" } }
 ```
 

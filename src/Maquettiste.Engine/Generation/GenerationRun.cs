@@ -335,7 +335,7 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             counts[unit.Pack.Name] = counts.GetValueOrDefault(unit.Pack.Name) + 1;
         var policies = Policies(run, request, mode);
 
-        return new WriteContext(mode, runId, policies, run.Manifests, skipped, counts, request.Packs is null, request.Roots,
+        return new WriteContext(mode, runId, policies, run.Manifests, skipped, counts, request.Packs is null,
             request.IncludeDiffs && mode != GenerationMode.Apply, mode == GenerationMode.Apply ? journal : null, services.UnitState, plannedPaths);
     }
 

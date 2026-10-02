@@ -4,7 +4,7 @@ using Maquettiste.Engine.Pipeline;
 namespace Maquettiste.Engine.Tests.Integration;
 
 /// <summary>
-/// Check mode (integration task 5): committed roots only, in memory; a hand edit is a conflict, a stale, missing or orphaned file is
+/// Check mode (integration task 5): every root, in memory; a hand edit is a conflict, a stale, missing or orphaned file is
 /// drift, with the precedence of engine-design.md section 16 (busy and internal 4, invalid 1, conflicts 3, drift 2). Check writes nothing.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
@@ -40,7 +40,8 @@ public sealed class CheckTests
         E2ERepo.AssertOutcome(RunOutcome.Drift, check);
         Assert.Contains(check.Changes, c => c.Path == "db/e2e/entities/customer.txt" && c.Kind == FileChangeKind.Modified);
         Assert.Contains(check.Changes, c => c.Path == "db/e2e/tables/customers.sql" && c.Kind == FileChangeKind.Modified);
-        Assert.DoesNotContain(check.Changes, c => c.Path.StartsWith("src/", StringComparison.Ordinal)); // built roots are not checked
+        // Every root is checked: the demo pack's output under src/Generated is drift too.
+        Assert.Contains(check.Changes, c => c.Path.StartsWith("src/Generated/", StringComparison.Ordinal) && c.Kind == FileChangeKind.Modified);
         Assert.Equal(times, repo.WriteTimes());
         Assert.Contains("length 120", repo.Repo.ReadFile("db/e2e/entities/customer.txt"), StringComparison.Ordinal);
     }
@@ -84,10 +85,9 @@ public sealed class CheckTests
     }
 
     [Fact]
-    public async Task Built_roots_and_edits_inside_protected_regions_are_not_drift()
+    public async Task Edits_inside_protected_regions_are_not_drift_and_every_root_is_checked()
     {
         await using var repo = await AppliedAsync();
-        repo.Repo.WriteFile("src/Generated/demo/docs/helpers.txt", "built root, edited\n");
         var region = repo.Repo.ReadFile("db/e2e/regions/customer.txt").Replace("// default body", "// kept by hand", StringComparison.Ordinal);
         repo.Repo.WriteFile("db/e2e/regions/customer.txt", region);
 
@@ -95,6 +95,12 @@ public sealed class CheckTests
 
         E2ERepo.AssertOutcome(RunOutcome.Succeeded, check);
         Assert.All(check.Changes, c => Assert.Equal(FileChangeKind.Kept, c.Kind));
+
+        // A file under src/Generated (once a "built" root, unchecked) is checked like any other.
+        repo.Repo.WriteFile("src/Generated/demo/docs/helpers.txt", "edited\n");
+        var edited = await repo.RunAsync(GenerationMode.Check);
+        E2ERepo.AssertOutcome(RunOutcome.Conflicts, edited);
+        Assert.Contains(edited.Changes, c => c.Path == "src/Generated/demo/docs/helpers.txt" && c.Kind == FileChangeKind.Conflict);
     }
 
     [Fact]

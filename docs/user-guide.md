@@ -1283,7 +1283,7 @@ stereotypes, categories and packages). The example packs use them as follows; th
 | `<P>Services.g.cs` and `<P>Services.cs` | An interface per service task and a hook per human task; the companion implements them | A pair |
 | `<P>Machine.g.cs` and `<P>Machine.cs` | A typed facade: start, restore, one method per event; the companion adds the team's own queries | A pair |
 | `<P>Store.g.cs` and `<P>Store.cs` | The store interface (load and save the instance's snapshot over the version it loaded, append history and audit records); the companion starts as an in-memory store and is adapted to the entities the project mapped | A pair |
-| `Endpoints/<P>Endpoints.cs` | One `POST` endpoint per event, each with a user-code region where the request and the response can be reshaped | Regions: the code inside a region survives regeneration; written only when `endpointsFolder` is set, in a committed root |
+| `Endpoints/<P>Endpoints.cs` | One `POST` endpoint per event, each with a user-code region where the request and the response can be reshaped | Regions: the code inside a region survives regeneration; written only when `endpointsFolder` is set; keep that folder in version control (see the regions note in "Which files to commit") |
 
 and, once for the model when it has a process:
 
@@ -1296,8 +1296,8 @@ and, once for the model when it has a process:
 | `Processes/Actors.cs` | A constant per actor with its type, and the actors each event allows |
 
 A companion is created once and never overwritten: a guard, action or service that the model adds fails the build until
-its companion code is written, which is how the pack tells you what to implement. Keep companions in a committed output
-root (the pack's `partialFolder`).
+its companion code is written, which is how the pack tells you what to implement. Keep companions in an output root
+you commit (the pack's `partialFolder`).
 
 **Scenario tests.** With `testsFolder` set, each scenario becomes one test (`<P>/<Scenario>Tests.cs`). It starts the
 instance with the scenario's start context on a manual clock at the scenario's start instant, sends every step through the
@@ -1319,7 +1319,7 @@ packs/csharp-dapper/README.md lists the subset exactly.
 gates). These scripts are outside `schema.sql` and the migrations. A project that wants the tables in its model models
 entities for them, maps them to a database and adapts the store companion, as the gate 3 fixture does.
 
-**Documentation.** The `process-docs` pack writes Markdown to a committed root: a page per process (the description, a
+**Documentation.** The `process-docs` pack writes Markdown to an output root (usually one you commit): a page per process (the description, a
 state diagram in diagram text, and tables of states, transitions, gates with their audit record, events, context,
 guards, actions and invokes), a page per actor (a persona's goals among them), a walk-through page per scenario and an
 index. Copy `packs/process-docs` into `.maquettiste/templates/`, set `packs.process-docs.output` (for example `docs`) and
@@ -1404,8 +1404,9 @@ name), templates read them as `pack.params.<name>`, and a project sets its own v
 in `maquettiste.json`. The pack editor's Parameters tab shows each one with the right control and a Reset to default.
 
 **The write mode** says what happens to a file that already exists: Overwrite (the default), Create only if missing
-(`once`), Protected regions (your code between markers survives), or Pair (a generated file plus a companion file for
-hand-written code that is created once and then left alone).
+(`once`), Protected regions (your code between markers survives), Pair (a generated file plus a companion file for
+hand-written code that is created once and then left alone), or Managed block (`block`: a few lines the pack keeps inside a
+file that is otherwise yours, such as an ignore file; see "Managed blocks").
 
 ### Change a template and see the result
 
@@ -1434,6 +1435,12 @@ companion, the unit in `pack.json` is rewritten in the same change. Rename and *
 includes the file, and Delete also while a unit names it; the refusal says who uses it.
 
 ### How the plan explains itself
+
+The **Plan** tab's toolbar chooses which packs to plan: **Packs · 2 of 3** opens a list with one checkbox per pack, in
+the order of the project's packs, with **All** and **None**; past eight packs a filter box narrows the list, and All
+and None then act on the packs it shows. A disabled pack is listed greyed and cannot be ticked (turn on **Enabled** in
+its pack editor's header), and a pack with diagnostics shows their count. The choice is kept with the page state;
+**Plan** stays disabled while no pack is ticked. A plan covers every output root of `outputs.allow`.
 
 A plan is a dry run: it renders what needs rendering and compares it with the disk, and nothing is written until you
 apply it. Above the table, one line per pack says what it will do, for example
@@ -1476,28 +1483,87 @@ the command does the same unless you add `--keep-hints`.
 
 ### outputs.allow: what generation may touch
 
-Generation writes only under the roots listed in `outputs.allow` of `maquettiste.json`, never elsewhere, whatever a
+Generation writes only under the paths listed in `outputs.allow` of `maquettiste.json`, never elsewhere, whatever a
 template or an output pattern says:
 
 ```json
 "outputs": {
   "allow": [
-    { "path": "db", "commit": true },
-    { "path": "services/billing/src/Generated", "commit": false }
+    { "path": "db" },
+    { "path": "services/billing/src/Generated" },
+    { "path": "services/billing/src/.gitignore" }
   ],
   "deny": ["**/*.user.cs"]
 }
 ```
 
-In a large repository with many projects, list each generated folder as its own root; everything else (hand-written
-code, other teams' folders, `.git`, `.maquettiste`) is out of reach. A path outside every root is refused before
-anything is written (MQ6019, shown in the Units grid next to the pattern), and `deny` globs carve exceptions out of a
-root. `commit: true` marks output that belongs in git (its manifest is committed and `generate --check` guards it in
-CI); `commit: false` marks build output, which `generate` writes again wherever a build runs. Whether git ignores a built
-root or the team commits it is the team's choice: Maquettiste does not touch the repository's `.gitignore` unless asked
-(`maquettiste init --gitignore` adds the built roots to it). Its own working folder, `.maquettiste/.cache/` (the run
-journal and the built roots' manifests), holds a `.gitignore` with a single `*` line, so it is never committed by
-accident whatever the repository's `.gitignore` says.
+An entry is a folder generation may write under, or a single file it may write: `services/billing/src/.gitignore` above
+allows exactly that file, so a pack can keep lines in it (see "Managed blocks") without the whole `src` folder, or the
+repository root, becoming writable. An entry that ends with `/` is a folder only; `""` or `.` is the whole repository. In
+a large repository with many projects, list each generated folder as its own entry; everything else (hand-written code,
+other teams' folders, `.git`, `.maquettiste`) is out of reach. A path outside every entry is refused before anything is
+written (MQ6019, shown in the Units grid next to the pattern), and `deny` globs carve exceptions out of an entry. An entry
+says nothing else: the `commit` flag of releases before 0.5.5 is ignored (MQ1010, an info line per entry; `maquettiste
+format` removes it).
+
+**Which files to commit.** That is the team's choice, and Maquettiste never needs git: a project kept in a shared folder
+works the same. Whatever generation writes is recorded in one manifest per pack, `.maquettiste/manifest/<pack>.json`,
+which lives with the model; commit it with the model. A team that commits some outputs and not others gets the same
+behavior for both: `generate` rewrites what changed, and a file the engine wrote in this checkout is never taken for a
+hand edit after a pull brings a newer manifest. `generate --check` renders every output in memory and exits 2 when any
+file would be added, changed or deleted, so in CI either commit every output you want `--check` to guard, or run
+`maquettiste generate` and then compare the working tree (`git diff --exit-code`). Protected regions work in any output,
+but their bodies live only in the file: in output you do not commit, a fresh clone starts them empty, so keep region files
+(the C# process endpoints, for example) in a folder you commit. Maquettiste's own working folder, `.maquettiste/.cache/`
+(the run journal and lock), holds a `.gitignore` with a single `*` line, so it is never committed by accident whatever
+the repository's own ignore file says; Maquettiste never edits that file unless a pack's managed block asks it to.
+
+### Managed blocks: a few generated lines in a file you own
+
+Some files are yours but should carry a few generated lines: an ignore file that must list the generated folder, a
+configuration file with a generated section. A unit in mode `block` owns one block of lines in such a file and nothing
+else. Its template renders the block's lines; the engine puts them between two delimiter lines,
+
+```text
+# maquettiste: begin csharp-dapper/gitignore
+/Generated/
+# maquettiste: end csharp-dapper/gitignore
+```
+
+where `#` is the unit's `blockComment` (default `#`; `//`, `;` or any other comment marker without spaces) and the name
+after `begin` and `end` is the pack and the unit id. Each run then:
+
+- replaces the lines between the delimiters when the block is there (the rest of the file, every byte of it, is left as it was);
+- appends the block when the file has none: after a line break if the file lacks a final one, and after a blank line unless
+  the file already ends with one;
+- creates the file, holding just the block, when it does not exist and the unit sets `"createFile": true`. Without it
+  (the default) the unit writes nothing, the plan lists it with the reason `target-missing` ("the file does not exist; set
+  createFile to create it"), `generate` prints MQ6028 as information, and the unit tries again on the next run;
+- removes the block when the unit is removed, its pack disabled, or the unit no longer writes that file: the change is
+  listed as `D`, a blank line the engine added before the block goes with it, and the file itself is deleted only when the
+  engine created it and nothing but whitespace is left.
+
+Only the block's lines are recorded and compared, so you may edit the file around it freely; an edit inside the block (or
+deleting the block) is a hand edit like any other and follows `handEdits`. A file holding the same block twice, or a
+begin line without its end, is left alone and reported (MQ6027) until you fix it. Formatters never run on a block. Two
+units cannot share one file yet (MQ6005), so give each its own file. The path must be allowed: a file entry in
+`outputs.allow` such as `src/App/.gitignore` is the narrow way.
+
+Example: the `csharp-dapper` pack's `gitignore` unit keeps the generated folder out of version control. Set its
+`gitignorePath` parameter to the ignore file's path under the pack output and allow that file; the reference application
+does it this way:
+
+```json
+"outputs": { "allow": [ { "path": "db" }, { "path": "src/ReferenceApp.Data/Generated" }, { "path": "src/ReferenceApp.Data/.gitignore" } ] },
+"packs": {
+  "csharp-dapper": {
+    "output": "src/ReferenceApp.Data",
+    "parameters": { "generatedFolder": "Generated", "partialFolder": "Generated", "gitignorePath": ".gitignore", "namespace": "ReferenceApp.Data" }
+  }
+}
+```
+
+The block then holds `/Generated/`. With `gitignorePath` empty (the default) the unit writes nothing.
 
 ## Packs in the editor: what generation does
 
@@ -1512,7 +1578,7 @@ same pack. The words the screens use:
 | Files | The scope read as files: "Each table" writes one file per table, "Once" one file for the whole model, "Once per package" and "Once per database" one file per group |
 | Filter | Narrows the scope by tags, stereotypes, categories, packages (and their "not" lists), database, abstract, or a script filter |
 | Output path | A pattern rendered with the template's variables; the file lands under the pack's output base, inside an allowed output root |
-| Write | Overwrite, Create only if missing, Protected regions, or Pair (a generated file and a companion for hand code) |
+| Write | Overwrite, Create only if missing, Protected regions, Pair (a generated file and a companion for hand code), or Managed block (a delimited block of lines in a file you own) |
 | Parameters | Pack settings the templates read as `pack.params`; defaults in `pack.json`, values per project in `maquettiste.json` |
 
 **The Generate explorer.** Each pack is a tree node with its unit count and the number of output roots its last run
@@ -1706,10 +1772,10 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 
 | Command | What it does |
 | --- | --- |
-| `maquettiste init` | Creates `.maquettiste/` (`maquettiste.json`, the JSON schemas for editor completion, the `sql-ddl` starter pack) and prints the built output roots, which `generate` regenerates and the team may ignore or commit as it prefers. It does not read or write the repository's `.gitignore`; `--gitignore` asks it to add (or, run again, refresh in place) a `# maquettiste:begin` … `# maquettiste:end` block listing the built roots and `.maquettiste/.cache/`. A block written by an earlier version, which added it on every run, stays as it is: it is yours to keep, edit or remove. `--hooks` installs git hooks that regenerate the built roots after a checkout or merge. `--pack csharp-dapper` or `--pack none` picks another starter; `--mcp`, `--skill` and `--agent-setup` register the agent server, and `--mcp --docker <image>` registers it as a `docker run` of the image (`--runtime podman` for `podman run`; docs/mcp.md). The project is named by `--name <name>`, else the `name` of `package.json`, else the git remote's repository name, else the folder name (so a repository mounted at `/repo` in the image keeps its real name). Running `init` again, starting the editor or starting `maquettiste mcp` refreshes the JSON schemas when a new version ships different ones; until then `validate` and `generate` warn MQ1008 and name the files that differ. Running it again keeps what is there. |
+| `maquettiste init` | Creates `.maquettiste/` (`maquettiste.json`, the JSON schemas for editor completion, the `sql-ddl` starter pack) with the output entries `db` and `src/Generated`. It never reads or writes the repository's ignore file (the `--gitignore` option of earlier releases is gone; a pack's managed block can keep lines there, see "Managed blocks"). A block an earlier version wrote stays as it is: it is yours to keep, edit or remove. `--hooks` installs git hooks that run `generate` after a checkout or merge. `--pack csharp-dapper` or `--pack none` picks another starter; `--mcp`, `--skill` and `--agent-setup` register the agent server, and `--mcp --docker <image>` registers it as a `docker run` of the image (`--runtime podman` for `podman run`; docs/mcp.md). The project is named by `--name <name>`, else the `name` of `package.json`, else the git remote's repository name, else the folder name (so a repository mounted at `/repo` in the image keeps its real name). Running `init` again, starting the editor or starting `maquettiste mcp` refreshes the JSON schemas when a new version ships different ones; until then `validate` and `generate` warn MQ1008 and name the files that differ. Running it again keeps what is there. |
 | `maquettiste validate` | Validates the model and the packs, and replays every scenario of every process (MQ9301 to MQ9306 and MQ9502 to MQ9507); `--format sarif` for code-scanning tools. |
 | `maquettiste generate` | Renders the packs into the output roots of `maquettiste.json`, incrementally: only units whose inputs changed re-render. Prints one line per file (`A` added, `M` modified, `D` deleted, `K` kept). A generated file edited by hand stops the run (exit 3); `--hand-edits overwrite` replaces it. |
-| `maquettiste generate --check` | Renders without writing and exits 2 when the committed output differs from the model: the CI gate. |
+| `maquettiste generate --check` | Renders every output without writing and exits 2 when any file would be added, changed or deleted: the CI gate when the outputs it guards are committed (otherwise run `generate`, then compare the working tree). `--roots` of earlier releases is gone. |
 | `maquettiste generate --watch` | Regenerates on every change under `.maquettiste/` (a save in the editor, a template edit) until Ctrl+C. |
 | `maquettiste format` | Rewrites every model file (`maquettiste.json`, `model/**`) in canonical form, the form the editor writes, and prints the count; hand-written files then stop reporting MQ1003. A file that does not pass its schema is left as it is and named. `--check` writes nothing and exits 2 (drift, as `generate --check` does) when a file would change. |
 | `maquettiste l10n status` | The default locale, the declared locales and, per translated locale and shard, how many texts are translated, missing and stale (`--format json` for scripts). |

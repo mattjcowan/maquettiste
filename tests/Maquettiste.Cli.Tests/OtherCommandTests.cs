@@ -51,7 +51,7 @@ public sealed class PackNewTests
         using (var doc = JsonDocument.Parse(manifest))
             Assert.Equal("docs", doc.RootElement.GetProperty("name").GetString());
 
-        // Give it an output folder under the committed root and generate it.
+        // Give it an output folder under the db root and generate it.
         repo.Replace(".maquettiste/maquettiste.json", "\"packs\": {", "\"packs\": {\n    \"docs\": {\n      \"output\": \"db/docs\"\n    },");
         Assert.Equal(0, (await repo.RunAsync("validate")).ExitCode);
         var generate = await repo.RunAsync("generate", "--pack", "docs");

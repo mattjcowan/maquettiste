@@ -11,7 +11,7 @@ namespace Maquettiste.Engine.Writing;
 
 /// <summary>
 /// One run of stage 8 (engine-design.md sections 12.3 and 12.4). The intake loop reads processed units in order, checks each file
-/// (path policy, root selection, plan list, duplicate and case-colliding paths) and queues it; <c>min(jobs, 8)</c> tasks drain a
+/// (path policy, plan list, duplicate and case-colliding paths) and queues it; <c>min(jobs, 8)</c> tasks drain a
 /// bounded queue, deciding and writing each file. When a pack's last unit has arrived (by <see cref="WriteContext.UnitCountByPack"/>,
 /// counting processed units), or at the end of the stream, the pack is closed: in apply mode its manifests and unit states are saved
 /// and the journal gets its <c>pack</c> line. Orphans are handled once every pack is closed (a later pack may still produce the path);
@@ -25,7 +25,8 @@ internal sealed class WriteRun
     private const string RefusedRule = "MQ6004";
     private const string CollisionRule = "MQ6005";
     private const string UnitCollisionRule = "MQ6020";
-    private const string RegionsOnBuiltRule = "MQ6015";
+    private const string BrokenBlockRule = "MQ6027";
+    private const string TargetMissingRule = "MQ6028";
 
     private readonly IOutputPathPolicy _paths;
     private readonly IManifestStore _manifests;
@@ -35,7 +36,7 @@ internal sealed class WriteRun
     private readonly int _workerCount;
     private readonly string _repoRoot;
     private readonly bool _apply;
-    private readonly RootSelection _roots;
+    private readonly ConcurrentDictionary<string, Lazy<Task<IReadOnlyDictionary<string, UnitState>>>> _localStates = new(StringComparer.Ordinal);
     private readonly Channel<FileJob> _queue;
     private readonly Dictionary<string, PackRun> _packs = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _claims = new(StringComparer.OrdinalIgnoreCase);
@@ -72,7 +73,6 @@ internal sealed class WriteRun
         _workerCount = workerCount;
         _repoRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(options.RepoRoot));
         _apply = context.Mode == GenerationMode.Apply;
-        _roots = context.Mode == GenerationMode.Check ? RootSelection.Committed : context.Roots;
         _queue = Channel.CreateBounded<FileJob>(new BoundedChannelOptions(capacity)
         {
             SingleWriter = true,
@@ -210,8 +210,6 @@ internal sealed class WriteRun
 
         var path = check.NormalizedPath;
         var root = check.Root;
-        if (!RootSelected(root.Commit))
-            return null;
         if (_context.PlannedPaths is { } planned && !planned.Contains(path))
         {
             Report(RefusedRule, $"Output path refused: {path} is not in the plan being applied.", path);
@@ -239,16 +237,18 @@ internal sealed class WriteRun
         _claims[path] = path;
         _claimedBy[path] = unitKey;
         _produced.Add(path);
-        if (file.Mode == OutputMode.Regions && !root.Commit)
+
+        var unitName = UnitName(record.Unit.Rendered.Unit.Key, pack.Name) + (file.Role == FileRole.Companion ? "#companion" : "");
+        if (file.Mode == OutputMode.Block)
         {
-            if (!unit.Diagnostics.Any(d => d.Rule == RegionsOnBuiltRule && d.FilePath == path))
-                Report(RegionsOnBuiltRule, $"Regions mode on a built root: {path} is under '{root.Path}', which is not committed.", path);
-            return null;
+            var packUnit = record.Unit.Rendered.Unit.Unit;
+            var block = new BlockInfo(string.IsNullOrWhiteSpace(packUnit.BlockComment) ? ManagedBlock.DefaultComment : packUnit.BlockComment, ManagedBlock.Marker(pack.Name, unitName), packUnit.CreateFile);
+            var blockHash = ManagedBlock.Prefix + ManagedBlock.BodyHash(file.ManifestHash);
+            return new FileJob(pack.Name, record.Unit.Rendered.Unit.Key, unitName, path, root, file, false, blockHash) { Block = block };
         }
 
         var owned = file.Mode == OutputMode.Once || file.Role == FileRole.Companion || ManifestHashes.IsOwned(file.ManifestHash);
         var manifestHash = owned && !ManifestHashes.IsOwned(file.ManifestHash) ? ManifestHashes.OwnedPrefix + file.ContentHash : file.ManifestHash;
-        var unitName = UnitName(record.Unit.Rendered.Unit.Key, pack.Name) + (file.Role == FileRole.Companion ? "#companion" : "");
         return new FileJob(pack.Name, record.Unit.Rendered.Unit.Key, unitName, path, root, file, owned, manifestHash);
     }
 
@@ -288,6 +288,8 @@ internal sealed class WriteRun
         var disk = File.Exists(full) ? await File.ReadAllBytesAsync(full, CancellationToken.None).ConfigureAwait(false) : null;
         var diskHash = disk is null ? null : ContentHash.Of(disk);
         var old = _context.Manifests.TryGet(job.Path, out var entry, out _) ? entry : null;
+        if (job.Block is not null)
+            return await ProcessBlockAsync(job, full, disk, old).ConfigureAwait(false);
         string? respell = null;
         if (old is null && disk is not null && CaseVariant(job) is { } variant)
         {
@@ -354,7 +356,8 @@ internal sealed class WriteRun
             kind = FileChangeKind.Unchanged;
             next = fresh;
         }
-        else if (old is not null && string.Equals(ManifestHashes.Comparable(old.Hash, disk, diskHash!), old.Hash, StringComparison.Ordinal))
+        else if ((old is not null && string.Equals(ManifestHashes.Comparable(old.Hash, disk, diskHash!), old.Hash, StringComparison.Ordinal))
+            || await WrittenHereAsync(job.Pack, job.UnitKey, job.Path, disk, diskHash!).ConfigureAwait(false))
         {
             kind = FileChangeKind.Modified;
             next = fresh;
@@ -389,6 +392,14 @@ internal sealed class WriteRun
         if (_apply && respell is not null && !keepPrevious && !job.Owned)
             Respell(respell, full);
 
+        return await FinishFileAsync(job, full, kind, next, write, keepPrevious, disk, content, old?.Hash ?? diskHash,
+            _context.IncludeDiffs && !job.File.ContentOmitted && kind is not FileChangeKind.Kept).ConfigureAwait(false);
+    }
+
+    /// <summary>Writes a decided file (apply only), records its stat for the unit state, lists the change and reports progress.</summary>
+    private async Task<FileResult> FinishFileAsync(FileJob job, string full, FileChangeKind kind, ManifestEntry? next, bool write, bool keepPrevious,
+        byte[]? disk, ReadOnlyMemory<byte> content, string? oldHash, bool includeDiff)
+    {
         if (write && _apply)
         {
             var tag = _context.RunId + "-" + Interlocked.Increment(ref _tempCounter).ToString(CultureInfo.InvariantCulture);
@@ -408,15 +419,128 @@ internal sealed class WriteRun
 
         if (kind != FileChangeKind.Unchanged)
         {
-            string? diff = null;
-            if (_context.IncludeDiffs && !job.File.ContentOmitted && kind is not FileChangeKind.Kept)
-                diff = _diffs.Unified(job.Path, disk ?? [], content.Span);
-            _changes.Enqueue(new FileChange(job.Path, kind, job.Pack, job.UnitKey, old?.Hash ?? diskHash, next?.Hash ?? job.ManifestHash, diff));
+            var diff = includeDiff ? _diffs.Unified(job.Path, disk ?? [], content.Span) : null;
+            _changes.Enqueue(new FileChange(job.Path, kind, job.Pack, job.UnitKey, oldHash, next?.Hash ?? job.ManifestHash, diff));
         }
 
         var done = Interlocked.Increment(ref _done);
         _progress?.Report(new ProgressUpdate(PipelineStage.Write, done, Volatile.Read(ref _queued), job.Path, job.Pack));
         return new FileResult(kind, next, keepPrevious, output);
+    }
+
+    /// <summary>
+    /// The decision for a <c>block</c> file (engine-design.md section 12.3b): the unit's block in the file on disk is the file for
+    /// every rule of section 12.3 (its lines against the manifest hash), and only the block's lines are ever changed. A missing
+    /// file is created only with <c>createFile</c>; otherwise the unit writes nothing (MQ6028, info) and renders again next run.
+    /// A file holding the block twice, or a block that is not closed, is left alone (MQ6027).
+    /// </summary>
+    private async Task<FileResult> ProcessBlockAsync(FileJob job, string full, byte[]? disk, ManifestEntry? old)
+    {
+        var block = job.Block!;
+        var body = job.File.ContentOmitted ? null : System.Text.Encoding.UTF8.GetString(job.File.Content.Span);
+        var bodyHash = ManagedBlock.BodyHash(job.ManifestHash);
+        // A block keeps the "created" mark of its entry, so the file it created is still removed with it.
+        var created = old is not null && ManagedBlock.IsCreated(old.Hash);
+        ManifestEntry Entry(bool createdFile) => new(job.Path, (createdFile ? ManagedBlock.CreatedPrefix : ManagedBlock.Prefix) + bodyHash, job.UnitName);
+
+        if (disk is null)
+        {
+            if (!block.CreateFile)
+            {
+                Report(TargetMissingRule, $"Block target missing: {job.Path} does not exist, so unit '{job.UnitName}' wrote nothing (target-missing); set createFile to create it.",
+                    job.Path, DiagnosticSeverity.Info);
+                var done = Interlocked.Increment(ref _done);
+                _progress?.Report(new ProgressUpdate(PipelineStage.Write, done, Volatile.Read(ref _queued), job.Path, job.Pack));
+                return new FileResult(FileChangeKind.Unchanged, null, true, null);
+            }
+
+            if (body is null)
+                return Conflict("was removed after the plan was made");
+            var added = ManagedBlock.Insert([], block.Comment, block.Marker, body);
+            return await FinishFileAsync(job, full, FileChangeKind.Added, Entry(true), true, false, null, added, old?.Hash, _context.IncludeDiffs).ConfigureAwait(false);
+        }
+
+        var scan = ManagedBlock.Find(disk, block.Marker);
+        if (scan.Error is not null)
+        {
+            Report(BrokenBlockRule, $"Block not updated: {job.Path}: {scan.Error}; the file is left alone until it holds the block once.", job.Path);
+            return await FinishFileAsync(job, full, FileChangeKind.Conflict, old, false, true, disk, disk, old?.Hash, false).ConfigureAwait(false);
+        }
+
+        var diskBody = scan.Found ? ContentHash.Of(disk.AsSpan(scan.BodyStart, scan.BodyEnd - scan.BodyStart)) : null;
+        if (body is null)
+        {
+            // A plan apply that carries no bytes: the plan found the block unchanged, so it must still be.
+            return string.Equals(diskBody, bodyHash, StringComparison.Ordinal)
+                ? await FinishFileAsync(job, full, FileChangeKind.Unchanged, Entry(created), false, false, disk, disk, old?.Hash, false).ConfigureAwait(false)
+                : Conflict("changed after the plan was made");
+        }
+
+        var updated = scan.Found ? ManagedBlock.Replace(disk, scan, block.Comment, block.Marker, body) : ManagedBlock.Insert(disk, block.Comment, block.Marker, body);
+        if (updated.AsSpan().SequenceEqual(disk))
+            return await FinishFileAsync(job, full, FileChangeKind.Unchanged, Entry(created), false, false, disk, updated, old?.Hash, false).ConfigureAwait(false);
+
+        FileChangeKind kind;
+        if (!scan.Found && old is null)
+            kind = FileChangeKind.Added; // a new block in a file the team has
+        else if (scan.Found && string.Equals(diskBody, bodyHash, StringComparison.Ordinal))
+            kind = FileChangeKind.Modified; // only the delimiter lines' comment changes
+        else if (old is not null && scan.Found && string.Equals(diskBody, ManagedBlock.BodyHash(old.Hash), StringComparison.Ordinal))
+            kind = FileChangeKind.Modified;
+        else if (scan.Found && await WrittenHereAsync(job.Pack, job.UnitKey, job.Path, disk, ContentHash.Of(disk)).ConfigureAwait(false))
+            kind = FileChangeKind.Modified;
+        else
+        {
+            var what = scan.Found ? old is null ? "an untracked block is in the way" : "the block differs from its manifest entry" : "its block was removed by hand";
+            switch (Policy(job.Pack))
+            {
+                case HandEditPolicy.Overwrite:
+                    Report(HandEditRule, $"Hand edit overwritten: {job.Path}: {what}.", job.Path, DiagnosticSeverity.Warning);
+                    kind = FileChangeKind.HandEdited;
+                    break;
+                case HandEditPolicy.Skip:
+                    Report(HandEditRule, $"Hand edit skipped: {job.Path}: {what}.", job.Path, DiagnosticSeverity.Warning);
+                    return await FinishFileAsync(job, full, FileChangeKind.HandEdited, old, false, true, disk, updated, old?.Hash, _context.IncludeDiffs).ConfigureAwait(false);
+                default:
+                    Report(HandEditRule, $"Hand edit: {job.Path}: {what}; the hand-edit policy is fail.", job.Path);
+                    return await FinishFileAsync(job, full, FileChangeKind.Conflict, old, false, true, disk, updated, old?.Hash, _context.IncludeDiffs).ConfigureAwait(false);
+            }
+        }
+
+        return await FinishFileAsync(job, full, kind, Entry(created), true, false, disk, updated,
+            old?.Hash ?? (diskBody is null ? null : ManagedBlock.Prefix + diskBody), _context.IncludeDiffs).ConfigureAwait(false);
+
+        FileResult Conflict(string why)
+        {
+            Report(HandEditRule, $"Hand edit: {job.Path} {why}.", job.Path);
+            _changes.Enqueue(new FileChange(job.Path, FileChangeKind.Conflict, job.Pack, job.UnitKey, old?.Hash, old?.Hash ?? job.ManifestHash, null));
+            var done = Interlocked.Increment(ref _done);
+            _progress?.Report(new ProgressUpdate(PipelineStage.Write, done, Volatile.Read(ref _queued), job.Path, job.Pack));
+            return new FileResult(FileChangeKind.Conflict, old, true, null);
+        }
+    }
+
+    /// <summary>
+    /// Whether the engine itself last wrote these bytes at this path in this checkout: the unit's recorded state (in the cache, never
+    /// shared) lists the path with a manifest hash the disk still matches. Such a file is not a hand edit even when the manifest,
+    /// which lives with the model and moves with it (a pull), records newer bytes the checkout has not generated yet.
+    /// </summary>
+    private async Task<bool> WrittenHereAsync(string pack, string unitKey, string path, byte[] disk, string diskHash)
+    {
+        var states = await _localStates.GetOrAdd(pack, p => new Lazy<Task<IReadOnlyDictionary<string, UnitState>>>(
+            () => _context.State.LoadAsync(p, CancellationToken.None))).Value.ConfigureAwait(false);
+        if (!states.TryGetValue(unitKey, out var state))
+            return false;
+        foreach (var output in state.Outputs)
+        {
+            if (string.Equals(output.Path, path, StringComparison.Ordinal))
+            {
+                return !ManifestHashes.IsOwned(output.ManifestHash)
+                    && string.Equals(ManifestHashes.Comparable(output.ManifestHash, disk, diskHash, ManagedBlock.MarkerOfKey(unitKey)), output.ManifestHash, StringComparison.Ordinal);
+            }
+        }
+
+        return false;
     }
 
     private async Task ClosePackAsync(PackRun pack, CancellationToken ct)
@@ -427,7 +551,7 @@ internal sealed class WriteRun
 
         var results = new Dictionary<string, FileResult>(StringComparer.Ordinal);
         // Keyed by path; the manifest store sorts the entries it writes, so no ordered map is needed while collecting them.
-        var next = new Dictionary<string, (ManifestEntry Entry, ManifestBucket Bucket)>(StringComparer.Ordinal);
+        var next = new Dictionary<string, ManifestEntry>(StringComparer.Ordinal);
         // Paths whose old entry a job already carries (a conflict on a file renamed only by case keeps the old spelling's entry).
         var carried = new HashSet<string>(StringComparer.Ordinal);
         foreach (var job in pack.Jobs)
@@ -436,7 +560,7 @@ internal sealed class WriteRun
             results[job.Path] = result;
             if (result.Entry is not null)
             {
-                next[job.Path] = (result.Entry, job.Root.Commit ? ManifestBucket.Committed : ManifestBucket.Built);
+                next[job.Path] = result.Entry;
                 carried.Add(result.Entry.Path);
             }
         }
@@ -450,22 +574,19 @@ internal sealed class WriteRun
         foreach (var record in pack.Units.Where(u => u.Failed || u.KeepPrevious))
             keepUnits.Add(UnitName(record.Unit.Rendered.Unit.Key, pack.Name));
 
-        var policy = _paths as OutputPathPolicy;
         foreach (var (path, (entry, bucket)) in _context.Manifests.Data.Pack(pack.Name).Entries)
         {
             if (results.ContainsKey(path) || carried.Contains(path))
                 continue;
 
-            // Fast path for the entries this run keeps (skipped units: nearly all of them in an incremental run). When the lexical
-            // rules put the path under a root of the entry's own bucket, the effective bucket below is that bucket whatever the
-            // symbolic link check says (allowed: the root's kind; refused: the stored bucket), so the check's disk reads can wait
-            // for the entries that may become orphans.
-            if (bucket != ManifestBucket.Journal && policy?.LexicalRoot(path) is { } lexicalRoot
-                && lexicalRoot.Commit == (bucket == ManifestBucket.Committed))
+            // The entries this run keeps (skipped units: nearly all of them in an incremental run) and the paths another pack
+            // produces need no path check: nothing is written or deleted for them. Only an entry an unfinished journal alone
+            // knows about is checked first, since no manifest ever held it.
+            if (bucket != ManifestBucket.Journal)
             {
-                if (!RootSelected(lexicalRoot.Commit) || keepUnits.Contains(StripCompanion(entry.Unit)))
+                if (keepUnits.Contains(StripCompanion(entry.Unit)))
                 {
-                    next[path] = (entry, bucket);
+                    next[path] = entry;
                     continue;
                 }
 
@@ -474,18 +595,15 @@ internal sealed class WriteRun
             }
 
             var check = _paths.Check(path);
-            var effective = check.Allowed && check.Root is not null
-                ? (check.Root.Commit ? ManifestBucket.Committed : ManifestBucket.Built)
-                : bucket;
-            if (effective == ManifestBucket.Journal)
+            if (bucket == ManifestBucket.Journal && (!check.Allowed || check.Root is null))
             {
                 Report(RefusedRule, $"Output path refused: {path} (from an unfinished run's journal): {check.Reason}", path);
                 continue;
             }
 
-            if (!RootSelected(effective == ManifestBucket.Committed) || keepUnits.Contains(StripCompanion(entry.Unit)))
+            if (keepUnits.Contains(StripCompanion(entry.Unit)))
             {
-                next[path] = (entry, effective);
+                next[path] = entry;
                 continue;
             }
 
@@ -495,19 +613,19 @@ internal sealed class WriteRun
             if (!check.Allowed || check.Root is null)
             {
                 Report(RefusedRule, $"Output path refused: orphan {path} is not deleted: {check.Reason}", path);
-                next[path] = (entry, effective);
+                next[path] = entry;
                 continue;
             }
 
             if (_context.PlannedPaths is { } planned && !planned.Contains(path))
             {
                 Report(RefusedRule, $"Output path refused: orphan {path} is not in the plan being applied.", path);
-                next[path] = (entry, effective);
+                next[path] = entry;
                 continue;
             }
 
             // Deferred to the end of the stream, since a later pack may still produce the path: the entry stays for now.
-            next[path] = (entry, effective);
+            next[path] = entry;
             _deferred.Add(new DeferredOrphan(pack, entry, check.Root));
         }
 
@@ -563,9 +681,9 @@ internal sealed class WriteRun
 
     private async Task SaveManifestsAsync(PackRun pack, CancellationToken ct)
     {
-        var next = pack.Next!;
-        await _manifests.SavePackAsync(pack.Name, true, Bucket(next, ManifestBucket.Committed), ct).ConfigureAwait(false);
-        await _manifests.SavePackAsync(pack.Name, false, Bucket(next, ManifestBucket.Built), ct).ConfigureAwait(false);
+        var list = pack.Next!.Values.ToList();
+        list.Sort(static (a, b) => string.CompareOrdinal(a.Path, b.Path));
+        await _manifests.SavePackAsync(pack.Name, list, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -628,8 +746,12 @@ internal sealed class WriteRun
             return false;
         }
 
+        if (ManagedBlock.IsBlock(entry.Hash))
+            return await OrphanBlockAsync(pack, unitKey, entry, full, disk, root, deletedFolders).ConfigureAwait(false);
+
         var diskHash = ContentHash.Of(disk);
-        var intact = string.Equals(ManifestHashes.Comparable(entry.Hash, disk, diskHash), entry.Hash, StringComparison.Ordinal);
+        var intact = string.Equals(ManifestHashes.Comparable(entry.Hash, disk, diskHash), entry.Hash, StringComparison.Ordinal)
+            || await WrittenHereAsync(pack, unitKey, entry.Path, disk, diskHash).ConfigureAwait(false);
         FileChangeKind kind;
         bool delete;
         if (intact)
@@ -671,6 +793,80 @@ internal sealed class WriteRun
         }
 
         return !delete;
+    }
+
+    /// <summary>
+    /// Handles an orphaned block (its unit is gone or no longer produces the file): the block's lines are removed and the rest of the
+    /// file is kept, and the file is deleted when the engine created it and nothing but whitespace is left. A block edited by hand
+    /// follows the hand-edit policy; a file that no longer holds the block just loses the entry; a file holding it twice is left
+    /// alone (MQ6027) with its entry. Returns whether the entry stays.
+    /// </summary>
+    private async Task<bool> OrphanBlockAsync(string pack, string unitKey, ManifestEntry entry, string full, byte[] disk, OutputRootInfo root,
+        List<(string, string)> deletedFolders)
+    {
+        var marker = ManagedBlock.Marker(pack, entry.Unit);
+        var scan = ManagedBlock.Find(disk, marker);
+        if (scan.Error is not null)
+        {
+            Report(BrokenBlockRule, $"Block not removed: {entry.Path}: {scan.Error}; the file is left alone until it holds the block once.", entry.Path);
+            _changes.Enqueue(new FileChange(entry.Path, FileChangeKind.Conflict, pack, unitKey, entry.Hash, null, null));
+            return true;
+        }
+
+        if (!scan.Found)
+        {
+            // The block is already gone: only the entry goes.
+            _changes.Enqueue(new FileChange(entry.Path, FileChangeKind.Deleted, pack, unitKey, entry.Hash, null, null));
+            return false;
+        }
+
+        var diskBody = ContentHash.Of(disk.AsSpan(scan.BodyStart, scan.BodyEnd - scan.BodyStart));
+        var intact = string.Equals(diskBody, ManagedBlock.BodyHash(entry.Hash), StringComparison.Ordinal)
+            || await WrittenHereAsync(pack, unitKey, entry.Path, disk, ContentHash.Of(disk)).ConfigureAwait(false);
+        var kind = FileChangeKind.Deleted;
+        if (!intact)
+        {
+            switch (Policy(pack))
+            {
+                case HandEditPolicy.Overwrite:
+                    kind = FileChangeKind.HandEdited;
+                    Report(HandEditRule, $"Hand edit overwritten: orphan block in {entry.Path} differs from its manifest entry and is removed.", entry.Path, DiagnosticSeverity.Warning);
+                    break;
+                case HandEditPolicy.Skip:
+                    Report(HandEditRule, $"Hand edit skipped: orphan block in {entry.Path} differs from its manifest entry and is kept.", entry.Path, DiagnosticSeverity.Warning);
+                    _changes.Enqueue(new FileChange(entry.Path, FileChangeKind.HandEdited, pack, unitKey, entry.Hash, null, null));
+                    return true;
+                default:
+                    Report(HandEditRule, $"Hand edit: orphan block in {entry.Path} differs from its manifest entry; the hand-edit policy is fail.", entry.Path);
+                    _changes.Enqueue(new FileChange(entry.Path, FileChangeKind.Conflict, pack, unitKey, entry.Hash, null, null));
+                    return true;
+            }
+        }
+
+        var remaining = ManagedBlock.Remove(disk, scan);
+        var deleteFile = ManagedBlock.IsCreated(entry.Hash) && ManagedBlock.IsBlank(remaining);
+        var diff = _context.IncludeDiffs ? _diffs.Unified(entry.Path, disk, deleteFile ? [] : remaining) : null;
+        _changes.Enqueue(new FileChange(entry.Path, kind, pack, unitKey, entry.Hash, null, diff));
+        if (!_apply)
+            return false;
+        if (deleteFile)
+        {
+            File.Delete(full);
+            Interlocked.Increment(ref _deleted);
+            if (_context.Journal is { } journal)
+                await journal.RecordDeleteAsync(pack, entry.Path, CancellationToken.None).ConfigureAwait(false);
+            deletedFolders.Add((Path.GetDirectoryName(full)!, root.Path));
+        }
+        else
+        {
+            var tag = _context.RunId + "-" + Interlocked.Increment(ref _tempCounter).ToString(CultureInfo.InvariantCulture);
+            await AtomicFile.WriteAsync(full, remaining, tag, CancellationToken.None).ConfigureAwait(false);
+            Interlocked.Increment(ref _written);
+            if (_context.Journal is { } journal)
+                await journal.RecordDeleteAsync(pack, entry.Path, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        return false;
     }
 
     private async Task SaveUnitStatesAsync(PackRun pack, Dictionary<string, FileResult> results, CancellationToken ct)
@@ -731,26 +927,6 @@ internal sealed class WriteRun
         }
     }
 
-    private static IReadOnlyList<ManifestEntry> Bucket(Dictionary<string, (ManifestEntry Entry, ManifestBucket Bucket)> entries, ManifestBucket bucket)
-    {
-        var list = new List<ManifestEntry>();
-        foreach (var (entry, entryBucket) in entries.Values)
-        {
-            if (entryBucket == bucket)
-                list.Add(entry);
-        }
-
-        list.Sort(static (a, b) => string.CompareOrdinal(a.Path, b.Path));
-        return list;
-    }
-
-    private bool RootSelected(bool committed) => _roots switch
-    {
-        RootSelection.Committed => committed,
-        RootSelection.Built => !committed,
-        _ => true,
-    };
-
     private HandEditPolicy Policy(string pack) => _context.PolicyByPack.TryGetValue(pack, out var policy) ? policy : HandEditPolicy.Fail;
 
     private string FullPath(string repoRelativePath) => Path.Combine(_repoRoot, repoRelativePath.Replace('/', Path.DirectorySeparatorChar));
@@ -790,7 +966,7 @@ internal sealed class WriteRun
 
         public List<SkippedUnit> Skipped { get; } = [];
 
-        public Dictionary<string, (ManifestEntry Entry, ManifestBucket Bucket)>? Next { get; set; }
+        public Dictionary<string, ManifestEntry>? Next { get; set; }
     }
 
     private sealed record DeferredOrphan(PackRun Pack, ManifestEntry Entry, OutputRootInfo Root);
@@ -809,7 +985,13 @@ internal sealed class WriteRun
     private sealed record FileJob(string Pack, string UnitKey, string UnitName, string Path, OutputRootInfo Root, OutputFile File, bool Owned, string ManifestHash)
     {
         public TaskCompletionSource<FileResult> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>The block of a <c>block</c> file, else <see langword="null"/>.</summary>
+        public BlockInfo? Block { get; init; }
     }
+
+    /// <summary>A <c>block</c> file's delimiters and whether a missing file is created.</summary>
+    private sealed record BlockInfo(string Comment, string Marker, bool CreateFile);
 
     private sealed record FileResult(FileChangeKind Kind, ManifestEntry? Entry, bool KeepPrevious, UnitOutput? Output);
 }

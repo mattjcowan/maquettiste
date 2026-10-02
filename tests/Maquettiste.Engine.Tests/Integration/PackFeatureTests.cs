@@ -6,7 +6,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 
 /// <summary>
 /// Pack features through the whole pipeline that the fixture packs do not cover: a JavaScript <c>where.script</c> filter, text outside
-/// file blocks (MQ6011), regions mode on a built root (MQ6015), and a template error (MQ6006) that fails its unit and keeps its files.
+/// file blocks (MQ6011), regions mode under any root, and a template error (MQ6006) that fails its unit and keeps its files.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
 public sealed class PackFeatureTests
@@ -34,7 +34,7 @@ public sealed class PackFeatureTests
     }
 
     [Fact]
-    public async Task Regions_mode_on_a_built_root_is_refused()
+    public async Task Regions_mode_works_under_any_root()
     {
         await using var repo = E2ERepo.Create(demo: false, settings: s => s["packs"]!["built"] = new JsonObject { ["output"] = "src/Generated/built" });
         WritePack(repo, "built", """
@@ -45,8 +45,8 @@ public sealed class PackFeatureTests
 
         var result = await repo.RunAsync();
 
-        Assert.Contains(result.Diagnostics, d => d.Rule == "MQ6015");
-        Assert.Equal(RunOutcome.Invalid, result.Outcome);
+        E2ERepo.AssertOutcome(RunOutcome.Succeeded, result);
+        Assert.True(repo.Repo.Exists("src/Generated/built/r.txt"));
     }
 
     [Fact]

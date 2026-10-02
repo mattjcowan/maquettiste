@@ -70,8 +70,7 @@ public sealed class CliRepo : IDisposable
           "outputs": {
             "allow": [
               {
-                "path": "db",
-                "commit": true
+                "path": "db"
               },
               {
                 "path": "src/Generated"
@@ -179,7 +178,7 @@ public sealed class CliRepo : IDisposable
         return repo;
     }
 
-    /// <summary>The billing fixture model with two small test packs: <c>ddl</c> (committed root <c>db</c>) and <c>classes</c> (built root).</summary>
+    /// <summary>The billing fixture model with two small test packs: <c>ddl</c> (root <c>db</c>) and <c>classes</c> (root <c>src/Generated</c>).</summary>
     public static CliRepo Billing()
     {
         var repo = new CliRepo(new TempRepo());

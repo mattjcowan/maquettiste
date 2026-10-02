@@ -25,7 +25,7 @@ The owner's scenario sizes the design: a monorepo with `.maquettiste` at the roo
 | Template | The Scriban file the unit renders; it may `include` partials and call helpers | a pack file |
 | Output path | A pattern rendered with the same variables as the template; the file lands at `<output base>/<path>` | `units[].output` |
 | Output base | The pack's folder prefix in this project | `maquettiste.json` `packs.<name>.output` |
-| Output root | An `outputs.allow` folder; every file must land under one; committed or built | `maquettiste.json` `outputs.allow` |
+| Output root | An `outputs.allow` folder; every file must land under one; committed or built *(superseded 2026-10-02 by spec-errata E42: no root kinds; an entry may also name a single file)* | `maquettiste.json` `outputs.allow` |
 | Write mode | Overwrite; Create only if missing (`once`); Protected regions (`regions`); Pair (`pair`) | `units[].mode` |
 | Parameters | Pack settings the templates read as `pack.params`; defaults in `pack.json`, values per project | `pack.json` `parameters`; `packs.<name>.parameters` |
 
@@ -64,7 +64,7 @@ The Generate explorer replaces today's pack list with a tree, built with the exp
 - **Units**: one row per unit in `pack.json` order, reading `id · scope → template → path summary`, then the planned file count (the number of elements in scope after the filter, from the last paths call, §5.2) and the mode when it is not Overwrite. A row with a filter shows a funnel icon whose tooltip lists the filter in words ("tags: api; not abstract"). Enter opens the Units tab on that row; the context menu has Open template, Preview…, Explain…, Duplicate, Delete.
 - **Templates**: the pack folder as a file tree; each file carries its derived role (unit template, companion, partial, script, type map, other; derived as P2 says) and the units that use it. Enter opens it in the Templates tab.
 - **Parameters**: one row per parameter, `name = value` with "default" or "set" beside it. Enter opens the Parameters tab on it.
-- **Outputs**: the pack's manifest entries (committed and built manifests, §12.2) grouped by unit, then by file; a unit group shows its file count and the counts of states other than clean. File states: **clean**, **hand-edited** (disk bytes differ from the manifest hash, skeleton for regions), **missing**, **owned** (`o:` entries, never checked), **orphan** (its unit id is no longer in `pack.json`, or its element id is no longer in the index; a plan's Deleted changes remain the complete answer). Enter on a file opens its diff (§3.5); the context menu has Reveal in explorer (the element), Open template, Explain.
+- **Outputs**: the pack's manifest entries (committed and built manifests, §12.2; *since spec-errata E42 one manifest per pack, and a mode `block` entry*) grouped by unit, then by file; a unit group shows its file count and the counts of states other than clean. File states: **clean**, **hand-edited** (disk bytes differ from the manifest hash, skeleton for regions), **missing**, **owned** (`o:` entries, never checked), **orphan** (its unit id is no longer in `pack.json`, or its element id is no longer in the index; a plan's Deleted changes remain the complete answer). Enter on a file opens its diff (§3.5); the context menu has Reveal in explorer (the element), Open template, Explain.
 - **New pack…** in the explorer header menu and the palette: a dialog with name (`^[a-z][a-z0-9-]*$`, unique) and **Start from**: **Empty pack** (one `each entity` unit, its template and a script file, as `pack new --from empty`) or **Copy of** a starter (`sql-ddl`, `csharp-dapper`, copied under the new name), with a line under the choice saying what it gives ("One each-entity unit and its template, ready to edit." or "All 9 files of sql-ddl, renamed to <name>."). It calls `POST /api/packs` (§5.1), then opens the new pack's editor on Units. The dialog says what gets written: "Creates .maquettiste/templates/<name>/ with 3 files".
 
 ### 2.2 The path summary
@@ -285,7 +285,7 @@ Total: about 22.5 working days. Steps 0, 1 and 8 are independent; 2 and 3 need 1
   could not be added to it in place. Each state records the label (`Name (kind)`) of every `e:` key it read at render time; an
   `absent` cause uses it when the model no longer has the element ("Customer (entity) was deleted"). A `.v3.bin` or `.v1.bin` file
   and no `.v4.bin` gives `state-reset` once; saving deletes both older files.
-- A plan requested with `mode: check` runs the check (every unit rendered in memory over committed roots) and gives its units the
+- A plan requested with `mode: check` runs the check (every unit rendered in memory over committed roots; *every root since spec-errata E42*) and gives its units the
   reason `check`; other plans are dry runs as before (the endpoint and the MCP tool still plan in apply mode).
 - `GET /api/packs/{pack}` and `GET /api/templates/context` carry `registrations` (kind, name, declaredIn) from one sandbox run of
   the pack's scripts, cached per pack by settings hash and pack folder stamp; the context's `helpers` add the pack's helpers.
@@ -329,3 +329,13 @@ Total: about 22.5 working days. Steps 0, 1 and 8 are independent; 2 and 3 need 1
   renders the enabled pack with a unit rendered per database (the Storage tab's `databaseUnits` rule), preferring a unit
   whose name mentions schema or table, and for a selected table that pack's `each table` unit; its header names the
   pack and unit, and with no such pack the pane says so instead of hiding (`database/ddlPreview.ts`).
+
+## Status note (2026-10-02, the Generate toolbar)
+
+- **No Roots picker.** The Plan tab's Roots control (all, committed, built) is removed on the owner's call ("you either
+  generate or you don't"), with the committed and built root kinds themselves: the editor's plan request no longer
+  sends `roots`, and the mock planner plans every root. The API field goes in a parallel engine round.
+- **Pack picker.** The row of one checkbox per pack became one toolbar button, **Packs · n of total**, that opens a dense
+  checkbox list in manifest order: a filter box past 8 packs, **All** and **None** (acting on the packs the filter
+  shows), disabled packs greyed and unticked, and the explorer's warning count on a pack with diagnostics
+  (`PackPicker.tsx`). The choice is the same stored `chosenPacks` as before.

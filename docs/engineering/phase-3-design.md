@@ -1162,7 +1162,7 @@ state between calls: it reads and writes `ProcessSnapshot<TContext>`; timers fir
 instant, each as its own macrostep at its due instant; a sub-process invoke is handed to `IInvokeHost` and reports back like a
 service task (the engine runs it in the same interpreter; the fixture has none). Endpoints and scenario tests are written only
 when `endpointsFolder` (a committed root) and `testsFolder` are set. The fixture's settings gain `outputs.allow` (`db`,
-`src/Processes.Data/Custom` committed, the two `Generated/` folders built) and the pack parameters; `src/` holds the solution
+`src/Processes.Data/Custom` committed, the two `Generated/` folders built; *superseded 2026-10-02 by spec-errata E42: the entries are plain paths*) and the pack parameters; `src/` holds the solution
 (isolation props, `Processes.Data` with the committed companions: `notShipped`, the two services and the review hook, the stores
 over the generated repositories of `SalesOrder` with `configuration`, `SalesOrderHistory`, `PurchaseRequest`, `ProcessInstance` and
 `GateSignature`, the authorization hook; `Processes.Tests` with `ScenarioHost` on in-memory SQLite built from `db/main/schema.sql`).
@@ -1246,7 +1246,7 @@ canvas lists internal transitions inside the state; ids are the state names, exc
 diagram text, which becomes `s_` and the path joined with `_`; `#`, `;`, `"`, `<` and `>` in diagram text are entity codes. The
 fence's language tag names the syntax, because renderers draw only a tagged block; the pack's README names it once, and the
 product's docs say "diagram text". The gate 3 fixture's `maquettiste.json` registers the pack (`packs.process-docs.output` `docs`)
-and allows `docs` as a committed root (section 10's open risk); the roots of `csharp-dapper` and `sql-ddl` are added with their
+and allows `docs` as a committed root (section 10's open risk; *E42, 2026-10-02: a plain allow entry*); the roots of `csharp-dapper` and `sql-ddl` are added with their
 process units for criterion 4. `ProcessScopeTests` now plans its in-memory units under `docs`, the fixture's allowed root. Tests:
 `ProcessDocsTests` (golden `tests/fixtures/golden/process-docs/processes/`, 24 pages; `--jobs 1` and `--jobs 8` byte-identical; a
 second run renders no unit and `--check` is clean; banner and final newline on every page; a syntax check of every diagram of its
@@ -1377,7 +1377,7 @@ Errata for the owner to apply, entered in `docs/engineering/spec-errata.md` as r
 - Resolved in P5 (2026-09-30): gate criterion 4 needs `process-docs`, which the first fixture settings (`csharp-dapper` and
   `sql-ddl` only) did not name. P5 created the pack and added it to `tests/fixtures/models/processes/.maquettiste/maquettiste.json`,
   which now names the three packs and allows the roots `db`, `docs`, `src/Processes.Data/Custom` (committed) and the two
-  `Generated` folders (built); gate 3 generates the pages into its copy, and the fixture keeps `docs/` out of git.
+  `Generated` folders (built; *E42, 2026-10-02: plain allow entries, no root kinds*); gate 3 generates the pages into its copy, and the fixture keeps `docs/` out of git.
 - The engine interpreter and the generated interpreters can drift on corner cases (conflicting transitions across
   regions, history with parallel descendants, `done` ordering). As built in P5, the gate 3 fixture's scenarios (14) are
   replayed against both generated interpreters and compared with the engine's replay after the start and every step (C#:

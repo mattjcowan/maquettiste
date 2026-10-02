@@ -71,7 +71,7 @@ serialize a 10,005-table snapshot, about 1.3 s of every incremental run, all of 
   file costs a read and a hash: about 20 ms instead of 100 to 200 ms. A held parse that failed or was cancelled (it checks the
   run's token before starting) is ignored and the file parsed instead. `SaveAsync` does not parse. A file changed by anything
   else (a checkout, a hand edit) is parsed again.
-  The cost: a one-shot CLI process, or an apply that ends failed, stale or over part of the roots, parses a snapshot nobody loads
+  The cost: a one-shot CLI process, or an apply that ends failed, stale or (before spec-errata E42) over part of the roots, parses a snapshot nobody loads
   (100 to 230 ms of one thread-pool thread beside the render; the graph is garbage once the task ends). Starting the parse only
   after the write avoided that, but was measured worse: the benchmark's same-store incremental run then followed a parse that
   had just allocated the whole snapshot graph, and its median went from 4.17 s to 5.11 s (six interleaved runs each, render and

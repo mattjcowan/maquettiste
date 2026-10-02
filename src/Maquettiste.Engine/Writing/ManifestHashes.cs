@@ -4,7 +4,8 @@ namespace Maquettiste.Engine.Writing;
 
 /// <summary>
 /// Manifest hash forms (engine-design.md section 12.2; D14): a plain content hash, <c>r:</c> + the hash of a regions file's skeleton
-/// (every region body emptied) and <c>o:</c> + the content hash of an owned file (<c>once</c>, companions).
+/// (every region body emptied), <c>o:</c> + the content hash of an owned file (<c>once</c>, companions), and <c>b:</c> or <c>bc:</c> +
+/// the hash of a <c>block</c> unit's lines (<see cref="ManagedBlock"/>; <c>bc:</c> when the engine created the file).
 /// </summary>
 internal static class ManifestHashes
 {
@@ -30,16 +31,21 @@ internal static class ManifestHashes
 
     /// <summary>
     /// Computes the manifest hash that disk bytes would have in the form of <paramref name="form"/>: the skeleton hash for an
-    /// <c>r:</c> form, the content hash otherwise (with the same prefix).
+    /// <c>r:</c> form, the hash of the block's lines for a <c>b:</c> or <c>bc:</c> form (the block named by
+    /// <paramref name="blockMarker"/>; <c>"absent"</c> when the file has no single such block or no marker is given), the content
+    /// hash otherwise (with the same prefix).
     /// </summary>
     /// <param name="form">A manifest hash whose prefix decides the form.</param>
     /// <param name="bytes">The disk bytes.</param>
     /// <param name="contentHash">The content hash of <paramref name="bytes"/>, already computed.</param>
+    /// <param name="blockMarker">For a block form, the block's <c>&lt;pack&gt;/&lt;unit&gt;</c> marker (<see cref="ManagedBlock.Marker"/>).</param>
     /// <returns>The comparable hash.</returns>
-    public static string Comparable(string form, ReadOnlySpan<byte> bytes, string contentHash)
+    public static string Comparable(string form, ReadOnlySpan<byte> bytes, string contentHash, string? blockMarker = null)
     {
         if (IsRegions(form))
             return RegionsPrefix + ContentHash.Of(Skeleton(bytes));
+        if (ManagedBlock.IsBlock(form))
+            return blockMarker is null ? "absent" : ManagedBlock.Comparable(form, bytes, blockMarker) ?? "absent";
         return IsOwned(form) ? OwnedPrefix + contentHash : contentHash;
     }
 

@@ -93,19 +93,20 @@ public sealed class PlanApplyResumeTests
     }
 
     [Fact]
-    public async Task A_root_that_changed_kind_after_planning_makes_its_paths_stale()
+    public async Task A_path_that_moved_to_another_root_after_planning_is_stale()
     {
         await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic");
         var planned = await f.Service.PlanAsync(new GenerationRequest(), null, GenerationFixture.Ct);
         await f.WriteModelAsync(b => Models.Shop(b), s => s with
         {
-            Outputs = new OutputSettings { Allow = [new OutputRoot { Path = "out" }, new OutputRoot { Path = "gen" }] },
+            Outputs = new OutputSettings { Allow = [new OutputRoot { Path = "out" }, new OutputRoot { Path = "out/entities" }, new OutputRoot { Path = "gen" }] },
         });
 
         var applied = await f.Service.ApplyAsync(planned.Plan!.Id, null, GenerationFixture.Ct);
 
         Assert.Equal(RunOutcome.Stale, applied.Outcome);
-        Assert.Contains("out/index.txt", applied.StalePaths);
+        Assert.Contains(applied.StalePaths, p => p.StartsWith("out/entities/", StringComparison.Ordinal));
+        Assert.DoesNotContain("out/index.txt", applied.StalePaths);
         Assert.Empty(f.Outputs());
     }
 

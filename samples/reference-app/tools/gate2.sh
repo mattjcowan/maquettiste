@@ -11,8 +11,9 @@
 # walk     Playwright project live, src/editor/tests/e2e/gate2.spec.ts: open an entity, add an attribute in the grid, rename
 #          a relation in the inspector, plan all packs, open a diff, apply, applyResult.outcome == succeeded
 # check    stop the editor (its files are already the caller's; any other owner is named); the walk's edits are in the model and in both packs' output;
-#          maquettiste validate; generate --check (committed root db/main equals the CLI's output); the built root
-#          Generated/ equals what the CLI generates into a second copy (diff -r)
+#          the editor's apply created src/ReferenceApp.Data/.gitignore holding the csharp-dapper block (createFile);
+#          maquettiste validate; generate --check (every root equals the CLI's output); Generated/ equals what the CLI
+#          generates into a second copy (diff -r)
 # build    dotnet build tmp/gate2/src/ReferenceApp.Data -c Release -warnaserror
 # ddl      tools/db-apply.sh on the copy: schema.sql + seed twice, migrations + seed, in two databases, each must hold
 #          209 tables, 1 view, 3 sequences (host psql when PGHOST is set, as in CI; else a throwaway postgres:16 container)
@@ -68,10 +69,11 @@ step_prepare() {
   fi
   rm -rf "$dir.cli" "$dir.cli.cache"
   mkdir -p "$dir"
-  # The sample with its isolation files, csproj and Custom/ code, but no model, no db/ and no build output: the editor
-  # writes all of those.
+  # The sample with its isolation files, csproj and Custom/ code, but no model, no db/, no build output and no
+  # src/ReferenceApp.Data/.gitignore: the editor writes all of those (the last one through the csharp-dapper block unit).
   tar -C "$sample" -cf - --exclude=./.maquettiste --exclude=./db --exclude=./tools/node_modules \
-    --exclude=./src/ReferenceApp.Data/Generated --exclude=./src/ReferenceApp.Data/bin --exclude=./src/ReferenceApp.Data/obj . |
+    --exclude=./src/ReferenceApp.Data/Generated --exclude=./src/ReferenceApp.Data/.gitignore \
+    --exclude=./src/ReferenceApp.Data/bin --exclude=./src/ReferenceApp.Data/obj . |
     tar -C "$dir" -xf -
   "$here/empty-editor.sh" "$dir"
   i=0
@@ -103,18 +105,22 @@ step_check() {
   test -f "$model/relations/delivery-route-departs-from-depot.json" || { echo "gate2: relation delivery route departs from depot is not in the model" >&2; exit 1; }
   grep -q receiving_hours "$dir/db/main/northwind/tables/warehouses.sql" || { echo "gate2: warehouses.sql lacks receiving_hours" >&2; exit 1; }
   grep -q ReceivingHours "$gen/Inventory/Warehouse.g.cs" || { echo "gate2: Warehouse.g.cs lacks ReceivingHours" >&2; exit 1; }
+  # The csharp-dapper gitignore unit (mode block, createFile) created the file with just its block.
+  ignore="$dir/src/ReferenceApp.Data/.gitignore"
+  printf '# maquettiste: begin csharp-dapper/gitignore\n/Generated/\n# maquettiste: end csharp-dapper/gitignore\n' | cmp -s - "$ignore" ||
+    { echo "gate2: $ignore does not hold exactly the csharp-dapper block" >&2; cat "$ignore" >&2 || true; exit 1; }
   cli --repo "$dir" validate
-  # Committed roots (db/main): the editor's apply equals the CLI's output.
+  # Every root (db/main, Generated/ and the .gitignore block): the editor's apply equals the CLI's output.
   cli --repo "$dir" generate --check
-  # Built roots (the C# Generated/ folder): --check covers committed roots only, so generate them afresh with the CLI in a
-  # second copy and compare byte for byte.
+  # Generated/ once more, afresh: the CLI generates it into a second copy with a cold cache, compared byte for byte.
   ref="$dir.cli"
   rm -rf "$ref"
   cp -a "$dir" "$ref"
   rm -rf "$ref/src/ReferenceApp.Data/Generated"
-  cli --repo "$ref" --cache-dir "$ref.cache" generate --roots built --force --quiet
+  cli --repo "$ref" --cache-dir "$ref.cache" generate --force --quiet
   diff -r -q -x bin -x obj "$gen" "$ref/src/ReferenceApp.Data/Generated"
-  echo "gate2: built root Generated/ equals the CLI's output ($(find "$gen" -type f | wc -l) files)"
+  cmp "$ignore" "$ref/src/ReferenceApp.Data/.gitignore"
+  echo "gate2: Generated/ equals the CLI's output ($(find "$gen" -type f | wc -l) files)"
   rm -rf "$ref" "$ref.cache"
 }
 

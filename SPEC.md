@@ -98,7 +98,7 @@ One image, built on `static-site-hosting`, runs in two modes: **local**, where a
 repo/
 ├── .maquettiste/
 │   ├── maquettiste.json          # project settings, output roots, path allowlist, formatters
-│   ├── manifest/<pack>.json      # committed: generated paths + content hashes, one file per pack
+│   ├── manifest/<pack>.json      # committed: generated paths + content hashes, one file per pack (errata E42: every root)
 │   ├── model/
 │   │   ├── entities/             # one file per entity
 │   │   ├── relations/
@@ -166,7 +166,7 @@ In hosted mode nothing is bind-mounted. The site's data folder belongs to the ho
 - **Shared branch.** Everyone edits the same branch. Per-element ETags refuse stale saves (409, both versions shown), and soft locks over realtime warn a second editor before they save. Per-user branches are a later enhancement.
 - **Git from the editor.** Status, commit, pull with rebase and push, run through the `git` CLI that the host's SDK image already carries. The commit author is the signed-in user, so history stays attributable without per-user branches. A rebase conflict on model files is resolved by the canonical-JSON merge; anything else is surfaced as a conflict to fix in the editor.
 - **Credentials.** The push credential (deploy key or token) is a secret site variable, `MAQUETTISTE_GIT_TOKEN` or a mounted key, set by a host administrator.
-- **Generation.** Plan, diff and apply all run on the instance. Apply writes committed roots (migrations, specs, docs) into the checkout for review and commit; built roots are gitignored and regenerated wherever a build runs, so the shared server never carries the 100k-file write.
+- **Generation.** Plan, diff and apply all run on the instance. Apply writes committed roots (migrations, specs, docs) into the checkout for review and commit; built roots are gitignored and regenerated wherever a build runs, so the shared server never carries the 100k-file write. *(Errata E42, docs/engineering/spec-errata.md.)* Apply writes every output root into the checkout; which outputs the team commits is its own choice, and a pack can keep a generated folder out of version control with a managed block in an ignore file (block mode, Section 12).
 - **Sizing.** The model index is one in-memory singleton shared by every request, so reads scale with connections, not users; the host's realtime hub allows 1,000 pages per site.
 - **In front.** TLS at a reverse proxy, `TRUST_FORWARDED_HEADERS=true`, and a named management host so the editor domain and the deploy UI are separate.
 
@@ -621,19 +621,22 @@ JavaScript files register helpers, selectors, filters and pre-render transforms.
 | `once` | Scaffold written only if missing; the team owns it afterwards |
 | `regions` | Regenerated, but protected regions (`maquettiste:keep id=…`) keep their hand-written content |
 | `pair` | Writes a generated file every time and its companion once, with suffixes the pack defines (`.g.cs` and `.cs`, `.generated.ts` and `.ts`), for partial classes and extension modules |
+| `block` | *(Errata E42, docs/engineering/spec-errata.md.)* Manages one delimited block of lines (`<comment> maquettiste: begin <pack>/<unit>` … `end`) inside a file the team otherwise owns, such as an ignore file: the block is replaced, appended or removed and the rest of the file is never touched; the file is created only when the unit sets `createFile` |
 
 **Committed versus built**
 
-Each output root in `maquettiste.json` declares `commit: true | false`, and the choice follows who consumes the output:
+Each output root in `maquettiste.json` declares `commit: true | false`, and the choice follows who consumes the output: *(Errata E42, docs/engineering/spec-errata.md: retired, see below the table.)*
 
 | Root kind | Default | Examples |
 | --- | --- | --- |
 | Built (generated on every build; ignored or committed as the team prefers, Errata E39) | `commit: false` | C# entities and repositories, TypeScript types and clients, generated tests |
 | Committed (applied or published, not compiled) | `commit: true` | SQL migrations, OpenAPI specs, protobufs shared with other repos, docs, seed scripts |
 
-- *(Errata E39, docs/engineering/spec-errata.md.)* Whether a built root is gitignored or committed is the customer's decision: a plain `maquettiste init` never reads or writes the repository's `.gitignore`, and only names the built roots. Writing the entries is an additive opt-in: `maquettiste init --gitignore` appends (or, run again, refreshes in place) a marked block listing the built roots and `.maquettiste/.cache/`, only when asked. The engine's own `.maquettiste/.cache/` ignores itself with a `.gitignore` of its own holding `*`. The manifest for a built root lives in `.cache/`; only committed roots keep a manifest under `.maquettiste/manifest/`, and `--check` covers committed roots only.
-- `regions` mode works only on committed roots. On built roots the customization pattern is `pair` and `once`, with the hand-written half in a committed path (partial classes, extension modules).
-- A clean clone pays one full run; every later build is the incremental path. A git `post-checkout` hook can prime built roots so IDE IntelliSense works before the first build.
+*(Errata E42, docs/engineering/spec-errata.md.)* The table above is retired with 0.5.5: there are no root kinds. An `outputs.allow` entry is only a path, a folder generation may write under or a single file it may write (an entry such as `.gitignore` or `src/App/.gitignore` allows exactly that file, so the repository root never has to become a root). A `commit` flag left in `maquettiste.json` is ignored with an info diagnostic (MQ1010) and dropped by `maquettiste format`. Which outputs to commit is the team's choice, and nothing assumes git is there at all. Every pack keeps one manifest, `.maquettiste/manifest/<pack>.json`, committed with the model; `--check` renders every root and fails when any file would be added, changed or deleted, so CI guards exactly the outputs the team commits (or runs `generate` and then compares the working tree).
+
+- *(Errata E39, docs/engineering/spec-errata.md.)* Whether a built root is gitignored or committed is the customer's decision: a plain `maquettiste init` never reads or writes the repository's `.gitignore`, and only names the built roots. Writing the entries is an additive opt-in: `maquettiste init --gitignore` appends (or, run again, refreshes in place) a marked block listing the built roots and `.maquettiste/.cache/`, only when asked. The engine's own `.maquettiste/.cache/` ignores itself with a `.gitignore` of its own holding `*`. The manifest for a built root lives in `.cache/`; only committed roots keep a manifest under `.maquettiste/manifest/`, and `--check` covers committed roots only. *(Errata E42, docs/engineering/spec-errata.md.)* Superseded: `init` has no `.gitignore` logic at all (`--gitignore` is gone), the manifest of every root lives under `.maquettiste/manifest/`, and `--check` covers every root. A pack that wants a generated folder ignored writes the line itself, through a `block` unit on the ignore file. The engine's `.maquettiste/.cache/` still ignores itself.
+- `regions` mode works only on committed roots. On built roots the customization pattern is `pair` and `once`, with the hand-written half in a committed path (partial classes, extension modules). *(Errata E42, docs/engineering/spec-errata.md.)* `regions` works on any root; region bodies live only in the file, so in output the team does not commit they are lost on a fresh clone, and `pair` and `once` remain the pattern there.
+- A clean clone pays one full run; every later build is the incremental path. A git `post-checkout` hook can prime built roots so IDE IntelliSense works before the first build. *(Errata E42, docs/engineering/spec-errata.md.)* The optional hooks run a plain `generate`.
 - A later add-on for C# only: a Roslyn source generator that runs the engine in-process, so C# output never touches disk.
 
 **Hand edits, orphans and headers**
@@ -858,7 +861,7 @@ The editor's `_functions/` expose a small JSON API on the editor's own domain, b
 
 ## 17. CLI and CI
 
-The `maquettiste` CLI runs the same engine without a browser or container, and its `--check` mode makes CI fail whenever committed code no longer matches the model.
+The `maquettiste` CLI runs the same engine without a browser or container, and its `--check` mode makes CI fail whenever committed code no longer matches the model. *(Errata E42, docs/engineering/spec-errata.md.)* `--check` renders every output root.
 
 **Commands**
 
@@ -882,14 +885,14 @@ The `maquettiste` CLI runs the same engine without a browser or container, and i
 - The same commands inside the image: `docker run --rm -v "$PWD:/repo" mattjcowan/maquettiste maquettiste generate --check`.
 - A GitHub Action wrapper later; SARIF output already annotates model files in pull requests.
 
-**Build integration** (for built roots, Section 12)
+**Build integration** (for built roots, Section 12; *errata E42: for output the team does not commit*)
 
 | Where | How |
 | --- | --- |
 | .NET | `Maquettiste.Build` NuGet package: an MSBuild target that runs incremental generation before `CoreCompile` and includes the built root in the compilation; `dotnet build` on a clean clone generates first |
 | Node | `@maquettiste/cli` npm wrapper with a `prebuild` script and a Vite plugin that generates before the dev server starts and on model change |
 | Docker | `RUN maquettiste generate` before `dotnet publish` or `npm run build` |
-| CI | A GitHub Action that installs the pinned tool version, runs `generate` for built roots and `generate --check` for committed roots, and posts SARIF annotations |
+| CI | A GitHub Action that installs the pinned tool version, runs `generate` for built roots and `generate --check` for committed roots, and posts SARIF annotations *(Errata E42: `generate --check` when every guarded output is committed, else `generate` then a working-tree comparison)* |
 | Git | Optional `post-checkout` and `post-merge` hooks installed by `maquettiste init --hooks` |
 
 ## 18. Extensibility

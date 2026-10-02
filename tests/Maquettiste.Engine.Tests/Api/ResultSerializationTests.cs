@@ -41,7 +41,7 @@ public sealed class ResultSerializationTests
             7,
             ["sql-ddl"],
             [new PlanUnit("sql-ddl/table:01JAX3KA1B2C3D4E5F6G7H8J9K", new string('a', 64), ["e:01JAX3KA1B2C3D4E5F6G7H8J9K"], false,
-                [new PlanFile("db/t.sql", new string('b', 64), new string('b', 64), OutputMode.Overwrite, FileRole.Main, new OutputRootInfo("db", true), null)])],
+                [new PlanFile("db/t.sql", new string('b', 64), new string('b', 64), OutputMode.Overwrite, FileRole.Main, new OutputRootInfo("db"), null)])],
             [new FileChange("db/t.sql", FileChangeKind.Added, "sql-ddl", "sql-ddl/table:01JAX3KA1B2C3D4E5F6G7H8J9K", null, new string('b', 64), null)],
             [RuleCatalog.Create("MQ6011", "Text outside file blocks.")]);
         var queued = new DateTimeOffset(2026, 9, 28, 12, 0, 0, TimeSpan.Zero);

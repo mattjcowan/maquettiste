@@ -80,6 +80,10 @@ clobber a concurrent edit or leave a dangling id.
    (`packs.<pack>` of the settings), `new_pack` (from `empty` or a starter), `get_template_context`, `preview_unit`
    (with `overlay` for unsaved text; writes nothing; an element outside the unit's scope returns MQ6026 naming the kind
    the template expects, and no files), `unit_paths` and `get_pack_outputs`.
+   A unit with `mode: "block"` keeps one delimited block of lines inside a file the team owns (an ignore file, a config
+   file) and never touches the rest; `blockComment` sets the delimiter comment (default `#`) and `createFile: true` lets it
+   create a missing file (otherwise it writes nothing and the plan says `target-missing`). Its path must be allowed: a file
+   entry in `outputs.allow` (`{ "path": "src/App/.gitignore" }`) allows exactly that file.
 
 8. Processes: see "Processes" below.
 
@@ -119,7 +123,8 @@ Without the server (or for bulk mechanical edits the tools do not cover), edit t
    ULID `id` (uppercase, 26 characters); references are ids.
 2. `maquettiste validate` (exit 1 on errors; `--format sarif` for annotations). Fix dangling ids first.
 3. `maquettiste generate --dry-run --diff` to see what would change, then `maquettiste generate`.
-4. `maquettiste generate --check` is what CI runs: it fails on stale, missing, orphaned or hand-edited output.
+4. `maquettiste generate --check` is what CI runs: it renders every output root and fails on stale, missing, orphaned or
+   hand-edited output (guard only what the team commits, or run `generate` and compare the working tree).
 
 If the editor or the MCP server is running on the repository, it picks up file changes (the editor live through its
 watcher, the server on its next call). Prefer small, reviewable changes: one element per file makes the diff the review.

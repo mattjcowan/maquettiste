@@ -9,8 +9,8 @@ import { tableKeyLabel } from "./previewScope";
 type S = components["schemas"];
 export type PackJson = Record<string, unknown>;
 export type RawUnit = Record<string, unknown>;
-export type UnitField = "id" | "for" | "template" | "output" | "mode" | "formatter";
-export type WriteMode = "overwrite" | "once" | "regions" | "pair";
+export type UnitField = "id" | "for" | "template" | "output" | "mode" | "formatter" | "blockComment" | "createFile";
+export type WriteMode = "overwrite" | "once" | "regions" | "pair" | "block";
 
 export const UNIT_ID = /^[a-z][a-z0-9-]*$/;
 
@@ -19,6 +19,11 @@ export const WRITE_MODES: { value: WriteMode; label: string; help: string }[] = 
   { value: "once", label: "Create only if missing", help: "Writes the file once; later applies leave it alone." },
   { value: "regions", label: "Protected regions", help: "Rewrites the file but keeps the text inside its protected regions." },
   { value: "pair", label: "Pair", help: "Writes a generated file and a companion that is created once for hand code." },
+  {
+    value: "block",
+    label: "Managed block",
+    help: "Keeps a block of lines, between two marked comment lines, in a file the team owns (an ignore file, say); the rest of the file is never touched. The file is created only when Create file is on.",
+  },
 ];
 
 export const modeLabel = (mode: unknown): string => WRITE_MODES.find((m) => m.value === mode)?.label ?? "Overwrite";
@@ -91,6 +96,8 @@ export const FIELD_HELP: Record<UnitField, string> = {
   output: "Where the file lands, under the output base and an output root. Leave empty when the template writes its files with `file`.",
   mode: "How the file is written when it already exists.",
   formatter: "Runs after rendering; configured in Settings › Formatters.",
+  blockComment: "Managed block: the comment marker of the two lines around the block (# by default, // or ; for other files).",
+  createFile: "Managed block: create the file when it does not exist. Off, a missing file is left alone and the unit writes nothing.",
 };
 
 export function unitsOf(doc: PackJson | null | undefined): RawUnit[] {
@@ -109,6 +116,8 @@ export function toPackUnit(raw: RawUnit): S["PackUnit"] {
     where: (raw.where as Record<string, unknown> | undefined) ?? null,
     output: typeof raw.output === "string" ? raw.output : null,
     mode: (WRITE_MODES.some((m) => m.value === raw.mode) ? raw.mode : "overwrite") as S["PackUnit"]["mode"],
+    blockComment: typeof raw.blockComment === "string" && raw.blockComment !== "" ? raw.blockComment : "#",
+    createFile: raw.createFile === true,
     formatter: typeof raw.formatter === "string" ? raw.formatter : null,
     delimiters: (raw.delimiters as S["PackUnit"]["delimiters"]) ?? null,
     companion: (raw.companion as S["PackUnit"]["companion"]) ?? null,
@@ -126,6 +135,10 @@ export function setUnitField(doc: PackJson, index: number, field: UnitField, val
   const unit = { ...units[index] };
   if ((field === "output" || field === "formatter") && value === "") delete unit[field];
   else if (field === "mode" && value === "overwrite") delete unit.mode;
+  else if (field === "blockComment" && (value.trim() === "" || value.trim() === "#")) delete unit.blockComment;
+  else if (field === "blockComment") unit.blockComment = value.trim();
+  else if (field === "createFile" && value !== "true") delete unit.createFile;
+  else if (field === "createFile") unit.createFile = true;
   else unit[field] = value;
   units[index] = unit;
   return withUnits(doc, units);

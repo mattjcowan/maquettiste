@@ -447,7 +447,7 @@ public static class BenchmarkHarness
     private static string RepoOf(string folder) => Path.Combine(folder, "repo");
 
     /// <summary>
-    /// A digest of every manifest file (committed and built), so two runs can be compared without keeping the files;
+    /// A digest of every manifest file (and any cache copy an earlier release left), so two runs can be compared without keeping the files;
     /// <see langword="null"/> when the run wrote no manifest, which never counts as a match.
     /// </summary>
     private static string? ManifestDigest(string folder)

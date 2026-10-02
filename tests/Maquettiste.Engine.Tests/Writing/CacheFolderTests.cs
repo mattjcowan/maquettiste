@@ -28,7 +28,7 @@ public sealed class CacheFolderTests
     }
 
     [Fact]
-    public async Task The_journal_and_a_built_manifest_create_it_too()
+    public async Task The_journal_creates_it_too_and_a_manifest_never_does()
     {
         using (var f = new WritingFixture())
         {
@@ -38,14 +38,8 @@ public sealed class CacheFolderTests
 
         using (var f = new WritingFixture())
         {
-            await f.Manifests.SavePackAsync("p", committed: false, [new ManifestEntry("src/Generated/a.cs", H1, "u:1")], Ct);
-            Assert.Equal("*\n", File.ReadAllText(IgnoreFile(f)));
-        }
-
-        using (var f = new WritingFixture())
-        {
-            // A committed manifest lives in the model, not in the cache folder.
-            await f.Manifests.SavePackAsync("p", committed: true, [new ManifestEntry("db/a.sql", H1, "u:1")], Ct);
+            // Every manifest lives in the model, never in the cache folder, whatever root its paths are under.
+            await f.Manifests.SavePackAsync("p", [new ManifestEntry("db/a.sql", H1, "u:1"), new ManifestEntry("src/Generated/a.cs", H1, "u:1")], Ct);
             Assert.False(Directory.Exists(Path.Combine(f.Repo.ModelRoot, ".cache")));
         }
     }

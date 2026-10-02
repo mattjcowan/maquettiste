@@ -14,8 +14,8 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// through <c>EngineServices.Create</c>.
 /// </summary>
 /// <remarks>
-/// Packs: <c>e2e</c> (tests/fixtures/integration/packs/e2e, output <c>db/e2e</c>, a committed root), <c>billing-demo</c>
-/// (tests/fixtures/templates/billing-demo, output <c>src/Generated/demo</c>, a built root) and, when asked for, <c>migrations</c>
+/// Packs: <c>e2e</c> (tests/fixtures/integration/packs/e2e, output <c>db/e2e</c>), <c>billing-demo</c>
+/// (tests/fixtures/templates/billing-demo, output <c>src/Generated/demo</c>) and, when asked for, <c>migrations</c>
 /// (tests/fixtures/integration/packs/migrations, output <c>db</c>, schema diff).
 /// </remarks>
 internal sealed class E2ERepo : IAsyncDisposable
@@ -171,8 +171,7 @@ internal sealed class E2ERepo : IAsyncDisposable
         return result;
     }
 
-    public string Manifest(string pack, bool committed = true) =>
-        Repo.ReadFile(committed ? ".maquettiste/manifest/" + pack + ".json" : ".maquettiste/.cache/manifest/" + pack + ".json");
+    public string Manifest(string pack) => Repo.ReadFile(".maquettiste/manifest/" + pack + ".json");
 
     public static string Sha(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
 

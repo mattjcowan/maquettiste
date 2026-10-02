@@ -135,6 +135,20 @@ describe("units model", () => {
     expect(toPackUnit({ id: "svc", template: "svc.scriban", for: "each entity", mode: "bogus" }).mode).toBe("overwrite");
   });
 
+  it("edits a managed block unit's comment and create-file flag, dropping the defaults", () => {
+    expect(modeLabel("block")).toBe("Managed block");
+    let d = setUnitField(doc(), 0, "mode", "block");
+    d = setUnitField(d, 0, "blockComment", "//");
+    d = setUnitField(d, 0, "createFile", "true");
+    expect(unitsOf(d)[0]).toMatchObject({ mode: "block", blockComment: "//", createFile: true });
+    expect(toPackUnit(unitsOf(d)[0])).toMatchObject({ mode: "block", blockComment: "//", createFile: true });
+    d = setUnitField(d, 0, "blockComment", "#");
+    d = setUnitField(d, 0, "createFile", "false");
+    expect(unitsOf(d)[0]).not.toHaveProperty("blockComment");
+    expect(unitsOf(d)[0]).not.toHaveProperty("createFile");
+    expect(toPackUnit(unitsOf(d)[0])).toMatchObject({ blockComment: "#", createFile: false });
+  });
+
   it("compares documents ignoring key order, nulls and the default mode, as the server writes them", () => {
     let d = insertUnit({ name: "p", units: [] }, 0).doc;
     d = setUnitField(d, 0, "mode", "once");
@@ -277,8 +291,8 @@ describe("pack tabs and explorer rows", () => {
       pack: "sql-ddl",
       lastWritten: "2026-09-29T14:02:00Z",
       outputs: [
-        { path: "db/main/tables/customers.sql", unit: "table", elementId: "c", companion: false, root: "db", commit: true, mode: "overwrite", state: "edited" },
-        { path: "db/old.sql", unit: "gone", elementId: null, companion: false, root: "db", commit: true, mode: "overwrite", state: "intact" },
+        { path: "db/main/tables/customers.sql", unit: "table", elementId: "c", companion: false, root: "db", mode: "overwrite", state: "edited" },
+        { path: "db/old.sql", unit: "gone", elementId: null, companion: false, root: "db", mode: "overwrite", state: "intact" },
       ],
     };
     const closed = packRows([pack], new Set(), new Map([["sql-ddl", { outputs }]]));

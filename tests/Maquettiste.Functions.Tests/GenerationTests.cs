@@ -120,7 +120,7 @@ public sealed class GenerationTests
     {
         await using var host = EditorHost.Create();
 
-        var badPlan = await host.SendJsonAsync("POST", "/api/generate/plan", "{ \"roots\": \"sometimes\" }");
+        var badPlan = await host.SendJsonAsync("POST", "/api/generate/plan", "{ \"handEdits\": \"sometimes\" }");
         var badJobs = await host.SendJsonAsync("POST", "/api/generate/plan", "{ \"jobs\": 0 }");
         var noPlanId = await host.SendJsonAsync("POST", "/api/generate/apply", "{}");
         var badPlanId = await host.SendJsonAsync("POST", "/api/generate/apply", "{ \"planId\": \"plan-1\" }");

@@ -22,7 +22,7 @@
           },
           {
             "type": "string",
-            "pattern": "^(r:|o:)?[0-9a-f]{64}$"
+            "pattern": "^(r:|o:|b:|bc:)?[0-9a-f]{64}$"
           },
           {
             "type": "string",

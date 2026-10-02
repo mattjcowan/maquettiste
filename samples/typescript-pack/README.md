@@ -13,12 +13,12 @@ cp -R <maquettiste>/samples/typescript-pack .maquettiste/templates/typescript
 Then, in `.maquettiste/maquettiste.json`, allow an output folder and register the pack:
 
 ```json
-"outputs": { "allow": [ { "path": "db", "commit": true }, { "path": "src/generated", "commit": true } ] },
+"outputs": { "allow": [ { "path": "db" }, { "path": "src/generated" } ] },
 "packs": { "sql-ddl": { "output": "db" }, "typescript": { "output": "src/generated" } }
 ```
 
-`maquettiste generate` then writes `src/generated/`. With `"commit": true` the files are meant to be committed and
-`maquettiste generate --check` guards them in CI; drop it to treat the folder as build output (gitignored).
+`maquettiste generate` then writes `src/generated/`. Commit the folder and `maquettiste generate --check` guards it in CI;
+or keep it out of version control and let every build run `generate` (which outputs to commit is your choice).
 
 ## Files
 
@@ -69,7 +69,7 @@ processes (or actors), so the entity, model and schema output is unchanged.
 | `process-services` | each process | `<p>.services.gen.ts` + `<p>.services.ts` | pair | One interface per service task (`start`, `cancel`) and per human task (`assigned`, `withdrawn`), and `<p>RunTasks`, which the machine calls after a step |
 | `process-machine` | each process | `<p>.machine.gen.ts` + `<p>.machine.ts` | pair | The typed facade: `start`, `send<Event>` per event, `complete<Invoke>`/`fail<Invoke>` per task (the prefixes keep event and invoke names apart from the fixed members), `tick`, `apply`, `states`, `matches`, and `handle` (load through the store, run, save, append history and audit records, tell the host and the services); the companion adds queries |
 | `process-store` | each process | `<p>.store.gen.ts` + `<p>.store.ts` | pair | `<P>Store` (load and save the snapshot, append history, append audit records); the companion starts in memory |
-| `process-endpoints` | each process | `endpoints/<p>.endpoints.ts` | regions | One endpoint per event, `POST /processes/<p>/:instance/<event>`, mapping the request to the command and calling the dispatcher, with a region per endpoint between the two, keyed by the event's id (a committed output root only) |
+| `process-endpoints` | each process | `endpoints/<p>.endpoints.ts` | regions | One endpoint per event, `POST /processes/<p>/:instance/<event>`, mapping the request to the command and calling the dispatcher, with a region per endpoint between the two, keyed by the event's id (keep the folder in version control: region bodies live only in the file) |
 | `dispatch`, `dispatch-companion` | model | `dispatch/dispatch.gen.ts` + `dispatch/pipeline.ts` | overwrite + once | The command union of every process, `Handler`, `Behaviour`, `Registry`, `Dispatcher`, `createDispatcher`, the endpoint shapes; the companion orders the behaviours and holds the policy hooks |
 | `dispatch-registry` | model | `dispatch/registry.ts` | overwrite | The typed map from command type to handler, `satisfies Registry` (a mapped type over every command type, so a missing handler fails the build; no reflection), each process's program by id (sub-process invokes run from it) and the stores |
 | `dispatch-behaviours` | model | `dispatch/behaviours.ts` | overwrite | Composed functions in their default order: validation (payload required, length, range, allowed values), authorization (the caller may act as the command's actor), logging (sensitive attributes left out), transaction, outbox hand-off |

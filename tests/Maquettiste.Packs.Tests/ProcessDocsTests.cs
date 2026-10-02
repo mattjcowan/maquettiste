@@ -29,11 +29,11 @@ public sealed partial class ProcessDocsTests
     }
 
     [Fact]
-    public void The_gate_3_fixture_registers_the_pack_with_a_committed_docs_root()
+    public void The_gate_3_fixture_registers_the_pack_with_a_docs_root()
     {
         var settings = JsonNode.Parse(File.ReadAllText(Fixtures.Path("models", "processes", ".maquettiste", "maquettiste.json")))!;
         Assert.Equal("docs", (string?)settings["packs"]!["process-docs"]!["output"]);
-        Assert.Contains(settings["outputs"]!["allow"]!.AsArray(), root => (string?)root!["path"] == "docs" && (bool?)root["commit"] == true);
+        Assert.Contains(settings["outputs"]!["allow"]!.AsArray(), root => (string?)root!["path"] == "docs" && root.AsObject().Count == 1);
     }
 
     [Fact]
@@ -359,7 +359,7 @@ public sealed partial class ProcessDocsTests
         private static partial Regex BareEntity();
     }
 
-    /// <summary>A temporary repo holding one fixture model and the <c>process-docs</c> pack, writing to the committed root <c>docs</c>.</summary>
+    /// <summary>A temporary repo holding one fixture model and the <c>process-docs</c> pack, writing to the root <c>docs</c>.</summary>
     private sealed class DocsRepo : IDisposable
     {
         public DocsRepo(string fixture)
@@ -372,7 +372,7 @@ public sealed partial class ProcessDocsTests
             {
                 if (settings["packs"]?["process-docs"] is not null)
                     return;
-                settings["outputs"] = JsonNode.Parse("""{ "allow": [ { "path": "docs", "commit": true } ] }""");
+                settings["outputs"] = JsonNode.Parse("""{ "allow": [ { "path": "docs" } ] }""");
                 settings["packs"] = JsonNode.Parse("""{ "process-docs": { "output": "docs" } }""");
             });
         }

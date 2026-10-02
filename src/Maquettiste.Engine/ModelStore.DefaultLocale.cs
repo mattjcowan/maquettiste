@@ -186,6 +186,7 @@ public sealed partial class ModelStore
                 return new DefaultLocaleResult(SaveOutcome.Conflict, old, locale, moves, skipped, false, []);
         }
 
+        RetiredSettings.Strip(settingsJson);
         var writes = new List<(string Path, byte[] Bytes)>
         {
             (paths.FullPath(ModelPaths.SettingsFile), _services.Json.Write(settingsJson, ModelPaths.SettingsFile, ModelPaths.SettingsFile)),

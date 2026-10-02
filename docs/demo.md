@@ -266,13 +266,13 @@ nothing is written. Without the editor at all, Claude Code over MCP (part 3) can
 
 | Step | Command | Expected |
 | --- | --- | --- |
-| 2.1 (45 s) | `maquettiste init` then `git status --short` | Now prints `kept .maquettiste/maquettiste.json`, `kept .maquettiste/.schema/v1/ (26 schemas, current)`, `Initialized maquettiste in <the repository>.` (a plain re-run scaffolds no pack: a pack the team removed stays removed, and `init --pack <name>` adds one on purpose) and `Built output root (commit: false): src/Generated. maquettiste generate regenerates it; ignore or commit it as your team prefers (init --gitignore adds the built roots and .maquettiste/.cache/ to .gitignore).` Explain what the first run wrote: `maquettiste.json` (output roots `db` committed and `src/Generated` built, the `sql-ddl` pack writing to `db`), the JSON schemas for editor completion and the pack's templates as plain files, and that it did not touch the repository's `.gitignore`: whether built output is committed is the team's call, and the engine's own `.maquettiste/.cache/` ignores itself. The project's name came from the repository (`--name`, else `package.json`'s `name`, else the git remote, else the folder), which is what the editor's top bar shows (re-check on the Mac). `git status` shows only `?? .maquettiste/`. |
+| 2.1 (45 s) | `maquettiste init` then `git status --short` | Now prints `kept .maquettiste/maquettiste.json`, `kept .maquettiste/.schema/v1/ (26 schemas, current)`, `Initialized maquettiste in <the repository>.` (a plain re-run scaffolds no pack: a pack the team removed stays removed, and `init --pack <name>` adds one on purpose) and `Keep formatters and linters off .maquettiste/ (see the guide).` Explain what the first run wrote: `maquettiste.json` (output roots `db` and `src/Generated`, the `sql-ddl` pack writing to `db`), the JSON schemas for editor completion and the pack's templates as plain files, and that it did not touch the repository's `.gitignore`: which outputs are committed is the team's call (a pack can keep a generated folder out of git with a managed block), and the engine's own `.maquettiste/.cache/` ignores itself. The project's name came from the repository (`--name`, else `package.json`'s `name`, else the git remote, else the folder), which is what the editor's top bar shows (re-check on the Mac). `git status` shows only `?? .maquettiste/`. |
 | 2.2 (45 s) | `ls .maquettiste/model/*/` then `cat .maquettiste/model/entities/order.json` | One folder per kind (databases, diagrams, entities, enums, packages, relations, ...), one file per element; the entity with ULID ids, and `status` typed `{ "ref": "<the enum's id>" }` (references are ids, never names). |
 | 2.3 (1 min) | `maquettiste validate && maquettiste generate --progress none` then `cat db/main/shop/tables/orders.sql` | `Validation passed`; `A db/main/migrations/0001.sql`, `A db/main/schema.sql`, `A db/main/seed.sql`, `A db/main/shop/tables/<4 tables>.sql`, "Outcome: Succeeded" (validate 0.8 s, generate 1.3 s from the image). The `shop` folder is 1.6's Default schema. The DDL has `customer_id uuid NOT NULL` and `fk_orders_customer_id ... ON DELETE RESTRICT`. |
 | 2.4 (1.5 min) | Install the custom pack, then register it (below). `maquettiste generate --progress none`, `cat src/generated/order.ts src/generated/order.schema.ts`, `npx tsc --noEmit` | `A src/generated/customer.ts` ... `A src/generated/index.ts`, `order-status.ts`, four `*.schema.ts` (1.35 s); `K db/main/migrations/0001.sql` means the migration is kept (written once, yours). `order.ts` has `status: OrderStatus`, `customerId: string`, `customer?: Customer`, `lines?: OrderLine[]`. `tsc` prints nothing (0.8 s). |
 | 2.5 (45 s) | Set a parameter (below), `maquettiste format`, `maquettiste generate --progress none`, `cat src/generated/order-status.ts` | `formatted .maquettiste/maquettiste.json` (the hand edit back in canonical form; skip it and `generate` warns MQ1003). Then `M src/generated/order-status.ts`: `export const OrderStatus = { Pending: 'pending', ... } as const;`. Mention `"zod": false` removes the four schema files (`D ...schema.ts`). |
 | 2.6 (45 s) | Edit one template line (below) and `maquettiste generate --progress none`, `git diff --stat` | `M` for the four entity files only ("0 added, 4 modified, 0 deleted, 12 unchanged"): every attribute is now `readonly`. |
-| 2.7 (1 min) | `maquettiste generate --check --progress none; echo $?` then, in the editor, change Customer `name` Len 120 to 150 (Ctrl+P, `Customer`, Enter; double-click the Len cell of `name`, `150`, Enter), and run the check again | First `Outcome: Succeeded`, `0`. Then `Drift: committed output does not match the model; run maquettiste generate and commit the result (exit 2).` with `A db/main/migrations/0002.sql`, `M db/main/schema.sql`, `M db/main/shop/tables/customers.sql`, `M src/generated/customer.schema.ts`, an `error MQ6018` line (the schema snapshot of database 'main' is stale: the next `generate` writes it), and `2`. This is the CI gate. (A hand edit of a generated file gives `MQ6009 Hand edit` and exit 3.) |
+| 2.7 (1 min) | `maquettiste generate --check --progress none; echo $?` then, in the editor, change Customer `name` Len 120 to 150 (Ctrl+P, `Customer`, Enter; double-click the Len cell of `name`, `150`, Enter), and run the check again | First `Outcome: Succeeded`, `0`. Then `Drift: the output on disk does not match the model; run maquettiste generate (exit 2).` with `A db/main/migrations/0002.sql`, `M db/main/schema.sql`, `M db/main/shop/tables/customers.sql`, `M src/generated/customer.schema.ts`, an `error MQ6018` line (the schema snapshot of database 'main' is stale: the next `generate` writes it), and `2`. This is the CI gate. (A hand edit of a generated file gives `MQ6009 Hand edit` and exit 3.) |
 | 2.8 (1 min) | Second tab: `maquettiste generate --watch --progress none`. In the editor, on Customer's Attributes tab, **Add attribute** `phone` (string, Len 40). Ctrl+C when done. | `[watch] initial run: ...` with the pending drift applied, then after the edit `M src/generated/customer.ts`, `M src/generated/customer.schema.ts`, `A db/main/migrations/0003.sql`, `M db/...` within half a second of the save (0.36 s measured). |
 
 Commands for 2.4 (copy the pack, then replace `.maquettiste/maquettiste.json`; `name` is the one `init` gave in step 3):
@@ -287,12 +287,10 @@ cat > .maquettiste/maquettiste.json <<'EOF'
   "outputs": {
     "allow": [
       {
-        "path": "db",
-        "commit": true
+        "path": "db"
       },
       {
-        "path": "src/generated",
-        "commit": true
+        "path": "src/generated"
       }
     ]
   },
@@ -308,8 +306,8 @@ cat > .maquettiste/maquettiste.json <<'EOF'
 EOF
 ```
 
-Say while it generates: `src/generated` is a committed root so `--check` guards it in CI; a built root would be
-regenerated wherever a build runs instead, and the team decides whether git ignores it. Show `src/generated/index.ts`
+Say while it generates: the team commits `src/generated`, so `--check` guards it in CI; output the team does not commit
+is regenerated wherever a build runs instead, and CI then runs `generate` and compares the working tree. Show `src/generated/index.ts`
 and, if the service has an entry point, import from it
 (`import { orderSchema, type Order } from './generated/index.js';`).
 
@@ -521,7 +519,7 @@ Linux (WSL2, amd64, Docker Engine 29.6.1), image `mattjcowan/maquettiste:0.1.0` 
 | Image build, `--no-cache`, base images present | succeeded | 70 s |
 | CLI `dotnet pack` (host SDK 10.0.109) / in the SDK container with dotnet-install | succeeded | 24 s / 70 s |
 | `dotnet tool install` from the local feed | succeeded | 1 s |
-| `maquettiste init` | 4 lines, `.maquettiste/` and `.gitignore` (that version also wrote a `.gitignore` block; `init` now leaves the file alone unless given `--gitignore`) | 0.2 s |
+| `maquettiste init` | 4 lines, `.maquettiste/` and `.gitignore` (that version also wrote a `.gitignore` block; `init` now never touches the file) | 0.2 s |
 | `compose up` to `/api/health` 200: first boot / restart | succeeded | 7 s / 1.2 s |
 | Model through `POST /api/model/batch` (11 elements) | `200 saved` | under 1 s |
 | Editor walk in Playwright: sign in with the token, open Order; New entity x2; Shift+click, New relation | all passed | 0.4 s / 1.1 s / 1.8 s |

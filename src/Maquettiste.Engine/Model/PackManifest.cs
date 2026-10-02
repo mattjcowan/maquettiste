@@ -69,6 +69,18 @@ public sealed record PackUnit
     /// <summary>Custom template delimiters.</summary>
     public Delimiters? Delimiters { get; init; }
 
+    /// <summary>
+    /// The comment marker of a <see cref="OutputMode.Block"/> unit's delimiter lines (<c>#</c> by default; for example <c>//</c> or
+    /// <c>;</c>). Ignored by the other modes.
+    /// </summary>
+    public string BlockComment { get; init; } = "#";
+
+    /// <summary>
+    /// Whether a <see cref="OutputMode.Block"/> unit creates its target file when it does not exist (default <see langword="false"/>:
+    /// the unit then writes nothing and is listed as skipped, <c>target-missing</c>). Ignored by the other modes.
+    /// </summary>
+    public bool CreateFile { get; init; }
+
     /// <summary>The companion file; required when <see cref="Mode"/> is <see cref="OutputMode.Pair"/>.</summary>
     public PairCompanion? Companion { get; init; }
 
@@ -125,6 +137,13 @@ public enum OutputMode
 
     /// <summary>A generated file plus a companion written once: <c>pair</c>.</summary>
     [JsonStringEnumMemberName("pair")] Pair,
+
+    /// <summary>
+    /// A managed block inside a file the team owns: the template renders the block's lines, and the writer replaces, inserts or
+    /// removes only the lines between <c>&lt;comment&gt; maquettiste: begin &lt;pack&gt;/&lt;unit&gt;</c> and the matching <c>end</c>
+    /// line, leaving the rest of the file untouched: <c>block</c>.
+    /// </summary>
+    [JsonStringEnumMemberName("block")] Block,
 }
 
 /// <summary>Custom template delimiters.</summary>

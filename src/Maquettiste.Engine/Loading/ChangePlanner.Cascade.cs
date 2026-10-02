@@ -338,6 +338,7 @@ internal sealed partial class ChangePlanner
             databases.Remove(name);
         if (databases.Count == 0)
             node.Remove("databases");
+        RetiredSettings.Strip(node);
         var bytes = _json.Write(node, ModelPaths.SettingsFile, ModelPaths.SettingsFile);
         _writes[ModelPaths.SettingsFile] = bytes;
         _touched[ModelPaths.SettingsFile] = _snapshot.SettingsHash;

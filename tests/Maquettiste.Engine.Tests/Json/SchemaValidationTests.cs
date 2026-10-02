@@ -267,7 +267,9 @@ public sealed class SchemaValidationTests
     [Fact]
     public void Output_allowlist_is_named_allow_as_in_the_spec()
     {
-        Assert.Empty(Evaluate("maquettiste.json", """{"formatVersion":1,"outputs":{"allow":[{"path":"db","commit":true}],"deny":["db/tmp/**"]}}"""));
+        Assert.Empty(Evaluate("maquettiste.json", """{"formatVersion":1,"outputs":{"allow":[{"path":"db"},{"path":".gitignore"}],"deny":["db/tmp/**"]}}"""));
+        // The commit flag is gone from the schema (E42); the loader drops it from older files with MQ1010 before this check.
+        Assert.NotEmpty(Evaluate("maquettiste.json", """{"formatVersion":1,"outputs":{"allow":[{"path":"db","commit":true}]}}"""));
         Assert.NotEmpty(Evaluate("maquettiste.json", """{"formatVersion":1,"outputs":{"roots":[{"path":"db"}]}}"""));
     }
 }

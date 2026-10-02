@@ -124,8 +124,8 @@ gives byte-identical files on any machine. No processes (phase 3).
 
 `bench/packs/fanout/`: `n` units per entity (default 20, so the default model yields 100,050 files) cycling through seven
 templates (a C# record, a TypeScript DTO, a C# validator, a Markdown page, a SQL query over the entity's PostgreSQL table, a C#
-navigation class, a JSON descriptor) plus one index per package. Unit `u05`, `u10`, `u15` and `u20` write to the committed
-root `gen/committed`, the rest to the built root `gen/built`. The TypeScript, Markdown and JSON templates call JavaScript
+navigation class, a JSON descriptor) plus one index per package. Unit `u05`, `u10`, `u15` and `u20` write to the root
+`gen/committed`, the rest to the root `gen/built` (two roots that behave alike; the folder names are historical). The TypeScript, Markdown and JSON templates call JavaScript
 helpers (`helpers.js`), so the Jint sandbox is on the hot path. The generator writes `pack.json` for the requested fanout; the
 checked-in `pack.json` is the default's copy (a test keeps them equal). Template names avoid culture-like segments such as
 `.cs.` and the csproj marks the embedded packs `WithCulture="false"`: MSBuild would otherwise move `x.cs.scriban` into a

@@ -114,7 +114,7 @@ function mockSettings(benchSettings) {
     $schema: ".schema/v1/maquettiste.json",
     formatVersion: 1,
     name: "scale",
-    outputs: { allow: [{ path: "db", commit: true }, { path: "src/Generated" }] },
+    outputs: { allow: [{ path: "db" }, { path: "src/Generated" }] },
     conventions: benchSettings.conventions,
     packs: { "csharp-dapper": { output: "src/Generated" }, "sql-ddl": { output: "db" } },
   };

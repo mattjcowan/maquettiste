@@ -7,7 +7,6 @@
     "jobs": null,
     "handEdits": null,
     "includeDiffs": false,
-    "roots": "all",
     "lock": "wait",
     "stageBarriers": false
   },

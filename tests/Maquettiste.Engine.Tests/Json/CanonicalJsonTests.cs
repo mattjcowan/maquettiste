@@ -169,7 +169,7 @@ public sealed class CanonicalJsonTests
         {
             FormatVersion = 1,
             Limits = new SandboxLimits(),
-            Outputs = new OutputSettings { Allow = [new OutputRoot { Path = "db", Commit = true }] },
+            Outputs = new OutputSettings { Allow = [new OutputRoot { Path = "db" }] },
             Packs = new Dictionary<string, PackSettings> { ["sql-ddl"] = new() },
         };
 
@@ -182,8 +182,7 @@ public sealed class CanonicalJsonTests
               "outputs": {
                 "allow": [
                   {
-                    "path": "db",
-                    "commit": true
+                    "path": "db"
                   }
                 ]
               },

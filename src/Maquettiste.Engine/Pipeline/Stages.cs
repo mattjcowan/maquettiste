@@ -172,7 +172,6 @@ public interface IOutputWriter
 /// <param name="Skipped">Skipped units, whose manifest entries are kept.</param>
 /// <param name="UnitCountByPack">Units per pack, so a pack's manifest closes when its last unit arrives.</param>
 /// <param name="AllPacks">Whether the run covers every pack (so manifests of removed packs are orphaned).</param>
-/// <param name="Roots">Which roots the run covers; orphans are found only within them.</param>
 /// <param name="IncludeDiffs">Whether to compute unified diffs.</param>
 /// <param name="Journal">The run journal; <see langword="null"/> in dry run and check.</param>
 /// <param name="State">The unit state store.</param>
@@ -188,7 +187,6 @@ public sealed record WriteContext(
     IReadOnlyList<SkippedUnit> Skipped,
     IReadOnlyDictionary<string, int> UnitCountByPack,
     bool AllPacks,
-    RootSelection Roots,
     bool IncludeDiffs,
     IRunJournal? Journal,
     IUnitStateStore State,

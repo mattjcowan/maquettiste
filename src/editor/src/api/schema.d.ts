@@ -1268,7 +1268,7 @@ export interface paths {
         /**
          * Remove a pack, leaving the files it generated on disk
          * @description `If-Match` carries the `pack.json` hash read. Removes the `packs.<pack>` entry of `maquettiste.json` (through the settings
-         *     save), then the folder `.maquettiste/templates/<pack>/`, then the pack's committed and built manifests and its unit states.
+         *     save), then the folder `.maquettiste/templates/<pack>/`, then the pack's manifest and its unit states.
          *     The files the pack generated stay on disk and are no longer tracked: `untracked` lists them. Waits for a generation run in
          *     progress. 409 when `pack.json` changed (or `maquettiste.json` kept changing meanwhile); 422 (nothing removed) when the settings save is refused. Sends `project.changed`
          *     when the settings changed, then `templates.changed` (empty `files`) and `packs.changed`.
@@ -1296,7 +1296,7 @@ export interface paths {
          *     by single hyphens, starting with a letter) and must not be used by another pack folder, a `packs.<name>` settings entry or
          *     the manifests of a former pack. Moves the `packs.<pack>` entry of `maquettiste.json` to `packs.<name>` with its values
          *     (through the settings save), renames the folder `.maquettiste/templates/<pack>/` (never a copy), writes the new name into
-         *     `pack.json`, and moves the pack's committed and built manifests and its unit states, so the files it generated stay tracked
+         *     `pack.json`, and moves the pack's manifest and its unit states, so the files it generated stay tracked
          *     and no later run deletes them as orphans. Generation hints keyed by the old name are listed in `hints` and left as they are:
          *     the editor moves them with one model batch after the rename, so they are one undo step.
          *     With `dryRun` every check runs and the answer says what would move, writing nothing. Waits for a generation run in
@@ -1453,8 +1453,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * The files a pack's manifests record
-         * @description Every manifest entry of the pack (committed and built roots) with its unit, element, root, mode and state on disk (`intact`, `edited`, `missing`), and when a manifest was last written.
+         * The files a pack's manifest records
+         * @description Every manifest entry of the pack with its unit, element, root, mode and state on disk (`intact`, `edited`, `missing`; for a `block` output, the state of its lines in the file), and when the manifest was last written.
          */
         get: operations["getPackOutputs"];
         put?: never;
@@ -1838,9 +1838,9 @@ export interface components {
             formatVersion: number;
             name: string | null;
             outputs: {
+                /** @description Folders generation may write under; an entry also allows the file of its own path (such as `.gitignore`) unless it ends with `/`. A `commit` member of an older file is ignored (MQ1010). */
                 allow: {
                     path: string;
-                    commit: boolean;
                 }[];
                 deny: string[];
             };
@@ -2072,6 +2072,10 @@ export interface components {
             } | null;
             output: string | null;
             mode: components["schemas"]["OutputMode"];
+            /** @description Mode `block`: the comment marker of the delimiter lines (`#` by default). */
+            blockComment: string;
+            /** @description Mode `block`: create the target file when it does not exist (otherwise the unit writes nothing: `target-missing`). */
+            createFile: boolean;
             formatter: string | null;
             delimiters: {
                 open: string;
@@ -3929,8 +3933,6 @@ export interface components {
         /** @enum {string} */
         GenerationMode: "apply" | "dry-run" | "check";
         /** @enum {string} */
-        RootSelection: "all" | "committed" | "built";
-        /** @enum {string} */
         LockMode: "wait" | "fail";
         /** @enum {string} */
         RunOutcome: "succeeded" | "invalid" | "drift" | "conflicts" | "busy" | "stale" | "cancelled" | "failed";
@@ -3939,7 +3941,7 @@ export interface components {
         /** @enum {string} */
         FileRole: "main" | "block" | "companion";
         /** @enum {string} */
-        OutputMode: "overwrite" | "once" | "regions" | "pair";
+        OutputMode: "overwrite" | "once" | "regions" | "pair" | "block";
         /** @enum {string} */
         FileChangeKind: "added" | "modified" | "deleted" | "unchanged" | "hand-edited" | "kept" | "orphaned-owned" | "conflict";
         /** @description As a request body every member is optional and takes the default shown. As part of a plan, every member is written. */
@@ -3953,7 +3955,6 @@ export interface components {
             handEdits?: components["schemas"]["HandEditPolicy"] | null;
             /** @default false */
             includeDiffs?: boolean;
-            roots?: components["schemas"]["RootSelection"];
             lock?: components["schemas"]["LockMode"];
             /** @default false */
             stageBarriers?: boolean;
@@ -3988,8 +3989,8 @@ export interface components {
             diff: string | null;
         };
         OutputRootInfo: {
+            /** @description The `outputs.allow` entry that holds the file (a folder, or the file's own path). */
             path: string;
-            commit: boolean;
         };
         PlanFile: {
             path: components["schemas"]["RepoPath"];
@@ -4009,7 +4010,7 @@ export interface components {
             /** @description Null for `model` and `each locale` units. */
             elementId: string | null;
             /** @enum {string|null} */
-            reason: "new" | "forced" | "check" | "inputs" | "outputs" | "unchanged" | null;
+            reason: "new" | "forced" | "check" | "inputs" | "outputs" | "unchanged" | "target-missing" | null;
             /** @description The first 20 causes, ordinal by kind then key. */
             causes: components["schemas"]["PlanCause"][];
             causeCount: number;
@@ -4282,7 +4283,7 @@ export interface components {
         };
         PlanCause: {
             /** @enum {string} */
-            kind: "element" | "kind-set" | "referrers" | "setting" | "template" | "schema-diff" | "translation" | "localization" | "absent" | "inputs" | "output-missing" | "output-edited" | "state-reset" | "pack-version" | "unit" | "parameter" | "scripts" | "output-base" | "formatter";
+            kind: "element" | "kind-set" | "referrers" | "setting" | "template" | "schema-diff" | "translation" | "localization" | "absent" | "inputs" | "output-missing" | "output-edited" | "state-reset" | "pack-version" | "unit" | "parameter" | "scripts" | "output-base" | "formatter" | "target-missing";
             key: string;
             detail: string;
             elementId: string | null;
@@ -4369,9 +4370,8 @@ export interface components {
             elementId: string | null;
             companion: boolean;
             root: string | null;
-            commit: boolean;
             /** @enum {string} */
-            mode: "overwrite" | "regions" | "once";
+            mode: "overwrite" | "regions" | "once" | "block";
             /** @enum {string} */
             state: "intact" | "edited" | "missing";
         };
@@ -4387,11 +4387,6 @@ export interface components {
             planId?: string | null;
             /** @description The run's pack selection (as the plan request's packs); a pack outside it answers not-selected. Absent means every enabled pack. */
             packs?: string[] | null;
-            /**
-             * @description The run's root selection; a unit whose output pattern's literal prefix is under a root of the other kind answers root-not-selected.
-             * @enum {string|null}
-             */
-            roots?: "all" | "committed" | "built" | null;
         };
         ExplainResult: {
             pack: string;
@@ -4399,7 +4394,7 @@ export interface components {
             elementId: string | null;
             planned: boolean;
             /** @enum {string} */
-            reason: "pack-invalid" | "unknown-unit" | "pack-disabled" | "not-selected" | "unknown-element" | "scope" | "selector" | "skip-hint" | "filter" | "root-not-selected" | "new" | "forced" | "check" | "inputs" | "outputs" | "unchanged";
+            reason: "pack-invalid" | "unknown-unit" | "pack-disabled" | "not-selected" | "unknown-element" | "scope" | "selector" | "skip-hint" | "filter" | "new" | "forced" | "check" | "inputs" | "outputs" | "unchanged" | "target-missing";
             detail: string;
             key: string;
             planId: string | null;
@@ -4880,11 +4875,12 @@ export interface components {
             };
             /** @default {} */
             outputs?: {
-                /** @default [] */
+                /**
+                 * @description Where generation may write: each entry's path is a repo-relative folder generated files may be written under, or a file a unit writes exactly (for example .gitignore or src/App/.gitignore; an entry ending in / is a folder only). Which outputs to commit is the team's choice.
+                 * @default []
+                 */
                 allow?: {
                     path: string;
-                    /** @default false */
-                    commit?: boolean;
                 }[];
                 /** @default [] */
                 deny?: string[];
@@ -7391,10 +7387,21 @@ export interface components {
                 };
                 output?: string;
                 /**
+                 * @description overwrite: rewritten when inputs change. once: written only when missing, then the team's. regions: rewritten, keeping the bodies of maquettiste:keep regions. pair: a generated file and a companion written once. block: a managed block inside a file the team owns; the template renders the block's lines, and only the lines between '<comment> maquettiste: begin <pack>/<unit>' and '<comment> maquettiste: end <pack>/<unit>' are replaced, inserted at the end of the file after a blank line, or removed when the unit no longer produces them. Formatters never run on block outputs.
                  * @default overwrite
                  * @enum {unknown}
                  */
-                mode?: "overwrite" | "once" | "regions" | "pair";
+                mode?: "overwrite" | "once" | "regions" | "pair" | "block";
+                /**
+                 * @description Mode block: the comment marker that starts the block's delimiter lines, for example // or ;.
+                 * @default #
+                 */
+                blockComment?: string;
+                /**
+                 * @description Mode block: create the target file (holding just the block) when it does not exist. When false and the file is missing, the unit writes nothing and is listed as skipped (target-missing). A file the engine created is deleted when its block is removed and nothing but whitespace is left; any other file is kept.
+                 * @default false
+                 */
+                createFile?: boolean;
                 formatter?: string;
                 delimiters?: {
                     open: string;
@@ -9765,8 +9772,7 @@ export interface operations {
                  * @example {
                  *       "packs": [
                  *         "sql-ddl"
-                 *       ],
-                 *       "roots": "all"
+                 *       ]
                  *     }
                  */
                 "application/json": components["schemas"]["GenerationRequest"];

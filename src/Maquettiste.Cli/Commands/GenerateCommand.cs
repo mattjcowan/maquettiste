@@ -11,8 +11,8 @@ namespace Maquettiste.Cli.Commands;
 
 /// <summary>
 /// <c>maquettiste generate</c> (engine-design.md section 16; SPEC section 17): an incremental run, <c>--dry-run</c> (the plan as
-/// <c>A</c>/<c>M</c>/<c>D</c>/<c>H</c>/<c>K</c>/<c>O</c>/<c>C</c> lines, <c>--diff</c> adds unified diffs), <c>--check</c> (committed roots
-/// in memory: drift exits 2, hand edits 3) or <c>--watch</c> (the engine's debounced watch hook over a file watcher on the model root).
+/// <c>A</c>/<c>M</c>/<c>D</c>/<c>H</c>/<c>K</c>/<c>O</c>/<c>C</c> lines, <c>--diff</c> adds unified diffs), <c>--check</c> (every root
+/// in memory: a file that would be added, changed or deleted exits 2, hand edits 3) or <c>--watch</c> (the engine's debounced watch hook over a file watcher on the model root).
 /// </summary>
 internal static class GenerateCommand
 {
@@ -40,14 +40,8 @@ internal static class GenerateCommand
             throw new UsageException("--watch prints text only.");
         if (diff && !dryRun && !check)
             throw new UsageException("--diff needs --dry-run (or --check).");
-        var roots = line.Choice("--roots", check ? "committed" : "all", "all", "committed", "built") switch
-        {
-            "committed" => RootSelection.Committed,
-            "built" => RootSelection.Built,
-            _ => RootSelection.All,
-        };
-        if (check && roots != RootSelection.Committed)
-            throw new UsageException("--check covers committed roots only.");
+        if (line.Value("--roots") is not null)
+            throw new UsageException("--roots was removed in 0.5.5: generate (and --check) covers every output root.");
         HandEditPolicy? handEdits = line.Value("--hand-edits") is null ? null : line.Choice("--hand-edits", "fail", "fail", "overwrite", "skip") switch
         {
             "overwrite" => HandEditPolicy.Overwrite,
@@ -69,7 +63,6 @@ internal static class GenerateCommand
             Jobs = context.Jobs,
             HandEdits = handEdits,
             IncludeDiffs = diff,
-            Roots = roots,
             Lock = line.Has("--no-wait") ? LockMode.Fail : LockMode.Wait,
         };
 
@@ -265,7 +258,7 @@ internal static class GenerateCommand
     private static string? Message(GenerationResult result) => result.Outcome switch
     {
         RunOutcome.Invalid => "Generation stopped: the model or a pack has errors (exit 1).",
-        RunOutcome.Drift => "Drift: committed output does not match the model; run maquettiste generate and commit the result (exit 2).",
+        RunOutcome.Drift => "Drift: the output on disk does not match the model; run maquettiste generate (exit 2).",
         RunOutcome.Conflicts => "Conflicts: generated files were edited by hand or lost protected regions (exit 3).",
         RunOutcome.Busy => "Another maquettiste run holds the run lock (exit 4).",
         RunOutcome.Cancelled => "Cancelled (exit 4).",

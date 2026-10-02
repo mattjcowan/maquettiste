@@ -35,7 +35,8 @@ internal static class UnitRules
 
     /// <summary>
     /// MQ6019: whether the unit's output base plus the pattern's literal prefix (up to the last <c>/</c> before the first code span)
-    /// can stay under an allowed root, and whether the pattern has a literal <c>.</c>, <c>..</c> or absolute segment.
+    /// can stay under an allowed root or be an allowed file (an <c>outputs.allow</c> entry naming the file itself), and whether the
+    /// pattern has a literal <c>.</c>, <c>..</c> or absolute segment.
     /// </summary>
     /// <param name="pattern">The output pattern (the unit's, or its companion's).</param>
     /// <param name="outputBase">The pack's output base, repo-relative.</param>
@@ -63,33 +64,7 @@ internal static class UnitRules
                 return null;
         }
 
-        return $"'{prefix}' is under no allowed output root ({string.Join(", ", roots.Select(r => Normalize(r.Path)).Order(StringComparer.Ordinal))})";
-    }
-
-    /// <summary>
-    /// Why a unit's outputs fall outside the selected roots (generation-ui.md section 4.3): the root holding the output base plus the
-    /// pattern's literal prefix is committed and the selection is <c>built</c>, or the reverse. <see langword="null"/> when it is
-    /// selected, when every root is, or when the root is only known once the path is rendered.
-    /// </summary>
-    /// <param name="pattern">The output pattern.</param>
-    /// <param name="outputBase">The pack's output base.</param>
-    /// <param name="roots">The allowed roots.</param>
-    /// <param name="selection">The selected roots.</param>
-    /// <returns>The reason, or <see langword="null"/>.</returns>
-    public static string? RootNotSelected(string pattern, string outputBase, IReadOnlyList<OutputRoot> roots, RootSelection selection)
-    {
-        ArgumentNullException.ThrowIfNull(pattern);
-        if (selection == RootSelection.All)
-            return null;
-        var code = pattern.IndexOf("{{", StringComparison.Ordinal);
-        var literal = code < 0 ? pattern : pattern[..code];
-        var segments = literal.Split('/');
-        var prefix = Join(Normalize(outputBase), string.Join('/', (code < 0 ? segments : segments[..^1]).Where(s => s.Length > 0)));
-        var root = roots.Where(r => IsUnder(prefix, Normalize(r.Path))).OrderByDescending(r => Normalize(r.Path).Length).FirstOrDefault();
-        if (root is null || root.Commit == (selection == RootSelection.Committed))
-            return null;
-        var kind = root.Commit ? "committed" : "built";
-        return $"Its outputs go under '{Normalize(root.Path)}', a {kind} root, and this run selects {(selection == RootSelection.Committed ? "committed" : "built")} roots only.";
+        return $"'{prefix}' is neither an allowed file nor under an allowed output root ({string.Join(", ", roots.Select(r => Normalize(r.Path)).Order(StringComparer.Ordinal))})";
     }
 
     /// <summary>MQ6019 diagnostics for every unit (and companion) of a pack.</summary>

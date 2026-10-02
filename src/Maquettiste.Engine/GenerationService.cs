@@ -85,7 +85,7 @@ public sealed partial class GenerationService
         GenerationResult result;
         try
         {
-            // A check plan renders every unit (in memory, committed roots) and says so: each unit's reason is "check".
+            // A check plan renders every unit (in memory, every root) and says so: each unit's reason is "check".
             result = await ExecuteAsync(request with { Mode = check ? GenerationMode.Check : GenerationMode.DryRun }, planId, run, capture, ct).ConfigureAwait(false);
         }
         catch
@@ -391,7 +391,7 @@ public sealed partial class GenerationService
                 {
                     hook = (unit, _) =>
                     {
-                        StaleManifestEntries(unit, prepared.Manifests, stale);
+                        StaleManifestEntries(unit, prepared.Manifests, RepoRoot, stale);
                         return Task.CompletedTask;
                     };
                 }
@@ -415,7 +415,7 @@ public sealed partial class GenerationService
                 }
 
                 var outcome = Outcomes.Of(mode, run.Diagnostics, changes, !stale.IsEmpty);
-                if (mode == GenerationMode.Apply && outcome == RunOutcome.Succeeded && request.Roots == RootSelection.All)
+                if (mode == GenerationMode.Apply && outcome == RunOutcome.Succeeded)
                     await run.SaveSnapshotsAsync(prepared, ct).ConfigureAwait(false);
                 if (journal is not null)
                 {
@@ -447,23 +447,32 @@ public sealed partial class GenerationService
     }
 
     /// <summary>
-    /// Check mode: a committed output whose manifest entry is missing or differs from what an apply would record is drift even when
-    /// the file on disk already has the new bytes (the committed manifest would change). Listed as <see cref="FileChangeKind.Modified"/>.
+    /// Check mode: an output whose manifest entry is missing or differs from what an apply would record is drift even when the file on
+    /// disk already has the new bytes (the manifest, which lives with the model, would change). Listed as
+    /// <see cref="FileChangeKind.Modified"/>. A block compares the hash of its lines (an entry's "created" mark is not drift), and a
+    /// block whose target file does not exist is left to the writer (with <c>createFile</c> false it is not drift).
     /// </summary>
-    private static void StaleManifestEntries(ProcessedUnit unit, ManifestSet manifests, ConcurrentQueue<FileChange> stale)
+    private static void StaleManifestEntries(ProcessedUnit unit, ManifestSet manifests, string repoRoot, ConcurrentQueue<FileChange> stale)
     {
         if (unit.Failed)
             return;
         var pack = unit.Rendered.Unit.Pack.Name;
         foreach (var file in unit.Files)
         {
-            if (!file.Root.Commit)
-                continue;
             var owned = PlanCapture.IsOwned(file.Mode, file.Role, file.ManifestHash);
+            var block = file.Mode == OutputMode.Block;
             if (!manifests.TryGet(file.Path, out var entry, out var owner))
+            {
+                if (block && !File.Exists(Path.Combine(repoRoot, file.Path.Replace('/', Path.DirectorySeparatorChar))))
+                    continue;
                 stale.Enqueue(new FileChange(file.Path, FileChangeKind.Modified, pack, unit.Rendered.Unit.Key, null, file.ManifestHash, null));
-            else if (!string.Equals(owner, pack, StringComparison.Ordinal) || (!owned && !string.Equals(entry.Hash, file.ManifestHash, StringComparison.Ordinal)))
+            }
+            else if (!string.Equals(owner, pack, StringComparison.Ordinal)
+                || (block && !string.Equals(Writing.ManagedBlock.BodyHash(entry.Hash), Writing.ManagedBlock.BodyHash(file.ManifestHash), StringComparison.Ordinal))
+                || (!block && !owned && !string.Equals(entry.Hash, file.ManifestHash, StringComparison.Ordinal)))
+            {
                 stale.Enqueue(new FileChange(file.Path, FileChangeKind.Modified, pack, unit.Rendered.Unit.Key, entry.Hash, file.ManifestHash, null));
+            }
         }
     }
 
@@ -496,7 +505,7 @@ public sealed partial class GenerationService
             async (item, token) =>
             {
                 var file = item.File;
-                var root = prepared.Paths.Check(file.Path).Root ?? new OutputRootInfo("", false);
+                var root = prepared.Paths.Check(file.Path).Root ?? new OutputRootInfo("");
                 var disk = await PlanCapture.DiskHashAsync(RepoRoot, file.Path, token).ConfigureAwait(false);
                 if (root != file.Root || (!string.Equals(disk, file.DiskHashAtPlan, StringComparison.Ordinal)
                     && !AlreadyApplied(file, disk, PackOf(item.Unit.Key, current), prepared.Manifests)))
@@ -519,7 +528,8 @@ public sealed partial class GenerationService
             if (!File.Exists(full))
                 continue;
             var bytes = await File.ReadAllBytesAsync(full, ct).ConfigureAwait(false);
-            if (!string.Equals(Writing.ManifestHashes.Comparable(change.OldHash!, bytes, Hashing.ContentHash.Of(bytes)), change.OldHash, StringComparison.Ordinal))
+            if (!string.Equals(Writing.ManifestHashes.Comparable(change.OldHash!, bytes, Hashing.ContentHash.Of(bytes), Writing.ManagedBlock.MarkerOfKey(change.UnitKey)),
+                    change.OldHash, StringComparison.Ordinal))
                 stalePaths.Add(change.Path);
         }
 
@@ -558,7 +568,7 @@ public sealed partial class GenerationService
             var write = run.WriteContext(prepared, request, GenerationMode.Apply, runId, rendered.Select(u => current[u.Key]), skipped, journal, plannedPaths);
             summary = await run.WriteAsync(prepared, FromPlan(plan.Id, rendered, current, prepared.Hasher.CurrentHash, prepared.Resolved.Find, ct), write, ct).ConfigureAwait(false);
             outcome = Outcomes.Of(GenerationMode.Apply, run.Diagnostics, summary.Changes);
-            if (outcome == RunOutcome.Succeeded && request.Roots == RootSelection.All)
+            if (outcome == RunOutcome.Succeeded)
                 await run.SaveSnapshotsAsync(prepared, ct).ConfigureAwait(false);
             await journal.EndAsync(ct).ConfigureAwait(false);
             ended = true;
@@ -653,9 +663,6 @@ public sealed record GenerationRequest
     /// <summary>Whether to compute unified diffs (dry run).</summary>
     public bool IncludeDiffs { get; init; }
 
-    /// <summary>Which roots to cover.</summary>
-    public RootSelection Roots { get; init; } = RootSelection.All;
-
     /// <summary>What to do when the run lock is held.</summary>
     public LockMode Lock { get; init; } = LockMode.Wait;
 
@@ -735,7 +742,8 @@ public sealed record PlanUnit(string Key, string InputHash, IReadOnlyList<string
     /// <summary>The element; <see langword="null"/> for <c>model</c> and <c>each locale</c> units.</summary>
     public string? ElementId { get; init; }
 
-    /// <summary><c>new</c>, <c>forced</c>, <c>check</c>, <c>inputs</c>, <c>outputs</c> or <c>unchanged</c> (section 4.2).</summary>
+    /// <summary><c>new</c>, <c>forced</c>, <c>check</c>, <c>inputs</c>, <c>outputs</c>, <c>unchanged</c> (section 4.2) or <c>target-missing</c> (a
+    /// <c>block</c> unit without <c>createFile</c> whose target file does not exist: it writes nothing).</summary>
     public string? Reason { get; init; }
 
     /// <summary>The first <see cref="Generation.PlanExplainer.MaxCauses"/> causes, ordinal by kind then key.</summary>
@@ -747,7 +755,7 @@ public sealed record PlanUnit(string Key, string InputHash, IReadOnlyList<string
 
 /// <summary>Why a unit renders (generation-ui.md section 4.2).</summary>
 /// <param name="Kind">The cause kind: <c>element</c>, <c>kind-set</c>, <c>referrers</c>, <c>setting</c>, <c>template</c>, <c>schema-diff</c>,
-/// <c>translation</c>, <c>localization</c>, <c>absent</c>, <c>inputs</c>, <c>output-missing</c>, <c>output-edited</c>.</param>
+/// <c>translation</c>, <c>localization</c>, <c>absent</c>, <c>inputs</c>, <c>output-missing</c>, <c>output-edited</c>, <c>target-missing</c>.</param>
 /// <param name="Key">The read key, or the output path; empty for a cause with no single key.</param>
 /// <param name="Detail">One sentence.</param>
 /// <param name="ElementId">The element it names, when one.</param>
@@ -757,16 +765,16 @@ public sealed record PlanCause(string Kind, string Key, string Detail, string? E
 /// <summary>One output file of a planned unit.</summary>
 /// <param name="Path">The repo-relative path.</param>
 /// <param name="ContentHash">The hash of the post-processed bytes; added and modified files keep them in <c>blobs/&lt;ContentHash&gt;</c>.</param>
-/// <param name="ManifestHash">The manifest hash (<c>r:</c> and <c>o:</c> prefixes as in engine-design.md section 12.2).</param>
+/// <param name="ManifestHash">The manifest hash (<c>r:</c>, <c>o:</c> and <c>b:</c> prefixes as in engine-design.md section 12.2).</param>
 /// <param name="Mode">The output mode.</param>
 /// <param name="Role">The file's role.</param>
 /// <param name="Root">The containing output root.</param>
-/// <param name="DiskHashAtPlan">The content hash of the file on disk when planned; <see langword="null"/> when it did not exist.</param>
+/// <param name="DiskHashAtPlan">The content hash of the (whole) file on disk when planned; <see langword="null"/> when it did not exist.</param>
 public sealed record PlanFile(string Path, string ContentHash, string ManifestHash, OutputMode Mode, FileRole Role, OutputRootInfo Root, string? DiskHashAtPlan);
 
 /// <summary>A persisted plan (<c>CacheDirectory/plans/&lt;id&gt;/plan.json</c>).</summary>
 /// <param name="Id">The plan's ULID.</param>
-/// <param name="Request">The request the plan was made with (packs, roots, hand-edit policy, force, lock mode); apply reuses it.</param>
+/// <param name="Request">The request the plan was made with (packs, hand-edit policy, force, lock mode); apply reuses it.</param>
 /// <param name="ModelVersion">The snapshot version planned against.</param>
 /// <param name="Packs">The packs.</param>
 /// <param name="Units">The units.</param>
