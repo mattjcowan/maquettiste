@@ -45,7 +45,9 @@ public sealed class McpSession : IAsyncDisposable
     /// <param name="repo">The repo.</param>
     /// <param name="ct">Cancellation.</param>
     /// <param name="protocolVersion">The protocol revision to ask for; <see langword="null"/> lets the SDK pick its latest.</param>
-    public static async Task<McpSession> StartAsync(CliRepo? repo = null, CancellationToken ct = default, string? protocolVersion = null)
+    /// <param name="environment">Environment variables of the server process (a null value removes one).</param>
+    public static async Task<McpSession> StartAsync(CliRepo? repo = null, CancellationToken ct = default, string? protocolVersion = null,
+        IDictionary<string, string?>? environment = null)
     {
         var owns = repo is null;
         repo ??= CliRepo.Billing();
@@ -56,6 +58,7 @@ public sealed class McpSession : IAsyncDisposable
             Command = host,
             Arguments = [typeof(Program).Assembly.Location, "--cache-dir", repo.CacheDirectory, "mcp", "--repo", repo.RepoRoot],
             WorkingDirectory = repo.RepoRoot,
+            EnvironmentVariables = environment,
         });
         var client = await McpClient.CreateAsync(transport, new McpClientOptions { ProtocolVersion = protocolVersion }, cancellationToken: ct);
         return new McpSession(repo, client, owns);

@@ -9,7 +9,14 @@ namespace Maquettiste.Functions;
 /// <summary>The project as the editor's shell and Settings workspace see it (composed from the snapshot, the pack list and git).</summary>
 /// <param name="Name"><c>settings.name</c>, else the repository folder's name.</param>
 /// <param name="FormatVersion">The model format version.</param>
-/// <param name="EngineVersion">The engine's format-level version.</param>
+/// <param name="EngineVersion">The engine contract version (<see cref="Engine.EngineVersion.Value"/>), not the release.</param>
+/// <param name="ProductVersion">The release running (<see cref="Engine.EngineVersion.Product"/>), such as <c>0.5.3</c>.</param>
+/// <param name="Build">The build of that release (<see cref="Engine.EngineVersion.Build"/>).</param>
+/// <param name="Workspace">What the checkout is called: <c>MAQUETTISTE_WORKSPACE</c>, else the git branch, else the short commit of a
+/// detached head, else the linked worktree's name (<see cref="WorkspaceInfo"/>).</param>
+/// <param name="Branch">The git branch, when it can be read from <c>.git</c>.</param>
+/// <param name="Worktree">The linked worktree's name, or <see langword="null"/> for a main checkout.</param>
+/// <param name="Repository">The main checkout's folder name, for a linked worktree.</param>
 /// <param name="Mode"><c>local</c> or <c>hosted</c>.</param>
 /// <param name="Settings">The typed settings.</param>
 /// <param name="SettingsHash">The hash of <c>maquettiste.json</c>.</param>
@@ -20,7 +27,8 @@ namespace Maquettiste.Functions;
 /// <param name="Git">The git status, or <see langword="null"/> outside a git checkout.</param>
 /// <param name="IconHash">The content hash of the icon <c>GET /api/project/branding/icon</c> serves, or <see langword="null"/> without one.</param>
 /// <param name="ProjectKey">A stable identity of the served checkout (<see cref="ProjectEndpoints.KeyOf"/>), which the editor keys its page state by.</param>
-public sealed record ProjectInfo(string Name, int FormatVersion, string EngineVersion, string Mode, ProjectSettings Settings, string SettingsHash,
+public sealed record ProjectInfo(string Name, int FormatVersion, string EngineVersion, string ProductVersion, string Build, string? Workspace,
+    string? Branch, string? Worktree, string? Repository, string Mode, ProjectSettings Settings, string SettingsHash,
     IReadOnlyList<ElementSummary> Databases, IReadOnlyList<PackManifest> Packs, IReadOnlyList<Diagnostic> PackDiagnostics,
     IReadOnlyList<ExtensionSchema> Extensions, GitSummary? Git, string? IconHash = null, string? ProjectKey = null);
 
@@ -51,7 +59,10 @@ public static class ProjectEndpoints
         var status = await git.ReadAsync(ct).ConfigureAwait(false);
         var icon = await store.ReadBrandingIconAsync(ct).ConfigureAwait(false);
         var name = snapshot.Settings.Name is { Length: > 0 } n ? n : Path.GetFileName(settings.Engine.RepoRoot);
-        return Api.Json(new ProjectInfo(name, snapshot.Settings.FormatVersion, Engine.EngineVersion.Value, EditorSettings.ModeOf(auth.VariablesFor(context)),
+        var variables = auth.VariablesFor(context);
+        var where = WorkspaceInfo.Detect(settings.Engine.RepoRoot, variables.Get(EditorSettings.WorkspaceVariable));
+        return Api.Json(new ProjectInfo(name, snapshot.Settings.FormatVersion, Engine.EngineVersion.Value, Engine.EngineVersion.Product,
+            Engine.EngineVersion.Build, where.Workspace, where.Branch, where.Worktree, where.Repository, EditorSettings.ModeOf(variables),
             snapshot.Settings, snapshot.SettingsHash, [.. snapshot.Summaries().Where(s => s.Kind == "database")], packs.Packs, packs.Diagnostics,
             [.. snapshot.Extensions.Select(e => e.Schema)], status, icon?.Hash, KeyOf(settings.Engine.RepoRoot)));
     });

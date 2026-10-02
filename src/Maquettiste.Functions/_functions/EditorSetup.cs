@@ -67,6 +67,9 @@ public sealed class EditorSettings
     /// <summary>The variable naming the local developer.</summary>
     public const string LocalUserVariable = "MAQUETTISTE_LOCAL_USER";
 
+    /// <summary>The variable naming the workspace the top bar shows (<see cref="WorkspaceInfo.Variable"/>); empty means what git says.</summary>
+    public const string WorkspaceVariable = WorkspaceInfo.Variable;
+
     /// <summary>The engine options.</summary>
     public required EngineOptions Engine { get; init; }
 

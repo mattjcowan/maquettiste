@@ -30,7 +30,8 @@ namespace Maquettiste.Cli.Mcp;
 /// <param name="generation">The generation service over <paramref name="store"/>.</param>
 /// <param name="repoRoot">The repo root, for the project name when the settings have none.</param>
 /// <param name="log">Where an internal failure is reported, one line each (standard error, never the protocol stream).</param>
-internal sealed partial class ModelTools(ModelStore store, GenerationService generation, string repoRoot, TextWriter log)
+/// <param name="workspace">The value of <c>MAQUETTISTE_WORKSPACE</c>, which names the workspace in <c>get_project</c>; blank means unset.</param>
+internal sealed partial class ModelTools(ModelStore store, GenerationService generation, string repoRoot, TextWriter log, string? workspace = null)
 {
     private readonly TextWriter _log = log ?? throw new ArgumentNullException(nameof(log));
     private readonly ModelStore _store = store ?? throw new ArgumentNullException(nameof(store));
@@ -45,13 +46,15 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     /// <param name="ct">Cancellation.</param>
     /// <returns>The project.</returns>
     [McpServerTool(Name = "get_project", Title = "Project", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("The project: name, format and engine versions, settings and their hash, databases, template packs (with pack diagnostics) and extension schemas. Start here.")]
+    [Description("The project: name, the release running (productVersion, build) beside the engine contract (engineVersion) and the model format, the workspace (MAQUETTISTE_WORKSPACE, else the git branch, else the worktree name) with the branch and worktree, settings and their hash, databases, template packs (with pack diagnostics) and extension schemas. Start here.")]
     public Task<CallToolResult> GetProject(CancellationToken ct) => GuardAsync(async () =>
     {
         var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
         var packs = await _generation.GetPacksAsync(ct).ConfigureAwait(false);
         var name = snapshot.Settings.Name is { Length: > 0 } n ? n : Path.GetFileName(_repoRoot);
-        return Ok(new ProjectInfo(name, snapshot.Settings.FormatVersion, EngineVersion.Value, "local", snapshot.Settings, snapshot.SettingsHash,
+        var where = WorkspaceInfo.Detect(_repoRoot, workspace);
+        return Ok(new ProjectInfo(name, snapshot.Settings.FormatVersion, EngineVersion.Value, EngineVersion.Product, EngineVersion.Build, where.Workspace,
+            where.Branch, where.Worktree, where.Repository, "local", snapshot.Settings, snapshot.SettingsHash,
             [.. snapshot.Summaries().Where(s => s.Kind == "database")], packs.Packs, packs.Diagnostics, [.. snapshot.Extensions.Select(e => e.Schema)], null));
     }, ct);
 
@@ -865,7 +868,13 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
 /// <summary>The body of <c>get_project</c>: the editor API's <c>ProjectInfo</c> (getProject).</summary>
 /// <param name="Name">The project name.</param>
 /// <param name="FormatVersion">The model format version.</param>
-/// <param name="EngineVersion">The engine version.</param>
+/// <param name="EngineVersion">The engine contract version (<see cref="Engine.EngineVersion.Value"/>), not the release.</param>
+/// <param name="ProductVersion">The release running (<see cref="Engine.EngineVersion.Product"/>).</param>
+/// <param name="Build">The build of the release (<see cref="Engine.EngineVersion.Build"/>).</param>
+/// <param name="Workspace">What the checkout is called (<see cref="WorkspaceInfo.Workspace"/>).</param>
+/// <param name="Branch">The git branch, when it can be read.</param>
+/// <param name="Worktree">The linked worktree's name.</param>
+/// <param name="Repository">The main checkout's folder name, for a linked worktree.</param>
 /// <param name="Mode">Always <c>local</c>.</param>
 /// <param name="Settings">The typed settings.</param>
 /// <param name="SettingsHash">The settings file hash.</param>
@@ -874,6 +883,7 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
 /// <param name="PackDiagnostics">The diagnostics of loading the packs.</param>
 /// <param name="Extensions">The extension schemas.</param>
 /// <param name="Git">Always <see langword="null"/> (the MCP server does not read git).</param>
-internal sealed record ProjectInfo(string Name, int FormatVersion, string EngineVersion, string Mode, ProjectSettings Settings, string SettingsHash,
+internal sealed record ProjectInfo(string Name, int FormatVersion, string EngineVersion, string ProductVersion, string Build, string? Workspace,
+    string? Branch, string? Worktree, string? Repository, string Mode, ProjectSettings Settings, string SettingsHash,
     IReadOnlyList<ElementSummary> Databases, IReadOnlyList<PackManifest> Packs, IReadOnlyList<Diagnostic> PackDiagnostics,
     IReadOnlyList<ExtensionSchema> Extensions, object? Git);

@@ -31,6 +31,10 @@ services:
       MAQUETTISTE_UID: ${MAQUETTISTE_UID:-}                         # optional; empty = the owner of .maquettiste/
       MAQUETTISTE_GID: ${MAQUETTISTE_GID:-}                         # optional; empty = that owner's group
       MAQUETTISTE_EDITOR_TOKEN: ${MAQUETTISTE_EDITOR_TOKEN:-}       # optional; empty = local peers only
+      # The workspace name shown under the project name (v0.5.3 · <workspace>) and in /api/project, to tell editors on other
+      # ports apart. Empty = the branch in ./.git/HEAD, else a linked worktree's name (its git folder is not mounted). Set it
+      # from the host, e.g. MAQUETTISTE_WORKSPACE="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || basename "$PWD")".
+      MAQUETTISTE_WORKSPACE: ${MAQUETTISTE_WORKSPACE:-}
       # The container's gateway is found at start; set this only where the browser's requests arrive from another address
       # (an IP address list, never *). See docker/README.md for the Mac and other setups.
       MAQUETTISTE_LOCAL_PEERS: ${MAQUETTISTE_LOCAL_PEERS:-}

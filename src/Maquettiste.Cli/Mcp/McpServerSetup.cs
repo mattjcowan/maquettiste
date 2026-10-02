@@ -77,7 +77,7 @@ internal static class McpServerSetup
 
         var options = new McpServerOptions
         {
-            ServerInfo = new Implementation { Name = "maquettiste", Version = EngineVersion.Value },
+            ServerInfo = new Implementation { Name = "maquettiste", Version = EngineVersion.Product },
             ServerInstructions = Instructions.Replace("\r\n", "\n", StringComparison.Ordinal),
             ToolCollection = toolCollection,
             ResourceCollection = resources,

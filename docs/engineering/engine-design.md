@@ -35,7 +35,7 @@ maquettiste/
 
 | Folder | Holds | Owner (§18) |
 | --- | --- | --- |
-| *(root)* | `EngineOptions`, `EngineVersion`, `IIdGenerator` (Scaffold); `ModelStore` (W1); `GenerationService`, `JobQueue` (W6) | see left |
+| *(root)* | `EngineOptions`, `EngineVersion`, `IIdGenerator` (Scaffold); `ModelStore` (W1); `GenerationService`, `JobQueue` (W6); `EngineVersion.Product` and `Build` (the release and its build, beside the contract `Value`) and `WorkspaceInfo` (the workspace name from `MAQUETTISTE_WORKSPACE` or `.git`), which the CLI, the MCP server and the editor API report | see left |
 | `Model/` | element records, `ModelSnapshot`, index, `KindInfo`, `BuiltinTypes`, `EngineJson` | Scaffold |
 | `Diagnostics/` | `Diagnostic`, `RuleCatalog`, `DiagnosticSeverity` | Scaffold |
 | `Pipeline/` | stage interfaces and the DTOs they exchange | Scaffold |

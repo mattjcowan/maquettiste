@@ -20,6 +20,22 @@ the model and generated files stay in your repository).
 Run `maquettiste init` before the first `up`: without `.maquettiste/`, Docker creates the mount folder itself (root-owned on
 Linux) and the editor starts on an empty project.
 
+The top bar shows the release and the workspace under the project name (`v0.5.3 · feature/billing`), so editors on other ports
+can be told apart. The container sees only `/repo`, so it takes the workspace from `MAQUETTISTE_WORKSPACE` when set, else the
+branch in `.git/HEAD`, else, for a linked worktree (whose `.git` file points at a git folder that is not mounted), the worktree's
+name:
+
+    MAQUETTISTE_WORKSPACE="$(git rev-parse --abbrev-ref HEAD)" MAQUETTISTE_PORT=8081 docker compose -f <maquettiste>/docker/compose.yaml --project-directory . -p billing up -d
+
+## Which version is running
+
+`GET /api/health` and `GET /api/project` report `productVersion` (the release, such as `0.5.3`) and `build` (in the image, the
+per-build package version, such as `0.5.3-b14a8131cfe39`, also in `/opt/maquettiste/engine.version`); their `engineVersion` is the
+engine contract that packs' `engine` ranges are checked against, not the release. The image carries the OCI labels
+`org.opencontainers.image.title`, `.version` (the release), `.revision` (the commit it was built from), `.source` and `.licenses`:
+
+    docker inspect -f '{{ index .Config.Labels "org.opencontainers.image.version" }}' mattjcowan/maquettiste:latest
+
 ## The CLI in the image
 
 The image also carries the `maquettiste` command line (`/usr/local/bin/maquettiste`, the CLI in `/opt/maquettiste/cli` on the
@@ -35,8 +51,11 @@ Podman. docs/user-guide.md "The command line" has the commands and a shell funct
 `$HOME/.docker/bin` to the `PATH` (a client started from the desktop on the Mac does not inherit the shell's), then
 `exec docker run -i --rm --user 0:0 -v "$(pwd -P):/repo" ...` of the image, the same form (`--runtime podman` writes `podman`),
 with the server's stderr appended to `.maquettiste/.cache/mcp.log`, which git ignores. `$(pwd -P)` is the real path of the
-folder the client starts the server in, so a repository behind a symbolic link mounts too. On Windows, which has no `/bin/sh`,
-the entry is `docker run -i --rm --user 0:0 -v ${PWD}:/repo ...` itself and the client expands `${PWD}`. Nothing else is
+folder the client starts the server in, so a repository behind a symbolic link mounts too. The line also passes
+`-e MAQUETTISTE_WORKSPACE="$(git symbolic-ref --short -q HEAD 2>/dev/null || basename "$(pwd -P)")"`: the branch read on the
+host, else the folder's name, which `get_project` reports as `workspace`. On Windows, which has no `/bin/sh`, the entry is
+`docker run -i --rm --user 0:0 -v ${PWD}:/repo ... -e MAQUETTISTE_WORKSPACE ...` itself: the client expands `${PWD}`, and the
+variable is passed on when the client's environment sets it (otherwise the server reads the branch from `.git`). Nothing else is
 written to the repository (docs/mcp.md).
 
 ## Never delete the site
@@ -103,10 +122,14 @@ only an example of the shape to expect.
 
 ## Build and test the image (maintainers)
 
-    docker build -f docker/Dockerfile -t mattjcowan/maquettiste:dev .
+    docker build -f docker/Dockerfile --build-arg MAQUETTISTE_REVISION="$(git rev-parse HEAD)" -t mattjcowan/maquettiste:dev .
     mkdir -p ../smoketmp && TMPDIR=$PWD/../smoketmp sh docker/smoke.sh      # offline checks; prints "smoke: all checks passed"
     docker/dev-billing.sh                                                  # the billing fixture on 127.0.0.1:8080; rerunnable
 
 Files: `Dockerfile` (multi-stage: engine packages, site zip, final image), `entrypoint.sh` (first-boot deploy, key seeding,
 local peers), `compose.yaml` (local mode), `pack-site.sh` and `placeholder/` (the site zip when the SPA's own packer is absent),
 `closure/` (the offline NuGet closure the host builds `_functions/` from), `smoke.sh`, `dev-billing.sh`.
+
+Two build arguments fill the OCI labels: `MAQUETTISTE_VERSION` (`.version`; it defaults to the `VersionPrefix` of
+`Directory.Build.props`, which a test keeps in step, and the publish workflow passes the tag's version) and `MAQUETTISTE_REVISION`
+(`.revision`, the commit; empty unless given, as the workflows do).

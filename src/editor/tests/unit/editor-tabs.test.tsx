@@ -7,8 +7,12 @@ import { App } from "@/app/App";
 import {
   activate,
   activeTab,
+  closeAll,
   closeElement,
+  closeOthers,
+  closeSaved,
   closeTab,
+  closeToRight,
   emptyEditorTabs,
   followSelection,
   hasEditor,
@@ -16,6 +20,7 @@ import {
   pinTab,
   setFollow,
   setView,
+  unpinTab,
   type EditorTabsState,
 } from "@/editors/tabs";
 import { baseChain, relatedOf } from "@/editors/related";
@@ -67,6 +72,54 @@ describe("editor tab state", () => {
     expect(s.tabs).toHaveLength(0);
     expect(s.active).toBeNull();
     expect(closeTab(s, "nope")).toBe(s);
+  });
+
+  it("closes others, to the right, all and the saved ones, keeping tabs with unsaved changes", () => {
+    let s = emptyEditorTabs();
+    for (const id of ["A", "B", "C", "D", "E"]) s = openTab(s, entity(id), { pin: true });
+    const key = (id: string) => s.tabs.find((t) => t.id === id)!.key;
+    const dirty = (t: { id: string }) => t.id === "B" || t.id === "E";
+    // Close others: only the tab and the unsaved ones stay; the shown tab (E) is kept, so it still shows.
+    let r = closeOthers(s, key("C"));
+    expect(ids(r)).toEqual(["C"]);
+    expect(activeTab(r)?.id).toBe("C");
+    r = closeOthers(s, key("C"), dirty);
+    expect(ids(r)).toEqual(["B", "C", "E"]);
+    expect(activeTab(r)?.id).toBe("E");
+    // Close to the right: the shown tab closes, so the tab the menu came from shows.
+    r = closeToRight(s, key("B"));
+    expect(ids(r)).toEqual(["A", "B"]);
+    expect(activeTab(r)?.id).toBe("B");
+    expect(ids(closeToRight(s, key("B"), dirty))).toEqual(["A", "B", "E"]);
+    expect(closeToRight(s, key("E"))).toBe(s);
+    // Close all: the screen shows, unless an unsaved tab stays.
+    r = closeAll(s);
+    expect(r.tabs).toEqual([]);
+    expect(r.active).toBeNull();
+    r = closeAll(activate(s, key("C")), dirty);
+    expect(ids(r)).toEqual(["B", "E"]);
+    expect(activeTab(r)?.id).toBe("E");
+    expect(ids(closeSaved(s, dirty))).toEqual(["B", "E"]);
+    // Nothing to close: the same state, which the menu reads as a disabled item.
+    const both = closeSaved(s, dirty);
+    expect(closeSaved(both, dirty)).toBe(both);
+    expect(closeOthers(both, both.tabs[0].key, dirty)).toBe(both);
+    expect(closeOthers(s, "nope")).toBe(s);
+    // With the screen shown, it stays shown.
+    expect(closeAll(activate(s, null), dirty).active).toBeNull();
+  });
+
+  it("unpins a tab into the preview tab, pinning the earlier preview", () => {
+    let s = emptyEditorTabs();
+    s = openTab(s, entity("A"), { pin: true });
+    s = openTab(s, entity("B"), { pin: false });
+    expect(ids(s)).toEqual(["A", "B?"]);
+    s = unpinTab(s, s.tabs[0].key);
+    expect(ids(s)).toEqual(["A?", "B"]);
+    expect(unpinTab(s, s.tabs[0].key)).toBe(s);
+    // The General-mode tab stays pinned.
+    s = setFollow(s, s.tabs[1].key, true);
+    expect(unpinTab(s, s.tabs[1].key)).toBe(s);
   });
 
   it("General mode follows the selection, keeps the sub-tab, and leaves preview opens alone", () => {
@@ -290,6 +343,84 @@ describe("entity editor", () => {
       fireEvent(tab, new MouseEvent("auxclick", { bubbles: true, button: 1 }));
     });
     await waitFor(() => expect(screen.queryByTestId("editor-area")).toBeNull());
+    expect(store.getState().editors.tabs).toHaveLength(0);
+  });
+
+  it("a tab's menu closes others and to the right, keeps unsaved tabs and says so", async () => {
+    window.history.replaceState(null, "", "/generate");
+    render(<App services={api.services} />);
+    const store = api.services.store;
+    await waitFor(() => expect(api.services.queryClient.getQueryData(["index"])).toBeTruthy(), { timeout: 5000 });
+    const rows = api.services.queryClient.getQueryData<ElementSummary[]>(["index"])!;
+    const entities = rows.filter((r) => r.kind === "entity" && r.name).slice(0, 4);
+    expect(entities).toHaveLength(4);
+    act(() => {
+      for (const r of entities) store.getState().updateEditors((s) => openTab(s, entity(r.id), { pin: true }));
+    });
+    await screen.findByRole("region", { name: `Editor: ${entities[3].name}` }, { timeout: 5000 });
+    // The last tab has unsaved changes.
+    act(() =>
+      store.getState().setDraft({
+        id: entities[3].id,
+        channel: "element",
+        baseHash: "h",
+        baseJson: {} as never,
+        json: {} as never,
+        status: "dirty",
+        diagnostics: [],
+        conflict: null,
+        error: null,
+      }),
+    );
+    const tabAt = (i: number) => within(screen.getByTestId("editor-tabs")).getAllByTestId("editor-tab")[i];
+    const menuOn = async (i: number) => {
+      fireEvent.contextMenu(tabAt(i), { clientX: 40, clientY: 10 });
+      return screen.findByTestId("tab-menu");
+    };
+
+    // On the last tab, Close to the right has nothing to close.
+    let menu = await menuOn(3);
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((m) => m.textContent),
+    ).toEqual(["Close", "Close others", "Close to the right", "Close all", "Close saved", "Unpin"]);
+    expect(within(menu).getByRole("menuitem", { name: "Close to the right" }).getAttribute("aria-disabled")).toBe("true");
+    expect(within(menu).getByRole("menuitem", { name: "Close others" }).getAttribute("aria-disabled")).toBeNull();
+    await act(async () => {
+      await userEvent.keyboard("{Escape}");
+    });
+    await waitFor(() => expect(screen.queryByTestId("tab-menu")).toBeNull());
+
+    // Close to the right of the second: the third closes, the unsaved fourth stays, and a notice says so.
+    menu = await menuOn(1);
+    await act(async () => {
+      await userEvent.click(within(menu).getByRole("menuitem", { name: "Close to the right" }));
+    });
+    expect(store.getState().editors.tabs.map((t) => t.id)).toEqual([entities[0].id, entities[1].id, entities[3].id]);
+    expect(store.getState().notice?.text).toBe("1 tab kept: unsaved changes");
+
+    // The menu key opens the menu at the tab; Close others leaves that tab and the unsaved one.
+    const first = within(tabAt(0)).getAllByRole("button")[0];
+    first.focus();
+    fireEvent.keyDown(first, { key: "F10", shiftKey: true });
+    menu = await screen.findByTestId("tab-menu");
+    await act(async () => {
+      await userEvent.click(within(menu).getByRole("menuitem", { name: "Close others" }));
+    });
+    expect(store.getState().editors.tabs.map((t) => t.id)).toEqual([entities[0].id, entities[3].id]);
+
+    // Close saved leaves only the unsaved tab, silently; Close all then has nothing to close.
+    menu = await menuOn(0);
+    await act(async () => {
+      await userEvent.click(within(menu).getByRole("menuitem", { name: "Close saved" }));
+    });
+    expect(store.getState().editors.tabs.map((t) => t.id)).toEqual([entities[3].id]);
+    menu = await menuOn(0);
+    expect(within(menu).getByRole("menuitem", { name: "Close all" }).getAttribute("aria-disabled")).toBe("true");
+    await act(async () => {
+      await userEvent.click(within(menu).getByRole("menuitem", { name: "Close" }));
+    });
     expect(store.getState().editors.tabs).toHaveLength(0);
   });
 

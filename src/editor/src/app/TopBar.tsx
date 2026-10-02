@@ -8,6 +8,8 @@ import { LOGO_TOOLTIP, PROJECT_TOOLTIP } from "@/model/labels";
 import { useEditor, type ThemeChoice } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { useServices } from "./context";
+import { Link } from "react-router";
+import { productLine, productTooltip } from "./productLine";
 import { useUndoRedo } from "./shortcuts";
 import { LocaleSwitcher } from "@/l10n/LocaleSwitcher";
 import { LocalizationSync } from "@/l10n/queries";
@@ -26,6 +28,7 @@ export function TopBar() {
   const canRedo = useEditor(store, (s) => s.redo.length > 0);
   const { undo, redo } = useUndoRedo();
   const git = project.data?.git;
+  const line = productLine(project.data);
   // The secondary controls (git status, content locale, undo and redo, theme, live status, user) hide together.
   const hidden = useEditor(store, (s) => s.topbarCollapsed);
   const branding = useBrandingView();
@@ -36,24 +39,35 @@ export function TopBar() {
     <header className="flex h-[var(--mq-topbar-h)] shrink-0 items-center gap-2 border-b border-default bg-surface px-2" data-region="topbar">
       <div className="flex min-w-0 items-center gap-2">
         <Tooltip content={LOGO_TOOLTIP}>
-          {branding.iconUrl ? (
-            <img src={branding.iconUrl} alt="" aria-hidden className="size-6 rounded-control object-contain" data-testid="logo" />
-          ) : (
-            <span
-              aria-hidden
-              className="grid size-6 place-items-center rounded-control bg-accent text-12 font-semibold text-accent-foreground"
-              data-testid="logo"
-            >
-              M
-            </span>
-          )}
+          <Link to="/" aria-label={LOGO_TOOLTIP} className="shrink-0 rounded-control" data-testid="home-link">
+            {branding.iconUrl ? (
+              <img src={branding.iconUrl} alt="" aria-hidden className="size-6 rounded-control object-contain" data-testid="logo" />
+            ) : (
+              <span
+                aria-hidden
+                className="grid size-6 place-items-center rounded-control bg-accent text-12 font-semibold text-accent-foreground"
+                data-testid="logo"
+              >
+                M
+              </span>
+            )}
+          </Link>
         </Tooltip>
-        <Tooltip content={PROJECT_TOOLTIP}>
-          <h1 className="truncate text-14 font-semibold" data-testid="project-name">
-            {branding.name}
-          </h1>
-        </Tooltip>
-        {git && !hidden ? (
+        <div className="flex min-w-0 flex-col">
+          <Tooltip content={PROJECT_TOOLTIP}>
+            <h1 className={cn("truncate text-14 font-semibold", line && "leading-4")} data-testid="project-name">
+              {branding.name}
+            </h1>
+          </Tooltip>
+          {line ? (
+            <Tooltip content={productTooltip(project.data)}>
+              <span className="truncate text-11 leading-3 text-secondary" data-testid="product-line">
+                {line}
+              </span>
+            </Tooltip>
+          ) : null}
+        </div>
+        {git && !line && !hidden ? (
           <span className="flex items-center gap-1 text-12 text-secondary" data-testid="git-status">
             <GitBranch className="size-3.5" aria-hidden />
             <span>{git.branch ?? "detached"}</span>

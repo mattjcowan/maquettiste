@@ -118,6 +118,13 @@
     border-radius: 4px;
     background: var(--mq-border-strong) padding-box;
   }
+  /* A strip that scrolls without a scrollbar (the editor tabs): its arrows, the wheel and the keyboard move it. */
+  .mq-no-scrollbar {
+    scrollbar-width: none;
+  }
+  .mq-no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* One dense layout (generation-ui.md 6, E23); a coarse pointer (touch) keeps 44 px targets for the rows a finger picks. */

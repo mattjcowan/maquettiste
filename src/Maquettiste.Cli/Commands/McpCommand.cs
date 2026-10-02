@@ -34,7 +34,8 @@ internal static class McpCommand
         {
             await store.LoadAsync(ct).ConfigureAwait(false);
             var generation = new GenerationService(store, options);
-            var tools = new ModelTools(store, generation, repo, TextWriter.Synchronized(context.Error));
+            var tools = new ModelTools(store, generation, repo, TextWriter.Synchronized(context.Error),
+                context.Environment.GetEnvironmentVariable(WorkspaceInfo.Variable));
             var serverOptions = McpServerSetup.CreateOptions(tools);
             context.Info($"maquettiste: serving {repo} over MCP (stdio).");
 

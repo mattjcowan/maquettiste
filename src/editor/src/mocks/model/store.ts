@@ -952,6 +952,13 @@ export class MockModel {
       projectKey: "0123456789abcdef",
       formatVersion: settings.formatVersion,
       engineVersion: "1.0.0",
+      // The release and the workspace the top bar shows under the project name (MAQUETTISTE_WORKSPACE=billing).
+      productVersion: "0.5.3",
+      build: "0.5.3-mock",
+      workspace: "billing",
+      branch: "main",
+      worktree: null,
+      repository: null,
       mode: "local",
       settings,
       settingsHash: this.settingsHash,

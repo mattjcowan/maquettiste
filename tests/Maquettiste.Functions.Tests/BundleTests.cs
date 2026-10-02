@@ -44,6 +44,19 @@ public sealed partial class BundleTests
     }
 
     [Fact]
+    public void The_image_version_label_defaults_to_the_built_version()
+    {
+        var props = XDocument.Load(Path.Combine(Fixtures.RepoRoot, "Directory.Build.props"));
+        var prefix = props.Descendants("VersionPrefix").Single().Value;
+        var suffix = props.Descendants("VersionSuffix").SingleOrDefault()?.Value;
+        var version = string.IsNullOrEmpty(suffix) ? prefix : prefix + "-" + suffix;
+
+        var dockerfile = File.ReadAllLines(Path.Combine(Fixtures.RepoRoot, "docker", "Dockerfile"));
+        Assert.Contains("ARG MAQUETTISTE_VERSION=" + version, dockerfile);
+        Assert.Contains(dockerfile, l => l.Contains("org.opencontainers.image.version=\"${MAQUETTISTE_VERSION}\"", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void No_file_references_a_project()
     {
         Assert.All(Files, f => Assert.DoesNotContain("#:project", File.ReadAllText(f.FullName), StringComparison.Ordinal));

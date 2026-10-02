@@ -75,6 +75,18 @@ describe("shell", () => {
     expect(document.querySelectorAll("[data-region]").length).toBeGreaterThanOrEqual(5);
   });
 
+  it("shows the release and the workspace under the project name, and the mark links home", async () => {
+    window.history.replaceState(null, "", "/generate");
+    render(<App services={api.services} />);
+    const line = await screen.findByTestId("product-line");
+    expect(line.textContent).toBe("v0.5.3 · billing · main (0)");
+    expect(line.getAttribute("title")).toContain("Build 0.5.3-mock");
+    expect(line.getAttribute("title")).toContain("Engine contract 1.0.0, model format 1");
+    const home = screen.getByRole("link", { name: "Home" });
+    expect(home.getAttribute("href")).toBe("/");
+    expect(home.getAttribute("title")).toBe("Home");
+  });
+
   it("selects an element from the explorer into the inspector and the URL", async () => {
     window.history.replaceState(null, "", "/generate");
     render(<App services={api.services} />);

@@ -52,13 +52,16 @@ jobs:
         id: version
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+            version="${{ inputs.version }}"
           else
-            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            version="${GITHUB_REF_NAME#v}"
           fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # The image's OCI labels (docker/Dockerfile's last instructions): the release, the commit and the commit's time.
+          echo "labels=--build-arg MAQUETTISTE_VERSION=$version --build-arg MAQUETTISTE_REVISION=$(git rev-parse HEAD) --build-arg MAQUETTISTE_CREATED=$(git log -1 --format=%cI)" >> "$GITHUB_OUTPUT"
 
       - name: Build the image for the smoke test
-        run: docker build -f docker/Dockerfile -t "$IMAGE:release-check" .
+        run: docker build -f docker/Dockerfile ${{ steps.version.outputs.labels }} -t "$IMAGE:release-check" .
 
       - name: Smoke test (no network)
         run: sh docker/smoke.sh "$IMAGE:release-check"
@@ -91,4 +94,4 @@ jobs:
             [ -n "$DOCKERHUB_USERNAME" ] && tags="$tags -t $IMAGE:latest" ;;
           esac
           # shellcheck disable=SC2086
-          docker buildx build --platform linux/amd64,linux/arm64 -f docker/Dockerfile $tags --push .
+          docker buildx build --platform linux/amd64,linux/arm64 -f docker/Dockerfile ${{ steps.version.outputs.labels }} $tags --push .

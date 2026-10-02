@@ -25,9 +25,13 @@ public sealed class ProjectAndModelTests
         Contract.AssertResponse(after, "/api/health");
         Assert.Equal("ok", after.Json["status"]!.GetValue<string>());
         Assert.Equal(host.Store.Current!.Documents.Count, after.Json["elements"]!.GetValue<int>());
-        Assert.Equal("1.0.0", after.Json["engineVersion"]!.GetValue<string>());
+        Assert.Equal("1.0.0", after.Json["engineVersion"]!.GetValue<string>()); // the engine contract
         Assert.Equal(HealthEndpoints.EngineBuild(), after.Json["engineBuild"]!.GetValue<string>());
         Assert.DoesNotContain("+", HealthEndpoints.EngineBuild(), StringComparison.Ordinal);
+        // The release beside it: what the CLI's --version prints first, and its build.
+        Assert.Equal(Engine.EngineVersion.Product, after.Json["productVersion"]!.GetValue<string>());
+        Assert.Equal(Engine.EngineVersion.Build, after.Json["build"]!.GetValue<string>());
+        Assert.Matches(@"^\d+\.\d+\.\d+", after.Json["productVersion"]!.GetValue<string>());
     }
 
     [Fact]
@@ -116,12 +120,53 @@ public sealed class ProjectAndModelTests
         Assert.Equal(["csharp-dapper", "sql-ddl"], project["packs"]!.AsArray().Select(p => p!["name"]!.GetValue<string>()));
         Assert.Equal("retention", project["extensions"]!.AsArray().Single()!["name"]!.GetValue<string>());
         Assert.Null(project["git"]); // the temp copy is not a git checkout
+        Assert.Equal("1.0.0", project["engineVersion"]!.GetValue<string>());
+        Assert.Equal(Engine.EngineVersion.Product, project["productVersion"]!.GetValue<string>());
+        Assert.Equal(Engine.EngineVersion.Build, project["build"]!.GetValue<string>());
+        Assert.Null(project["workspace"]); // no MAQUETTISTE_WORKSPACE and no .git
+        Assert.Null(project["branch"]);
+        Assert.Null(project["worktree"]);
+        Assert.Null(project["repository"]);
         // The page-state key: stable for one checkout, apart for another checkout with the same name.
         var key = project["projectKey"]!.GetValue<string>();
         Assert.Matches("^[0-9a-f]{16}$", key);
         Assert.Equal(key, ProjectEndpoints.KeyOf(host.RepoRoot + Path.DirectorySeparatorChar));
         Assert.NotEqual(key, ProjectEndpoints.KeyOf(host.RepoRoot + "-clone"));
         Recorder.Json("project.json", response);
+    }
+
+    [Fact]
+    public async Task Project_names_the_workspace_from_the_variable_else_the_branch_else_the_worktree()
+    {
+        await using var host = EditorHost.Create();
+
+        // A main checkout: the branch in .git/HEAD, read on each request.
+        Directory.CreateDirectory(host.PathOf(".git"));
+        File.WriteAllText(host.PathOf(".git/HEAD"), "ref: refs/heads/feature/billing\n");
+        var checkout = await host.GetAsync("/api/project");
+        Contract.AssertResponse(checkout, "/api/project");
+        Assert.Equal("feature/billing", checkout.Json["workspace"]!.GetValue<string>());
+        Assert.Equal("feature/billing", checkout.Json["branch"]!.GetValue<string>());
+        Assert.Null(checkout.Json["worktree"]);
+
+        // A linked worktree mounted alone (the container's /repo): its .git file names a git folder that is not there.
+        Directory.Delete(host.PathOf(".git"), recursive: true);
+        File.WriteAllText(host.PathOf(".git"), "gitdir: /home/someone/maquettiste/.git/worktrees/modeling-and-codegen\n");
+        var linked = await host.GetAsync("/api/project");
+        Contract.AssertResponse(linked, "/api/project");
+        Assert.Equal("modeling-and-codegen", linked.Json["workspace"]!.GetValue<string>());
+        Assert.Equal("modeling-and-codegen", linked.Json["worktree"]!.GetValue<string>());
+        Assert.Equal("maquettiste", linked.Json["repository"]!.GetValue<string>());
+        Assert.Null(linked.Json["branch"]);
+
+        // MAQUETTISTE_WORKSPACE wins, trimmed; blank is unset.
+        host.Variables.Set(EditorSettings.WorkspaceVariable, "  billing-demo ");
+        var named = await host.GetAsync("/api/project");
+        Contract.AssertResponse(named, "/api/project");
+        Assert.Equal("billing-demo", named.Json["workspace"]!.GetValue<string>());
+        Assert.Equal("modeling-and-codegen", named.Json["worktree"]!.GetValue<string>());
+        host.Variables.Set(EditorSettings.WorkspaceVariable, "   ");
+        Assert.Equal("modeling-and-codegen", (await host.GetAsync("/api/project")).Json["workspace"]!.GetValue<string>());
     }
 
     [Fact]

@@ -25,7 +25,7 @@ public sealed class McpSurfaceTests
         var ct = TestContext.Current.CancellationToken;
         await using var session = await McpSession.StartAsync(ct: ct);
         Assert.Equal("maquettiste", session.Client.ServerInfo.Name);
-        Assert.Equal(Engine.EngineVersion.Value, session.Client.ServerInfo.Version);
+        Assert.Equal(Engine.EngineVersion.Product, session.Client.ServerInfo.Version); // the release, not the engine contract
         Assert.Contains("expectedHash", session.Client.ServerInstructions, StringComparison.Ordinal);
 
         var tools = await session.Client.ListToolsAsync(cancellationToken: ct);
@@ -216,6 +216,36 @@ public sealed class McpEndOfInputTests
 public sealed class McpReadTests
 {
     [Fact]
+    public async Task Project_names_the_release_and_the_workspace_from_the_variable_else_from_git()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Billing();
+        await using (var plain = await McpSession.StartAsync(repo, ct, environment: new Dictionary<string, string?> { [Engine.WorkspaceInfo.Variable] = null }))
+        {
+            var project = await plain.OkAsync("get_project");
+            Assert.Equal(Engine.EngineVersion.Product, (string)project["productVersion"]!);
+            Assert.Equal(Engine.EngineVersion.Build, (string)project["build"]!);
+            Assert.Null(project["workspace"]); // no variable, no .git
+            Assert.Null(project["branch"]);
+            Assert.Null(project["worktree"]);
+        }
+
+        // A linked worktree whose git folder is not in reach (a container): its name; the variable wins over it, trimmed.
+        File.WriteAllText(Path.Combine(repo.RepoRoot, ".git"), "gitdir: /nowhere/maquettiste/.git/worktrees/modeling-and-codegen\n");
+        await using (var linked = await McpSession.StartAsync(repo, ct, environment: new Dictionary<string, string?> { [Engine.WorkspaceInfo.Variable] = " " }))
+        {
+            var project = await linked.OkAsync("get_project");
+            Assert.Equal("modeling-and-codegen", (string)project["workspace"]!);
+            Assert.Equal("modeling-and-codegen", (string)project["worktree"]!);
+            Assert.Equal("maquettiste", (string)project["repository"]!);
+            Assert.Null(project["branch"]);
+        }
+
+        await using (var named = await McpSession.StartAsync(repo, ct, environment: new Dictionary<string, string?> { [Engine.WorkspaceInfo.Variable] = "  billing-demo " }))
+            Assert.Equal("billing-demo", (string)(await named.OkAsync("get_project"))["workspace"]!);
+    }
+
+    [Fact]
     public async Task Project_index_element_references_database_packs_settings_and_schema()
     {
         await using var session = await McpSession.StartAsync(ct: TestContext.Current.CancellationToken);
@@ -224,6 +254,8 @@ public sealed class McpReadTests
         Assert.Equal("billing", (string)project["name"]!);
         Assert.Equal(1, (int)project["formatVersion"]!);
         Assert.Equal(Engine.EngineVersion.Value, (string)project["engineVersion"]!);
+        Assert.Equal(Engine.EngineVersion.Product, (string)project["productVersion"]!);
+        Assert.Equal(Engine.EngineVersion.Build, (string)project["build"]!);
         Assert.Equal("local", (string)project["mode"]!);
         Assert.False(string.IsNullOrEmpty((string?)project["settingsHash"]));
         var database = Assert.Single(project["databases"]!.AsArray())!;

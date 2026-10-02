@@ -298,7 +298,7 @@ export const allOf = (domain: string) => `All of ${domain}`;
 export const DOMAIN_VIEWS_LABEL = "Whole domains";
 
 /** The top bar: the logo's tooltip and the project name's. */
-export const LOGO_TOOLTIP = "Maquettiste";
+export const LOGO_TOOLTIP = "Home";
 export const PROJECT_TOOLTIP = "Project: the whole model and its settings (maquettiste.json)";
 
 /** The glossary (SPEC section 14), shown as tooltips. */

@@ -1,7 +1,9 @@
 #!/bin/sh
-# Smoke test of an editor image (phase2-design.md section 3.9): starts it with no network over a copy of the billing fixture, waits
+# Smoke test of an editor image (phase2-design.md section 3.9): checks its OCI title and version labels (the version is the release
+# of /opt/maquettiste/engine.version); starts it with no network over a copy of the billing fixture, waits
 # for /api/health "ok" (which proves the first functions build restored offline from the image's feed), checks the host volume's
-# ownership, then runs curl checks inside the container: the project, the index, a save with If-Match, a 409 on the stale hash,
+# ownership, then runs curl checks inside the container: the release in /api/health, the project with the workspace the container was
+# given (MAQUETTISTE_WORKSPACE), the index, a save with If-Match, a 409 on the stale hash,
 # a plan job and an apply job through to completion; then the CLI in the image (--version, and generate --check started as root
 # over a host-owned copy of what the editor wrote with a root-owned .maquettiste/.cache: the run as the host user cannot write
 # it, the run started as root repairs it and runs as the host user); the editor again as the host user (started as root with
@@ -37,6 +39,13 @@ trap cleanup EXIT
 fail() { echo "smoke: FAIL: $*" >&2; docker logs "$name" 2>&1 | tail -40 >&2 || true; exit 1; }
 pass() { echo "smoke: ok: $*"; }
 
+label() { docker image inspect -f "{{ index .Config.Labels \"org.opencontainers.image.$1\" }}" "$image"; }
+engine_version=$(docker run --rm --network none --entrypoint cat "$image" /opt/maquettiste/engine.version)
+release=$(echo "$engine_version" | sed 's/[-.]b[0-9a-f]\{7,\}$//')
+[ "$(label title)" = Maquettiste ] || fail "the image's title label is '$(label title)', not Maquettiste"
+[ "$(label version)" = "$release" ] || fail "the image's version label is '$(label version)', not the release $release of $engine_version"
+pass "labels: title $(label title), version $(label version), revision '$(label revision)'"
+
 cp -r tests/fixtures/models/billing/. "$work/"
 mkdir -p "$work/.maquettiste/templates"
 cp -r packs/sql-ddl packs/csharp-dapper "$work/.maquettiste/templates/"
@@ -51,7 +60,7 @@ fi
 
 docker volume create "$volume" >/dev/null
 docker run -d --name "$name" --network none -v "$volume:/data" -v "$work/.maquettiste:/data/sites/maquettiste.localhost/data" \
-  -v "$work:/repo" "$image" >/dev/null
+  -v "$work:/repo" -e MAQUETTISTE_WORKSPACE=smoke "$image" >/dev/null
 
 # Every request goes to the site from inside the container: loopback, Host maquettiste.localhost, so local trust applies.
 api() { docker exec "$name" curl -sS -H 'Host: maquettiste.localhost:8080' "$@"; }
@@ -73,9 +82,16 @@ owners=$(docker exec "$name" stat -c '%U' /data/sites /data/sites/maquettiste.lo
 [ "$owners" = "app app " ] || fail "/data/sites and the site folder must be owned by app, not: $owners"
 pass "the new host volume's site folders are owned by app"
 
+health=$(api -f http://127.0.0.1:8080/api/health)
+[ "$(echo "$health" | jqc -r .productVersion)" = "$release" ] || fail "/api/health productVersion is not $release: $health"
+[ "$(echo "$health" | jqc -r .build)" = "$engine_version" ] || fail "/api/health build is not $engine_version: $health"
+pass "/api/health names the release $release, build $engine_version"
+
 name_of=$(api -f http://127.0.0.1:8080/api/project | jqc -r .name)
 [ "$name_of" = billing ] || fail "/api/project name is '$name_of'"
-pass "/api/project"
+workspace=$(api -f http://127.0.0.1:8080/api/project | jqc -r .workspace)
+[ "$workspace" = smoke ] || fail "/api/project workspace is '$workspace', not the MAQUETTISTE_WORKSPACE it was given"
+pass "/api/project (workspace $workspace)"
 
 count=$(api -f http://127.0.0.1:8080/api/model/index | jqc 'length')
 [ "$count" -gt 20 ] || fail "/api/model/index has $count elements"

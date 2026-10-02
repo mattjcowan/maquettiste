@@ -39,7 +39,7 @@ The editor is laid out like an IDE:
 
 | Area | What it holds |
 | --- | --- |
-| Top bar | The project name (the whole model and its settings), git branch and changed-file count, the command palette (Ctrl+K or Cmd+K) and the theme |
+| Top bar | The mark (a link home), the project name (the whole model and its settings) with the release and the workspace under it (`v0.5.3 · feature/billing`, details in its tooltip), git branch and changed-file count, the command palette (Ctrl+K or Cmd+K) and the theme |
 | Rail | The explorers: Domain model, Processes, Reference data, Databases, Diagrams and Generate; Settings and the account menu at the bottom |
 | Sidebar | The explorer the rail selected: a tree with a "Search the model" box, filterable by tag, category and stereotype |
 | Center | The current screen: the canvas, a grid or an editor |
@@ -191,6 +191,12 @@ browser per kind of element. A process starts folded, so its chart has the room.
 explorer and on the canvas and keeps its tab, so you can walk twenty entities on the Mappings tab without reopening
 anything. Unsaved edits are kept per element, so moving on never loses one. A reference type opens in the Reference data
 screen instead.
+
+When the tabs do not fit, the tab bar keeps its height and shows no scrollbar: arrows at its ends scroll the tabs, as
+do the mouse wheel over the bar and moving to a tab with the keyboard, which keeps the shown tab in view. A right click
+on a tab (or the menu key, or Shift+F10) opens its menu: **Close**, **Close others**, **Close to the right**, **Close
+all**, **Close saved** (every tab without unsaved changes) and **Pin** or **Unpin**; Close others, Close to the right
+and Close all leave tabs with unsaved changes open and say how many, and a middle click closes a tab.
 
 F6 moves keyboard focus between these regions. Edits in the inspector are drafts with undo and redo; they are saved
 as you go, and a save that collides with a change made elsewhere shows a conflict dialog with the two versions.
@@ -1662,6 +1668,34 @@ choice when you need to:
 - `MAQUETTISTE_UID`: the user id to run as (`id -u`); `0` keeps root.
 - `MAQUETTISTE_GID`: the group id to run as (`id -g`); defaults to the folder's group.
 
+The line under the project name names the release and the workspace, `v0.5.3 · feature/billing`, so two editors running side
+by side on different ports (one per worktree, say) are easy to tell apart. The container sees only `/repo`, so it takes the
+workspace from `MAQUETTISTE_WORKSPACE` when you set it, else the branch in `.git/HEAD`, else, for a linked worktree (whose
+`.git` file points at a git folder the container does not mount), the worktree's name:
+
+```
+MAQUETTISTE_WORKSPACE="$(git rev-parse --abbrev-ref HEAD)" MAQUETTISTE_PORT=8081 docker compose -f <maquettiste>/docker/compose.yaml --project-directory . -p billing up -d
+```
+
+## Which version is running
+
+The release is `0.5.3` in all of these:
+
+- The editor's top bar: the line under the project name starts with `v0.5.3`; its tooltip adds the build, the engine contract
+  and model format, the branch, the worktree and the repository folder when they are known.
+- `maquettiste --version`: `maquettiste 0.5.3 (engine contract 1.0.0, model format 1)`.
+- `GET /api/health` (no sign-in needed) and `GET /api/project`: `productVersion` is the release and `build` its build (in the
+  image, the per-build package version such as `0.5.3-b14a8131cfe39`); `/api/project` adds `workspace`, `branch`, `worktree`
+  and `repository`. `/healthz` is the host's own liveness check and says only `{"status":"ok"}`.
+- The agent server: `get_project` returns the same `productVersion`, `build` and workspace fields, and the server reports the
+  release as its version.
+- The image: the labels `org.opencontainers.image.version` (the release), `.revision` (the commit) and `.title`
+  (`docker inspect -f '{{ index .Config.Labels "org.opencontainers.image.version" }}' <image>`), and the file
+  `/opt/maquettiste/engine.version` (the build).
+
+`engineVersion`, in the API and in `get_project`, is the engine contract (`1.0.0`) that packs' `engine` ranges are checked
+against. It is not the release and changes far less often.
+
 ## The command line
 
 `maquettiste` is the same engine without the editor: it creates the project, checks it and generates the code, which is
@@ -1787,15 +1821,17 @@ registers `maquettiste mcp` in `.mcp.json` as a `"type": "stdio"` server that th
 command line:
 
 ```json
-"maquettiste": { "type": "stdio", "command": "/bin/sh", "args": ["-c", "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin\"; mkdir -p .maquettiste/.cache; exec docker run -i --rm --user 0:0 -v \"$(pwd -P):/repo\" -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli mattjcowan/maquettiste:<tag> maquettiste mcp 2>>.maquettiste/.cache/mcp.log"] }
+"maquettiste": { "type": "stdio", "command": "/bin/sh", "args": ["-c", "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin\"; mkdir -p .maquettiste/.cache; exec docker run -i --rm --user 0:0 -v \"$(pwd -P):/repo\" -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli -e MAQUETTISTE_WORKSPACE=\"$(git symbolic-ref --short -q HEAD 2>/dev/null || basename \"$(pwd -P)\")\" mattjcowan/maquettiste:<tag> maquettiste mcp 2>>.maquettiste/.cache/mcp.log"] }
 ```
 
 so the client runs the server in the image as you over the repository. The added `PATH` finds `docker` when the client was
 started from the desktop on the Mac (it does not inherit the shell's `PATH` then); `$(pwd -P)` mounts the real path of the
 project folder, so a repository behind a symbolic link works; the server's messages go to `.maquettiste/.cache/mcp.log`, which
-git ignores. Nothing else is written to the repository. On Windows, which has no `/bin/sh`, `init` writes `docker` as the
+git ignores; `MAQUETTISTE_WORKSPACE` carries the branch git reads on your machine (else the folder's name), which `get_project`
+reports as `workspace`. Nothing else is written to the repository. On Windows, which has no `/bin/sh`, `init` writes `docker` as the
 command with the arguments `run -i --rm --user 0:0 -v ${PWD}:/repo -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli
-<image> maquettiste mcp`; the client expands `${PWD}` to the project folder and keeps the server's messages in its own log.
+-e MAQUETTISTE_WORKSPACE <image> maquettiste mcp`; the client expands `${PWD}` to the project folder, passes `MAQUETTISTE_WORKSPACE`
+on when its environment sets it (otherwise the server reads the branch from `.git`), and keeps the server's messages in its own log.
 Under Podman add `--runtime podman`, which writes `podman` in place of `docker`. A re-run with another tag replaces the entry
 (either form) and removes the `mcp.sh` wrapper that earlier versions wrote. docs/mcp.md has the details.
 

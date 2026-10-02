@@ -24,6 +24,10 @@
     "default": "${env:MAQUETTISTE_LOCAL_TRUST}",
     "description": "on (also when empty) or off; off makes every caller present the token or the session cookie."
   },
+  "MAQUETTISTE_WORKSPACE": {
+    "default": "${env:MAQUETTISTE_WORKSPACE}",
+    "description": "The workspace name the top bar and GET /api/project show (a folder or branch name); empty means the git branch, else the worktree name."
+  },
   "MAQUETTISTE_LOCAL_USER": {
     "default": "local",
     "description": "The user name of the local developer (presence)."

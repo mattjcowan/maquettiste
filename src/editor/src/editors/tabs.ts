@@ -94,6 +94,44 @@ export function closeTab(state: EditorTabsState, key: string): EditorTabsState {
   return { ...state, tabs, active };
 }
 
+/** A tab the bulk closes leave open: one with unsaved changes. */
+export type KeepTab = (tab: EditorTab) => boolean;
+
+/** Closes the tabs `closes` picks, except those `keep` holds on to. When the shown tab closes, `fallback` shows when it
+ * is still open, else the nearest tab left at or after the shown one's place, else the one before it, else the screen. */
+function closeWhere(state: EditorTabsState, closes: (tab: EditorTab, at: number) => boolean, keep: KeepTab, fallback?: string): EditorTabsState {
+  const tabs = state.tabs.filter((t, i) => !closes(t, i) || keep(t));
+  if (tabs.length === state.tabs.length) return state;
+  if (tabs.some((t) => t.key === state.active)) return { ...state, tabs };
+  const at = state.tabs.findIndex((t) => t.key === state.active);
+  const left = new Set(tabs.map((t) => t.key));
+  const after = state.tabs.slice(Math.max(at, 0)).find((t) => left.has(t.key));
+  const before = state.tabs
+    .slice(0, Math.max(at, 0))
+    .reverse()
+    .find((t) => left.has(t.key));
+  const active = state.active === null ? null : fallback && left.has(fallback) ? fallback : (after?.key ?? before?.key ?? null);
+  return { ...state, tabs, active };
+}
+
+const keepNone: KeepTab = () => false;
+
+/** Closes every tab but `key`, keeping the ones `keep` holds (unsaved changes). */
+export const closeOthers = (state: EditorTabsState, key: string, keep: KeepTab = keepNone): EditorTabsState =>
+  state.tabs.some((t) => t.key === key) ? closeWhere(state, (t) => t.key !== key, keep, key) : state;
+
+/** Closes the tabs to the right of `key`, keeping the ones `keep` holds. */
+export function closeToRight(state: EditorTabsState, key: string, keep: KeepTab = keepNone): EditorTabsState {
+  const from = state.tabs.findIndex((t) => t.key === key);
+  return from < 0 ? state : closeWhere(state, (_, i) => i > from, keep, key);
+}
+
+/** Closes every tab, keeping the ones `keep` holds. */
+export const closeAll = (state: EditorTabsState, keep: KeepTab = keepNone): EditorTabsState => closeWhere(state, () => true, keep);
+
+/** Closes every tab without unsaved changes: `dirty` names the ones with them. */
+export const closeSaved = (state: EditorTabsState, dirty: KeepTab): EditorTabsState => closeWhere(state, () => true, dirty);
+
 /** Closes every tab showing an element (after a delete). */
 export function closeElement(state: EditorTabsState, id: string): EditorTabsState {
   let next = state;
@@ -105,6 +143,14 @@ export function pinTab(state: EditorTabsState, key: string): EditorTabsState {
   const tab = state.tabs.find((t) => t.key === key);
   if (!tab || tab.pinned) return state;
   return { ...state, tabs: state.tabs.map((t) => (t === tab ? { ...t, pinned: true } : t)) };
+}
+
+/** Turns a tab back into the preview tab, which the next single click replaces; the earlier preview tab stays open,
+ * pinned. The General-mode tab stays pinned. */
+export function unpinTab(state: EditorTabsState, key: string): EditorTabsState {
+  const tab = state.tabs.find((t) => t.key === key);
+  if (!tab || !tab.pinned || tab.follow) return state;
+  return { ...state, tabs: state.tabs.map((t) => (t === tab ? { ...t, pinned: false } : t.pinned ? t : { ...t, pinned: true })) };
 }
 
 /** Pins the tab showing an element (an edit made in it). */

@@ -131,8 +131,10 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
     http.get("/api/health", ({ response }) =>
       response(200).json({
         status: "ok",
+        productVersion: "0.5.3",
+        build: "0.5.3-mock",
         engineVersion: "1.0.0",
-        engineBuild: "1.0.0-alpha.1.mock",
+        engineBuild: "0.5.3-mock",
         modelLoaded: true,
         elements: model.entries.size,
         worker: "running",

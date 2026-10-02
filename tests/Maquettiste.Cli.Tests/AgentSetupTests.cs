@@ -49,7 +49,8 @@ public sealed class AgentSetupTests
     // The one /bin/sh line the container form registers outside Windows, exactly.
     private static string ContainerLine(string runtime, string image) =>
         "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin\"; mkdir -p .maquettiste/.cache; exec " + runtime
-        + " run -i --rm --user 0:0 -v \"$(pwd -P):/repo\" -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli " + image
+        + " run -i --rm --user 0:0 -v \"$(pwd -P):/repo\" -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli"
+        + " -e MAQUETTISTE_WORKSPACE=\"$(git symbolic-ref --short -q HEAD 2>/dev/null || basename \"$(pwd -P)\")\" " + image
         + " maquettiste mcp 2>>.maquettiste/.cache/mcp.log";
 
     private static string ShellRegistration(string runtime, string image) => $$"""
@@ -60,7 +61,7 @@ public sealed class AgentSetupTests
               "command": "/bin/sh",
               "args": [
                 "-c",
-                "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin\"; mkdir -p .maquettiste/.cache; exec {{runtime}} run -i --rm --user 0:0 -v \"$(pwd -P):/repo\" -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli {{image}} maquettiste mcp 2>>.maquettiste/.cache/mcp.log"
+                "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin\"; mkdir -p .maquettiste/.cache; exec {{runtime}} run -i --rm --user 0:0 -v \"$(pwd -P):/repo\" -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli -e MAQUETTISTE_WORKSPACE=\"$(git symbolic-ref --short -q HEAD 2>/dev/null || basename \"$(pwd -P)\")\" {{image}} maquettiste mcp 2>>.maquettiste/.cache/mcp.log"
               ]
             }
           }
@@ -86,6 +87,8 @@ public sealed class AgentSetupTests
                 "/repo",
                 "-e",
                 "MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli",
+                "-e",
+                "MAQUETTISTE_WORKSPACE",
                 "{{image}}",
                 "maquettiste",
                 "mcp"
@@ -101,7 +104,7 @@ public sealed class AgentSetupTests
         OperatingSystem.IsWindows() ? WindowsRegistration(runtime, image) : ShellRegistration(runtime, image);
 
     private static string ContainerReport(string runtime, string image) => OperatingSystem.IsWindows()
-        ? $"{runtime} run -i --rm --user 0:0 -v ${{PWD}}:/repo -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli {image} maquettiste mcp"
+        ? $"{runtime} run -i --rm --user 0:0 -v ${{PWD}}:/repo -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli -e MAQUETTISTE_WORKSPACE {image} maquettiste mcp"
         : "/bin/sh -c " + ContainerLine(runtime, image);
 
     private const string LegacyWrapper = "#!/bin/sh\n# maquettiste-mcp-wrapper (written by maquettiste init --mcp --docker; docs/mcp.md)\nexec docker run -i --rm img maquettiste mcp\n";
@@ -131,7 +134,7 @@ public sealed class AgentSetupTests
         {
             Assert.Equal("/bin/sh", (string)entry["command"]!);
             Assert.Equal(
-                ["-c", "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin\"; mkdir -p .maquettiste/.cache; exec docker run -i --rm --user 0:0 -v \"$(pwd -P):/repo\" -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli mattjcowan/maquettiste:0.2.0 maquettiste mcp 2>>.maquettiste/.cache/mcp.log"],
+                ["-c", "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin\"; mkdir -p .maquettiste/.cache; exec docker run -i --rm --user 0:0 -v \"$(pwd -P):/repo\" -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli -e MAQUETTISTE_WORKSPACE=\"$(git symbolic-ref --short -q HEAD 2>/dev/null || basename \"$(pwd -P)\")\" mattjcowan/maquettiste:0.2.0 maquettiste mcp 2>>.maquettiste/.cache/mcp.log"],
                 entry["args"]!.AsArray().Select(a => (string)a!));
         }
 

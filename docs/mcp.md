@@ -81,7 +81,7 @@ maquettiste init --mcp --docker mattjcowan/maquettiste:<tag>     # add --skill f
       "command": "/bin/sh",
       "args": [
         "-c",
-        "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin\"; mkdir -p .maquettiste/.cache; exec docker run -i --rm --user 0:0 -v \"$(pwd -P):/repo\" -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli mattjcowan/maquettiste:<tag> maquettiste mcp 2>>.maquettiste/.cache/mcp.log"
+        "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin\"; mkdir -p .maquettiste/.cache; exec docker run -i --rm --user 0:0 -v \"$(pwd -P):/repo\" -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli -e MAQUETTISTE_WORKSPACE=\"$(git symbolic-ref --short -q HEAD 2>/dev/null || basename \"$(pwd -P)\")\" mattjcowan/maquettiste:<tag> maquettiste mcp 2>>.maquettiste/.cache/mcp.log"
       ]
     }
   }
@@ -107,6 +107,9 @@ Nothing else is written to the repository: no script. The line, read by the shel
   rule.
 - The index and plan cache lives in `.maquettiste/.cache/cli`, which `init` keeps out of git, so it survives the container of
   each session.
+- `MAQUETTISTE_WORKSPACE` is the branch git reads in the project folder, else (a detached head, no git) the folder's name; the
+  container sees only `/repo`, and `get_project` reports it as `workspace`. Without it the server reads the branch from
+  `.git/HEAD`, and for a linked worktree, whose git folder is not mounted, takes the worktree's name.
 - Stdout carries the protocol only. The server's messages (its start line, errors) and the container command's own (a pull, a
   daemon that is not running) go to stderr, which the line appends to `.maquettiste/.cache/mcp.log`, ignored by git with the
   rest of the cache folder; look there first when the client reports the server as failed.
@@ -132,6 +135,8 @@ expands when it starts the server to the project folder:
         "/repo",
         "-e",
         "MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli",
+        "-e",
+        "MAQUETTISTE_WORKSPACE",
         "mattjcowan/maquettiste:<tag>",
         "maquettiste",
         "mcp"
@@ -141,7 +146,9 @@ expands when it starts the server to the project folder:
 }
 ```
 
-There the client finds `docker` on its own `PATH` and keeps the server's stderr in its own log for the server. Which form is
+There the client finds `docker` on its own `PATH` and keeps the server's stderr in its own log for the server. `-e
+MAQUETTISTE_WORKSPACE` passes the variable on when the client's environment sets it; otherwise the server reads the branch from
+`.git`. Which form is
 written depends on the system `init` runs on; a file committed from one system and re-run on the other gets that system's form.
 
 With Podman, `--runtime podman` writes `exec podman run` in the line (`"command": "podman"` on Windows) with the same arguments:
@@ -219,7 +226,7 @@ the operation's JSON body, serialized like the API's (`JsonSerializerDefaults.We
 
 | Tool | API operation | Arguments | Returns |
 | --- | --- | --- | --- |
-| `get_project` | getProject | | name, versions, settings and `settingsHash`, databases, packs, pack diagnostics, extensions (`mode` is `local`, `git` is null) |
+| `get_project` | getProject | | name, `productVersion` (the release, such as `0.5.3`) and `build` beside `engineVersion` (the engine contract, not the release) and `formatVersion`, `workspace` (`MAQUETTISTE_WORKSPACE`, else the git branch, else the worktree name) with `branch`, `worktree` and `repository`, settings and `settingsHash`, databases, packs, pack diagnostics, extensions (`mode` is `local`, `git` is null) |
 | `get_model_index` | getModelIndex | `kind`, `package` (id or name), `tag`, `category`, `stereotype`, `query` (name contains, ignoring case), all optional, AND; `cursor`, `limit` (1 to 1000) | element summaries; with `cursor` or `limit`, one page `{ items, next }` ordered by kind, name and id |
 | `get_model_kinds` | getModelKinds | `by` (`kind` default, or `package`) | `{ total, kinds: [{ kind, count }], packages }`; with `package`, per package `{ package, name, count, kinds }`, the elements in no package first |
 | `get_element` | getElement | `id` | the document: `json` (canonical), `hash`, `path`, the typed element, the sidecar text |

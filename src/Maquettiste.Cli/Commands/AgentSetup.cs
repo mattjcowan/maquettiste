@@ -61,8 +61,11 @@ internal static class AgentSetup
     /// starts the server in. Outside Windows the client starts <c>/bin/sh</c> with one command line (<see cref="ContainerCommandLine"/>):
     /// a client launched from the desktop does not inherit the shell's <c>PATH</c>, so the line adds the usual places of the container
     /// command first; <c>$(pwd -P)</c> mounts the real path of the folder (it works when the repository sits behind a link); and the
-    /// server's stderr is appended to <c>.maquettiste/.cache/mcp.log</c>, under the cache folder git ignores. On Windows, which has no
-    /// <c>/bin/sh</c>, the entry runs the container command itself with <c>${PWD}</c>, which the client expands. Either way the file has
+    /// server's stderr is appended to <c>.maquettiste/.cache/mcp.log</c>, under the cache folder git ignores. <c>MAQUETTISTE_WORKSPACE</c>
+    /// names the workspace <c>get_project</c> reports: the branch git reads on the host, else the folder's name (a linked worktree's
+    /// <c>.git</c> points at a folder the container does not mount). On Windows, which has no <c>/bin/sh</c>, the entry runs the
+    /// container command itself with <c>${PWD}</c>, which the client expands, and passes <c>MAQUETTISTE_WORKSPACE</c> through from the
+    /// client's environment when it is set (the server otherwise reads the branch from <c>.git</c>). Either way the file has
     /// no absolute path and can be committed. The container starts as root (<c>--user 0:0</c>) so the image's entrypoint repairs files
     /// an earlier run left owned by another user and runs the server as the owner of the folder (under rootless Podman root is the
     /// user outside, which the entrypoint recognizes). The engine cache lives in <c>.maquettiste/.cache/cli</c> so it survives the container.
@@ -78,7 +81,7 @@ internal static class AgentSetup
             ["command"] = runtime,
             ["args"] = new JsonArray(
                 "run", "-i", "--rm", "--user", "0:0", "-v", "${PWD}:/repo", "-w", "/repo",
-                "-e", "MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli", image, "maquettiste", "mcp"),
+                "-e", "MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli", "-e", "MAQUETTISTE_WORKSPACE", image, "maquettiste", "mcp"),
         }
         : new JsonObject
         {
@@ -89,7 +92,8 @@ internal static class AgentSetup
 
     /// <summary>
     /// Returns the <c>/bin/sh -c</c> line of the container form outside Windows. It has no <c>${...}</c>, which an MCP client would
-    /// expand itself: the shell expands <c>$PATH</c>, <c>$HOME</c> and <c>$(pwd -P)</c>. The image reference needs no quoting
+    /// expand itself: the shell expands <c>$PATH</c>, <c>$HOME</c>, <c>$(pwd -P)</c> and the workspace name (<c>git symbolic-ref</c>, else
+    /// the folder's name). The image reference needs no quoting
     /// (<see cref="IsImageReference"/>).
     /// </summary>
     /// <param name="runtime">The container command, <c>docker</c> or <c>podman</c>.</param>
@@ -98,7 +102,14 @@ internal static class AgentSetup
     public static string ContainerCommandLine(string runtime, string image) =>
         "export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin\"; mkdir -p .maquettiste/.cache; "
         + $"exec {runtime} run -i --rm --user 0:0 -v \"$(pwd -P):/repo\" -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli "
-        + $"{image} maquettiste mcp 2>>.maquettiste/.cache/mcp.log";
+        + WorkspaceOption + $" {image} maquettiste mcp 2>>.maquettiste/.cache/mcp.log";
+
+    /// <summary>
+    /// The <c>-e MAQUETTISTE_WORKSPACE=...</c> option of the shell line: the branch checked out in the folder, else (a detached head, no
+    /// git) the folder's name, which for a linked worktree is the worktree's.
+    /// </summary>
+    public const string WorkspaceOption =
+        "-e MAQUETTISTE_WORKSPACE=\"$(git symbolic-ref --short -q HEAD 2>/dev/null || basename \"$(pwd -P)\")\"";
 
     /// <summary>Whether an image reference is usable as one argument: a name, an optional tag and an optional digest, never an option.</summary>
     /// <param name="image">The reference, such as <c>mattjcowan/maquettiste:0.2.0</c>.</param>

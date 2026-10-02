@@ -116,7 +116,7 @@
         ],
         "operationId": "getHostHealth",
         "summary": "Host liveness (answered by static-site-hosting itself)",
-        "description": "Answered by the host on any host name before any site or function runs, so it says only that the process is up. Compose health checks and the CLI's \"is the editor up\" check use it.",
+        "description": "Answered by the host on any host name before any site or function runs, so it says only that the process is up. Compose health checks and the CLI's \"is the editor up\" check use it. The release running is in `GET /api/health` (`productVersion`, `build`).",
         "security": [],
         "x-maquettiste-handler": "host",
         "responses": {
@@ -151,7 +151,7 @@
         ],
         "operationId": "getEditorHealth",
         "summary": "Editor readiness",
-        "description": "Whether the editor functions are loaded, the model is indexed and the background services run. Admitted without credentials.",
+        "description": "Whether the editor functions are loaded, the model is indexed and the background services run, and which release answers (`productVersion`, `build`). Admitted without credentials.",
         "security": [],
         "x-maquettiste-role": "anonymous",
         "x-maquettiste-engine": "ModelStore.Current; background service state kept by the functions",
@@ -165,8 +165,10 @@
                 },
                 "example": {
                   "status": "ok",
+                  "productVersion": "0.5.3",
+                  "build": "0.5.3-b14a8131cfe39",
                   "engineVersion": "1.0.0",
-                  "engineBuild": "1.0.0-alpha.1.b3f9c2a1d4e5f",
+                  "engineBuild": "0.5.3-b14a8131cfe39",
                   "modelLoaded": true,
                   "elements": 26,
                   "worker": "running",
@@ -313,6 +315,12 @@
                       "name": "billing",
                       "formatVersion": 1,
                       "engineVersion": "1.0.0",
+                      "productVersion": "0.5.3",
+                      "build": "0.5.3-b14a8131cfe39",
+                      "workspace": "feature/billing",
+                      "branch": "feature/billing",
+                      "worktree": null,
+                      "repository": null,
                       "mode": "local",
                       "settings": {
                         "$schema": ".schema/v1/maquettiste.json",
@@ -8013,6 +8021,8 @@
         "type": "object",
         "required": [
           "status",
+          "productVersion",
+          "build",
           "engineVersion",
           "engineBuild",
           "modelLoaded",
@@ -8030,13 +8040,21 @@
             ],
             "description": "`starting` until the first load finished; `degraded` when the model folder is unreadable or a background service keeps failing."
           },
+          "productVersion": {
+            "type": "string",
+            "description": "The release running (`EngineVersion.Product`), such as `0.5.3`: the version `maquettiste --version` prints first and the image's `org.opencontainers.image.version` label. Compare this one to know which release answers."
+          },
+          "build": {
+            "type": "string",
+            "description": "The build of that release (`EngineVersion.Build`): `productVersion` locally; in the image, the per-build package version of `/opt/maquettiste/engine.version`, such as `0.5.3-b14a8131cfe39`."
+          },
           "engineVersion": {
             "type": "string",
-            "description": "`EngineVersion.Value`, the engine's format-level version."
+            "description": "`EngineVersion.Value`, the engine contract version that packs' `engine` ranges are checked against. It is not the release: see `productVersion`."
           },
           "engineBuild": {
             "type": "string",
-            "description": "The loaded engine assembly's informational version without any `+` suffix; in the image, the per-build package version of `/opt/maquettiste/engine.version` (`phase2-design.md` PD24), so an upgrade check can see which engine the functions compiled against."
+            "description": "The loaded engine assembly's informational version without any `+` suffix (the same value as `build`); in the image, the per-build package version of `/opt/maquettiste/engine.version` (`phase2-design.md` PD24), so an upgrade check can see which engine the functions compiled against."
           },
           "modelLoaded": {
             "type": "boolean"
@@ -8069,6 +8087,12 @@
           "name",
           "formatVersion",
           "engineVersion",
+          "productVersion",
+          "build",
+          "workspace",
+          "branch",
+          "worktree",
+          "repository",
           "mode",
           "settings",
           "settingsHash",
@@ -8087,7 +8111,44 @@
             "type": "integer"
           },
           "engineVersion": {
-            "type": "string"
+            "type": "string",
+            "description": "The engine contract version (`EngineVersion.Value`) that packs' `engine` ranges are checked against; not the release (see `productVersion`)."
+          },
+          "productVersion": {
+            "type": "string",
+            "description": "The release running (`EngineVersion.Product`), such as `0.5.3`; the same as `GET /api/health` `productVersion`."
+          },
+          "build": {
+            "type": "string",
+            "description": "The build of that release (`EngineVersion.Build`); in the image, the content of `/opt/maquettiste/engine.version`."
+          },
+          "workspace": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the served checkout is called, shown in the top bar beside the release: the `MAQUETTISTE_WORKSPACE` variable (trimmed) when set, else `branch`, else the short commit of a detached head, else `worktree`; null when none is known. Read from `.git` on each request, without running git."
+          },
+          "branch": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The branch in `.git/HEAD` (the nearest `.git` at or above the repository root), or null on a detached head, outside git, or for a linked worktree whose git folder is not mounted (a container that mounts the worktree alone)."
+          },
+          "worktree": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name of a linked worktree (the last segment of the git folder its `.git` file names), or null for a main checkout."
+          },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The folder name of the main checkout a linked worktree belongs to, as its `.git` file names it; null otherwise."
           },
           "mode": {
             "type": "string",

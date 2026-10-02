@@ -40,8 +40,9 @@ docker pull mattjcowan/maquettiste:0.5.3   # needs an image whose entrypoint pic
 (then `source ~/.zshrc`); it runs every command in a throwaway container over the folder you are in:
 
 ```zsh
-maquettiste() { docker run --rm $([ -t 0 ] && echo -it) --user 0:0 -v "$PWD:/repo" -w /repo mattjcowan/maquettiste:0.5.3 maquettiste "$@"; }
+maquettiste() { docker run --rm $([ -t 0 ] && echo -it) --user 0:0 -v "$PWD:/repo" -w /repo -e MAQUETTISTE_WORKSPACE="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || basename "$PWD")" mattjcowan/maquettiste:0.5.3 maquettiste "$@"; }
 # --user 0:0 lets the image run the command as the owner of the folder (you) after repairing files another user left there.
+# MAQUETTISTE_WORKSPACE (the branch, else the folder) is the workspace the agent server's get_project reports.
 # With Podman, the same function with podman in place of docker.
 maquettiste --version                    # maquettiste 0.5.3 (engine contract 1.0.0, model format 1)
 ```
@@ -76,9 +77,13 @@ services:
       MAQUETTISTE_UID: ${MAQUETTISTE_UID:-}                         # optional override; empty = the owner of .maquettiste/
       MAQUETTISTE_GID: ${MAQUETTISTE_GID:-}
       MAQUETTISTE_EDITOR_TOKEN: ${MAQUETTISTE_EDITOR_TOKEN:-}
+      MAQUETTISTE_WORKSPACE: ${MAQUETTISTE_WORKSPACE:-}             # optional; empty = the branch in .git/HEAD
 volumes:
   maquettiste-host:
 ```
+
+`MAQUETTISTE_WORKSPACE` is the name under the project name in the top bar (`v0.5.3 · maquettiste-demo`); left empty, the editor
+reads the branch from `.git/HEAD` itself, and for a linked worktree, whose git folder is not mounted, it shows the worktree's name.
 
 `init` must run before the first `compose up`: compose creates a missing mount folder itself, and then the editor
 starts on a project with no settings.
@@ -94,7 +99,7 @@ until curl -fsS -H 'Host: maquettiste.localhost:8080' http://127.0.0.1:8080/api/
 ```
 
 Open **http://maquettiste.localhost:8080**, paste the token into **Editor token**, **Sign in**. You see the project name in
-the top bar, the **Domain model** explorer on the left and, in the centre, the first-run panel **Start the model** with New
+the top bar with `v0.5.3 · maquettiste-demo` under it (the release and the branch), the **Domain model** explorer on the left and, in the centre, the first-run panel **Start the model** with New
 domain, New entity, New enum, New reference type, New diagram and New database. Leave it there for the talk.
 
 **5. Three checks, once, the day before:**

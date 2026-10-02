@@ -6,6 +6,8 @@
 # fix below, because /data is a declared volume of the base image):
 #
 #   docker build -f docker/Dockerfile -t mattjcowan/maquettiste:dev .
+#
+# Build arguments (all optional; the labels at the end): MAQUETTISTE_VERSION, MAQUETTISTE_REVISION, MAQUETTISTE_CREATED.
 
 # ---------------------------------------------------------------- engine: the package, its closure and the NuGet config
 # global.json pins SDK 10.0.109 with rollForward disabled. Microsoft publishes no image tag for that SDK (the 10.0.1xx tags stop at
@@ -45,7 +47,8 @@ COPY packs/sql-ddl packs/sql-ddl
 COPY packs/csharp-dapper packs/csharp-dapper
 COPY skills/maquettiste-modeling skills/maquettiste-modeling
 COPY src/Maquettiste.Cli src/Maquettiste.Cli
-RUN dotnet publish src/Maquettiste.Cli -c Release -o /cli -p:UseAppHost=false \
+# The image's engine version (PD24), so `maquettiste --version` and the MCP server's get_project name the same build as the editor.
+RUN dotnet publish src/Maquettiste.Cli -c Release -o /cli -p:UseAppHost=false -p:Version="$(cat /engine.version)" \
  && rm -f /cli/*.pdb \
  && echo "maquettiste: cli $(du -sh /cli | cut -f1)"
 
@@ -95,3 +98,17 @@ ENV MAQUETTISTE_MODE=local MAQUETTISTE_REPO_ROOT=/repo MAQUETTISTE_CACHE_DIR=/da
 # roots, and drops to it with the base image's setpriv (util-linux), so a bind-mounted model is written as the host user.
 USER app
 ENTRYPOINT ["/opt/maquettiste/entrypoint.sh"]
+# The image's own OCI labels, replacing the base image's (last, so a new revision leaves every layer above cached). The version is
+# the release: the VersionPrefix of Directory.Build.props by default (BundleTests keeps the two in step), the tag's version when
+# publish-image.yml builds it; the revision is the commit and the creation time the commit's, passed by the workflows (empty here).
+ARG MAQUETTISTE_VERSION=0.5.3
+ARG MAQUETTISTE_REVISION=
+ARG MAQUETTISTE_CREATED=
+LABEL org.opencontainers.image.title="Maquettiste" \
+      org.opencontainers.image.description="A visual designer for entities, relations, processes and databases that generates code through template packs, with an editor, a command line and an agent server over one model kept as JSON files in the repository." \
+      org.opencontainers.image.version="${MAQUETTISTE_VERSION}" \
+      org.opencontainers.image.revision="${MAQUETTISTE_REVISION}" \
+      org.opencontainers.image.created="${MAQUETTISTE_CREATED}" \
+      org.opencontainers.image.source="https://github.com/mattjcowan/maquettiste" \
+      org.opencontainers.image.url="https://github.com/mattjcowan/maquettiste" \
+      org.opencontainers.image.licenses="MIT"

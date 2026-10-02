@@ -307,14 +307,11 @@ public sealed class CliApp(CliEnvironment environment)
     }
 
     /// <summary>
-    /// The product version (the package version the build was given, without its build metadata) with the engine's contract version
-    /// and the model format beside it: "maquettiste 0.1.0 (engine contract 1.0.0, model format 1)".
+    /// The release (<see cref="EngineVersion.Product"/>: the package version the build was given, without its build metadata or the
+    /// image's build marker) with the engine's contract version and the model format beside it:
+    /// "maquettiste 0.1.0 (engine contract 1.0.0, model format 1)".
     /// </summary>
     /// <returns>The line <c>--version</c> prints.</returns>
-    public static string VersionLine()
-    {
-        var informational = typeof(CliApp).Assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        var product = string.IsNullOrEmpty(informational) ? typeof(CliApp).Assembly.GetName().Version?.ToString(3) ?? "0.0.0" : informational.Split('+')[0];
-        return $"maquettiste {product} (engine contract {EngineVersion.Value}, model format {EngineVersion.FormatVersion})";
-    }
+    public static string VersionLine() =>
+        $"maquettiste {EngineVersion.Product} (engine contract {EngineVersion.Value}, model format {EngineVersion.FormatVersion})";
 }

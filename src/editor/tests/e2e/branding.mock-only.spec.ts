@@ -73,3 +73,24 @@ test("rename the project, upload an icon and pick the primary colors", async ({ 
   await expect.poll(() => accent(page)).toBe(builtIn);
   await expect.poll(() => favicon(page)).toMatch(/^data:image\/svg\+xml,/);
 });
+
+test("the top bar names the release and the workspace, and the mark links home", async ({ page }) => {
+  await openEditor(page);
+  // The mock project is MAQUETTISTE_WORKSPACE=billing on branch main; the tooltip carries the detail.
+  const line = page.getByTestId("product-line");
+  await expect(line).toHaveText("v0.5.3 · billing · main (0)");
+  await expect(line).toHaveAttribute("title", /Build 0\.5\.3-mock\nEngine contract 1\.0\.0, model format 1\nWorkspace billing\nBranch main/);
+  const health = await page.evaluate(async () => (await fetch("/api/health")).json());
+  expect(health).toMatchObject({ productVersion: "0.5.3", build: "0.5.3-mock", engineVersion: "1.0.0" });
+
+  // The mark is a link home, reached and followed from the keyboard.
+  await page.getByTestId("rail-settings").click();
+  await expect(page).toHaveURL(/\/settings/);
+  const home = page.getByRole("link", { name: "Home" });
+  await expect(home).toHaveAttribute("title", "Home");
+  await home.focus();
+  await expect(home).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/(entities.*)?$/);
+  await expect(page.locator("#diagram-picker")).toBeVisible();
+});
