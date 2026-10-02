@@ -44,6 +44,8 @@ export interface CodeEditorProps {
   path?: string;
   /** Ctrl+S (Cmd+S) inside the editor. */
   onSave?: () => void;
+  /** The text lost focus (an editor that saves on leaving it). */
+  onBlur?: () => void;
   markers?: CodeMarker[];
   /**
    * With a revision the editor owns its text while typing (a controlled value lags fast typing and would overwrite
@@ -68,6 +70,7 @@ export default function CodeEditor({
   label,
   path,
   onSave,
+  onBlur,
   markers,
   revision,
   completion,
@@ -79,6 +82,10 @@ export default function CodeEditor({
   useEffect(() => {
     saveRef.current = onSave;
   }, [onSave]);
+  const blurRef = useRef(onBlur);
+  useEffect(() => {
+    blurRef.current = onBlur;
+  }, [onBlur]);
   const [editor, setEditor] = useState<monaco.editor.IStandaloneCodeEditor | null>(null);
   const cursorRef = useRef(onCursorLine);
   useEffect(() => {
@@ -87,6 +94,7 @@ export default function CodeEditor({
   const handleMount: OnMount = (instance) => {
     instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveRef.current?.());
     instance.onDidChangeCursorPosition((e) => cursorRef.current?.(e.position.lineNumber));
+    instance.onDidBlurEditorText(() => blurRef.current?.());
     setEditor(instance);
   };
   useEffect(() => {
@@ -134,7 +142,9 @@ export default function CodeEditor({
     );
   }, [editor, markers, path, value]);
   return (
-    <div className="h-full min-h-40" data-testid={`code-${language}`} data-highlight={highlightLines?.length ? highlightLines.join(",") : undefined}>
+    // `nokey`: a canvas mounted behind (the Database screen under an editor tab) leaves the keys typed here alone (React Flow
+    // takes Space to pan unless the target is an input, and Monaco's text area may be a plain element).
+    <div className="nokey h-full min-h-40" data-testid={`code-${language}`} data-highlight={highlightLines?.length ? highlightLines.join(",") : undefined}>
       <Editor
         language={language}
         {...(revision === undefined ? { value } : { defaultValue: value })}

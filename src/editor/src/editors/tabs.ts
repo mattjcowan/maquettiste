@@ -4,11 +4,27 @@
 // the same sub-tab without reopening anything.
 
 /** The kinds with an element editor in the centre area (a domain: General, Tags, Categories, 1.11). A reference type
- * opens in the Reference data screen. */
-export const EDITOR_KINDS = ["entity", "relation", "enum", "value-object", "scalar-type", "package", "process", "actor", "scenario"] as const;
+ * opens in the Reference data screen. A table file has one when it is a table of its own (designed or imported); the
+ * overlay of a projected table is edited in the Database screen. */
+export const EDITOR_KINDS = [
+  "entity",
+  "relation",
+  "enum",
+  "value-object",
+  "scalar-type",
+  "package",
+  "process",
+  "actor",
+  "scenario",
+  "table",
+  "view",
+  "sequence",
+] as const;
 export type EditorKind = (typeof EDITOR_KINDS)[number];
 
-export function hasEditor(kind: string | null | undefined): kind is EditorKind {
+/** Whether an element opens in an editor; given its index row, a table overlay (a row naming its entity) does not. */
+export function hasEditor(kind: string | null | undefined, row?: { entity?: string | null }): kind is EditorKind {
+  if (kind === "table" && row?.entity) return false;
   return !!kind && (EDITOR_KINDS as readonly string[]).includes(kind);
 }
 

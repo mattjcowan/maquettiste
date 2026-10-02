@@ -71,3 +71,24 @@ export function tableKeyOfFile(
   if (file.entity && tables.some((t) => t.key === projected && t.origin === "synthesized" && !t.isJunction)) return projected;
   return null;
 }
+
+/** What the Database screen's list shows: its tables, views or sequences (a kind chip picks). */
+export type ListKind = "table" | "view" | "sequence";
+export const LIST_KINDS: readonly { kind: ListKind; label: string }[] = [
+  { kind: "table", label: "Tables" },
+  { kind: "view", label: "Views" },
+  { kind: "sequence", label: "Sequences" },
+];
+
+/** A database's views or sequences whose name (or schema.name) contains every word of the filter, by name; at most `cap`. */
+export function filterObjects<T extends { id: string; name: string; schema: string | null }>(
+  objects: readonly T[],
+  filter: string,
+  cap = TABLE_LIST_CAP,
+): { items: T[]; total: number } {
+  const words = filter.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const matching = objects
+    .filter((o) => words.every((w) => `${o.schema ?? ""}.${o.name}`.toLowerCase().includes(w)))
+    .sort((a, b) => a.name.localeCompare(b.name) || (a.schema ?? "").localeCompare(b.schema ?? ""));
+  return { items: matching.slice(0, cap), total: matching.length };
+}

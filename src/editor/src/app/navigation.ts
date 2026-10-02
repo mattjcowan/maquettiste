@@ -278,7 +278,7 @@ export function useEditorNavigation() {
     (summary: ElementSummary, pin: boolean) => {
       reveal(summary);
       const kind = summary.kind;
-      if (hasEditor(kind)) store.getState().updateEditors((e) => openTab(e, { id: summary.id, kind }, { pin }));
+      if (hasEditor(kind, summary)) store.getState().updateEditors((e) => openTab(e, { id: summary.id, kind }, { pin }));
     },
     [reveal, store],
   );

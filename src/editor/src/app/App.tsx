@@ -9,6 +9,7 @@ import { Inspector, useInspectorContext } from "@/inspector/Inspector";
 import { EditorArea, EditorTabBar } from "@/editors/EditorTabs";
 import { CommandPalette, QuickOpen } from "@/palette/CommandPalette";
 import { NewElementHost } from "@/explorer/NewElementDialog";
+import { NewDatabaseObjectHost } from "@/explorer/NewDatabaseObjectDialog";
 import { ConflictDialog } from "@/inspector/ConflictDialog";
 import { Splitter } from "@/components/ui/splitter";
 import { Spinner } from "@/components/ui/misc";
@@ -286,6 +287,7 @@ function Shell() {
       <QuickOpen />
       <ConflictDialog />
       <NewElementHost />
+      <NewDatabaseObjectHost />
     </div>
   );
 }

@@ -33,6 +33,7 @@ import {
 import { applicableExtensions, SchemaForm } from "./SchemaForm";
 import { emptyTitle, inspectorContext, type InspectorContext } from "./context";
 import { OpenTableButton, TableInspector } from "./TableInspector";
+import { SchemaField, SequenceFields, ViewFields } from "@/editors/database/fields";
 import { EntityAttributeList } from "./AttributeList";
 import { ActorInspectorSection, ProcessInspectorSection, ScenarioInspectorSection, useProcessNodeShown } from "./ProcessSections";
 import { attributesView, INSPECTOR_TAB_LABELS, inspectorTabs, resolveInspectorTab } from "./tabs";
@@ -161,6 +162,7 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
   const index = useIndex();
   const { store } = useServices();
   const focus = useEditor(store, (s) => s.focus);
+  const inspectedTable = useEditor(store, (s) => s.inspectedTable);
   const kind = (json as { kind?: ElementKind } | undefined)?.kind;
   const tab = kind ? resolveInspectorTab(kind, tabs[kind]) : "properties";
   const vocab = useVocabularies(kind ?? "entity");
@@ -191,6 +193,14 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
   if (element.isPending && !json) return <Spinner label="Loading element" />;
   if (element.error && !json) return <EmptyState title="This element could not be loaded">{String((element.error as Error).message)}</EmptyState>;
   if (!json || !kind) return null;
+  // A table of its own (designed, imported) shows as the table inspector does on the Databases side: its physical fields and
+  // the column picked in its editor's grid.
+  const tableDoc = json as { origin?: string; database?: unknown };
+  if (kind === "table" && tableDoc.origin !== "synthesized" && typeof tableDoc.database === "string") {
+    const database = tableDoc.database;
+    const column = inspectedTable?.database === database && inspectedTable.key === id ? inspectedTable.column : null;
+    return <TableInspector database={database} tableKey={id} column={column} />;
+  }
 
   const diagnostics = draft?.diagnostics ?? [];
   const props: FormProps = { id, json, doc: element.data, edit, flush: () => void flush(), diagnostics };
@@ -257,6 +267,13 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
               {kind === "enum" ? <EnumFields {...props} /> : null}
               {kind === "scalar-type" ? <ScalarFields {...props} /> : null}
               {kind === "database" ? <DatabaseFields {...props} /> : null}
+              {kind === "view" ? <ViewFields {...props} /> : null}
+              {kind === "sequence" ? (
+                <>
+                  <SchemaField {...props} />
+                  <SequenceFields {...props} />
+                </>
+              ) : null}
               {kind === "process" ? <ProcessInspectorSection {...props} /> : null}
               {kind === "actor" ? <ActorInspectorSection {...props} /> : null}
               {kind === "scenario" ? <ScenarioInspectorSection {...props} /> : null}
@@ -288,6 +305,8 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
                 "enum",
                 "scalar-type",
                 "database",
+                "view",
+                "sequence",
                 "package",
                 "diagram",
                 "process",

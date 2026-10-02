@@ -203,7 +203,9 @@ An **explorer** is the sidebar tree a rail icon selects; a **screen** is what th
 **Creating elements.** Right-click a domain for New entity, New relationship, New enum, New value object, New custom
 type, New sub-domain and New diagram; right-click a kind folder for New of that kind. The **+** button in each
 explorer's header offers that explorer's kinds (New domain and the element kinds in Domain model, New reference type,
-New database, New diagram), and so does an empty explorer. Every New dialog starts its domain picker on the current
+New database, New diagram), and so does an empty explorer. In the Databases explorer, while a database or anything inside
+it is selected, the **+** button also offers **New schema…**, **New table…**, **New view…** and **New sequence…** for that
+database (see "Creating a table, a view or a sequence" below). Every New dialog starts its domain picker on the current
 domain: the row you right-clicked, else the selected element's domain, else the open diagram's home. The new element
 opens in its editor (a diagram on the canvas, a database on the Database screen, a reference type on the Reference
 data screen), and Undo removes it. An empty model shows a first-run panel with the same actions. Right-click a diagram
@@ -364,12 +366,17 @@ database shows on the Database screen at once. The explorers remember which rows
   Clicking a table or a column shows the table (with that column) in the inspector, whether or not the table has a file
   of its own, and tints, in the Domain model, the entity mapped onto the table and the attribute mapped onto the column
   (once the entity is expanded; a collapsed folder shows "n related"). Enter, a double click or the row menu's **Open**
-  on a table opens the Database screen with that table focused and the same table in the inspector; a table has no
-  editor of its own, so **Open** never opens the entity's. The screen shows table diagrams per
-  database, a Tables list with a filter (the first 300 matches), a dialect selector, and a live DDL preview for the
-  selected table. The preview renders the enabled pack that has a unit rendered per database (a unit named schema or
-  table first; with a table selected, that pack's unit for each table), names the pack and unit in its header, and says
-  so when no enabled pack has such a unit. The Tables list and the DDL preview each hide from the button in their header ("Hide tables list",
+  on a table made from an entity opens the Database screen with that table focused and the same table in the inspector;
+  such a table has no editor of its own, so **Open** never opens the entity's. A table with columns of its own (designed
+  or imported) opens in its table editor, in front of the Database screen focused on it; its row menu also has **Show in
+  Database screen**. A view or a sequence row opens its editor the same way. The screen shows table diagrams per
+  database, a list with a filter (the first 300 matches) whose chips **Tables**, **Views** and **Sequences** pick what it
+  lists, a dialect selector, a **New** menu, and a live DDL preview for the selected table, view or sequence. The preview
+  renders the enabled pack that has a unit rendered per database (a unit named schema or table first; with a table
+  selected, that pack's unit for each table; with a view or a sequence picked, its unit for each view or each sequence),
+  names the pack and unit in its header, and says so when no enabled pack has such a unit. A pack's view or sequence unit
+  may write nothing for it (the sql-ddl pack writes a view's or a sequence's own script only when its **objectScripts**
+  parameter is on): the preview then says so in a line above and shows the whole database's script, which creates it. The Tables list and the DDL preview each hide from the button in their header ("Hide tables list",
   "Hide DDL preview") or with Alt+Shift+L and Alt+Shift+D on this screen, and come back from the slim strip they leave
   at the edge or the same shortcut; the palette has "Toggle tables list" and "Toggle DDL preview". Like the other
   panels, what you hid stays hidden after a reload, and "Reset layout" shows both again. A database of more than 300 tables is not drawn whole: with no table selected the screen says
@@ -423,6 +430,48 @@ database shows on the Database screen at once. The explorers remember which rows
   category, stereotypes, tags, schema and comment; a table made from an entity with no file of its own shows them read
   only, with a note that a column edit creates its file. **JSON** shows the table's file when it has one, and **Used**
   lists what references it.
+
+  **Creating a table, a view or a sequence.** A database's New actions are **New schema…**, **New table…**, **New view…**
+  and **New sequence…**. They are on the database row's menu, on the **+** button of the Databases explorer while the
+  database or anything inside it is selected, and on the Database screen's **New** menu (for the database it shows). A
+  schema row's menu offers New table…, New view… and New sequence… in that schema, and the Tables, Views and Sequences
+  folders offer the one they hold. The palette has New table…, New view… and New sequence… while the Database screen is
+  showing. Each dialog asks for:
+
+  - **Name**: letters, digits and underscores, not starting with a digit, and not already the name of a table, view or
+    sequence in the same schema.
+  - **Schema**: one of the database's schemas; the default schema is picked first.
+  - For a table, **Kind**: **Designed table (its own columns)**. A projected table is not made here: it comes from mapping
+    an entity to the database, and the dialog's **Open the Mappings tab** link goes there. **Start with an id column
+    (int64, primary key)**, ticked by default, gives the table its first column and primary key.
+  - For a view, **Dialect** (the database's own first, **Any dialect (*)** for SQL every dialect runs, or another) and
+    **Body**, the SELECT the view runs, prefilled with `select 1 as id` for the dialect.
+  - For a sequence, **Type** (int16, int32 or int64; int64 by default), **Start** and **Increment** (both 1 by default;
+    the increment cannot be 0).
+
+  **Create** saves the new file in one step (Undo removes it), shows the Databases explorer and opens the element's editor.
+  The editors have text tabs:
+
+  - **Table**: **General** (name, category, stereotypes, tags, schema and comment), **Columns** (the column grid described
+    below, with **Add column**, which adds a nullable string column named `column_1`, `column_2`…, and **Delete column**
+    for the column picked in the grid; deleting a column also takes it out of the table's keys), **Keys** (one grid each
+    for the **Primary key**, **Unique constraints**, **Indexes** and **Foreign keys**, with **Add primary key**, **Add
+    unique**, **Add index** and **Add foreign key** and a delete button per row; a key's columns are picked from a list of
+    ticks and always keep one; a foreign key names the table it references and, optionally, the referenced columns,
+    which are that table's primary key when none is picked; On delete and On update default to no action), **Code
+    generation** and **References**.
+  - **View**: **General** (name, marks, schema and comment), **Body** (one SQL editor per dialect the view has a body
+    for; typing marks it **Unsaved**, and it is saved when you leave the editor, press Ctrl+S or click **Save**; **Add
+    dialect** adds a body for another dialect, starting from the first one's text, and the bin removes one, a view
+    keeping at least one), **Columns** (the columns the view returns, optional: name, type and Null, with **Add column**),
+    **Code generation** and **References**.
+  - **Sequence**: **General** (name, marks and schema), **Definition** (Type, Start, Increment, Minimum, Maximum, Cache and
+    **Cycle**; each number is saved on Enter or when you leave it, and an empty one is left out: Start and Increment then
+    count from 1, Minimum and Maximum are the type's, Cache is the database's), **Code generation** and **References**.
+
+  Every change in these editors is one save of the file and one step Undo takes back. The inspector shows a table of
+  its own as the table inspector below, a view's schema, comment and the dialects its body has, and a sequence's schema
+  and definition.
 
   **What a database holds.** Entities are not turned into tables on their own: a database holds only what is mapped to
   it, and how an entity becomes a table is yours to say. There is no default database either; every database, the first

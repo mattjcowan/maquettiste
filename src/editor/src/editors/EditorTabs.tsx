@@ -22,6 +22,9 @@ import { DomainEditor } from "./DomainEditor";
 import { ProcessEditor } from "./process/ProcessEditor";
 import { ActorEditor } from "./actor/ActorEditor";
 import { ScenarioEditor } from "./scenario/ScenarioEditor";
+import { TableEditor } from "./database/TableEditor";
+import { ViewEditor } from "./database/ViewEditor";
+import { SequenceEditor } from "./database/SequenceEditor";
 
 /** A draft that is not yet saved as it shows: the tab's dirty marker. */
 const UNSAVED = new Set(["dirty", "saving", "invalid", "conflict"]);
@@ -138,7 +141,7 @@ export function EditorArea() {
     if (selection.length !== 1 || !index.data) return;
     const row = indexLookup(index.data).byId.get(selection[0]);
     const kind = row?.kind;
-    if (row && hasEditor(kind)) store.getState().updateEditors((s) => followSelection(s, { id: row.id, kind }));
+    if (row && hasEditor(kind, row)) store.getState().updateEditors((s) => followSelection(s, { id: row.id, kind }));
   }, [selection, index.data, store]);
 
   // A deleted element's tabs close.
@@ -166,6 +169,12 @@ export function EditorArea() {
         <ActorEditor key={tab.id} id={tab.id} />
       ) : tab.kind === "scenario" ? (
         <ScenarioEditor key={tab.id} id={tab.id} />
+      ) : tab.kind === "table" ? (
+        <TableEditor key={tab.id} id={tab.id} />
+      ) : tab.kind === "view" ? (
+        <ViewEditor key={tab.id} id={tab.id} />
+      ) : tab.kind === "sequence" ? (
+        <SequenceEditor key={tab.id} id={tab.id} />
       ) : (
         <TypeEditor key={tab.id} id={tab.id} kind={tab.kind} />
       )}

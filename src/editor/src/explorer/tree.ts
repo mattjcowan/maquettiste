@@ -1961,6 +1961,19 @@ export function databaseOf(forest: Forest, key: string): string | undefined {
   return undefined;
 }
 
+/** The schema row above a row (a kind folder, a table), if any: the schema's name (its key is `<database>/s:<name>`). */
+export function schemaNameOf(forest: Forest, key: string): string | null {
+  for (let k: string | undefined = key, guard = 0; k !== undefined && guard < 32; k = forest.parent.get(k), guard++) {
+    const n = forest.nodes.get(k);
+    if (n?.type === "schema") {
+      const at = k.indexOf("/s:");
+      return at >= 0 && k.length > at + 3 ? k.slice(at + 3) : null;
+    }
+    if (n?.type === "database") return null;
+  }
+  return null;
+}
+
 /** The rows related to a selected row (section 1.9), as the keys of their own rows. */
 export function relatedKeys(forest: Forest, key: string): Set<string> {
   const node = nodeOf(forest, key);

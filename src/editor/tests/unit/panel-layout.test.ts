@@ -215,7 +215,7 @@ describe("page state", () => {
       JSON.stringify({
         explorer: "nowhere",
         expanded: { bogus: ["x"], diagrams: [1, "d:a"] },
-        editors: { tabs: [{ key: "t1", id: "x", kind: "table" }, "junk"], active: "t1" },
+        editors: { tabs: [{ key: "t1", id: "x", kind: "diagram" }, "junk"], active: "t1" },
       }),
     );
     const page = readPage("billing")!;

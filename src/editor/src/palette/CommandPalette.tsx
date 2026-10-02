@@ -21,6 +21,7 @@ import { parseQuery, termMatcher } from "@/search/query";
 import { Tier, bestTier } from "@/search/rank";
 import { CREATE_LABELS, startDomain } from "@/explorer/create";
 import { useCurrentDomain } from "@/explorer/NewElementDialog";
+import { DATABASE_ELEMENT_KINDS, DATABASE_CREATE_LABELS } from "@/explorer/databaseCreate";
 
 const itemClass =
   "flex h-[var(--mq-row-h)] cursor-pointer items-center gap-2 rounded-[6px] px-2 text-[13px] text-primary data-[selected=true]:bg-accent-subtle";
@@ -70,6 +71,8 @@ function useCommands(close: () => void): LocalItem[] {
   const { store } = useServices();
   const theme = useEditor(store, (s) => s.theme);
   const canApply = useEditor(store, (s) => s.generation.planId !== null && s.generation.applyJob === null);
+  // New table…, New view… and New sequence… add to the database the Database screen shows.
+  const database = useEditor(store, (s) => (s.workspace === "database" ? s.activeDatabase : null));
   const { openWorkspace } = useEditorNavigation();
   const { undo, redo } = useUndoRedo();
   const domainNow = useCurrentDomain();
@@ -126,6 +129,14 @@ function useCommands(close: () => void): LocalItem[] {
         label: CREATE_LABELS[kind],
         run: run(() => s().requestNew({ kind, domain: startDomain(kind, domainNow()) })),
       })),
+      ...(database
+        ? DATABASE_ELEMENT_KINDS.map((kind) => ({
+            value: `cmd:new-db-${kind}`,
+            label: DATABASE_CREATE_LABELS[kind],
+            alias: `create ${kind} in this database`,
+            run: run(() => s().requestNewDatabaseObject({ kind, database })),
+          }))
+        : []),
       { value: "cmd:quick-open", label: "Quick open", alias: "Go to file", run: run(() => s().setQuickOpen(true)) },
       ...PANELS.map((panel) => ({
         value: `cmd:${panel}`,
@@ -146,7 +157,7 @@ function useCommands(close: () => void): LocalItem[] {
       },
     );
     return list;
-  }, [store, theme, canApply, openWorkspace, undo, redo, close, domainNow, pageId]);
+  }, [store, theme, canApply, openWorkspace, undo, redo, close, domainNow, pageId, database]);
 }
 
 function SearchDialog({ mode }: { mode: Mode }) {

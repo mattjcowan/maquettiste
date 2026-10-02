@@ -5,13 +5,15 @@ import { placementOf, PROCESS_LABELS, USED_LABEL } from "@/model/labels";
 import type { ExplorerId, NodeType } from "./tree";
 import { CREATE_LABELS, DOMAIN_CREATE, EXPLORER_CREATE, folderCreate, type CreateKind } from "./create";
 import { PROMOTABLE_KINDS } from "./promote";
+import { DATABASE_CREATE, DATABASE_CREATE_LABELS, DATABASE_ELEMENT_KINDS, databaseFolderCreate, type DatabaseObjectKind } from "./databaseCreate";
 import { TYPE_MENU, type TypeActionId } from "@/workspaces/reference-data/typeMenu";
 
 export type MenuActionId =
   | "open"
   | "open-database"
   | "open-mappings"
-  | "new-schema"
+  | `new-db:${DatabaseObjectKind}`
+  | "show-in-database"
   | "show-on-canvas"
   | "add-to-diagram"
   | "add-with-related"
@@ -73,10 +75,13 @@ export interface MenuTarget {
   processDiagram?: boolean;
   /** The explorer the row is listed in (a reference type's seed, listed under its type, is renamed with the type). */
   home?: ExplorerId;
+  /** A table row with a file of its own (designed or imported): it opens in the table editor. */
+  designed?: boolean;
 }
 
 const item = (id: MenuActionId, label: string, multi = false, danger = false): MenuItem => ({ id, label, multi, danger });
 const create = (kind: CreateKind): MenuItem => item(`new:${kind}`, CREATE_LABELS[kind]);
+const createInDatabase = (kind: DatabaseObjectKind): MenuItem => item(`new-db:${kind}`, DATABASE_CREATE_LABELS[kind]);
 
 /** Kinds of the Processes explorer (phase-3-design.md 6.1). */
 const PROCESS_KINDS: ReadonlySet<string> = new Set(["process", "actor", "scenario"]);
@@ -113,6 +118,12 @@ export function isRenamable(kind: string | undefined, home?: string): boolean {
 }
 
 function single(t: MenuTarget): MenuItem[] {
+  // A Tables, Views or Sequences folder of a database (or a table group in it): New table…, New view…, New sequence….
+  const inDatabase = t.home === "databases" && (t.type === "folder" || t.type === "group") ? databaseFolderCreate(t.kind) : null;
+  if (inDatabase)
+    return t.type === "folder"
+      ? [createInDatabase(inDatabase), item("select-all", "Select all"), item("expand-all", "Expand all")]
+      : [createInDatabase(inDatabase), item("expand-all", "Expand all")];
   if (t.type === "folder") {
     const made = folderCreate(t.kind);
     const news = made ? [create(made)] : [];
@@ -140,7 +151,7 @@ function single(t: MenuTarget): MenuItem[] {
       ? [
           item("open-database", "Open Database screen"),
           item("open-mappings", "Open mappings"),
-          item("new-schema", "New schema…"),
+          ...DATABASE_CREATE.map(createInDatabase),
           item("expand-all", "Expand all"),
         ]
       : [item("open-database", "Open Database screen"), item("open-mappings", "Open mappings"), item("expand-all", "Expand all")];
@@ -148,8 +159,14 @@ function single(t: MenuTarget): MenuItem[] {
     return [create("process"), item("import-xstate", PROCESS_LABELS.importXState), item("expand-all", "Expand all")];
   if (t.type === "group" && t.domainGroup) return [create("diagram"), item("expand-all", "Expand all")];
   if (t.type === "group" && t.explorer) return [...EXPLORER_CREATE[t.explorer].filter((k) => k !== "package").map(create), item("expand-all", "Expand all")];
-  if (t.type === "schema" || t.type === "group" || t.type === "root") return [item("expand-all", "Expand all")];
-  if (t.type === "table") return [item("open", "Open"), ...(t.linked ? [item("go-to-entity", "Go to entity")] : [])];
+  if (t.type === "schema") return [...DATABASE_ELEMENT_KINDS.map(createInDatabase), item("expand-all", "Expand all")];
+  if (t.type === "group" || t.type === "root") return [item("expand-all", "Expand all")];
+  if (t.type === "table")
+    return [
+      item("open", "Open"),
+      ...(t.designed ? [item("show-in-database", "Show in Database screen")] : []),
+      ...(t.linked ? [item("go-to-entity", "Go to entity")] : []),
+    ];
   if (!t.element) return [item("open", "Open")];
   if (t.kind && PROCESS_KINDS.has(t.kind)) return processMenu(t);
   const out: MenuItem[] = [item("open", "Open")];

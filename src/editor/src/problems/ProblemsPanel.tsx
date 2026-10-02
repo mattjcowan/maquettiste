@@ -106,7 +106,7 @@ export function ProblemsPanel() {
     const summary = lookup.byId.get(id);
     if (!summary) return;
     if (target.type === "domain") store.getState().updateEditors((e) => setView(e, "package", target.tab));
-    if (hasEditor(summary.kind)) openEditor(summary, true);
+    if (hasEditor(summary.kind, summary)) openEditor(summary, true);
     else reveal(summary);
   };
   if (validation.isPending) return <Spinner label="Validating" />;

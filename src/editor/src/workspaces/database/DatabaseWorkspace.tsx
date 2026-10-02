@@ -2,10 +2,12 @@
 // GET /api/databases/{id}/view as TableNodes and ForeignKeyEdges (auto-laid out, positions per
 // browser), the dialect selector (edits the database element) and the live DDL preview
 // (POST /api/templates/preview with the unit ddlPreview.ts picks: an enabled pack's database unit, or its each-table
-// unit for a selected table), refreshed 400 ms after any model.changed.
+// unit for a selected table, its each-view or each-sequence unit for a picked view or sequence), refreshed 400 ms after
+// any model.changed. The list beside the canvas shows the tables, views or sequences (a kind chip picks which), and the
+// toolbar's New menu creates a schema, a table, a view or a sequence in the database.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Background, Controls, MiniMap, ReactFlow, ReactFlowProvider, useNodesInitialized, useReactFlow, type NodeChange, type Viewport } from "@xyflow/react";
-import { Download, LayoutGrid } from "lucide-react";
+import { Download, LayoutGrid, Plus } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/menu";
 import { exportCanvas } from "@/canvas/export";
 import { useDatabaseTables, useDatabaseView, useIndex, usePacks, usePreview, useProject } from "@/api/queries";
@@ -29,7 +31,9 @@ import { useDraftDocument } from "@/inspector/useDraft";
 import { DIALECTS } from "@/inspector/fields";
 import { EdgeToggle, PanelToggle } from "@/app/panels";
 import { ColumnPanel } from "./ColumnGrid";
-import { ddlPreviewCaption, ddlPreviewTarget, NO_DDL_UNIT } from "./ddlPreview";
+import { databaseTargetOf, ddlPreviewCaption, ddlPreviewTarget, emptyObjectUnitNote, NO_DDL_UNIT, type DdlObject } from "./ddlPreview";
+import { DATABASE_CREATE, DATABASE_CREATE_LABELS } from "@/explorer/databaseCreate";
+import { filterObjects, LIST_KINDS, type ListKind } from "./tableList";
 
 const nodeTypes = { table: TableNode };
 const edgeTypes = { foreignKey: ForeignKeyEdge };
@@ -50,7 +54,7 @@ function DatabaseCanvas() {
   // edge to bring them back), kept in the saved layout.
   const tablesCollapsed = useEditor(store, (s) => s.tablesCollapsed);
   const ddlCollapsed = useEditor(store, (s) => s.ddlCollapsed);
-  const { openDatabase } = useEditorNavigation();
+  const { openDatabase, select } = useEditorNavigation();
   const flow = useReactFlow<TableFlowNode, ForeignKeyFlowEdge>();
   const initialized = useNodesInitialized();
   const index = useIndex();
@@ -258,15 +262,43 @@ function DatabaseCanvas() {
     focusTable(selectedTable);
   }, [selectedTable, tables, initialized, focusTable]);
 
-  // The table section (1.3): the table summaries (E5c) with a filter, capped so a 10,000-table database stays quick.
+  // The table section (1.3): the table summaries (E5c) with a filter, capped so a 10,000-table database stays quick; the
+  // kind chips switch it to the database's views or sequences (from the resolved view).
   const summaries = useDatabaseTables(activeDatabase);
   const [tableFilter, setTableFilter] = useState("");
+  const [listKind, setListKind] = useState<ListKind>("table");
   const listed = useMemo(() => filterTables(summaries.data?.tables ?? [], tableFilter), [summaries.data, tableFilter]);
+  const views = useMemo(() => view.data?.view?.views ?? [], [view.data]);
+  const sequences = useMemo(() => view.data?.view?.sequences ?? [], [view.data]);
+  const listedObjects = useMemo(
+    () => (listKind === "view" ? filterObjects(views, tableFilter) : listKind === "sequence" ? filterObjects(sequences, tableFilter) : null),
+    [listKind, views, sequences, tableFilter],
+  );
+  // A view or a sequence picked here or in the Databases explorer: the DDL preview renders it.
+  const pickedId = useEditor(store, (s) => s.selectionBy.databases?.[0] ?? null);
+  const picked: (DdlObject & { name: string }) | null = useMemo(() => {
+    const v = views.find((x) => x.id === pickedId);
+    if (v) return { kind: "view", id: v.id, name: v.name };
+    const q = sequences.find((x) => x.id === pickedId);
+    return q ? { kind: "sequence", id: q.id, name: q.name } : null;
+  }, [views, sequences, pickedId]);
+  const pickObject = (kind: "view" | "sequence", id: string) => {
+    setSelectedTable(null);
+    store.getState().inspectTable(null, null);
+    select([id], null, "databases");
+    setListKind(kind);
+  };
 
   const packs = usePacks();
   const table = tables.find((t) => t.key === selectedTable) ?? null;
-  const target = ddlPreviewTarget(packs.data ?? [], activeDatabase ?? null, table?.key ?? null);
+  const target = ddlPreviewTarget(packs.data ?? [], activeDatabase ?? null, table?.key ?? null, picked);
   const preview = usePreview(target?.pack ?? "", target?.unit ?? "", target?.elementId ?? null, !!target && !!view.data?.view);
+  // A view or sequence unit that writes nothing for the pick (a pack parameter turns it off): the whole database instead.
+  const objectEmpty =
+    !!picked && target?.scope === picked.kind && !preview.isPlaceholderData && !!preview.data && !preview.data.files.length && !preview.data.diagnostics.length;
+  const whole = objectEmpty ? databaseTargetOf(packs.data ?? [], activeDatabase ?? null) : null;
+  const wholePreview = usePreview(whole?.pack ?? "", whole?.unit ?? "", whole?.elementId ?? null, !!whole && !!view.data?.view);
+  const shownPreview = whole ? wholePreview : preview;
   const dialect = (database.json as DatabaseDoc | undefined)?.dialect;
 
   if (project.isPending) return <EmptyState title="Loading the project…" />;
@@ -322,6 +354,30 @@ function DatabaseCanvas() {
             <DropdownMenuItem onSelect={() => void exportCanvas("png", flow.getNodes(), `database-${databaseName}`, rootRef.current)}>PNG</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={!activeDatabase}
+              title="Create a schema, table, view or sequence in this database"
+              data-testid="database-new-menu"
+            >
+              <Plus /> New
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {DATABASE_CREATE.map((kind) => (
+              <DropdownMenuItem
+                key={kind}
+                onSelect={() => activeDatabase && store.getState().requestNewDatabaseObject({ kind, database: activeDatabase })}
+                data-testid={`database-new-${kind}`}
+              >
+                {DATABASE_CREATE_LABELS[kind]}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <span className="ml-auto text-12 text-secondary" data-testid="database-canvas-count">
           {scope.mode === "all"
             ? `${tables.length} tables`
@@ -338,16 +394,55 @@ function DatabaseCanvas() {
               <span className="min-w-0 flex-1 truncate text-11 font-semibold uppercase tracking-wide text-secondary">Tables</span>
               <PanelToggle panel="tables" />
             </div>
-            <div className="border-b border-default p-2">
+            <div className="flex flex-col gap-1 border-b border-default p-2">
+              <div role="group" aria-label="Show" className="flex gap-1" data-testid="database-list-kinds">
+                {LIST_KINDS.map((k) => {
+                  const count = k.kind === "table" ? listed.total : k.kind === "view" ? views.length : sequences.length;
+                  return (
+                    <button
+                      key={k.kind}
+                      type="button"
+                      aria-pressed={listKind === k.kind}
+                      className={`h-5 rounded-control border px-1.5 text-11 ${listKind === k.kind ? "border-accent bg-accent-subtle font-medium text-primary" : "border-default text-secondary hover:text-primary"}`}
+                      onClick={() => setListKind(k.kind)}
+                      data-testid={`database-list-kind-${k.kind}`}
+                    >
+                      {k.label} {k.kind === "table" && tableFilter ? "" : count}
+                    </button>
+                  );
+                })}
+              </div>
               <Input
                 type="search"
-                aria-label="Filter tables"
-                placeholder="Filter tables"
+                aria-label={`Filter ${LIST_KINDS.find((k) => k.kind === listKind)!.label.toLowerCase()}`}
+                placeholder={`Filter ${LIST_KINDS.find((k) => k.kind === listKind)!.label.toLowerCase()}`}
                 value={tableFilter}
                 onChange={(e) => setTableFilter(e.target.value)}
               />
             </div>
-            <ul className="min-h-0 flex-1 overflow-auto py-1 text-12" aria-label="Table list">
+            {listedObjects ? (
+              <>
+                <ul className="min-h-0 flex-1 overflow-auto py-1 text-12" aria-label={listKind === "view" ? "View list" : "Sequence list"}>
+                  {listedObjects.items.map((o) => (
+                    <li key={o.id}>
+                      <button
+                        type="button"
+                        className={`flex w-full items-baseline gap-2 px-2 py-0.5 text-left hover:bg-accent-subtle ${picked?.id === o.id ? "bg-accent-subtle font-medium" : ""}`}
+                        aria-current={picked?.id === o.id ? "true" : undefined}
+                        onClick={() => pickObject(listKind as "view" | "sequence", o.id)}
+                        data-testid={`database-${listKind}-${o.name}`}
+                      >
+                        <span className="truncate">{o.schema ? `${o.schema}.${o.name}` : o.name}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <p className="border-t border-default px-2 py-1 text-11 text-secondary" data-testid="database-objects-count">
+                  {`${listedObjects.total} ${listKind === "view" ? (listedObjects.total === 1 ? "view" : "views") : listedObjects.total === 1 ? "sequence" : "sequences"}${tableFilter ? " match" : ""}`}
+                </p>
+              </>
+            ) : null}
+            <ul className={listedObjects ? "hidden" : "min-h-0 flex-1 overflow-auto py-1 text-12"} aria-label="Table list">
               {listed.tables.map((t) => (
                 <li key={t.key}>
                   <button
@@ -363,7 +458,7 @@ function DatabaseCanvas() {
                 </li>
               ))}
             </ul>
-            <p className="border-t border-default px-2 py-1 text-11 text-secondary" data-testid="database-tables-count">
+            <p className={listedObjects ? "hidden" : "border-t border-default px-2 py-1 text-11 text-secondary"} data-testid="database-tables-count">
               {listed.more > 0
                 ? `${listed.tables.length} of ${listed.total} shown; refine the filter`
                 : `${listed.total} ${listed.total === 1 ? "table" : "tables"}${tableFilter ? " match" : ""}`}
@@ -435,9 +530,9 @@ function DatabaseCanvas() {
             <div className="flex h-6 shrink-0 items-center gap-2 border-b border-default px-2 text-12" data-testid="ddl-panel-header">
               <span className="font-semibold">DDL preview</span>
               <span className="min-w-0 flex-1 truncate text-secondary" data-testid="ddl-preview-unit" title="The pack and unit this preview renders">
-                {target ? ddlPreviewCaption(target, table?.name ?? null) : "no unit"}
+                {target ? ddlPreviewCaption(target, picked?.name ?? table?.name ?? null) : "no unit"}
               </span>
-              {preview.isFetching ? <Spinner label="Rendering" /> : null}
+              {shownPreview.isFetching ? <Spinner label="Rendering" /> : null}
               <PanelToggle panel="ddl" />
             </div>
             <div className="min-h-0 flex-1">
@@ -447,16 +542,25 @@ function DatabaseCanvas() {
                 <EmptyState title="Nothing to preview">
                   <span data-testid="ddl-preview-none">{NO_DDL_UNIT}</span>
                 </EmptyState>
-              ) : preview.data?.diagnostics.length && !preview.data.files.length ? (
+              ) : shownPreview.data?.diagnostics.length && !shownPreview.data.files.length ? (
                 <ul className="p-2 text-12 text-danger">
-                  {preview.data.diagnostics.map((d, i) => (
+                  {shownPreview.data.diagnostics.map((d, i) => (
                     <li key={i}>
                       {d.rule} {d.message}
                     </li>
                   ))}
                 </ul>
-              ) : preview.data ? (
-                <CodeView language="sql" readOnly label="Generated DDL" value={preview.data.files.map((f) => f.text).join("\n")} />
+              ) : shownPreview.data ? (
+                <div className="flex h-full min-h-0 flex-col">
+                  {whole && target && picked ? (
+                    <p className="border-b border-default px-2 py-1 text-11 text-secondary" data-testid="ddl-preview-fallback">
+                      {emptyObjectUnitNote(target, picked.name)}
+                    </p>
+                  ) : null}
+                  <div className="min-h-0 flex-1">
+                    <CodeView language="sql" readOnly label="Generated DDL" value={shownPreview.data.files.map((f) => f.text).join("\n")} />
+                  </div>
+                </div>
               ) : (
                 <Spinner label="Rendering the preview" />
               )}

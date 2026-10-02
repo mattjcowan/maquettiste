@@ -9,6 +9,7 @@ import { emptyHistory, travel, visit, type NavHistory } from "./history";
 import { activate, activeTab, emptyEditorTabs, pinElement, type EditorTabsState } from "@/editors/tabs";
 import { emptyFilter, normalizeFilter, scopeOf, type ExplorerFilter, type FilterScope } from "@/explorer/filter";
 import type { CreateKind } from "@/explorer/create";
+import type { DatabaseObjectKind } from "@/explorer/databaseCreate";
 import { DEFAULT_LAYOUT, clearLayout, readLayout, writeLayout, type Layout, type Panel } from "./layout";
 
 export type PaletteCommand = "plan" | "apply" | "new-entity";
@@ -190,6 +191,9 @@ export interface EditorState {
    * relationship…). */
   /** The New dialog's request; `source` presets a relationship's first end (the entity editor's New relationship…). */
   newElement: { kind: CreateKind; domain: string | null; source?: string } | null;
+  /** The open New dialog of something in a database (New schema…, New table…, New view…, New sequence…): the database and,
+   * from a schema row, the schema's name the dialog starts on. */
+  newDatabaseObject: NewDatabaseObjectRequest | null;
   /** A reference type action the explorer's menu asked the Reference data screen to run (RT 4.2's type menu). */
   typeAction: { action: string; ids: string[]; nonce: number } | null;
   /** Back and forward through selections (explorer-redesign.md 3.3). */
@@ -210,6 +214,14 @@ export interface EditorState {
   diff: DiffView | null;
   connection: string;
   generation: GenerationState;
+}
+
+/** A New dialog for something in a database. */
+export interface NewDatabaseObjectRequest {
+  kind: DatabaseObjectKind;
+  database: string;
+  /** The schema's name the dialog starts on (a schema row's); none: the database's default schema. */
+  schema?: string | null;
 }
 
 export interface EditorActions {
@@ -249,6 +261,8 @@ export interface EditorActions {
   requestCommand(name: PaletteCommand | null): void;
   /** Opens the New element dialog for a kind, its domain picker on `domain`; null closes it. */
   requestNew(request: { kind: CreateKind; domain: string | null; source?: string } | null): void;
+  /** Opens the New dialog of a schema, table, view or sequence in a database; null closes it. */
+  requestNewDatabaseObject(request: NewDatabaseObjectRequest | null): void;
   requestTypeAction(request: { action: string; ids: string[] } | null): void;
   /** Moves back or forward through the selection history; returns the selection it moved to, or null. */
   travel(direction: "back" | "forward"): string[] | null;
@@ -377,6 +391,7 @@ export function createEditorStore(): EditorStore {
     recent: initialRecent(),
     command: null,
     newElement: null,
+    newDatabaseObject: null,
     typeAction: null,
     history: emptyHistory,
     references: null,
@@ -547,6 +562,7 @@ export function createEditorStore(): EditorStore {
     // A go-to (a definition, a where-used row, a breadcrumb, back and forward) opens the element: it is a recent one.
     requestCenter: (id) => set({ centerRequest: { id, nonce: (get().centerRequest?.nonce ?? 0) + 1 }, recent: withRecent(get().recent, id) }),
     requestNew: (request) => set({ newElement: request }),
+    requestNewDatabaseObject: (request) => set({ newDatabaseObject: request }),
     requestTypeAction: (request) => set({ typeAction: request ? { ...request, nonce: (get().typeAction?.nonce ?? 0) + 1 } : null }),
     requestCommand: (name) => set({ command: name ? { name, nonce: (get().command?.nonce ?? 0) + 1 } : null }),
     updateEditors: (update) => {

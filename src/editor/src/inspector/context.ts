@@ -43,7 +43,9 @@ export function inspectorContext(s: ContextInput): InspectorContext {
     const t = s.inspectedTable;
     return { mode: "table", database: t.database, key: t.key, column: t.column };
   }
-  const ids = (s.selectionBy[active] ?? []).filter((id) => !s.exists || s.exists(id));
+  // The Database screen's own picks of a view or a sequence are a selection on the Databases side, whichever explorer shows.
+  const side = s.workspace === "database" && s.selectionFrom === "databases" ? "databases" : active;
+  const ids = (s.selectionBy[side] ?? []).filter((id) => !s.exists || s.exists(id));
   if (!ids.length) return { mode: "empty", place: RAIL_LABELS[active].label, noun: active === "generate" ? "a pack" : "an element" };
   return { mode: "element", ids, source: "explorer" };
 }

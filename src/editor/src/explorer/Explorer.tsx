@@ -83,6 +83,7 @@ import {
   type TreeNode,
   type VisibleRow,
   type DatabaseInfo,
+  schemaNameOf,
 } from "./tree";
 import { schemasOf } from "@/model/databaseSchemas";
 import { TreeRow } from "./TreeRow";
@@ -96,7 +97,7 @@ import { deleteProcessOps } from "./processCreate";
 import { exportProcess, useScenarioStatuses, verifyLines, verifyScenarios } from "./processApi";
 import { focusProcess, tabOfRow } from "@/app/processFocus";
 import { requestSimulation } from "@/editors/process/simulation/requests";
-import { NewSchemaDialog } from "@/inspector/DatabaseSchemas";
+import { DATABASE_CREATE, DATABASE_CREATE_LABELS, type DatabaseObjectKind } from "./databaseCreate";
 import { MarkDialog, PromoteDialog } from "./markDialogs";
 import type { MarkKind } from "./marks";
 import { ImportCsvDialog, ImportSeedsDialog } from "@/workspaces/reference-data/dialogs";
@@ -417,7 +418,6 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   const [anchorKey, setAnchorKey] = useState<string | null>(null);
   const [menu, setMenu] = useState<(RowMenuState & { keys: string[] }) | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
-  const [newSchemaFor, setNewSchemaFor] = useState<string | null>(null);
   const [loading, setLoading] = useState<ReadonlySet<string>>(new Set());
   const [moving, setMoving] = useState<string[] | null>(null);
   const [mappingTo, setMappingTo] = useState<string[] | null>(null);
@@ -788,11 +788,14 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       }
       // A table is the same thing by every path: a click shows the TABLE in the inspector (by its key, a file or not, never
       // its entity), and the Database screen follows when it shows that database; opening it (Enter, a double click, the
-      // menu's Open) shows it focused in the Database screen (1.3). Tables have no element editor.
+      // menu's Open) shows it focused in the Database screen (1.3), and a table with a file of its own (designed, imported)
+      // in its editor in front of it. A projected table has no editor.
       const database = node.type === "table" && node.table ? databaseOf(forest, key) : undefined;
       if (database && node.table) {
         if (how === "open") {
-          openTable(database, node.table.key);
+          const file = node.id && node.table.origin !== "synthesized" ? (forest.byId.get(node.id) as ElementSummary | undefined) : undefined;
+          if (file) openEditor(file, true);
+          else openTable(database, node.table.key);
           return;
         }
         const s = store.getState();
@@ -813,8 +816,8 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       }
       if (node.id && forest.byId.has(node.id) && node.home) {
         const summary = forest.byId.get(node.id) as ElementSummary;
-        if (how === "open" && hasEditor(summary.kind)) openEditor(summary, true);
-        else if (hasEditor(summary.kind) && store.getState().editors.active !== null) openEditor(summary, false);
+        if (how === "open" && hasEditor(summary.kind, summary)) openEditor(summary, true);
+        else if (hasEditor(summary.kind, summary) && store.getState().editors.active !== null) openEditor(summary, false);
         else reveal(summary);
         return;
       }
@@ -948,6 +951,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         explorer: creates || domainGroup ? node.explorer : undefined,
         processDiagram: node.kind === "diagram" && !!element && isProcessDiagram(forest.byId.get(element)),
         home: node.explorer,
+        designed: node.type === "table" && !!element && !!node.table && node.table.origin !== "synthesized",
       };
     },
     [forest, idOf, favoriteSet],
@@ -1012,6 +1016,11 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       store.getState().requestTypeAction({ action: action.slice(5), ids });
       return;
     }
+    if (action.startsWith("new-db:")) {
+      const database = databaseOf(forest, keys[0]);
+      if (database) store.getState().requestNewDatabaseObject({ kind: action.slice(7) as DatabaseObjectKind, database, schema: schemaNameOf(forest, keys[0]) });
+      return;
+    }
     if (action.startsWith("new:")) {
       const kind = action.slice(4) as CreateKind;
       // New scenario… from a process's row or its Scenarios folder starts on that process.
@@ -1039,9 +1048,11 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       case "open-mappings":
         openWorkspace("mappings");
         break;
-      case "new-schema":
-        if (node?.id) setNewSchemaFor(node.id);
+      case "show-in-database": {
+        const database = databaseOf(forest, key);
+        if (database && node?.table) openTable(database, node.table.key);
         break;
+      }
       case "show-on-canvas": {
         const target = ids[0];
         if (!target) break;
@@ -1409,7 +1420,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         onCollapseAll={collapseAll}
         onExportSeeds={() => exportSeeds()}
         onImportSeeds={() => setImportingSeeds(true)}
-        schemaDatabase={
+        database={
           id === "databases" && forest
             ? ((selection[0] && forest.byId.get(selection[0])?.kind === "database" ? selection[0] : undefined) ??
               (selection[0] && forest.byId.get(selection[0])?.database) ??
@@ -1417,7 +1428,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
               null)
             : null
         }
-        onNewSchema={setNewSchemaFor}
+        onNewInDatabase={(kind, database) => store.getState().requestNewDatabaseObject({ kind, database })}
         onNew={(kind) => {
           const key = selection[0] && forest ? forest.place.get(selection[0]) : undefined;
           const current = forest && key && forest.nodes.get(key)?.explorer === id ? domainOfKey(forest, key) : null;
@@ -1514,7 +1525,6 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
           run(action, keys);
         }}
       />
-      {newSchemaFor ? <NewSchemaDialog database={newSchemaFor} onClose={() => setNewSchemaFor(null)} /> : null}
       {forest ? (
         <>
           <ImportSeedsDialog open={importingSeeds} onOpenChange={setImportingSeeds} />
@@ -1622,9 +1632,10 @@ function ExplorerHeader(props: {
   referenceFlat: boolean;
   onCollapseAll: () => void;
   onNew: (kind: CreateKind) => void;
-  /** The database the New menu's New schema… adds to (a database row or a row inside one), if any. */
-  schemaDatabase?: string | null;
-  onNewSchema?: (database: string) => void;
+  /** The database the New menu's New schema…, New table…, New view… and New sequence… add to (a database row or a row inside
+   * one), if any. */
+  database?: string | null;
+  onNewInDatabase?: (kind: DatabaseObjectKind, database: string) => void;
   onExportSeeds: () => void;
   onImportSeeds: () => void;
 }) {
@@ -1649,11 +1660,13 @@ function ExplorerHeader(props: {
               {CREATE_LABELS[kind]}
             </DropdownMenuItem>
           ))}
-          {props.schemaDatabase ? (
-            <DropdownMenuItem onSelect={() => props.onNewSchema?.(props.schemaDatabase!)} data-testid="explorer-new-schema">
-              New schema…
-            </DropdownMenuItem>
-          ) : null}
+          {props.database
+            ? DATABASE_CREATE.map((kind) => (
+                <DropdownMenuItem key={kind} onSelect={() => props.onNewInDatabase?.(kind, props.database!)} data-testid={`explorer-new-${kind}`}>
+                  {DATABASE_CREATE_LABELS[kind]}
+                </DropdownMenuItem>
+              ))
+            : null}
         </DropdownMenuContent>
       </DropdownMenu>
       <DropdownMenu>

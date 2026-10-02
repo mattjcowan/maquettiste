@@ -24,7 +24,7 @@ import { sha256Hex } from "@/lib/sha256";
 import { clone } from "@/lib/json";
 import type { MockModel } from "./store";
 import { resolveDatabase } from "./physical";
-import { renderCSharp, renderSchema, renderSeed, renderTable, type RenderUnit, type SeedRows } from "./render";
+import { renderCSharp, renderSchema, renderSeed, renderSequence, renderTable, renderView, type RenderUnit, type SeedRows } from "./render";
 import { unifiedDiff } from "./diff";
 
 type Json = Record<string, unknown>;
@@ -85,6 +85,13 @@ export class MockGeneration {
     const output = settings.packs[pack]?.output || ((this.renderers.get(pack) ?? pack) === "sql-ddl" ? "db" : "src/Generated");
     const allow = settings.outputs.allow.find((a) => output === a.path || output.startsWith(a.path + "/"));
     return { path: output, commit: allow?.commit ?? false };
+  }
+
+  /** A pack's effective parameter: the project's value, else the manifest's default. */
+  private packParameter(pack: string, name: string): unknown {
+    const project = (this.model.projectSettings().packs[pack] as { parameters?: Record<string, unknown> } | undefined)?.parameters;
+    if (project && name in project) return project[name];
+    return (this.model.packs.find((p) => p.name === pack)?.parameters as Record<string, unknown> | undefined)?.[name];
   }
 
   enabledPacks(): string[] {
@@ -276,6 +283,13 @@ export class MockGeneration {
           });
         }
         units.push({ pack: ddl, unit: "schema", elementId: view.id, unitKey: `${ddl}/schema:${view.id}`, files: [renderSchema(view, root)] });
+        // The view and sequence scripts, as the pack writes them: only with its objectScripts parameter on.
+        if (this.packParameter(ddl, "objectScripts") === true) {
+          for (const v of view.views)
+            units.push({ pack: ddl, unit: "view", elementId: v.id, unitKey: `${ddl}/view:${v.id}`, files: [renderView(view, v, root)] });
+          for (const q of view.sequences)
+            units.push({ pack: ddl, unit: "sequence", elementId: q.id, unitKey: `${ddl}/sequence:${q.id}`, files: [renderSequence(view, q, root)] });
+        }
         // The seed script of every database (the unit is "select databases"), with the rows of the types stored as
         // lookup tables there.
         units.push({
@@ -323,6 +337,11 @@ export class MockGeneration {
     const errors = this.model.validate().diagnostics.filter((d) => d.severity === "error");
     if (errors.length) return { files: [], diagnostics: errors, readKeys: [], elapsedMs: 0 };
     const found = this.renderUnits([pack]).find((u) => u.unit === unit && u.elementId === elementId);
+    // An each-view or each-sequence unit whose template writes nothing for the element (sql-ddl with objectScripts off).
+    const scope = manifest.units.find((u) => u.id === unit)?.for ?? "";
+    const kindOf = elementId ? this.model.docs().get(elementId)?.kind : undefined;
+    if (!found && (scope === "each view" || scope === "each sequence") && kindOf === scope.slice(5))
+      return { files: [], diagnostics: [], readKeys: [`e:${elementId}`], elapsedMs: 1 };
     if (!found) {
       const diagnostic: Diagnostic = {
         rule: "MQ6006",

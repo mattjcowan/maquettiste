@@ -651,6 +651,92 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
     }
   }
 
+  // Designed and imported tables (DatabaseRun.BuildDesignedTable): their own columns by id, their keys, uniques, indexes and
+  // foreign keys as the file says them (a foreign key names a table file id or a synthesized key; no referenced columns: its
+  // primary key).
+  const designedSchema = (doc: Json) => (typeof doc.schema === "string" ? (declared.get(doc.schema) ?? defaultSchema) : defaultSchema);
+  const designed = overlays.filter((d) => d.origin !== "synthesized").sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  for (const doc of designed) {
+    const name = String(doc.name ?? "");
+    const pkColumns = ((doc.primaryKey as Json | undefined)?.columns as string[] | undefined) ?? [];
+    const fkColumns = new Set(arr(doc.foreignKeys).flatMap((fk) => (fk.columns as string[] | undefined) ?? []));
+    const columns = arr(doc.columns)
+      .filter((c) => typeof c.id === "string")
+      .map((c, i) => {
+        const type = typeof c.type === "string" ? c.type : "string";
+        return {
+          ...toView(
+            {
+              name: String(c.name ?? ""),
+              type,
+              length: num(c.length) ?? (type === "string" ? defaultStringLength : null),
+              precision: num(c.precision) ?? (type === "decimal" ? 18 : null),
+              scale: num(c.scale) ?? (type === "decimal" ? 2 : null),
+              nullable: c.nullable !== false,
+              attributeId: null,
+              attributePath: null,
+              key: String(c.id),
+              isPrimaryKey: pkColumns.includes(String(c.id)),
+              isForeignKey: fkColumns.has(String(c.id)),
+              unique: false,
+              indexed: false,
+              nativeOverride: typeof c.nativeType === "string" ? c.nativeType : undefined,
+              entry: c,
+              attributeDescription: null,
+            },
+            i + 1,
+          ),
+          identity: c.generated === "identity",
+        };
+      });
+    const nameOf = (key: string) => columns.find((c) => c.key === key)?.name ?? key;
+    const pk = doc.primaryKey as Json | undefined;
+    tables.push({
+      key: String(doc.id),
+      name,
+      schema: designedSchema(doc),
+      origin: doc.origin === "imported" ? "imported" : "designed",
+      entityId: null,
+      relationId: null,
+      isJunction: false,
+      isLookup: false,
+      comment: commentOf(doc),
+      columns,
+      primaryKey: pkColumns.length ? { name: typeof pk?.name === "string" ? pk.name : `pk_${name}`, columns: [...pkColumns] } : null,
+      uniques: arr(doc.uniques).map((u) => {
+        const cols = (u.columns as string[] | undefined) ?? [];
+        return { name: typeof u.name === "string" ? u.name : `uq_${name}_${cols.map(nameOf).join("_")}`, columns: [...cols] };
+      }),
+      foreignKeys: arr(doc.foreignKeys).map((fk) => {
+        const cols = (fk.columns as string[] | undefined) ?? [];
+        return {
+          name: typeof fk.name === "string" ? fk.name : `fk_${name}_${cols.map(nameOf).join("_")}`,
+          columns: [...cols],
+          referencedTable: String(fk.referencesTable ?? ""),
+          referencedColumns: [...((fk.referencesColumns as string[] | undefined) ?? [])],
+          onDelete: String(fk.onDelete ?? "no-action").replace("-", " "),
+          onUpdate: String(fk.onUpdate ?? "no-action").replace("-", " "),
+          relationId: null,
+          endId: null,
+        };
+      }),
+      indexes: arr(doc.indexes).map((ix) => {
+        const cols = arr(ix.columns).map((c) => ({ column: String(c.column), descending: c.descending === true }));
+        return {
+          name: typeof ix.name === "string" ? ix.name : `ix_${name}_${cols.map((c) => nameOf(c.column)).join("_")}`,
+          columns: cols,
+          unique: ix.unique === true,
+          where: typeof ix.where === "string" ? ix.where : null,
+        };
+      }),
+      ...annotationsOf(doc, stereotypes),
+    });
+  }
+  // A designed foreign key without referenced columns references the referenced table's primary key.
+  for (const t of tables)
+    for (const fk of t.foreignKeys)
+      if (!fk.referencedColumns.length) fk.referencedColumns = [...(tables.find((x) => x.key === fk.referencedTable)?.primaryKey?.columns ?? [])];
+
   tables.sort((x, y) => x.name.localeCompare(y.name));
   const schemaOf = (doc: Json) => (typeof doc.schema === "string" ? (declared.get(doc.schema) ?? defaultSchema) : defaultSchema);
   const byName = <T extends { name: string }>(x: T, y: T) => x.name.localeCompare(y.name);

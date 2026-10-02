@@ -16,6 +16,7 @@ import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { columnText, physicalHint, type ColumnField, type Derivation } from "./columnEdits";
 import { useColumnDerivations, useTableFile } from "./useTableFile";
+import { tableKeyOf } from "@/search/engine";
 
 type GridColumn = {
   key: ColumnField | "flags" | "attribute";
@@ -92,14 +93,15 @@ export function ColumnPanel({ table, databaseId }: { table: TableView | null; da
   );
 }
 
-function ColumnGrid({ table, databaseId }: { table: TableView; databaseId: string }) {
+/** The grid of one table's columns: the Database screen's column panel, and the Columns tab of a designed table's editor. */
+export function ColumnGrid({ table, databaseId }: { table: TableView; databaseId: string }) {
   const { store } = useServices();
   const { openEntity } = useEditorNavigation();
   const { write, busy } = useTableFile(table, databaseId);
   const derivations = useColumnDerivations(table);
   const columns = table.columns;
   // The row the inspector shows: the one picked here (a click, the arrow keys), none until then.
-  const picked = useEditor(store, (s) => (s.inspectedTable?.key === table.key ? s.inspectedTable.column : null));
+  const picked = useEditor(store, (s) => (s.inspectedTable?.key === table.key && s.inspectedTable.database === databaseId ? s.inspectedTable.column : null));
   const [active, setActiveCell] = useState(() => ({
     row: Math.max(
       0,
@@ -110,7 +112,11 @@ function ColumnGrid({ table, databaseId }: { table: TableView; databaseId: strin
   const setActive = (next: { row: number; col: number }) => {
     setActiveCell(next);
     const key = columns[next.row]?.key ?? null;
-    if (key !== picked) store.getState().inspectColumn(key);
+    if (key === picked) return;
+    // The table's editor shows the grid without the table inspected yet: the pick inspects it with that column.
+    const shown = store.getState().inspectedTable;
+    if (shown?.key === table.key && shown.database === databaseId) store.getState().inspectColumn(key);
+    else store.getState().inspectTable({ database: databaseId, key: table.key, column: key }, tableKeyOf(databaseId, table.key));
   };
   const [editing, setEditing] = useState<{ value: string } | null>(null);
   // The open editor as of now: a blur that follows a commit (the editor unmounting) must not commit twice.
