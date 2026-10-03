@@ -28,6 +28,45 @@ public sealed class LifecycleTests
     }
 
     [Fact]
+    public async Task A_plan_lists_a_migration_written_once_as_kept_with_no_diff()
+    {
+        using var repo = PackRepo.Billing();
+        await repo.GenerateCleanlyAsync();
+        // The snapshot is at revision 1 now: the migration unit emits a short placeholder for 0001, never written over the file.
+        await repo.GenerateCleanlyAsync();
+        var real = repo.Read("db/main/migrations/0001.sql");
+        await using var store = new ModelStore(repo.Repo.Options);
+        var service = new GenerationService(store, repo.Repo.Options);
+
+        foreach (var force in new[] { false, true })
+        {
+            var plan = (await service.PlanAsync(new GenerationRequest { Force = force }, null, TestContext.Current.CancellationToken)).Plan!;
+
+            var migration = Assert.Single(plan.Changes, c => c.Path == "db/main/migrations/0001.sql");
+            Assert.Equal(FileChangeKind.Kept, migration.Kind);
+            Assert.Equal("", await service.GetPlanDiffAsync(plan.Id, migration.Path, TestContext.Current.CancellationToken));
+            Assert.Equal(0, plan.Counts["added"] + plan.Counts["modified"] + plan.Counts["deleted"] + plan.Counts["conflict"]);
+            Assert.Equal(plan.Units.SelectMany(u => u.Outputs).Count(), plan.Changes.Count);
+            if (force)
+            {
+                // The forced plan rendered the placeholder: other bytes than the migration on disk, still nothing to do.
+                var output = plan.Units.SelectMany(u => u.Outputs).Single(o => o.Path == migration.Path);
+                Assert.NotEqual(output.DiskHashAtPlan, output.ContentHash);
+                Assert.Equal(0, plan.Counts["not-rendered"]);
+            }
+            else
+            {
+                Assert.True(plan.Counts["not-rendered"] > 0);
+            }
+
+            var applied = await service.ApplyAsync(plan.Id, null, TestContext.Current.CancellationToken);
+            Assert.Equal(RunOutcome.Succeeded, applied.Outcome);
+            Assert.Equal(0, applied.Result!.FilesWritten);
+            Assert.Equal(real, repo.Read("db/main/migrations/0001.sql"));
+        }
+    }
+
+    [Fact]
     public async Task A_change_of_logical_type_asks_the_reviewer_to_convert_the_existing_values()
     {
         using var repo = PackRepo.BillingDialects();

@@ -10,6 +10,7 @@ Pipeline orchestration, the plan store, the watch hook and the composition root 
 | `EngineServices.cs` | the composition root: `Create` builds the long-lived components and `EnginePaths`; `CreateRenderer`, `CreateHasher`, `CreatePathPolicy`, `CreateWriter` build per-run ones |
 | `GenerationRun.cs` | one run's stages: prepare (1 to 4), skip (5), the streaming render → post-process → write pipeline (6 to 8), snapshots |
 | `PlanCapture.cs` | records a plan while its dry run streams (units, outputs, disk hashes, blobs) |
+| `PlanEntries.cs` | a plan's complete file list (skipped units' outputs as `NotRendered` or `Kept`), its counts by kind and its units by reason |
 | `PlanStore.cs` | `CacheDirectory/plans/<id>/plan.json` and `blobs/<ContentHash>`; the 20 newest plans are kept |
 | `Outcomes.cs` | diagnostics and file decisions → `RunOutcome` (precedence 4, 1, 3, 2) |
 | `StageClock.cs` | `StageTiming`s |
@@ -138,6 +139,13 @@ its model store warm and neither reads nor writes the record, so its runs are un
   units are recorded from their stored state (a plain-hash output whose stat matches is not read again). The plan id is the run id.
   Every produced plan is saved (also `Invalid` ones, so their diagnostics can be fetched); `Busy` and `Cancelled` save nothing.
 - `PlanAsync` also stores `plans/<id>/write.json` (before `plan.json`): the effective hand-edit policy of every pack at plan time.
+- A plan's `Changes` name every file (`PlanEntries.cs`, added 2026-10-02): the dry run's writer lists identical files too
+  (`WriteContext.ListUnchanged`: `Unchanged`, never with a diff), and the outputs of skipped units are added from their stored
+  state, an owned (`o:`) one as `Kept`, any other as `NotRendered` (path, unit key, manifest hash). Sorted by path, pack, kind.
+  `Counts` (every kind's JSON name, zero included), `UnitsRendered` and `UnitsSkipped` (units by reason) summarize the plan; a
+  job record keeps them when it drops the lists. Apply never acts on `Unchanged`, `NotRendered` or `Kept` entries: it is fed
+  from `Units`, which already hold their paths. The MCP `plan` tool leaves `Unchanged` and `NotRendered` entries out of its answer
+  (they are counted); `get_plan` and the editor API return every entry.
 - `ApplyAsync`: unknown plan → `Failed`; a plan with errors → `Invalid`; lock; stages 1 to 4 with the plan's request; `Stale`
   (writing nothing, journal untouched) when any planned unit is missing or its input hash recomputed from its read keys differs,
   when a unit appeared, when any planned path's disk hash differs from `DiskHashAtPlan` (hand edits and region edits) unless the
@@ -149,7 +157,8 @@ its model store warm and neither reads nor writes the record, so its runs are un
   `ContentOmitted`), skipped units as `SkippedUnit`s (their stored state when it matches, else rebuilt from the plan with the
   current stat), and `PlannedPaths` = every output path and change path of the plan. Unit states come from the plan's read keys
   and input hashes. `Result.UnitsRendered` counts the plan units rendered at plan time.
-- `GetPlanDiffAsync`: from the file on disk now to the planned blob (empty when unchanged or kept; a deleted or hand-edited
+- `GetPlanDiffAsync`: from the file on disk now to the planned blob (empty when unchanged, not rendered or kept, and for any
+  owned file that existed at plan time, whatever its unit rendered, such as a migration's placeholder; a deleted or hand-edited
   orphan diffs to nothing); `null` when the path is not in the plan. Only paths the plan names are read.
 - `PreviewAsync`: stages 1 to 4 for that pack without the run lock or the journal, then `RenderOneAsync` of the planned unit, or
   of a unit built for the element when its `where` would not plan it. Validation errors come back as diagnostics, no files.

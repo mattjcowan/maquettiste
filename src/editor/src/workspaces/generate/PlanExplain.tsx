@@ -1,5 +1,6 @@
-// The plan explained (generation-ui.md 4): the summary line per pack, the planned changes grouped by unit with counts
-// and filters, the selected file's explanation (pack, unit, template, element, output path, reason, causes), the
+// The plan explained (generation-ui.md 4): the summary line per pack, every file of the plan grouped by unit with counts,
+// an outcome badge per file and filter chips by outcome (To write, Identical, Not re-rendered, Yours, Edited by hand), the
+// selected file's explanation (pack, unit, template, element, output path, reason, causes), the
 // unchanged units with "Why not?" (GET /api/generate/plan/{id}/unit) and Explain for any unit and element
 // (POST /api/generate/explain). One density: 24 px rows, 12 px text.
 import { ROW_H } from "@/design/density";
@@ -24,7 +25,12 @@ import {
   filterGroups,
   flattenGroups,
   groupPlan,
+  KIND_LABEL,
+  KIND_TITLE,
+  kindCounts,
   nothingToWriteNote,
+  OUTCOME_CHIPS,
+  outcomeCounts,
   planSummary,
   rootGroups,
   type CauseLink,
@@ -42,6 +48,15 @@ export const KIND_TONE: Partial<Record<FileChangeKind, "success" | "danger" | "w
   conflict: "danger",
   "orphaned-owned": "warning",
 };
+
+/** A file's outcome badge: prominent for what Apply writes, muted for what it leaves alone; the tooltip says which. */
+export function KindBadge({ kind }: { kind: FileChangeKind }) {
+  return (
+    <Badge tone={KIND_TONE[kind] ?? "neutral"} title={KIND_TITLE[kind]} data-kind={kind}>
+      {KIND_LABEL[kind]}
+    </Badge>
+  );
+}
 
 /** A unit the `e` key (or the Why panel) asks the Explain form to explain. */
 export interface ExplainAsk {
@@ -91,7 +106,6 @@ export function PlanSummary({ plan }: { plan: GenerationPlan }) {
       {note ? (
         <p className="rounded-control bg-accent-subtle px-2 py-1 text-12" role="note" data-testid="plan-nothing-to-write">
           {note}
-          {plan.changes.length ? <span className="text-secondary"> Choose Show: unchanged below to list the files.</span> : null}
         </p>
       ) : null}
       {causes.length ? (
@@ -152,12 +166,13 @@ function elementLabel(names: Map<string, string>, id: string | null | undefined)
   return names.get(id) ?? id;
 }
 
-/** The planned changes grouped by unit, filterable; a row selects its diff and its explanation. */
+/** Every file of the plan grouped by unit, filterable by outcome, pack, unit and words; a row selects its diff and its explanation. */
 export function PlanChanges({ planId, plan, onExplain }: { planId: string; plan: GenerationPlan; onExplain?: (ask: Omit<ExplainAsk, "seq">) => void }) {
   const { store } = useServices();
   const diff = useEditor(store, (s) => s.diff);
   const names = useElementNames();
-  const [filter, setFilter] = useState<PlanFilter>({ kind: "changed", pack: "", unit: "", text: "" });
+  // Every file by default: the plan names all of them, each with what Apply does to it.
+  const [filter, setFilter] = useState<PlanFilter>({ outcome: "", pack: "", unit: "", text: "" });
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const groups = useMemo(() => groupPlan(plan), [plan]);
   const shown = useMemo(() => filterGroups(groups, filter), [groups, filter]);
@@ -199,7 +214,7 @@ export function PlanChanges({ planId, plan, onExplain }: { planId: string; plan:
     const c = item.row.change;
     if (e.key === "Enter") {
       e.preventDefault();
-      store.getState().showDiff({ planId, path: c.path });
+      store.getState().showDiff({ planId, path: c.path, kind: c.kind });
     } else if (e.key === " ") {
       e.preventDefault();
       setExpanded((x) => {
@@ -216,8 +231,7 @@ export function PlanChanges({ planId, plan, onExplain }: { planId: string; plan:
       onExplain({ pack: item.row.unit.pack ?? "", unit: item.row.unit.unit ?? "", elementId: item.row.unit.elementId ?? null });
     }
   };
-  // "unchanged" is always offered: a plan that writes nothing lists its files only through it.
-  const kinds = [...new Set([...plan.changes.map((c) => c.kind), "unchanged" as FileChangeKind])].sort();
+  const chipCounts = useMemo(() => outcomeCounts(kindCounts(plan)), [plan]);
   const packs = [...new Set(groups.map((g) => g.pack))].sort();
   const unitIds = groups.filter((g) => !filter.pack || g.pack === filter.pack).map((g) => g.id);
   const set = (patch: Partial<PlanFilter>) => setFilter((f) => ({ ...f, ...patch }));
@@ -229,19 +243,31 @@ export function PlanChanges({ planId, plan, onExplain }: { planId: string; plan:
     });
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Show files by what Apply does" data-testid="plan-filters">
+        {OUTCOME_CHIPS.map((chip) => {
+          const on = filter.outcome === chip.value;
+          const n = chipCounts[chip.value];
+          return (
+            <button
+              key={chip.value || "all"}
+              type="button"
+              aria-pressed={on}
+              title={chip.title}
+              disabled={!n && !on && chip.value !== ""}
+              onClick={() => set({ outcome: chip.value })}
+              className={cn(
+                "flex h-6 items-center gap-1 rounded-control border px-2 text-12 disabled:opacity-50",
+                on ? "border-accent bg-accent-subtle font-medium text-primary" : "border-default text-secondary hover:bg-accent-subtle",
+              )}
+              data-testid={`plan-filter-${chip.value || "all"}`}
+            >
+              {chip.label}
+              <span className="font-mono text-11">{n}</span>
+            </button>
+          );
+        })}
+      </div>
       <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor="filter-kind" className="text-12 text-secondary">
-          Show
-        </label>
-        <Select id="filter-kind" className="h-6 w-36 text-12" value={filter.kind} onChange={(e) => set({ kind: e.target.value })}>
-          <option value="changed">All but unchanged</option>
-          <option value="">Everything</option>
-          {kinds.map((k) => (
-            <option key={k} value={k}>
-              {k}
-            </option>
-          ))}
-        </Select>
         <label htmlFor="filter-pack" className="text-12 text-secondary">
           Pack
         </label>
@@ -277,10 +303,10 @@ export function PlanChanges({ planId, plan, onExplain }: { planId: string; plan:
         </span>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden rounded-control border border-default">
-        <div role="treegrid" aria-label="Planned file changes" aria-rowcount={items.length + 1} className="flex h-full flex-col text-12" onKeyDown={onGridKey}>
+        <div role="treegrid" aria-label="Planned files" aria-rowcount={items.length + 1} className="flex h-full flex-col text-12" onKeyDown={onGridKey}>
           <div role="rowgroup">
             <div role="row" aria-rowindex={1} className={cn(COLS, "bg-app px-2")}>
-              {["Change", "File", "Unit", "Element", "Why"].map((h) => (
+              {["Apply", "File", "Unit", "Element", "Why"].map((h) => (
                 <div role="columnheader" key={h} className="py-0.5 text-11 font-semibold text-secondary">
                   {h}
                 </div>
@@ -319,7 +345,7 @@ export function PlanChanges({ planId, plan, onExplain }: { planId: string; plan:
                       "cursor-default pl-6 pr-2 text-left hover:bg-accent-subtle focus-visible:outline-2 focus-visible:outline-accent",
                       active && "bg-accent-subtle",
                     )}
-                    onClick={() => store.getState().showDiff({ planId, path: c.path })}
+                    onClick={() => store.getState().showDiff({ planId, path: c.path, kind: c.kind })}
                     aria-selected={active}
                     data-testid={`change-${c.path}`}
                   >
@@ -327,7 +353,7 @@ export function PlanChanges({ planId, plan, onExplain }: { planId: string; plan:
                       {c.kind === "hand-edited" || c.kind === "conflict" ? (
                         <TriangleAlert className="size-3.5 text-warning" aria-label="needs attention" />
                       ) : null}
-                      <Badge tone={KIND_TONE[c.kind] ?? "neutral"}>{c.kind}</Badge>
+                      <KindBadge kind={c.kind} />
                     </span>
                     <span role="gridcell" className="truncate font-mono" title={c.path}>
                       {c.path}
@@ -472,7 +498,9 @@ export function WhyPanel({ planId, plan }: { planId: string; plan: GenerationPla
                 {row.change.path}
               </span>
             </Fact>
-            <Fact label="Change">{row.change.kind}</Fact>
+            <Fact label="Apply">
+              <KindBadge kind={row.change.kind} />
+            </Fact>
             <Fact label="Reason">{row.unit?.reason ?? "orphan"}</Fact>
           </dl>
           <p className="text-12">{row.why}</p>

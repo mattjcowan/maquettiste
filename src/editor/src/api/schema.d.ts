@@ -1168,7 +1168,7 @@ export interface paths {
         };
         /**
          * The finished plan
-         * @description Files added, changed and deleted, hand edits and conflicts (`changes`), per pack and unit. `units` (every unit's read keys and outputs) is large and empty unless `units=true`. The 20 newest plans are kept.
+         * @description Every file the plan's packs produce or remove (`changes`), each with what Apply does to it (added, modified, deleted; unchanged, not rendered and kept files are left alone; hand edits and conflicts), with `counts` by kind and the units by reason (`unitsRendered`, `unitsSkipped`). `units` (every unit's read keys and outputs) is large and empty unless `units=true`. The 20 newest plans are kept.
          */
         get: operations["getPlan"];
         put?: never;
@@ -1191,7 +1191,7 @@ export interface paths {
         };
         /**
          * Unified diff for one file in a plan
-         * @description From the file on disk now to the planned bytes, without rendering again. Empty for a file the plan leaves unchanged or keeps; a deleted file diffs to nothing.
+         * @description From the file on disk now to the planned bytes, without rendering again. Empty for a file the plan leaves alone (unchanged, not rendered, or kept; an existing once file or companion is never diffed against what its unit renders, such as a migration's placeholder); a deleted file diffs to nothing.
          */
         get: operations["getPlanDiff"];
         put?: never;
@@ -4264,8 +4264,27 @@ export interface components {
         FileRole: "main" | "block" | "companion";
         /** @enum {string} */
         OutputMode: "overwrite" | "once" | "regions" | "pair" | "block";
-        /** @enum {string} */
-        FileChangeKind: "added" | "modified" | "deleted" | "unchanged" | "hand-edited" | "kept" | "orphaned-owned" | "conflict";
+        /**
+         * @description What Apply does to a file. `added`, `modified` and `deleted` are written or removed. `unchanged` (rendered, identical to the disk), `not-rendered` (plans only: its unit was skipped because nothing it read changed; listed from the unit's stored state) and `kept` (a `once` file or companion that exists: the team's, never overwritten) are left alone. `hand-edited`, `conflict` and `orphaned-owned` follow the hand-edit policy and the owned-file rule.
+         * @enum {string}
+         */
+        FileChangeKind: "added" | "modified" | "deleted" | "unchanged" | "hand-edited" | "kept" | "orphaned-owned" | "conflict" | "not-rendered";
+        /** @description The number of a plan's file entries of each kind, every kind present (zero included); empty in a plan stored before counts (count `changes` then). */
+        PlanCounts: {
+            added?: number;
+            modified?: number;
+            deleted?: number;
+            unchanged?: number;
+            "hand-edited"?: number;
+            kept?: number;
+            "orphaned-owned"?: number;
+            conflict?: number;
+            "not-rendered"?: number;
+        };
+        /** @description Units counted by reason, ordinal keys: `new`, `forced`, `check`, `inputs`, `outputs`, `target-missing` for rendered units, `unchanged` for skipped ones (`unknown` when not recorded). */
+        UnitReasonCounts: {
+            [key: string]: number;
+        };
         /** @description As a request body every member is optional and takes the default shown. As part of a plan, every member is written. */
         GenerationRequest: {
             mode?: components["schemas"]["GenerationMode"];
@@ -4349,8 +4368,12 @@ export interface components {
             modelVersion: number;
             packs: string[];
             units: components["schemas"]["PlanUnit"][];
+            /** @description Every file the plan's packs produce or remove, sorted by path, each with what Apply does to it (`FileChangeKind`): files identical to the disk, files of skipped units and kept files included, so a plan names every file. Entries carry no content and no diff. */
             changes: components["schemas"]["FileChange"][];
             diagnostics: components["schemas"]["Diagnostic"][];
+            counts: components["schemas"]["PlanCounts"];
+            unitsRendered: components["schemas"]["UnitReasonCounts"];
+            unitsSkipped: components["schemas"]["UnitReasonCounts"];
         };
         PlanResult: {
             outcome: components["schemas"]["RunOutcome"];

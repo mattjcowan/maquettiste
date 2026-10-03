@@ -1608,35 +1608,57 @@ its pack editor's header), and a pack with diagnostics shows their count. The ch
 **Options**, next to **Plan**, holds two choices for the next plan only; nothing is saved, and the button shows a dot
 while one differs from its default:
 
-- **Re-render every file**: every unit renders again even if nothing it reads changed (the plan's Why then says
+- **Re-render every file**: renders every file again, even when nothing its unit reads changed (the plan's Why then says
   "Forced: the run renders every unit"). Use it after a change the plan cannot see, or to be sure. Nothing is written
-  until Apply, and Apply still writes only the files whose content differs.
+  until Apply, and Apply still writes only files that differ, and never files that are yours. A forced plan has no
+  "Not re-rendered" files: what comes out the same as the disk is listed as **Identical**.
 - **If a generated file was edited by hand**: **Project default** (the project's `handEdits` setting, shown in
   brackets), **Stop and report it** (`fail`: the file is listed as a conflict and left as it is), **Overwrite it**
   (`overwrite`: your edit is replaced) or **Keep it and skip** (`skip`: your edit stays and nothing is generated for it).
   Apply uses the choice the plan was made with; the Apply result names it only when a file was in fact edited by hand
   ("2 files edited by hand: overwritten (this run's choice: Overwrite it)").
 
-When the plan is made, one line says what it found: `Plan ready: 15 files to write (12 added, 3 modified), 20
-unchanged`, or `Plan ready: nothing to write, every file matches`; files edited by hand are counted at the end. A plan
+When the plan is made, one line says what it found: `Plan ready: 3 files to write (1 added, 2 modified); 58 identical,
+6 yours` after a forced plan, `Plan ready: 3 files to write (1 added, 2 modified); 2 identical, 40 not re-rendered
+(inputs unchanged), 6 yours` after an incremental one, and `Plan ready: nothing to write; 650 not re-rendered (inputs
+unchanged), 6 yours` when Apply has nothing to do. Files edited by hand are counted first after the semicolon. A plan
 that failed or was cancelled shows its outcome and the reason instead.
 
 A plan is a dry run: it renders what needs rendering and compares it with the disk, and nothing is written until you
-apply it. Above the table, one line per pack says what it will do, for example
-`sql-ddl: 4 units, 12 files to add, 3 to modify, 1 orphan to delete` (an orphan is a file generation wrote earlier that
-no unit produces any more). Files that already hold exactly what the plan renders are counted as unchanged
-(`20 files unchanged`); when no file needs writing the line says so, `atlas-schema: 737 units, nothing to write: all
-737 files already match the disk`, a note says Apply has nothing to do, and **Apply plan** stays disabled. The table
-shows only files that change; choose **Show: unchanged** to list the others.
+apply it. It lists **every file** its packs produce, each with what Apply will do to it:
+
+| Badge | Meaning | Apply |
+| --- | --- | --- |
+| added, modified, deleted | a new file, new content, or an orphan (a file generation wrote earlier that no unit produces any more) | writes or removes it |
+| identical | rendered again, and the same as the file on disk | nothing to write |
+| not re-rendered | its unit was skipped: nothing the unit reads changed since the last run (Re-render every file renders it again) | nothing to write |
+| yours | a file written once (a `once` file such as a migration, or a pair's companion) that exists: it is yours to edit | never overwrites it |
+| hand-edited, conflict | a generated file edited by hand since; the hand-edit choice decides | as that choice says |
+| orphaned-owned | a file of yours that no unit produces any more | leaves it on disk and stops tracking it |
+
+A migration unit renders a short placeholder for every earlier revision so it keeps owning those files; the real
+migration on disk is **yours**, so the plan never shows the placeholder against it. Selecting a file Apply leaves alone
+(identical, not re-rendered, yours) shows what it is instead of a diff: "Written once; yours to edit. Generation never
+overwrites it."
+
+Above the table, one line per pack says what it will do, for example
+`sql-ddl: 4 units, 12 files to add, 3 to modify, 1 orphan to delete, 20 files identical, 2 files yours` (identical,
+not re-rendered and yours files come last, then the units the plan skipped). When no file needs writing the line says
+so, `atlas-schema: 737 units, nothing to write: all 737 files already match the disk`, a note says Apply has nothing to
+do, and **Apply plan** stays disabled.
+
+The chips above the table filter it by what Apply does, each with its count: **All** (the default: every file), **To
+write**, **Identical**, **Not re-rendered**, **Yours** and **Edited by hand**; a chip with no file is greyed. The
+table stays quick with thousands of files (only the rows on screen are drawn).
 
 Under the summary the plan lists its own notes (a file edited by hand, a formatter that failed, a locale left
 incomplete). The model's validation findings, which a plan also carries, are not repeated there: one line counts them,
 `3 model findings (2 warnings, 1 note) are in Problems`, and **Open Problems** shows them. When the model has errors the
 plan stops, and the line reads `Plan stopped: 2 model errors, see Problems`. The table groups the files by unit (`sql-ddl/table`, with its template and its counts);
-click a group to fold it. Each file shows its change, its path, its unit, its element and **Why** its unit renders:
-"New: no recorded state from an earlier run" the first time, "Customer (entity) changed" or "Template table.scriban
-changed" after an edit, "… was edited on disk" when a generated file was changed by hand. Filter by change, pack, unit
-or any words.
+click a group to fold it. Each file shows what Apply does to it, its path, its unit, its element and **Why** its unit
+renders: "New: no recorded state from an earlier run" the first time, "Customer (entity) changed" or "Template
+table.scriban changed" after an edit, "… was edited on disk" when a generated file was changed by hand, "Unchanged:
+nothing it read changed" for a file not re-rendered. Filter by the chips, pack, unit or any words.
 
 Below the summary lines, **By cause** counts the files each cause writes, most first ("Template table.scriban changed:
 412 files", "Customer (entity) changed: 3 files"); a cause that names something you can edit is a link to it: the

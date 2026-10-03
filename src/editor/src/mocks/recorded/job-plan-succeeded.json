@@ -1,5 +1,5 @@
 {
-  "id": "01M3ZM68H690NVH81BRF6HNWTN",
+  "id": "01M3ZRT88AH0EXABJV74FZQ414",
   "kind": "plan",
   "state": "succeeded",
   "queuePosition": null,
@@ -13,7 +13,7 @@
   "planResult": {
     "outcome": "succeeded",
     "plan": {
-      "id": "01M3ZM68H657E41WA5WAEKBH4Y",
+      "id": "01M3ZRT8DX9Q29P2K8MJWA1ND4",
       "request": {
         "mode": "apply",
         "packs": null,
@@ -31,12 +31,27 @@
       ],
       "units": [],
       "changes": [],
-      "diagnostics": []
+      "diagnostics": [],
+      "counts": {
+        "added": 43,
+        "conflict": 0,
+        "deleted": 0,
+        "hand-edited": 0,
+        "kept": 0,
+        "modified": 0,
+        "not-rendered": 0,
+        "orphaned-owned": 0,
+        "unchanged": 0
+      },
+      "unitsRendered": {
+        "new": 43
+      },
+      "unitsSkipped": {}
     }
   },
   "applyResult": null,
   "error": null,
-  "queuedUtc": "2026-10-03T00:56:24.8700898+00:00",
-  "startedUtc": "2026-10-03T00:56:24.8701151+00:00",
-  "finishedUtc": "2026-10-03T00:56:25.5229645+00:00"
+  "queuedUtc": "2026-10-03T02:17:14.2510983+00:00",
+  "startedUtc": "2026-10-03T02:17:14.4268269+00:00",
+  "finishedUtc": "2026-10-03T02:17:15.6225552+00:00"
 }

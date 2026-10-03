@@ -567,7 +567,7 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     /// <param name="ct">Cancellation.</param>
     /// <returns>The plan result, without the per-unit list.</returns>
     [McpServerTool(Name = "plan", Title = "Plan generation", ReadOnly = false, Destructive = false, OpenWorld = false)]
-    [Description("Plans generation without touching the repository: renders what changed and stores the plan. Returns the outcome and the plan (id, packs, file changes with their actions, diagnostics). Read diffs with get_plan_diff, then apply with apply_plan.")]
+    [Description("Plans generation without touching the repository: renders what changed and stores the plan. Returns the outcome and the plan (id, packs, file changes with their actions, counts of every kind, units rendered and skipped by reason, diagnostics). Files identical to the disk (unchanged) or not rendered because their inputs did not change (not-rendered) are only counted; get_plan lists every file. Read diffs with get_plan_diff, then apply with apply_plan.")]
     public Task<CallToolResult> Plan(
         [Description("Only these packs (default: every enabled pack).")] string[]? packs = null,
         [Description("Render every unit, ignoring the unit cache.")] bool force = false,
@@ -609,7 +609,16 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
         };
         await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
         var result = await _generation.PlanAsync(request, null, ct).ConfigureAwait(false);
-        var summary = result with { Plan = result.Plan is null ? null : result.Plan with { Units = [] } };
+        // Files the apply leaves as they are because they are identical or were not rendered are only counted (counts), so the
+        // answer stays small on a large model; get_plan lists every file.
+        var summary = result with
+        {
+            Plan = result.Plan is null ? null : result.Plan with
+            {
+                Units = [],
+                Changes = [.. result.Plan.Changes.Where(c => c.Kind is not (FileChangeKind.Unchanged or FileChangeKind.NotRendered))],
+            },
+        };
         if (summary.Plan is null)
             return FromRun(summary.Outcome, summary, ct);
         return Ok(summary);
@@ -621,7 +630,7 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     /// <param name="ct">Cancellation.</param>
     /// <returns>The plan.</returns>
     [McpServerTool(Name = "get_plan", Title = "Get plan", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("A stored plan: its request, packs, file changes and diagnostics (and, with units, every planned unit and output).")]
+    [Description("A stored plan: its request, packs, every file with what apply does to it (added, modified, deleted; unchanged, not-rendered and kept are left alone; hand-edited, conflict, orphaned-owned), counts by kind, units by reason, and diagnostics (and, with units, every planned unit and output).")]
     public Task<CallToolResult> GetPlan(
         [Description("The plan id returned by plan; required.")] string? planId = null,
         [Description("Include the per-unit list (large).")] bool units = false,

@@ -1,5 +1,5 @@
 {
-  "id": "01M3ZM68H657E41WA5WAEKBH4Y",
+  "id": "01M3ZRT8DX9Q29P2K8MJWA1ND4",
   "request": {
     "mode": "apply",
     "packs": null,
@@ -405,5 +405,20 @@
       "diff": null
     }
   ],
-  "diagnostics": []
+  "diagnostics": [],
+  "counts": {
+    "added": 43,
+    "conflict": 0,
+    "deleted": 0,
+    "hand-edited": 0,
+    "kept": 0,
+    "modified": 0,
+    "not-rendered": 0,
+    "orphaned-owned": 0,
+    "unchanged": 0
+  },
+  "unitsRendered": {
+    "new": 43
+  },
+  "unitsSkipped": {}
 }

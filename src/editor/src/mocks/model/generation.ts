@@ -1,6 +1,7 @@
 // Mock generation: plans, per-file diffs, apply and previews over the mock model, with an
 // in-memory "disk" of generated files. Plans compare planned bytes with that disk (added,
-// modified, unchanged, deleted, kept companions, hand edits); apply re-plans, reports `stale`
+// modified, unchanged, deleted, kept companions, hand edits), list the files of skipped units as
+// `not-rendered`, and count every kind and the units by reason, as the engine; apply re-plans, reports `stale`
 // when the model or a planned path changed since planning, and otherwise writes the planned bytes.
 import type {
   ApplyResult,
@@ -495,6 +496,7 @@ export class MockGeneration {
         units: [],
         changes: [],
         diagnostics: errors,
+        ...planCounts([], []),
       };
       this.store(id, { plan, files: new Map(), diskAtPlan: new Map(), modelVersion: this.model.version });
       return { outcome: "invalid", plan: clone(plan) };
@@ -604,6 +606,9 @@ export class MockGeneration {
         })),
       };
     });
+    // As the engine's plan: a skipped unit is not rendered, so its files (other than the kept ones) are `not-rendered`.
+    const skipped = new Set(planUnits.filter((u) => u.skipped).map((u) => u.key));
+    for (const c of changes) if (c.kind === "unchanged" && skipped.has(c.unitKey)) c.kind = "not-rendered";
     const plan: GenerationPlan = {
       id,
       request: { ...request, packs: request.packs },
@@ -612,6 +617,7 @@ export class MockGeneration {
       units: planUnits,
       changes,
       diagnostics,
+      ...planCounts(changes, planUnits),
     };
     this.store(id, { plan, files, diskAtPlan, modelVersion: this.model.version });
     const outcome = diagnostics.some((d) => d.severity === "error") ? "conflicts" : "succeeded";
@@ -652,6 +658,7 @@ export class MockGeneration {
     if (
       !change ||
       change.kind === "unchanged" ||
+      change.kind === "not-rendered" ||
       change.kind === "kept" ||
       change.kind === "conflict" ||
       (change.kind === "hand-edited" && stored.plan.request.handEdits !== "overwrite")
@@ -758,4 +765,17 @@ export class MockGeneration {
   plannedFileCount(id: string): number {
     return this.plans.get(id)?.plan.changes.length ?? 0;
   }
+}
+
+const KINDS: FileChange["kind"][] = ["added", "conflict", "deleted", "hand-edited", "kept", "modified", "not-rendered", "orphaned-owned", "unchanged"];
+
+/** A plan's counts by kind (every kind, ordinal keys) and its units by reason, rendered and skipped apart (PlanEntries in the engine). */
+function planCounts(changes: FileChange[], units: PlanUnit[]): Pick<GenerationPlan, "counts" | "unitsRendered" | "unitsSkipped"> {
+  const counts = Object.fromEntries(KINDS.map((k) => [k, changes.filter((c) => c.kind === k).length])) as GenerationPlan["counts"];
+  const byReason = (skipped: boolean) => {
+    const tally = new Map<string, number>();
+    for (const u of units) if (u.skipped === skipped) tally.set(u.reason ?? "unknown", (tally.get(u.reason ?? "unknown") ?? 0) + 1);
+    return Object.fromEntries([...tally].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  };
+  return { counts, unitsRendered: byReason(false), unitsSkipped: byReason(true) };
 }

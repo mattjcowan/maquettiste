@@ -2,7 +2,7 @@
 // Query. A vanilla store, so the draft and undo managers can use it outside React.
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { useStore } from "zustand";
-import type { Diagnostic, ElementDocument, ModelJson, PresenceEntry } from "@/api/types";
+import type { Diagnostic, ElementDocument, FileChangeKind, ModelJson, PresenceEntry } from "@/api/types";
 import { local } from "@/lib/storage";
 import type { ExplorerId } from "@/explorer/tree";
 import { emptyHistory, travel, visit, type NavHistory } from "./history";
@@ -68,6 +68,8 @@ export interface Banner {
 export interface DiffView {
   planId: string;
   path: string;
+  /** What the plan does with the file, when the selection knows it: a file Apply leaves alone has no diff to fetch. */
+  kind?: FileChangeKind;
 }
 
 /** The pack editor's tabs (generation-ui.md 3). */

@@ -245,5 +245,116 @@ public sealed class PlanApplyTests
         Assert.NotEmpty((await f.Service.PreviewAsync("basic", "index", null, GenerationFixture.Ct)).Files);
     }
 
+    [Fact]
+    public async Task A_forced_plan_lists_every_file_identical_ones_unchanged_and_owned_ones_kept()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic", "modes");
+        await f.RunAsync();
+        var before = f.Outputs();
+        var times = WriteTimes(f);
+
+        var plan = (await f.Service.PlanAsync(new GenerationRequest { Force = true }, null, GenerationFixture.Ct)).Plan!;
+
+        // Every file the units produce is listed once, with what Apply does to it: nothing.
+        var produced = plan.Units.SelectMany(u => u.Outputs).Select(o => o.Path).Order(StringComparer.Ordinal).ToList();
+        Assert.Equal(produced, plan.Changes.Select(c => c.Path).ToList());
+        Assert.Equal(plan.Changes.OrderBy(c => c.Path, StringComparer.Ordinal).Select(c => c.Path), plan.Changes.Select(c => c.Path));
+        Assert.All(plan.Changes, c => Assert.Contains(c.Kind, new[] { FileChangeKind.Unchanged, FileChangeKind.Kept }));
+        Assert.DoesNotContain(plan.Changes, c => c.Kind == FileChangeKind.NotRendered);
+        Assert.Equal(FileChangeKind.Kept, plan.Changes.Single(c => c.Path == "out/scaffold/Customer.txt").Kind); // once
+        Assert.Equal(FileChangeKind.Kept, plan.Changes.Single(c => c.Path == "gen/pair/Customer.txt").Kind); // companion
+        var unchanged = plan.Changes.Single(c => c.Path == "out/entities/Customer.txt");
+        Assert.Equal(FileChangeKind.Unchanged, unchanged.Kind);
+        Assert.Equal("basic/entity:" + plan.Units.Single(u => u.Key == unchanged.UnitKey).ElementId, unchanged.UnitKey);
+        Assert.NotNull(unchanged.NewHash);
+        Assert.All(plan.Changes, c => Assert.Null(c.Diff));
+
+        // Counts by kind (every kind, zero included) and units by reason.
+        Assert.Equal(PlanEntriesKinds, plan.Counts.Keys.ToList());
+        Assert.Equal(plan.Changes.Count(c => c.Kind == FileChangeKind.Unchanged), plan.Counts["unchanged"]);
+        Assert.Equal(plan.Changes.Count(c => c.Kind == FileChangeKind.Kept), plan.Counts["kept"]);
+        Assert.Equal(0, plan.Counts["not-rendered"]);
+        Assert.Equal(0, plan.Counts["added"] + plan.Counts["modified"] + plan.Counts["deleted"]);
+        Assert.Equal(new Dictionary<string, int> { ["forced"] = plan.Units.Count }, plan.UnitsRendered);
+        Assert.Empty(plan.UnitsSkipped);
+
+        // No diff for a file Apply leaves alone, a kept one included.
+        Assert.Equal("", await f.Service.GetPlanDiffAsync(plan.Id, "out/scaffold/Customer.txt", GenerationFixture.Ct));
+        Assert.Equal("", await f.Service.GetPlanDiffAsync(plan.Id, "out/entities/Customer.txt", GenerationFixture.Ct));
+
+        // The stored plan keeps the entries and the counts.
+        var stored = (await f.Service.GetPlanAsync(plan.Id, GenerationFixture.Ct))!;
+        Assert.Equal(JsonSerializer.Serialize(plan, Web), JsonSerializer.Serialize(stored, Web));
+
+        var applied = await f.Service.ApplyAsync(plan.Id, null, GenerationFixture.Ct);
+        Assert.Equal(RunOutcome.Succeeded, applied.Outcome);
+        Assert.Equal(0, applied.Result!.FilesWritten);
+        Assert.Equal(0, applied.Result.FilesDeleted);
+        Assert.Equal(before, f.Outputs());
+        Assert.Equal(times, WriteTimes(f));
+    }
+
+    [Fact]
+    public async Task An_incremental_plan_lists_the_files_of_skipped_units_as_not_rendered()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic", "modes");
+        await f.RunAsync();
+        await f.WriteModelAsync(b => Models.Shop(b, customerName: "text"));
+        var times = WriteTimes(f);
+
+        var plan = (await f.Service.PlanAsync(new GenerationRequest(), null, GenerationFixture.Ct)).Plan!;
+
+        var skipped = plan.Units.Where(u => u.Skipped).ToList();
+        Assert.NotEmpty(skipped);
+        var produced = plan.Units.SelectMany(u => u.Outputs).Select(o => o.Path).Order(StringComparer.Ordinal).ToList();
+        Assert.Equal(produced, plan.Changes.Select(c => c.Path).ToList());
+        foreach (var output in skipped.SelectMany(u => u.Outputs.Select(o => (Unit: u, Output: o))))
+        {
+            var entry = plan.Changes.Single(c => c.Path == output.Output.Path);
+            Assert.Equal(output.Unit.Key, entry.UnitKey);
+            Assert.Equal(output.Output.ManifestHash, entry.NewHash);
+            Assert.Equal(output.Output.ManifestHash.StartsWith("o:", StringComparison.Ordinal) ? FileChangeKind.Kept : FileChangeKind.NotRendered, entry.Kind);
+        }
+
+        Assert.Equal(FileChangeKind.NotRendered, plan.Changes.Single(c => c.Path == "out/entities/Product.txt").Kind);
+        Assert.Equal(FileChangeKind.Kept, plan.Changes.Single(c => c.Path == "gen/pair/Product.txt").Kind);
+        // Customer's units render again; a file whose bytes come out the same is listed as unchanged.
+        Assert.Contains(plan.Changes.Single(c => c.Path == "out/entities/Customer.txt").Kind, new[] { FileChangeKind.Unchanged, FileChangeKind.Modified });
+        Assert.Equal("", await f.Service.GetPlanDiffAsync(plan.Id, "out/entities/Product.txt", GenerationFixture.Ct));
+        Assert.Equal(plan.Changes.Count(c => c.Kind == FileChangeKind.NotRendered), plan.Counts["not-rendered"]);
+        Assert.Equal(new Dictionary<string, int> { ["unchanged"] = skipped.Count }, plan.UnitsSkipped);
+        Assert.Equal(plan.Units.Count - skipped.Count, plan.UnitsRendered.Values.Sum());
+
+        // Apply writes the modified files only: nothing listed as not rendered, unchanged or kept is touched.
+        var applied = await f.Service.ApplyAsync(plan.Id, null, GenerationFixture.Ct);
+        Assert.Equal(RunOutcome.Succeeded, applied.Outcome);
+        Assert.Equal(plan.Counts["modified"] + plan.Counts["added"], applied.Result!.FilesWritten);
+        Assert.Equal(0, applied.Result.FilesDeleted);
+        var after = WriteTimes(f);
+        foreach (var c in plan.Changes.Where(c => c.Kind is FileChangeKind.NotRendered or FileChangeKind.Unchanged or FileChangeKind.Kept))
+            Assert.Equal(times[c.Path], after[c.Path]);
+    }
+
+    [Fact]
+    public async Task A_plan_after_an_apply_has_nothing_to_write_and_lists_every_file()
+    {
+        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic", "modes");
+        var first = (await f.Service.PlanAsync(new GenerationRequest(), null, GenerationFixture.Ct)).Plan!;
+        Assert.Equal(RunOutcome.Succeeded, (await f.Service.ApplyAsync(first.Id, null, GenerationFixture.Ct)).Outcome);
+
+        var again = (await f.Service.PlanAsync(new GenerationRequest(), null, GenerationFixture.Ct)).Plan!;
+
+        Assert.Equal(first.Changes.Select(c => c.Path), again.Changes.Select(c => c.Path));
+        Assert.All(again.Changes, c => Assert.Contains(c.Kind, new[] { FileChangeKind.NotRendered, FileChangeKind.Kept }));
+        Assert.Equal(again.Changes.Count, again.Counts["not-rendered"] + again.Counts["kept"]);
+        Assert.Empty(again.UnitsRendered);
+    }
+
+    private static readonly List<string> PlanEntriesKinds =
+        ["added", "conflict", "deleted", "hand-edited", "kept", "modified", "not-rendered", "orphaned-owned", "unchanged"];
+
+    private static Dictionary<string, DateTime> WriteTimes(GenerationFixture f) =>
+        f.Outputs().Keys.ToDictionary(p => p, p => File.GetLastWriteTimeUtc(f.Repo.PathOf(p)), StringComparer.Ordinal);
+
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 }

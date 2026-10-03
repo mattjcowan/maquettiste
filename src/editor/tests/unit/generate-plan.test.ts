@@ -1,9 +1,15 @@
-// The plan explanation's model (generation-ui.md 4): grouping by unit with counts, the Why sentence, filters and the
-// summary line per pack.
+// The plan explanation's model (generation-ui.md 4): grouping by unit with counts, the Why sentence, the outcome chips and
+// other filters, the summary line per pack and the plan result line from the plan's counts.
 import { describe, expect, it } from "vitest";
 import type { FileChange, PlanUnit } from "@/api/types";
 import {
   countsText,
+  KIND_LABEL,
+  KIND_TITLE,
+  kindCounts,
+  OUTCOME_CHIPS,
+  outcomeCounts,
+  QUIET_FILES,
   filterGroups,
   flattenGroups,
   groupOf,
@@ -79,7 +85,8 @@ describe("plan explanation model", () => {
     expect(table.rows.map((r) => r.change.path)).toEqual(["db/main/tables/customers.sql", "db/main/tables/items.sql", "db/main/tables/orders.sql"]);
     expect(table.counts).toEqual({ modified: 2, unchanged: 1 });
     expect([table.rendering, table.skipped]).toEqual([2, 1]);
-    expect(countsText(table.counts)).toBe("2 to modify, 1 unchanged");
+    expect(countsText(table.counts)).toBe("2 to modify, 1 identical");
+    expect(countsText({ added: 1, "not-rendered": 3, kept: 2 })).toBe("1 to add, 3 not re-rendered, 2 yours");
     const orphan = groups.find((g) => g.id === "sql-ddl/(orphans)")!;
     expect(orphan.rows[0].unit).toBeNull();
     expect(orphan.rows[0].why).toMatch(/orphan/);
@@ -95,15 +102,24 @@ describe("plan explanation model", () => {
     expect(groupOf("sql-ddl/model")).toBe("sql-ddl/model");
   });
 
-  it("filters by kind, pack, unit and words, and flattens with collapsed groups", () => {
+  it("filters by outcome, pack, unit and words, and flattens with collapsed groups", () => {
     const groups = groupPlan(plan);
-    const all = { kind: "", pack: "", unit: "", text: "" };
-    expect(filterGroups(groups, { ...all, kind: "changed" }).flatMap((g) => g.rows).length).toBe(5);
+    const all = { outcome: "" as const, pack: "", unit: "", text: "" };
+    expect(filterGroups(groups, all).flatMap((g) => g.rows).length).toBe(6);
+    expect(filterGroups(groups, { ...all, outcome: "write" }).flatMap((g) => g.rows.map((r) => r.change.kind))).toEqual([
+      "deleted",
+      "added",
+      "modified",
+      "modified",
+    ]);
+    expect(filterGroups(groups, { ...all, outcome: "identical" }).flatMap((g) => g.rows.map((r) => r.change.path))).toEqual(["db/main/tables/items.sql"]);
+    expect(filterGroups(groups, { ...all, outcome: "hand" }).map((g) => g.id)).toEqual(["csharp-dapper/entity"]);
+    expect(filterGroups(groups, { ...all, outcome: "yours" })).toEqual([]);
     expect(filterGroups(groups, { ...all, pack: "csharp-dapper" }).map((g) => g.id)).toEqual(["csharp-dapper/entity"]);
     expect(filterGroups(groups, { ...all, unit: "sql-ddl/table" }).flatMap((g) => g.rows).length).toBe(3);
     expect(filterGroups(groups, { ...all, text: "TEMPLATE orders" }).flatMap((g) => g.rows.map((r) => r.change.path))).toEqual(["db/main/tables/orders.sql"]);
-    const shown = filterGroups(groups, { ...all, kind: "changed" });
-    expect(flattenGroups(shown, new Set()).length).toBe(shown.length + 5);
+    const shown = filterGroups(groups, all);
+    expect(flattenGroups(shown, new Set()).length).toBe(shown.length + 6);
     const items = flattenGroups(shown, new Set(["sql-ddl/table"]));
     expect(items.filter((i) => i.type === "group" && i.collapsed).length).toBe(1);
     expect(items.length).toBe(shown.length + 3);
@@ -111,7 +127,7 @@ describe("plan explanation model", () => {
 
   it("writes the summary line per pack", () => {
     expect(planSummary(plan)).toEqual([
-      "sql-ddl: 3 units, 1 file to add, 2 to modify, 1 orphan to delete, 1 file unchanged, 1 unit unchanged",
+      "sql-ddl: 3 units, 1 file to add, 2 to modify, 1 orphan to delete, 1 file identical, 1 unit unchanged",
       "csharp-dapper: 1 unit, 1 file edited by hand",
     ]);
     const big = {
@@ -125,6 +141,17 @@ describe("plan explanation model", () => {
     expect(packSummaryLine("sql-ddl", big)).toBe("sql-ddl: 4 units, 12 files to add, 3 to modify, 1 orphan to delete");
     const quiet = { units: [unit("sql-ddl/table:t", { skipped: true, reason: "unchanged" })], changes: [change("db/t.sql", "unchanged", "sql-ddl/table:t")] };
     expect(packSummaryLine("sql-ddl", quiet)).toBe("sql-ddl: 0 units, nothing to write: 1 file already matches the disk, 1 unit unchanged");
+    const incremental = {
+      units: [unit("sql-ddl/table:t", { skipped: true, reason: "unchanged" }), unit("sql-ddl/migration:main", { skipped: true, reason: "unchanged" })],
+      changes: [
+        change("db/t.sql", "not-rendered", "sql-ddl/table:t"),
+        change("db/u.sql", "not-rendered", "sql-ddl/table:t"),
+        change("db/m/0001.sql", "kept", "sql-ddl/migration:main"),
+      ],
+    };
+    expect(packSummaryLine("sql-ddl", incremental)).toBe(
+      "sql-ddl: 0 units, nothing to write: 2 files not re-rendered (inputs unchanged), 1 file yours, 2 units unchanged",
+    );
   });
 
   it("says why a plan writes nothing: every file it renders already matches the disk", () => {
@@ -132,10 +159,17 @@ describe("plan explanation model", () => {
     const same = { units, changes: units.map((u, i) => change(`db/t${i}.sql`, "unchanged", u.key)) };
     expect(packSummaryLine("atlas-schema", same)).toBe("atlas-schema: 737 units, nothing to write: all 737 files already match the disk");
     expect(nothingToWrite(same)).toBe(true);
-    expect(nothingToWriteNote(same)).toBe("Every file this plan renders is identical to the file on disk; Apply has nothing to do.");
+    expect(nothingToWriteNote(same)).toBe("Every file in this plan is identical to the file on disk; Apply has nothing to do.");
     const kept = { units, changes: [...same.changes.slice(1), change("db/t0.sql", "kept", units[0].key)] };
-    expect(packSummaryLine("atlas-schema", kept)).toBe("atlas-schema: 737 units, nothing to write: all 736 files already match the disk, 1 file kept");
-    expect(nothingToWriteNote(kept)).toContain("or kept as it is");
+    expect(packSummaryLine("atlas-schema", kept)).toBe("atlas-schema: 737 units, nothing to write: 736 files already match the disk, 1 file yours");
+    expect(nothingToWriteNote(kept)).toBe(
+      "Every file in this plan is identical to the file on disk or yours (written once, never overwritten); Apply has nothing to do.",
+    );
+    const later = { changes: [change("a", "not-rendered", "p/u"), change("b", "kept", "p/u")] };
+    expect(nothingToWrite(later)).toBe(true);
+    expect(nothingToWriteNote(later)).toBe(
+      "Every file in this plan is not re-rendered because its inputs did not change or yours (written once, never overwritten); Apply has nothing to do.",
+    );
     expect(nothingToWriteNote({ changes: [] })).toBe("This plan renders no files; Apply has nothing to do.");
     expect(nothingToWrite(plan)).toBe(false);
     expect(nothingToWriteNote(plan)).toBeNull();
@@ -161,21 +195,54 @@ describe("plan diagnostics under the summary", () => {
 
 describe("the plan result line", () => {
   const changes = (kinds: FileChange["kind"][]) => kinds.map((k, i) => change(`f${i}`, k, "sql-ddl/table:t"));
-  it("counts what Apply writes, then what already matches", () => {
-    expect(planReadyText({ changes: changes(["added", "added", "modified", "deleted", "unchanged", "unchanged", "kept"]) })).toBe(
-      "Plan ready: 4 files to write (2 added, 1 modified, 1 deleted), 3 unchanged",
+  const zero = { added: 0, modified: 0, deleted: 0, unchanged: 0, "hand-edited": 0, kept: 0, "orphaned-owned": 0, conflict: 0, "not-rendered": 0 };
+  it("counts what Apply writes, then what it leaves alone, from the plan's counts", () => {
+    // A forced plan: everything rendered, so nothing is "not re-rendered".
+    expect(planReadyText({ changes: [], counts: { ...zero, added: 1, modified: 2, unchanged: 58, kept: 6 } })).toBe(
+      "Plan ready: 3 files to write (1 added, 2 modified); 58 identical, 6 yours",
+    );
+    // An incremental plan.
+    expect(planReadyText({ changes: [], counts: { ...zero, added: 1, modified: 2, unchanged: 2, kept: 6, "not-rendered": 40 } })).toBe(
+      "Plan ready: 3 files to write (1 added, 2 modified); 2 identical, 40 not re-rendered (inputs unchanged), 6 yours",
     );
     expect(planReadyText({ changes: changes(["added"]) })).toBe("Plan ready: 1 file to write (1 added)");
-  });
-  it("says so when every file matches", () => {
-    expect(planReadyText({ changes: changes(["unchanged", "kept"]) })).toBe("Plan ready: nothing to write, every file matches");
-    expect(planReadyText({ changes: [] })).toBe("Plan ready: nothing to write, every file matches");
-  });
-  it("counts the files edited by hand after the rest, and never names the policy", () => {
-    expect(planReadyText({ changes: changes(["modified", "unchanged", "hand-edited", "conflict"]) })).toBe(
-      "Plan ready: 1 file to write (1 modified), 1 unchanged, 1 edited by hand, 1 in conflict (edited by hand)",
+    // A plan stored before counts is counted from its files.
+    expect(planReadyText({ changes: changes(["added", "added", "modified", "deleted", "unchanged", "unchanged", "kept"]), counts: {} })).toBe(
+      "Plan ready: 4 files to write (2 added, 1 modified, 1 deleted); 2 identical, 1 yours",
     );
-    expect(planReadyText({ changes: changes(["conflict", "conflict"]) })).toBe("Plan ready: nothing to write, 2 in conflict (edited by hand)");
+  });
+  it("says nothing to write, and what the files are, when Apply has nothing to do", () => {
+    expect(planReadyText({ changes: [], counts: { ...zero, "not-rendered": 650, kept: 6 } })).toBe(
+      "Plan ready: nothing to write; 650 not re-rendered (inputs unchanged), 6 yours",
+    );
+    expect(planReadyText({ changes: changes(["unchanged", "kept"]) })).toBe("Plan ready: nothing to write; 1 identical, 1 yours");
+    expect(planReadyText({ changes: [] })).toBe("Plan ready: nothing to write");
+  });
+  it("counts the files edited by hand first after the semicolon, and never names the policy", () => {
+    expect(planReadyText({ changes: changes(["modified", "unchanged", "hand-edited", "conflict"]) })).toBe(
+      "Plan ready: 1 file to write (1 modified); 1 edited by hand, 1 in conflict (edited by hand), 1 identical",
+    );
+    expect(planReadyText({ changes: changes(["conflict", "conflict"]) })).toBe("Plan ready: nothing to write; 2 in conflict (edited by hand)");
+  });
+});
+
+describe("the outcome chips and badges", () => {
+  it("count every kind into its chip, All being every file", () => {
+    const counts = kindCounts({
+      changes: [],
+      counts: { added: 1, modified: 2, deleted: 1, unchanged: 5, "hand-edited": 1, kept: 3, "orphaned-owned": 1, conflict: 1, "not-rendered": 7 },
+    });
+    expect(outcomeCounts(counts)).toEqual({ "": 22, write: 4, identical: 5, "not-rendered": 7, yours: 4, hand: 2 });
+    expect(OUTCOME_CHIPS.map((c) => c.label)).toEqual(["All", "To write", "Identical", "Not re-rendered", "Yours", "Edited by hand"]);
+    expect(OUTCOME_CHIPS.every((c) => c.title.length > 0)).toBe(true);
+  });
+  it("label the kinds Apply leaves alone and say why in the tooltip", () => {
+    expect([KIND_LABEL.unchanged, KIND_LABEL["not-rendered"], KIND_LABEL.kept]).toEqual(["identical", "not re-rendered", "yours"]);
+    expect(KIND_TITLE.kept).toBe("Written once; yours to edit. Generation never overwrites it.");
+    expect(KIND_TITLE["not-rendered"]).toBe("Its inputs did not change since the last run; Re-render every file renders it again");
+    // No diff is fetched for them: the diff panel says this instead.
+    expect(QUIET_FILES.kept?.text).toBe(KIND_TITLE.kept);
+    expect(Object.keys(QUIET_FILES).sort()).toEqual(["kept", "not-rendered", "unchanged"]);
   });
 });
 

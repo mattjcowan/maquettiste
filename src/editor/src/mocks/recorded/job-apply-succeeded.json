@@ -1,5 +1,5 @@
 {
-  "id": "01M3ZM69BXJ54G00JD5KBR71HF",
+  "id": "01M3ZRT9PJR87AA5FXMQ5QX47J",
   "kind": "apply",
   "state": "succeeded",
   "queuePosition": null,
@@ -7,7 +7,7 @@
     "stage": "write",
     "done": 43,
     "total": 43,
-    "currentPath": "db/main/billing/tables/notes.sql",
+    "currentPath": "db/main/billing/tables/payments.sql",
     "pack": "sql-ddl"
   },
   "planResult": null,
@@ -16,7 +16,7 @@
     "staleUnits": [],
     "stalePaths": [],
     "result": {
-      "runId": "01M3ZM69C26TZQVDSQP3EPR9EW",
+      "runId": "01M3ZRT9PM847PAH5TN5HB5CEY",
       "mode": "apply",
       "outcome": "succeeded",
       "changes": [],
@@ -28,39 +28,39 @@
       "timings": [
         {
           "stage": "load",
-          "wall": "00:00:00.0432919",
-          "busy": "00:00:00.0432919",
+          "wall": "00:00:00.0028593",
+          "busy": "00:00:00.0028593",
           "items": 33
         },
         {
           "stage": "validate",
-          "wall": "00:00:00.0008921",
-          "busy": "00:00:00.0008921",
+          "wall": "00:00:00.0010974",
+          "busy": "00:00:00.0010974",
           "items": 33
         },
         {
           "stage": "resolve",
-          "wall": "00:00:00.0019451",
-          "busy": "00:00:00.0019451",
+          "wall": "00:00:00.0029729",
+          "busy": "00:00:00.0029729",
           "items": 33
         },
         {
           "stage": "plan",
-          "wall": "00:00:00.1041636",
-          "busy": "00:00:00.1014591",
+          "wall": "00:00:00.0721340",
+          "busy": "00:00:00.0684037",
           "items": 45
         },
         {
           "stage": "write",
-          "wall": "00:00:00.0483343",
-          "busy": "00:00:00.0483343",
+          "wall": "00:00:00.0253879",
+          "busy": "00:00:00.0253879",
           "items": 43
         }
       ]
     }
   },
   "error": null,
-  "queuedUtc": "2026-10-03T00:56:25.725504+00:00",
-  "startedUtc": "2026-10-03T00:56:25.7283428+00:00",
-  "finishedUtc": "2026-10-03T00:56:25.9671232+00:00"
+  "queuedUtc": "2026-10-03T02:17:15.7304923+00:00",
+  "startedUtc": "2026-10-03T02:17:15.7306112+00:00",
+  "finishedUtc": "2026-10-03T02:17:15.8625368+00:00"
 }

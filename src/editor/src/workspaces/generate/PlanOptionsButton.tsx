@@ -45,9 +45,8 @@ export function PlanOptionsButton({
           />
           <label htmlFor="plan-option-force" className="flex flex-col">
             <span className="font-medium">Re-render every file</span>
-            <span className="text-11 text-secondary">
-              Every unit renders again even if nothing it reads changed. Nothing is written until Apply, and Apply still writes only the files whose content
-              differs.
+            <span className="text-11 text-secondary" data-testid="plan-option-force-description">
+              Renders every file again. Apply still writes only files that differ, and never files that are yours.
             </span>
           </label>
         </div>

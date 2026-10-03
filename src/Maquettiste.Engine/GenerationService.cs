@@ -101,12 +101,22 @@ public sealed partial class GenerationService
         }
 
         var prepared = capture.Prepared;
+        IReadOnlyList<PlanUnit> units = prepared is null
+            ? []
+            : await PlanExplainer.ExplainAsync(capture.Units(prepared.Plan.Units), prepared.Plan.Units, _services.UnitState,
+                request.Force, RepoRoot, id => prepared.Resolved.Find(id) is not null, CancellationToken.None, prepared.Hasher.CurrentHash,
+                id => PlanExplainer.LabelOf(prepared.Resolved.Find(id)), check).ConfigureAwait(false);
+        // Every file the plan's packs produce, each with what Apply does to it (Generation/README.md, Plans).
+        var changes = PlanEntries.Complete(result.Changes, units);
+        var (rendered, skipped) = PlanEntries.UnitReasons(units);
         var plan = new GenerationPlan(planId, request, prepared?.Snapshot.Version ?? _store.Current?.Version ?? 0,
             prepared is null ? [.. request.Packs ?? []] : [.. prepared.Packs.Packs.Select(p => p.Name)],
-            prepared is null ? [] : await PlanExplainer.ExplainAsync(capture.Units(prepared.Plan.Units), prepared.Plan.Units, _services.UnitState,
-                request.Force, RepoRoot, id => prepared.Resolved.Find(id) is not null, CancellationToken.None, prepared.Hasher.CurrentHash,
-                id => PlanExplainer.LabelOf(prepared.Resolved.Find(id)), check).ConfigureAwait(false),
-            result.Changes, result.Diagnostics);
+            units, changes, result.Diagnostics)
+        {
+            Counts = PlanEntries.Counts(changes),
+            UnitsRendered = rendered,
+            UnitsSkipped = skipped,
+        };
         var policies = prepared is null
             ? new SortedDictionary<string, HandEditPolicy>(StringComparer.Ordinal)
             : GenerationRun.Policies(prepared, request, GenerationMode.DryRun);
@@ -200,6 +210,11 @@ public sealed partial class GenerationService
         var change = plan.Changes.FirstOrDefault(c => string.Equals(c.Path, path, StringComparison.Ordinal));
         if (file is null && change is null)
             return null;
+        // Nothing to show: a file identical to the disk, one the plan did not render, and one that is the team's (an existing once
+        // file or companion: its rendering, such as a migration's placeholder, is never written over it).
+        if (change?.Kind is FileChangeKind.Unchanged or FileChangeKind.NotRendered or FileChangeKind.Kept
+            || (file is not null && file.DiskHashAtPlan is not null && PlanCapture.IsOwned(file.Mode, file.Role, file.ManifestHash)))
+            return "";
         var planned = file?.Path ?? change!.Path;
         var full = Path.Combine(RepoRoot, planned.Replace('/', Path.DirectorySeparatorChar));
         var disk = File.Exists(full) ? await File.ReadAllBytesAsync(full, ct).ConfigureAwait(false) : [];
@@ -438,7 +453,7 @@ public sealed partial class GenerationService
                     open = journal;
                 }
 
-                var write = run.WriteContext(prepared, request, mode, runId, skip.ToRender, skip.Skipped, journal, null);
+                var write = run.WriteContext(prepared, request, mode, runId, skip.ToRender, skip.Skipped, journal, null) with { ListUnchanged = capture is not null };
                 var stream = await run.StreamAsync(prepared, skip.ToRender, write, Jobs(request), request.StageBarriers, hook, ct).ConfigureAwait(false);
 
                 var changes = stream.Summary.Changes;
@@ -813,7 +828,12 @@ public sealed record PlanFile(string Path, string ContentHash, string ManifestHa
 /// <param name="ModelVersion">The snapshot version planned against.</param>
 /// <param name="Packs">The packs.</param>
 /// <param name="Units">The units.</param>
-/// <param name="Changes">The file decisions; with the units' outputs, the complete list of paths apply may touch.</param>
+/// <param name="Changes">
+/// Every file the plan's packs produce or remove, sorted by path, each with what Apply does to it: <c>added</c>, <c>modified</c> and
+/// <c>deleted</c> are written or removed; <c>unchanged</c> (rendered, identical to the disk), <c>not-rendered</c> (its unit was
+/// skipped: inputs unchanged) and <c>kept</c> (an existing once file or companion: the team's) are not touched; the hand-edit kinds
+/// follow the policy. With the units' outputs, the complete list of paths apply may touch.
+/// </param>
 /// <param name="Diagnostics">Diagnostics.</param>
 public sealed record GenerationPlan(
     string Id,
@@ -822,7 +842,20 @@ public sealed record GenerationPlan(
     IReadOnlyList<string> Packs,
     IReadOnlyList<PlanUnit> Units,
     IReadOnlyList<FileChange> Changes,
-    IReadOnlyList<Diagnostic> Diagnostics);
+    IReadOnlyList<Diagnostic> Diagnostics)
+{
+    /// <summary>
+    /// The number of <see cref="Changes"/> of every kind, zero included, keyed by the kind's JSON name (ordinal); empty in a plan stored
+    /// before counts. Kept when a job record drops the lists.
+    /// </summary>
+    public IReadOnlyDictionary<string, int> Counts { get; init; } = new SortedDictionary<string, int>(StringComparer.Ordinal);
+
+    /// <summary>The units the plan renders, counted by reason (<c>new</c>, <c>forced</c>, <c>check</c>, <c>inputs</c>, <c>outputs</c>, ...).</summary>
+    public IReadOnlyDictionary<string, int> UnitsRendered { get; init; } = new SortedDictionary<string, int>(StringComparer.Ordinal);
+
+    /// <summary>The units the plan skips, counted by reason (<c>unchanged</c>: nothing they read changed).</summary>
+    public IReadOnlyDictionary<string, int> UnitsSkipped { get; init; } = new SortedDictionary<string, int>(StringComparer.Ordinal);
+}
 
 /// <summary>The result of planning.</summary>
 /// <param name="Outcome">The outcome.</param>

@@ -1,7 +1,7 @@
 // The Generate workspace (phase2-design.md 4.8): pack selection (PackPicker.tsx), then Plan with live
-// progress and Cancel; the plan summarized per pack and its changes grouped by unit with the reason each renders
-// (PlanExplain.tsx, generation-ui.md 4), filtered by kind, pack, unit and text, hand edits and conflicts flagged; selecting a file opens its
-// diff in the bottom panel. Apply queues the plan by id; the result is the apply job's
+// progress and Cancel; the plan summarized per pack and every file it names grouped by unit with what Apply does to it and the
+// reason its unit renders (PlanExplain.tsx, generation-ui.md 4), filtered by outcome, pack, unit and text, hand edits and
+// conflicts flagged; selecting a file opens its diff in the bottom panel (or says why there is none). Apply queues the plan by id; the result is the apply job's
 // applyResult.outcome, never its state. Run history lists GET /api/jobs; Clear empties it (DELETE /api/jobs), which also
 // removes the stored plans, so a plan not yet applied must be made again.
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
@@ -28,7 +28,6 @@ import { DEFAULT_PLAN_OPTIONS, handEditNote, planRequest, type PlanOptions } fro
 import { PlanOptionsButton } from "./PlanOptionsButton";
 import { discardDrafts, hasUnsaved } from "./drafts";
 
-/** Kinds an apply leaves alone: an unchanged file, and a companion that is kept as it is on disk. */
 function Progress({ job }: { job: JobInfo }) {
   const p = job.progress;
   const pct = p && p.total ? Math.round((p.done / p.total) * 100) : 0;
@@ -210,7 +209,7 @@ function PlanScreen() {
           <Button
             size="sm"
             disabled={busy || !!running || !generation.planId || (plan.data ? nothingToWrite(plan.data) : false)}
-            title={plan.data && nothingToWrite(plan.data) ? "Nothing to apply: every planned file already matches the disk" : "Write the planned files"}
+            title={plan.data && nothingToWrite(plan.data) ? "Nothing to apply: every file is identical, not re-rendered or yours" : "Write the planned files"}
             onClick={() => void startApply()}
             data-testid="apply"
           >

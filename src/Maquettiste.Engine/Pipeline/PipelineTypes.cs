@@ -278,6 +278,12 @@ public enum FileChangeKind
 
     /// <summary>A hand edit under the <c>fail</c> policy, or a lost region: <c>conflict</c>.</summary>
     [JsonStringEnumMemberName("conflict")] Conflict,
+
+    /// <summary>
+    /// Plans only: an output of a unit the plan skipped because nothing it read changed, listed from the unit's stored state so the
+    /// plan names every file; nothing is written: <c>not-rendered</c>.
+    /// </summary>
+    [JsonStringEnumMemberName("not-rendered")] NotRendered,
 }
 
 /// <summary>One file decision.</summary>
@@ -291,7 +297,7 @@ public enum FileChangeKind
 public sealed record FileChange(string Path, FileChangeKind Kind, string Pack, string UnitKey, string? OldHash, string? NewHash, string? Diff);
 
 /// <summary>The result of stage 8.</summary>
-/// <param name="Changes">Every file except unchanged ones, sorted by path.</param>
+/// <param name="Changes">Every file except unchanged ones (unless <see cref="WriteContext.ListUnchanged"/>), sorted by path.</param>
 /// <param name="Diagnostics">Write diagnostics.</param>
 /// <param name="Written">Files written.</param>
 /// <param name="Deleted">Files deleted.</param>

@@ -544,6 +544,15 @@ public sealed class McpGenerationTests
         edited["attributes"]![1]!["length"] = 200;
         var second = await session.OkAsync("plan");
         var secondId = (string)second["plan"]!["id"]!;
+        // Nothing changed since the apply: the answer lists no file left alone as identical or not rendered, it only counts them;
+        // get_plan lists every file.
+        var kinds = second["plan"]!["changes"]!.AsArray().Select(c => (string)c!["kind"]!).ToList();
+        Assert.DoesNotContain("unchanged", kinds);
+        Assert.DoesNotContain("not-rendered", kinds);
+        var notRendered = (int)second["plan"]!["counts"]!["not-rendered"]!;
+        Assert.True(notRendered > 0);
+        var stored = await session.OkAsync("get_plan", new { planId = secondId });
+        Assert.Equal(notRendered, stored["changes"]!.AsArray().Count(c => (string)c!["kind"]! == "not-rendered"));
         await session.OkAsync("save_element", new { id = McpSession.Customer, element = edited, expectedHash = (string)customer["hash"]! });
         var before = session.Repo.Read("db/main/customers.sql");
         var stale = await session.ErrorAsync("apply_plan", new { planId = secondId });

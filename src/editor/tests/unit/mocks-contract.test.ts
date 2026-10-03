@@ -330,6 +330,38 @@ describe("mock contract", () => {
     expect(applied.status).toBe(202);
     const applyId = (applied.payload as { id: string }).id;
     await finished(applyId);
+
+    // As the engine: a plan after the apply lists every file, the skipped units' as not-rendered, and counts every kind; a forced
+    // plan renders every unit, so its files come out identical (or kept) and none is not-rendered. Kept files have no diff.
+    type Plan = {
+      id: string;
+      changes: { path: string; kind: string }[];
+      counts: Record<string, number>;
+      unitsRendered: Record<string, number>;
+      unitsSkipped: Record<string, number>;
+    };
+    const replan = async (force: boolean) => {
+      const started = await call("post", "/api/generate/plan", "/api/generate/plan", force ? { force } : {});
+      const job = await finished((started.payload as { id: string }).id);
+      const id = (job as { planResult: { plan: { id: string } } }).planResult.plan.id;
+      return (await call("get", `/api/generate/plan/${id}`, "/api/generate/plan/{id}")).payload as Plan;
+    };
+    const total = (plan.payload as Plan).changes.length;
+    const later = await replan(false);
+    expect(later.changes.length).toBe(total);
+    expect(Object.values(later.counts).reduce((a, b) => a + b, 0)).toBe(total);
+    expect(later.counts["not-rendered"]).toBeGreaterThan(0);
+    expect(later.counts.added + later.counts.modified + later.counts.deleted).toBe(0);
+    expect(later.unitsSkipped.unchanged).toBeGreaterThan(0);
+    const kept = later.changes.find((c) => c.kind === "kept")!;
+    expect(kept).toBeTruthy();
+    expect((await call("get", `/api/generate/plan/${later.id}/diff?path=${encodeURIComponent(kept.path)}`, "/api/generate/plan/{id}/diff")).payload).toBe("");
+    const forced = await replan(true);
+    expect(forced.counts["not-rendered"]).toBe(0);
+    expect(forced.counts.unchanged).toBeGreaterThan(0);
+    expect(forced.counts.unchanged + forced.counts.kept).toBe(total);
+    expect(Object.keys(forced.unitsRendered)).toEqual(["forced"]);
+
     expect((await call("delete", `/api/jobs/${applyId}`, "/api/jobs/{id}")).status).toBe(409);
     expect((await call("delete", "/api/jobs/nope", "/api/jobs/{id}")).status).toBe(404);
     const again = await call("post", "/api/generate/plan", "/api/generate/plan", {});

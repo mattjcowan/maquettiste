@@ -1,6 +1,7 @@
-// The plan explanation on the Generate screen (generation-ui.md 4): every planned change with its pack, unit, template,
-// element, output path and the reason its unit renders; the changes grouped by unit with counts; filters; and the
-// summary line per pack ("sql-ddl: 4 units, 12 files to add, 3 to modify, 1 orphan to delete"). Pure: no React.
+// The plan explanation on the Generate screen (generation-ui.md 4): every file the plan's packs produce, each with what Apply
+// does to it (written, identical, not re-rendered, yours, edited by hand), its pack, unit, template, element, output path and
+// the reason its unit renders; the files grouped by unit with counts; the outcome chips and the other filters; and the summary
+// line per pack ("sql-ddl: 4 units, 12 files to add, 3 to modify, 1 orphan to delete"). Pure: no React.
 import type { FileChange, FileChangeKind, GenerationPlan, PlanUnit } from "@/api/types";
 
 /** One planned change with what explains it. */
@@ -27,8 +28,8 @@ export interface UnitGroup {
 }
 
 export interface PlanFilter {
-  /** "changed" (everything but unchanged), "" (everything) or one FileChangeKind. */
-  kind: string;
+  /** "" (every file) or one outcome chip. */
+  outcome: "" | PlanOutcome;
   pack: string;
   /** A group id (`<pack>/<unit>`) or "". */
   unit: string;
@@ -37,6 +38,91 @@ export interface PlanFilter {
 }
 
 export const ORPHANS = "(orphans)";
+
+/** What Apply does with a file, as the filter chips group the kinds. */
+export type PlanOutcome = "write" | "identical" | "not-rendered" | "yours" | "hand";
+
+export const OUTCOME_OF: Record<FileChangeKind, PlanOutcome> = {
+  added: "write",
+  modified: "write",
+  deleted: "write",
+  unchanged: "identical",
+  "not-rendered": "not-rendered",
+  kept: "yours",
+  "orphaned-owned": "yours",
+  "hand-edited": "hand",
+  conflict: "hand",
+};
+
+export const YOURS_TIP = "Written once; yours to edit. Generation never overwrites it.";
+export const NOT_RENDERED_TIP = "Its inputs did not change since the last run; Re-render every file renders it again";
+export const IDENTICAL_TIP = "Rendered again and identical to the file on disk: nothing to write";
+
+/** The outcome chips above the file list, in order, with their tooltips. */
+export const OUTCOME_CHIPS: readonly { value: "" | PlanOutcome; label: string; title: string }[] = [
+  { value: "", label: "All", title: "Every file the plan's packs produce" },
+  { value: "write", label: "To write", title: "Files Apply adds, rewrites or deletes" },
+  { value: "identical", label: "Identical", title: IDENTICAL_TIP },
+  { value: "not-rendered", label: "Not re-rendered", title: NOT_RENDERED_TIP },
+  { value: "yours", label: "Yours", title: YOURS_TIP },
+  { value: "hand", label: "Edited by hand", title: "Generated files edited by hand since: the hand-edit choice decides what Apply does" },
+];
+
+/** The badge of each kind in the file list (lowercase, as the kinds read), and its tooltip. */
+export const KIND_LABEL: Record<FileChangeKind, string> = {
+  added: "added",
+  modified: "modified",
+  deleted: "deleted",
+  unchanged: "identical",
+  "not-rendered": "not re-rendered",
+  kept: "yours",
+  "hand-edited": "hand-edited",
+  conflict: "conflict",
+  "orphaned-owned": "orphaned-owned",
+};
+
+export const KIND_TITLE: Record<FileChangeKind, string> = {
+  added: "Apply writes this new file",
+  modified: "Apply writes the new content over this file",
+  deleted: "Apply deletes this file: no unit produces it any more",
+  unchanged: IDENTICAL_TIP,
+  "not-rendered": NOT_RENDERED_TIP,
+  kept: YOURS_TIP,
+  "hand-edited": "Edited by hand since it was generated: the hand-edit choice decides what Apply does",
+  conflict: "Edited by hand since it was generated: Apply leaves it and reports it",
+  "orphaned-owned": "Yours, and no unit produces it any more: it stays on disk and is no longer tracked",
+};
+
+/** What the diff panel says instead of a diff for a file Apply leaves alone (no diff is fetched for it). */
+export const QUIET_FILES: Partial<Record<FileChangeKind, { title: string; text: string }>> = {
+  kept: { title: "Yours", text: YOURS_TIP },
+  unchanged: { title: "Identical", text: "Rendered again and identical to the file on disk: Apply writes nothing." },
+  "not-rendered": {
+    title: "Not re-rendered",
+    text: "Its inputs did not change since the last run, so it was not rendered again and Apply leaves it as it is. Re-render every file (Options) renders it again.",
+  },
+};
+
+const KINDS = Object.keys(OUTCOME_OF) as FileChangeKind[];
+
+/** The number of files of every kind: the plan's own counts, else counted from its files (a plan stored before counts). */
+export function kindCounts(plan: Pick<GenerationPlan, "changes"> & { counts?: GenerationPlan["counts"] }): Record<FileChangeKind, number> {
+  const out = Object.fromEntries(KINDS.map((k) => [k, 0])) as Record<FileChangeKind, number>;
+  const stored = plan.counts && Object.keys(plan.counts).length ? plan.counts : null;
+  if (stored) for (const k of KINDS) out[k] = stored[k] ?? 0;
+  else for (const c of plan.changes) out[c.kind] += 1;
+  return out;
+}
+
+/** The count of each outcome chip ("" is every file). */
+export function outcomeCounts(counts: Record<FileChangeKind, number>): Record<"" | PlanOutcome, number> {
+  const out: Record<"" | PlanOutcome, number> = { "": 0, write: 0, identical: 0, "not-rendered": 0, yours: 0, hand: 0 };
+  for (const k of KINDS) {
+    out[OUTCOME_OF[k]] += counts[k];
+    out[""] += counts[k];
+  }
+  return out;
+}
 
 /** `<pack>/<unit>` from a unit key `<pack>/<unit>[:<element or table key>]`. */
 export function groupOf(unitKey: string): string {
@@ -97,8 +183,7 @@ export function groupPlan(plan: Pick<GenerationPlan, "changes" | "units">): Unit
 }
 
 function rowMatches(row: PlanRow, filter: PlanFilter): boolean {
-  const kind = row.change.kind;
-  if (filter.kind === "changed" ? kind === "unchanged" : filter.kind && kind !== filter.kind) return false;
+  if (filter.outcome && OUTCOME_OF[row.change.kind] !== filter.outcome) return false;
   if (filter.pack && row.change.pack !== filter.pack) return false;
   if (filter.unit && row.group !== filter.unit) return false;
   const words = filter.text.toLowerCase().split(/\s+/).filter(Boolean);
@@ -132,7 +217,7 @@ export function flattenGroups(groups: UnitGroup[], collapsed: ReadonlySet<string
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** Counts in words for a group header: "8 to add, 4 to modify, 2 unchanged". */
+/** Counts in words for a group header: "8 to add, 4 to modify, 2 identical". */
 export function countsText(counts: Partial<Record<FileChangeKind, number>>): string {
   const order: [FileChangeKind, string][] = [
     ["added", "to add"],
@@ -140,9 +225,10 @@ export function countsText(counts: Partial<Record<FileChangeKind, number>>): str
     ["deleted", "to delete"],
     ["hand-edited", "edited by hand"],
     ["conflict", "in conflict"],
-    ["orphaned-owned", "orphaned, kept"],
-    ["kept", "kept"],
-    ["unchanged", "unchanged"],
+    ["orphaned-owned", "orphaned, yours"],
+    ["unchanged", "identical"],
+    ["not-rendered", "not re-rendered"],
+    ["kept", "yours"],
   ];
   return order
     .filter(([k]) => counts[k])
@@ -150,12 +236,15 @@ export function countsText(counts: Partial<Record<FileChangeKind, number>>): str
     .join(", ");
 }
 
-/** File change kinds Apply has nothing to do for: the file on disk already holds the rendered bytes, or is kept. */
-export const NOTHING_TO_WRITE: ReadonlySet<FileChangeKind> = new Set<FileChangeKind>(["unchanged", "kept"]);
+/** File kinds Apply has nothing to do for: identical to the disk, not rendered again, or yours. */
+export const NOTHING_TO_WRITE: ReadonlySet<FileChangeKind> = new Set<FileChangeKind>(["unchanged", "not-rendered", "kept"]);
 
-/** True when Apply would write and delete nothing (every planned file is unchanged or kept, or there is none). */
-export function nothingToWrite(plan: Pick<GenerationPlan, "changes">): boolean {
-  return plan.changes.every((c) => NOTHING_TO_WRITE.has(c.kind));
+type Counted = Pick<GenerationPlan, "changes"> & { counts?: GenerationPlan["counts"] };
+
+/** True when Apply would write and delete nothing (every file is identical, not re-rendered or yours, or there is none). */
+export function nothingToWrite(plan: Counted): boolean {
+  const counts = kindCounts(plan);
+  return KINDS.every((k) => NOTHING_TO_WRITE.has(k) || !counts[k]);
 }
 
 /**
@@ -163,19 +252,23 @@ export function nothingToWrite(plan: Pick<GenerationPlan, "changes">): boolean {
  * files all match the disk is the usual case after an apply: the summary alone ("nothing to write") reads like a
  * failure without it.
  */
-export function nothingToWriteNote(plan: Pick<GenerationPlan, "changes">): string | null {
+export function nothingToWriteNote(plan: Counted): string | null {
   if (!nothingToWrite(plan)) return null;
-  if (!plan.changes.length) return "This plan renders no files; Apply has nothing to do.";
-  const kept = plan.changes.some((c) => c.kind === "kept");
-  return kept
-    ? "Every file this plan renders is identical to the file on disk or kept as it is; Apply has nothing to do."
-    : "Every file this plan renders is identical to the file on disk; Apply has nothing to do.";
+  const counts = kindCounts(plan);
+  const ways = [
+    counts.unchanged ? "identical to the file on disk" : "",
+    counts["not-rendered"] ? "not re-rendered because its inputs did not change" : "",
+    counts.kept ? "yours (written once, never overwritten)" : "",
+  ].filter(Boolean);
+  if (!ways.length) return "This plan renders no files; Apply has nothing to do.";
+  const list = ways.length === 1 ? ways[0] : `${ways.slice(0, -1).join(", ")} or ${ways[ways.length - 1]}`;
+  return `Every file in this plan is ${list}; Apply has nothing to do.`;
 }
 
 /**
  * The summary line of one pack: "sql-ddl: 4 units, 12 files to add, 3 to modify, 1 orphan to delete, 20 files
- * unchanged". Units are the unit instances that render; files that already match the disk, then units the plan
- * skips, come last. A pack that writes nothing says why: "nothing to write: all 737 files already match the disk".
+ * identical, 2 yours, 40 not re-rendered". Units are the unit instances that render; the files Apply leaves alone, then
+ * units the plan skips, come last. A pack that writes nothing says why: "nothing to write: all 737 files already match the disk".
  */
 export function packSummaryLine(pack: string, plan: Pick<GenerationPlan, "changes" | "units">): string {
   const units = plan.units.filter((u) => (u.pack ?? groupOf(u.key).split("/")[0]) === pack);
@@ -200,13 +293,22 @@ export function packSummaryLine(pack: string, plan: Pick<GenerationPlan, "change
   if (owned) parts.push(`${plural(owned, "owned file", "owned files")} orphaned (kept)`);
   const unchanged = count("unchanged");
   const kept = count("kept");
+  const quiet = count("not-rendered");
   if (parts.length === 1) {
-    const same = unchanged === 1 ? "1 file already matches the disk" : unchanged ? `all ${unchanged} files already match the disk` : "";
-    const detail = [same, kept ? `${plural(kept, "file", "files")} kept` : ""].filter(Boolean).join(", ");
+    const all = !kept && !quiet;
+    const same = unchanged === 1 ? "1 file already matches the disk" : unchanged ? `${all ? "all " : ""}${unchanged} files already match the disk` : "";
+    const detail = [
+      same,
+      quiet ? `${plural(quiet, "file", "files")} not re-rendered (inputs unchanged)` : "",
+      kept ? `${plural(kept, "file", "files")} yours` : "",
+    ]
+      .filter(Boolean)
+      .join(", ");
     parts.push(detail ? `nothing to write: ${detail}` : "nothing to write");
   } else {
-    if (unchanged) parts.push(`${plural(unchanged, "file", "files")} unchanged`);
-    if (kept) parts.push(`${plural(kept, "file", "files")} kept`);
+    if (unchanged) parts.push(`${plural(unchanged, "file", "files")} identical`);
+    if (quiet) parts.push(`${plural(quiet, "file", "files")} not re-rendered`);
+    if (kept) parts.push(`${plural(kept, "file", "files")} yours`);
   }
   if (skipped) parts.push(`${plural(skipped, "unit", "units")} unchanged`);
   return `${pack}: ${parts.join(", ")}`;
@@ -236,8 +338,8 @@ export interface CauseGroup {
   link: CauseLink | null;
 }
 
-/** Changes that write something (an unchanged file and a kept companion do not). */
-const writes = (c: FileChange) => c.kind !== "unchanged" && c.kind !== "kept";
+/** Files Apply does something about (not one identical to the disk, not re-rendered, or yours). */
+const writes = (c: FileChange) => !NOTHING_TO_WRITE.has(c.kind);
 
 const SETTING_TABS: Record<string, string> = { conventions: "conventions", localization: "locales" };
 const PACK_SCOPED = new Set(["parameter", "unit", "scripts", "output-base", "formatter", "pack-version"]);
@@ -389,22 +491,22 @@ export function modelFindingsLine(counts: Record<"error" | "warning" | "info", n
 }
 
 /**
- * The plan's result line: "Plan ready: 15 files to write (12 added, 3 modified), 20 unchanged", or "Plan ready: nothing to
- * write, every file matches"; files edited by hand (and so in conflict, or kept or overwritten by the hand-edit choice) are
- * counted after. Counts that are zero are left out.
+ * The plan's result line, from its counts: "Plan ready: 3 files to write (1 added, 2 modified); 58 identical, 6 yours", and for an
+ * incremental plan "...; 40 not re-rendered (inputs unchanged)"; "Plan ready: nothing to write; 650 not re-rendered (inputs
+ * unchanged), 6 yours" when Apply has nothing to do. Files edited by hand (in conflict, or kept or overwritten by the hand-edit
+ * choice) come first after the semicolon. Counts that are zero are left out.
  */
-export function planReadyText(plan: Pick<GenerationPlan, "changes">): string {
-  const count = (kind: FileChangeKind) => plan.changes.filter((c) => c.kind === kind).length;
-  const added = count("added");
-  const modified = count("modified");
-  const deleted = count("deleted");
-  const unchanged = count("unchanged") + count("kept");
-  const hand = count("hand-edited");
-  const conflicts = count("conflict");
-  const write = added + modified + deleted;
-  const tail = [hand ? `${hand} edited by hand` : "", conflicts ? `${conflicts} in conflict (edited by hand)` : ""].filter(Boolean);
-  if (!write) return tail.length ? `Plan ready: nothing to write, ${tail.join(", ")}` : "Plan ready: nothing to write, every file matches";
-  const detail = [added ? `${added} added` : "", modified ? `${modified} modified` : "", deleted ? `${deleted} deleted` : ""].filter(Boolean);
-  const rest = [unchanged ? `${unchanged} unchanged` : "", ...tail].filter(Boolean);
-  return [`Plan ready: ${plural(write, "file", "files")} to write (${detail.join(", ")})`, ...rest].join(", ");
+export function planReadyText(plan: Counted): string {
+  const n = kindCounts(plan);
+  const write = n.added + n.modified + n.deleted;
+  const rest = [
+    n["hand-edited"] ? `${n["hand-edited"]} edited by hand` : "",
+    n.conflict ? `${n.conflict} in conflict (edited by hand)` : "",
+    n.unchanged ? `${n.unchanged} identical` : "",
+    n["not-rendered"] ? `${n["not-rendered"]} not re-rendered (inputs unchanged)` : "",
+    n.kept + n["orphaned-owned"] ? `${n.kept + n["orphaned-owned"]} yours` : "",
+  ].filter(Boolean);
+  const detail = [n.added ? `${n.added} added` : "", n.modified ? `${n.modified} modified` : "", n.deleted ? `${n.deleted} deleted` : ""].filter(Boolean);
+  const head = write ? `Plan ready: ${plural(write, "file", "files")} to write (${detail.join(", ")})` : "Plan ready: nothing to write";
+  return rest.length ? `${head}; ${rest.join(", ")}` : head;
 }

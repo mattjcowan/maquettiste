@@ -115,6 +115,8 @@ test("gate 2: edit the reference application in the editor, plan and apply", asy
   await expect(summary).toContainText("csharp-dapper:");
   const rows = page.getByTestId("changes").locator('[data-testid^="change-"]');
   expect(await rows.count()).toBeGreaterThan(0);
+  // A file to write has a diff (the plan also lists files identical to the disk, which have none).
+  await page.getByTestId("plan-filter-write").click();
   await page.locator("#filter-pack").selectOption("sql-ddl");
   const first = rows.first();
   const path = (await first.getByRole("gridcell").nth(1).innerText()).trim();
@@ -123,6 +125,7 @@ test("gate 2: edit the reference application in the editor, plan and apply", asy
   await expect(diff).toContainText(path, slow);
   await expect(diff).toContainText("@@");
   await page.locator("#filter-pack").selectOption("");
+  await page.getByTestId("plan-filter-all").click();
 
   // Apply by plan id; the job's result (after job.completed) must be a succeeded apply.
   const started = page.waitForResponse((r) => r.url().endsWith("/api/generate/apply") && r.request().method() === "POST");

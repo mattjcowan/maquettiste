@@ -58,6 +58,12 @@ public sealed class GenerationTests
         Assert.Equal(planned["counts"]!["changes"]!.GetValue<int>(), plan.Json["changes"]!.AsArray().Count);
         Assert.All(plan.Json["changes"]!.AsArray(), c => Assert.Null(c!["diff"]));
         Assert.False(plan.Json["request"]!["includeDiffs"]!.GetValue<bool>());
+        // The counts cover every entry, and a job record that drops the lists keeps them.
+        var counts = plan.Json["counts"]!.AsObject();
+        Assert.Equal(plan.Json["changes"]!.AsArray().Count, counts.Sum(c => c.Value!.GetValue<int>()));
+        Assert.Equal(withUnits.Json["units"]!.AsArray().Count, plan.Json["unitsRendered"]!.AsObject().Sum(c => c.Value!.GetValue<int>())
+            + plan.Json["unitsSkipped"]!.AsObject().Sum(c => c.Value!.GetValue<int>()));
+        Assert.Equal(counts.ToJsonString(), job.Json["planResult"]!["plan"]!["counts"]!.ToJsonString());
         Recorder.Json("plan.json", plan);
 
         var path = plan.Json["changes"]!.AsArray().First(c => c!["path"]!.GetValue<string>().EndsWith("customers.sql", StringComparison.Ordinal))!["path"]!.GetValue<string>();

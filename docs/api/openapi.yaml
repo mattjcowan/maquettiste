@@ -3950,7 +3950,7 @@ paths:
       tags: [generation]
       operationId: getPlan
       summary: The finished plan
-      description: Files added, changed and deleted, hand edits and conflicts (`changes`), per pack and unit. `units` (every unit's read keys and outputs) is large and empty unless `units=true`. The 20 newest plans are kept.
+      description: Every file the plan's packs produce or remove (`changes`), each with what Apply does to it (added, modified, deleted; unchanged, not rendered and kept files are left alone; hand edits and conflicts), with `counts` by kind and the units by reason (`unitsRendered`, `unitsSkipped`). `units` (every unit's read keys and outputs) is large and empty unless `units=true`. The 20 newest plans are kept.
       x-maquettiste-role: viewer
       x-maquettiste-engine: GenerationService.GetPlanAsync
       parameters:
@@ -4055,6 +4055,19 @@ paths:
                       newHash: 7c207b4139e1717e9826ac0c47532936c7021452380e7c29cc80b42742aa4710
                       diff: null
                     diagnostics: []
+                    counts:
+                      added: 43
+                      conflict: 0
+                      deleted: 0
+                      hand-edited: 0
+                      kept: 0
+                      modified: 0
+                      not-rendered: 0
+                      orphaned-owned: 0
+                      unchanged: 0
+                    unitsRendered:
+                      new: 43
+                    unitsSkipped: {}
         '404':
           $ref: '#/components/responses/NotFound'
         '401':
@@ -4067,7 +4080,7 @@ paths:
       tags: [generation]
       operationId: getPlanDiff
       summary: Unified diff for one file in a plan
-      description: From the file on disk now to the planned bytes, without rendering again. Empty for a file the plan leaves unchanged or keeps; a deleted file diffs to nothing.
+      description: From the file on disk now to the planned bytes, without rendering again. Empty for a file the plan leaves alone (unchanged, not rendered, or kept; an existing once file or companion is never diffed against what its unit renders, such as a migration's placeholder); a deleted file diffs to nothing.
       x-maquettiste-role: viewer
       x-maquettiste-engine: GenerationService.GetPlanDiffAsync(planId, path)
       parameters:
@@ -4252,6 +4265,19 @@ paths:
                         units: []
                         changes: []
                         diagnostics: []
+                        counts:
+                          added: 43
+                          conflict: 0
+                          deleted: 0
+                          hand-edited: 0
+                          kept: 0
+                          modified: 0
+                          not-rendered: 0
+                          orphaned-owned: 0
+                          unchanged: 0
+                        unitsRendered:
+                          new: 43
+                        unitsSkipped: {}
                     applyResult: null
                     error: null
                     queuedUtc: '2026-09-28T18:55:12.9542269+00:00'
@@ -10527,8 +10553,45 @@ components:
       type: string
       enum: [overwrite, once, regions, pair, block]
     FileChangeKind:
+      description: >-
+        What Apply does to a file. `added`, `modified` and `deleted` are written or removed. `unchanged` (rendered, identical to the
+        disk), `not-rendered` (plans only: its unit was skipped because nothing it read changed; listed from the unit's stored state)
+        and `kept` (a `once` file or companion that exists: the team's, never overwritten) are left alone. `hand-edited`, `conflict`
+        and `orphaned-owned` follow the hand-edit policy and the owned-file rule.
       type: string
-      enum: [added, modified, deleted, unchanged, hand-edited, kept, orphaned-owned, conflict]
+      enum: [added, modified, deleted, unchanged, hand-edited, kept, orphaned-owned, conflict, not-rendered]
+    PlanCounts:
+      description: >-
+        The number of a plan's file entries of each kind, every kind present (zero included); empty in a plan stored before counts
+        (count `changes` then).
+      type: object
+      properties:
+        added:
+          type: integer
+        modified:
+          type: integer
+        deleted:
+          type: integer
+        unchanged:
+          type: integer
+        hand-edited:
+          type: integer
+        kept:
+          type: integer
+        orphaned-owned:
+          type: integer
+        conflict:
+          type: integer
+        not-rendered:
+          type: integer
+      additionalProperties: false
+    UnitReasonCounts:
+      description: >-
+        Units counted by reason, ordinal keys: `new`, `forced`, `check`, `inputs`, `outputs`, `target-missing` for rendered units,
+        `unchanged` for skipped ones (`unknown` when not recorded).
+      type: object
+      additionalProperties:
+        type: integer
     GenerationRequest:
       x-engine-record: Maquettiste.Engine.GenerationRequest
       description: As a request body every member is optional and takes the default shown. As part of a plan, every member is written.
@@ -10688,7 +10751,7 @@ components:
     GenerationPlan:
       x-engine-record: Maquettiste.Engine.GenerationPlan
       type: object
-      required: [id, request, modelVersion, packs, units, changes, diagnostics]
+      required: [id, request, modelVersion, packs, units, changes, diagnostics, counts, unitsRendered, unitsSkipped]
       properties:
         id:
           $ref: '#/components/schemas/Ulid'
@@ -10706,6 +10769,10 @@ components:
           items:
             $ref: '#/components/schemas/PlanUnit'
         changes:
+          description: >-
+            Every file the plan's packs produce or remove, sorted by path, each with what Apply does to it (`FileChangeKind`): files
+            identical to the disk, files of skipped units and kept files included, so a plan names every file. Entries carry no content
+            and no diff.
           type: array
           items:
             $ref: '#/components/schemas/FileChange'
@@ -10713,6 +10780,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Diagnostic'
+        counts:
+          $ref: '#/components/schemas/PlanCounts'
+        unitsRendered:
+          $ref: '#/components/schemas/UnitReasonCounts'
+        unitsSkipped:
+          $ref: '#/components/schemas/UnitReasonCounts'
     PlanResult:
       x-engine-record: Maquettiste.Engine.PlanResult
       type: object

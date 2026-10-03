@@ -12,6 +12,7 @@ import { cn } from "@/lib/cn";
 import { useServices } from "./context";
 import { PANEL_KEYS } from "@/state/layout";
 import { USED_TOOLTIP } from "@/model/labels";
+import { QUIET_FILES } from "@/workspaces/generate/planModel";
 
 function OutputPanel() {
   const { store } = useServices();
@@ -34,12 +35,23 @@ function OutputPanel() {
 function DiffPanel() {
   const { store } = useServices();
   const diff = useEditor(store, (s) => s.diff);
+  // A file Apply leaves alone (identical, not re-rendered, or yours) has nothing to diff: a kept file is never compared with what
+  // its unit renders now (a migration's placeholder, say).
+  const quiet = diff?.kind ? QUIET_FILES[diff.kind] : undefined;
   const query = useQuery({
     queryKey: ["planDiff", diff?.planId ?? "", diff?.path ?? ""],
     queryFn: () => endpoints.getPlanDiff(diff!.planId, diff!.path),
-    enabled: !!diff,
+    enabled: !!diff && !quiet,
   });
   if (!diff) return <EmptyState title="No file selected">Select a file in a plan (Generate) to see its diff.</EmptyState>;
+  if (quiet)
+    return (
+      <div className="flex h-full flex-col" data-testid="diff-quiet" data-kind={diff.kind}>
+        <EmptyState title={quiet.title}>
+          <span className="font-mono">{diff.path}</span>: {quiet.text}
+        </EmptyState>
+      </div>
+    );
   if (query.isPending) return <Spinner label="Loading diff" />;
   if (query.error) return <EmptyState title="The diff could not be loaded">{String((query.error as Error).message)}</EmptyState>;
   return <DiffViewer path={diff.path} text={query.data ?? ""} />;

@@ -417,9 +417,9 @@ internal sealed class WriteRun
                 output = new UnitOutput(job.Path, next.Hash, info.Length, info.LastWriteTimeUtc.Ticks);
         }
 
-        if (kind != FileChangeKind.Unchanged)
+        if (kind != FileChangeKind.Unchanged || _context.ListUnchanged)
         {
-            var diff = includeDiff ? _diffs.Unified(job.Path, disk ?? [], content.Span) : null;
+            var diff = includeDiff && kind != FileChangeKind.Unchanged ? _diffs.Unified(job.Path, disk ?? [], content.Span) : null;
             _changes.Enqueue(new FileChange(job.Path, kind, job.Pack, job.UnitKey, oldHash, next?.Hash ?? job.ManifestHash, diff));
         }
 

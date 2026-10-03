@@ -190,4 +190,11 @@ public sealed record WriteContext(
     bool IncludeDiffs,
     IRunJournal? Journal,
     IUnitStateStore State,
-    IReadOnlySet<string>? PlannedPaths = null);
+    IReadOnlySet<string>? PlannedPaths = null)
+{
+    /// <summary>
+    /// Whether files whose bytes equal the disk are listed too, as <see cref="FileChangeKind.Unchanged"/> without a diff (a plan lists
+    /// every file it renders); off for runs, whose results list only what they changed.
+    /// </summary>
+    internal bool ListUnchanged { get; init; }
+}
